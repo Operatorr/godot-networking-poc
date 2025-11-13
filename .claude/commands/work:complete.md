@@ -22,6 +22,12 @@ Update task $ARGUMENTS in `todolist.json` to `"status": "completed"`.
 	"project": "Omega Realm - Multiplayer Networking Proof of Concept",
 	"version": "1.0",
 	"date": "YYYY-MM-DD",
+	"progress_summary": {
+		"total_tasks": 0,
+		"completed": 0,
+		"in_progress": 0,
+		"pending": 0
+	},
 	"tasks": [...]
 }
 ```

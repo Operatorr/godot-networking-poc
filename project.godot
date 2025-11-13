@@ -15,6 +15,14 @@ config/features=PackedStringArray("4.5", "Forward Plus")
 config/icon="res://icon.svg"
 run/main_scene="res://scenes/main_menu.tscn"
 
+[autoload]
+
+GameManager="*res://autoload/game_manager.gd"
+NetworkManager="*res://autoload/network_manager.gd"
+AuthManager="*res://autoload/auth_manager.gd"
+AudioManager="*res://autoload/audio_manager.gd"
+SceneManager="*res://autoload/scene_manager.gd"
+
 [display]
 
 window/size/viewport_width=1920

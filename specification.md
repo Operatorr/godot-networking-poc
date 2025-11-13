@@ -1,10 +1,28 @@
-# Omega Realm - Project Structure Specification
+# Technical Design Specification
 
 **Version:** 1.0  
-**Date:** November 2024  
+**Date:** November 2025
 **Project Type:** Top-down 2D multiplayer bullet-hell shooter
 
 ---
+
+## Project Overview
+
+### Game Features
+
+- **Genre:** Top-down 2D sprite based bullet-hell multiplayer competitive shooter
+- **Style:** Left click to shoot
+- **Networking:** Low Level API for maximum performance to support highest possible simultaneous player count
+- **Core Modes:**
+  - PvP: Competitive arena battles
+  - PvPvE: Monster Spawns in arena during battle
+- **Player:** Only one shooting ability, sprite projectile
+  - No player classes
+  - No player abilities
+  - No experience points
+  - No leveling
+  - Just HP stat
+- **Monster:** Only one moster type, and only one shooting ability, sprite projectile
 
 ## Technology Stack
 
@@ -22,6 +40,118 @@
 - **Database:** PostgreSQL
 - **Cache:** Redis
 - **Deployment:** Docker containers on DigitalOcean
+
+---
+
+## Movement Mechanics & Controls
+
+### Control Scheme
+
+The game uses a **twin-stick shooter** style control scheme:
+
+- **WASD keys** (+ arrow keys as alternative) for 8-directional movement
+- **Mouse** for aiming direction
+- **Left mouse button** for firing primary attack
+- **T Key** exiting to main Menu
+
+### Core Movement System
+
+#### Basic Movement
+
+- **Movement Type:** Free 8-directional movement (not grid-based)
+
+### Movement State Machine
+
+The PlayerMovement component uses a state machine with these states:
+
+1. **IDLE:** Not moving, no input
+2. **WALKING:** Standard WASD movement
+
+### Animation Coordination
+
+Movement states sync with sprite animations:
+
+- **Idle Animation:** Playing when `velocity == Vector2.ZERO`
+- **Walk Animation:** Playing during normal movement, blend based on direction
+- **Hit Animation:** Hit visuals
+
+**Animation System:**
+
+- One sprite for idle
+- One sprite frame for moving, cycle between moving and idle frame
+- One sprite for hit
+
+### Technical Considerations
+
+#### Level Size Guidelines
+
+For 2D sprite-based game using TileMap:
+
+- **Hub City:** ~60x60 to 100x100 tiles (compact, navigable)
+- **Arena:** ~40x40 to 100x100 tiles (focused combat arenas)
+
+#### Level Connection Architecture
+
+**Main Menu → Arena Entry:**
+
+- Player clicks play from main menu to enter Arena, no Queue System
+- Loading screen
+- Arena scene loads
+- Monster spawner begins
+- On death: Respawn in Arena
+
+**Arena → Exit:**
+
+- On teleport out: Exits to main menu
+
+---
+
+## Technology Stack
+
+### Client
+
+- **Engine:** Godot 4.5
+- **Language:** GDScript
+- **Rendering:** 2D sprite-based
+
+---
+
+## Project Folder Structure
+
+```
+res://
+├── project.godot
+├── export_presets.cfg
+│
+├── autoload/                          # Singleton systems (autoloaded)
+│
+├── scenes/                            # All scene files
+│   ├── main.tscn                     # Entry point scene
+```
+
+---
+
+## Data-Driven Content System
+
+### Philosophy
+
+Instead of creating individual scene files for every enemy, and projectile (which would result in thousands of scenes), this architecture uses:
+
+- **Base Scenes:** Shared template scenes (e.g., `base_enemy.tscn`)
+- **Factories:** Factory classes that instantiate base scenes and apply definitions
+- **Hot Updates:** Content can be updated without rebuilding/patching the game
+
+### Example: Enemy System
+
+#### Data-Driven Approach
+
+```
+scenes/enemies/
+└── base_enemy.tscn      (50 KB)
+
+data/enemies/
+└── enemy_database.json  (100 KB for 100+ enemies)
+```
 
 ---
 
