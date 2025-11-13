@@ -16,7 +16,7 @@
 					"id": "TASK-002",
 					"title": "Configure project settings for multiplayer",
 					"description": "Set up rendering settings, physics, and networking configurations",
-					"status": "pending"
+					"status": "completed"
 				},
 				{
 					"id": "TASK-003",
