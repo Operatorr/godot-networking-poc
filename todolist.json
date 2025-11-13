@@ -10,7 +10,7 @@
 					"id": "TASK-001",
 					"title": "Initialize Godot 4.5 project structure",
 					"description": "Set up base project with folder structure as per specification.md",
-					"status": "pending"
+					"status": "completed"
 				},
 				{
 					"id": "TASK-002",
