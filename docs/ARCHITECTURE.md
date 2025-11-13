@@ -8,13 +8,128 @@
 
 ## Table of Contents
 
-1. [WebSocket Architecture & Requirements](#websocket-architecture--requirements)
-2. [System Architecture Overview](#system-architecture-overview)
-3. [Godot Server Limitations & Principles](#godot-server-limitations--principles)
-4. [Bandwidth Optimization Strategies](#bandwidth-optimization-strategies)
-5. [CPU Optimization Strategies](#cpu-optimization-strategies)
-6. [Sharding Strategy](#sharding-strategy)
-7. [Architecture Recommendation for Omega Realm](#architecture-recommendation-for-omega-realm)
+1. [Monorepo Structure](#monorepo-structure)
+2. [WebSocket Architecture & Requirements](#websocket-architecture--requirements)
+3. [System Architecture Overview](#system-architecture-overview)
+4. [Godot Server Limitations & Principles](#godot-server-limitations--principles)
+5. [Bandwidth Optimization Strategies](#bandwidth-optimization-strategies)
+6. [CPU Optimization Strategies](#cpu-optimization-strategies)
+7. [Sharding Strategy](#sharding-strategy)
+8. [Architecture Recommendation for Omega Realm](#architecture-recommendation-for-omega-realm)
+9. [Development Workflow](#development-workflow)
+
+---
+
+## Monorepo Structure
+
+Omega Realm uses a **single Godot project with dual client/server export presets**, combined with a Go API backend in a monorepo structure.
+
+### Repository Layout
+
+```
+omega-networking/
+├── client/                          # Single Godot 4.5 Project (Client + Server)
+│   ├── project.godot               # Project configuration
+│   ├── export_presets.cfg          # Client AND Server export configurations
+│   ├── autoload/                   # Singletons (detect server mode at runtime)
+│   │   ├── game_manager.gd         # Detects dedicated_server feature tag
+│   │   ├── network_manager.gd      # Dual WebSocket client/server
+│   │   ├── auth_manager.gd         # Client-only (disabled on server)
+│   │   ├── audio_manager.gd        # Client-only (disabled on server)
+│   │   └── scene_manager.gd        # Routes to client vs server scenes
+│   ├── scenes/
+│   │   ├── client/                 # Client-only scenes (menus, UI)
+│   │   ├── server/                 # Server-only scenes (server_main.tscn)
+│   │   └── shared/                 # Shared entities (arena, player, monsters)
+│   ├── scripts/
+│   │   ├── client/                 # Client-only logic
+│   │   ├── server/                 # Server-only logic
+│   │   └── shared/                 # Shared game logic, protocol definitions
+│   └── assets/                     # Auto-stripped in server export
+│
+├── api/                            # Go Backend API
+│   ├── cmd/server/main.go         # Entry point
+│   ├── internal/
+│   │   ├── auth/                   # JWT authentication
+│   │   ├── database/               # PostgreSQL connection
+│   │   ├── handlers/               # HTTP route handlers
+│   │   └── models/                 # Data models
+│   ├── go.mod                      # Go module definition
+│   └── Dockerfile → ../deployment/api.Dockerfile
+│
+├── deployment/                     # Docker & deployment configs
+│   ├── docker-compose.yml          # Orchestrates all services
+│   ├── api.Dockerfile              # Go API container
+│   ├── server.Dockerfile           # Godot headless server container
+│   └── .env.example                # Environment variable template
+│
+├── scripts/                        # Build automation
+│   ├── build_client.sh             # Export client for Win/Mac/Linux
+│   ├── build_server.sh             # Export headless server
+│   └── build_api.sh                # Build Go API
+│
+├── docs/                           # Documentation
+│   ├── ARCHITECTURE.md             # This file
+│   └── specification.md            # Game design specification
+│
+└── exports/                        # Build outputs (git-ignored)
+    ├── client/
+    │   ├── windows/
+    │   ├── linux/
+    │   └── macos/
+    └── server/linux/
+```
+
+### Single Godot Project Approach
+
+**Why One Project?**
+- Godot 4.5 supports `OS.has_feature("dedicated_server")` feature tag detection
+- Client and server share identical game logic, physics, and entity definitions
+- Export presets with "Strip Visuals" automatically remove client assets from server builds
+- No code duplication for protocol, entities, or game rules
+
+**How It Works:**
+```gdscript
+# autoload/game_manager.gd
+func _ready() -> void:
+    is_server = OS.has_feature("dedicated_server") or DisplayServer.get_name() == "headless"
+
+    if is_server:
+        _initialize_server()  # Load server scene, start WebSocket server
+    else:
+        _initialize_client()  # Load main menu, prepare for connection
+```
+
+**Export Presets:**
+```ini
+[preset.0] name="Windows Desktop (Client)"
+dedicated_server=false  # Full assets, UI, audio
+
+[preset.3] name="Linux Headless Server"
+dedicated_server=true   # Adds "dedicated_server" feature tag
+# Texture/audio stripped automatically
+```
+
+### Component Communication
+
+```
+┌─────────────────┐         HTTP REST API        ┌─────────────────┐
+│  Game Client    │ ←──────────────────────────→ │   Go API        │
+│  (Godot 4.5)    │   (Auth, Characters,         │  (Port 8080)    │
+│                 │    Leaderboards)              │                 │
+└────────┬────────┘                               └────────┬────────┘
+         │                                                 │
+         │ WebSocket (Port 8081)                          │ PostgreSQL
+         │ (Game state, movement,                         │ + Redis
+         │  combat)                                       │
+         │                                                │
+         ▼                                                ▼
+┌─────────────────┐                               ┌─────────────────┐
+│  Game Server    │ ←────── HTTP (Stats) ───────→ │   Database      │
+│  (Godot 4.5     │                                │   PostgreSQL    │
+│   Headless)     │                                │   Redis Cache   │
+└─────────────────┘                               └─────────────────┘
+```
 
 ---
 
@@ -610,3 +725,176 @@ Players in different shards need to:
 5. **Zone Instance Fullness:** Target 70-80%, cap at 95%
 
 This architecture is designed for **rapid iteration** (fast content updates via API) while maintaining **authoritative security** (server validates all gameplay) and **scalability** (sharding supports growth without major rewrites).
+
+---
+
+## Development Workflow
+
+### Local Development Setup
+
+**Prerequisites:**
+- Godot 4.5
+- Go 1.21+
+- Docker & Docker Compose
+- PostgreSQL (or use Docker)
+- Redis (or use Docker)
+
+**Quick Start:**
+```bash
+# 1. Start infrastructure services
+cd deployment
+docker-compose up postgres redis
+
+# 2. Build and run API
+cd ../api
+go mod download
+go run cmd/server/main.go
+
+# 3. Run Godot client (opens editor)
+cd ../client
+godot project.godot
+
+# 4. Run Godot server (headless mode)
+godot --headless project.godot
+```
+
+### Building for Production
+
+**Build All Components:**
+```bash
+# Client exports (Windows, Mac, Linux)
+./scripts/build_client.sh
+
+# Server export (Linux headless)
+./scripts/build_server.sh
+
+# API binary
+./scripts/build_api.sh
+```
+
+**Docker Deployment:**
+```bash
+cd deployment
+docker-compose up --build
+```
+
+### Testing Changes
+
+**Test Client Locally:**
+1. Open `client/project.godot` in Godot editor
+2. Press F5 to run
+3. Client detects it's NOT headless, loads main menu
+
+**Test Server Locally:**
+```bash
+cd client
+godot --headless project.godot
+# Server detects headless mode, loads server_main.tscn
+# Starts WebSocket server on port 8081
+```
+
+**Test Full Stack:**
+```bash
+# Terminal 1: Start infrastructure
+cd deployment && docker-compose up postgres redis
+
+# Terminal 2: Start API
+cd api && go run cmd/server/main.go
+
+# Terminal 3: Start game server
+cd client && godot --headless project.godot
+
+# Terminal 4: Run client
+cd client && godot project.godot
+```
+
+### Code Organization Principles
+
+**Client-Only Code** (`client/scenes/client/`, `client/scripts/client/`):
+- UI/UX, menus, HUD
+- Input handling
+- Client-side prediction
+- Audio/visual effects
+- Scene transitions
+
+**Server-Only Code** (`client/scenes/server/`, `client/scripts/server/`):
+- Server WebSocket management
+- Authoritative game logic
+- Player state validation
+- Monster AI
+- Damage calculation
+- Anti-cheat
+
+**Shared Code** (`client/scenes/shared/`, `client/scripts/shared/`):
+- Entity definitions (Player, Monster, Projectile)
+- Network protocol (MessageType enums, packet structures)
+- Game constants (movement speed, damage values)
+- Physics parameters
+
+**When to Put Code in Shared:**
+- If both client AND server need it
+- Physics simulation
+- Entity data structures
+- Network message definitions
+
+**When to Keep Separate:**
+- Client: Anything related to rendering, input, or UI
+- Server: Anything related to validation, anti-cheat, or authority
+
+### Git Workflow
+
+```bash
+# Feature development
+git checkout -b feature/player-movement
+# Make changes to client/scripts/shared/player/
+git add client/scripts/shared/player/
+git commit -m "Implement player movement logic"
+
+# Protocol changes require updates to both sides
+git add client/scripts/shared/networking/protocol.gd
+git add client/autoload/network_manager.gd
+git commit -m "Add new PLAYER_DASH message type"
+
+# API changes
+git add api/internal/handlers/
+git commit -m "Add character stats endpoint"
+
+# Deploy changes
+git push origin feature/player-movement
+```
+
+### Common Development Tasks
+
+**Add New Network Message Type:**
+1. Add enum to `client/scripts/shared/networking/protocol.gd`
+2. Update `network_manager.gd` client send function
+3. Update `network_manager.gd` server receive handler
+4. Test both client and server
+
+**Add New Entity:**
+1. Create scene in `client/scenes/shared/entities/`
+2. Add script in `client/scripts/shared/entities/`
+3. Both client and server can instantiate
+
+**Add UI Element:**
+1. Create scene in `client/scenes/client/components/`
+2. Add script in `client/scripts/client/ui/`
+3. Server never loads this (automatic)
+
+### Deployment Checklist
+
+Before deploying to production:
+
+- [ ] Run all build scripts successfully
+- [ ] Test client exports on target platforms
+- [ ] Test server with `--headless` flag
+- [ ] Verify API connects to database
+- [ ] Check docker-compose services start
+- [ ] Review `.env` configuration
+- [ ] Test full stack locally
+- [ ] Backup database before deployment
+
+---
+
+**Last Updated:** November 2025
+**Maintainer:** Development Team

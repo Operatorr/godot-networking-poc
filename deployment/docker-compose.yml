@@ -1,0 +1,91 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: omega-postgres
+    environment:
+      POSTGRES_USER: omega
+      POSTGRES_PASSWORD: omega_password
+      POSTGRES_DB: omega_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U omega"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - omega-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: omega-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - omega-network
+
+  # Go API Server
+  api:
+    build:
+      context: ../api
+      dockerfile: ../deployment/api.Dockerfile
+    container_name: omega-api
+    environment:
+      PORT: 8080
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: omega
+      DB_PASSWORD: omega_password
+      DB_NAME: omega_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - omega-network
+    restart: unless-stopped
+
+  # Godot Game Server (Headless)
+  game-server:
+    build:
+      context: ../client
+      dockerfile: ../deployment/server.Dockerfile
+    container_name: omega-game-server
+    environment:
+      SERVER_PORT: 8081
+      API_URL: http://api:8080
+    ports:
+      - "8081:8081"
+    depends_on:
+      - api
+    networks:
+      - omega-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  omega-network:
+    driver: bridge

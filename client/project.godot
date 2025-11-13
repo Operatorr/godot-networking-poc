@@ -11,9 +11,9 @@ config_version=5
 [application]
 
 config/name="Omgea Networking"
+run/main_scene="res://scenes/main_menu.tscn"
 config/features=PackedStringArray("4.5", "Forward Plus")
 config/icon="res://icon.svg"
-run/main_scene="res://scenes/main_menu.tscn"
 
 [autoload]
 
@@ -80,5 +80,4 @@ common/physics_ticks_per_second=30
 [rendering]
 
 textures/canvas_textures/default_texture_filter=0
-renderer/rendering_method="forward_plus"
 textures/vram_compression/import_etc2_astc=true

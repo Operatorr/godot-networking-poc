@@ -46,11 +46,32 @@ var session_stats: Dictionary = {
 	"session_start_time": 0
 }
 
+## Runtime mode detection
+var is_server: bool = false
+
 ## Called when the node enters the scene tree
 func _ready() -> void:
-	print("[GameManager] Initializing...")
-	_load_settings()
+	# Detect if running as dedicated server
+	is_server = OS.has_feature("dedicated_server") or DisplayServer.get_name() == "headless"
+
+	print("[GameManager] Initializing in %s mode..." % ("SERVER" if is_server else "CLIENT"))
+
+	if is_server:
+		_initialize_server()
+	else:
+		_initialize_client()
+
 	set_process(true)
+
+## Initialize as server
+func _initialize_server() -> void:
+	print("[GameManager] Server initialization complete")
+	# Server doesn't need settings or main menu state
+	change_state(GameState.IN_ARENA)
+
+## Initialize as client
+func _initialize_client() -> void:
+	_load_settings()
 	change_state(GameState.MAIN_MENU)
 
 ## Change the current game state
@@ -133,6 +154,10 @@ func update_setting(setting_name: String, value) -> void:
 
 ## Apply individual setting
 func _apply_setting(setting_name: String, value) -> void:
+	# Server doesn't need display/audio settings
+	if is_server:
+		return
+
 	match setting_name:
 		"fullscreen":
 			if value:

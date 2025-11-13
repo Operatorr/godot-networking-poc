@@ -1,0 +1,14 @@
+[gd_scene load_steps=2 format=3 uid="uid://c7h8jx0wyl4mu"]
+
+[ext_resource type="Script" path="res://scripts/server/server_main.gd" id="1_q6g47"]
+
+[node name="ServerMain" type="Node"]
+script = ExtResource("1_q6g47")
+
+[node name="ServerLabel" type="Label" parent="."]
+offset_right = 400.0
+offset_bottom = 50.0
+text = "Dedicated Server Running
+Ready for connections on port 8080"
+horizontal_alignment = 1
+vertical_alignment = 1

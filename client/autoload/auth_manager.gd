@@ -31,14 +31,24 @@ var jwt_token: String = ""
 var refresh_token: String = ""
 var token_expiry: int = 0
 
+## Runtime mode detection
+var is_server: bool = false
+
 ## HTTP request node
 var http_request: HTTPRequest = null
 
 ## Called when the node enters the scene tree
 func _ready() -> void:
-	print("[AuthManager] Initializing...")
+	# Detect if running as dedicated server
+	is_server = OS.has_feature("dedicated_server") or DisplayServer.get_name() == "headless"
 
-	# Create HTTP request node
+	print("[AuthManager] Initializing in %s mode..." % ("SERVER" if is_server else "CLIENT"))
+
+	# Server doesn't need HTTP client or authentication
+	if is_server:
+		return
+
+	# Create HTTP request node (client only)
 	http_request = HTTPRequest.new()
 	add_child(http_request)
 	http_request.timeout = api_timeout
@@ -50,6 +60,10 @@ func _ready() -> void:
 
 ## Process loop - check for token expiry
 func _process(_delta: float) -> void:
+	# Server doesn't need auth processing
+	if is_server:
+		return
+
 	if current_state == AuthState.LOGGED_IN:
 		# Check if token is about to expire (refresh 5 minutes before)
 		var current_time = Time.get_unix_time_from_system()

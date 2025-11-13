@@ -21,6 +21,9 @@ enum AudioCategory {
 signal music_changed(track_name: String)
 signal volume_changed(bus_name: String, volume: float)
 
+## Runtime mode detection
+var is_server: bool = false
+
 ## Audio players
 var music_player: AudioStreamPlayer = null
 var ui_sfx_players: Array[AudioStreamPlayer] = []
@@ -59,9 +62,17 @@ var audio_library: Dictionary = {
 
 ## Called when the node enters the scene tree
 func _ready() -> void:
-	print("[AudioManager] Initializing...")
+	# Detect if running as dedicated server
+	is_server = OS.has_feature("dedicated_server") or DisplayServer.get_name() == "headless"
 
-	# Create music player
+	print("[AudioManager] Initializing in %s mode..." % ("SERVER" if is_server else "CLIENT"))
+
+	# Server doesn't need audio
+	if is_server:
+		print("[AudioManager] Audio disabled in server mode")
+		return
+
+	# Create music player (client only)
 	music_player = AudioStreamPlayer.new()
 	music_player.bus = MUSIC_BUS
 	add_child(music_player)

@@ -3,13 +3,17 @@
 ## Coordinates scene changes between Main Menu, Arena, and Loading screens
 extends Node
 
-## Scene paths (will be updated as scenes are created)
+## Runtime mode detection
+var is_server: bool = false
+
+## Scene paths (updated for client/server/shared structure)
 const SCENE_MAIN = "res://scenes/main.tscn"
-const SCENE_MAIN_MENU = "res://scenes/menus/main_menu.tscn"
-const SCENE_CHARACTER_CREATION = "res://scenes/menus/character_creation.tscn"
-const SCENE_LOADING = "res://scenes/menus/loading_screen.tscn"
-const SCENE_ARENA = "res://scenes/game/arena.tscn"
-const SCENE_GAME_UI = "res://scenes/game/game_ui.tscn"
+const SCENE_MAIN_MENU = "res://scenes/client/menus/main_menu.tscn"
+const SCENE_CHARACTER_CREATION = "res://scenes/client/menus/character_creation.tscn"
+const SCENE_LOADING = "res://scenes/client/menus/loading_screen.tscn"
+const SCENE_ARENA = "res://scenes/shared/game/arena.tscn"
+const SCENE_GAME_UI = "res://scenes/client/components/game_ui.tscn"
+const SCENE_SERVER_MAIN = "res://scenes/server/server_main.tscn"
 
 ## Scene names enum
 enum SceneName {
@@ -18,7 +22,8 @@ enum SceneName {
 	CHARACTER_CREATION,
 	LOADING,
 	ARENA,
-	GAME_UI
+	GAME_UI,
+	SERVER_MAIN
 }
 
 ## Signals
@@ -43,7 +48,10 @@ var enable_scene_caching: bool = false
 
 ## Called when the node enters the scene tree
 func _ready() -> void:
-	print("[SceneManager] Initializing...")
+	# Detect if running as dedicated server
+	is_server = OS.has_feature("dedicated_server") or DisplayServer.get_name() == "headless"
+
+	print("[SceneManager] Initializing in %s mode..." % ("SERVER" if is_server else "CLIENT"))
 
 	# Get current scene
 	var root = get_tree().root
@@ -55,6 +63,11 @@ func _ready() -> void:
 
 	# Wait for other autoloads to initialize
 	await get_tree().process_frame
+
+	# If server, load server scene
+	if is_server:
+		print("[SceneManager] Loading server scene...")
+		change_scene(SceneName.SERVER_MAIN, false)
 
 ## Change to a specific scene
 func change_scene(scene_name: SceneName, use_loading_screen: bool = false) -> void:
@@ -253,6 +266,8 @@ func _get_scene_path(scene_name: SceneName) -> String:
 			return SCENE_ARENA
 		SceneName.GAME_UI:
 			return SCENE_GAME_UI
+		SceneName.SERVER_MAIN:
+			return SCENE_SERVER_MAIN
 		_:
 			return ""
 
