@@ -33,6 +33,12 @@ func main() {
 
 	log.Println("[API] Database connected successfully")
 
+	// Initialize database schema
+	log.Println("[API] Initializing database schema...")
+	if err := db.InitSchema(); err != nil {
+		log.Fatalf("[API] Failed to initialize schema: %v", err)
+	}
+
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(db)
 	characterHandler := handlers.NewCharacterHandler(db)

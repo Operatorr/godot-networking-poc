@@ -2,8 +2,10 @@
 
 ## Working on Tasks
 
-1. **use Context7** for getting Godot 4.5 Documentation when writing scripts. Language: GDScript
-2. **use godot-mcp** for interacting with Godot engine if neccesary
+1. **use Context7** to get Godot 4.5 Documentation when writing scripts. Language: GDScript
+2. **use Context7** to get Golang documentation if needed
+3. **use godot-mcp** for interacting with Godot engine if neccesary
+4. **do not** commit with Claude as Co-Author
 
 ## Project Documentation
 
