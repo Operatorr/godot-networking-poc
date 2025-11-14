@@ -18,14 +18,12 @@ func main() {
 		port = "8080"
 	}
 
-	dbHost := os.Getenv("DB_HOST")
-	if dbHost == "" {
-		dbHost = "localhost"
-	}
+	// Load database configuration
+	dbConfig := database.LoadConfigFromEnv()
 
 	// Initialize database connection
 	log.Println("[API] Initializing database connection...")
-	db, err := database.NewConnection(dbHost)
+	db, err := database.NewConnection(dbConfig)
 	if err != nil {
 		log.Fatalf("[API] Failed to connect to database: %v", err)
 	}
