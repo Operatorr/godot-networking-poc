@@ -9,6 +9,7 @@ import (
 
 	"github.com/omega-realm/api/internal/database"
 	"github.com/omega-realm/api/internal/handlers"
+	"github.com/omega-realm/api/internal/middleware"
 )
 
 func main() {
@@ -59,9 +60,9 @@ func main() {
 	mux.HandleFunc("/api/auth/login", authHandler.Login)
 	mux.HandleFunc("/api/auth/refresh", authHandler.RefreshToken)
 
-	// Character routes
-	mux.HandleFunc("/api/characters", characterHandler.GetCharacters)
-	mux.HandleFunc("/api/characters/create", characterHandler.CreateCharacter)
+	// Character routes (protected with JWT auth)
+	mux.HandleFunc("/api/character/me", middleware.RequireAuth(characterHandler.GetCharacter))
+	mux.HandleFunc("/api/character/create", middleware.RequireAuth(characterHandler.CreateCharacter))
 
 	// Leaderboard routes
 	mux.HandleFunc("/api/leaderboard", leaderboardHandler.GetLeaderboard)
