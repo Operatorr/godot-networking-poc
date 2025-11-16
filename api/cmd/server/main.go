@@ -10,6 +10,7 @@ import (
 	"github.com/omega-realm/api/internal/database"
 	"github.com/omega-realm/api/internal/handlers"
 	"github.com/omega-realm/api/internal/middleware"
+	redisClient "github.com/omega-realm/api/internal/redis"
 )
 
 func main() {
@@ -37,6 +38,19 @@ func main() {
 	if err := db.InitSchema(); err != nil {
 		log.Fatalf("[API] Failed to initialize schema: %v", err)
 	}
+
+	// Load Redis configuration
+	redisConfig := redisClient.LoadConfigFromEnv()
+
+	// Initialize Redis connection
+	log.Println("[API] Initializing Redis connection...")
+	redis, err := redisClient.NewClient(redisConfig)
+	if err != nil {
+		log.Fatalf("[API] Failed to connect to Redis: %v", err)
+	}
+	defer redis.Close()
+
+	log.Println("[API] Redis connected successfully")
 
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(db)
