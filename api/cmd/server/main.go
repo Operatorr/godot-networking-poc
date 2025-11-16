@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/omega-realm/api/internal/database"
 	"github.com/omega-realm/api/internal/handlers"
 	"github.com/omega-realm/api/internal/middleware"
@@ -14,6 +15,11 @@ import (
 )
 
 func main() {
+	// Load .env file
+	if err := godotenv.Load(); err != nil {
+		log.Println("[API] No .env file found or error loading it, using environment variables")
+	}
+
 	// Load configuration from environment
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -56,6 +62,7 @@ func main() {
 	authHandler := handlers.NewAuthHandler(db)
 	characterHandler := handlers.NewCharacterHandler(db)
 	leaderboardHandler := handlers.NewLeaderboardHandler(db)
+	regionHandler := handlers.NewRegionHandler(redis)
 
 	// Setup HTTP routes
 	mux := http.NewServeMux()
@@ -81,6 +88,10 @@ func main() {
 	// Leaderboard routes
 	mux.HandleFunc("/api/leaderboard", leaderboardHandler.GetLeaderboard)
 	mux.HandleFunc("/api/leaderboard/update", leaderboardHandler.UpdateLeaderboard)
+
+	// Region routes
+	mux.HandleFunc("/api/regions", regionHandler.GetRegions)
+	mux.HandleFunc("/api/regions/select", middleware.RequireAuth(regionHandler.SelectRegion))
 
 	// CORS middleware
 	handler := corsMiddleware(mux)
