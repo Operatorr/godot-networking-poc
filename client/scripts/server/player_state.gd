@@ -29,6 +29,7 @@ var input_queue: Array[Dictionary] = []
 var health: int = 100
 var max_health: int = 100
 var is_alive: bool = true
+var shoot_cooldown: float = 0.0
 
 # Animation & Flags
 var animation_state: int = PacketTypes.AnimationState.IDLE
@@ -76,9 +77,28 @@ func has_queued_input() -> bool:
 	return not input_queue.is_empty()
 
 
+## Check if player can shoot (cooldown expired)
+func can_shoot() -> bool:
+	return is_alive and shoot_cooldown <= 0.0
+
+
+## Start shoot cooldown after firing
+func start_shoot_cooldown() -> void:
+	shoot_cooldown = GameConstants.SHOOT_COOLDOWN
+
+
+## Get the aim direction as a normalized Vector2
+func get_aim_direction() -> Vector2:
+	return Vector2.from_angle(aim_angle)
+
+
 ## Apply input with server-authoritative movement validation
 ## Returns validation result dictionary with correction info if needed
 func apply_input(input: Dictionary, delta: float) -> Dictionary:
+	# Decrement shoot cooldown
+	if shoot_cooldown > 0.0:
+		shoot_cooldown = maxf(0.0, shoot_cooldown - delta)
+
 	# Store raw input data
 	input_flags = input.get("input_flags", 0)
 	last_input_sequence = input.get("sequence", last_input_sequence)
@@ -208,6 +228,7 @@ func reset_for_respawn(spawn_position: Vector2) -> void:
 	velocity = Vector2.ZERO
 	health = max_health
 	is_alive = true
+	shoot_cooldown = 0.0
 	input_flags = 0
 	input_queue.clear()
 	animation_state = PacketTypes.AnimationState.SPAWN

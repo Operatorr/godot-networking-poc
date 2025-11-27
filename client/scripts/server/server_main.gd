@@ -13,8 +13,11 @@ var server_time: float = 0.0
 ## Player management (TASK-012)
 var player_manager: PlayerManager = null
 
+## Projectile management (TASK-014)
+var projectile_manager: ProjectileManager = null
+
 ## Entity management (entity_id -> EntityState)
-## Used for projectiles, monsters, etc. (TASK-014, TASK-015)
+## Used for monsters, etc. (TASK-015)
 var game_entities: Dictionary = {}
 
 ## Tick loop state
@@ -93,6 +96,10 @@ func _initialize_server() -> void:
 	player_manager = PlayerManager.new()
 	player_manager.debug_logging = config.debug_logging
 
+	# Initialize projectile manager (TASK-014)
+	projectile_manager = ProjectileManager.new()
+	projectile_manager.debug_logging = config.debug_logging
+
 	game_entities.clear()
 	_tick_times.clear()
 	metrics.last_metrics_time = Time.get_ticks_msec() / 1000.0
@@ -151,11 +158,25 @@ func _process_server_tick() -> void:
 ## Process queued client inputs and validate movement (TASK-012, TASK-013)
 func _process_client_inputs() -> void:
 	var tick_interval := 1.0 / config.tick_rate
+
+	# Process shoot inputs before movement (TASK-014)
+	_process_shoot_inputs()
+
 	var corrections = player_manager.process_all_inputs(tick_interval)
 
 	# Send correction packets to clients with invalid positions
 	if corrections.size() > 0:
 		_send_position_corrections(corrections)
+
+
+## Process shoot inputs and spawn projectiles (TASK-014)
+func _process_shoot_inputs() -> void:
+	for state: PlayerState in player_manager.get_all_players():
+		# Check each queued input for shoot flag
+		for input in state.input_queue:
+			var flags: int = input.get("input_flags", 0)
+			if flags & PacketTypes.INPUT_FLAG_SHOOT:
+				_try_spawn_projectile(state, input)
 
 
 ## Send position correction packets to clients (TASK-013)
@@ -196,13 +217,39 @@ func _send_position_corrections(corrections: Array[Dictionary]) -> void:
 			])
 
 
+## Try to spawn a projectile from player shoot input (TASK-014)
+func _try_spawn_projectile(player: PlayerState, input: Dictionary) -> void:
+	# Check shoot cooldown
+	if not player.can_shoot():
+		return
+
+	# Get aim direction from input
+	var aim_angle: float = input.get("aim_angle", player.aim_angle)
+	var aim_direction := Vector2.from_angle(aim_angle)
+
+	# Spawn position slightly in front of player to avoid self-collision
+	var spawn_offset := aim_direction * (GameConstants.PLAYER_HITBOX_RADIUS + GameConstants.PROJECTILE_RADIUS + 2.0)
+	var spawn_position := player.position + spawn_offset
+
+	# Spawn the projectile
+	var projectile := projectile_manager.spawn_projectile(
+		player.entity_id,
+		spawn_position,
+		aim_direction
+	)
+
+	if projectile != null:
+		# Start cooldown on successful spawn
+		player.start_shoot_cooldown()
+
+
 ## Update game state (positions, timers, etc.)
 func _update_game_state() -> void:
-	# Movement validation now handled in _process_client_inputs() (TASK-013)
-	# Will handle:
-	# - Projectile movement (TASK-014)
-	# - Entity timers and cooldowns
-	pass
+	# Update projectile positions (TASK-014)
+	var tick_interval := 1.0 / config.tick_rate
+	projectile_manager.update_all(tick_interval)
+
+	# Entity timers and cooldowns handled in player input processing
 
 
 ## Update monster AI behavior
@@ -212,11 +259,17 @@ func _update_monster_ai() -> void:
 	pass
 
 
-## Process collision detection
-## Placeholder for TASK-014 implementation
+## Process collision detection (TASK-014)
 func _process_collisions() -> void:
-	# Will handle projectile-entity collisions
-	pass
+	# Check projectile-player collisions
+	var hits = projectile_manager.check_collisions_with_players(player_manager)
+
+	# Log hits for now (damage system will be added in future task)
+	for hit in hits:
+		if config.debug_logging:
+			print("[ServerMain] Projectile hit: proj=%d -> player=%d at %s" % [
+				hit.projectile_id, hit.target_id, hit.position
+			])
 
 
 ## Broadcast state updates to all connected clients (TASK-012)
@@ -231,8 +284,12 @@ func _broadcast_state_updates() -> void:
 	# Collect all player states for broadcast
 	var state_data = player_manager.collect_state_updates(tick_count)
 
-	# Add other entities (monsters, projectiles) - to be added in TASK-014, TASK-015
-	# For now, only player entities are broadcast
+	# Add projectile entities (TASK-014)
+	var projectile_updates = projectile_manager.collect_state_updates()
+	for proj_data in projectile_updates:
+		state_data.entities.append(proj_data)
+
+	# Add other entities (monsters) - to be added in TASK-015
 
 	# Broadcast to all connected clients
 	network_manager.broadcast_to_clients(NetworkManager.MessageType.STATE_UPDATE, state_data)
@@ -318,7 +375,7 @@ func _record_tick_time(time_ms: float) -> void:
 func _update_metrics() -> void:
 	metrics.tick_count = tick_count
 	metrics.player_count = player_manager.get_player_count()
-	metrics.entity_count = game_entities.size()
+	metrics.entity_count = game_entities.size() + projectile_manager.get_projectile_count()
 
 	if _tick_times.size() > 0:
 		var total := 0.0
@@ -381,6 +438,7 @@ func shutdown(reason: String = "Server shutdown") -> void:
 			)
 
 	player_manager.clear_all()
+	projectile_manager.clear_all()
 	game_entities.clear()
 
 	print("[ServerMain] Server shutdown complete")

@@ -69,3 +69,28 @@ static func get_movement_speed(is_sprinting: bool) -> float:
 	if is_sprinting:
 		return PLAYER_SPRINT_SPEED
 	return PLAYER_SPEED
+
+
+# =============================================================================
+# PROJECTILE CONSTANTS
+# =============================================================================
+
+## Projectile movement speed (units per second)
+const PROJECTILE_SPEED := 400.0
+
+## Maximum travel distance before projectile despawns (units)
+const PROJECTILE_MAX_DISTANCE := 800.0
+
+## Projectile collision radius (units)
+const PROJECTILE_RADIUS := 8.0
+
+## Player hitbox radius for projectile collision (units)
+const PLAYER_HITBOX_RADIUS := 16.0
+
+
+# =============================================================================
+# COMBAT CONSTANTS
+# =============================================================================
+
+## Cooldown between shots (seconds)
+const SHOOT_COOLDOWN := 0.3

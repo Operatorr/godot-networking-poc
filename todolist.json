@@ -104,7 +104,7 @@
 					"id": "TASK-014",
 					"title": "Create server-side projectile system",
 					"description": "Handle projectile spawning, collision, and despawn distance",
-					"status": "pending"
+					"status": "completed"
 				},
 				{
 					"id": "TASK-015",
