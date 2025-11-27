@@ -23,12 +23,17 @@ enum MessageType {
 	DISCONNECT = 7         ## Client -> Server: Clean disconnect
 }
 
-## Signals
+## Signals - Client mode
 signal connected_to_server()
 signal disconnected_from_server(reason: String)
 signal connection_error(error: String)
 signal server_message_received(message_type: MessageType, data: Dictionary)
 signal heartbeat_timeout()
+
+## Signals - Server mode (for ServerMain to connect to)
+signal server_client_connected(peer_id: int)
+signal server_client_disconnected(peer_id: int)
+signal server_client_message(peer_id: int, message_type: int, data: Dictionary)
 
 ## Runtime mode detection
 var is_server: bool = false
@@ -85,6 +90,10 @@ func _ready() -> void:
 
 ## Initialize as server
 func _initialize_server() -> void:
+	# Load port from server config if available
+	var config = ServerConfig.new()
+	server_port = config.port
+
 	print("[NetworkManager] Starting WebSocket server on port %d..." % server_port)
 	ws_server = TCPServer.new()
 	var error = ws_server.listen(server_port)
@@ -118,6 +127,7 @@ func _process_server(_delta: float) -> void:
 		var peer_id = randi()  # Generate unique peer ID
 		connected_peers[peer_id] = ws_peer
 		print("[NetworkManager] Server: New client connected (ID: %d)" % peer_id)
+		server_client_connected.emit(peer_id)
 
 	# Poll all connected peers
 	for peer_id in connected_peers.keys():
@@ -132,6 +142,7 @@ func _process_server(_delta: float) -> void:
 		elif state == WebSocketPeer.STATE_CLOSED:
 			print("[NetworkManager] Server: Client %d disconnected" % peer_id)
 			connected_peers.erase(peer_id)
+			server_client_disconnected.emit(peer_id)
 
 ## Process client mode
 func _process_client(delta: float) -> void:
@@ -311,25 +322,24 @@ func _handle_server_incoming_packet(peer_id: int, ws_peer: WebSocketPeer) -> voi
 		return
 
 	var message_type: MessageType = message.get("type", MessageType.HEARTBEAT)
-	print("[NetworkManager] Server: Received message type %d from peer %d" % [message_type, peer_id])
+	var data: Dictionary = message.get("data", {})
 
-	# Handle server-side message processing
+	# Handle NetworkManager-level messages (heartbeat, disconnect)
 	match message_type:
-		MessageType.PLAYER_INPUT:
-			# Process player input (to be implemented by game logic)
-			pass
 		MessageType.HEARTBEAT:
-			# Respond to heartbeat
-			_send_server_message(peer_id, MessageType.HEARTBEAT, {"timestamp": Time.get_ticks_msec()})
-		MessageType.CONNECT_AUTH:
-			# Handle authentication
-			print("[NetworkManager] Server: Auth request from peer %d" % peer_id)
+			# Respond to heartbeat immediately
+			send_to_client(peer_id, MessageType.HEARTBEAT, {"timestamp": Time.get_ticks_msec()})
+			return
 		MessageType.DISCONNECT:
 			print("[NetworkManager] Server: Disconnect request from peer %d" % peer_id)
 			ws_peer.close(1000, "Client disconnect")
+			return
+
+	# Emit signal for ServerMain to handle game-related messages
+	server_client_message.emit(peer_id, message_type, data)
 
 ## Send message from server to specific client
-func _send_server_message(peer_id: int, message_type: MessageType, data: Dictionary = {}) -> void:
+func send_to_client(peer_id: int, message_type: MessageType, data: Dictionary = {}) -> void:
 	if not connected_peers.has(peer_id):
 		return
 
@@ -342,6 +352,26 @@ func _send_server_message(peer_id: int, message_type: MessageType, data: Diction
 		stats.bytes_sent += packet.size()
 	else:
 		print("[NetworkManager] Server: Failed to send packet to peer %d: %d" % [peer_id, error])
+
+
+## Send message from server to all connected clients
+func broadcast_to_clients(message_type: MessageType, data: Dictionary = {}) -> void:
+	for peer_id in connected_peers.keys():
+		send_to_client(peer_id, message_type, data)
+
+
+## Disconnect a client from server
+func disconnect_client(peer_id: int, reason: String = "Server disconnect") -> void:
+	if not connected_peers.has(peer_id):
+		return
+
+	var ws_peer: WebSocketPeer = connected_peers[peer_id]
+	ws_peer.close(1000, reason)
+
+
+## Get all connected peer IDs (server mode)
+func get_connected_peer_ids() -> Array:
+	return connected_peers.keys()
 
 ## Send message to server
 func send_message(message_type: MessageType, data: Dictionary = {}) -> void:
