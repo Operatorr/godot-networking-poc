@@ -392,44 +392,135 @@ func send_message(message_type: MessageType, data: Dictionary = {}) -> void:
 func send_player_input(input_data: Dictionary) -> void:
 	send_message(MessageType.PLAYER_INPUT, input_data)
 
-## Send heartbeat (1/sec, 4B as per spec)
+## Send heartbeat (1/sec, 4B payload as per spec)
 func send_heartbeat() -> void:
-	var heartbeat_data = {
-		"timestamp": Time.get_ticks_msec(),
-		"ping_request": true
-	}
-	send_message(MessageType.HEARTBEAT, heartbeat_data)
+	# Binary heartbeat: only timestamp (4 bytes)
+	send_message(MessageType.HEARTBEAT, {"timestamp": Time.get_ticks_msec()})
 	stats.last_ping_time = Time.get_ticks_msec() / 1000.0
 
 ## Handle heartbeat response
 func _handle_heartbeat_response(message: Dictionary) -> void:
-	if message.get("data", {}).has("timestamp"):
-		var server_timestamp = message.data.timestamp
+	var data = message.get("data", {})
+	if data.has("timestamp"):
+		var server_timestamp = data.get("timestamp", 0)
 		var now = Time.get_ticks_msec()
 		stats.ping_ms = now - server_timestamp
 
-## Encode packet to binary format (simplified version)
-## TODO: Implement full binary protocol as per ARCHITECTURE.md Section 4.3
+## Encode packet to binary format using PacketWriter
+## Binary protocol as per ARCHITECTURE.md Section 4.3
 func _encode_packet(message_type: MessageType, data: Dictionary) -> PackedByteArray:
-	# For now, use JSON (will optimize to binary later)
-	var message = {
-		"type": message_type,
-		"data": data,
-		"timestamp": Time.get_ticks_msec()
-	}
-	var json_string = JSON.stringify(message)
-	return json_string.to_utf8_buffer()
+	var writer = PacketWriter.new()
+	writer.write_header(message_type)
 
-## Decode packet from binary format (simplified version)
-## TODO: Implement full binary protocol as per ARCHITECTURE.md Section 4.3
+	match message_type:
+		MessageType.HEARTBEAT:
+			writer.write_u32(data.get("timestamp", Time.get_ticks_msec()))
+
+		MessageType.PLAYER_INPUT:
+			var input_packet = PlayerInputPacket.from_input_dict(data)
+			input_packet.write_payload(writer)
+
+		MessageType.STATE_UPDATE:
+			# Server constructs StateUpdatePacket directly
+			var state_packet = StateUpdatePacket.create(data.get("tick", 0))
+			for entity_data in data.get("entities", []):
+				state_packet.add_entity_dict(entity_data)
+			state_packet.write_payload(writer)
+
+		MessageType.GAME_EVENT:
+			writer.write_u8(data.get("event_type", 0))
+			writer.write_u16(data.get("source_id", 0))
+			writer.write_u16(data.get("target_id", 0))
+			# Event-specific data written based on type
+			_write_game_event_data(writer, data)
+
+		MessageType.ACTION_CONFIRM:
+			writer.write_u8(data.get("sequence", 0))
+			writer.write_u8(data.get("action_type", 0))
+			writer.write_vector2_compressed(data.get("position", Vector2.ZERO))
+			writer.write_u8(data.get("result", 0))
+			writer.write_u16(data.get("tick", 0))
+
+		MessageType.CONNECT_AUTH:
+			writer.write_string(data.get("token", ""))
+			writer.write_string(data.get("character_id", ""))
+			writer.write_u8(AuthPacket.region_from_string(data.get("region", "Asia")))
+
+		MessageType.DISCONNECT:
+			writer.write_u8(data.get("reason", PacketTypes.DisconnectReason.USER_QUIT))
+			writer.write_u32(Time.get_ticks_msec())
+
+	writer.finalize_header()
+	return writer.get_buffer()
+
+
+## Helper: Write game event specific data
+func _write_game_event_data(writer: PacketWriter, data: Dictionary) -> void:
+	var event_type = data.get("event_type", 0)
+	match event_type:
+		PacketTypes.GameEventType.DAMAGE:
+			writer.write_u16(data.get("amount", 0))
+			writer.write_u8(data.get("damage_type", 0))
+		PacketTypes.GameEventType.RESPAWN:
+			writer.write_vector2_compressed(data.get("position", Vector2.ZERO))
+		PacketTypes.GameEventType.EFFECT_APPLY:
+			writer.write_u8(data.get("effect_id", 0))
+			writer.write_u16(data.get("duration_ms", 0))
+		PacketTypes.GameEventType.EFFECT_REMOVE:
+			writer.write_u8(data.get("effect_id", 0))
+
+
+## Decode packet from binary format using PacketReader
+## Binary protocol as per ARCHITECTURE.md Section 4.3
 func _decode_packet(packet: PackedByteArray) -> Dictionary:
-	# For now, use JSON (will optimize to binary later)
-	var json_string = packet.get_string_from_utf8()
-	var json = JSON.new()
-	var error = json.parse(json_string)
-	if error == OK:
-		return json.data
-	return {}
+	if packet.size() < PacketTypes.HEADER_SIZE:
+		push_error("[NetworkManager] Packet too small: %d bytes" % packet.size())
+		return {}
+
+	var reader = PacketReader.new(packet)
+	var header = reader.read_header()
+	var packet_type = header.type
+
+	if not PacketTypes.is_valid_type(packet_type):
+		push_error("[NetworkManager] Invalid packet type: %d" % packet_type)
+		return {}
+
+	var result = {
+		"type": packet_type,
+		"data": {}
+	}
+
+	match packet_type:
+		PacketTypes.Type.HEARTBEAT:
+			result.data = {
+				"timestamp": reader.read_u32()
+			}
+
+		PacketTypes.Type.PLAYER_INPUT:
+			var input_packet = PlayerInputPacket.read(reader)
+			result.data = input_packet.to_dict()
+
+		PacketTypes.Type.STATE_UPDATE:
+			var state_packet = StateUpdatePacket.read(reader)
+			result.data = state_packet.to_dict()
+
+		PacketTypes.Type.GAME_EVENT:
+			var event_packet = GameEventPacket.read(reader)
+			result.data = event_packet.to_dict()
+
+		PacketTypes.Type.ACTION_CONFIRM:
+			var confirm_packet = ActionConfirmPacket.read(reader)
+			result.data = confirm_packet.to_dict()
+
+		PacketTypes.Type.CONNECT_AUTH:
+			var auth_packet = AuthPacket.read(reader)
+			result.data = auth_packet.to_dict()
+
+		PacketTypes.Type.DISCONNECT:
+			var disconnect_packet = DisconnectPacket.read(reader)
+			result.data = disconnect_packet.to_dict()
+
+	return result
 
 ## Handle connection closed
 func _on_connection_closed(reason: String) -> void:

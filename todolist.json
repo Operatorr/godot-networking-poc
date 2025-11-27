@@ -80,13 +80,13 @@
 					"id": "TASK-010",
 					"title": "Set up Godot headless server structure",
 					"description": "Create base server project for authoritative game logic",
-					"status": "pending"
+					"status": "completed"
 				},
 				{
 					"id": "TASK-011",
 					"title": "Implement WebSocket server initialization",
 					"description": "Set up WebSocket listener for client connections",
-					"status": "pending"
+					"status": "completed"
 				},
 				{
 					"id": "TASK-012",
