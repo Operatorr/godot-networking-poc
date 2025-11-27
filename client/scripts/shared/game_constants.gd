@@ -94,3 +94,27 @@ const PLAYER_HITBOX_RADIUS := 16.0
 
 ## Cooldown between shots (seconds)
 const SHOOT_COOLDOWN := 0.3
+
+
+# =============================================================================
+# MONSTER CONSTANTS
+# =============================================================================
+
+## Monster spawn rate (monsters per second)
+## 0.2 = 1 monster every 5 seconds
+const MONSTER_SPAWN_RATE := 0.2
+
+## Maximum active monsters in arena
+const MONSTER_MAX_COUNT := 20
+
+## Player visibility radius (spawn monsters outside this distance from players)
+const MONSTER_VISIBILITY_RADIUS := 300.0
+
+## Maximum attempts to find valid spawn position before using fallback
+const MONSTER_SPAWN_ATTEMPTS := 10
+
+## Default monster health
+const MONSTER_HEALTH := 50
+
+## Monster hitbox radius for collision
+const MONSTER_HITBOX_RADIUS := 16.0

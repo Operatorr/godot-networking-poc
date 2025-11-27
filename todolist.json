@@ -110,7 +110,7 @@
 					"id": "TASK-015",
 					"title": "Implement monster spawner system",
 					"description": "Create endless spawner for arena monsters",
-					"status": "pending"
+					"status": "completed"
 				},
 				{
 					"id": "TASK-016",

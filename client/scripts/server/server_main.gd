@@ -16,8 +16,12 @@ var player_manager: PlayerManager = null
 ## Projectile management (TASK-014)
 var projectile_manager: ProjectileManager = null
 
+## Monster management (TASK-015)
+var monster_manager: MonsterManager = null
+var monster_spawner: MonsterSpawner = null
+
 ## Entity management (entity_id -> EntityState)
-## Used for monsters, etc. (TASK-015)
+## Used for additional entities beyond players/projectiles/monsters
 var game_entities: Dictionary = {}
 
 ## Tick loop state
@@ -99,6 +103,12 @@ func _initialize_server() -> void:
 	# Initialize projectile manager (TASK-014)
 	projectile_manager = ProjectileManager.new()
 	projectile_manager.debug_logging = config.debug_logging
+
+	# Initialize monster manager and spawner (TASK-015)
+	monster_manager = MonsterManager.new()
+	monster_manager.debug_logging = config.debug_logging
+	monster_spawner = MonsterSpawner.new(monster_manager, player_manager)
+	monster_spawner.debug_logging = config.debug_logging
 
 	game_entities.clear()
 	_tick_times.clear()
@@ -245,9 +255,13 @@ func _try_spawn_projectile(player: PlayerState, input: Dictionary) -> void:
 
 ## Update game state (positions, timers, etc.)
 func _update_game_state() -> void:
-	# Update projectile positions (TASK-014)
 	var tick_interval := 1.0 / config.tick_rate
+
+	# Update projectile positions (TASK-014)
 	projectile_manager.update_all(tick_interval)
+
+	# Update monster spawner (TASK-015)
+	monster_spawner.update(tick_interval)
 
 	# Entity timers and cooldowns handled in player input processing
 
@@ -289,7 +303,10 @@ func _broadcast_state_updates() -> void:
 	for proj_data in projectile_updates:
 		state_data.entities.append(proj_data)
 
-	# Add other entities (monsters) - to be added in TASK-015
+	# Add monster entities (TASK-015)
+	var monster_updates = monster_manager.collect_state_updates()
+	for monster_data in monster_updates:
+		state_data.entities.append(monster_data)
 
 	# Broadcast to all connected clients
 	network_manager.broadcast_to_clients(NetworkManager.MessageType.STATE_UPDATE, state_data)
@@ -375,7 +392,7 @@ func _record_tick_time(time_ms: float) -> void:
 func _update_metrics() -> void:
 	metrics.tick_count = tick_count
 	metrics.player_count = player_manager.get_player_count()
-	metrics.entity_count = game_entities.size() + projectile_manager.get_projectile_count()
+	metrics.entity_count = game_entities.size() + projectile_manager.get_projectile_count() + monster_manager.get_monster_count()
 
 	if _tick_times.size() > 0:
 		var total := 0.0
@@ -439,6 +456,7 @@ func shutdown(reason: String = "Server shutdown") -> void:
 
 	player_manager.clear_all()
 	projectile_manager.clear_all()
+	monster_manager.clear_all()
 	game_entities.clear()
 
 	print("[ServerMain] Server shutdown complete")
