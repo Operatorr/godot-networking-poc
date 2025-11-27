@@ -29,6 +29,35 @@ var animation_state: int = PacketTypes.AnimationState.IDLE
 var entity_flags: int = PacketTypes.ENTITY_FLAG_ALIVE | PacketTypes.ENTITY_FLAG_VISIBLE
 
 
+# =============================================================================
+# AI STATE FIELDS
+# =============================================================================
+
+## Current AI state (0=IDLE, 1=CHASE, 2=ATTACK, 3=FLEE)
+var ai_state: int = 0
+
+## Entity ID of current target (0 = no target)
+var target_id: int = 0
+
+## Time remaining on shoot cooldown
+var shoot_cooldown: float = 0.0
+
+## Time spent in current attack state
+var attack_timer: float = 0.0
+
+## Time since last target evaluation
+var retarget_timer: float = 0.0
+
+## Current movement direction (normalized)
+var move_direction: Vector2 = Vector2.ZERO
+
+## Random steering offset for natural movement
+var steering_offset: Vector2 = Vector2.ZERO
+
+## Time until next steering offset update
+var steering_timer: float = 0.0
+
+
 ## Create a new MonsterState
 static func create(p_entity_id: int, p_position: Vector2, p_health: int = GameConstants.MONSTER_HEALTH) -> MonsterState:
 	var state = MonsterState.new()
@@ -63,6 +92,30 @@ func take_damage(amount: int) -> bool:
 	return false
 
 
+# =============================================================================
+# AI HELPER METHODS
+# =============================================================================
+
+## Check if monster can shoot (cooldown expired)
+func can_shoot() -> bool:
+	return is_alive and shoot_cooldown <= 0.0
+
+
+## Start shoot cooldown after firing
+func start_shoot_cooldown() -> void:
+	shoot_cooldown = GameConstants.MONSTER_SHOOT_COOLDOWN
+
+
+## Update all AI timers (called each tick)
+func update_timers(delta: float) -> void:
+	if shoot_cooldown > 0.0:
+		shoot_cooldown = maxf(0.0, shoot_cooldown - delta)
+	if attack_timer > 0.0:
+		attack_timer = maxf(0.0, attack_timer - delta)
+	retarget_timer += delta
+	steering_timer -= delta
+
+
 ## Convert to entity data dictionary for StateUpdatePacket
 func to_entity_data() -> Dictionary:
 	return {
@@ -84,5 +137,8 @@ func to_dict() -> Dictionary:
 		"is_alive": is_alive,
 		"spawn_time": spawn_time,
 		"animation_state": animation_state,
-		"entity_flags": entity_flags
+		"entity_flags": entity_flags,
+		"ai_state": ai_state,
+		"target_id": target_id,
+		"shoot_cooldown": shoot_cooldown
 	}

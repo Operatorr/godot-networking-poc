@@ -20,6 +20,9 @@ var projectile_manager: ProjectileManager = null
 var monster_manager: MonsterManager = null
 var monster_spawner: MonsterSpawner = null
 
+## Monster AI system (TASK-016)
+var monster_ai: MonsterAI = null
+
 ## Entity management (entity_id -> EntityState)
 ## Used for additional entities beyond players/projectiles/monsters
 var game_entities: Dictionary = {}
@@ -109,6 +112,10 @@ func _initialize_server() -> void:
 	monster_manager.debug_logging = config.debug_logging
 	monster_spawner = MonsterSpawner.new(monster_manager, player_manager)
 	monster_spawner.debug_logging = config.debug_logging
+
+	# Initialize monster AI (TASK-016)
+	monster_ai = MonsterAI.new(player_manager, projectile_manager)
+	monster_ai.debug_logging = config.debug_logging
 
 	game_entities.clear()
 	_tick_times.clear()
@@ -266,24 +273,52 @@ func _update_game_state() -> void:
 	# Entity timers and cooldowns handled in player input processing
 
 
-## Update monster AI behavior
-## Placeholder for TASK-016 implementation
+## Update monster AI behavior (TASK-016)
 func _update_monster_ai() -> void:
-	# Will handle monster pathfinding and targeting
-	pass
+	if monster_ai == null or monster_manager == null:
+		return
+
+	var tick_interval := 1.0 / config.tick_rate
+	var alive_monsters := monster_manager.get_alive_monsters()
+
+	# Update all monster AI - handles movement, targeting, and shooting
+	var projectiles_spawned := monster_ai.update_all(alive_monsters, tick_interval)
+
+	if config.debug_logging and projectiles_spawned > 0:
+		print("[ServerMain] Monsters spawned %d projectiles this tick" % projectiles_spawned)
 
 
-## Process collision detection (TASK-014)
+## Process collision detection (TASK-014, TASK-016)
 func _process_collisions() -> void:
-	# Check projectile-player collisions
-	var hits = projectile_manager.check_collisions_with_players(player_manager)
+	# Check projectile-player collisions (players can be hit by monster projectiles)
+	var player_hits = projectile_manager.check_collisions_with_players(player_manager)
 
-	# Log hits for now (damage system will be added in future task)
-	for hit in hits:
-		if config.debug_logging:
-			print("[ServerMain] Projectile hit: proj=%d -> player=%d at %s" % [
-				hit.projectile_id, hit.target_id, hit.position
-			])
+	for hit in player_hits:
+		var target := player_manager.get_player_by_entity_id(hit.target_id)
+		if target != null:
+			# Determine damage based on projectile owner
+			var damage: int = GameConstants.PLAYER_PROJECTILE_DAMAGE
+			# Check if owner is a monster (entity_id >= 100000)
+			if hit.owner_id >= 100000:
+				damage = GameConstants.MONSTER_PROJECTILE_DAMAGE
+
+			var killed := target.take_damage(damage)
+			if config.debug_logging:
+				print("[ServerMain] Player %d took %d damage from entity %d (killed=%s)" % [
+					hit.target_id, damage, hit.owner_id, killed
+				])
+
+	# Check projectile-monster collisions (monsters can be hit by player projectiles)
+	var monster_hits = projectile_manager.check_collisions_with_monsters(monster_manager)
+
+	for hit in monster_hits:
+		var monster := monster_manager.get_monster(hit.target_id)
+		if monster != null:
+			var killed := monster.take_damage(GameConstants.PLAYER_PROJECTILE_DAMAGE)
+			if config.debug_logging:
+				print("[ServerMain] Monster %d took %d damage from player %d (killed=%s)" % [
+					hit.target_id, GameConstants.PLAYER_PROJECTILE_DAMAGE, hit.owner_id, killed
+				])
 
 
 ## Broadcast state updates to all connected clients (TASK-012)
@@ -457,6 +492,7 @@ func shutdown(reason: String = "Server shutdown") -> void:
 	player_manager.clear_all()
 	projectile_manager.clear_all()
 	monster_manager.clear_all()
+	monster_ai = null
 	game_entities.clear()
 
 	print("[ServerMain] Server shutdown complete")

@@ -1,0 +1,82 @@
+{
+	"project_name": "Omega Networking - Testing Plan",
+	"last_updated": "2025-11-27",
+	"description": "Manual and automated tests to run once main scene is available",
+	"tests": [
+		{
+			"id": "TEST-001",
+			"task_id": "TASK-016",
+			"title": "Monster AI Behavior",
+			"description": "Verify monster AI state machine works correctly with hunt, shoot, and flee behaviors",
+			"status": "pending",
+			"test_cases": [
+				{
+					"name": "No players - IDLE state",
+					"steps": [
+						"Start server with no players connected",
+						"Wait for monsters to spawn"
+					],
+					"expected": "Monsters stay in IDLE state, no movement or shooting"
+				},
+				{
+					"name": "Single player - Chase behavior",
+					"steps": [
+						"Connect one player",
+						"Move player within 250 units of a monster"
+					],
+					"expected": "Monster enters CHASE state, moves toward player at 120 units/sec"
+				},
+				{
+					"name": "Single player - Attack behavior",
+					"steps": [
+						"Get player within 200 units of monster"
+					],
+					"expected": "Monster enters ATTACK state, stops moving, shoots every 0.75s with slower projectiles (300 speed)"
+				},
+				{
+					"name": "Player rush - Flee behavior",
+					"steps": [
+						"Rush player within 100 units of monster"
+					],
+					"expected": "Monster enters FLEE state, moves away until 150+ units from player"
+				},
+				{
+					"name": "Multiple players - Target nearest",
+					"steps": [
+						"Connect two players at different distances from monster"
+					],
+					"expected": "Monster targets nearest player, re-evaluates every 1 second"
+				},
+				{
+					"name": "Boundary behavior",
+					"steps": [
+						"Lure monster to map edge during chase or flee"
+					],
+					"expected": "Monster does not get stuck at edges, steering avoids boundaries"
+				},
+				{
+					"name": "Player projectile hits monster",
+					"steps": [
+						"Player shoots at monster"
+					],
+					"expected": "Monster takes 25 damage, dies after 2 hits (50 HP)"
+				},
+				{
+					"name": "Monster projectile hits player",
+					"steps": [
+						"Let monster shoot at player"
+					],
+					"expected": "Player takes 10 damage from monster projectile"
+				},
+				{
+					"name": "Performance - 20 monsters",
+					"steps": [
+						"Wait for max monsters (20) to spawn",
+						"Connect player and observe tick rate"
+					],
+					"expected": "Server maintains 60 tick/sec without degradation"
+				}
+			]
+		}
+	]
+}

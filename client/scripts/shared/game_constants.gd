@@ -118,3 +118,50 @@ const MONSTER_HEALTH := 50
 
 ## Monster hitbox radius for collision
 const MONSTER_HITBOX_RADIUS := 16.0
+
+
+# =============================================================================
+# MONSTER AI CONSTANTS
+# =============================================================================
+
+## Monster movement speed (60% of player speed)
+const MONSTER_SPEED := 120.0
+
+## Monster projectile speed (75% of player projectile speed)
+const MONSTER_PROJECTILE_SPEED := 300.0
+
+## Monster projectile damage
+const MONSTER_PROJECTILE_DAMAGE := 10
+
+## Player projectile damage to monsters
+const PLAYER_PROJECTILE_DAMAGE := 25
+
+## Attack range - distance at which monster will stop and shoot
+const MONSTER_ATTACK_RANGE := 200.0
+
+## Flee distance - monster flees if player closer than this
+const MONSTER_FLEE_DISTANCE := 100.0
+
+## Preferred distance for ranged monsters (maintain this distance when fleeing)
+const MONSTER_PREFERRED_DISTANCE := 150.0
+
+## Detection range - monster starts chasing if player within this range
+const MONSTER_DETECTION_RANGE := 250.0
+
+## Shoot cooldown for monsters (2.5x player cooldown)
+const MONSTER_SHOOT_COOLDOWN := 0.75
+
+## Attack duration - time spent in attack state before resuming movement
+const MONSTER_ATTACK_DURATION := 0.5
+
+## Obstacle avoidance lookahead distance
+const MONSTER_AVOIDANCE_DISTANCE := 50.0
+
+## Steering randomness factor (0.0-1.0)
+const MONSTER_STEERING_RANDOMNESS := 0.15
+
+## Time between target re-evaluation (seconds)
+const MONSTER_RETARGET_INTERVAL := 1.0
+
+## Lose interest distance - stop chasing if player beyond this
+const MONSTER_LOSE_INTEREST_DISTANCE := 400.0

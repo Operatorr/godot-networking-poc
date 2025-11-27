@@ -116,6 +116,56 @@ func check_collisions_with_players(player_manager: PlayerManager) -> Array[Dicti
 	return hits
 
 
+## Check collisions between projectiles and monsters
+## Only player projectiles can hit monsters (owner_id < 100000)
+## Returns array of hit events: { projectile_id, target_id, owner_id, position }
+func check_collisions_with_monsters(monster_manager: MonsterManager) -> Array[Dictionary]:
+	var hits: Array[Dictionary] = []
+	var to_remove: Array[int] = []
+
+	for entity_id: int in projectiles.keys():
+		var proj: ProjectileState = projectiles[entity_id]
+
+		if not proj.alive:
+			continue
+
+		# Only player projectiles can hit monsters (monster entity IDs start at 100000)
+		if proj.owner_id >= 100000:
+			continue
+
+		# Check against all alive monsters
+		for monster: MonsterState in monster_manager.get_alive_monsters():
+			# Check distance for collision
+			var dist := proj.position.distance_to(monster.position)
+			var collision_dist := GameConstants.PROJECTILE_RADIUS + GameConstants.MONSTER_HITBOX_RADIUS
+
+			if dist < collision_dist:
+				# Hit detected
+				proj.alive = false
+				to_remove.append(entity_id)
+
+				hits.append({
+					"projectile_id": entity_id,
+					"target_id": monster.entity_id,
+					"owner_id": proj.owner_id,
+					"position": proj.position
+				})
+
+				if debug_logging:
+					print("[ProjectileManager] Hit: projectile=%d hit monster=%d at %s" % [
+						entity_id, monster.entity_id, proj.position
+					])
+
+				# Only hit one target per projectile
+				break
+
+	# Remove projectiles that hit something
+	for entity_id in to_remove:
+		remove_projectile(entity_id)
+
+	return hits
+
+
 ## Collect state updates for all active projectiles
 ## Returns array of entity data dictionaries for StateUpdatePacket
 func collect_state_updates() -> Array[Dictionary]:
