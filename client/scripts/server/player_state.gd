@@ -76,23 +76,36 @@ func has_queued_input() -> bool:
 	return not input_queue.is_empty()
 
 
-## Apply input to update state (basic - no validation, that's TASK-013)
-func apply_input(input: Dictionary) -> void:
+## Apply input with server-authoritative movement validation
+## Returns validation result dictionary with correction info if needed
+func apply_input(input: Dictionary, delta: float) -> Dictionary:
 	# Store raw input data
 	input_flags = input.get("input_flags", 0)
 	last_input_sequence = input.get("sequence", last_input_sequence)
 
-	# Update position directly from client input (will be validated in TASK-013)
-	var new_pos = input.get("position", position)
-	if new_pos is Vector2:
-		position = new_pos
+	# Get client-reported position for validation
+	var client_position: Vector2 = input.get("position", position)
+	if not client_position is Vector2:
+		client_position = position
 
-	# Update velocity
-	var new_vel = input.get("velocity", velocity)
-	if new_vel is Vector2:
-		velocity = new_vel
+	# Calculate server-authoritative movement from input flags
+	var move_direction := _calculate_movement_direction(input_flags)
+	var move_speed := _calculate_movement_speed(input_flags)
 
-	# Update aim angle
+	# Calculate server-authoritative velocity and position
+	velocity = move_direction * move_speed
+	var server_position := position + velocity * delta
+
+	# Clamp to map boundaries
+	server_position = GameConstants.clamp_to_bounds(server_position)
+
+	# Validate client position against server calculation
+	var validation := _validate_position(client_position, server_position)
+
+	# Always use server-calculated position (authoritative)
+	position = server_position
+
+	# Update aim angle (trust client aim)
 	aim_angle = input.get("aim_angle", aim_angle)
 
 	# Update animation state based on movement
@@ -100,6 +113,61 @@ func apply_input(input: Dictionary) -> void:
 
 	# Update entity flags
 	_update_entity_flags()
+
+	return validation
+
+
+## Calculate normalized movement direction from input flags
+func _calculate_movement_direction(flags: int) -> Vector2:
+	var direction := Vector2.ZERO
+
+	if flags & PacketTypes.INPUT_FLAG_MOVE_UP:
+		direction.y -= 1
+	if flags & PacketTypes.INPUT_FLAG_MOVE_DOWN:
+		direction.y += 1
+	if flags & PacketTypes.INPUT_FLAG_MOVE_LEFT:
+		direction.x -= 1
+	if flags & PacketTypes.INPUT_FLAG_MOVE_RIGHT:
+		direction.x += 1
+
+	return direction.normalized()
+
+
+## Calculate movement speed based on sprint flag
+func _calculate_movement_speed(flags: int) -> float:
+	var is_sprinting := bool(flags & PacketTypes.INPUT_FLAG_SPRINT)
+	return GameConstants.get_movement_speed(is_sprinting)
+
+
+## Validate client position against server-calculated position
+## Returns a dictionary with validation results
+func _validate_position(client_pos: Vector2, server_pos: Vector2) -> Dictionary:
+	var deviation := client_pos.distance_to(server_pos)
+
+	var result := {
+		"valid": true,
+		"deviation": deviation,
+		"correction_needed": false,
+		"server_position": server_pos,
+		"cheat_detected": false,
+		"sequence": last_input_sequence
+	}
+
+	# Check for teleportation (impossible movement)
+	if deviation > GameConstants.TELEPORT_THRESHOLD:
+		result.valid = false
+		result.correction_needed = true
+		result.cheat_detected = true
+		return result
+
+	# Check if correction packet should be sent (significant deviation)
+	if deviation > GameConstants.CORRECTION_THRESHOLD:
+		result.valid = false
+		result.correction_needed = true
+		return result
+
+	# Within tolerance - no correction needed
+	return result
 
 
 ## Update animation state based on current input/state

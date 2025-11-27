@@ -96,11 +96,26 @@ func queue_player_input(peer_id: int, input_data: Dictionary) -> void:
 
 
 ## Process all queued inputs for all players
-func process_all_inputs(_delta: float) -> void:
+## Returns array of corrections needed for clients with invalid positions
+func process_all_inputs(delta: float) -> Array[Dictionary]:
+	var corrections: Array[Dictionary] = []
+
 	for state: PlayerState in players.values():
 		while state.has_queued_input():
 			var input = state.pop_input()
-			state.apply_input(input)
+			var validation = state.apply_input(input, delta)
+
+			# Collect corrections for players that need them
+			if validation.correction_needed:
+				corrections.append({
+					"peer_id": state.peer_id,
+					"sequence": validation.sequence,
+					"position": validation.server_position,
+					"cheat_detected": validation.cheat_detected,
+					"deviation": validation.deviation
+				})
+
+	return corrections
 
 
 ## Collect state updates for broadcasting to clients

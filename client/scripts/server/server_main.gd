@@ -148,17 +148,58 @@ func _process_server_tick() -> void:
 	_record_tick_time(tick_time)
 
 
-## Process queued client inputs (TASK-012)
+## Process queued client inputs and validate movement (TASK-012, TASK-013)
 func _process_client_inputs() -> void:
 	var tick_interval := 1.0 / config.tick_rate
-	player_manager.process_all_inputs(tick_interval)
+	var corrections = player_manager.process_all_inputs(tick_interval)
+
+	# Send correction packets to clients with invalid positions
+	if corrections.size() > 0:
+		_send_position_corrections(corrections)
+
+
+## Send position correction packets to clients (TASK-013)
+func _send_position_corrections(corrections: Array[Dictionary]) -> void:
+	var network_manager = _get_network_manager()
+	if network_manager == null:
+		return
+
+	for correction in corrections:
+		var peer_id: int = correction.peer_id
+		var sequence: int = correction.sequence
+		var position: Vector2 = correction.position
+		var cheat_detected: bool = correction.cheat_detected
+
+		# Create correction packet using ActionConfirmPacket
+		var confirm_packet = ActionConfirmPacket.create_move_confirm(
+			sequence,
+			position,
+			tick_count,
+			false  # success=false indicates correction needed
+		)
+
+		# Send correction to the specific client
+		network_manager.send_to_client(
+			peer_id,
+			NetworkManager.MessageType.ACTION_CONFIRM,
+			confirm_packet.to_dict()
+		)
+
+		# Log potential cheating attempts
+		if cheat_detected:
+			print("[ServerMain] CHEAT DETECTED: peer=%d teleport attempt (deviation=%.1f)" % [
+				peer_id, correction.deviation
+			])
+		elif config.debug_logging:
+			print("[ServerMain] Position correction: peer=%d seq=%d deviation=%.1f" % [
+				peer_id, sequence, correction.deviation
+			])
 
 
 ## Update game state (positions, timers, etc.)
-## Placeholder for TASK-012, TASK-013 implementation
 func _update_game_state() -> void:
+	# Movement validation now handled in _process_client_inputs() (TASK-013)
 	# Will handle:
-	# - Player movement validation (TASK-013)
 	# - Projectile movement (TASK-014)
 	# - Entity timers and cooldowns
 	pass

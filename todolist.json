@@ -98,7 +98,7 @@
 					"id": "TASK-013",
 					"title": "Implement server authoritative movement validation",
 					"description": "Validate all player movements server-side",
-					"status": "pending"
+					"status": "completed"
 				},
 				{
 					"id": "TASK-014",
