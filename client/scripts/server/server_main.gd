@@ -10,9 +10,8 @@ var config: ServerConfig = null
 var server_running: bool = false
 var server_time: float = 0.0
 
-## Player management (peer_id -> PlayerState)
-## PlayerState will be defined in TASK-012
-var connected_players: Dictionary = {}
+## Player management (TASK-012)
+var player_manager: PlayerManager = null
 
 ## Entity management (entity_id -> EntityState)
 ## Used for projectiles, monsters, etc. (TASK-014, TASK-015)
@@ -89,7 +88,11 @@ func _initialize_server() -> void:
 	server_running = true
 	server_time = 0.0
 	tick_count = 0
-	connected_players.clear()
+
+	# Initialize player manager (TASK-012)
+	player_manager = PlayerManager.new()
+	player_manager.debug_logging = config.debug_logging
+
 	game_entities.clear()
 	_tick_times.clear()
 	metrics.last_metrics_time = Time.get_ticks_msec() / 1000.0
@@ -145,11 +148,10 @@ func _process_server_tick() -> void:
 	_record_tick_time(tick_time)
 
 
-## Process queued client inputs
-## Placeholder for TASK-012 implementation
+## Process queued client inputs (TASK-012)
 func _process_client_inputs() -> void:
-	# Will process movement inputs, attack commands, etc.
-	pass
+	var tick_interval := 1.0 / config.tick_rate
+	player_manager.process_all_inputs(tick_interval)
 
 
 ## Update game state (positions, timers, etc.)
@@ -176,84 +178,92 @@ func _process_collisions() -> void:
 	pass
 
 
-## Broadcast state updates to all connected clients
-## Placeholder for TASK-012 implementation
+## Broadcast state updates to all connected clients (TASK-012)
 func _broadcast_state_updates() -> void:
-	# Will send delta-compressed state updates
-	# Using interest management (only entities in view)
-	pass
+	if player_manager.get_player_count() == 0:
+		return
+
+	var network_manager = _get_network_manager()
+	if network_manager == null:
+		return
+
+	# Collect all player states for broadcast
+	var state_data = player_manager.collect_state_updates(tick_count)
+
+	# Add other entities (monsters, projectiles) - to be added in TASK-014, TASK-015
+	# For now, only player entities are broadcast
+
+	# Broadcast to all connected clients
+	network_manager.broadcast_to_clients(NetworkManager.MessageType.STATE_UPDATE, state_data)
 
 
-## Handle client connection
+## Handle client connection (TASK-012)
 func _on_client_connected(peer_id: int) -> void:
 	if config.debug_logging:
 		print("[ServerMain] Client connected: %d" % peer_id)
 
-	if connected_players.size() >= config.max_players:
+	if player_manager.get_player_count() >= config.max_players:
 		print("[ServerMain] Server full, rejecting client: %d" % peer_id)
-		# TODO: Send rejection message and disconnect
+		var network_manager = _get_network_manager()
+		if network_manager:
+			network_manager.disconnect_client(peer_id, "Server full")
 		return
 
-	# Create placeholder player state (will be expanded in TASK-012)
-	connected_players[peer_id] = {
-		"peer_id": peer_id,
-		"connected_at": server_time,
-		"authenticated": false,
-		"character_id": "",
-		"position": Vector2.ZERO,
-		"last_input_time": 0.0
-	}
+	# Create player state via PlayerManager
+	var state = player_manager.add_player(peer_id)
+	if state == null:
+		print("[ServerMain] Failed to create player state for: %d" % peer_id)
+		return
 
-	print("[ServerMain] Player count: %d/%d" % [connected_players.size(), config.max_players])
+	print("[ServerMain] Player count: %d/%d" % [player_manager.get_player_count(), config.max_players])
 
 
-## Handle client disconnection
+## Handle client disconnection (TASK-012)
 func _on_client_disconnected(peer_id: int) -> void:
 	if config.debug_logging:
 		print("[ServerMain] Client disconnected: %d" % peer_id)
 
-	if connected_players.has(peer_id):
-		connected_players.erase(peer_id)
+	player_manager.remove_player(peer_id)
 
-	print("[ServerMain] Player count: %d/%d" % [connected_players.size(), config.max_players])
+	print("[ServerMain] Player count: %d/%d" % [player_manager.get_player_count(), config.max_players])
 
 
-## Handle incoming client message
+## Handle incoming client message (TASK-012)
 func _on_client_message(peer_id: int, message_type: int, data: Dictionary) -> void:
-	if not connected_players.has(peer_id):
+	if not player_manager.has_player(peer_id):
 		if config.debug_logging:
 			print("[ServerMain] Message from unknown peer: %d" % peer_id)
 		return
 
-	# Handle message based on type (will be expanded in later tasks)
-	# MessageType enum values from NetworkManager
+	# Handle message based on type
 	match message_type:
-		1:  # PLAYER_INPUT
+		NetworkManager.MessageType.PLAYER_INPUT:
 			_handle_player_input(peer_id, data)
-		6:  # CONNECT_AUTH
+		NetworkManager.MessageType.CONNECT_AUTH:
 			_handle_auth_request(peer_id, data)
 		_:
 			if config.debug_logging:
 				print("[ServerMain] Unhandled message type %d from peer %d" % [message_type, peer_id])
 
 
-## Handle player input message
-## Placeholder for TASK-013 implementation
+## Handle player input message (TASK-012)
+## Movement validation will be added in TASK-013
 func _handle_player_input(peer_id: int, data: Dictionary) -> void:
-	# Will validate and queue player input for processing
-	pass
+	# Queue input for processing in next tick
+	player_manager.queue_player_input(peer_id, data)
 
 
-## Handle authentication request
-## Placeholder for authentication implementation
+## Handle authentication request (TASK-012)
 func _handle_auth_request(peer_id: int, data: Dictionary) -> void:
 	if config.debug_logging:
 		print("[ServerMain] Auth request from peer %d" % peer_id)
 
-	if connected_players.has(peer_id):
-		connected_players[peer_id].authenticated = true
-		connected_players[peer_id].character_id = data.get("character_id", "")
-		# TODO: Validate character_id with API server
+	var character_id = data.get("character_id", "")
+	var character_name = data.get("character_name", "Player_%d" % peer_id)
+
+	# Authenticate player via PlayerManager
+	# TODO: Validate character_id with API server
+	player_manager.authenticate_player(peer_id, character_id, character_name)
 
 
 ## Record tick processing time for metrics
@@ -266,7 +276,7 @@ func _record_tick_time(time_ms: float) -> void:
 ## Update performance metrics
 func _update_metrics() -> void:
 	metrics.tick_count = tick_count
-	metrics.player_count = connected_players.size()
+	metrics.player_count = player_manager.get_player_count()
 	metrics.entity_count = game_entities.size()
 
 	if _tick_times.size() > 0:
@@ -306,7 +316,7 @@ func get_metrics() -> Dictionary:
 
 ## Get connected player count
 func get_player_count() -> int:
-	return connected_players.size()
+	return player_manager.get_player_count()
 
 
 ## Check if server is running
@@ -322,11 +332,14 @@ func shutdown(reason: String = "Server shutdown") -> void:
 	# Notify all connected clients
 	var network_manager = _get_network_manager()
 	if network_manager != null:
-		for peer_id in connected_players.keys():
-			# TODO: Send disconnect message to each client
-			pass
+		for state: PlayerState in player_manager.get_all_players():
+			network_manager.send_to_client(
+				state.peer_id,
+				NetworkManager.MessageType.DISCONNECT,
+				{"reason": PacketTypes.DisconnectReason.SERVER_SHUTDOWN}
+			)
 
-	connected_players.clear()
+	player_manager.clear_all()
 	game_entities.clear()
 
 	print("[ServerMain] Server shutdown complete")

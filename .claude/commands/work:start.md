@@ -1,6 +1,6 @@
 ---
 description: Search for a task in todolist.json and display it to begin work
-model: claude-sonnet-4-5
+model: opus
 ---
 
 # Start Working on Task
@@ -43,9 +43,9 @@ Then ask: "Ready to work on this task?"
 
 ## Files to Read
 
-- `todolist.json` (search only - find the specific task)
+-   `todolist.json` (search only - find the specific task)
 
 ## Usage Examples
 
-- Command: `038` → Fetches and displays TASK-038
-- Command: `045` → Fetches and displays TASK-045
+-   Command: `038` → Fetches and displays TASK-038
+-   Command: `045` → Fetches and displays TASK-045
