@@ -116,7 +116,7 @@
 					"id": "TASK-016",
 					"title": "Create monster AI behavior",
 					"description": "Implement hunt and shoot behavior for monsters",
-					"status": "pending"
+					"status": "completed"
 				}
 			]
 		},
@@ -127,7 +127,7 @@
 					"id": "TASK-017",
 					"title": "Implement WebSocket client connection",
 					"description": "Create WebSocket client for persistent server connection",
-					"status": "pending"
+					"status": "completed"
 				},
 				{
 					"id": "TASK-018",
