@@ -7,11 +7,26 @@
 
 ## Project Overview
 
+### POC Purpose
+
+This project is a **Proof-of-Concept (POC)** designed to stress-test low-level networking for MMO-scale multiplayer games. The primary goal is to validate that a single game server can handle **500-1000 concurrent players** while maintaining playable performance.
+
+**Why This Matters:**
+- Building toward a full MMO requires proving the networking layer can scale
+- Simplified gameplay intentionally isolates networking performance from game complexity
+- Results will inform architecture decisions for the production MMO
+
+**What We're Testing:**
+- Maximum concurrent connections per server
+- Bandwidth efficiency under load
+- Server tick rate stability with hundreds of players
+- Latency characteristics during combat scenarios
+
 ### Game Features
 
 -   **Genre:** Top-down 2D sprite based bullet-hell multiplayer competitive shooter
 -   **Style:** Left click to shoot
--   **Networking:** Low Level API for maximum performance to support highest possible simultaneous player count
+-   **Networking:** WebSocket with low-level binary protocol optimized for MMO scale (target: 500-1000 concurrent players per server). Emphasis on efficient packet design, delta compression, and minimal bandwidth per player.
 -   **Core Modes:**
     -   PvP: Competitive arena battles
     -   PvPvE: Monster Spawns in arena during battle

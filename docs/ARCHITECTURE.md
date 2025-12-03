@@ -8,15 +8,55 @@
 
 ## Table of Contents
 
-1. [Monorepo Structure](#monorepo-structure)
-2. [WebSocket Architecture & Requirements](#websocket-architecture--requirements)
-3. [System Architecture Overview](#system-architecture-overview)
-4. [Godot Server Limitations & Principles](#godot-server-limitations--principles)
-5. [Bandwidth Optimization Strategies](#bandwidth-optimization-strategies)
-6. [CPU Optimization Strategies](#cpu-optimization-strategies)
-7. [Sharding Strategy](#sharding-strategy)
-8. [Architecture Recommendation for Omega Realm](#architecture-recommendation-for-omega-realm)
-9. [Development Workflow](#development-workflow)
+1. [POC Goals & Success Criteria](#poc-goals--success-criteria)
+2. [Monorepo Structure](#monorepo-structure)
+3. [WebSocket Architecture & Requirements](#websocket-architecture--requirements)
+4. [System Architecture Overview](#system-architecture-overview)
+5. [Godot Server Limitations & Principles](#godot-server-limitations--principles)
+6. [Bandwidth Optimization Strategies](#bandwidth-optimization-strategies)
+7. [CPU Optimization Strategies](#cpu-optimization-strategies)
+8. [Sharding Strategy](#sharding-strategy)
+9. [Architecture Recommendation for Omega Realm](#architecture-recommendation-for-omega-realm)
+10. [Benchmarking Methodology](#benchmarking-methodology)
+11. [Development Workflow](#development-workflow)
+
+---
+
+## POC Goals & Success Criteria
+
+### Purpose Statement
+
+This project is a **Proof-of-Concept** designed to stress-test low-level networking for MMO-scale multiplayer games. The simplified bullet-hell gameplay intentionally isolates networking performance, allowing us to validate scalability without the complexity of a full MMO.
+
+**Primary Goal:** Prove that a single Godot headless server can handle **500-1000 concurrent players** while maintaining playable performance.
+
+**End Vision:** Use learnings from this POC to build a production MMO with maximum player density per server, minimizing infrastructure costs while delivering responsive gameplay.
+
+### Success Criteria
+
+| Metric | Target | Measurement Method |
+|--------|--------|-------------------|
+| **Concurrent Players** | 500-1000 per server | Load testing with bot clients |
+| **Server Tick Rate** | ≥20 Hz under full load | Frame time monitoring |
+| **Per-Player Bandwidth** | <2 KB/s average | Network profiling |
+| **Latency (p95)** | <150ms same-region | Round-trip time measurement |
+| **CPU per Player** | <0.5% per player | Server profiling |
+| **Memory per Player** | <5 MB per player | Heap monitoring |
+
+### Stress Test Scenarios
+
+1. **Baseline (Idle):** All players connected but stationary - establish connection overhead
+2. **Movement Storm:** All players moving simultaneously - test position update throughput
+3. **Combat Load:** Full arena combat with projectiles - test event broadcasting
+4. **Peak Chaos:** Maximum monsters + all players in combat - worst-case scenario
+
+### Why Simplified Gameplay
+
+The intentionally minimal game design (no classes, no abilities, single projectile type) serves the POC:
+- Reduces variables when diagnosing performance issues
+- Ensures networking is the bottleneck, not game logic
+- Allows rapid iteration on protocol optimizations
+- Results directly applicable to more complex MMO features later
 
 ---
 
@@ -465,27 +505,67 @@ Use compact binary format instead of JSON:
 
 **Expected savings:** 80-90% bandwidth reduction
 
-### 4. Update Frequency Scaling
+**Key Techniques:**
+- **Bit-packing:** Pack multiple small values into single bytes (e.g., 4 direction bits + 4 state bits = 1 byte)
+- **Quantization:** Reduce float precision where acceptable (position: 2 bytes per axis instead of 4)
+- **Enum encoding:** Use single bytes for message types, animation states, etc.
+- **Variable-length integers:** Use 1-4 bytes based on value size (varint encoding)
+
+**Binary vs JSON Comparison:**
+```
+Player Position Update:
+JSON:  {"id":1,"x":123.45,"y":678.90}  = 32 bytes
+Binary: [0x01][0x7B][0x2D][0xA9][0x62] = 5 bytes (84% smaller)
+```
+
+### 4. Batching & Aggregation
+
+Combine multiple updates into single packets:
+
+**Expected savings:** 30-50% overhead reduction
+
+- Batch all entity updates for a tick into one packet
+- Reduces per-packet overhead (headers, framing)
+- Allows better compression ratios on larger payloads
+
+### 5. Update Frequency Scaling
 
 Send updates less frequently for distant/less-important entities:
 
 **Expected savings:** 60-70% bandwidth reduction
 
+### 6. Optional: Payload Compression
+
+For large state snapshots, consider runtime compression:
+
+**Algorithms to evaluate:**
+- **LZ4:** Fast compression/decompression, moderate ratios (good for real-time)
+- **zstd:** Better ratios, still fast (good for less frequent large updates)
+- **Custom RLE:** For sparse data with many repeated values
+
+**Note:** Binary protocol with bit-packing often outperforms generic compression. Evaluate during stress testing whether additional compression provides meaningful gains.
+
 ### Total Bandwidth Reduction Example
 
-Combining all 5 strategies:
+Combining all strategies for POC target of 500-1000 players:
 
 ```
-Base bandwidth per player: 10 KB/s
+Base bandwidth per player (naive JSON): 10 KB/s
 ├─ After delta compression (-85%): 1.5 KB/s
-├─ After interest culling (-75%): 0.4 KB/s
-├─ After packet optimization (-85%): 0.06 KB/s
-├─ After update frequency scaling (-65%): 0.02 KB/s
+├─ After interest culling (-75%): 0.375 KB/s
+├─ After binary packet optimization (-85%): 0.056 KB/s
+├─ After batching (-40%): 0.034 KB/s
+├─ After update frequency scaling (-50%): 0.017 KB/s
 
-FINAL: 0.002 KB/s per player = 200 players on 1 KB/s bandwidth
+THEORETICAL MINIMUM: ~20 bytes/s per player
+REALISTIC TARGET: 1-2 KB/s per player (with safety margin)
 ```
 
-This allows **100-200 concurrent players** on a single Godot server with reasonable bandwidth usage.
+**POC Target:** At 2 KB/s per player, a 100 Mbps server connection supports:
+- **1000 players** at 2 KB/s = 2 MB/s = 16 Mbps (16% of capacity)
+- Leaves 84% headroom for spikes, overhead, and growth
+
+This allows **500-1000 concurrent players** per server, achieving the POC goal.
 
 ---
 
@@ -711,10 +791,16 @@ Players in different shards need to:
 
 ### Scaling Assumptions
 
-- **Alpha:** 50-100 concurrent players, 1-2 servers, $20-50/month
-- **Beta:** 100-500 concurrent players, 3-6 servers, $80-150/month
-- **Launch:** 500-2,000 concurrent players, 10-20 servers, $300-800/month
-- **10k+ Target:** 10,000+ concurrent players, 50-100+ servers globally, $2,000-5,000/month
+**POC Phase (Current):**
+- **Target:** 500-1000 concurrent players per single server
+- **Purpose:** Validate networking architecture before scaling horizontally
+- **Infrastructure:** 1 game server, minimal cost
+
+**Production Phases (Post-POC):**
+- **Alpha:** 100-200 concurrent players, validate architecture
+- **Beta:** 500-1000 players per server, 2-5 servers, test sharding
+- **Launch:** 2,000-5,000 concurrent players across sharded servers
+- **Scale:** 10,000+ concurrent players, globally distributed
 
 ### Success Metrics to Monitor
 
@@ -725,6 +811,73 @@ Players in different shards need to:
 5. **Zone Instance Fullness:** Target 70-80%, cap at 95%
 
 This architecture is designed for **rapid iteration** (fast content updates via API) while maintaining **authoritative security** (server validates all gameplay) and **scalability** (sharding supports growth without major rewrites).
+
+---
+
+## Benchmarking Methodology
+
+### Load Generation
+
+**Bot Client Simulation:**
+- Headless Godot clients that simulate player behavior
+- Configurable behavior patterns: idle, random movement, combat
+- Scriptable scenarios for reproducible tests
+
+**Scaling Approach:**
+```
+Phase 1: 100 bots → Validate baseline
+Phase 2: 250 bots → Early stress indicators
+Phase 3: 500 bots → Mid-target validation
+Phase 4: 750 bots → High-load testing
+Phase 5: 1000 bots → Maximum target
+```
+
+### Metrics Collection
+
+**Server-Side Metrics:**
+- Frame time (ms) per physics tick
+- Memory usage (heap, total)
+- CPU utilization per core
+- Active connection count
+- Packets sent/received per second
+- Bytes sent/received per second
+
+**Network Metrics:**
+- Round-trip time (RTT) distribution
+- Packet loss rate
+- Bandwidth per player (up/down)
+- Message queue depth
+
+**Client-Side Metrics (from bots):**
+- Time to receive state updates
+- Input-to-confirmation latency
+- Desync detection rate
+
+### Test Scenarios
+
+| Scenario | Description | Success Criteria |
+|----------|-------------|------------------|
+| **Idle Load** | All players connected, stationary | <10ms frame time, <1 KB/s per player |
+| **Movement Storm** | All players moving randomly | <20ms frame time, <2 KB/s per player |
+| **Combat Chaos** | Full arena combat, projectiles flying | <30ms frame time, <3 KB/s per player |
+| **Spawn Surge** | 100 players join in 10 seconds | No connection failures, <5s to stable |
+| **Disconnect Recovery** | 50% players disconnect/reconnect | Clean state recovery, no memory leaks |
+
+### Profiling Tools
+
+- **Godot Profiler:** Built-in frame time, function call analysis
+- **Godot Network Profiler:** Packet inspection, bandwidth monitoring
+- **System monitors:** htop, nethogs for OS-level metrics
+- **Custom dashboards:** Real-time metrics visualization during tests
+
+### Reporting
+
+After each stress test, document:
+1. Configuration (player count, scenario, server specs)
+2. Peak and average metrics
+3. Failure points (if any)
+4. Bottleneck identification
+5. Recommended optimizations
 
 ---
 
