@@ -49,6 +49,10 @@ var session_stats: Dictionary = {
 ## Runtime mode detection
 var is_server: bool = false
 
+## Local player's network entity ID (set when spawned in arena)
+## Used by PredictionController for reconciliation
+var local_player_entity_id: int = -1
+
 ## Called when the node enters the scene tree
 func _ready() -> void:
 	# Detect if running as dedicated server
@@ -228,3 +232,20 @@ func get_session_duration() -> float:
 	if session_stats.session_start_time == 0:
 		return 0.0
 	return (Time.get_ticks_msec() - session_stats.session_start_time) / 1000.0
+
+
+## Set local player's network entity ID
+func set_local_player_entity_id(id: int) -> void:
+	local_player_entity_id = id
+	print("[GameManager] Local player entity ID set: %d" % id)
+
+
+## Get local player's network entity ID
+func get_local_player_entity_id() -> int:
+	return local_player_entity_id
+
+
+## Clear local player entity ID (on disconnect/logout)
+func clear_local_player_entity_id() -> void:
+	local_player_entity_id = -1
+	print("[GameManager] Local player entity ID cleared")

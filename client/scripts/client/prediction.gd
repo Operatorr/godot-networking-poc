@@ -1,0 +1,568 @@
+## PredictionController - Client-side prediction with server reconciliation
+## Provides immediate local movement feedback while maintaining server authority
+## Attach as child node to player scene, call setup() to initialize
+class_name PredictionController
+extends Node
+
+
+#region Signals
+## Emitted when a server correction is applied
+signal correction_applied(correction_amount: float)
+## Emitted when prediction mismatches server (before reconciliation)
+signal prediction_mismatch(predicted_pos: Vector2, server_pos: Vector2)
+## Emitted when reconciliation completes
+signal reconciliation_complete(replayed_inputs: int)
+#endregion
+
+
+#region Configuration
+## Correction interpolation speed (higher = snappier corrections)
+@export var interpolation_speed: float = 12.0
+## Maximum stored inputs (matches 8-bit sequence range)
+@export var max_buffer_size: int = 256
+## Enable debug output
+@export var debug_logging: bool = false
+## Threshold for instant teleport vs smooth correction (units)
+@export var teleport_threshold: float = 150.0
+#endregion
+
+
+#region State Variables
+## Reference to the controlled player node
+var player_node: Node2D = null
+
+## Local player's entity ID (set during spawn/connection)
+var local_entity_id: int = -1
+
+## Current predicted position (authoritative client-side)
+var predicted_position: Vector2 = Vector2.ZERO
+
+## Current predicted velocity
+var predicted_velocity: Vector2 = Vector2.ZERO
+
+## Last acknowledged sequence number from server (-1 = none yet)
+var last_ack_sequence: int = -1
+
+## Current input sequence number (0-255, wrapping)
+var current_sequence: int = 0
+
+## Input buffer: sequence_number (int) -> InputSnapshot
+var input_buffer: Dictionary = {}
+
+## Smooth correction state
+var correction_target: Vector2 = Vector2.ZERO
+var is_correcting: bool = false
+
+## Server tick tracking for ordering
+var last_server_tick: int = 0
+
+## Input send rate limiting (10Hz)
+var input_send_timer: float = 0.0
+const INPUT_SEND_INTERVAL: float = 0.1  ## 10 Hz = 100ms
+
+## Current frame's accumulated input flags
+var current_input_flags: int = 0
+#endregion
+
+
+#region Inner Classes
+## Snapshot of input state for reconciliation replay
+class InputSnapshot:
+	var sequence: int = 0
+	var input_flags: int = 0
+	var position_before: Vector2 = Vector2.ZERO
+	var position_after: Vector2 = Vector2.ZERO
+	var velocity: Vector2 = Vector2.ZERO
+	var aim_angle: float = 0.0
+	var delta: float = 0.0
+	var timestamp: float = 0.0
+
+	static func create(seq: int, flags: int, pos_before: Vector2, pos_after: Vector2,
+					   vel: Vector2, angle: float, dt: float) -> InputSnapshot:
+		var snapshot := InputSnapshot.new()
+		snapshot.sequence = seq
+		snapshot.input_flags = flags
+		snapshot.position_before = pos_before
+		snapshot.position_after = pos_after
+		snapshot.velocity = vel
+		snapshot.aim_angle = angle
+		snapshot.delta = dt
+		snapshot.timestamp = Time.get_ticks_msec() / 1000.0
+		return snapshot
+#endregion
+
+
+#region Lifecycle
+func _ready() -> void:
+	# Connect to NetworkManager signals
+	if NetworkManager.has_signal("server_message_received"):
+		NetworkManager.server_message_received.connect(_on_server_message)
+
+	# Initialize state
+	_reset_state()
+
+
+func _reset_state() -> void:
+	input_buffer.clear()
+	current_sequence = 0
+	last_ack_sequence = -1
+	is_correcting = false
+	input_send_timer = 0.0
+	current_input_flags = 0
+
+
+## Initialize the controller with a player node
+func setup(player: Node2D, initial_position: Vector2, entity_id: int = -1) -> void:
+	player_node = player
+	local_entity_id = entity_id
+	predicted_position = initial_position
+	correction_target = initial_position
+	_reset_state()
+
+	if debug_logging:
+		print("[Prediction] Setup: entity_id=%d, pos=%s" % [entity_id, initial_position])
+#endregion
+
+
+#region Main Loop
+func _physics_process(delta: float) -> void:
+	if player_node == null:
+		return
+
+	# Skip if not connected
+	if not NetworkManager.is_server_connected():
+		return
+
+	# Step 1: Capture current frame's input
+	current_input_flags = _capture_input_flags()
+
+	# Step 2: Apply local prediction immediately
+	_apply_local_prediction(current_input_flags, delta)
+
+	# Step 3: Handle smooth correction interpolation
+	if is_correcting:
+		_apply_smooth_correction(delta)
+
+	# Step 4: Send input to server at 10Hz
+	input_send_timer += delta
+	if input_send_timer >= INPUT_SEND_INTERVAL:
+		_send_input_to_server()
+		input_send_timer -= INPUT_SEND_INTERVAL
+#endregion
+
+
+#region Input Capture
+func _capture_input_flags() -> int:
+	var flags := 0
+
+	# Movement (WASD)
+	if Input.is_action_pressed("move_up"):
+		flags |= PacketTypes.INPUT_FLAG_MOVE_UP
+	if Input.is_action_pressed("move_down"):
+		flags |= PacketTypes.INPUT_FLAG_MOVE_DOWN
+	if Input.is_action_pressed("move_left"):
+		flags |= PacketTypes.INPUT_FLAG_MOVE_LEFT
+	if Input.is_action_pressed("move_right"):
+		flags |= PacketTypes.INPUT_FLAG_MOVE_RIGHT
+
+	# Actions
+	if Input.is_action_pressed("shoot"):
+		flags |= PacketTypes.INPUT_FLAG_SHOOT
+	if Input.is_action_pressed("ability"):
+		flags |= PacketTypes.INPUT_FLAG_ABILITY
+	if Input.is_action_pressed("sprint"):
+		flags |= PacketTypes.INPUT_FLAG_SPRINT
+	if Input.is_action_pressed("interact"):
+		flags |= PacketTypes.INPUT_FLAG_INTERACT
+
+	return flags
+
+
+func _get_aim_angle() -> float:
+	if player_node == null:
+		return 0.0
+	# Calculate angle from player to mouse
+	var mouse_pos := player_node.get_global_mouse_position()
+	return predicted_position.angle_to_point(mouse_pos)
+#endregion
+
+
+#region Local Prediction
+func _apply_local_prediction(input_flags: int, delta: float) -> void:
+	var position_before := predicted_position
+
+	# Calculate movement from input flags
+	var direction := _get_direction_from_flags(input_flags)
+	var speed := _get_speed_from_flags(input_flags)
+
+	# Update velocity and position
+	predicted_velocity = direction * speed
+	predicted_position += predicted_velocity * delta
+
+	# Clamp to map boundaries (must match server)
+	predicted_position = GameConstants.clamp_to_bounds(predicted_position)
+
+	# Store input snapshot for reconciliation
+	var snapshot := InputSnapshot.create(
+		current_sequence,
+		input_flags,
+		position_before,
+		predicted_position,
+		predicted_velocity,
+		_get_aim_angle(),
+		delta
+	)
+	_store_input(snapshot)
+
+	# Update visual position (unless correcting)
+	_update_player_visual()
+
+
+func _get_direction_from_flags(flags: int) -> Vector2:
+	var direction := Vector2.ZERO
+
+	if flags & PacketTypes.INPUT_FLAG_MOVE_UP:
+		direction.y -= 1.0
+	if flags & PacketTypes.INPUT_FLAG_MOVE_DOWN:
+		direction.y += 1.0
+	if flags & PacketTypes.INPUT_FLAG_MOVE_LEFT:
+		direction.x -= 1.0
+	if flags & PacketTypes.INPUT_FLAG_MOVE_RIGHT:
+		direction.x += 1.0
+
+	return direction.normalized()
+
+
+func _get_speed_from_flags(flags: int) -> float:
+	if flags & PacketTypes.INPUT_FLAG_SPRINT:
+		return GameConstants.PLAYER_SPRINT_SPEED
+	return GameConstants.PLAYER_SPEED
+#endregion
+
+
+#region Input Buffer Management
+func _store_input(snapshot: InputSnapshot) -> void:
+	input_buffer[snapshot.sequence] = snapshot
+
+	# Prune old acknowledged inputs
+	_prune_acknowledged_inputs()
+
+
+func _prune_acknowledged_inputs() -> void:
+	if last_ack_sequence < 0:
+		return
+
+	var keys_to_remove: Array[int] = []
+
+	for seq: int in input_buffer.keys():
+		if _is_sequence_acknowledged(seq):
+			keys_to_remove.append(seq)
+
+	for seq in keys_to_remove:
+		input_buffer.erase(seq)
+
+	if debug_logging and keys_to_remove.size() > 0:
+		print("[Prediction] Pruned %d acknowledged inputs, buffer size: %d" % [
+			keys_to_remove.size(), input_buffer.size()
+		])
+
+
+func _is_sequence_acknowledged(seq: int) -> bool:
+	# A sequence is acknowledged if it's "before or equal to" last_ack_sequence
+	# accounting for 8-bit wraparound
+	if last_ack_sequence < 0:
+		return false
+
+	if seq == last_ack_sequence:
+		return true
+
+	return _sequence_less_than(seq, last_ack_sequence)
+
+
+## Compare two 8-bit sequence numbers with wraparound
+## Returns true if seq_a came before seq_b
+func _sequence_less_than(seq_a: int, seq_b: int) -> bool:
+	# Calculate forward distance (seq_a -> seq_b going up)
+	var forward_dist := (seq_b - seq_a) & 0xFF
+
+	# If forward distance is in lower half (0-127), seq_a is less
+	# If forward distance is in upper half (128-255), seq_b wrapped and is less
+	return forward_dist > 0 and forward_dist < 128
+
+
+## Get the next sequence number with wrap
+func _advance_sequence() -> int:
+	var seq := current_sequence
+	current_sequence = (current_sequence + 1) & 0xFF
+	return seq
+#endregion
+
+
+#region Network Communication
+func _send_input_to_server() -> void:
+	if not NetworkManager.is_server_connected():
+		return
+
+	var seq := _advance_sequence()
+
+	# Build input data dictionary matching expected format
+	var input_data := {
+		"position": predicted_position,
+		"velocity": predicted_velocity,
+		"keys": {
+			"up": bool(current_input_flags & PacketTypes.INPUT_FLAG_MOVE_UP),
+			"down": bool(current_input_flags & PacketTypes.INPUT_FLAG_MOVE_DOWN),
+			"left": bool(current_input_flags & PacketTypes.INPUT_FLAG_MOVE_LEFT),
+			"right": bool(current_input_flags & PacketTypes.INPUT_FLAG_MOVE_RIGHT),
+			"shoot": bool(current_input_flags & PacketTypes.INPUT_FLAG_SHOOT),
+			"ability": bool(current_input_flags & PacketTypes.INPUT_FLAG_ABILITY),
+			"sprint": bool(current_input_flags & PacketTypes.INPUT_FLAG_SPRINT),
+			"interact": bool(current_input_flags & PacketTypes.INPUT_FLAG_INTERACT)
+		},
+		"aim_angle": _get_aim_angle(),
+		"sequence": seq
+	}
+
+	NetworkManager.send_player_input(input_data)
+
+	if debug_logging:
+		print("[Prediction] Sent input: seq=%d, pos=%s, flags=%d" % [
+			seq, predicted_position, current_input_flags
+		])
+#endregion
+
+
+#region Server Message Handling
+func _on_server_message(message_type: int, data: Dictionary) -> void:
+	match message_type:
+		NetworkManager.MessageType.ACTION_CONFIRM:
+			_handle_action_confirm(data)
+		NetworkManager.MessageType.STATE_UPDATE:
+			_handle_state_update(data)
+
+
+func _handle_action_confirm(data: Dictionary) -> void:
+	var sequence: int = data.get("sequence_number", 0)
+	var action_type: int = data.get("action_type", 0)
+	var corrected_position: Vector2 = data.get("corrected_position", Vector2.ZERO)
+	var result_code: int = data.get("result_code", 0)
+	var server_tick: int = data.get("server_tick", 0)
+
+	if debug_logging:
+		print("[Prediction] ActionConfirm: seq=%d, action=%d, result=%d, pos=%s, tick=%d" % [
+			sequence, action_type, result_code, corrected_position, server_tick
+		])
+
+	# Only handle MOVE action type
+	if action_type != ActionConfirmPacket.ActionType.MOVE:
+		return
+
+	# Update tracking
+	last_ack_sequence = sequence
+	last_server_tick = server_tick
+
+	# Check if correction is needed
+	# result_code != SUCCESS means the server sent us a correction
+	if result_code != ActionConfirmPacket.ResultCode.SUCCESS:
+		_reconcile(sequence, corrected_position)
+	else:
+		# Just prune the buffer
+		_prune_acknowledged_inputs()
+
+
+func _handle_state_update(data: Dictionary) -> void:
+	var server_tick: int = data.get("server_tick", 0)
+	var entities: Array = data.get("entities", [])
+
+	last_server_tick = server_tick
+
+	# Skip if we don't know our entity ID
+	if local_entity_id < 0:
+		return
+
+	# Find our entity in the update
+	for entity_data in entities:
+		var entity_id: int = entity_data.get("entity_id", -1)
+		if entity_id == local_entity_id:
+			_process_own_state_update(entity_data)
+			break
+
+
+func _process_own_state_update(entity_data: Dictionary) -> void:
+	var server_position: Vector2 = entity_data.get("position", Vector2.ZERO)
+
+	# If no unacknowledged inputs, sync directly to server position
+	if input_buffer.is_empty():
+		predicted_position = server_position
+		_update_player_visual()
+		return
+
+	# Otherwise, check for significant drift (possible packet loss)
+	var discrepancy := predicted_position.distance_to(server_position)
+
+	if discrepancy > GameConstants.CORRECTION_THRESHOLD * 2.0:
+		# Large drift without ActionConfirm - possible packet loss scenario
+		if debug_logging:
+			print("[Prediction] StateUpdate: Large drift detected (%.2f), no ActionConfirm" % discrepancy)
+		# Could implement recovery here, but for now just log
+#endregion
+
+
+#region Reconciliation
+func _reconcile(ack_sequence: int, server_position: Vector2) -> void:
+	var old_predicted := predicted_position
+	var discrepancy := predicted_position.distance_to(server_position)
+
+	if debug_logging:
+		print("[Prediction] Reconciling: seq=%d, discrepancy=%.2f" % [ack_sequence, discrepancy])
+		print("[Prediction]   Predicted: %s, Server: %s" % [predicted_position, server_position])
+
+	prediction_mismatch.emit(predicted_position, server_position)
+
+	# Step 1: Reset to server's authoritative position
+	predicted_position = server_position
+
+	# Step 2: Collect and replay unacknowledged inputs in order
+	var unacked_sequences := _get_unacknowledged_sequences(ack_sequence)
+	var replayed_count := 0
+
+	for seq in unacked_sequences:
+		if input_buffer.has(seq):
+			var snapshot: InputSnapshot = input_buffer[seq]
+			_replay_input(snapshot)
+			replayed_count += 1
+
+	if debug_logging:
+		print("[Prediction]   Replayed %d inputs" % replayed_count)
+		print("[Prediction]   Final predicted: %s" % predicted_position)
+
+	# Step 3: Calculate visual correction needed
+	var visual_pos := player_node.position if player_node else predicted_position
+	var correction_amount := visual_pos.distance_to(predicted_position)
+
+	# Step 4: Apply correction (instant or smooth)
+	if correction_amount > teleport_threshold:
+		_apply_instant_correction()
+		if debug_logging:
+			print("[Prediction]   Applied instant correction (%.2f > %.2f)" % [
+				correction_amount, teleport_threshold
+			])
+	else:
+		_start_smooth_correction(visual_pos)
+		if debug_logging:
+			print("[Prediction]   Starting smooth correction (%.2f)" % correction_amount)
+
+	# Step 5: Emit signals
+	correction_applied.emit(correction_amount)
+	reconciliation_complete.emit(replayed_count)
+
+	# Step 6: Prune acknowledged inputs
+	_prune_acknowledged_inputs()
+
+
+func _get_unacknowledged_sequences(ack_sequence: int) -> Array[int]:
+	## Returns unacknowledged sequence numbers in order
+	var result: Array[int] = []
+
+	# Start from one after the acknowledged sequence
+	var seq := (ack_sequence + 1) & 0xFF
+
+	# Iterate up to current_sequence
+	var safety := 0
+	while seq != current_sequence and safety < 256:
+		if input_buffer.has(seq):
+			result.append(seq)
+		seq = (seq + 1) & 0xFF
+		safety += 1
+
+	return result
+
+
+func _replay_input(snapshot: InputSnapshot) -> void:
+	## Re-simulate this input from current predicted_position
+	var direction := _get_direction_from_flags(snapshot.input_flags)
+	var speed := _get_speed_from_flags(snapshot.input_flags)
+
+	var velocity := direction * speed
+	predicted_position += velocity * snapshot.delta
+	predicted_position = GameConstants.clamp_to_bounds(predicted_position)
+
+	# Update snapshot for potential future replays
+	snapshot.position_after = predicted_position
+#endregion
+
+
+#region Visual Updates
+func _update_player_visual() -> void:
+	if player_node == null:
+		return
+
+	if not is_correcting:
+		player_node.position = predicted_position
+
+
+func _start_smooth_correction(from_position: Vector2) -> void:
+	correction_target = predicted_position
+	is_correcting = true
+
+
+func _apply_instant_correction() -> void:
+	if player_node != null:
+		player_node.position = predicted_position
+	correction_target = predicted_position
+	is_correcting = false
+
+
+func _apply_smooth_correction(delta: float) -> void:
+	if player_node == null:
+		is_correcting = false
+		return
+
+	# Target is the current predicted position (moves each frame)
+	correction_target = predicted_position
+
+	# Exponential interpolation toward target
+	var current_visual := player_node.position
+	var new_visual := current_visual.lerp(correction_target, interpolation_speed * delta)
+
+	# Check if close enough to stop correcting
+	var remaining := new_visual.distance_to(correction_target)
+	if remaining < 1.0:
+		player_node.position = correction_target
+		is_correcting = false
+	else:
+		player_node.position = new_visual
+#endregion
+
+
+#region Utility
+## Force sync with server (for recovery scenarios)
+func force_sync(server_position: Vector2) -> void:
+	input_buffer.clear()
+	predicted_position = server_position
+	correction_target = server_position
+	is_correcting = false
+	if player_node:
+		player_node.position = server_position
+
+	if debug_logging:
+		print("[Prediction] Force synced to %s" % server_position)
+
+
+## Get current state for debugging
+func get_debug_info() -> Dictionary:
+	return {
+		"predicted_position": predicted_position,
+		"predicted_velocity": predicted_velocity,
+		"current_sequence": current_sequence,
+		"last_ack_sequence": last_ack_sequence,
+		"buffer_size": input_buffer.size(),
+		"is_correcting": is_correcting,
+		"local_entity_id": local_entity_id
+	}
+
+
+## Check if prediction is active
+func is_active() -> bool:
+	return player_node != null and local_entity_id >= 0
+#endregion
