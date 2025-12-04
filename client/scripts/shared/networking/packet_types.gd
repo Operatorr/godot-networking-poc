@@ -17,7 +17,8 @@ enum Type {
 	HEARTBEAT = 4,         ## Bidirectional: Keep-alive (4 bytes)
 	ACTION_CONFIRM = 5,    ## Server -> Client: Confirm attack (20 bytes)
 	CONNECT_AUTH = 6,      ## Client -> Server: Authentication handshake (variable)
-	DISCONNECT = 7         ## Client -> Server: Clean disconnect (4 bytes)
+	DISCONNECT = 7,        ## Client -> Server: Clean disconnect (4 bytes)
+	REQUEST_FULL_STATE = 8 ## Client -> Server: Request full state sync (TASK-021)
 }
 
 ## Entity types for state updates
@@ -57,6 +58,21 @@ const ENTITY_FLAG_INVULNERABLE := 1 << 3
 const ENTITY_FLAG_STUNNED := 1 << 4
 const ENTITY_FLAG_VISIBLE := 1 << 5
 
+## Delta compression mask bits (TASK-021)
+## Used in STATE_UPDATE packets to indicate which fields changed
+const DELTA_MASK_POSITION := 1 << 0    ## Position (x, y) changed - 4 bytes if set
+const DELTA_MASK_ANIMATION := 1 << 1   ## Animation state changed - 1 byte if set
+const DELTA_MASK_FLAGS := 1 << 2       ## Entity flags changed - 1 byte if set
+const DELTA_MASK_FULL_STATE := 1 << 7  ## Full state (new spawn or periodic sync)
+
+## State update packet flags (TASK-021)
+## First byte after server_tick indicates packet mode
+const STATE_FLAG_IS_DELTA := 1 << 0    ## Packet contains delta-encoded entities
+const STATE_FLAG_BASELINE := 1 << 1    ## This is a baseline (full state) packet
+
+## Delta compression configuration
+const DELTA_FULL_STATE_INTERVAL := 100 ## Ticks between forced full state (~5 seconds at 20Hz)
+
 ## Game event types
 enum GameEventType {
 	DAMAGE = 1,            ## Entity took damage
@@ -90,12 +106,13 @@ static func get_type_name(packet_type: int) -> String:
 		Type.ACTION_CONFIRM: return "ACTION_CONFIRM"
 		Type.CONNECT_AUTH: return "CONNECT_AUTH"
 		Type.DISCONNECT: return "DISCONNECT"
+		Type.REQUEST_FULL_STATE: return "REQUEST_FULL_STATE"
 		_: return "UNKNOWN(%d)" % packet_type
 
 
 ## Helper: Check if packet type is valid
 static func is_valid_type(packet_type: int) -> bool:
-	return packet_type >= Type.PLAYER_INPUT and packet_type <= Type.DISCONNECT
+	return packet_type >= Type.PLAYER_INPUT and packet_type <= Type.REQUEST_FULL_STATE
 
 
 ## Helper: Encode input flags from dictionary

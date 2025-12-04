@@ -3,6 +3,9 @@
 ## Entry point for dedicated server mode
 extends Node
 
+## Preload delta state cache for TASK-021
+const DeltaStateCacheClass = preload("res://scripts/server/delta_state_cache.gd")
+
 ## Server configuration
 var config: ServerConfig = null
 
@@ -26,6 +29,10 @@ var monster_ai: MonsterAI = null
 ## Entity management (entity_id -> EntityState)
 ## Used for additional entities beyond players/projectiles/monsters
 var game_entities: Dictionary = {}
+
+## Delta state caches per client (TASK-021)
+## peer_id -> DeltaStateCache
+var delta_caches: Dictionary = {}
 
 ## Tick loop state
 var tick_timer: float = 0.0
@@ -321,7 +328,8 @@ func _process_collisions() -> void:
 				])
 
 
-## Broadcast state updates to all connected clients (TASK-012)
+## Broadcast state updates to all connected clients (TASK-012, TASK-021)
+## Now uses delta compression to reduce bandwidth
 func _broadcast_state_updates() -> void:
 	if player_manager.get_player_count() == 0:
 		return
@@ -330,21 +338,136 @@ func _broadcast_state_updates() -> void:
 	if network_manager == null:
 		return
 
-	# Collect all player states for broadcast
-	var state_data = player_manager.collect_state_updates(tick_count)
+	# Collect all entity states (full state for delta calculation)
+	var all_entities: Array[Dictionary] = []
+
+	# Add player entities
+	for state: PlayerState in player_manager.get_all_players():
+		all_entities.append(state.to_entity_data())
 
 	# Add projectile entities (TASK-014)
 	var projectile_updates = projectile_manager.collect_state_updates()
 	for proj_data in projectile_updates:
-		state_data.entities.append(proj_data)
+		all_entities.append(proj_data)
 
 	# Add monster entities (TASK-015)
 	var monster_updates = monster_manager.collect_state_updates()
 	for monster_data in monster_updates:
-		state_data.entities.append(monster_data)
+		all_entities.append(monster_data)
 
-	# Broadcast to all connected clients
-	network_manager.broadcast_to_clients(NetworkManager.MessageType.STATE_UPDATE, state_data)
+	# Send delta-compressed updates to each client (TASK-021)
+	for state: PlayerState in player_manager.get_all_players():
+		var peer_id: int = state.peer_id
+		var cache = _get_or_create_delta_cache(peer_id)
+
+		# Check if we need to send a full state (baseline) packet
+		var needs_baseline: bool = cache.needs_full_state_for_interval(tick_count)
+
+		# Create appropriate packet type
+		var packet_data: Dictionary
+		if needs_baseline:
+			packet_data = _create_full_state_packet(all_entities, cache)
+		else:
+			packet_data = _create_delta_packet(all_entities, cache)
+
+		# Send to this client
+		network_manager.send_to_client(peer_id, NetworkManager.MessageType.STATE_UPDATE, packet_data)
+
+
+## Get or create delta cache for a client (TASK-021)
+func _get_or_create_delta_cache(peer_id: int):
+	if not delta_caches.has(peer_id):
+		delta_caches[peer_id] = DeltaStateCacheClass.create_for_client(peer_id)
+		delta_caches[peer_id].debug_logging = config.debug_logging
+	return delta_caches[peer_id]
+
+
+## Create a full state (baseline) packet (TASK-021)
+func _create_full_state_packet(entities: Array[Dictionary], cache) -> Dictionary:
+	var entity_data: Array[Dictionary] = []
+
+	for entity in entities:
+		var entity_id: int = entity.get("id", -1)
+		if entity_id < 0:
+			continue
+
+		# Full state: all fields present, delta_mask = FULL_STATE
+		entity_data.append({
+			"entity_id": entity_id,
+			"entity_type": entity.get("type", PacketTypes.EntityType.PLAYER),
+			"position": entity.get("position", Vector2.ZERO),
+			"animation_state": entity.get("animation", PacketTypes.AnimationState.IDLE),
+			"flags": entity.get("flags", 0),
+			"delta_mask": PacketTypes.DELTA_MASK_FULL_STATE
+		})
+
+		# Update cache with sent state
+		cache.update_cache(entity_id, {
+			"entity_type": entity.get("type", PacketTypes.EntityType.PLAYER),
+			"position": entity.get("position", Vector2.ZERO),
+			"animation_state": entity.get("animation", PacketTypes.AnimationState.IDLE),
+			"flags": entity.get("flags", 0)
+		}, tick_count)
+
+	# Reset baseline tick
+	cache.reset_baseline(tick_count)
+
+	return {
+		"tick": tick_count,
+		"state_flags": PacketTypes.STATE_FLAG_BASELINE,  # Full state (baseline)
+		"baseline_tick": tick_count,
+		"entities": entity_data
+	}
+
+
+## Create a delta-compressed packet (TASK-021)
+func _create_delta_packet(entities: Array[Dictionary], cache) -> Dictionary:
+	var entity_data: Array[Dictionary] = []
+	var active_entity_ids: Array[int] = []
+
+	for entity in entities:
+		var entity_id: int = entity.get("id", -1)
+		if entity_id < 0:
+			continue
+
+		active_entity_ids.append(entity_id)
+
+		var current_state := {
+			"entity_type": entity.get("type", PacketTypes.EntityType.PLAYER),
+			"position": entity.get("position", Vector2.ZERO),
+			"animation_state": entity.get("animation", PacketTypes.AnimationState.IDLE),
+			"flags": entity.get("flags", 0)
+		}
+
+		# Calculate delta mask
+		var delta_mask: int = cache.calculate_delta_mask(entity_id, current_state, tick_count)
+
+		# Skip entities with no changes (delta_mask = 0)
+		if delta_mask == 0:
+			continue
+
+		# Add entity to packet
+		entity_data.append({
+			"entity_id": entity_id,
+			"entity_type": current_state.entity_type,
+			"position": current_state.position,
+			"animation_state": current_state.animation_state,
+			"flags": current_state.flags,
+			"delta_mask": delta_mask
+		})
+
+		# Update cache with sent state
+		cache.update_cache(entity_id, current_state, tick_count)
+
+	# Cleanup stale entities from cache
+	cache.cleanup_stale_entities(active_entity_ids)
+
+	return {
+		"tick": tick_count,
+		"state_flags": PacketTypes.STATE_FLAG_IS_DELTA,
+		"baseline_tick": cache.get_baseline_tick(),
+		"entities": entity_data
+	}
 
 
 ## Handle client connection (TASK-012)
@@ -365,6 +488,10 @@ func _on_client_connected(peer_id: int) -> void:
 		print("[ServerMain] Failed to create player state for: %d" % peer_id)
 		return
 
+	# Create delta cache for this client (TASK-021)
+	delta_caches[peer_id] = DeltaStateCacheClass.create_for_client(peer_id)
+	delta_caches[peer_id].debug_logging = config.debug_logging
+
 	print("[ServerMain] Player count: %d/%d" % [player_manager.get_player_count(), config.max_players])
 
 
@@ -374,6 +501,9 @@ func _on_client_disconnected(peer_id: int) -> void:
 		print("[ServerMain] Client disconnected: %d" % peer_id)
 
 	player_manager.remove_player(peer_id)
+
+	# Remove delta cache for this client (TASK-021)
+	delta_caches.erase(peer_id)
 
 	print("[ServerMain] Player count: %d/%d" % [player_manager.get_player_count(), config.max_players])
 
@@ -391,6 +521,8 @@ func _on_client_message(peer_id: int, message_type: int, data: Dictionary) -> vo
 			_handle_player_input(peer_id, data)
 		NetworkManager.MessageType.CONNECT_AUTH:
 			_handle_auth_request(peer_id, data)
+		NetworkManager.MessageType.REQUEST_FULL_STATE:
+			_handle_full_state_request(peer_id)
 		_:
 			if config.debug_logging:
 				print("[ServerMain] Unhandled message type %d from peer %d" % [message_type, peer_id])
@@ -414,6 +546,44 @@ func _handle_auth_request(peer_id: int, data: Dictionary) -> void:
 	# Authenticate player via PlayerManager
 	# TODO: Validate character_id with API server
 	player_manager.authenticate_player(peer_id, character_id, character_name)
+
+
+## Handle client request for full state sync (TASK-021)
+func _handle_full_state_request(peer_id: int) -> void:
+	if config.debug_logging:
+		print("[ServerMain] Full state request from peer %d" % peer_id)
+
+	var network_manager = _get_network_manager()
+	if network_manager == null:
+		return
+
+	# Collect all entity states
+	var all_entities: Array[Dictionary] = []
+
+	# Add player entities
+	for state: PlayerState in player_manager.get_all_players():
+		all_entities.append(state.to_entity_data())
+
+	# Add projectile entities
+	var projectile_updates = projectile_manager.collect_state_updates()
+	for proj_data in projectile_updates:
+		all_entities.append(proj_data)
+
+	# Add monster entities
+	var monster_updates = monster_manager.collect_state_updates()
+	for monster_data in monster_updates:
+		all_entities.append(monster_data)
+
+	# Get or create delta cache for this client
+	var cache = _get_or_create_delta_cache(peer_id)
+
+	# Create and send full state packet
+	var packet_data = _create_full_state_packet(all_entities, cache)
+
+	network_manager.send_to_client(peer_id, NetworkManager.MessageType.STATE_UPDATE, packet_data)
+
+	if config.debug_logging:
+		print("[ServerMain] Sent full state to peer %d (%d entities)" % [peer_id, all_entities.size()])
 
 
 ## Record tick processing time for metrics
@@ -494,6 +664,7 @@ func shutdown(reason: String = "Server shutdown") -> void:
 	monster_manager.clear_all()
 	monster_ai = null
 	game_entities.clear()
+	delta_caches.clear()  # TASK-021
 
 	print("[ServerMain] Server shutdown complete")
 

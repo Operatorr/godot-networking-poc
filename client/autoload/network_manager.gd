@@ -20,7 +20,8 @@ enum MessageType {
 	HEARTBEAT = 4,         ## Bidirectional: Keep-alive (1/sec, 4B)
 	ACTION_CONFIRM = 5,    ## Server -> Client: Confirm attack
 	CONNECT_AUTH = 6,      ## Client -> Server: Authentication handshake
-	DISCONNECT = 7         ## Client -> Server: Clean disconnect
+	DISCONNECT = 7,        ## Client -> Server: Clean disconnect
+	REQUEST_FULL_STATE = 8 ## Client -> Server: Request full state sync (TASK-021)
 }
 
 ## Signals - Client mode
@@ -388,6 +389,10 @@ func send_message(message_type: MessageType, data: Dictionary = {}) -> void:
 	else:
 		print("[NetworkManager] Failed to send packet: %d" % error)
 
+## Send message to server (alias for send_message for code clarity)
+func send_to_server(message_type: MessageType, data: Dictionary = {}) -> void:
+	send_message(message_type, data)
+
 ## Send player input (10/sec as per spec)
 func send_player_input(input_data: Dictionary) -> void:
 	send_message(MessageType.PLAYER_INPUT, input_data)
@@ -421,10 +426,24 @@ func _encode_packet(message_type: MessageType, data: Dictionary) -> PackedByteAr
 			input_packet.write_payload(writer)
 
 		MessageType.STATE_UPDATE:
-			# Server constructs StateUpdatePacket directly
-			var state_packet = StateUpdatePacket.create(data.get("tick", 0))
+			# Server constructs StateUpdatePacket with delta support (TASK-021)
+			var state_flags: int = data.get("state_flags", 0)
+			var is_delta := (state_flags & PacketTypes.STATE_FLAG_IS_DELTA) != 0
+
+			var state_packet: StateUpdatePacket
+			if is_delta:
+				state_packet = StateUpdatePacket.create_delta(
+					data.get("tick", 0),
+					data.get("baseline_tick", 0)
+				)
+			else:
+				state_packet = StateUpdatePacket.create(data.get("tick", 0))
+				state_packet.state_flags = state_flags
+				state_packet.baseline_tick = data.get("baseline_tick", 0)
+
 			for entity_data in data.get("entities", []):
 				state_packet.add_entity_dict(entity_data)
+
 			state_packet.write_payload(writer)
 
 		MessageType.GAME_EVENT:
@@ -448,6 +467,11 @@ func _encode_packet(message_type: MessageType, data: Dictionary) -> PackedByteAr
 
 		MessageType.DISCONNECT:
 			writer.write_u8(data.get("reason", PacketTypes.DisconnectReason.USER_QUIT))
+			writer.write_u32(Time.get_ticks_msec())
+
+		MessageType.REQUEST_FULL_STATE:
+			# TASK-021: Client requesting full state sync
+			# Minimal payload - just timestamp for tracking
 			writer.write_u32(Time.get_ticks_msec())
 
 	writer.finalize_header()
@@ -501,6 +525,8 @@ func _decode_packet(packet: PackedByteArray) -> Dictionary:
 			result.data = input_packet.to_dict()
 
 		PacketTypes.Type.STATE_UPDATE:
+			# TASK-021: Read state update with delta support
+			# Note: Delta reconstruction happens in InterpolationController
 			var state_packet = StateUpdatePacket.read(reader)
 			result.data = state_packet.to_dict()
 
@@ -519,6 +545,12 @@ func _decode_packet(packet: PackedByteArray) -> Dictionary:
 		PacketTypes.Type.DISCONNECT:
 			var disconnect_packet = DisconnectPacket.read(reader)
 			result.data = disconnect_packet.to_dict()
+
+		PacketTypes.Type.REQUEST_FULL_STATE:
+			# TASK-021: Client requesting full state sync
+			result.data = {
+				"timestamp": reader.read_u32()
+			}
 
 	return result
 

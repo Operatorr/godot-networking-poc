@@ -77,6 +77,16 @@ var last_update_time_ms: int = 0
 
 ## Set of entity IDs received in the most recent state update
 var entities_in_last_update: Dictionary = {}
+
+## Per-entity last known state for delta reconstruction (TASK-021)
+## entity_id -> { entity_type, position, animation_state, flags }
+var entity_last_states: Dictionary = {}
+
+## Last received baseline tick for delta validation (TASK-021)
+var last_baseline_tick: int = 0
+
+## Flag to request full state sync from server (TASK-021)
+var needs_full_state_sync: bool = false
 #endregion
 
 
@@ -119,8 +129,27 @@ func _on_server_message(message_type: int, data: Dictionary) -> void:
 
 
 func _process_state_update(data: Dictionary) -> void:
-	var server_tick: int = data.get("server_tick", 0)
+	var server_tick: int = data.get("server_tick", data.get("tick", 0))
 	var entities: Array = data.get("entities", [])
+	var state_flags: int = data.get("state_flags", 0)
+	var baseline_tick: int = data.get("baseline_tick", 0)
+
+	# Check if this is a delta packet (TASK-021)
+	var is_delta := (state_flags & PacketTypes.STATE_FLAG_IS_DELTA) != 0
+	var is_baseline := (state_flags & PacketTypes.STATE_FLAG_BASELINE) != 0
+
+	# Handle baseline tick tracking for delta validation
+	if is_baseline:
+		last_baseline_tick = server_tick
+		if debug_logging:
+			print("[Interpolation] Received baseline packet at tick %d" % server_tick)
+	elif is_delta:
+		# Validate delta chain - if baseline_tick doesn't match, request full sync
+		if baseline_tick != last_baseline_tick and last_baseline_tick > 0:
+			if debug_logging:
+				print("[Interpolation] Delta chain broken: expected baseline %d, got %d" % [last_baseline_tick, baseline_tick])
+			needs_full_state_sync = true
+			_request_full_state_sync()
 
 	# Update tick tracking
 	if server_tick > current_server_tick:
@@ -156,10 +185,13 @@ func _process_state_update(data: Dictionary) -> void:
 
 		entities_in_last_update[entity_id] = true
 
-		var position: Vector2 = entity_data.get("position", Vector2.ZERO)
-		var entity_type: int = entity_data.get("entity_type", PacketTypes.EntityType.PLAYER)
-		var animation_state: int = entity_data.get("animation_state", PacketTypes.AnimationState.IDLE)
-		var flags: int = entity_data.get("flags", 0)
+		# Reconstruct full state from delta if needed (TASK-021)
+		var reconstructed_data: Dictionary = _reconstruct_entity_state(entity_data, is_delta)
+
+		var position: Vector2 = reconstructed_data.get("position", Vector2.ZERO)
+		var entity_type: int = reconstructed_data.get("entity_type", PacketTypes.EntityType.PLAYER)
+		var animation_state: int = reconstructed_data.get("animation_state", PacketTypes.AnimationState.IDLE)
+		var flags: int = reconstructed_data.get("flags", 0)
 
 		# Check if this is a new entity (spawn detection)
 		if not entity_buffers.has(entity_id):
@@ -167,12 +199,83 @@ func _process_state_update(data: Dictionary) -> void:
 		else:
 			_handle_entity_update(entity_id, position, animation_state, flags, entity_type, server_tick)
 
+		# Store reconstructed state for future delta reconstruction (TASK-021)
+		_update_last_known_state(entity_id, reconstructed_data)
+
 	# Check for despawns (entities we know about but weren't in this update)
-	_check_for_despawns()
+	# Note: In delta mode, entities with no changes are not sent, so don't despawn them
+	if not is_delta:
+		_check_for_despawns()
 
 	if debug_logging and entities.size() > 0:
 		var remote_count := entities_in_last_update.size()
-		print("[Interpolation] Tick %d: Processed %d remote entities" % [server_tick, remote_count])
+		var mode_str := "delta" if is_delta else ("baseline" if is_baseline else "full")
+		print("[Interpolation] Tick %d (%s): Processed %d remote entities" % [server_tick, mode_str, remote_count])
+
+
+## Reconstruct full entity state from delta packet (TASK-021)
+func _reconstruct_entity_state(entity_data: Dictionary, is_delta: bool) -> Dictionary:
+	var entity_id: int = entity_data.get("entity_id", -1)
+	var delta_mask: int = entity_data.get("delta_mask", PacketTypes.DELTA_MASK_FULL_STATE)
+
+	# If full state (baseline, new spawn, or periodic sync), use as-is
+	if not is_delta or (delta_mask & PacketTypes.DELTA_MASK_FULL_STATE) != 0:
+		return {
+			"entity_id": entity_id,
+			"entity_type": entity_data.get("entity_type", PacketTypes.EntityType.PLAYER),
+			"position": entity_data.get("position", Vector2.ZERO),
+			"animation_state": entity_data.get("animation_state", PacketTypes.AnimationState.IDLE),
+			"flags": entity_data.get("flags", 0)
+		}
+
+	# Delta packet - merge with last known state
+	var last_state: Dictionary = entity_last_states.get(entity_id, {})
+
+	# Start with last known state
+	var result := {
+		"entity_id": entity_id,
+		"entity_type": last_state.get("entity_type", entity_data.get("entity_type", PacketTypes.EntityType.PLAYER)),
+		"position": last_state.get("position", Vector2.ZERO),
+		"animation_state": last_state.get("animation_state", PacketTypes.AnimationState.IDLE),
+		"flags": last_state.get("flags", 0)
+	}
+
+	# Apply delta fields
+	if (delta_mask & PacketTypes.DELTA_MASK_POSITION) != 0:
+		result.position = entity_data.get("position", result.position)
+
+	if (delta_mask & PacketTypes.DELTA_MASK_ANIMATION) != 0:
+		result.animation_state = entity_data.get("animation_state", result.animation_state)
+
+	if (delta_mask & PacketTypes.DELTA_MASK_FLAGS) != 0:
+		result.flags = entity_data.get("flags", result.flags)
+
+	return result
+
+
+## Update last known state for an entity (TASK-021)
+func _update_last_known_state(entity_id: int, state: Dictionary) -> void:
+	entity_last_states[entity_id] = {
+		"entity_type": state.get("entity_type", PacketTypes.EntityType.PLAYER),
+		"position": state.get("position", Vector2.ZERO),
+		"animation_state": state.get("animation_state", PacketTypes.AnimationState.IDLE),
+		"flags": state.get("flags", 0)
+	}
+
+
+## Request full state sync from server (TASK-021)
+func _request_full_state_sync() -> void:
+	if not NetworkManager.is_server_connected():
+		return
+
+	# Send REQUEST_FULL_STATE message to server
+	NetworkManager.send_to_server(
+		NetworkManager.MessageType.REQUEST_FULL_STATE,
+		{}
+	)
+
+	if debug_logging:
+		print("[Interpolation] Requested full state sync from server")
 #endregion
 
 
@@ -264,6 +367,7 @@ func _despawn_entity(entity_id: int) -> void:
 	# Clean up buffer
 	entity_buffers.erase(entity_id)
 	missing_update_count.erase(entity_id)
+	entity_last_states.erase(entity_id)  # TASK-021
 
 	# Unregister node (don't destroy - let EntityManager handle that)
 	entity_nodes.erase(entity_id)
@@ -451,8 +555,11 @@ func clear_all_entities() -> void:
 	entity_buffers.clear()
 	entity_nodes.clear()
 	missing_update_count.clear()
+	entity_last_states.clear()  # TASK-021
 	current_server_tick = 0
 	render_tick = 0
+	last_baseline_tick = 0  # TASK-021
+	needs_full_state_sync = false  # TASK-021
 
 	if debug_logging:
 		print("[Interpolation] All entities cleared")
