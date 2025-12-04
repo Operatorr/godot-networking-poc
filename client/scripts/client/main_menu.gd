@@ -14,7 +14,7 @@ extends Control
 @onready var error_dialog: PopupPanel = $ErrorDialog
 
 ## Track connection state
-var __is_connecting: bool = false
+var _is_connecting: bool = false
 
 ## Cached regions data
 var regions: Array[RegionInfo] = []
