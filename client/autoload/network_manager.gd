@@ -46,6 +46,10 @@ var ws_client: WebSocketPeer = null
 var ws_server: TCPServer = null
 var connected_peers: Dictionary = {}  # peer_id -> WebSocketPeer
 
+## Server-side heartbeat tracking (per peer)
+var peer_last_heartbeat: Dictionary = {}  # peer_id -> float (timestamp)
+var server_heartbeat_timeout: float = 5.0  # Same as client timeout
+
 ## Connection state
 var current_state: ConnectionState = ConnectionState.DISCONNECTED
 var server_url: String = ""
@@ -127,6 +131,7 @@ func _process_server(_delta: float) -> void:
 		ws_peer.accept_stream(peer)
 		var peer_id = randi()  # Generate unique peer ID
 		connected_peers[peer_id] = ws_peer
+		peer_last_heartbeat[peer_id] = Time.get_ticks_msec() / 1000.0  # Initialize heartbeat tracking
 		print("[NetworkManager] Server: New client connected (ID: %d)" % peer_id)
 		server_client_connected.emit(peer_id)
 
@@ -143,7 +148,16 @@ func _process_server(_delta: float) -> void:
 		elif state == WebSocketPeer.STATE_CLOSED:
 			print("[NetworkManager] Server: Client %d disconnected" % peer_id)
 			connected_peers.erase(peer_id)
+			peer_last_heartbeat.erase(peer_id)
 			server_client_disconnected.emit(peer_id)
+
+	# Check for heartbeat timeouts
+	var current_time = Time.get_ticks_msec() / 1000.0
+	for peer_id in peer_last_heartbeat.keys():
+		var time_since_heartbeat = current_time - peer_last_heartbeat[peer_id]
+		if time_since_heartbeat > server_heartbeat_timeout:
+			print("[NetworkManager] Server: Peer %d timed out (no heartbeat for %.1fs)" % [peer_id, time_since_heartbeat])
+			_disconnect_peer_timeout(peer_id)
 
 ## Process client mode
 func _process_client(delta: float) -> void:
@@ -328,7 +342,8 @@ func _handle_server_incoming_packet(peer_id: int, ws_peer: WebSocketPeer) -> voi
 	# Handle NetworkManager-level messages (heartbeat, disconnect)
 	match message_type:
 		MessageType.HEARTBEAT:
-			# Respond to heartbeat immediately
+			# Update last heartbeat time and respond immediately
+			peer_last_heartbeat[peer_id] = Time.get_ticks_msec() / 1000.0
 			send_to_client(peer_id, MessageType.HEARTBEAT, {"timestamp": Time.get_ticks_msec()})
 			return
 		MessageType.DISCONNECT:
@@ -368,6 +383,19 @@ func disconnect_client(peer_id: int, reason: String = "Server disconnect") -> vo
 
 	var ws_peer: WebSocketPeer = connected_peers[peer_id]
 	ws_peer.close(1000, reason)
+
+
+## Disconnect a peer due to heartbeat timeout (internal)
+func _disconnect_peer_timeout(peer_id: int) -> void:
+	if not connected_peers.has(peer_id):
+		peer_last_heartbeat.erase(peer_id)  # Clean up stale entry
+		return
+
+	var ws_peer: WebSocketPeer = connected_peers[peer_id]
+	ws_peer.close(1000, "Heartbeat timeout")
+	connected_peers.erase(peer_id)
+	peer_last_heartbeat.erase(peer_id)
+	server_client_disconnected.emit(peer_id)
 
 
 ## Get all connected peer IDs (server mode)
