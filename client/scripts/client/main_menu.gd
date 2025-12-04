@@ -1,79 +1,288 @@
-## MainMenu - Client main menu with server connection UI
-## Handles WebSocket connection to game server via NetworkManager
+## MainMenu - Main menu with character display and game entry
+## Handles character display, region selection, and arena connection
 extends Control
 
 ## UI Node references
-@onready var server_address_input: LineEdit = $CenterContainer/VBoxContainer/ServerAddressContainer/ServerAddressInput
-@onready var connect_button: Button = $CenterContainer/VBoxContainer/ConnectButton
+@onready var character_panel: Control = $CenterContainer/VBoxContainer/CharacterPanel
+@onready var character_portrait: TextureRect = $CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer/CharacterPortrait
+@onready var character_name_label: Label = $CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer/CharacterInfo/CharacterNameLabel
+@onready var region_dropdown: OptionButton = $CenterContainer/VBoxContainer/RegionDropdown
+@onready var enter_world_button: Button = $CenterContainer/VBoxContainer/EnterWorldButton
+@onready var logout_button: Button = $CenterContainer/VBoxContainer/LogoutButton
+@onready var exit_button: Button = $CenterContainer/VBoxContainer/ExitButton
 @onready var status_label: Label = $CenterContainer/VBoxContainer/StatusLabel
-@onready var quit_button: Button = $CenterContainer/VBoxContainer/QuitButton
+@onready var error_dialog: PopupPanel = $ErrorDialog
 
-## Track if we're currently connected
-var is_connected: bool = false
+## Track connection state
+var __is_connecting: bool = false
+
+## Cached regions data
+var regions: Array[RegionInfo] = []
+
+## User preferences
+var preferences: UserPreferences
 
 
 func _ready() -> void:
 	# Connect UI signals
-	connect_button.pressed.connect(_on_connect_pressed)
-	quit_button.pressed.connect(_on_quit_pressed)
+	enter_world_button.pressed.connect(_on_enter_world_pressed)
+	logout_button.pressed.connect(_on_logout_pressed)
+	exit_button.pressed.connect(_on_exit_pressed)
+	region_dropdown.item_selected.connect(_on_region_selected)
 
-	# Connect NetworkManager signals
-	NetworkManager.connected_to_server.connect(_on_connected)
-	NetworkManager.disconnected_from_server.connect(_on_disconnected)
+	# Connect ErrorDialog signals
+	error_dialog.retry_pressed.connect(_on_error_retry)
+	error_dialog.closed.connect(_on_error_closed)
+
+	# Connect NetworkManager signals for connection handling
+	NetworkManager.connected_to_server.connect(_on_connected_to_server)
+	NetworkManager.disconnected_from_server.connect(_on_disconnected_from_server)
 	NetworkManager.connection_error.connect(_on_connection_error)
 
-	# Set default server address
-	server_address_input.text = "ws://localhost:8080"
+	# Connect AuthManager signals
+	AuthManager.logout_completed.connect(_on_logout_completed)
+
+	# Load user preferences
+	preferences = UserPreferences.load_preferences()
+
+	# Update UI
+	_update_character_display()
+	_toggle_enter_world_visibility()
+
+	# Fetch regions from API
+	_fetch_regions()
+
+	# Setup button audio
+	_setup_button_audio()
+
+	# Start background music
+	AudioManager.play_music("menu_bgm")
+
+	# Update status
+	_update_status("Ready")
+
+	print("[MainMenu] Ready")
+
+
+## Update character display panel
+func _update_character_display() -> void:
+	var player_data := GameManager.get_player_data()
+	var char_name: String = player_data.get("character_name", "")
+
+	if char_name.is_empty():
+		character_name_label.text = "No Character"
+		character_panel.visible = false
+	else:
+		character_name_label.text = char_name
+		character_panel.visible = true
+
+	# Portrait would be loaded from character data if available
+	# For now, use placeholder
+	# character_portrait.texture = load("res://assets/portraits/default.png")
+
+
+## Toggle Enter World button visibility based on character existence
+func _toggle_enter_world_visibility() -> void:
+	enter_world_button.visible = GameManager.has_character()
+
+
+## Fetch available regions from API
+func _fetch_regions() -> void:
+	# Create HTTP request for regions
+	var http := HTTPRequest.new()
+	add_child(http)
+	http.request_completed.connect(_on_regions_fetched.bind(http))
+
+	var url := AuthManager.api_base_url + "/api/regions"
+	var error := http.request(url)
+
+	if error != OK:
+		push_warning("[MainMenu] Failed to request regions: %d" % error)
+		_populate_default_regions()
+
+
+## Handle regions API response
+func _on_regions_fetched(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray, http: HTTPRequest) -> void:
+	http.queue_free()
+
+	if result != HTTPRequest.RESULT_SUCCESS or response_code != 200:
+		push_warning("[MainMenu] Failed to fetch regions, using defaults")
+		_populate_default_regions()
+		return
+
+	var json := JSON.new()
+	var parse_result := json.parse(body.get_string_from_utf8())
+
+	if parse_result != OK or not json.data is Array:
+		push_warning("[MainMenu] Failed to parse regions response")
+		_populate_default_regions()
+		return
+
+	regions.clear()
+	for region_data: Dictionary in json.data:
+		regions.append(RegionInfo.from_dict(region_data))
+
+	_populate_region_dropdown()
+
+
+## Populate region dropdown with fetched data
+func _populate_region_dropdown() -> void:
+	region_dropdown.clear()
+
+	var selected_index := 0
+	for i in range(regions.size()):
+		var region := regions[i]
+		region_dropdown.add_item(region.get_display_text(), i)
+
+		# Disable unavailable regions
+		if not region.is_available():
+			region_dropdown.set_item_disabled(i, true)
+
+		# Select saved preference
+		if region.id == preferences.selected_region:
+			selected_index = i
+
+	if regions.size() > 0:
+		region_dropdown.select(selected_index)
+		GameManager.player_data["selected_region"] = regions[selected_index].id
+
+
+## Populate default regions if API fails
+func _populate_default_regions() -> void:
+	regions.clear()
+
+	var default_regions := [
+		{"id": "us-west", "name": "US West", "websocket_url": "ws://localhost:8080", "status": "online", "active_players": 0, "max_players": 1000},
+		{"id": "us-east", "name": "US East", "websocket_url": "ws://localhost:8081", "status": "offline", "active_players": 0, "max_players": 1000},
+		{"id": "europe", "name": "Europe", "websocket_url": "ws://localhost:8082", "status": "offline", "active_players": 0, "max_players": 1000},
+		{"id": "asia", "name": "Asia", "websocket_url": "ws://localhost:8083", "status": "offline", "active_players": 0, "max_players": 1000}
+	]
+
+	for data in default_regions:
+		regions.append(RegionInfo.from_dict(data))
+
+	_populate_region_dropdown()
+
+
+## Handle region selection
+func _on_region_selected(index: int) -> void:
+	if index < 0 or index >= regions.size():
+		return
+
+	var region := regions[index]
+	GameManager.player_data["selected_region"] = region.id
+	preferences.selected_region = region.id
+	preferences.save()
+
+	print("[MainMenu] Selected region: %s" % region.name)
+
+
+## Handle Enter World button press
+func _on_enter_world_pressed() -> void:
+	if _is_connecting:
+		return
+
+	if regions.is_empty():
+		_show_error("Connection Error", "No regions available. Please try again later.")
+		return
+
+	var selected_index := region_dropdown.selected
+	if selected_index < 0 or selected_index >= regions.size():
+		_show_error("Connection Error", "Please select a region.")
+		return
+
+	var region := regions[selected_index]
+	if not region.is_available():
+		_show_error("Region Unavailable", "The selected region is currently unavailable.")
+		return
+
+	# Disable button and start connection
+	_is_connecting = true
+	enter_world_button.disabled = true
+	_update_status("Connecting to %s..." % region.name)
+
+	print("[MainMenu] Connecting to region: %s at %s" % [region.name, region.websocket_url])
+	NetworkManager.connect_to_server(region.websocket_url)
+
+
+## Handle successful server connection
+func _on_connected_to_server() -> void:
+	print("[MainMenu] Connected to server")
+	_is_connecting = false
+	enter_world_button.disabled = false
+	_update_status("Connected!")
+
+	# Transition to arena after brief delay
+	await get_tree().create_timer(0.5).timeout
+	SceneManager.goto_arena()
+
+
+## Handle server disconnection
+func _on_disconnected_from_server(reason: String) -> void:
+	print("[MainMenu] Disconnected from server: %s" % reason)
+	_is_connecting = false
+	enter_world_button.disabled = false
 	_update_status("Disconnected")
 
-	# Notify GameManager we're in main menu
-	GameManager.change_state(GameManager.GameState.MAIN_MENU)
 
-
-func _on_connect_pressed() -> void:
-	if is_connected:
-		# Disconnect if already connected
-		NetworkManager.disconnect_from_server("User disconnect")
-		return
-
-	var url = server_address_input.text.strip_edges()
-	if url.is_empty():
-		_update_status("Please enter a server address")
-		return
-
-	connect_button.disabled = true
-	_update_status("Connecting...")
-	NetworkManager.connect_to_server(url)
-
-
-func _on_connected() -> void:
-	is_connected = true
-	_update_status("Connected!")
-	connect_button.text = "Disconnect"
-	connect_button.disabled = false
-
-	# Transition to loading/arena after brief delay
-	await get_tree().create_timer(0.5).timeout
-	GameManager.change_state(GameManager.GameState.LOADING)
-
-
-func _on_disconnected(reason: String) -> void:
-	is_connected = false
-	_update_status("Disconnected: " + reason)
-	connect_button.text = "Connect to Server"
-	connect_button.disabled = false
-
-
+## Handle connection error
 func _on_connection_error(error: String) -> void:
-	is_connected = false
-	_update_status("Error: " + error)
-	connect_button.text = "Connect to Server"
-	connect_button.disabled = false
+	print("[MainMenu] Connection error: %s" % error)
+	_is_connecting = false
+	enter_world_button.disabled = false
+	_update_status("Connection failed")
+	_show_error("Connection Error", error, true)
 
 
-func _on_quit_pressed() -> void:
+## Handle logout button press
+func _on_logout_pressed() -> void:
+	print("[MainMenu] Logging out...")
+	preferences.save()
+	AuthManager.logout()
+
+
+## Handle logout completion
+func _on_logout_completed() -> void:
+	print("[MainMenu] Logout completed, navigating to login")
+	SceneManager.goto_login()
+
+
+## Handle exit button press
+func _on_exit_pressed() -> void:
+	print("[MainMenu] Exiting game")
+	preferences.save()
 	get_tree().quit()
 
 
+## Show error dialog
+func _show_error(title: String, message: String, allow_retry: bool = false) -> void:
+	error_dialog.show_error(title, message, allow_retry)
+
+
+## Handle error dialog retry
+func _on_error_retry() -> void:
+	_on_enter_world_pressed()
+
+
+## Handle error dialog close
+func _on_error_closed() -> void:
+	pass
+
+
+## Update status label
 func _update_status(text: String) -> void:
 	status_label.text = text
+
+
+## Setup button audio for hover and click sounds
+func _setup_button_audio() -> void:
+	var buttons: Array[Button] = [enter_world_button, logout_button, exit_button]
+	for button in buttons:
+		button.mouse_entered.connect(func(): AudioManager.play_button_hover())
+		button.pressed.connect(func(): AudioManager.play_button_click())
+
+
+## Called when scene is about to exit
+func on_scene_exit() -> void:
+	# Stop music when leaving main menu
+	AudioManager.stop_music()

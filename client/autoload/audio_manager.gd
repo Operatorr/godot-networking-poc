@@ -39,14 +39,14 @@ const UI_SFX_POOL_SIZE: int = 8
 const COMBAT_SFX_POOL_SIZE: int = 16
 
 ## Audio library (will be populated as assets are added)
+## Note: UI sounds loaded at runtime to handle missing assets gracefully
 var audio_library: Dictionary = {
 	"music": {
 		# "menu_bgm": preload("res://assets/audio/music/menu_bgm.ogg"),
 		# "arena_ambience": preload("res://assets/audio/ambience/arena_ambience.ogg")
 	},
 	"sfx_ui": {
-		# "button_hover": preload("res://assets/audio/sfx/button_hover.ogg"),
-		# "button_click": preload("res://assets/audio/sfx/button_click.ogg")
+		# Loaded at runtime in _load_ui_sounds()
 	},
 	"sfx_player": {
 		# "player_shoot": preload("res://assets/audio/sfx/player_shoot.ogg"),
@@ -58,6 +58,12 @@ var audio_library: Dictionary = {
 		# "monster_hit": preload("res://assets/audio/sfx/monster_hit.ogg"),
 		# "monster_death": preload("res://assets/audio/sfx/monster_death.ogg")
 	}
+}
+
+## UI sound file paths
+const UI_SOUNDS: Dictionary = {
+	"button_hover": "res://assets/audio/sfx/button_hover.ogg",
+	"button_click": "res://assets/audio/sfx/button_click.ogg"
 }
 
 ## Called when the node enters the scene tree
@@ -93,6 +99,9 @@ func _ready() -> void:
 
 	# Setup audio buses if they don't exist
 	_setup_audio_buses()
+
+	# Load UI sounds (handles missing assets gracefully)
+	_load_ui_sounds()
 
 	# Connect to GameManager settings
 	var game_mgr = get_tree().root.get_node_or_null("GameManager")
@@ -133,6 +142,19 @@ func _setup_audio_buses() -> void:
 		AudioServer.set_bus_send(AudioServer.get_bus_index(SFX_BUS), MASTER_BUS)
 
 	print("[AudioManager] Audio buses configured")
+
+
+## Load UI sounds at runtime (handles missing assets gracefully)
+func _load_ui_sounds() -> void:
+	for sound_name: String in UI_SOUNDS:
+		var path: String = UI_SOUNDS[sound_name]
+		if ResourceLoader.exists(path):
+			var stream := load(path) as AudioStream
+			if stream:
+				audio_library["sfx_ui"][sound_name] = stream
+				print("[AudioManager] Loaded UI sound: %s" % sound_name)
+		else:
+			push_warning("[AudioManager] UI sound asset not found: %s - audio will be skipped" % path)
 
 ## Play music track
 func play_music(track_name: String, fade_in: bool = true) -> void:

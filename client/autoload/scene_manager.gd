@@ -8,6 +8,7 @@ var is_server: bool = false
 
 ## Scene paths (updated for client/server/shared structure)
 const SCENE_MAIN = "res://scenes/main.tscn"
+const SCENE_LOGIN = "res://scenes/client/menus/login_screen.tscn"
 const SCENE_MAIN_MENU = "res://scenes/client/menus/main_menu.tscn"
 const SCENE_CHARACTER_CREATION = "res://scenes/client/menus/character_creation.tscn"
 const SCENE_LOADING = "res://scenes/client/menus/loading_screen.tscn"
@@ -18,6 +19,7 @@ const SCENE_SERVER_MAIN = "res://scenes/server/server_main.tscn"
 ## Scene names enum
 enum SceneName {
 	MAIN,
+	LOGIN,
 	MAIN_MENU,
 	CHARACTER_CREATION,
 	LOADING,
@@ -68,6 +70,28 @@ func _ready() -> void:
 	if is_server:
 		print("[SceneManager] Loading server scene...")
 		change_scene(SceneName.SERVER_MAIN, false)
+	else:
+		# Client: Route based on auth state
+		_route_to_initial_scene()
+
+## Route to initial scene based on authentication and character state
+func _route_to_initial_scene() -> void:
+	var auth_mgr = get_tree().root.get_node_or_null("AuthManager")
+	var game_mgr = get_tree().root.get_node_or_null("GameManager")
+
+	# Check if user is logged in
+	if auth_mgr and auth_mgr.is_logged_in():
+		print("[SceneManager] User is logged in, checking character state...")
+		# Check if user has a character
+		if game_mgr and game_mgr.has_character():
+			print("[SceneManager] User has character, going to main menu")
+			change_scene(SceneName.MAIN_MENU, false)
+		else:
+			print("[SceneManager] User has no character, going to character creation")
+			change_scene(SceneName.CHARACTER_CREATION, false)
+	else:
+		print("[SceneManager] User not logged in, going to login screen")
+		change_scene(SceneName.LOGIN, false)
 
 ## Change to a specific scene
 func change_scene(scene_name: SceneName, use_loading_screen: bool = false) -> void:
@@ -256,6 +280,8 @@ func _get_scene_path(scene_name: SceneName) -> String:
 	match scene_name:
 		SceneName.MAIN:
 			return SCENE_MAIN
+		SceneName.LOGIN:
+			return SCENE_LOGIN
 		SceneName.MAIN_MENU:
 			return SCENE_MAIN_MENU
 		SceneName.CHARACTER_CREATION:
@@ -282,7 +308,7 @@ func _update_game_state_for_scene(scene_name: SceneName) -> void:
 		return
 
 	match scene_name:
-		SceneName.MAIN_MENU, SceneName.CHARACTER_CREATION:
+		SceneName.LOGIN, SceneName.MAIN_MENU, SceneName.CHARACTER_CREATION:
 			game_mgr.change_state(game_mgr.GameState.MAIN_MENU)
 		SceneName.LOADING:
 			game_mgr.change_state(game_mgr.GameState.LOADING)
@@ -310,6 +336,10 @@ func _cleanup_scene(scene: Node) -> void:
 			child.stop()
 
 ## Convenience methods for common transitions
+
+## Go to login screen
+func goto_login() -> void:
+	change_scene(SceneName.LOGIN, false)
 
 ## Go to main menu
 func goto_main_menu() -> void:

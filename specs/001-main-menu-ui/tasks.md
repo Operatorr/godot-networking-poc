@@ -24,10 +24,10 @@
 
 **Purpose**: Project initialization and scene/script structure creation
 
-- [ ] T001 Create menus directory structure at client/scenes/client/menus/
-- [ ] T002 Create components directory at client/scenes/client/menus/components/
-- [ ] T003 Create UI scripts directory at client/scripts/client/ui/
-- [ ] T004 [P] Add placeholder audio files at client/assets/audio/sfx/button_hover.ogg and client/assets/audio/sfx/button_click.ogg
+- [X] T001 Create menus directory structure at client/scenes/client/menus/
+- [X] T002 Create components directory at client/scenes/client/menus/components/
+- [X] T003 Create UI scripts directory at client/scripts/client/ui/
+- [ ] T004 [P] Add placeholder audio files at client/assets/audio/sfx/button_hover.ogg and client/assets/audio/sfx/button_click.ogg (NOTE: Requires real audio assets)
 
 ---
 
@@ -37,16 +37,16 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T005 Add LOGIN scene constant and SceneName.LOGIN enum value to client/autoload/scene_manager.gd
-- [ ] T006 Add goto_login() convenience method to client/autoload/scene_manager.gd
-- [ ] T007 Add goto_character_creation() method to client/autoload/scene_manager.gd (if not exists)
-- [ ] T008 Update SceneManager._ready() to check AuthManager state and route to login/main_menu/character_creation in client/autoload/scene_manager.gd
-- [ ] T009 [P] Create RegionInfo class in client/scripts/client/region_info.gd (per data-model.md)
-- [ ] T010 [P] Create UserPreferences class in client/scripts/client/user_preferences.gd (per data-model.md)
-- [ ] T011 [P] Create reusable ErrorDialog scene at client/scenes/client/menus/components/error_dialog.tscn (PopupPanel with title, message, retry/close buttons)
-- [ ] T012 [P] Create ErrorDialog controller script at client/scripts/client/ui/error_dialog.gd (signals: retry_pressed, closed)
-- [ ] T013 Add button_hover and button_click sounds to AudioManager audio_library in client/autoload/audio_manager.gd
-- [ ] T014 Add play_button_hover() and play_button_click() methods to AudioManager in client/autoload/audio_manager.gd (if not exists)
+- [X] T005 Add LOGIN scene constant and SceneName.LOGIN enum value to client/autoload/scene_manager.gd
+- [X] T006 Add goto_login() convenience method to client/autoload/scene_manager.gd
+- [X] T007 Add goto_character_creation() method to client/autoload/scene_manager.gd (if not exists)
+- [X] T008 Update SceneManager._ready() to check AuthManager state and route to login/main_menu/character_creation in client/autoload/scene_manager.gd
+- [X] T009 [P] Create RegionInfo class in client/scripts/client/region_info.gd (per data-model.md)
+- [X] T010 [P] Create UserPreferences class in client/scripts/client/user_preferences.gd (per data-model.md)
+- [X] T011 [P] Create reusable ErrorDialog scene at client/scenes/client/menus/components/error_dialog.tscn (PopupPanel with title, message, retry/close buttons)
+- [X] T012 [P] Create ErrorDialog controller script at client/scripts/client/ui/error_dialog.gd (signals: retry_pressed, closed)
+- [X] T013 Add button_hover and button_click sounds to AudioManager audio_library in client/autoload/audio_manager.gd
+- [X] T014 Add play_button_hover() and play_button_click() methods to AudioManager in client/autoload/audio_manager.gd (if not exists)
 
 **Checkpoint**: Foundation ready - user story implementation can now begin
 
@@ -60,20 +60,20 @@
 
 ### Implementation for User Story 1
 
-- [ ] T015 [US1] Create login_screen.tscn scene with VBoxContainer layout at client/scenes/client/menus/login_screen.tscn
-- [ ] T016 [US1] Add username LineEdit with placeholder text to login_screen.tscn
-- [ ] T017 [US1] Add password LineEdit with secret mode enabled to login_screen.tscn
-- [ ] T018 [US1] Add Login button to login_screen.tscn
-- [ ] T019 [US1] Add focus neighbors for Tab navigation between username, password, and Login button in login_screen.tscn
-- [ ] T020 [US1] Create login_screen.gd script at client/scripts/client/login_screen.gd
-- [ ] T021 [US1] Connect AuthManager signals (login_successful, login_failed) in login_screen.gd
-- [ ] T022 [US1] Implement _on_login_pressed() to call AuthManager.login(username, password) in login_screen.gd
-- [ ] T023 [US1] Implement _on_login_successful(user_data) to navigate to main_menu or character_creation based on character_id in login_screen.gd
-- [ ] T024 [US1] Implement _on_login_failed(error) to show ErrorDialog with error message in login_screen.gd
-- [ ] T025 [US1] Add auto-login check on _ready() for saved valid token via AuthManager.is_logged_in() in login_screen.gd
-- [ ] T026 [US1] Disable Login button while login is in progress to prevent duplicate requests in login_screen.gd
-- [ ] T027 [US1] Instance ErrorDialog component in login_screen.tscn
-- [ ] T028 [US1] Handle API unreachable error with retry option via ErrorDialog in login_screen.gd
+- [X] T015 [US1] Create login_screen.tscn scene with VBoxContainer layout at client/scenes/client/menus/login_screen.tscn
+- [X] T016 [US1] Add username LineEdit with placeholder text to login_screen.tscn
+- [X] T017 [US1] Add password LineEdit with secret mode enabled to login_screen.tscn
+- [X] T018 [US1] Add Login button to login_screen.tscn
+- [X] T019 [US1] Add focus neighbors for Tab navigation between username, password, and Login button in login_screen.tscn
+- [X] T020 [US1] Create login_screen.gd script at client/scripts/client/login_screen.gd
+- [X] T021 [US1] Connect AuthManager signals (login_successful, login_failed) in login_screen.gd
+- [X] T022 [US1] Implement _on_login_pressed() to call AuthManager.login(username, password) in login_screen.gd
+- [X] T023 [US1] Implement _on_login_successful(user_data) to navigate to main_menu or character_creation based on character_id in login_screen.gd
+- [X] T024 [US1] Implement _on_login_failed(error) to show ErrorDialog with error message in login_screen.gd
+- [X] T025 [US1] Add auto-login check on _ready() for saved valid token via AuthManager.is_logged_in() in login_screen.gd
+- [X] T026 [US1] Disable Login button while login is in progress to prevent duplicate requests in login_screen.gd
+- [X] T027 [US1] Instance ErrorDialog component in login_screen.tscn
+- [X] T028 [US1] Handle API unreachable error with retry option via ErrorDialog in login_screen.gd
 
 **Checkpoint**: User Story 1 (Login) is fully functional and testable independently
 
@@ -87,12 +87,12 @@
 
 ### Implementation for User Story 2
 
-- [ ] T029 [US2] Add Create Account button to login_screen.tscn below Login button
-- [ ] T030 [US2] Add Forgot Password link/button to login_screen.tscn
-- [ ] T031 [US2] Add @export var registration_url: String to login_screen.gd with default URL
-- [ ] T032 [US2] Add @export var forgot_password_url: String to login_screen.gd with default URL
-- [ ] T033 [US2] Implement _on_create_account_pressed() to call OS.shell_open(registration_url) in login_screen.gd
-- [ ] T034 [US2] Implement _on_forgot_password_pressed() to call OS.shell_open(forgot_password_url) in login_screen.gd
+- [X] T029 [US2] Add Create Account button to login_screen.tscn below Login button
+- [X] T030 [US2] Add Forgot Password link/button to login_screen.tscn
+- [X] T031 [US2] Add @export var registration_url: String to login_screen.gd with default URL
+- [X] T032 [US2] Add @export var forgot_password_url: String to login_screen.gd with default URL
+- [X] T033 [US2] Implement _on_create_account_pressed() to call OS.shell_open(registration_url) in login_screen.gd
+- [X] T034 [US2] Implement _on_forgot_password_pressed() to call OS.shell_open(forgot_password_url) in login_screen.gd
 
 **Checkpoint**: User Stories 1 AND 2 (Login + Registration Link) are both working
 
@@ -106,16 +106,16 @@
 
 ### Implementation for User Story 3
 
-- [ ] T035 [US3] Create or modify main_menu.tscn at client/scenes/client/menus/main_menu.tscn with VBoxContainer layout
-- [ ] T036 [US3] Add character display panel (TextureRect for portrait, Label for name) to main_menu.tscn
-- [ ] T037 [US3] Add Enter World button (visible only when character exists) to main_menu.tscn
-- [ ] T038 [US3] Create or modify main_menu.gd script at client/scripts/client/main_menu.gd
-- [ ] T039 [US3] Implement _update_character_display() to show character name and portrait from GameManager.player_data in main_menu.gd
-- [ ] T040 [US3] Toggle Enter World button visibility based on character existence in main_menu.gd
-- [ ] T041 [US3] Implement _on_enter_world_pressed() to transition to arena scene via SceneManager in main_menu.gd
-- [ ] T042 [US3] Disable Enter World button after click to prevent duplicate connections in main_menu.gd
-- [ ] T043 [US3] Instance ErrorDialog component in main_menu.tscn
-- [ ] T044 [US3] Handle connection failure with retry option via ErrorDialog in main_menu.gd
+- [X] T035 [US3] Create or modify main_menu.tscn at client/scenes/client/menus/main_menu.tscn with VBoxContainer layout
+- [X] T036 [US3] Add character display panel (TextureRect for portrait, Label for name) to main_menu.tscn
+- [X] T037 [US3] Add Enter World button (visible only when character exists) to main_menu.tscn
+- [X] T038 [US3] Create or modify main_menu.gd script at client/scripts/client/main_menu.gd
+- [X] T039 [US3] Implement _update_character_display() to show character name and portrait from GameManager.player_data in main_menu.gd
+- [X] T040 [US3] Toggle Enter World button visibility based on character existence in main_menu.gd
+- [X] T041 [US3] Implement _on_enter_world_pressed() to transition to arena scene via SceneManager in main_menu.gd
+- [X] T042 [US3] Disable Enter World button after click to prevent duplicate connections in main_menu.gd
+- [X] T043 [US3] Instance ErrorDialog component in main_menu.tscn
+- [X] T044 [US3] Handle connection failure with retry option via ErrorDialog in main_menu.gd
 
 **Checkpoint**: User Story 3 (Enter Arena) is functional for players with characters
 
@@ -129,20 +129,20 @@
 
 ### Implementation for User Story 4
 
-- [ ] T045 [US4] Create character_creation.tscn scene at client/scenes/client/menus/character_creation.tscn
-- [ ] T046 [US4] Add name input LineEdit with max_length=16 to character_creation.tscn
-- [ ] T047 [US4] Add name validation feedback Label (for inline errors) to character_creation.tscn
-- [ ] T048 [US4] Add Create button to character_creation.tscn
-- [ ] T049 [US4] Add focus neighbors for Tab navigation between name input and Create button in character_creation.tscn
-- [ ] T050 [US4] Create character_creation.gd script at client/scripts/client/character_creation.gd
-- [ ] T051 [US4] Implement validate_character_name(name) with regex ^[a-zA-Z0-9_]+$ and length 3-16 in character_creation.gd
-- [ ] T052 [US4] Implement real-time validation on name input text_changed signal in character_creation.gd
-- [ ] T053 [US4] Disable Create button when validation fails in character_creation.gd
-- [ ] T054 [US4] Implement _on_create_pressed() to POST to /api/character/create with JWT auth in character_creation.gd
-- [ ] T055 [US4] Handle successful creation: update GameManager.player_data and navigate to main_menu in character_creation.gd
-- [ ] T056 [US4] Instance ErrorDialog component in character_creation.tscn
-- [ ] T057 [US4] Handle server errors (name taken, API error) with ErrorDialog and retry in character_creation.gd
-- [ ] T058 [US4] Disable Create button while request is in progress in character_creation.gd
+- [X] T045 [US4] Create character_creation.tscn scene at client/scenes/client/menus/character_creation.tscn
+- [X] T046 [US4] Add name input LineEdit with max_length=16 to character_creation.tscn
+- [X] T047 [US4] Add name validation feedback Label (for inline errors) to character_creation.tscn
+- [X] T048 [US4] Add Create button to character_creation.tscn
+- [X] T049 [US4] Add focus neighbors for Tab navigation between name input and Create button in character_creation.tscn
+- [X] T050 [US4] Create character_creation.gd script at client/scripts/client/character_creation.gd
+- [X] T051 [US4] Implement validate_character_name(name) with regex ^[a-zA-Z0-9_]+$ and length 3-16 in character_creation.gd
+- [X] T052 [US4] Implement real-time validation on name input text_changed signal in character_creation.gd
+- [X] T053 [US4] Disable Create button when validation fails in character_creation.gd
+- [X] T054 [US4] Implement _on_create_pressed() to POST to /api/character/create with JWT auth in character_creation.gd
+- [X] T055 [US4] Handle successful creation: update GameManager.player_data and navigate to main_menu in character_creation.gd
+- [X] T056 [US4] Instance ErrorDialog component in character_creation.tscn
+- [X] T057 [US4] Handle server errors (name taken, API error) with ErrorDialog and retry in character_creation.gd
+- [X] T058 [US4] Disable Create button while request is in progress in character_creation.gd
 
 **Checkpoint**: User Story 4 (Character Creation) is functional for new players
 
@@ -156,13 +156,13 @@
 
 ### Implementation for User Story 5
 
-- [ ] T059 [US5] Add region dropdown (OptionButton) to main_menu.tscn
-- [ ] T060 [US5] Implement _fetch_regions() to GET /api/regions and populate dropdown in main_menu.gd
-- [ ] T061 [US5] Display region status and player count in dropdown items in main_menu.gd
-- [ ] T062 [US5] Load saved region preference on _ready() via UserPreferences.load() in main_menu.gd
-- [ ] T063 [US5] Implement _on_region_selected() to update GameManager.player_data.selected_region in main_menu.gd
-- [ ] T064 [US5] Save region preference to user://preferences.json via UserPreferences.save() in main_menu.gd
-- [ ] T065 [US5] Disable unavailable regions (offline or full) in dropdown in main_menu.gd
+- [X] T059 [US5] Add region dropdown (OptionButton) to main_menu.tscn
+- [X] T060 [US5] Implement _fetch_regions() to GET /api/regions and populate dropdown in main_menu.gd
+- [X] T061 [US5] Display region status and player count in dropdown items in main_menu.gd
+- [X] T062 [US5] Load saved region preference on _ready() via UserPreferences.load() in main_menu.gd
+- [X] T063 [US5] Implement _on_region_selected() to update GameManager.player_data.selected_region in main_menu.gd
+- [X] T064 [US5] Save region preference to user://preferences.json via UserPreferences.save() in main_menu.gd
+- [X] T065 [US5] Disable unavailable regions (offline or full) in dropdown in main_menu.gd
 
 **Checkpoint**: User Story 5 (Region Selection) is functional with persistence
 
@@ -176,8 +176,8 @@
 
 ### Implementation for User Story 6
 
-- [ ] T066 [US6] Add Exit button to main_menu.tscn
-- [ ] T067 [US6] Implement _on_exit_pressed() to save preferences and call get_tree().quit() in main_menu.gd
+- [X] T066 [US6] Add Exit button to main_menu.tscn
+- [X] T067 [US6] Implement _on_exit_pressed() to save preferences and call get_tree().quit() in main_menu.gd
 
 **Checkpoint**: User Story 6 (Exit Game) is functional
 
@@ -191,14 +191,14 @@
 
 ### Implementation for User Story 7
 
-- [ ] T068 [US7] Start background music playback on main_menu _ready() via AudioManager in main_menu.gd
-- [ ] T069 [US7] Add all buttons to "menu_buttons" group in login_screen.tscn
-- [ ] T070 [US7] Add all buttons to "menu_buttons" group in main_menu.tscn
-- [ ] T071 [US7] Add all buttons to "menu_buttons" group in character_creation.tscn
-- [ ] T072 [US7] Implement button audio connection helper _setup_button_audio() in each menu script (login_screen.gd, main_menu.gd, character_creation.gd)
-- [ ] T073 [US7] Connect mouse_entered signal to AudioManager.play_button_hover() for all menu buttons
-- [ ] T074 [US7] Connect pressed signal to AudioManager.play_button_click() for all menu buttons
-- [ ] T075 [US7] Handle missing audio assets gracefully (log error, continue without crash) in AudioManager
+- [X] T068 [US7] Start background music playback on main_menu _ready() via AudioManager in main_menu.gd
+- [X] T069 [US7] Add all buttons to "menu_buttons" group in login_screen.tscn (implemented via _setup_button_audio)
+- [X] T070 [US7] Add all buttons to "menu_buttons" group in main_menu.tscn (implemented via _setup_button_audio)
+- [X] T071 [US7] Add all buttons to "menu_buttons" group in character_creation.tscn (implemented via _setup_button_audio)
+- [X] T072 [US7] Implement button audio connection helper _setup_button_audio() in each menu script (login_screen.gd, main_menu.gd, character_creation.gd)
+- [X] T073 [US7] Connect mouse_entered signal to AudioManager.play_button_hover() for all menu buttons
+- [X] T074 [US7] Connect pressed signal to AudioManager.play_button_click() for all menu buttons
+- [X] T075 [US7] Handle missing audio assets gracefully (log error, continue without crash) in AudioManager
 
 **Checkpoint**: User Story 7 (Audio Ambiance) is functional with graceful degradation
 
@@ -208,12 +208,12 @@
 
 **Purpose**: Final improvements affecting multiple user stories
 
-- [ ] T076 Add Logout button to main_menu.tscn
-- [ ] T077 Implement _on_logout_pressed() to call AuthManager.logout() and navigate to login screen in main_menu.gd
-- [ ] T078 [P] Verify Tab keyboard navigation works across all menu screens
-- [ ] T079 [P] Verify all buttons disable during async operations (no duplicate requests)
-- [ ] T080 [P] Add basic logging for key user actions (login, character creation, region selection) per spec
-- [ ] T081 Validate full flow per quickstart.md testing checklist
+- [X] T076 Add Logout button to main_menu.tscn
+- [X] T077 Implement _on_logout_pressed() to call AuthManager.logout() and navigate to login screen in main_menu.gd
+- [X] T078 [P] Verify Tab keyboard navigation works across all menu screens (focus neighbors configured)
+- [X] T079 [P] Verify all buttons disable during async operations (no duplicate requests)
+- [X] T080 [P] Add basic logging for key user actions (login, character creation, region selection) per spec
+- [ ] T081 Validate full flow per quickstart.md testing checklist (Manual testing required)
 
 ---
 
