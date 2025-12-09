@@ -21,9 +21,12 @@ signal logout_completed()
 signal token_refreshed(new_token: String)
 signal auth_state_changed(new_state: AuthState)
 
-## API server configuration
-var api_base_url: String = "http://localhost:8080"  ## Default, can be overridden
+## API server configuration (loaded from client_config.json)
+var api_base_url: String = "http://localhost:8080"
 var api_timeout: float = 10.0
+
+## Client configuration
+var _client_config: ClientConfig = null
 
 ## Authentication state
 var current_state: AuthState = AuthState.LOGGED_OUT
@@ -47,6 +50,14 @@ func _ready() -> void:
 	# Server doesn't need HTTP client or authentication
 	if is_server:
 		return
+
+	# Load client configuration
+	_client_config = ClientConfig.new()
+	api_base_url = _client_config.api_base_url
+	api_timeout = _client_config.api_timeout_seconds
+
+	if _client_config.debug_logging:
+		_client_config.print_config()
 
 	# Create HTTP request node (client only)
 	http_request = HTTPRequest.new()

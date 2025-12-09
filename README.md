@@ -356,6 +356,12 @@ Shows real-time information:
 
 ### API Server (.env)
 
+```bash
+cd api
+cp .env.example .env
+# Edit .env with your database credentials
+```
+
 ```ini
 # Server
 PORT=8080
@@ -376,6 +382,54 @@ JWT_REFRESH_TOKEN_EXPIRY=7d
 AVAILABLE_REGIONS=Asia,Europe,US-West
 DEFAULT_REGION=Asia
 ```
+
+### Godot Client Configuration
+
+The client loads settings from `client/data/config/client_config.json`:
+
+```json
+{
+  "api_base_url": "http://localhost:8080",
+  "api_timeout_seconds": 10.0,
+  "debug_logging": true
+}
+```
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| `api_base_url` | URL of the Go API server (for auth and region list) | `http://localhost:8080` |
+| `api_timeout_seconds` | HTTP request timeout | `10.0` |
+| `debug_logging` | Enable verbose logging | `true` |
+
+**Override at runtime:** Place a `client_config.json` in the user data directory (`user://client_config.json`) to override the embedded config without modifying the exported build.
+
+### Godot Server Configuration
+
+The headless server loads settings from `client/data/config/server_config.json`:
+
+```json
+{
+  "port": 8081,
+  "tick_rate": 30,
+  "max_players": 100,
+  "region": "asia",
+  "debug_logging": true,
+  "heartbeat_timeout_seconds": 5.0,
+  "api_server_url": "http://localhost:8080"
+}
+```
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| `port` | WebSocket port for game connections | `8081` |
+| `tick_rate` | Server physics tick rate (Hz) | `30` |
+| `max_players` | Maximum concurrent players | `100` |
+| `region` | Server region identifier | `asia` |
+| `debug_logging` | Enable verbose logging | `true` |
+| `heartbeat_timeout_seconds` | Client timeout threshold | `5.0` |
+| `api_server_url` | URL of the Go API server | `http://localhost:8080` |
+
+**Override at runtime:** Place a `server_config.json` in the user data directory (`user://server_config.json`) to override the embedded config. Useful for Docker volume mounts.
 
 ### Godot Project Settings
 
