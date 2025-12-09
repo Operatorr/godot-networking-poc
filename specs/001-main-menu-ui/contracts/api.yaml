@@ -1,0 +1,416 @@
+openapi: 3.0.3
+info:
+  title: Omega Networking - Main Menu API
+  description: |
+    API endpoints used by the Main Menu UI feature.
+    All endpoints except /api/regions require JWT authentication.
+  version: 1.0.0
+  contact:
+    name: Development Team
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+  - url: https://api.omegarealm.com
+    description: Production
+
+tags:
+  - name: Authentication
+    description: User authentication endpoints
+  - name: Character
+    description: Character management endpoints
+  - name: Region
+    description: Game region endpoints
+
+paths:
+  /api/auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Login with username and password
+      description: |
+        Authenticates a user and returns JWT tokens.
+        Used by: Login Screen
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh JWT token
+      description: |
+        Exchanges a refresh token for a new JWT token.
+        Called automatically by AuthManager before token expiry.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshResponse'
+        '401':
+          description: Invalid or expired refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/character/me:
+    get:
+      tags:
+        - Character
+      summary: Get current user's character
+      description: |
+        Returns the authenticated user's character data.
+        Used by: Main Menu (after login)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Character found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Character'
+        '404':
+          description: No character exists for this user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/character/create:
+    post:
+      tags:
+        - Character
+      summary: Create a new character
+      description: |
+        Creates a character for the authenticated user.
+        Users can only have one character per account.
+        Used by: Character Creation Screen
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCharacterRequest'
+      responses:
+        '201':
+          description: Character created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateCharacterResponse'
+        '400':
+          description: Invalid character name
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                tooShort:
+                  value:
+                    error: "character name must be at least 3 characters long"
+                tooLong:
+                  value:
+                    error: "character name must not exceed 50 characters"
+                invalidChars:
+                  value:
+                    error: "character name contains invalid characters"
+        '409':
+          description: Character already exists or name taken
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                alreadyExists:
+                  value:
+                    error: "User already has a character"
+                nameTaken:
+                  value:
+                    error: "Character name already taken"
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/regions:
+    get:
+      tags:
+        - Region
+      summary: Get available game regions
+      description: |
+        Returns all game regions with their current status and player counts.
+        Used by: Main Menu (region dropdown)
+      responses:
+        '200':
+          description: Regions list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegionsResponse'
+
+  /api/regions/select:
+    post:
+      tags:
+        - Region
+      summary: Select a game region
+      description: |
+        Selects a region for the authenticated user and returns the WebSocket URL.
+        Used by: Main Menu (before entering arena)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SelectRegionRequest'
+      responses:
+        '200':
+          description: Region selected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SelectRegionResponse'
+        '400':
+          description: Invalid region
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Region unavailable or full
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from /api/auth/login
+
+  schemas:
+    # Authentication
+    LoginRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          minLength: 1
+          example: "player123"
+        password:
+          type: string
+          minLength: 1
+          format: password
+          example: "securepassword"
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT access token
+        refresh_token:
+          type: string
+          description: Refresh token for obtaining new access tokens
+        expiry:
+          type: integer
+          description: Unix timestamp of token expiry
+        user_id:
+          type: string
+          description: User account ID
+        username:
+          type: string
+          description: Username
+        character_id:
+          type: string
+          description: Character ID (empty if no character)
+        character_name:
+          type: string
+          description: Character name (empty if no character)
+
+    RefreshRequest:
+      type: object
+      required:
+        - refresh_token
+      properties:
+        refresh_token:
+          type: string
+
+    RefreshResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: New JWT access token
+        expiry:
+          type: integer
+          description: Unix timestamp of new token expiry
+
+    # Character
+    Character:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Character ID
+        user_id:
+          type: integer
+          description: Owner user ID
+        name:
+          type: string
+          description: Character name
+          minLength: 3
+          maxLength: 50
+        created_at:
+          type: string
+          format: date-time
+          description: Character creation timestamp
+
+    CreateCharacterRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: |
+            Character name. Must be 3-16 characters (client validation),
+            alphanumeric and underscores only.
+          minLength: 3
+          maxLength: 16
+          pattern: "^[a-zA-Z0-9_]+$"
+          example: "HeroPlayer_1"
+
+    CreateCharacterResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Character created successfully"
+        character:
+          $ref: '#/components/schemas/Character'
+
+    # Region
+    Region:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Region identifier
+          enum: [asia, europe, us-west]
+        name:
+          type: string
+          description: Display name
+          example: "Asia"
+        websocket_url:
+          type: string
+          format: uri
+          description: WebSocket URL for game server
+          example: "wss://asia.omegarealm.com:8081"
+        status:
+          type: string
+          description: Region availability status
+          enum: [online, offline, maintenance]
+        active_players:
+          type: integer
+          description: Current number of connected players
+        max_players:
+          type: integer
+          description: Maximum player capacity
+
+    RegionsResponse:
+      type: object
+      properties:
+        regions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Region'
+
+    SelectRegionRequest:
+      type: object
+      required:
+        - region_id
+      properties:
+        region_id:
+          type: string
+          description: Region identifier to select
+          enum: [asia, europe, us-west]
+
+    SelectRegionResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Region selected successfully"
+        region:
+          $ref: '#/components/schemas/Region'
+        websocket_url:
+          type: string
+          format: uri
+          description: WebSocket URL to connect to
+
+    # Common
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Human-readable error message

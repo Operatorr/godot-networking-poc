@@ -98,3 +98,9 @@ The `todolist.json` should follow this format:
       ├── build_client.sh
       └── build_server.sh
 ```
+
+## Active Technologies
+- GDScript (Godot 4.5) (001-main-menu-ui)
+
+## Recent Changes
+- 001-main-menu-ui: Added GDScript (Godot 4.5)
