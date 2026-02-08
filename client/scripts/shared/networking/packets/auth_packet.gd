@@ -1,9 +1,10 @@
 ## AuthPacket - Authentication handshake packet (variable size)
 ## Sent from client to server when connecting
 ## Format:
-##   [u16 token_length][utf8 token]       variable - JWT auth token
-##   [u16 char_id_length][utf8 char_id]   variable - character ID
-##   [u8 region_code]                     1 byte   - region enum
+##   [u16 token_length][utf8 token]           variable - JWT auth token
+##   [u16 char_id_length][utf8 char_id]       variable - character ID
+##   [u16 char_name_length][utf8 char_name]   variable - character display name
+##   [u8 region_code]                         1 byte   - region enum
 class_name AuthPacket
 extends RefCounted
 
@@ -19,6 +20,8 @@ enum Region {
 var token: String = ""
 ## Character ID to use for this session
 var character_id: String = ""
+## Character display name
+var character_name: String = ""
 ## Selected region
 var region: int = Region.ASIA
 
@@ -28,10 +31,11 @@ func _init() -> void:
 
 
 ## Create auth packet
-static func create(auth_token: String, char_id: String, reg: int = Region.ASIA) -> AuthPacket:
+static func create(auth_token: String, char_id: String, char_name: String, reg: int = Region.ASIA) -> AuthPacket:
 	var packet = AuthPacket.new()
 	packet.token = auth_token
 	packet.character_id = char_id
+	packet.character_name = char_name
 	packet.region = reg
 	return packet
 
@@ -41,7 +45,8 @@ func write() -> PackedByteArray:
 	# Calculate approximate size
 	var token_bytes = token.to_utf8_buffer().size()
 	var char_bytes = character_id.to_utf8_buffer().size()
-	var size = 3 + 2 + token_bytes + 2 + char_bytes + 1 + 4  # header + strings + region + safety
+	var name_bytes = character_name.to_utf8_buffer().size()
+	var size = 3 + 2 + token_bytes + 2 + char_bytes + 2 + name_bytes + 1 + 4  # header + strings + region + safety
 
 	var writer = PacketWriter.new(size)
 	writer.write_header(PacketTypes.Type.CONNECT_AUTH)
@@ -55,6 +60,7 @@ func write() -> PackedByteArray:
 func write_payload(writer: PacketWriter) -> void:
 	writer.write_string(token)
 	writer.write_string(character_id)
+	writer.write_string(character_name)
 	writer.write_u8(region)
 
 
@@ -63,6 +69,7 @@ static func read(reader: PacketReader) -> AuthPacket:
 	var packet = AuthPacket.new()
 	packet.token = reader.read_string()
 	packet.character_id = reader.read_string()
+	packet.character_name = reader.read_string()
 	packet.region = reader.read_u8()
 	return packet
 
@@ -99,6 +106,7 @@ func to_dict() -> Dictionary:
 		"type": "CONNECT_AUTH",
 		"token": token.substr(0, 20) + "..." if token.length() > 20 else token,
 		"character_id": character_id,
+		"character_name": character_name,
 		"region": region,
 		"region_name": get_region_name()
 	}

@@ -4,6 +4,9 @@
 class_name PlayerState
 extends RefCounted
 
+## Player life state for death/respawn/invulnerability flow
+enum PlayerLifeState { ALIVE, DEAD, INVULNERABLE }
+
 # Identity
 var entity_id: int = 0          ## Unique ID for network sync
 var peer_id: int = 0            ## WebSocket peer identifier
@@ -30,6 +33,14 @@ var health: int = 100
 var max_health: int = 100
 var is_alive: bool = true
 var shoot_cooldown: float = 0.0
+var life_state: PlayerLifeState = PlayerLifeState.ALIVE
+var invulnerability_timer: float = 0.0
+
+# Stats tracking
+var pvp_kills: int = 0
+var monster_kills: int = 0
+var deaths: int = 0
+var last_killer_id: int = -1
 
 # Animation & Flags
 var animation_state: int = PacketTypes.AnimationState.IDLE
@@ -95,6 +106,10 @@ func get_aim_direction() -> Vector2:
 ## Apply input with server-authoritative movement validation
 ## Returns validation result dictionary with correction info if needed
 func apply_input(input: Dictionary, delta: float) -> Dictionary:
+	# Dead players don't process input
+	if life_state == PlayerLifeState.DEAD:
+		return {"valid": true, "deviation": 0.0, "correction_needed": false, "server_position": position, "cheat_detected": false, "sequence": last_input_sequence}
+
 	# Decrement shoot cooldown
 	if shoot_cooldown > 0.0:
 		shoot_cooldown = maxf(0.0, shoot_cooldown - delta)
@@ -102,6 +117,10 @@ func apply_input(input: Dictionary, delta: float) -> Dictionary:
 	# Store raw input data
 	input_flags = input.get("input_flags", 0)
 	last_input_sequence = input.get("sequence", last_input_sequence)
+
+	# End invulnerability if player moves or shoots
+	if life_state == PlayerLifeState.INVULNERABLE and has_active_input():
+		end_invulnerability()
 
 	# Get client-reported position for validation
 	var client_position: Vector2 = input.get("position", position)
@@ -218,38 +237,79 @@ func _update_entity_flags() -> void:
 	if input_flags & PacketTypes.INPUT_FLAG_SHOOT:
 		entity_flags |= PacketTypes.ENTITY_FLAG_ATTACKING
 
+	if life_state == PlayerLifeState.INVULNERABLE:
+		entity_flags |= PacketTypes.ENTITY_FLAG_INVULNERABLE
+
 	# Always visible for now (interest management in TASK-064)
 	entity_flags |= PacketTypes.ENTITY_FLAG_VISIBLE
 
 
-## Reset player state for respawn
+## Reset player state for respawn (with invulnerability)
 func reset_for_respawn(spawn_position: Vector2) -> void:
 	position = spawn_position
 	velocity = Vector2.ZERO
 	health = max_health
 	is_alive = true
+	life_state = PlayerLifeState.INVULNERABLE
+	invulnerability_timer = GameConstants.INVULNERABILITY_DURATION
 	shoot_cooldown = 0.0
 	input_flags = 0
 	input_queue.clear()
 	animation_state = PacketTypes.AnimationState.SPAWN
-	entity_flags = PacketTypes.ENTITY_FLAG_ALIVE | PacketTypes.ENTITY_FLAG_VISIBLE
+	entity_flags = PacketTypes.ENTITY_FLAG_ALIVE | PacketTypes.ENTITY_FLAG_VISIBLE | PacketTypes.ENTITY_FLAG_INVULNERABLE
 
 
 ## Take damage and return true if killed
+## Returns false if player is dead, invulnerable, or survives
 func take_damage(amount: int) -> bool:
 	if not is_alive:
+		return false
+
+	# Invulnerable players cannot take damage
+	if life_state == PlayerLifeState.INVULNERABLE:
 		return false
 
 	health = max(0, health - amount)
 
 	if health <= 0:
 		is_alive = false
+		life_state = PlayerLifeState.DEAD
+		deaths += 1
 		animation_state = PacketTypes.AnimationState.DEATH
 		entity_flags &= ~PacketTypes.ENTITY_FLAG_ALIVE
 		return true
 
 	animation_state = PacketTypes.AnimationState.HIT
 	return false
+
+
+## Update invulnerability timer, returns true if invulnerability just ended
+func update_invulnerability(delta: float) -> bool:
+	if life_state != PlayerLifeState.INVULNERABLE:
+		return false
+
+	invulnerability_timer -= delta
+	if invulnerability_timer <= 0.0:
+		end_invulnerability()
+		return true
+	return false
+
+
+## End invulnerability (called on timer expiry or player action)
+func end_invulnerability() -> void:
+	if life_state != PlayerLifeState.INVULNERABLE:
+		return
+	life_state = PlayerLifeState.ALIVE
+	invulnerability_timer = 0.0
+	entity_flags &= ~PacketTypes.ENTITY_FLAG_INVULNERABLE
+
+
+## Check if player has movement or shoot input (ends invulnerability)
+func has_active_input() -> bool:
+	var move_flags := PacketTypes.INPUT_FLAG_MOVE_UP | PacketTypes.INPUT_FLAG_MOVE_DOWN | \
+		PacketTypes.INPUT_FLAG_MOVE_LEFT | PacketTypes.INPUT_FLAG_MOVE_RIGHT
+	var action_flags := PacketTypes.INPUT_FLAG_SHOOT
+	return (input_flags & (move_flags | action_flags)) != 0
 
 
 ## Convert to dictionary for debugging

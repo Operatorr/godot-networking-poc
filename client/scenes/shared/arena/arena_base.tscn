@@ -1,0 +1,108 @@
+[gd_scene load_steps=6 format=3 uid="uid://c1arena_base01"]
+
+[ext_resource type="Script" path="res://scripts/shared/arena_base.gd" id="1_arena"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_top"]
+size = Vector2(2020, 10)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_bottom"]
+size = Vector2(2020, 10)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_left"]
+size = Vector2(10, 2020)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_right"]
+size = Vector2(10, 2020)
+
+[node name="ArenaBase" type="Node2D"]
+script = ExtResource("1_arena")
+
+[node name="TileMapLayer" type="TileMapLayer" parent="."]
+tile_set = null
+collision_enabled = true
+
+[node name="SpawnPoints" type="Node2D" parent="."]
+
+[node name="PlayerSpawn1" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(200, 200)
+
+[node name="PlayerSpawn2" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(600, 200)
+
+[node name="PlayerSpawn3" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(1000, 200)
+
+[node name="PlayerSpawn4" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(200, 600)
+
+[node name="PlayerSpawn5" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(600, 600)
+
+[node name="PlayerSpawn6" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(1000, 600)
+
+[node name="PlayerSpawn7" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(200, 1000)
+
+[node name="PlayerSpawn8" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(600, 1000)
+
+[node name="PlayerSpawn9" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(1000, 1000)
+
+[node name="PlayerSpawn10" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(400, 400)
+
+[node name="MonsterSpawn1" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(300, 300)
+
+[node name="MonsterSpawn2" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(700, 300)
+
+[node name="MonsterSpawn3" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(1100, 300)
+
+[node name="MonsterSpawn4" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(300, 700)
+
+[node name="MonsterSpawn5" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(700, 700)
+
+[node name="MonsterSpawn6" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(1100, 700)
+
+[node name="MonsterSpawn7" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(300, 1100)
+
+[node name="MonsterSpawn8" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(700, 1100)
+
+[node name="MonsterSpawn9" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(1100, 1100)
+
+[node name="MonsterSpawn10" type="Marker2D" parent="SpawnPoints"]
+position = Vector2(500, 500)
+
+[node name="EntityContainer" type="Node2D" parent="."]
+
+[node name="Boundaries" type="StaticBody2D" parent="."]
+collision_layer = 8
+collision_mask = 0
+
+[node name="TopWall" type="CollisionShape2D" parent="Boundaries"]
+position = Vector2(0, -1005)
+shape = SubResource("RectangleShape2D_top")
+
+[node name="BottomWall" type="CollisionShape2D" parent="Boundaries"]
+position = Vector2(0, 1005)
+shape = SubResource("RectangleShape2D_bottom")
+
+[node name="LeftWall" type="CollisionShape2D" parent="Boundaries"]
+position = Vector2(-1005, 0)
+shape = SubResource("RectangleShape2D_left")
+
+[node name="RightWall" type="CollisionShape2D" parent="Boundaries"]
+position = Vector2(1005, 0)
+shape = SubResource("RectangleShape2D_right")
+
+[node name="HUDLayer" type="CanvasLayer" parent="."]
