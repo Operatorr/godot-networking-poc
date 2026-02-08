@@ -19,36 +19,6 @@ specification.md
 docs/ARCHITECTURE.md
 ```
 
-### 2. Todo List Structure
-
-The `todolist.json` should follow this format:
-
-```json
-{
-	"project_name": "GDC - Godot Multiplayer Shooter",
-	"last_updated": "YYYY-MM-DD",
-	"progress_summary": {
-		"total_tasks": 0,
-		"completed": 0,
-		"in_progress": 0,
-		"pending": 0
-	},
-	"tasks": [
-		{
-			"category": "Project Setup",
-			"tasks": [
-				{
-					"id": "TASK-001",
-					"title": "Task title",
-					"description": "Detailed description",
-					"status": "pending|in-progress|completed"
-				}
-			]
-		}
-	]
-}
-```
-
 ## Monorepo project structure
 
 ```
@@ -89,20 +59,50 @@ The `todolist.json` should follow this format:
   │   └── ...
   │
   ├── deployment/
-  │   ├── docker-compose.yml
+  │   ├── docker-compose.yml        # Parameterized with env vars, health checks
   │   ├── client.Dockerfile
-  │   ├── server.Dockerfile         # Uses headless export
-  │   └── api.Dockerfile
+  │   ├── server.Dockerfile         # Uses headless export, health check
+  │   ├── api.Dockerfile
+  │   ├── .env.example
+  │   ├── .env.production.example   # Production env template
+  │   └── DEPLOYMENT.md             # DigitalOcean deployment guide
+  │
+  ├── load_testing/                  # Python load testing infrastructure
+  │   ├── bot_client.py             # Single bot: binary WS protocol client
+  │   ├── bot_swarm.py              # Orchestrator: spawn 50-200+ bots
+  │   ├── requirements.txt
+  │   └── README.md
   │
   └── scripts/
       ├── build_client.sh
-      └── build_server.sh
+      ├── build_server.sh
+      ├── build_api.sh
+      ├── deploy.sh                 # Docker deploy CLI (up/down/health/logs)
+      ├── start_services.sh
+      ├── stop_services.sh
+      ├── status_services.sh
+      └── run_server.sh
 ```
 
-## Active Technologies
-- GDScript (Godot 4.5) (001-main-menu-ui)
-- GDScript (Godot 4.5) + Godot Engine 4.5 (built-in physics, CharacterBody2D, AnimatedSprite2D) (002-player-character)
-- N/A (player state managed in memory; persistence handled by separate systems) (002-player-character)
+## Load Testing
 
-## Recent Changes
-- 001-main-menu-ui: Added GDScript (Godot 4.5)
+Run from any machine against the game server:
+```bash
+cd load_testing && pip install -r requirements.txt
+python bot_swarm.py --scenario baseline --server ws://<server-ip>:8081
+python bot_swarm.py --scenario target --server ws://<server-ip>:8081
+python bot_swarm.py --scenario stress --server ws://<server-ip>:8081
+```
+
+## Deployment
+
+```bash
+# Local Docker stack
+./scripts/deploy.sh up
+
+# Production (see deployment/DEPLOYMENT.md for full guide)
+cd deployment
+cp .env.production.example .env.production
+# Edit .env.production with secure values
+docker compose --env-file .env.production up -d --build
+```

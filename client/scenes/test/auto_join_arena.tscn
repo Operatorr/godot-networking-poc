@@ -1,9 +1,11 @@
-[gd_scene load_steps=2 format=3 uid="uid://dbqmvp5xsw7n2"]
+[gd_scene load_steps=2 format=3]
 
-[sub_resource type="GDScript" id="GDScript_autologin"]
-script/source = "## AutoLoginTest - Automated test that logs in and joins the game
-## Reads credentials from .env.test file
-## Usage: Run this scene to automatically log in and spawn the player
+[sub_resource type="GDScript" id="GDScript_autojoinarena"]
+script/source = "## AutoJoinArena - Bootstrapper that logs in and joins a networked arena
+## Reads credentials from .env.test, authenticates, connects WebSocket, then
+## hands off to SceneManager.goto_arena() which loads arena_base.tscn with
+## full client setup (camera, interpolation, entity manager, HUD, prediction).
+## Usage: Run this scene (F6) to skip the UI and jump straight into a game.
 extends Node2D
 
 ## Test states
@@ -11,10 +13,8 @@ enum TestState {
 	INITIALIZING,
 	LOADING_CONFIG,
 	LOGGING_IN,
-	SELECTING_CHARACTER,
-	CONNECTING_TO_REALM,
-	SPAWNING_PLAYER,
-	READY,
+	CONNECTING,
+	ENTERING_ARENA,
 	ERROR
 }
 
@@ -24,17 +24,13 @@ var state: TestState = TestState.INITIALIZING
 ## Test configuration
 var config: TestConfig = null
 
-## Status label reference
+## UI references
 @onready var status_label: Label = $UI/StatusLabel
 @onready var error_label: Label = $UI/ErrorLabel
-@onready var player_container: Node2D = $PlayerContainer
-
-## Spawned player reference
-var player: Node2D = null
 
 
 func _ready() -> void:
-	_update_status(\"Initializing test...\")
+	_update_status(\"Initializing...\")
 
 	# Wait for autoloads to be ready
 	await get_tree().process_frame
@@ -47,7 +43,7 @@ func _start_test() -> void:
 	state = TestState.LOADING_CONFIG
 	_update_status(\"Loading test configuration...\")
 
-	# Load config
+	# Load config from .env.test
 	config = TestConfig.new()
 	if not config.load_config():
 		_show_error(\"Failed to load .env.test file\\n\\nPlease create .env.test from .env.test.example\")
@@ -61,8 +57,10 @@ func _start_test() -> void:
 
 	# Configure API URL
 	var auth_mgr = get_tree().root.get_node_or_null(\"AuthManager\")
-	if auth_mgr:
-		auth_mgr.set_api_url(config.api_server_url)
+	if not auth_mgr:
+		_show_error(\"AuthManager autoload not found\")
+		return
+	auth_mgr.set_api_url(config.api_server_url)
 
 	# Start login
 	_do_login()
@@ -77,20 +75,19 @@ func _do_login() -> void:
 		_show_error(\"AuthManager not found\")
 		return
 
-	# Connect signals
+	# Connect signals (one-shot via callable)
 	if not auth_mgr.login_successful.is_connected(_on_login_successful):
 		auth_mgr.login_successful.connect(_on_login_successful)
 	if not auth_mgr.login_failed.is_connected(_on_login_failed):
 		auth_mgr.login_failed.connect(_on_login_failed)
 
-	# Attempt login
 	auth_mgr.login(config.username, config.password)
 
 
 func _on_login_successful(user_data: Dictionary) -> void:
-	print(\"[AutoLoginTest] Login successful: %s\" % user_data)
+	print(\"[AutoJoinArena] Login successful: %s\" % user_data)
 
-	# Disconnect signals
+	# Disconnect login signals
 	var auth_mgr = get_tree().root.get_node_or_null(\"AuthManager\")
 	if auth_mgr:
 		if auth_mgr.login_successful.is_connected(_on_login_successful):
@@ -98,23 +95,62 @@ func _on_login_successful(user_data: Dictionary) -> void:
 		if auth_mgr.login_failed.is_connected(_on_login_failed):
 			auth_mgr.login_failed.disconnect(_on_login_failed)
 
-	# Check if we have a character
+	# AuthManager.set_player_data() already populates GameManager.player_data
+	# with character_name, character_id, user_id from the API response.
+
 	var char_name: String = user_data.get(\"character_name\", \"\")
 	if char_name.is_empty():
-		_show_error(\"No character found for this account.\\nPlease create a character first.\")
+		_show_error(\"No character found for this account.\\nCreate a character first via the normal UI.\")
 		return
 
 	_update_status(\"Logged in as %s (Character: %s)\" % [user_data.get(\"username\", \"?\"), char_name])
 
-	# Proceed to spawn player
+	# Override selected_region from test config if set
+	if not config.realm.is_empty():
+		GameManager.player_data[\"selected_region\"] = config.realm
+
+	# Connect to game server
+	await get_tree().create_timer(0.3).timeout
+	_connect_to_server()
+
+
+func _connect_to_server() -> void:
+	state = TestState.CONNECTING
+	var ws_url := \"ws://%s:%d\" % [config.game_server_host, config.game_server_port]
+	_update_status(\"Connecting to %s...\" % ws_url)
+
+	# Set auth token so the handshake includes it
+	NetworkManager.auth_token = AuthManager.get_token()
+
+	# Connect NetworkManager signals
+	if not NetworkManager.connected_to_server.is_connected(_on_connected_to_server):
+		NetworkManager.connected_to_server.connect(_on_connected_to_server)
+	if not NetworkManager.connection_error.is_connected(_on_connection_error):
+		NetworkManager.connection_error.connect(_on_connection_error)
+
+	NetworkManager.connect_to_server(ws_url)
+
+
+func _on_connected_to_server() -> void:
+	print(\"[AutoJoinArena] Connected to server\")
+
+	# Disconnect signals (arena will handle reconnection)
+	if NetworkManager.connected_to_server.is_connected(_on_connected_to_server):
+		NetworkManager.connected_to_server.disconnect(_on_connected_to_server)
+	if NetworkManager.connection_error.is_connected(_on_connection_error):
+		NetworkManager.connection_error.disconnect(_on_connection_error)
+
+	state = TestState.ENTERING_ARENA
+	_update_status(\"Connected! Entering arena...\")
+
+	# Brief delay then transition to arena (same as main_menu.gd)
 	await get_tree().create_timer(0.5).timeout
-	_spawn_player()
+	SceneManager.goto_arena()
 
 
 func _on_login_failed(error: String) -> void:
-	print(\"[AutoLoginTest] Login failed: %s\" % error)
+	print(\"[AutoJoinArena] Login failed: %s\" % error)
 
-	# Disconnect signals
 	var auth_mgr = get_tree().root.get_node_or_null(\"AuthManager\")
 	if auth_mgr:
 		if auth_mgr.login_successful.is_connected(_on_login_successful):
@@ -125,31 +161,21 @@ func _on_login_failed(error: String) -> void:
 	_show_error(\"Login failed: %s\" % error)
 
 
-func _spawn_player() -> void:
-	state = TestState.SPAWNING_PLAYER
-	_update_status(\"Spawning player...\")
+func _on_connection_error(error: String) -> void:
+	print(\"[AutoJoinArena] Connection error: %s\" % error)
 
-	# Load and instance player scene
-	var player_scene := load(\"res://scenes/shared/player/player.tscn\")
-	if player_scene == null:
-		_show_error(\"Failed to load player scene\")
-		return
+	if NetworkManager.connected_to_server.is_connected(_on_connected_to_server):
+		NetworkManager.connected_to_server.disconnect(_on_connected_to_server)
+	if NetworkManager.connection_error.is_connected(_on_connection_error):
+		NetworkManager.connection_error.disconnect(_on_connection_error)
 
-	player = player_scene.instantiate()
-	player.global_position = Vector2(960, 540)  # Center of 1920x1080
-	player_container.add_child(player)
-
-	state = TestState.READY
-	_update_status(\"Player spawned! Controls:\\n  WASD - Move\\n  Mouse - Aim\\n  Left Click - Shoot\\n  F3 - Debug overlay\\n  Space - Take 25 damage\\n  Escape - Reset player\")
-
-	# Hide error label, show success
-	error_label.visible = false
+	_show_error(\"Connection failed: %s\\n\\nEnsure the game server is running:\\n  ./scripts/start_services.sh --game-only\" % error)
 
 
 func _update_status(text: String) -> void:
 	if status_label:
 		status_label.text = text
-	print(\"[AutoLoginTest] %s\" % text)
+	print(\"[AutoJoinArena] %s\" % text)
 
 
 func _show_error(text: String) -> void:
@@ -157,31 +183,12 @@ func _show_error(text: String) -> void:
 	if error_label:
 		error_label.text = \"ERROR: %s\" % text
 		error_label.visible = true
-	_update_status(\"Test failed\")
-	push_error(\"[AutoLoginTest] %s\" % text)
-
-
-func _input(event: InputEvent) -> void:
-	if state != TestState.READY or player == null:
-		return
-
-	# Test damage
-	if event.is_action_pressed(\"ui_accept\"):  # Space
-		if player.has_method(\"take_damage\"):
-			player.take_damage(25)
-			print(\"[AutoLoginTest] Applied 25 damage, HP: %d\" % player.hp_component.current_hp)
-
-	# Reset player
-	elif event.is_action_pressed(\"ui_cancel\"):  # Escape
-		if player.has_method(\"reset\"):
-			player.reset()
-			print(\"[AutoLoginTest] Player reset\")
+	_update_status(\"Failed\")
+	push_error(\"[AutoJoinArena] %s\" % text)
 "
 
-[node name="AutoLoginTest" type="Node2D"]
-script = SubResource("GDScript_autologin")
-
-[node name="PlayerContainer" type="Node2D" parent="."]
+[node name="AutoJoinArena" type="Node2D"]
+script = SubResource("GDScript_autojoinarena")
 
 [node name="UI" type="CanvasLayer" parent="."]
 layer = 10
