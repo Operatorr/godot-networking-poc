@@ -46,8 +46,8 @@ func record_pvp_kill(killer_id: int, victim_id: int) -> Array:
 ## Get top N players sorted by pvp_kills descending
 func get_top_n(count: int) -> Array:
 	var result: Array = []
-	var limit := mini(count, _top_entries.size())
-	for i in limit:
+	var limit := min(count, _top_entries.size())
+	for i in range(limit):
 		var entry: LeaderboardEntry = _top_entries[i]
 		result.append({
 			"entity_id": entry.entity_id,

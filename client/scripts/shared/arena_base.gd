@@ -388,7 +388,9 @@ func _handle_kill_pvp_event(data: Dictionary) -> void:
 		_show_kill_notification(victim_name)
 
 		# Play kill sound effect
-		_get_audio_manager().play_player_kill()
+		var audio := _get_audio_manager()
+		if audio:
+			audio.play_player_kill()
 
 		# Flash killer's name in leaderboard
 		if leaderboard:

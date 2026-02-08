@@ -196,7 +196,7 @@ static func read(reader: PacketReader) -> GameEventPacket:
 		PacketTypes.GameEventType.LEADERBOARD_UPDATE:
 			var entry_count = reader.read_u8()
 			var entries: Array = []
-			for i in entry_count:
+			for i in range(entry_count):
 				entries.append({
 					"entity_id": reader.read_u16(),
 					"pvp_kills": reader.read_u16()

@@ -595,6 +595,7 @@ func _on_client_disconnected(peer_id: int) -> void:
 	var state = player_manager.get_player(peer_id)
 	if leaderboard_manager and state:
 		leaderboard_manager.remove_player(state.entity_id)
+		_broadcast_leaderboard()
 
 	player_manager.remove_player(peer_id)
 

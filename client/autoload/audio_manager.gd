@@ -75,9 +75,14 @@ const PLAYER_SOUNDS: Dictionary = {
 }
 
 const MONSTER_SOUNDS: Dictionary = {
+	"monster_spawn": "res://assets/audio/sfx/monster_spawn.ogg",
 	"monster_shoot": "res://assets/audio/sfx/monster_shoot.ogg",
 	"monster_hit": "res://assets/audio/sfx/monster_hit.ogg",
 	"monster_death": "res://assets/audio/sfx/monster_death.ogg"
+}
+
+const PROJECTILE_SOUNDS: Dictionary = {
+	"projectile_impact": "res://assets/audio/sfx/projectile_impact.ogg"
 }
 
 ## Called when the node enters the scene tree
@@ -194,6 +199,16 @@ func _load_combat_sounds() -> void:
 				print("[AudioManager] Loaded monster sound: %s" % sound_name)
 		else:
 			push_warning("[AudioManager] Monster sound asset not found: %s - audio will be skipped" % path)
+
+	for sound_name: String in PROJECTILE_SOUNDS:
+		var path: String = PROJECTILE_SOUNDS[sound_name]
+		if ResourceLoader.exists(path):
+			var stream := load(path) as AudioStream
+			if stream:
+				audio_library["sfx_player"][sound_name] = stream
+				print("[AudioManager] Loaded projectile sound: %s" % sound_name)
+		else:
+			push_warning("[AudioManager] Projectile sound asset not found: %s - audio will be skipped" % path)
 
 
 ## Play music track
@@ -356,9 +371,57 @@ func play_monster_shoot() -> void:
 func play_monster_hit() -> void:
 	play_sfx("monster_hit", AudioCategory.SFX_MONSTER)
 
+## Play monster spawn sound
+func play_monster_spawn() -> void:
+	play_sfx("monster_spawn", AudioCategory.SFX_MONSTER)
+
 ## Play monster death sound
 func play_monster_death() -> void:
 	play_sfx("monster_death", AudioCategory.SFX_MONSTER)
+
+## Play projectile impact sound
+func play_projectile_impact() -> void:
+	play_sfx("projectile_impact", AudioCategory.SFX_COMBAT)
+
+## Play a sound by name with optional volume override
+## Automatically selects the correct category based on sound_name prefix
+func play_sound(sound_name: String, volume_db: float = 0.0) -> void:
+	var category := AudioCategory.SFX_UI
+	if sound_name.begins_with("player_"):
+		category = AudioCategory.SFX_PLAYER
+	elif sound_name.begins_with("monster_"):
+		category = AudioCategory.SFX_MONSTER
+	elif sound_name.begins_with("projectile_"):
+		category = AudioCategory.SFX_COMBAT
+
+	var category_name := ""
+	var player_pool: Array[AudioStreamPlayer] = []
+
+	match category:
+		AudioCategory.SFX_UI:
+			category_name = "sfx_ui"
+			player_pool = ui_sfx_players
+		AudioCategory.SFX_PLAYER:
+			category_name = "sfx_player"
+			player_pool = combat_sfx_players
+		AudioCategory.SFX_MONSTER:
+			category_name = "sfx_monster"
+			player_pool = combat_sfx_players
+		AudioCategory.SFX_COMBAT:
+			category_name = "sfx_player"
+			player_pool = combat_sfx_players
+
+	if not audio_library.has(category_name) or not audio_library[category_name].has(sound_name):
+		return
+
+	var sfx = audio_library[category_name][sound_name]
+	var player = _get_available_player(player_pool)
+	if player == null:
+		return
+
+	player.stream = sfx
+	player.volume_db = volume_db
+	player.play()
 
 ## Set master volume (0.0 to 1.0)
 func set_master_volume(volume: float) -> void:

@@ -37,7 +37,7 @@ func _process(_delta: float) -> void:
 	var i := 0
 	while i < _messages.size():
 		var msg: Dictionary = _messages[i]
-		var age := current_time - msg.timestamp
+		var age: float = current_time - msg.timestamp
 		if age >= FADE_DURATION:
 			msg.label.queue_free()
 			_messages.remove_at(i)

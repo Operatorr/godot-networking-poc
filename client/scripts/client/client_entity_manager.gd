@@ -29,6 +29,9 @@ var entity_container: Node2D = null
 ## Reference to InterpolationController
 var interpolation_controller: InterpolationController = null
 
+## Track previous animation states for remote player audio triggers
+var _player_prev_anim: Dictionary = {}  # entity_id -> int (AnimationState)
+
 ## Debug logging
 var debug_logging: bool = false
 
@@ -72,7 +75,7 @@ func _initialize_projectile_pool() -> void:
 	if _projectile_packed == null or entity_container == null:
 		return
 
-	for i in NETWORK_PROJECTILE_POOL_SIZE:
+	for i in range(NETWORK_PROJECTILE_POOL_SIZE):
 		var projectile: Projectile = _projectile_packed.instantiate()
 		projectile.process_mode = Node.PROCESS_MODE_DISABLED
 		projectile.visible = false
@@ -142,6 +145,7 @@ func _despawn_remote_player(entity_id: int) -> void:
 
 	var remote_player: RemotePlayer = player_entities[entity_id]
 	player_entities.erase(entity_id)
+	_player_prev_anim.erase(entity_id)
 
 	if interpolation_controller:
 		interpolation_controller.unregister_entity_node(entity_id)
@@ -170,6 +174,11 @@ func _spawn_monster(entity_id: int, position: Vector2) -> void:
 	monster.died.connect(_on_monster_died)
 
 	entity_container.add_child(monster)
+
+	# Play monster spawn sound
+	var audio := get_tree().root.get_node_or_null("AudioManager")
+	if audio:
+		audio.play_monster_spawn()
 	monster_entities[entity_id] = monster
 
 	# Register with InterpolationController for position updates
@@ -214,6 +223,10 @@ func _spawn_projectile(entity_id: int, position: Vector2) -> void:
 	projectile.monitorable = false
 
 	_active_projectiles[entity_id] = projectile
+
+	# Connect projectile hit signal for impact audio
+	if projectile.hit.is_connected(_on_projectile_hit) == false:
+		projectile.hit.connect(_on_projectile_hit)
 
 	# Register with InterpolationController for position updates
 	if interpolation_controller:
@@ -273,11 +286,18 @@ func update_entity_visuals() -> void:
 		var remote_player: RemotePlayer = player_entities[entity_id]
 		if not is_instance_valid(remote_player):
 			player_entities.erase(entity_id)
+			_player_prev_anim.erase(entity_id)
 			continue
 
 		var anim_state := interpolation_controller.get_entity_animation_state(entity_id)
 		var flags := interpolation_controller.get_entity_flags(entity_id)
 		remote_player.update_from_network(anim_state, flags)
+
+		# Detect animation state transitions for audio
+		var prev_anim: int = _player_prev_anim.get(entity_id, PacketTypes.AnimationState.IDLE)
+		if anim_state != prev_anim:
+			_play_remote_player_audio(anim_state)
+			_player_prev_anim[entity_id] = anim_state
 
 	# Update monster visuals
 	for entity_id: int in monster_entities.keys():
@@ -299,6 +319,7 @@ func clear_all() -> void:
 		if is_instance_valid(node):
 			node.queue_free()
 	player_entities.clear()
+	_player_prev_anim.clear()
 
 	# Free monsters
 	for entity_id: int in monster_entities.keys():
@@ -332,6 +353,28 @@ func _on_monster_died() -> void:
 	var audio := get_tree().root.get_node_or_null("AudioManager")
 	if audio:
 		audio.play_monster_death()
+
+
+## Play audio for remote player animation state transitions
+func _play_remote_player_audio(anim_state: int) -> void:
+	var audio := get_tree().root.get_node_or_null("AudioManager")
+	if audio == null:
+		return
+
+	match anim_state:
+		PacketTypes.AnimationState.ATTACK:
+			audio.play_player_shoot()
+		PacketTypes.AnimationState.HIT:
+			audio.play_player_hit()
+		PacketTypes.AnimationState.DEATH:
+			audio.play_player_death()
+
+
+## Handle projectile hit (play impact audio)
+func _on_projectile_hit(_body: Node2D) -> void:
+	var audio := get_tree().root.get_node_or_null("AudioManager")
+	if audio:
+		audio.play_projectile_impact()
 
 
 ## Get entity counts for debug
