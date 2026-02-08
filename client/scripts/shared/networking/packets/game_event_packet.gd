@@ -44,6 +44,15 @@ static func create_kill(killer_id: int, victim_id: int) -> GameEventPacket:
 	return packet
 
 
+## Create a PvP kill event (broadcast to all clients)
+static func create_kill_pvp(killer_id: int, victim_id: int) -> GameEventPacket:
+	var packet = GameEventPacket.new()
+	packet.event_type = PacketTypes.GameEventType.KILL_PVP
+	packet.source_id = killer_id
+	packet.target_id = victim_id
+	return packet
+
+
 ## Create a respawn event
 static func create_respawn(entity_id: int, spawn_position: Vector2) -> GameEventPacket:
 	var packet = GameEventPacket.new()
@@ -52,6 +61,30 @@ static func create_respawn(entity_id: int, spawn_position: Vector2) -> GameEvent
 	packet.target_id = entity_id
 	packet.event_data = {
 		"position": spawn_position
+	}
+	return packet
+
+
+## Create a player info event (identity broadcast)
+static func create_player_info(entity_id: int, character_name: String) -> GameEventPacket:
+	var packet = GameEventPacket.new()
+	packet.event_type = PacketTypes.GameEventType.PLAYER_INFO
+	packet.source_id = 0
+	packet.target_id = entity_id
+	packet.event_data = {
+		"character_name": character_name
+	}
+	return packet
+
+
+## Create a leaderboard update event
+static func create_leaderboard_update(entries: Array) -> GameEventPacket:
+	var packet = GameEventPacket.new()
+	packet.event_type = PacketTypes.GameEventType.LEADERBOARD_UPDATE
+	packet.source_id = 0
+	packet.target_id = 0
+	packet.event_data = {
+		"entries": entries  # Array of {entity_id: int, pvp_kills: int}
 	}
 	return packet
 
@@ -90,8 +123,8 @@ func write_payload(writer: PacketWriter) -> void:
 			writer.write_u16(event_data.get("amount", 0))
 			writer.write_u8(event_data.get("damage_type", 0))
 
-		PacketTypes.GameEventType.KILL:
-			# No additional data needed
+		PacketTypes.GameEventType.KILL, PacketTypes.GameEventType.KILL_PVP:
+			# No additional data needed (killer=source_id, victim=target_id)
 			pass
 
 		PacketTypes.GameEventType.RESPAWN:
@@ -104,6 +137,16 @@ func write_payload(writer: PacketWriter) -> void:
 
 		PacketTypes.GameEventType.EFFECT_REMOVE:
 			writer.write_u8(event_data.get("effect_id", 0))
+
+		PacketTypes.GameEventType.PLAYER_INFO:
+			writer.write_string(event_data.get("character_name", ""))
+
+		PacketTypes.GameEventType.LEADERBOARD_UPDATE:
+			var entries: Array = event_data.get("entries", [])
+			writer.write_u8(entries.size())
+			for entry in entries:
+				writer.write_u16(entry.get("entity_id", 0))
+				writer.write_u16(entry.get("pvp_kills", 0))
 
 		_:
 			# Generic: write event_data as simple key-value pairs
@@ -126,7 +169,7 @@ static func read(reader: PacketReader) -> GameEventPacket:
 				"damage_type": reader.read_u8()
 			}
 
-		PacketTypes.GameEventType.KILL:
+		PacketTypes.GameEventType.KILL, PacketTypes.GameEventType.KILL_PVP:
 			packet.event_data = {}
 
 		PacketTypes.GameEventType.RESPAWN:
@@ -143,6 +186,23 @@ static func read(reader: PacketReader) -> GameEventPacket:
 		PacketTypes.GameEventType.EFFECT_REMOVE:
 			packet.event_data = {
 				"effect_id": reader.read_u8()
+			}
+
+		PacketTypes.GameEventType.PLAYER_INFO:
+			packet.event_data = {
+				"character_name": reader.read_string()
+			}
+
+		PacketTypes.GameEventType.LEADERBOARD_UPDATE:
+			var entry_count = reader.read_u8()
+			var entries: Array = []
+			for i in entry_count:
+				entries.append({
+					"entity_id": reader.read_u16(),
+					"pvp_kills": reader.read_u16()
+				})
+			packet.event_data = {
+				"entries": entries
 			}
 
 	return packet
@@ -165,6 +225,9 @@ func get_event_type_name() -> String:
 		PacketTypes.GameEventType.PICKUP: return "PICKUP"
 		PacketTypes.GameEventType.LEVEL_UP: return "LEVEL_UP"
 		PacketTypes.GameEventType.CHAT_MESSAGE: return "CHAT_MESSAGE"
+		PacketTypes.GameEventType.PLAYER_INFO: return "PLAYER_INFO"
+		PacketTypes.GameEventType.KILL_PVP: return "KILL_PVP"
+		PacketTypes.GameEventType.LEADERBOARD_UPDATE: return "LEADERBOARD_UPDATE"
 		_: return "UNKNOWN(%d)" % event_type
 
 

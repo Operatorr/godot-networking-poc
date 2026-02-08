@@ -21,7 +21,8 @@ enum MessageType {
 	ACTION_CONFIRM = 5,    ## Server -> Client: Confirm attack
 	CONNECT_AUTH = 6,      ## Client -> Server: Authentication handshake
 	DISCONNECT = 7,        ## Client -> Server: Clean disconnect
-	REQUEST_FULL_STATE = 8 ## Client -> Server: Request full state sync (TASK-021)
+	REQUEST_FULL_STATE = 8, ## Client -> Server: Request full state sync (TASK-021)
+	RESPAWN_REQUEST = 9    ## Client -> Server: Request respawn after death
 }
 
 ## Signals - Client mode
@@ -266,16 +267,19 @@ func _check_connection_status() -> void:
 ## Send authentication handshake
 func send_auth_handshake() -> void:
 	var character_id = ""
+	var character_name = ""
 	var region = "Asia"
 
 	var game_mgr = get_tree().root.get_node_or_null("GameManager")
 	if game_mgr:
 		character_id = game_mgr.player_data.get("character_id", "")
+		character_name = game_mgr.player_data.get("character_name", "")
 		region = game_mgr.player_data.get("selected_region", "Asia")
 
 	var auth_data = {
 		"token": auth_token,
 		"character_id": character_id,
+		"character_name": character_name,
 		"region": region
 	}
 	send_message(MessageType.CONNECT_AUTH, auth_data)
@@ -491,6 +495,7 @@ func _encode_packet(message_type: MessageType, data: Dictionary) -> PackedByteAr
 		MessageType.CONNECT_AUTH:
 			writer.write_string(data.get("token", ""))
 			writer.write_string(data.get("character_id", ""))
+			writer.write_string(data.get("character_name", ""))
 			writer.write_u8(AuthPacket.region_from_string(data.get("region", "Asia")))
 
 		MessageType.DISCONNECT:
@@ -502,6 +507,10 @@ func _encode_packet(message_type: MessageType, data: Dictionary) -> PackedByteAr
 			# Minimal payload - just timestamp for tracking
 			writer.write_u32(Time.get_ticks_msec())
 
+		MessageType.RESPAWN_REQUEST:
+			# Empty payload - server infers from peer_id
+			writer.write_u32(Time.get_ticks_msec())
+
 	writer.finalize_header()
 	return writer.get_buffer()
 
@@ -509,17 +518,28 @@ func _encode_packet(message_type: MessageType, data: Dictionary) -> PackedByteAr
 ## Helper: Write game event specific data
 func _write_game_event_data(writer: PacketWriter, data: Dictionary) -> void:
 	var event_type = data.get("event_type", 0)
+	var event_data: Dictionary = data.get("event_data", {})
 	match event_type:
 		PacketTypes.GameEventType.DAMAGE:
-			writer.write_u16(data.get("amount", 0))
-			writer.write_u8(data.get("damage_type", 0))
+			writer.write_u16(event_data.get("amount", data.get("amount", 0)))
+			writer.write_u8(event_data.get("damage_type", data.get("damage_type", 0)))
+		PacketTypes.GameEventType.KILL, PacketTypes.GameEventType.KILL_PVP:
+			pass  # No extra data (killer=source_id, victim=target_id)
 		PacketTypes.GameEventType.RESPAWN:
-			writer.write_vector2_compressed(data.get("position", Vector2.ZERO))
+			writer.write_vector2_compressed(event_data.get("position", data.get("position", Vector2.ZERO)))
 		PacketTypes.GameEventType.EFFECT_APPLY:
-			writer.write_u8(data.get("effect_id", 0))
-			writer.write_u16(data.get("duration_ms", 0))
+			writer.write_u8(event_data.get("effect_id", data.get("effect_id", 0)))
+			writer.write_u16(event_data.get("duration_ms", data.get("duration_ms", 0)))
 		PacketTypes.GameEventType.EFFECT_REMOVE:
-			writer.write_u8(data.get("effect_id", 0))
+			writer.write_u8(event_data.get("effect_id", data.get("effect_id", 0)))
+		PacketTypes.GameEventType.PLAYER_INFO:
+			writer.write_string(event_data.get("character_name", ""))
+		PacketTypes.GameEventType.LEADERBOARD_UPDATE:
+			var entries: Array = event_data.get("entries", [])
+			writer.write_u8(entries.size())
+			for entry in entries:
+				writer.write_u16(entry.get("entity_id", 0))
+				writer.write_u16(entry.get("pvp_kills", 0))
 
 
 ## Decode packet from binary format using PacketReader
@@ -580,6 +600,11 @@ func _decode_packet(packet: PackedByteArray) -> Dictionary:
 				"timestamp": reader.read_u32()
 			}
 
+		PacketTypes.Type.RESPAWN_REQUEST:
+			result.data = {
+				"timestamp": reader.read_u32()
+			}
+
 	return result
 
 ## Handle connection closed
@@ -589,7 +614,15 @@ func _on_connection_closed(reason: String) -> void:
 	_schedule_reconnect()
 
 ## Schedule reconnection with exponential backoff
+## Only auto-reconnects when game state is IN_ARENA
 func _schedule_reconnect() -> void:
+	# Check if auto-reconnect is appropriate
+	var game_mgr = get_tree().root.get_node_or_null("GameManager")
+	if game_mgr and game_mgr.current_state != game_mgr.GameState.IN_ARENA:
+		print("[NetworkManager] Skipping auto-reconnect (not in arena)")
+		current_state = ConnectionState.DISCONNECTED
+		return
+
 	if reconnect_attempts >= max_reconnect_attempts:
 		print("[NetworkManager] Max reconnection attempts reached")
 		current_state = ConnectionState.ERROR

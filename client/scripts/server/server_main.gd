@@ -30,6 +30,10 @@ var monster_ai: MonsterAI = null
 ## Used for additional entities beyond players/projectiles/monsters
 var game_entities: Dictionary = {}
 
+## Leaderboard broadcast timer
+var leaderboard_timer: float = 0.0
+const LEADERBOARD_BROADCAST_INTERVAL := 5.0
+
 ## Delta state caches per client (TASK-021)
 ## peer_id -> DeltaStateCache
 var delta_caches: Dictionary = {}
@@ -277,7 +281,14 @@ func _update_game_state() -> void:
 	# Update monster spawner (TASK-015)
 	monster_spawner.update(tick_interval)
 
-	# Entity timers and cooldowns handled in player input processing
+	# Update player invulnerability timers
+	_update_invulnerability_timers(tick_interval)
+
+	# Broadcast leaderboard periodically
+	leaderboard_timer += tick_interval
+	if leaderboard_timer >= LEADERBOARD_BROADCAST_INTERVAL:
+		leaderboard_timer = 0.0
+		_broadcast_leaderboard()
 
 
 ## Update monster AI behavior (TASK-016)
@@ -297,6 +308,8 @@ func _update_monster_ai() -> void:
 
 ## Process collision detection (TASK-014, TASK-016)
 func _process_collisions() -> void:
+	var network_manager = _get_network_manager()
+
 	# Check projectile-player collisions (players can be hit by monster projectiles)
 	var player_hits = projectile_manager.check_collisions_with_players(player_manager)
 
@@ -309,7 +322,43 @@ func _process_collisions() -> void:
 			if hit.owner_id >= 100000:
 				damage = GameConstants.MONSTER_PROJECTILE_DAMAGE
 
+			# Record killer before damage (take_damage may set DEAD state)
+			target.last_killer_id = hit.owner_id
 			var killed := target.take_damage(damage)
+
+			# Broadcast DAMAGE event to all clients
+			if network_manager:
+				var damage_packet = GameEventPacket.create_damage(
+					hit.owner_id, hit.target_id, damage
+				)
+				network_manager.broadcast_to_clients(
+					NetworkManager.MessageType.GAME_EVENT,
+					damage_packet.to_dict()
+				)
+
+			if killed and network_manager:
+				# PvP kill: attribute to killer player
+				if hit.owner_id < 100000:
+					var killer := player_manager.get_player_by_entity_id(hit.owner_id)
+					if killer != null:
+						killer.pvp_kills += 1
+					var kill_packet = GameEventPacket.create_kill_pvp(
+						hit.owner_id, hit.target_id
+					)
+					network_manager.broadcast_to_clients(
+						NetworkManager.MessageType.GAME_EVENT,
+						kill_packet.to_dict()
+					)
+				else:
+					# PvE kill: monster killed player
+					var kill_packet = GameEventPacket.create_kill(
+						hit.owner_id, hit.target_id
+					)
+					network_manager.broadcast_to_clients(
+						NetworkManager.MessageType.GAME_EVENT,
+						kill_packet.to_dict()
+					)
+
 			if config.debug_logging:
 				print("[ServerMain] Player %d took %d damage from entity %d (killed=%s)" % [
 					hit.target_id, damage, hit.owner_id, killed
@@ -322,6 +371,32 @@ func _process_collisions() -> void:
 		var monster := monster_manager.get_monster(hit.target_id)
 		if monster != null:
 			var killed := monster.take_damage(GameConstants.PLAYER_PROJECTILE_DAMAGE)
+
+			# Broadcast DAMAGE event to all clients
+			if network_manager:
+				var damage_packet = GameEventPacket.create_damage(
+					hit.owner_id, hit.target_id, GameConstants.PLAYER_PROJECTILE_DAMAGE
+				)
+				network_manager.broadcast_to_clients(
+					NetworkManager.MessageType.GAME_EVENT,
+					damage_packet.to_dict()
+				)
+
+			# Attribute monster kill to player
+			if killed:
+				var killer := player_manager.get_player_by_entity_id(hit.owner_id)
+				if killer != null:
+					killer.monster_kills += 1
+
+				if network_manager:
+					var kill_packet = GameEventPacket.create_kill(
+						hit.owner_id, hit.target_id
+					)
+					network_manager.broadcast_to_clients(
+						NetworkManager.MessageType.GAME_EVENT,
+						kill_packet.to_dict()
+					)
+
 			if config.debug_logging:
 				print("[ServerMain] Monster %d took %d damage from player %d (killed=%s)" % [
 					hit.target_id, GameConstants.PLAYER_PROJECTILE_DAMAGE, hit.owner_id, killed
@@ -523,6 +598,8 @@ func _on_client_message(peer_id: int, message_type: int, data: Dictionary) -> vo
 			_handle_auth_request(peer_id, data)
 		NetworkManager.MessageType.REQUEST_FULL_STATE:
 			_handle_full_state_request(peer_id)
+		NetworkManager.MessageType.RESPAWN_REQUEST:
+			_handle_respawn_request(peer_id)
 		_:
 			if config.debug_logging:
 				print("[ServerMain] Unhandled message type %d from peer %d" % [message_type, peer_id])
@@ -546,6 +623,12 @@ func _handle_auth_request(peer_id: int, data: Dictionary) -> void:
 	# Authenticate player via PlayerManager
 	# TODO: Validate character_id with API server
 	player_manager.authenticate_player(peer_id, character_id, character_name)
+
+	# Broadcast PLAYER_INFO to all clients for the newly authenticated player
+	_broadcast_player_info(peer_id)
+
+	# Send PLAYER_INFO for all existing players to the new client
+	_send_all_player_info_to_client(peer_id)
 
 
 ## Handle client request for full state sync (TASK-021)
@@ -667,6 +750,116 @@ func shutdown(reason: String = "Server shutdown") -> void:
 	delta_caches.clear()  # TASK-021
 
 	print("[ServerMain] Server shutdown complete")
+
+
+## Broadcast PLAYER_INFO event for a specific player to all clients
+func _broadcast_player_info(peer_id: int) -> void:
+	var state = player_manager.get_player(peer_id)
+	if state == null:
+		return
+
+	var network_manager = _get_network_manager()
+	if network_manager == null:
+		return
+
+	var event_packet = GameEventPacket.create_player_info(
+		state.entity_id,
+		state.character_name
+	)
+
+	network_manager.broadcast_to_clients(
+		NetworkManager.MessageType.GAME_EVENT,
+		event_packet.to_dict()
+	)
+
+
+## Send PLAYER_INFO for all existing players to a newly connected client
+func _send_all_player_info_to_client(peer_id: int) -> void:
+	var network_manager = _get_network_manager()
+	if network_manager == null:
+		return
+
+	for state: PlayerState in player_manager.get_all_players():
+		if state.peer_id == peer_id:
+			continue  # Skip self
+
+		var event_packet = GameEventPacket.create_player_info(
+			state.entity_id,
+			state.character_name
+		)
+
+		network_manager.send_to_client(
+			peer_id,
+			NetworkManager.MessageType.GAME_EVENT,
+			event_packet.to_dict()
+		)
+
+
+## Handle client respawn request
+func _handle_respawn_request(peer_id: int) -> void:
+	if config.debug_logging:
+		print("[ServerMain] Respawn request from peer %d" % peer_id)
+
+	var state = player_manager.get_player(peer_id)
+	if state == null:
+		return
+
+	# Only allow respawn if player is dead
+	if state.is_alive:
+		if config.debug_logging:
+			print("[ServerMain] Respawn rejected: peer %d is still alive" % peer_id)
+		return
+
+	# Respawn via PlayerManager
+	var success = player_manager.respawn_player(peer_id)
+	if not success:
+		return
+
+	# Broadcast RESPAWN event to all clients
+	var network_manager = _get_network_manager()
+	if network_manager == null:
+		return
+
+	var respawn_packet = GameEventPacket.create_respawn(state.entity_id, state.position)
+	network_manager.broadcast_to_clients(
+		NetworkManager.MessageType.GAME_EVENT,
+		respawn_packet.to_dict()
+	)
+
+	if config.debug_logging:
+		print("[ServerMain] Player %d respawned at %s" % [state.entity_id, state.position])
+
+
+## Update invulnerability timers for all players
+func _update_invulnerability_timers(delta: float) -> void:
+	for state: PlayerState in player_manager.get_all_players():
+		state.update_invulnerability(delta)
+
+
+## Broadcast leaderboard update to all clients
+func _broadcast_leaderboard() -> void:
+	var network_manager = _get_network_manager()
+	if network_manager == null:
+		return
+
+	# Collect all players sorted by pvp_kills descending
+	var players := player_manager.get_all_players()
+	var entries: Array = []
+	for state: PlayerState in players:
+		entries.append({"entity_id": state.entity_id, "pvp_kills": state.pvp_kills})
+
+	# Sort by kills descending
+	entries.sort_custom(func(a, b): return a.pvp_kills > b.pvp_kills)
+
+	# Keep top 10
+	if entries.size() > 10:
+		entries.resize(10)
+
+	var packet = GameEventPacket.create_leaderboard_update(entries)
+	network_manager.broadcast_to_clients(
+		NetworkManager.MessageType.GAME_EVENT,
+		packet.to_dict()
+	)
 
 
 ## Called when scene is exited

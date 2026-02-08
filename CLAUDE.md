@@ -101,6 +101,8 @@ The `todolist.json` should follow this format:
 
 ## Active Technologies
 - GDScript (Godot 4.5) (001-main-menu-ui)
+- GDScript (Godot 4.5) + Godot Engine 4.5 (built-in physics, CharacterBody2D, AnimatedSprite2D) (002-player-character)
+- N/A (player state managed in memory; persistence handled by separate systems) (002-player-character)
 
 ## Recent Changes
 - 001-main-menu-ui: Added GDScript (Godot 4.5)

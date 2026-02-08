@@ -12,7 +12,7 @@ const SCENE_LOGIN = "res://scenes/client/menus/login_screen.tscn"
 const SCENE_MAIN_MENU = "res://scenes/client/menus/main_menu.tscn"
 const SCENE_CHARACTER_CREATION = "res://scenes/client/menus/character_creation.tscn"
 const SCENE_LOADING = "res://scenes/client/menus/loading_screen.tscn"
-const SCENE_ARENA = "res://scenes/shared/game/arena.tscn"
+const SCENE_ARENA = "res://scenes/shared/arena/arena_base.tscn"
 const SCENE_GAME_UI = "res://scenes/client/components/game_ui.tscn"
 const SCENE_SERVER_MAIN = "res://scenes/server/server_main.tscn"
 

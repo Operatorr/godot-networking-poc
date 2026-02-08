@@ -95,6 +95,9 @@ const PLAYER_HITBOX_RADIUS := 16.0
 ## Cooldown between shots (seconds)
 const SHOOT_COOLDOWN := 0.3
 
+## Post-respawn invulnerability duration (seconds)
+const INVULNERABILITY_DURATION := 3.0
+
 
 # =============================================================================
 # MONSTER CONSTANTS

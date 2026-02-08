@@ -1,0 +1,28 @@
+[gd_scene load_steps=3 format=3 uid="uid://c2qmvnl5xr8py"]
+
+[ext_resource type="PackedScene" uid="uid://cvn8xq3pywbpm" path="res://scenes/shared/player/player.tscn" id="1_player"]
+
+[sub_resource type="GDScript" id="GDScript_test"]
+script/source = "## PlayerTest - Test scene for player character
+## Press Space to apply 25 damage, R to reset player
+extends Node2D
+
+
+func _input(event: InputEvent) -> void:
+	if event.is_action_pressed(\"ui_accept\"):  # Space bar
+		var player := $Player as Player
+		if player:
+			player.take_damage(25)
+			print(\"Player HP: \", player.hp_component.current_hp)
+	elif event.is_action_pressed(\"ui_cancel\"):  # Escape - Reset
+		var player := $Player as Player
+		if player:
+			player.reset()
+			print(\"Player reset\")
+"
+
+[node name="PlayerTest" type="Node2D"]
+script = SubResource("GDScript_test")
+
+[node name="Player" parent="." instance=ExtResource("1_player")]
+position = Vector2(960, 540)

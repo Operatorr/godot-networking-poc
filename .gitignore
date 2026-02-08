@@ -46,3 +46,12 @@ logs/
 # Temporary files
 *.tmp
 tmp/
+
+# Test configuration (contains credentials)
+.env.test
+
+# Service PID files
+.pids/
+
+# API environment
+api/.env

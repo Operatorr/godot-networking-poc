@@ -18,7 +18,8 @@ enum Type {
 	ACTION_CONFIRM = 5,    ## Server -> Client: Confirm attack (20 bytes)
 	CONNECT_AUTH = 6,      ## Client -> Server: Authentication handshake (variable)
 	DISCONNECT = 7,        ## Client -> Server: Clean disconnect (4 bytes)
-	REQUEST_FULL_STATE = 8 ## Client -> Server: Request full state sync (TASK-021)
+	REQUEST_FULL_STATE = 8, ## Client -> Server: Request full state sync (TASK-021)
+	RESPAWN_REQUEST = 9    ## Client -> Server: Request respawn after death
 }
 
 ## Entity types for state updates
@@ -82,7 +83,10 @@ enum GameEventType {
 	EFFECT_REMOVE = 5,     ## Status effect removed
 	PICKUP = 6,            ## Item picked up
 	LEVEL_UP = 7,          ## Player leveled up
-	CHAT_MESSAGE = 8       ## Chat message
+	CHAT_MESSAGE = 8,      ## Chat message
+	PLAYER_INFO = 9,       ## Player identity broadcast (entity_id -> character_name)
+	KILL_PVP = 10,         ## PvP kill event (killer/victim with names)
+	LEADERBOARD_UPDATE = 11 ## Top 10 leaderboard update
 }
 
 ## Disconnect reason codes
@@ -107,12 +111,13 @@ static func get_type_name(packet_type: int) -> String:
 		Type.CONNECT_AUTH: return "CONNECT_AUTH"
 		Type.DISCONNECT: return "DISCONNECT"
 		Type.REQUEST_FULL_STATE: return "REQUEST_FULL_STATE"
+		Type.RESPAWN_REQUEST: return "RESPAWN_REQUEST"
 		_: return "UNKNOWN(%d)" % packet_type
 
 
 ## Helper: Check if packet type is valid
 static func is_valid_type(packet_type: int) -> bool:
-	return packet_type >= Type.PLAYER_INPUT and packet_type <= Type.REQUEST_FULL_STATE
+	return packet_type >= Type.PLAYER_INPUT and packet_type <= Type.RESPAWN_REQUEST
 
 
 ## Helper: Encode input flags from dictionary
