@@ -5,12 +5,15 @@ extends Control
 
 const COMPACT_COUNT := 3
 const EXPANDED_COUNT := 10
+const FLASH_DURATION := 1.5
 
 var _entries: Array[Dictionary] = []  # {entity_id: int, pvp_kills: int}
 var _labels: Array[Label] = []
 var _title_label: Label = null
 var _vbox: VBoxContainer = null
 var _is_expanded: bool = false
+var _flash_entity_id: int = -1
+var _flash_tween: Tween = null
 
 
 func _ready() -> void:
@@ -100,10 +103,28 @@ func _refresh_display() -> void:
 			_labels[i].text = "%d. %s - %d kills" % [i + 1, player_name, kills]
 			_labels[i].visible = true
 
-			# Highlight local player
-			if entity_id == GameManager.get_local_player_entity_id():
+			# Color priority: flash > local player > default
+			if entity_id == _flash_entity_id:
+				_labels[i].add_theme_color_override("font_color", Color(1.0, 0.85, 0.2))
+			elif entity_id == GameManager.get_local_player_entity_id():
 				_labels[i].add_theme_color_override("font_color", Color(0.3, 0.9, 0.3))
 			else:
 				_labels[i].add_theme_color_override("font_color", Color(0.9, 0.9, 0.9))
 		else:
 			_labels[i].visible = false
+
+
+## Briefly flash/highlight a player's name in the leaderboard
+func flash_player(entity_id: int) -> void:
+	_flash_entity_id = entity_id
+	_refresh_display()
+
+	# Cancel any existing flash tween
+	if _flash_tween and _flash_tween.is_valid():
+		_flash_tween.kill()
+
+	_flash_tween = create_tween()
+	_flash_tween.tween_callback(func():
+		_flash_entity_id = -1
+		_refresh_display()
+	).set_delay(FLASH_DURATION)

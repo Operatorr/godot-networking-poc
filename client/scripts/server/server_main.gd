@@ -26,11 +26,14 @@ var monster_spawner: MonsterSpawner = null
 ## Monster AI system (TASK-016)
 var monster_ai: MonsterAI = null
 
+## Leaderboard management
+var leaderboard_manager: LeaderboardManager = null
+
 ## Entity management (entity_id -> EntityState)
 ## Used for additional entities beyond players/projectiles/monsters
 var game_entities: Dictionary = {}
 
-## Leaderboard broadcast timer
+## Leaderboard broadcast timer (periodic fallback)
 var leaderboard_timer: float = 0.0
 const LEADERBOARD_BROADCAST_INTERVAL := 5.0
 
@@ -127,6 +130,10 @@ func _initialize_server() -> void:
 	# Initialize monster AI (TASK-016)
 	monster_ai = MonsterAI.new(player_manager, projectile_manager)
 	monster_ai.debug_logging = config.debug_logging
+
+	# Initialize leaderboard manager
+	leaderboard_manager = LeaderboardManager.new()
+	leaderboard_manager.debug_logging = config.debug_logging
 
 	game_entities.clear()
 	_tick_times.clear()
@@ -349,6 +356,11 @@ func _process_collisions() -> void:
 						NetworkManager.MessageType.GAME_EVENT,
 						kill_packet.to_dict()
 					)
+
+					# Record kill in leaderboard and broadcast immediately
+					if leaderboard_manager:
+						leaderboard_manager.record_pvp_kill(hit.owner_id, hit.target_id)
+						_broadcast_leaderboard()
 				else:
 					# PvE kill: monster killed player
 					var kill_packet = GameEventPacket.create_kill(
@@ -567,6 +579,10 @@ func _on_client_connected(peer_id: int) -> void:
 	delta_caches[peer_id] = DeltaStateCacheClass.create_for_client(peer_id)
 	delta_caches[peer_id].debug_logging = config.debug_logging
 
+	# Register with leaderboard manager
+	if leaderboard_manager and state:
+		leaderboard_manager.register_player(state.entity_id)
+
 	print("[ServerMain] Player count: %d/%d" % [player_manager.get_player_count(), config.max_players])
 
 
@@ -574,6 +590,11 @@ func _on_client_connected(peer_id: int) -> void:
 func _on_client_disconnected(peer_id: int) -> void:
 	if config.debug_logging:
 		print("[ServerMain] Client disconnected: %d" % peer_id)
+
+	# Remove from leaderboard before player_manager (need entity_id)
+	var state = player_manager.get_player(peer_id)
+	if leaderboard_manager and state:
+		leaderboard_manager.remove_player(state.entity_id)
 
 	player_manager.remove_player(peer_id)
 
@@ -746,6 +767,8 @@ func shutdown(reason: String = "Server shutdown") -> void:
 	projectile_manager.clear_all()
 	monster_manager.clear_all()
 	monster_ai = null
+	if leaderboard_manager:
+		leaderboard_manager.clear()
 	game_entities.clear()
 	delta_caches.clear()  # TASK-021
 
@@ -842,18 +865,18 @@ func _broadcast_leaderboard() -> void:
 	if network_manager == null:
 		return
 
-	# Collect all players sorted by pvp_kills descending
-	var players := player_manager.get_all_players()
-	var entries: Array = []
-	for state: PlayerState in players:
-		entries.append({"entity_id": state.entity_id, "pvp_kills": state.pvp_kills})
-
-	# Sort by kills descending
-	entries.sort_custom(func(a, b): return a.pvp_kills > b.pvp_kills)
-
-	# Keep top 10
-	if entries.size() > 10:
-		entries.resize(10)
+	var entries: Array
+	if leaderboard_manager:
+		entries = leaderboard_manager.get_top_n(10)
+	else:
+		# Fallback: collect from player states directly
+		var players := player_manager.get_all_players()
+		entries = []
+		for state: PlayerState in players:
+			entries.append({"entity_id": state.entity_id, "pvp_kills": state.pvp_kills})
+		entries.sort_custom(func(a, b): return a.pvp_kills > b.pvp_kills)
+		if entries.size() > 10:
+			entries.resize(10)
 
 	var packet = GameEventPacket.create_leaderboard_update(entries)
 	network_manager.broadcast_to_clients(

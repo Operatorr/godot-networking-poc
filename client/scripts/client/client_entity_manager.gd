@@ -165,6 +165,10 @@ func _spawn_monster(entity_id: int, position: Vector2) -> void:
 	monster.entity_id = entity_id
 	monster.position = position
 
+	# Connect monster signals for audio feedback
+	monster.took_damage.connect(_on_monster_took_damage)
+	monster.died.connect(_on_monster_died)
+
 	entity_container.add_child(monster)
 	monster_entities[entity_id] = monster
 
@@ -314,6 +318,20 @@ func clear_all() -> void:
 
 	if debug_logging:
 		print("[ClientEntityManager] All entities cleared")
+
+
+## Handle monster taking damage (play audio)
+func _on_monster_took_damage(_amount: int) -> void:
+	var audio := get_tree().root.get_node_or_null("AudioManager")
+	if audio:
+		audio.play_monster_hit()
+
+
+## Handle monster death (play audio)
+func _on_monster_died() -> void:
+	var audio := get_tree().root.get_node_or_null("AudioManager")
+	if audio:
+		audio.play_monster_death()
 
 
 ## Get entity counts for debug

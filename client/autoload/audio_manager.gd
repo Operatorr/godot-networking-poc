@@ -66,6 +66,20 @@ const UI_SOUNDS: Dictionary = {
 	"button_click": "res://assets/audio/sfx/button_click.ogg"
 }
 
+## Combat sound file paths (loaded at runtime to handle missing assets)
+const PLAYER_SOUNDS: Dictionary = {
+	"player_shoot": "res://assets/audio/sfx/player_shoot.ogg",
+	"player_hit": "res://assets/audio/sfx/player_hit.ogg",
+	"player_death": "res://assets/audio/sfx/player_death.ogg",
+	"player_kill": "res://assets/audio/sfx/player_kill.ogg"
+}
+
+const MONSTER_SOUNDS: Dictionary = {
+	"monster_shoot": "res://assets/audio/sfx/monster_shoot.ogg",
+	"monster_hit": "res://assets/audio/sfx/monster_hit.ogg",
+	"monster_death": "res://assets/audio/sfx/monster_death.ogg"
+}
+
 ## Called when the node enters the scene tree
 func _ready() -> void:
 	# Detect if running as dedicated server
@@ -102,6 +116,9 @@ func _ready() -> void:
 
 	# Load UI sounds (handles missing assets gracefully)
 	_load_ui_sounds()
+
+	# Load combat sounds (handles missing assets gracefully)
+	_load_combat_sounds()
 
 	# Connect to GameManager settings
 	var game_mgr = get_tree().root.get_node_or_null("GameManager")
@@ -155,6 +172,29 @@ func _load_ui_sounds() -> void:
 				print("[AudioManager] Loaded UI sound: %s" % sound_name)
 		else:
 			push_warning("[AudioManager] UI sound asset not found: %s - audio will be skipped" % path)
+
+## Load combat sounds at runtime (handles missing assets gracefully)
+func _load_combat_sounds() -> void:
+	for sound_name: String in PLAYER_SOUNDS:
+		var path: String = PLAYER_SOUNDS[sound_name]
+		if ResourceLoader.exists(path):
+			var stream := load(path) as AudioStream
+			if stream:
+				audio_library["sfx_player"][sound_name] = stream
+				print("[AudioManager] Loaded player sound: %s" % sound_name)
+		else:
+			push_warning("[AudioManager] Player sound asset not found: %s - audio will be skipped" % path)
+
+	for sound_name: String in MONSTER_SOUNDS:
+		var path: String = MONSTER_SOUNDS[sound_name]
+		if ResourceLoader.exists(path):
+			var stream := load(path) as AudioStream
+			if stream:
+				audio_library["sfx_monster"][sound_name] = stream
+				print("[AudioManager] Loaded monster sound: %s" % sound_name)
+		else:
+			push_warning("[AudioManager] Monster sound asset not found: %s - audio will be skipped" % path)
+
 
 ## Play music track
 func play_music(track_name: String, fade_in: bool = true) -> void:
@@ -303,6 +343,10 @@ func play_player_hit() -> void:
 ## Play player death sound
 func play_player_death() -> void:
 	play_sfx("player_death", AudioCategory.SFX_PLAYER)
+
+## Play player kill confirmation sound
+func play_player_kill() -> void:
+	play_sfx("player_kill", AudioCategory.SFX_PLAYER)
 
 ## Play monster shoot sound
 func play_monster_shoot() -> void:

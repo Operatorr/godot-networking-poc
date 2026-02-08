@@ -146,6 +146,9 @@ func _spawn_local_player(entity_container: Node2D) -> void:
 	local_player.position = get_random_player_spawn()
 	entity_container.add_child(local_player)
 
+	# Connect local player signals for audio
+	local_player.shot_fired.connect(_on_local_player_shot)
+
 	# Create and attach PredictionController
 	prediction_controller = PredictionController.new()
 	prediction_controller.name = "PredictionController"
@@ -304,6 +307,11 @@ func _sync_local_player_state(entity_data: Dictionary) -> void:
 		local_player.velocity = Vector2.ZERO
 		local_player.set_input_enabled(false)
 
+		# Play death sound
+		var audio := _get_audio_manager()
+		if audio:
+			audio.play_player_death()
+
 		# Show death screen
 		if death_screen:
 			death_screen.show_death(_last_killer_id)
@@ -348,6 +356,11 @@ func _handle_damage_event(data: Dictionary) -> void:
 		if amount > 0 and local_player.hp_component:
 			local_player.hp_component.take_damage(amount)
 
+			# Play hit sound for local player taking damage
+			var audio := _get_audio_manager()
+			if audio:
+				audio.play_player_hit()
+
 		# Track killer for death screen
 		var source_id: int = data.get("source_id", -1)
 		if source_id > 0:
@@ -359,15 +372,28 @@ func _handle_kill_pvp_event(data: Dictionary) -> void:
 	var killer_id: int = data.get("source_id", 0)
 	var victim_id: int = data.get("target_id", 0)
 
+	var killer_name := EntityNameCache.get_entity_name(killer_id)
+	var victim_name := EntityNameCache.get_entity_name(victim_id)
+
+	# Kill feed message for all clients
 	if kill_feed:
-		var killer_name := EntityNameCache.get_entity_name(killer_id)
-		var victim_name := EntityNameCache.get_entity_name(victim_id)
 		kill_feed.add_kill(killer_name, victim_name)
 
 	# Update local stats
 	var local_id := GameManager.get_local_player_entity_id()
 	if killer_id == local_id:
 		GameManager.update_stat("pvp_kills", 1)
+
+		# Show "You eliminated [Name]" notification for the killer
+		_show_kill_notification(victim_name)
+
+		# Play kill sound effect
+		_get_audio_manager().play_player_kill()
+
+		# Flash killer's name in leaderboard
+		if leaderboard:
+			leaderboard.flash_player(killer_id)
+
 	if victim_id == local_id:
 		GameManager.update_stat("deaths", 1)
 
@@ -398,6 +424,45 @@ func _handle_leaderboard_update(data: Dictionary) -> void:
 	if server_status:
 		var region: String = GameManager.player_data.get("selected_region", "")
 		server_status.update_player_count(entries.size(), 100, region)
+
+
+## Handle local player shooting (for audio)
+func _on_local_player_shot(_pos: Vector2, _dir: Vector2) -> void:
+	var audio := _get_audio_manager()
+	if audio:
+		audio.play_player_shoot()
+
+
+## Show a "You eliminated [Name]" notification for the local player
+func _show_kill_notification(victim_name: String) -> void:
+	var hud_layer := get_hud_layer()
+	if hud_layer == null:
+		return
+
+	var label := Label.new()
+	label.text = "You eliminated %s" % victim_name
+	label.add_theme_font_size_override("font_size", 22)
+	label.add_theme_color_override("font_color", Color(1.0, 0.3, 0.3))
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+
+	# Position top-center, below server status
+	label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	label.offset_top = 70
+	label.offset_bottom = 100
+	label.offset_left = -200
+	label.offset_right = 200
+
+	hud_layer.add_child(label)
+
+	# Fade out after 2 seconds, then free
+	var tween := label.create_tween()
+	tween.tween_property(label, "modulate:a", 0.0, 1.0).set_delay(2.0)
+	tween.tween_callback(label.queue_free)
+
+
+## Get AudioManager singleton
+func _get_audio_manager() -> Node:
+	return get_tree().root.get_node_or_null("AudioManager")
 
 
 ## Update HP bar from local player's HP component
