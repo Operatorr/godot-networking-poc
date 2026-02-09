@@ -21,6 +21,8 @@ var monster_entities: Dictionary = {}
 ## Projectile pool for network projectiles (separate from local player pool)
 var _projectile_pool: Array[Projectile] = []
 var _active_projectiles: Dictionary = {}  # entity_id -> Projectile
+## Ordered queue of active projectile entity IDs by spawn time (oldest first)
+var _active_projectile_order: Array[int] = []
 const NETWORK_PROJECTILE_POOL_SIZE := 64
 
 ## Reference to the entity container in the arena scene
@@ -31,6 +33,9 @@ var interpolation_controller: InterpolationController = null
 
 ## Track previous animation states for remote player audio triggers
 var _player_prev_anim: Dictionary = {}  # entity_id -> int (AnimationState)
+
+## Cached AudioManager reference (lazy-initialized)
+var _audio_manager: Node = null
 
 ## Debug logging
 var debug_logging: bool = false
@@ -68,6 +73,13 @@ func _preload_scenes() -> void:
 		push_error("[ClientEntityManager] Failed to load monster scene")
 	if _projectile_packed == null:
 		push_error("[ClientEntityManager] Failed to load projectile scene")
+
+
+## Get cached AudioManager reference (lazy init)
+func _get_audio_manager() -> Node:
+	if _audio_manager == null or not is_instance_valid(_audio_manager):
+		_audio_manager = get_tree().root.get_node_or_null("AudioManager")
+	return _audio_manager
 
 
 ## Initialize projectile pool for network-spawned projectiles
@@ -176,7 +188,7 @@ func _spawn_monster(entity_id: int, position: Vector2) -> void:
 	entity_container.add_child(monster)
 
 	# Play monster spawn sound
-	var audio := get_tree().root.get_node_or_null("AudioManager")
+	var audio := _get_audio_manager()
 	if audio:
 		audio.play_monster_spawn()
 	monster_entities[entity_id] = monster
@@ -223,6 +235,7 @@ func _spawn_projectile(entity_id: int, position: Vector2) -> void:
 	projectile.monitorable = false
 
 	_active_projectiles[entity_id] = projectile
+	_active_projectile_order.append(entity_id)
 
 	# Connect projectile hit signal for impact audio
 	if projectile.hit.is_connected(_on_projectile_hit) == false:
@@ -243,6 +256,7 @@ func _despawn_projectile(entity_id: int) -> void:
 
 	var projectile: Projectile = _active_projectiles[entity_id]
 	_active_projectiles.erase(entity_id)
+	_active_projectile_order.erase(entity_id)
 
 	if interpolation_controller:
 		interpolation_controller.unregister_entity_node(entity_id)
@@ -258,15 +272,15 @@ func _despawn_projectile(entity_id: int) -> void:
 		print("[ClientEntityManager] Despawned projectile: id=%d" % entity_id)
 
 
-## Get a projectile from the pool
+## Get a projectile from the pool, evicting the oldest active if exhausted
 func _get_pooled_projectile() -> Projectile:
 	if _projectile_pool.is_empty():
-		# Pool exhausted - recycle oldest active
-		if _active_projectiles.is_empty():
+		# Pool exhausted - recycle oldest active by spawn time
+		if _active_projectile_order.is_empty():
 			push_warning("[ClientEntityManager] No projectiles available")
 			return null
 
-		var oldest_id: int = _active_projectiles.keys()[0]
+		var oldest_id: int = _active_projectile_order[0]
 		_despawn_projectile(oldest_id)
 
 		if _projectile_pool.is_empty():
@@ -336,6 +350,7 @@ func clear_all() -> void:
 			projectile.process_mode = Node.PROCESS_MODE_DISABLED
 			_projectile_pool.append(projectile)
 	_active_projectiles.clear()
+	_active_projectile_order.clear()
 
 	if debug_logging:
 		print("[ClientEntityManager] All entities cleared")
@@ -343,21 +358,21 @@ func clear_all() -> void:
 
 ## Handle monster taking damage (play audio)
 func _on_monster_took_damage(_amount: int) -> void:
-	var audio := get_tree().root.get_node_or_null("AudioManager")
+	var audio := _get_audio_manager()
 	if audio:
 		audio.play_monster_hit()
 
 
 ## Handle monster death (play audio)
 func _on_monster_died() -> void:
-	var audio := get_tree().root.get_node_or_null("AudioManager")
+	var audio := _get_audio_manager()
 	if audio:
 		audio.play_monster_death()
 
 
 ## Play audio for remote player animation state transitions
 func _play_remote_player_audio(anim_state: int) -> void:
-	var audio := get_tree().root.get_node_or_null("AudioManager")
+	var audio := _get_audio_manager()
 	if audio == null:
 		return
 
@@ -372,7 +387,7 @@ func _play_remote_player_audio(anim_state: int) -> void:
 
 ## Handle projectile hit (play impact audio)
 func _on_projectile_hit(_body: Node2D) -> void:
-	var audio := get_tree().root.get_node_or_null("AudioManager")
+	var audio := _get_audio_manager()
 	if audio:
 		audio.play_projectile_impact()
 

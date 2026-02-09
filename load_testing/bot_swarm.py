@@ -121,7 +121,7 @@ def aggregate_metrics(bots: list[OmegaRealmBot], duration: float) -> AggregatedM
     # Bandwidth per player (KB/s)
     if duration > 0 and agg.connected_bots > 0:
         total_bandwidth = (agg.total_bytes_sent + agg.total_bytes_received)
-        agg.avg_bandwidth_per_player_kbps = (total_bandwidth / agg.total_bots / duration) / 1024.0
+        agg.avg_bandwidth_per_player_kbps = (total_bandwidth / agg.connected_bots / duration) / 1024.0
 
     # Server tick rate estimate
     if total_ticks:

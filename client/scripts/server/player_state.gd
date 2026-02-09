@@ -69,11 +69,16 @@ func to_entity_data() -> Dictionary:
 	}
 
 
+## Maximum queued inputs before overflow handling
+const MAX_INPUT_QUEUE_SIZE := 10
+
 ## Queue an input for processing
 func queue_input(input: Dictionary) -> void:
-	# Limit queue size to prevent memory issues
-	if input_queue.size() < 10:
-		input_queue.append(input)
+	if input_queue.size() >= MAX_INPUT_QUEUE_SIZE:
+		# Drop oldest input to make room; log overflow for monitoring
+		input_queue.pop_front()
+		print("[PlayerState] Input queue overflow for entity %d: dropped oldest input (queue=%d)" % [entity_id, MAX_INPUT_QUEUE_SIZE])
+	input_queue.append(input)
 
 
 ## Pop the next input from the queue

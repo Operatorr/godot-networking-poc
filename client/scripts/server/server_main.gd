@@ -1,10 +1,7 @@
 ## ServerMain - Main server scene controller
 ## Coordinates server-side game logic and manages authoritative game state
-## Entry point for dedicated server mode
+## Delegates collision, broadcasting, and metrics to focused helper classes
 extends Node
-
-## Preload delta state cache for TASK-021
-const DeltaStateCacheClass = preload("res://scripts/server/delta_state_cache.gd")
 
 ## Server configuration
 var config: ServerConfig = null
@@ -26,36 +23,22 @@ var monster_spawner: MonsterSpawner = null
 ## Monster AI system (TASK-016)
 var monster_ai: MonsterAI = null
 
-## Leaderboard management
-var leaderboard_manager: LeaderboardManager = null
-
 ## Entity management (entity_id -> EntityState)
 ## Used for additional entities beyond players/projectiles/monsters
 var game_entities: Dictionary = {}
+
+## Extracted service components
+var collision_handler: ServerCollisionHandler = null
+var broadcast_service: ServerBroadcastService = null
+var server_metrics: ServerMetrics = null
 
 ## Leaderboard broadcast timer (periodic fallback)
 var leaderboard_timer: float = 0.0
 const LEADERBOARD_BROADCAST_INTERVAL := 5.0
 
-## Delta state caches per client (TASK-021)
-## peer_id -> DeltaStateCache
-var delta_caches: Dictionary = {}
-
 ## Tick loop state
 var tick_timer: float = 0.0
 var tick_count: int = 0
-
-## Performance metrics
-var metrics: Dictionary = {
-	"tick_count": 0,
-	"avg_tick_time_ms": 0.0,
-	"max_tick_time_ms": 0.0,
-	"player_count": 0,
-	"entity_count": 0,
-	"last_metrics_time": 0.0
-}
-var _tick_times: Array[float] = []
-const METRICS_SAMPLE_SIZE := 30  # Track last 30 ticks for averaging
 
 
 ## Called when the node enters the scene tree
@@ -91,18 +74,17 @@ func _is_server_mode() -> bool:
 
 ## Connect to NetworkManager signals for client events
 func _connect_network_signals() -> void:
-	var network_manager = _get_network_manager()
-	if network_manager == null:
+	var nm = _get_network_manager()
+	if nm == null:
 		push_error("[ServerMain] NetworkManager not found!")
 		return
 
-	# Connect to server-side signals
-	if network_manager.has_signal("server_client_connected"):
-		network_manager.server_client_connected.connect(_on_client_connected)
-	if network_manager.has_signal("server_client_disconnected"):
-		network_manager.server_client_disconnected.connect(_on_client_disconnected)
-	if network_manager.has_signal("server_client_message"):
-		network_manager.server_client_message.connect(_on_client_message)
+	if nm.has_signal("server_client_connected"):
+		nm.server_client_connected.connect(_on_client_connected)
+	if nm.has_signal("server_client_disconnected"):
+		nm.server_client_disconnected.connect(_on_client_disconnected)
+	if nm.has_signal("server_client_message"):
+		nm.server_client_message.connect(_on_client_message)
 
 	print("[ServerMain] Connected to NetworkManager signals")
 
@@ -113,31 +95,34 @@ func _initialize_server() -> void:
 	server_time = 0.0
 	tick_count = 0
 
-	# Initialize player manager (TASK-012)
+	# Core managers
 	player_manager = PlayerManager.new()
 	player_manager.debug_logging = config.debug_logging
 
-	# Initialize projectile manager (TASK-014)
 	projectile_manager = ProjectileManager.new()
 	projectile_manager.debug_logging = config.debug_logging
 
-	# Initialize monster manager and spawner (TASK-015)
 	monster_manager = MonsterManager.new()
 	monster_manager.debug_logging = config.debug_logging
 	monster_spawner = MonsterSpawner.new(monster_manager, player_manager)
 	monster_spawner.debug_logging = config.debug_logging
 
-	# Initialize monster AI (TASK-016)
 	monster_ai = MonsterAI.new(player_manager, projectile_manager)
 	monster_ai.debug_logging = config.debug_logging
 
-	# Initialize leaderboard manager
-	leaderboard_manager = LeaderboardManager.new()
-	leaderboard_manager.debug_logging = config.debug_logging
+	# Extracted service components
+	collision_handler = ServerCollisionHandler.new()
+	collision_handler.debug_logging = config.debug_logging
+
+	broadcast_service = ServerBroadcastService.new()
+	broadcast_service.debug_logging = config.debug_logging
+	broadcast_service.leaderboard_manager = LeaderboardManager.new()
+	broadcast_service.leaderboard_manager.debug_logging = config.debug_logging
+
+	server_metrics = ServerMetrics.new()
+	server_metrics.debug_logging = config.debug_logging
 
 	game_entities.clear()
-	_tick_times.clear()
-	metrics.last_metrics_time = Time.get_ticks_msec() / 1000.0
 
 	set_process(true)
 	print("[ServerMain] Server running at %d Hz tick rate" % config.tick_rate)
@@ -159,9 +144,9 @@ func _process(delta: float) -> void:
 		_process_server_tick()
 
 	# Update metrics periodically (every second)
-	if server_time - metrics.last_metrics_time >= 1.0:
-		_update_metrics()
-		metrics.last_metrics_time = server_time
+	if server_time - server_metrics.metrics.last_metrics_time >= 1.0:
+		var entity_count := game_entities.size() + projectile_manager.get_projectile_count() + monster_manager.get_monster_count()
+		server_metrics.update_metrics(player_manager.get_player_count(), entity_count, tick_count)
 
 
 ## Process a single server tick - core game loop
@@ -169,25 +154,30 @@ func _process_server_tick() -> void:
 	var tick_start := Time.get_ticks_usec()
 	tick_count += 1
 
-	# 1. Process incoming client messages
-	#    (Messages are handled via signals, but queued processing could go here)
+	var nm = _get_network_manager()
+
+	# 1. Process incoming client inputs
 	_process_client_inputs()
 
 	# 2. Update game state
 	_update_game_state()
 
-	# 3. Run AI/monster logic (TASK-016)
+	# 3. Run AI/monster logic
 	_update_monster_ai()
 
-	# 4. Process physics/collisions (TASK-014)
-	_process_collisions()
+	# 4. Process collisions (delegated to CollisionHandler)
+	collision_handler.process_collisions(
+		projectile_manager, player_manager, monster_manager, nm, broadcast_service
+	)
 
-	# 5. Broadcast state updates to clients (TASK-012)
-	_broadcast_state_updates()
+	# 5. Broadcast state updates (delegated to BroadcastService)
+	broadcast_service.broadcast_state_updates(
+		player_manager, projectile_manager, monster_manager, nm, tick_count
+	)
 
 	# Track tick performance
-	var tick_time := (Time.get_ticks_usec() - tick_start) / 1000.0  # Convert to ms
-	_record_tick_time(tick_time)
+	var tick_time := (Time.get_ticks_usec() - tick_start) / 1000.0
+	server_metrics.record_tick_time(tick_time)
 
 
 ## Process queued client inputs and validate movement (TASK-012, TASK-013)
@@ -216,8 +206,8 @@ func _process_shoot_inputs() -> void:
 
 ## Send position correction packets to clients (TASK-013)
 func _send_position_corrections(corrections: Array[Dictionary]) -> void:
-	var network_manager = _get_network_manager()
-	if network_manager == null:
+	var nm = _get_network_manager()
+	if nm == null:
 		return
 
 	for correction in corrections:
@@ -235,7 +225,7 @@ func _send_position_corrections(corrections: Array[Dictionary]) -> void:
 		)
 
 		# Send correction to the specific client
-		network_manager.send_to_client(
+		nm.send_to_client(
 			peer_id,
 			NetworkManager.MessageType.ACTION_CONFIRM,
 			confirm_packet.to_dict()
@@ -295,7 +285,7 @@ func _update_game_state() -> void:
 	leaderboard_timer += tick_interval
 	if leaderboard_timer >= LEADERBOARD_BROADCAST_INTERVAL:
 		leaderboard_timer = 0.0
-		_broadcast_leaderboard()
+		broadcast_service.broadcast_leaderboard(player_manager, _get_network_manager())
 
 
 ## Update monster AI behavior (TASK-016)
@@ -313,248 +303,10 @@ func _update_monster_ai() -> void:
 		print("[ServerMain] Monsters spawned %d projectiles this tick" % projectiles_spawned)
 
 
-## Process collision detection (TASK-014, TASK-016)
-func _process_collisions() -> void:
-	var network_manager = _get_network_manager()
-
-	# Check projectile-player collisions (players can be hit by monster projectiles)
-	var player_hits = projectile_manager.check_collisions_with_players(player_manager)
-
-	for hit in player_hits:
-		var target := player_manager.get_player_by_entity_id(hit.target_id)
-		if target != null:
-			# Determine damage based on projectile owner
-			var damage: int = GameConstants.PLAYER_PROJECTILE_DAMAGE
-			# Check if owner is a monster (entity_id >= 100000)
-			if hit.owner_id >= 100000:
-				damage = GameConstants.MONSTER_PROJECTILE_DAMAGE
-
-			# Record killer before damage (take_damage may set DEAD state)
-			target.last_killer_id = hit.owner_id
-			var killed := target.take_damage(damage)
-
-			# Broadcast DAMAGE event to all clients
-			if network_manager:
-				var damage_packet = GameEventPacket.create_damage(
-					hit.owner_id, hit.target_id, damage
-				)
-				network_manager.broadcast_to_clients(
-					NetworkManager.MessageType.GAME_EVENT,
-					damage_packet.to_dict()
-				)
-
-			if killed and network_manager:
-				# PvP kill: attribute to killer player
-				if hit.owner_id < 100000:
-					var killer := player_manager.get_player_by_entity_id(hit.owner_id)
-					if killer != null:
-						killer.pvp_kills += 1
-					var kill_packet = GameEventPacket.create_kill_pvp(
-						hit.owner_id, hit.target_id
-					)
-					network_manager.broadcast_to_clients(
-						NetworkManager.MessageType.GAME_EVENT,
-						kill_packet.to_dict()
-					)
-
-					# Record kill in leaderboard and broadcast immediately
-					if leaderboard_manager:
-						leaderboard_manager.record_pvp_kill(hit.owner_id, hit.target_id)
-						_broadcast_leaderboard()
-				else:
-					# PvE kill: monster killed player
-					var kill_packet = GameEventPacket.create_kill(
-						hit.owner_id, hit.target_id
-					)
-					network_manager.broadcast_to_clients(
-						NetworkManager.MessageType.GAME_EVENT,
-						kill_packet.to_dict()
-					)
-
-			if config.debug_logging:
-				print("[ServerMain] Player %d took %d damage from entity %d (killed=%s)" % [
-					hit.target_id, damage, hit.owner_id, killed
-				])
-
-	# Check projectile-monster collisions (monsters can be hit by player projectiles)
-	var monster_hits = projectile_manager.check_collisions_with_monsters(monster_manager)
-
-	for hit in monster_hits:
-		var monster := monster_manager.get_monster(hit.target_id)
-		if monster != null:
-			var killed := monster.take_damage(GameConstants.PLAYER_PROJECTILE_DAMAGE)
-
-			# Broadcast DAMAGE event to all clients
-			if network_manager:
-				var damage_packet = GameEventPacket.create_damage(
-					hit.owner_id, hit.target_id, GameConstants.PLAYER_PROJECTILE_DAMAGE
-				)
-				network_manager.broadcast_to_clients(
-					NetworkManager.MessageType.GAME_EVENT,
-					damage_packet.to_dict()
-				)
-
-			# Attribute monster kill to player
-			if killed:
-				var killer := player_manager.get_player_by_entity_id(hit.owner_id)
-				if killer != null:
-					killer.monster_kills += 1
-
-				if network_manager:
-					var kill_packet = GameEventPacket.create_kill(
-						hit.owner_id, hit.target_id
-					)
-					network_manager.broadcast_to_clients(
-						NetworkManager.MessageType.GAME_EVENT,
-						kill_packet.to_dict()
-					)
-
-			if config.debug_logging:
-				print("[ServerMain] Monster %d took %d damage from player %d (killed=%s)" % [
-					hit.target_id, GameConstants.PLAYER_PROJECTILE_DAMAGE, hit.owner_id, killed
-				])
-
-
-## Broadcast state updates to all connected clients (TASK-012, TASK-021)
-## Now uses delta compression to reduce bandwidth
-func _broadcast_state_updates() -> void:
-	if player_manager.get_player_count() == 0:
-		return
-
-	var network_manager = _get_network_manager()
-	if network_manager == null:
-		return
-
-	# Collect all entity states (full state for delta calculation)
-	var all_entities: Array[Dictionary] = []
-
-	# Add player entities
+## Update invulnerability timers for all players
+func _update_invulnerability_timers(delta: float) -> void:
 	for state: PlayerState in player_manager.get_all_players():
-		all_entities.append(state.to_entity_data())
-
-	# Add projectile entities (TASK-014)
-	var projectile_updates = projectile_manager.collect_state_updates()
-	for proj_data in projectile_updates:
-		all_entities.append(proj_data)
-
-	# Add monster entities (TASK-015)
-	var monster_updates = monster_manager.collect_state_updates()
-	for monster_data in monster_updates:
-		all_entities.append(monster_data)
-
-	# Send delta-compressed updates to each client (TASK-021)
-	for state: PlayerState in player_manager.get_all_players():
-		var peer_id: int = state.peer_id
-		var cache = _get_or_create_delta_cache(peer_id)
-
-		# Check if we need to send a full state (baseline) packet
-		var needs_baseline: bool = cache.needs_full_state_for_interval(tick_count)
-
-		# Create appropriate packet type
-		var packet_data: Dictionary
-		if needs_baseline:
-			packet_data = _create_full_state_packet(all_entities, cache)
-		else:
-			packet_data = _create_delta_packet(all_entities, cache)
-
-		# Send to this client
-		network_manager.send_to_client(peer_id, NetworkManager.MessageType.STATE_UPDATE, packet_data)
-
-
-## Get or create delta cache for a client (TASK-021)
-func _get_or_create_delta_cache(peer_id: int):
-	if not delta_caches.has(peer_id):
-		delta_caches[peer_id] = DeltaStateCacheClass.create_for_client(peer_id)
-		delta_caches[peer_id].debug_logging = config.debug_logging
-	return delta_caches[peer_id]
-
-
-## Create a full state (baseline) packet (TASK-021)
-func _create_full_state_packet(entities: Array[Dictionary], cache) -> Dictionary:
-	var entity_data: Array[Dictionary] = []
-
-	for entity in entities:
-		var entity_id: int = entity.get("id", -1)
-		if entity_id < 0:
-			continue
-
-		# Full state: all fields present, delta_mask = FULL_STATE
-		entity_data.append({
-			"entity_id": entity_id,
-			"entity_type": entity.get("type", PacketTypes.EntityType.PLAYER),
-			"position": entity.get("position", Vector2.ZERO),
-			"animation_state": entity.get("animation", PacketTypes.AnimationState.IDLE),
-			"flags": entity.get("flags", 0),
-			"delta_mask": PacketTypes.DELTA_MASK_FULL_STATE
-		})
-
-		# Update cache with sent state
-		cache.update_cache(entity_id, {
-			"entity_type": entity.get("type", PacketTypes.EntityType.PLAYER),
-			"position": entity.get("position", Vector2.ZERO),
-			"animation_state": entity.get("animation", PacketTypes.AnimationState.IDLE),
-			"flags": entity.get("flags", 0)
-		}, tick_count)
-
-	# Reset baseline tick
-	cache.reset_baseline(tick_count)
-
-	return {
-		"tick": tick_count,
-		"state_flags": PacketTypes.STATE_FLAG_BASELINE,  # Full state (baseline)
-		"baseline_tick": tick_count,
-		"entities": entity_data
-	}
-
-
-## Create a delta-compressed packet (TASK-021)
-func _create_delta_packet(entities: Array[Dictionary], cache) -> Dictionary:
-	var entity_data: Array[Dictionary] = []
-	var active_entity_ids: Array[int] = []
-
-	for entity in entities:
-		var entity_id: int = entity.get("id", -1)
-		if entity_id < 0:
-			continue
-
-		active_entity_ids.append(entity_id)
-
-		var current_state := {
-			"entity_type": entity.get("type", PacketTypes.EntityType.PLAYER),
-			"position": entity.get("position", Vector2.ZERO),
-			"animation_state": entity.get("animation", PacketTypes.AnimationState.IDLE),
-			"flags": entity.get("flags", 0)
-		}
-
-		# Calculate delta mask
-		var delta_mask: int = cache.calculate_delta_mask(entity_id, current_state, tick_count)
-
-		# Skip entities with no changes (delta_mask = 0)
-		if delta_mask == 0:
-			continue
-
-		# Add entity to packet
-		entity_data.append({
-			"entity_id": entity_id,
-			"entity_type": current_state.entity_type,
-			"position": current_state.position,
-			"animation_state": current_state.animation_state,
-			"flags": current_state.flags,
-			"delta_mask": delta_mask
-		})
-
-		# Update cache with sent state
-		cache.update_cache(entity_id, current_state, tick_count)
-
-	# Cleanup stale entities from cache
-	cache.cleanup_stale_entities(active_entity_ids)
-
-	return {
-		"tick": tick_count,
-		"state_flags": PacketTypes.STATE_FLAG_IS_DELTA,
-		"baseline_tick": cache.get_baseline_tick(),
-		"entities": entity_data
-	}
+		state.update_invulnerability(delta)
 
 
 ## Handle client connection (TASK-012)
@@ -564,9 +316,9 @@ func _on_client_connected(peer_id: int) -> void:
 
 	if player_manager.get_player_count() >= config.max_players:
 		print("[ServerMain] Server full, rejecting client: %d" % peer_id)
-		var network_manager = _get_network_manager()
-		if network_manager:
-			network_manager.disconnect_client(peer_id, "Server full")
+		var nm = _get_network_manager()
+		if nm:
+			nm.disconnect_client(peer_id, "Server full")
 		return
 
 	# Create player state via PlayerManager
@@ -576,12 +328,11 @@ func _on_client_connected(peer_id: int) -> void:
 		return
 
 	# Create delta cache for this client (TASK-021)
-	delta_caches[peer_id] = DeltaStateCacheClass.create_for_client(peer_id)
-	delta_caches[peer_id].debug_logging = config.debug_logging
+	broadcast_service.get_or_create_delta_cache(peer_id)
 
 	# Register with leaderboard manager
-	if leaderboard_manager and state:
-		leaderboard_manager.register_player(state.entity_id)
+	if broadcast_service.leaderboard_manager and state:
+		broadcast_service.leaderboard_manager.register_player(state.entity_id)
 
 	print("[ServerMain] Player count: %d/%d" % [player_manager.get_player_count(), config.max_players])
 
@@ -593,14 +344,14 @@ func _on_client_disconnected(peer_id: int) -> void:
 
 	# Remove from leaderboard before player_manager (need entity_id)
 	var state = player_manager.get_player(peer_id)
-	if leaderboard_manager and state:
-		leaderboard_manager.remove_player(state.entity_id)
-		_broadcast_leaderboard()
+	if broadcast_service.leaderboard_manager and state:
+		broadcast_service.leaderboard_manager.remove_player(state.entity_id)
+		broadcast_service.broadcast_leaderboard(player_manager, _get_network_manager())
 
 	player_manager.remove_player(peer_id)
 
 	# Remove delta cache for this client (TASK-021)
-	delta_caches.erase(peer_id)
+	broadcast_service.remove_delta_cache(peer_id)
 
 	print("[ServerMain] Player count: %d/%d" % [player_manager.get_player_count(), config.max_players])
 
@@ -615,23 +366,19 @@ func _on_client_message(peer_id: int, message_type: int, data: Dictionary) -> vo
 	# Handle message based on type
 	match message_type:
 		NetworkManager.MessageType.PLAYER_INPUT:
-			_handle_player_input(peer_id, data)
+			player_manager.queue_player_input(peer_id, data)
 		NetworkManager.MessageType.CONNECT_AUTH:
 			_handle_auth_request(peer_id, data)
 		NetworkManager.MessageType.REQUEST_FULL_STATE:
-			_handle_full_state_request(peer_id)
+			broadcast_service.handle_full_state_request(
+				peer_id, player_manager, projectile_manager, monster_manager,
+				_get_network_manager(), tick_count
+			)
 		NetworkManager.MessageType.RESPAWN_REQUEST:
 			_handle_respawn_request(peer_id)
 		_:
 			if config.debug_logging:
 				print("[ServerMain] Unhandled message type %d from peer %d" % [message_type, peer_id])
-
-
-## Handle player input message (TASK-012)
-## Movement validation will be added in TASK-013
-func _handle_player_input(peer_id: int, data: Dictionary) -> void:
-	# Queue input for processing in next tick
-	player_manager.queue_player_input(peer_id, data)
 
 
 ## Handle authentication request (TASK-012)
@@ -647,176 +394,11 @@ func _handle_auth_request(peer_id: int, data: Dictionary) -> void:
 	player_manager.authenticate_player(peer_id, character_id, character_name)
 
 	# Broadcast PLAYER_INFO to all clients for the newly authenticated player
-	_broadcast_player_info(peer_id)
+	var nm = _get_network_manager()
+	broadcast_service.broadcast_player_info(peer_id, player_manager, nm)
 
 	# Send PLAYER_INFO for all existing players to the new client
-	_send_all_player_info_to_client(peer_id)
-
-
-## Handle client request for full state sync (TASK-021)
-func _handle_full_state_request(peer_id: int) -> void:
-	if config.debug_logging:
-		print("[ServerMain] Full state request from peer %d" % peer_id)
-
-	var network_manager = _get_network_manager()
-	if network_manager == null:
-		return
-
-	# Collect all entity states
-	var all_entities: Array[Dictionary] = []
-
-	# Add player entities
-	for state: PlayerState in player_manager.get_all_players():
-		all_entities.append(state.to_entity_data())
-
-	# Add projectile entities
-	var projectile_updates = projectile_manager.collect_state_updates()
-	for proj_data in projectile_updates:
-		all_entities.append(proj_data)
-
-	# Add monster entities
-	var monster_updates = monster_manager.collect_state_updates()
-	for monster_data in monster_updates:
-		all_entities.append(monster_data)
-
-	# Get or create delta cache for this client
-	var cache = _get_or_create_delta_cache(peer_id)
-
-	# Create and send full state packet
-	var packet_data = _create_full_state_packet(all_entities, cache)
-
-	network_manager.send_to_client(peer_id, NetworkManager.MessageType.STATE_UPDATE, packet_data)
-
-	if config.debug_logging:
-		print("[ServerMain] Sent full state to peer %d (%d entities)" % [peer_id, all_entities.size()])
-
-
-## Record tick processing time for metrics
-func _record_tick_time(time_ms: float) -> void:
-	_tick_times.append(time_ms)
-	if _tick_times.size() > METRICS_SAMPLE_SIZE:
-		_tick_times.pop_front()
-
-
-## Update performance metrics
-func _update_metrics() -> void:
-	metrics.tick_count = tick_count
-	metrics.player_count = player_manager.get_player_count()
-	metrics.entity_count = game_entities.size() + projectile_manager.get_projectile_count() + monster_manager.get_monster_count()
-
-	if _tick_times.size() > 0:
-		var total := 0.0
-		var max_time := 0.0
-		for t in _tick_times:
-			total += t
-			if t > max_time:
-				max_time = t
-		metrics.avg_tick_time_ms = total / _tick_times.size()
-		metrics.max_tick_time_ms = max_time
-
-	if config.debug_logging:
-		_print_metrics()
-
-
-## Print current server metrics
-func _print_metrics() -> void:
-	print("[ServerMain] Tick: %d | Players: %d | Entities: %d | Avg: %.2fms | Max: %.2fms" % [
-		tick_count,
-		metrics.player_count,
-		metrics.entity_count,
-		metrics.avg_tick_time_ms,
-		metrics.max_tick_time_ms
-	])
-
-
-## Get NetworkManager singleton
-func _get_network_manager() -> Node:
-	return get_tree().root.get_node_or_null("NetworkManager")
-
-
-## Get current server metrics
-func get_metrics() -> Dictionary:
-	return metrics.duplicate()
-
-
-## Get connected player count
-func get_player_count() -> int:
-	return player_manager.get_player_count()
-
-
-## Check if server is running
-func is_running() -> bool:
-	return server_running
-
-
-## Shutdown server gracefully
-func shutdown(reason: String = "Server shutdown") -> void:
-	print("[ServerMain] Shutting down: %s" % reason)
-	server_running = false
-
-	# Notify all connected clients
-	var network_manager = _get_network_manager()
-	if network_manager != null:
-		for state: PlayerState in player_manager.get_all_players():
-			network_manager.send_to_client(
-				state.peer_id,
-				NetworkManager.MessageType.DISCONNECT,
-				{"reason": PacketTypes.DisconnectReason.SERVER_SHUTDOWN}
-			)
-
-	player_manager.clear_all()
-	projectile_manager.clear_all()
-	monster_manager.clear_all()
-	monster_ai = null
-	if leaderboard_manager:
-		leaderboard_manager.clear()
-	game_entities.clear()
-	delta_caches.clear()  # TASK-021
-
-	print("[ServerMain] Server shutdown complete")
-
-
-## Broadcast PLAYER_INFO event for a specific player to all clients
-func _broadcast_player_info(peer_id: int) -> void:
-	var state = player_manager.get_player(peer_id)
-	if state == null:
-		return
-
-	var network_manager = _get_network_manager()
-	if network_manager == null:
-		return
-
-	var event_packet = GameEventPacket.create_player_info(
-		state.entity_id,
-		state.character_name
-	)
-
-	network_manager.broadcast_to_clients(
-		NetworkManager.MessageType.GAME_EVENT,
-		event_packet.to_dict()
-	)
-
-
-## Send PLAYER_INFO for all existing players to a newly connected client
-func _send_all_player_info_to_client(peer_id: int) -> void:
-	var network_manager = _get_network_manager()
-	if network_manager == null:
-		return
-
-	for state: PlayerState in player_manager.get_all_players():
-		if state.peer_id == peer_id:
-			continue  # Skip self
-
-		var event_packet = GameEventPacket.create_player_info(
-			state.entity_id,
-			state.character_name
-		)
-
-		network_manager.send_to_client(
-			peer_id,
-			NetworkManager.MessageType.GAME_EVENT,
-			event_packet.to_dict()
-		)
+	broadcast_service.send_all_player_info_to_client(peer_id, player_manager, nm)
 
 
 ## Handle client respawn request
@@ -840,12 +422,12 @@ func _handle_respawn_request(peer_id: int) -> void:
 		return
 
 	# Broadcast RESPAWN event to all clients
-	var network_manager = _get_network_manager()
-	if network_manager == null:
+	var nm = _get_network_manager()
+	if nm == null:
 		return
 
 	var respawn_packet = GameEventPacket.create_respawn(state.entity_id, state.position)
-	network_manager.broadcast_to_clients(
+	nm.broadcast_to_clients(
 		NetworkManager.MessageType.GAME_EVENT,
 		respawn_packet.to_dict()
 	)
@@ -854,36 +436,52 @@ func _handle_respawn_request(peer_id: int) -> void:
 		print("[ServerMain] Player %d respawned at %s" % [state.entity_id, state.position])
 
 
-## Update invulnerability timers for all players
-func _update_invulnerability_timers(delta: float) -> void:
-	for state: PlayerState in player_manager.get_all_players():
-		state.update_invulnerability(delta)
+## Get NetworkManager singleton
+func _get_network_manager() -> Node:
+	return get_tree().root.get_node_or_null("NetworkManager")
 
 
-## Broadcast leaderboard update to all clients
-func _broadcast_leaderboard() -> void:
-	var network_manager = _get_network_manager()
-	if network_manager == null:
-		return
+## Get current server metrics
+func get_metrics() -> Dictionary:
+	return server_metrics.get_metrics()
 
-	var entries: Array
-	if leaderboard_manager:
-		entries = leaderboard_manager.get_top_n(10)
-	else:
-		# Fallback: collect from player states directly
-		var players := player_manager.get_all_players()
-		entries = []
-		for state: PlayerState in players:
-			entries.append({"entity_id": state.entity_id, "pvp_kills": state.pvp_kills})
-		entries.sort_custom(func(a, b): return a.pvp_kills > b.pvp_kills)
-		if entries.size() > 10:
-			entries.resize(10)
 
-	var packet = GameEventPacket.create_leaderboard_update(entries)
-	network_manager.broadcast_to_clients(
-		NetworkManager.MessageType.GAME_EVENT,
-		packet.to_dict()
-	)
+## Get connected player count
+func get_player_count() -> int:
+	return player_manager.get_player_count()
+
+
+## Check if server is running
+func is_running() -> bool:
+	return server_running
+
+
+## Shutdown server gracefully
+func shutdown(reason: String = "Server shutdown") -> void:
+	print("[ServerMain] Shutting down: %s" % reason)
+	server_running = false
+
+	# Notify all connected clients
+	var nm = _get_network_manager()
+	if nm != null:
+		for state: PlayerState in player_manager.get_all_players():
+			nm.send_to_client(
+				state.peer_id,
+				NetworkManager.MessageType.DISCONNECT,
+				{"reason": PacketTypes.DisconnectReason.SERVER_SHUTDOWN}
+			)
+
+	player_manager.clear_all()
+	projectile_manager.clear_all()
+	monster_manager.clear_all()
+	monster_ai = null
+	if broadcast_service.leaderboard_manager:
+		broadcast_service.leaderboard_manager.clear()
+	broadcast_service.clear_all_caches()
+	game_entities.clear()
+	server_metrics.clear()
+
+	print("[ServerMain] Server shutdown complete")
 
 
 ## Called when scene is exited

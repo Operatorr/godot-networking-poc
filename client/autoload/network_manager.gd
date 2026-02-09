@@ -614,12 +614,11 @@ func _on_connection_closed(reason: String) -> void:
 	_schedule_reconnect()
 
 ## Schedule reconnection with exponential backoff
-## Only auto-reconnects when game state is IN_ARENA
+## Auto-reconnects whenever the client had an active server connection
 func _schedule_reconnect() -> void:
-	# Check if auto-reconnect is appropriate
-	var game_mgr = get_tree().root.get_node_or_null("GameManager")
-	if game_mgr and game_mgr.current_state != game_mgr.GameState.IN_ARENA:
-		print("[NetworkManager] Skipping auto-reconnect (not in arena)")
+	# Only reconnect if we have a server URL (i.e., we were connected or connecting)
+	if server_url.is_empty():
+		print("[NetworkManager] Skipping auto-reconnect (no server URL)")
 		current_state = ConnectionState.DISCONNECTED
 		return
 

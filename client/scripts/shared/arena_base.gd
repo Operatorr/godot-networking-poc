@@ -55,6 +55,9 @@ var connection_lost_overlay: Control = null
 ## Last known killer for death screen
 var _last_killer_id: int = -1
 
+## Cached AudioManager reference (lazy-initialized)
+var _cached_audio_manager: Node = null
+
 ## Track if client has been initialized
 var _client_initialized: bool = false
 
@@ -462,9 +465,11 @@ func _show_kill_notification(victim_name: String) -> void:
 	tween.tween_callback(label.queue_free)
 
 
-## Get AudioManager singleton
+## Get AudioManager singleton (cached)
 func _get_audio_manager() -> Node:
-	return get_tree().root.get_node_or_null("AudioManager")
+	if _cached_audio_manager == null or not is_instance_valid(_cached_audio_manager):
+		_cached_audio_manager = get_tree().root.get_node_or_null("AudioManager")
+	return _cached_audio_manager
 
 
 ## Update HP bar from local player's HP component
