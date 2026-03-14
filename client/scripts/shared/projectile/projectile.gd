@@ -25,7 +25,16 @@ var distance_traveled: float = 0.0
 var owner_pool: Node = null
 
 
+## Cached sprite reference
+var _sprite: Sprite2D = null
+
 func _ready() -> void:
+	# Apply procedural projectile texture
+	_sprite = get_node_or_null("Sprite2D")
+	if _sprite:
+		_sprite.texture = ProceduralSprites.create_projectile_texture()
+		_sprite.modulate = Color.WHITE  # Override placeholder yellow tint
+
 	# Connect body_entered signal for collision detection
 	body_entered.connect(_on_body_entered)
 

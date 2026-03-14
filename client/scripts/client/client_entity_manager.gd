@@ -187,10 +187,11 @@ func _spawn_monster(entity_id: int, position: Vector2) -> void:
 
 	entity_container.add_child(monster)
 
-	# Play monster spawn sound
+	# Play monster spawn sound + effects
 	var audio := _get_audio_manager()
 	if audio:
 		audio.play_monster_spawn()
+	_spawn_monster_spawn_effects(position)
 	monster_entities[entity_id] = monster
 
 	# Register with InterpolationController for position updates
@@ -213,6 +214,8 @@ func _despawn_monster(entity_id: int) -> void:
 		interpolation_controller.unregister_entity_node(entity_id)
 
 	if is_instance_valid(monster):
+		# Spawn death effects at monster position before freeing
+		_spawn_monster_death_effects(monster.global_position)
 		monster.queue_free()
 
 	if debug_logging:
@@ -307,10 +310,12 @@ func update_entity_visuals() -> void:
 		var flags := interpolation_controller.get_entity_flags(entity_id)
 		remote_player.update_from_network(anim_state, flags)
 
-		# Detect animation state transitions for audio
+		# Detect animation state transitions for audio + effects
 		var prev_anim: int = _player_prev_anim.get(entity_id, PacketTypes.AnimationState.IDLE)
 		if anim_state != prev_anim:
 			_play_remote_player_audio(anim_state)
+			if anim_state == PacketTypes.AnimationState.HIT:
+				_spawn_remote_hit_sparks(entity_id)
 			_player_prev_anim[entity_id] = anim_state
 
 	# Update monster visuals
@@ -363,11 +368,29 @@ func _on_monster_took_damage(_amount: int) -> void:
 		audio.play_monster_hit()
 
 
-## Handle monster death (play audio)
+## Handle monster death (play audio + effects)
 func _on_monster_died() -> void:
 	var audio := _get_audio_manager()
 	if audio:
 		audio.play_monster_death()
+
+
+## Spawn death particles for a monster at position
+func _spawn_monster_death_effects(pos: Vector2) -> void:
+	if entity_container == null:
+		return
+	var death_fx := ParticleEffects.create_death_explosion(pos, Color(0.8, 0.13, 0.13))
+	entity_container.add_child(death_fx)
+	var gore := ParticleEffects.create_gore_splatter(pos)
+	entity_container.add_child(gore)
+
+
+## Spawn spawn particles for a monster at position
+func _spawn_monster_spawn_effects(pos: Vector2) -> void:
+	if entity_container == null:
+		return
+	var spawn_fx := ParticleEffects.create_spawn_effect(pos, Color(0.8, 0.13, 0.13))
+	entity_container.add_child(spawn_fx)
 
 
 ## Play audio for remote player animation state transitions
@@ -383,6 +406,16 @@ func _play_remote_player_audio(anim_state: int) -> void:
 			audio.play_player_hit()
 		PacketTypes.AnimationState.DEATH:
 			audio.play_player_death()
+
+
+## Spawn hit sparks for a remote player
+func _spawn_remote_hit_sparks(entity_id: int) -> void:
+	if not player_entities.has(entity_id) or entity_container == null:
+		return
+	var player: RemotePlayer = player_entities[entity_id]
+	if is_instance_valid(player):
+		var sparks := ParticleEffects.create_hit_sparks(player.global_position, Color(0.6, 0.27, 0.8))
+		entity_container.add_child(sparks)
 
 
 ## Handle projectile hit (play impact audio)

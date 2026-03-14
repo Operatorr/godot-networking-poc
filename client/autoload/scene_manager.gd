@@ -48,6 +48,11 @@ var load_progress: Array = []
 var scene_cache: Dictionary = {}
 var enable_scene_caching: bool = false
 
+## Fade transition overlay
+var _fade_layer: CanvasLayer = null
+var _fade_rect: ColorRect = null
+const FADE_DURATION := 0.3
+
 ## Called when the node enters the scene tree
 func _ready() -> void:
 	# Detect if running as dedicated server
@@ -62,6 +67,9 @@ func _ready() -> void:
 	if current_scene:
 		current_scene_name = current_scene.scene_file_path
 		print("[SceneManager] Current scene: %s" % current_scene_name)
+
+	# Create fade transition overlay
+	_setup_fade_overlay()
 
 	# Wait for other autoloads to initialize
 	await get_tree().process_frame
@@ -123,9 +131,13 @@ func change_scene(scene_name: SceneName, use_loading_screen: bool = false) -> vo
 
 	is_transitioning = false
 
-## Direct scene change (no loading screen)
+## Direct scene change with fade transition
 func _change_scene_direct(scene_path: String) -> void:
 	print("[SceneManager] Performing direct scene change to: %s" % scene_path)
+
+	# Fade out
+	if not is_server:
+		await _fade_out()
 
 	# Clean up current scene
 	if current_scene:
@@ -137,6 +149,8 @@ func _change_scene_direct(scene_path: String) -> void:
 
 	if new_scene == null:
 		print("[SceneManager] Failed to load scene: %s" % scene_path)
+		if not is_server:
+			await _fade_in()
 		return
 
 	# Add new scene to tree
@@ -145,6 +159,10 @@ func _change_scene_direct(scene_path: String) -> void:
 
 	current_scene = new_scene
 	current_scene_name = scene_path
+
+	# Fade in
+	if not is_server:
+		await _fade_in()
 
 	print("[SceneManager] Scene changed to: %s" % scene_path)
 	scene_change_completed.emit(scene_path)
@@ -411,3 +429,38 @@ func preload_scene(scene_name: SceneName) -> void:
 func clear_cache() -> void:
 	scene_cache.clear()
 	print("[SceneManager] Scene cache cleared")
+
+
+## Set up the fade overlay CanvasLayer
+func _setup_fade_overlay() -> void:
+	if is_server:
+		return
+	_fade_layer = CanvasLayer.new()
+	_fade_layer.layer = 128  # Above everything
+	add_child(_fade_layer)
+
+	_fade_rect = ColorRect.new()
+	_fade_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_fade_rect.color = Color(0, 0, 0, 0)
+	_fade_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_fade_layer.add_child(_fade_rect)
+
+
+## Fade to black
+func _fade_out() -> void:
+	if _fade_rect == null:
+		return
+	_fade_rect.color = Color(0, 0, 0, 0)
+	var tween := create_tween()
+	tween.tween_property(_fade_rect, "color:a", 1.0, FADE_DURATION)
+	await tween.finished
+
+
+## Fade from black
+func _fade_in() -> void:
+	if _fade_rect == null:
+		return
+	_fade_rect.color = Color(0, 0, 0, 1)
+	var tween := create_tween()
+	tween.tween_property(_fade_rect, "color:a", 0.0, FADE_DURATION)
+	await tween.finished
