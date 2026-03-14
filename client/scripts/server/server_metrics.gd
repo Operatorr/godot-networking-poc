@@ -12,6 +12,9 @@ var metrics: Dictionary = {
 	"max_tick_time_ms": 0.0,
 	"player_count": 0,
 	"entity_count": 0,
+	"total_bytes_sent": 0,
+	"total_bytes_received": 0,
+	"avg_bandwidth_per_client": 0.0,
 	"last_metrics_time": 0.0
 }
 
@@ -31,10 +34,21 @@ func record_tick_time(time_ms: float) -> void:
 
 
 ## Update performance metrics
-func update_metrics(player_count: int, entity_count: int, tick_count: int) -> void:
+func update_metrics(player_count: int, entity_count: int, tick_count: int, network_stats: Dictionary = {}) -> void:
 	metrics.tick_count = tick_count
 	metrics.player_count = player_count
 	metrics.entity_count = entity_count
+	metrics.total_bytes_sent = network_stats.get("bytes_sent", 0)
+	metrics.total_bytes_received = network_stats.get("bytes_received", 0)
+	# Calculate average bandwidth per client (bytes/sec)
+	var peer_bytes: Dictionary = network_stats.get("peer_bytes_sent", {})
+	if player_count > 0 and peer_bytes.size() > 0:
+		var total_peer_bytes := 0
+		for pid in peer_bytes:
+			total_peer_bytes += peer_bytes[pid]
+		metrics.avg_bandwidth_per_client = total_peer_bytes / player_count
+	else:
+		metrics.avg_bandwidth_per_client = 0.0
 
 	if _tick_times.size() > 0:
 		var total := 0.0
@@ -77,5 +91,8 @@ func clear() -> void:
 		"max_tick_time_ms": 0.0,
 		"player_count": 0,
 		"entity_count": 0,
+		"total_bytes_sent": 0,
+		"total_bytes_received": 0,
+		"avg_bandwidth_per_client": 0.0,
 		"last_metrics_time": 0.0
 	}
