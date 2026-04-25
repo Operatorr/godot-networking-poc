@@ -47,11 +47,12 @@ func _setup_flash_overlay() -> void:
 func shake(intensity: float, duration: float = 0.3) -> void:
 	# Only upgrade shake, don't downgrade
 	if intensity > _shake_intensity:
+		var was_idle := _shake_intensity <= 0.0
 		_shake_intensity = intensity
 		_shake_duration = duration
 		_shake_timer = 0.0
-		if camera:
-			_original_offset = Vector2.ZERO
+		if camera and was_idle:
+			_original_offset = camera.offset
 
 
 ## Update camera shake

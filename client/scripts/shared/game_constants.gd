@@ -219,6 +219,45 @@ static func circle_intersects_obstacle(center: Vector2, radius: float) -> bool:
 	return false
 
 
+## Resolve movement against map bounds and arena obstacles.
+## Attempts axis-separated sliding when direct movement would hit a wall.
+static func move_with_obstacle_collision(from: Vector2, to: Vector2, radius: float) -> Vector2:
+	var target := clamp_to_bounds(to)
+	if not _movement_hits_obstacle(from, target, radius):
+		return target
+
+	var x_target := clamp_to_bounds(Vector2(target.x, from.y))
+	var y_target := clamp_to_bounds(Vector2(from.x, target.y))
+	var best_position := from
+	var best_distance := from.distance_squared_to(target)
+
+	if not _movement_hits_obstacle(from, x_target, radius):
+		best_position = x_target
+		best_distance = best_position.distance_squared_to(target)
+
+	if not _movement_hits_obstacle(from, y_target, radius):
+		var y_distance := y_target.distance_squared_to(target)
+		if y_distance < best_distance:
+			best_position = y_target
+
+	return best_position
+
+
+## Check if a swept circle movement crosses or ends inside an obstacle.
+static func _movement_hits_obstacle(from: Vector2, to: Vector2, radius: float) -> bool:
+	if from.is_equal_approx(to):
+		return circle_intersects_obstacle(to, radius)
+
+	for obs in ARENA_OBSTACLES:
+		var expanded := Rect2(obs.position - Vector2(radius, radius), obs.size + Vector2(radius * 2, radius * 2))
+		if expanded.has_point(to):
+			return true
+		if _line_rect_intersection(from, to, expanded) != Vector2.INF:
+			return true
+
+	return false
+
+
 ## Check if a line segment intersects any obstacle (for projectile collision)
 ## Returns the first intersection point or Vector2.INF if no intersection
 static func line_intersects_obstacle(from: Vector2, to: Vector2) -> Vector2:

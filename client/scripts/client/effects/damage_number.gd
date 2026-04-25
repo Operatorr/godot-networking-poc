@@ -49,7 +49,7 @@ func _draw() -> void:
 		alpha = 1.0 - (t - FADE_START) / (1.0 - FADE_START)
 
 	var font := ThemeDB.fallback_font
-	var font_size := 18 + mini(_amount / 10, 4)  # Bigger for bigger hits
+	var font_size := 18 + mini(int(_amount / 10.0), 4)  # Bigger for bigger hits
 	var text := str(_amount)
 
 	var c := _color

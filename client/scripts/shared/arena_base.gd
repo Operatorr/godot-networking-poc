@@ -106,7 +106,7 @@ func _process(delta: float) -> void:
 		var target_zoom := CAMERA_ZOOM_DEFAULT
 		if Input.is_action_pressed("sprint") and local_player.movement_state == Player.MovementState.WALKING:
 			target_zoom = CAMERA_ZOOM_SPRINT
-		camera.zoom = camera.zoom.lerp(target_zoom, delta * CAMERA_ZOOM_SPEED)
+		camera.zoom = camera.zoom.lerp(target_zoom, clampf(delta * CAMERA_ZOOM_SPEED, 0.0, 1.0))
 
 	# Kill streak timer decay
 	if _kill_streak_timer > 0.0:
@@ -459,7 +459,7 @@ func _handle_kill_pvp_event(data: Dictionary) -> void:
 		if _kill_streak_count >= 3:
 			_show_streak_notification(_kill_streak_count)
 		elif _kill_streak_count == 2:
-			_show_kill_notification("DOUBLE KILL! %s" % victim_name)
+			_show_kill_notification(victim_name, "DOUBLE KILL!")
 		else:
 			_show_kill_notification(victim_name)
 
@@ -521,13 +521,15 @@ func _on_local_player_shot(pos: Vector2, dir: Vector2) -> void:
 
 
 ## Show a "You eliminated [Name]" notification for the local player
-func _show_kill_notification(victim_name: String) -> void:
+func _show_kill_notification(victim_name: String, title: String = "") -> void:
 	var hud_layer := get_hud_layer()
 	if hud_layer == null:
 		return
 
 	var label := Label.new()
 	label.text = "You eliminated %s" % victim_name
+	if not title.is_empty():
+		label.text = "%s\n%s" % [title, label.text]
 	label.add_theme_font_size_override("font_size", 22)
 	label.add_theme_color_override("font_color", Color(1.0, 0.3, 0.3))
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -819,7 +821,7 @@ func _draw_vein_branches() -> void:
 		var iy := arena_min.y
 		while iy <= arena_max.y:
 			# Use position hash to deterministically decide branch directions
-			var hash_val := int(ix * 73.0 + iy * 137.0) % 100
+			var hash_val := posmod(int(ix * 73.0 + iy * 137.0), 100)
 			if hash_val < 30:  # 30% of intersections get branches
 				var branch_len := 16.0 + float(hash_val % 4) * 8.0
 				var angle := float(hash_val) * 0.7  # Deterministic angle

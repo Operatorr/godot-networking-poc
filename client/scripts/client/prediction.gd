@@ -197,10 +197,13 @@ func _apply_local_prediction(input_flags: int, delta: float) -> void:
 
 	# Update velocity and position
 	predicted_velocity = direction * speed
-	predicted_position += predicted_velocity * delta
-
-	# Clamp to map boundaries (must match server)
-	predicted_position = GameConstants.clamp_to_bounds(predicted_position)
+	predicted_position = GameConstants.move_with_obstacle_collision(
+		predicted_position,
+		predicted_position + predicted_velocity * delta,
+		GameConstants.PLAYER_HITBOX_RADIUS
+	)
+	if delta > 0.0:
+		predicted_velocity = (predicted_position - position_before) / delta
 
 	# Store input snapshot for reconciliation
 	var snapshot := InputSnapshot.create(
@@ -484,11 +487,18 @@ func _replay_input(snapshot: InputSnapshot) -> void:
 	var speed := _get_speed_from_flags(snapshot.input_flags)
 
 	var velocity := direction * speed
-	predicted_position += velocity * snapshot.delta
-	predicted_position = GameConstants.clamp_to_bounds(predicted_position)
+	var position_before := predicted_position
+	predicted_position = GameConstants.move_with_obstacle_collision(
+		predicted_position,
+		predicted_position + velocity * snapshot.delta,
+		GameConstants.PLAYER_HITBOX_RADIUS
+	)
+	if snapshot.delta > 0.0:
+		velocity = (predicted_position - position_before) / snapshot.delta
 
 	# Update snapshot for potential future replays
 	snapshot.position_after = predicted_position
+	snapshot.velocity = velocity
 #endregion
 
 
