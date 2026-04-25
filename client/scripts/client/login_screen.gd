@@ -2,9 +2,12 @@
 ## Connects to AuthManager for JWT-based login
 extends Control
 
+const TestConfigScript := preload("res://scripts/shared/test_config.gd")
+
 ## External URLs for registration and password recovery
 @export var registration_url: String = "https://example.com/register"
 @export var forgot_password_url: String = "https://example.com/forgot-password"
+@export var prefill_test_credentials_from_env: bool = false
 
 ## UI node references
 @onready var username_input: LineEdit = $CenterContainer/VBoxContainer/UsernameInput
@@ -37,6 +40,9 @@ func _ready() -> void:
 
 	# Setup focus navigation
 	_setup_focus_navigation()
+
+	# Prefill local test credentials when enabled for debug/editor runs.
+	_prefill_test_credentials()
 
 	# Setup button audio
 	_setup_button_audio()
@@ -95,6 +101,26 @@ func _check_auto_login() -> void:
 		print("[LoginScreen] Valid token found, checking character state...")
 		# User is already logged in, navigate accordingly
 		_navigate_after_login()
+
+
+## Prefill credentials from .env.test for local development only.
+func _prefill_test_credentials() -> void:
+	if not prefill_test_credentials_from_env:
+		return
+
+	if not OS.has_feature("debug") and not OS.has_feature("editor"):
+		return
+
+	if not username_input.text.is_empty() or not password_input.text.is_empty():
+		return
+
+	var config: TestConfigScript = TestConfigScript.new()
+	if not config.load_config() or not config.is_valid():
+		return
+
+	username_input.text = config.username
+	password_input.text = config.password
+	print("[LoginScreen] Prefilled test credentials for user: %s" % config.username)
 
 
 ## Handle login button press

@@ -87,7 +87,7 @@ func _process(delta: float) -> void:
 		var secs := ceili(_countdown_timer)
 		_countdown_label.text = "Respawn in %d..." % secs
 		# Pulse effect
-		var pulse := 0.7 + 0.3 * abs(sin(Time.get_ticks_msec() / 200.0))
+		var pulse: float = 0.7 + 0.3 * absf(sin(Time.get_ticks_msec() / 200.0))
 		_countdown_label.modulate.a = pulse
 
 

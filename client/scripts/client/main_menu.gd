@@ -327,5 +327,4 @@ func _setup_button_audio() -> void:
 
 ## Called when scene is about to exit
 func on_scene_exit() -> void:
-	# Stop music when leaving main menu
-	AudioManager.stop_music()
+	pass

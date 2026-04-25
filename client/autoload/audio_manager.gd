@@ -8,6 +8,11 @@ const MASTER_BUS = "Master"
 const MUSIC_BUS = "Music"
 const SFX_BUS = "SFX"
 const ProceduralAudio := preload("res://scripts/shared/audio/procedural_audio.gd")
+const MAIN_MENU_MUSIC := preload("res://assets/audio/music/main_menu.wav")
+const MUSIC_TRACK_VOLUMES := {
+	"menu_bgm": 0.2
+}
+const MUSIC_FADE_SILENCE_DB = -40.0
 
 ## Audio categories
 enum AudioCategory {
@@ -34,6 +39,7 @@ var combat_sfx_players: Array[AudioStreamPlayer] = []
 var current_music_track: String = ""
 var music_fade_duration: float = 1.0
 var is_music_fading: bool = false
+var _music_fade_tween: Tween = null
 
 ## Audio player pool settings
 const UI_SFX_POOL_SIZE: int = 8
@@ -150,7 +156,11 @@ func _generate_procedural_audio() -> void:
 
 	# Generate music
 	var music := ProceduralAudio.generate_music()
-	audio_library["music"]["menu_bgm"] = music["menu_bgm"]
+	var menu_music: AudioStream = MAIN_MENU_MUSIC
+	if menu_music is AudioStreamWAV:
+		menu_music.loop_mode = AudioStreamWAV.LOOP_FORWARD
+
+	audio_library["music"]["menu_bgm"] = menu_music
 	audio_library["music"]["arena_ambience"] = music["arena_ambience"]
 
 	print("[AudioManager] Procedural audio generation complete (%d SFX, %d music)" % [sfx.size(), music.size()])
@@ -161,16 +171,19 @@ func play_music(track_name: String, fade_in: bool = true) -> void:
 	if is_server or music_player == null:
 		return
 
-	if current_music_track == track_name and music_player.playing:
-		print("[AudioManager] Music track '%s' already playing" % track_name)
-		return
-
 	# Check if track exists in library
 	if not audio_library.music.has(track_name):
 		print("[AudioManager] Music track '%s' not found in library" % track_name)
 		return
 
 	var track = audio_library.music[track_name]
+	var target_volume_db := _get_music_track_volume_db(track_name)
+
+	if current_music_track == track_name and music_player.playing:
+		_stop_music_fade()
+		music_player.volume_db = target_volume_db
+		print("[AudioManager] Music track '%s' already playing" % track_name)
+		return
 
 	if fade_in and music_player.playing:
 		# Fade out current track, then fade in new track
@@ -178,10 +191,8 @@ func play_music(track_name: String, fade_in: bool = true) -> void:
 		await get_tree().create_timer(0.5).timeout
 
 	music_player.stream = track
+	music_player.volume_db = target_volume_db
 	music_player.play()
-
-	if fade_in:
-		_fade_in_music(music_fade_duration)
 
 	current_music_track = track_name
 	print("[AudioManager] Playing music: %s" % track_name)
@@ -203,46 +214,30 @@ func stop_music(fade_out: bool = true) -> void:
 	current_music_track = ""
 	print("[AudioManager] Music stopped")
 
-## Fade in music
-func _fade_in_music(duration: float) -> void:
-	if is_music_fading:
-		return
-
-	is_music_fading = true
-	var music_bus_idx = AudioServer.get_bus_index(MUSIC_BUS)
-	var target_volume = AudioServer.get_bus_volume_db(music_bus_idx)
-
-	# Start from silence
-	AudioServer.set_bus_volume_db(music_bus_idx, -80.0)
-
-	# Tween to target volume
-	var tween = create_tween()
-	tween.tween_method(
-		func(vol): AudioServer.set_bus_volume_db(music_bus_idx, vol),
-		-80.0,
-		target_volume,
-		duration
-	)
-	tween.finished.connect(func(): is_music_fading = false)
-
 ## Fade out music
 func _fade_out_music(duration: float) -> void:
-	if is_music_fading:
-		return
+	_stop_music_fade()
 
 	is_music_fading = true
-	var music_bus_idx = AudioServer.get_bus_index(MUSIC_BUS)
-	var current_volume = AudioServer.get_bus_volume_db(music_bus_idx)
 
 	# Tween to silence
-	var tween = create_tween()
-	tween.tween_method(
-		func(vol): AudioServer.set_bus_volume_db(music_bus_idx, vol),
-		current_volume,
-		-80.0,
-		duration
+	_music_fade_tween = create_tween()
+	_music_fade_tween.tween_property(music_player, "volume_db", MUSIC_FADE_SILENCE_DB, duration)
+	_music_fade_tween.finished.connect(func():
+		is_music_fading = false
+		_music_fade_tween = null
 	)
-	tween.finished.connect(func(): is_music_fading = false)
+
+func _stop_music_fade() -> void:
+	if _music_fade_tween != null:
+		_music_fade_tween.kill()
+		_music_fade_tween = null
+
+	is_music_fading = false
+
+func _get_music_track_volume_db(track_name: String) -> float:
+	var track_volume: float = MUSIC_TRACK_VOLUMES.get(track_name, 1.0)
+	return linear_to_db(track_volume) if track_volume > 0.0 else -80.0
 
 ## Play sound effect
 func play_sfx(sfx_name: String, category: AudioCategory = AudioCategory.SFX_UI) -> void:
