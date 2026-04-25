@@ -67,6 +67,9 @@ var max_reconnect_attempts: int = 5
 var base_reconnect_delay: float = 1.0  ## Start with 1 second
 var max_reconnect_delay: float = 32.0  ## Cap at 32 seconds
 var reconnect_timer: float = 0.0
+var connection_timeout_seconds: float = 5.0
+var _connection_attempt_id: int = 0
+var _had_successful_connection: bool = false
 
 ## Heartbeat system (1/sec as per spec)
 var heartbeat_interval: float = 1.0
@@ -227,14 +230,24 @@ func _process_reconnecting(delta: float) -> void:
 		_attempt_reconnect()
 
 ## Connect to game server
-func connect_to_server(url: String, token: String = "") -> void:
+func connect_to_server(url: String, token: String = "", is_reconnect: bool = false) -> void:
 	if current_state == ConnectionState.CONNECTED:
 		print("[NetworkManager] Already connected to server")
 		return
 
+	if current_state == ConnectionState.CONNECTING:
+		print("[NetworkManager] Connection already in progress")
+		return
+
+	if not is_reconnect:
+		reconnect_attempts = 0
+		_had_successful_connection = false
+
 	server_url = url
 	auth_token = token
 	current_state = ConnectionState.CONNECTING
+	_connection_attempt_id += 1
+	var attempt_id := _connection_attempt_id
 
 	print("[NetworkManager] Connecting to %s..." % url)
 
@@ -246,38 +259,66 @@ func connect_to_server(url: String, token: String = "") -> void:
 
 	if error != OK:
 		print("[NetworkManager] Failed to initiate connection: %d" % error)
-		current_state = ConnectionState.ERROR
-		connection_error.emit("Failed to connect: Error %d" % error)
-		_schedule_reconnect()
+		_fail_connection_attempt(_format_connection_error(url), is_reconnect)
 	else:
-		# Wait for connection to establish
-		await get_tree().create_timer(0.5).timeout
-		_check_connection_status()
+		await _wait_for_connection(attempt_id, is_reconnect)
 
-## Check if connection was established
-func _check_connection_status() -> void:
+## Poll until the WebSocket opens, closes, or times out.
+func _wait_for_connection(attempt_id: int, is_reconnect: bool) -> void:
 	if ws_client == null:
 		return
 
-	ws_client.poll()
-	var state = ws_client.get_ready_state()
+	var elapsed := 0.0
+	while elapsed < connection_timeout_seconds:
+		if attempt_id != _connection_attempt_id or ws_client == null:
+			return
 
-	if state == WebSocketPeer.STATE_OPEN:
-		print("[NetworkManager] Connected to server successfully")
-		current_state = ConnectionState.CONNECTED
-		reconnect_attempts = 0
-		last_heartbeat_received = Time.get_ticks_msec() / 1000.0
+		ws_client.poll()
+		var state = ws_client.get_ready_state()
 
-		# Send authentication handshake
-		if not auth_token.is_empty():
-			send_auth_handshake()
+		if state == WebSocketPeer.STATE_OPEN:
+			_complete_connection()
+			return
+		elif state == WebSocketPeer.STATE_CLOSED:
+			_fail_connection_attempt(_format_connection_error(server_url), is_reconnect)
+			return
 
-		connected_to_server.emit()
-	else:
-		print("[NetworkManager] Connection failed or still pending")
-		current_state = ConnectionState.ERROR
-		connection_error.emit("Connection timeout")
+		await get_tree().create_timer(0.1).timeout
+		elapsed += 0.1
+
+	print("[NetworkManager] Connection timed out")
+	_fail_connection_attempt(_format_connection_error(server_url), is_reconnect)
+
+
+func _complete_connection() -> void:
+	print("[NetworkManager] Connected to server successfully")
+	current_state = ConnectionState.CONNECTED
+	reconnect_attempts = 0
+	_had_successful_connection = true
+	last_heartbeat_received = Time.get_ticks_msec() / 1000.0
+
+	# Send authentication handshake
+	if not auth_token.is_empty():
+		send_auth_handshake()
+
+	connected_to_server.emit()
+
+
+func _fail_connection_attempt(error_message: String, is_reconnect: bool) -> void:
+	print("[NetworkManager] Connection failed or still pending")
+	current_state = ConnectionState.ERROR
+	if ws_client != null:
+		ws_client.close()
+		ws_client = null
+
+	if is_reconnect or _had_successful_connection:
 		_schedule_reconnect()
+	else:
+		connection_error.emit(error_message)
+
+
+func _format_connection_error(url: String) -> String:
+	return "Cannot reach the game server at %s. Make sure the game server is running, then try again." % url
 
 ## Send authentication handshake
 func send_auth_handshake() -> void:
@@ -654,7 +695,8 @@ func _decode_packet(packet: PackedByteArray) -> Dictionary:
 func _on_connection_closed(reason: String) -> void:
 	current_state = ConnectionState.DISCONNECTED
 	disconnected_from_server.emit(reason)
-	_schedule_reconnect()
+	if _had_successful_connection:
+		_schedule_reconnect()
 
 ## Schedule reconnection with exponential backoff
 ## Auto-reconnects whenever the client had an active server connection
@@ -682,7 +724,7 @@ func _schedule_reconnect() -> void:
 ## Attempt to reconnect
 func _attempt_reconnect() -> void:
 	print("[NetworkManager] Attempting to reconnect...")
-	connect_to_server(server_url, auth_token)
+	connect_to_server(server_url, auth_token, true)
 
 ## Check if connected to server
 func is_server_connected() -> bool:

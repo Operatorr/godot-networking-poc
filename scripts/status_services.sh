@@ -17,6 +17,36 @@ PID_DIR="$PROJECT_ROOT/.pids"
 API_PID_FILE="$PID_DIR/api_server.pid"
 GAME_PID_FILE="$PID_DIR/game_server.pid"
 
+# Load test environment if exists
+if [ -f "$PROJECT_ROOT/.env.test" ]; then
+    source "$PROJECT_ROOT/.env.test"
+fi
+
+# Load API .env if exists because the Go server reads PORT.
+if [ -f "$PROJECT_ROOT/api/.env" ]; then
+    set -a
+    source "$PROJECT_ROOT/api/.env"
+    set +a
+fi
+
+# Set defaults
+API_PORT="${PORT:-${API_PORT:-8080}}"
+GAME_PORT="${GAME_PORT:-8081}"
+
+process_exists() {
+    local pid="$1"
+
+    if kill -0 "$pid" 2>/dev/null; then
+        return 0
+    fi
+
+    if command -v lsof >/dev/null 2>&1 && lsof -p "$pid" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    return 1
+}
+
 # Log files
 LOG_DIR="$PROJECT_ROOT/logs"
 API_LOG="$LOG_DIR/api_server.log"
@@ -30,21 +60,34 @@ check_service() {
 
     printf "%-20s" "$name:"
 
+    local port_pids=""
+    if [ -n "$port" ] && command -v lsof >/dev/null 2>&1; then
+        port_pids=$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)
+    fi
+
     if [ ! -f "$pid_file" ]; then
+        if [ -n "$port_pids" ]; then
+            echo -e "${GREEN}RUNNING${NC} (PID: $(echo "$port_pids" | tr '\n' ' '), Port: $port, no PID file)"
+            return 0
+        fi
         echo -e "${RED}NOT RUNNING${NC} (no PID file)"
         return 1
     fi
 
     local pid=$(cat "$pid_file")
 
-    if ! kill -0 "$pid" 2>/dev/null; then
+    if ! process_exists "$pid"; then
+        if [ -n "$port_pids" ]; then
+            echo -e "${GREEN}RUNNING${NC} (PID: $(echo "$port_pids" | tr '\n' ' '), Port: $port, stale PID file: $pid)"
+            return 0
+        fi
         echo -e "${RED}NOT RUNNING${NC} (stale PID file)"
         return 1
     fi
 
     # Check if port is listening
     if [ -n "$port" ]; then
-        if lsof -i ":$port" -sTCP:LISTEN >/dev/null 2>&1; then
+        if [ -n "$port_pids" ]; then
             echo -e "${GREEN}RUNNING${NC} (PID: $pid, Port: $port)"
         else
             echo -e "${YELLOW}RUNNING${NC} (PID: $pid, Port not listening)"
@@ -85,8 +128,8 @@ echo "=========================================="
 echo ""
 
 check_database
-check_service "$API_PID_FILE" "API Server" "8080"
-check_service "$GAME_PID_FILE" "Game Server" "8081"
+check_service "$API_PID_FILE" "API Server" "$API_PORT"
+check_service "$GAME_PID_FILE" "Game Server" "$GAME_PORT"
 
 echo ""
 echo "=========================================="

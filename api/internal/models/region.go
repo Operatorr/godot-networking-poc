@@ -20,6 +20,7 @@ const (
 
 // Region ID constants
 const (
+	RegionLocal  = "local"
 	RegionAsia   = "asia"
 	RegionEurope = "europe"
 	RegionUSWest = "us-west"
@@ -27,6 +28,7 @@ const (
 
 // ValidRegions is a map of valid region IDs
 var ValidRegions = map[string]bool{
+	RegionLocal:  true,
 	RegionAsia:   true,
 	RegionEurope: true,
 	RegionUSWest: true,
@@ -42,6 +44,14 @@ func GetRegionDetails(regionID string) *Region {
 	// In production, WebSocket URLs would come from environment variables
 	// For now, we'll use placeholder URLs
 	regions := map[string]*Region{
+		RegionLocal: {
+			ID:              RegionLocal,
+			DisplayName:     "Local",
+			WebSocketURL:    "ws://localhost:8081",
+			Status:          RegionStatusOnline,
+			MaxPlayers:      1000,
+			LatencyEstimate: "< 10ms",
+		},
 		RegionAsia: {
 			ID:              RegionAsia,
 			DisplayName:     "Asia",
@@ -74,6 +84,7 @@ func GetRegionDetails(regionID string) *Region {
 // GetAllRegions returns all available regions
 func GetAllRegions() []*Region {
 	return []*Region{
+		GetRegionDetails(RegionLocal),
 		GetRegionDetails(RegionAsia),
 		GetRegionDetails(RegionEurope),
 		GetRegionDetails(RegionUSWest),

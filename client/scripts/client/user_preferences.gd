@@ -5,7 +5,7 @@ extends RefCounted
 
 const SAVE_PATH: String = "user://preferences.json"
 
-var selected_region: String = "us-west"  ## Default region (US-West per spec)
+var selected_region: String = "local"  ## Default to local development server
 
 
 ## Load preferences from disk
@@ -24,7 +24,7 @@ static func load_preferences() -> UserPreferences:
 	file.close()
 
 	if parse_result == OK and json.data is Dictionary:
-		prefs.selected_region = json.data.get("selected_region", "us-west")
+		prefs.selected_region = json.data.get("selected_region", "local")
 		print("[UserPreferences] Loaded preferences: region=%s" % prefs.selected_region)
 	else:
 		push_warning("[UserPreferences] Failed to parse preferences file")

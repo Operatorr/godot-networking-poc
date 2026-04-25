@@ -40,6 +40,20 @@ GAME_PORT="${GAME_PORT:-8081}"
 # Create directories
 mkdir -p "$PID_DIR" "$LOG_DIR"
 
+process_exists() {
+    local pid="$1"
+
+    if kill -0 "$pid" 2>/dev/null; then
+        return 0
+    fi
+
+    if command -v lsof >/dev/null 2>&1 && lsof -p "$pid" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    return 1
+}
+
 # Parse arguments
 START_API=true
 START_GAME=true
@@ -76,16 +90,30 @@ done
 check_running() {
     local pid_file="$1"
     local name="$2"
+    local port="$3"
 
     if [ -f "$pid_file" ]; then
         local pid=$(cat "$pid_file")
-        if kill -0 "$pid" 2>/dev/null; then
+        if process_exists "$pid"; then
             echo -e "${YELLOW}[WARN]${NC} $name is already running (PID: $pid)"
             return 0
         else
             rm -f "$pid_file"
         fi
     fi
+
+    if [ -n "$port" ] && command -v lsof >/dev/null 2>&1; then
+        local port_pids
+        port_pids=$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)
+        if [ -n "$port_pids" ]; then
+            local pid
+            pid=$(echo "$port_pids" | head -n 1)
+            echo "$pid" > "$pid_file"
+            echo -e "${YELLOW}[WARN]${NC} $name is already listening on port $port (PID: $pid)"
+            return 0
+        fi
+    fi
+
     return 1
 }
 
@@ -93,7 +121,15 @@ check_running() {
 start_api_server() {
     echo -e "${BLUE}[INFO]${NC} Starting Go API Server..."
 
-    if check_running "$API_PID_FILE" "API Server"; then
+    # Load API .env before port checks because the Go server reads PORT.
+    if [ -f "$PROJECT_ROOT/api/.env" ]; then
+        set -a
+        source "$PROJECT_ROOT/api/.env"
+        set +a
+    fi
+    export PORT="${PORT:-$API_PORT}"
+
+    if check_running "$API_PID_FILE" "API Server" "$PORT"; then
         return 0
     fi
 
@@ -106,18 +142,11 @@ start_api_server() {
         return 1
     fi
 
-    # Load API .env if exists
-    if [ -f "$PROJECT_ROOT/api/.env" ]; then
-        set -a
-        source "$PROJECT_ROOT/api/.env"
-        set +a
-    fi
-
     # Build and run
     echo -e "${BLUE}[INFO]${NC} Building API server..."
     "$GO_PATH" build -o bin/server ./cmd/server
 
-    echo -e "${BLUE}[INFO]${NC} Starting API server on port $API_PORT..."
+    echo -e "${BLUE}[INFO]${NC} Starting API server on port $PORT..."
     nohup ./bin/server > "$API_LOG" 2>&1 &
     local pid=$!
     echo $pid > "$API_PID_FILE"
@@ -125,12 +154,13 @@ start_api_server() {
     # Wait for server to start
     sleep 2
 
-    if kill -0 "$pid" 2>/dev/null; then
+    if process_exists "$pid" && lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | grep -q "^$pid$"; then
         echo -e "${GREEN}[OK]${NC} API Server started (PID: $pid)"
         echo -e "${BLUE}[INFO]${NC} API Server log: $API_LOG"
     else
         echo -e "${RED}[ERROR]${NC} API Server failed to start"
         cat "$API_LOG"
+        rm -f "$API_PID_FILE"
         return 1
     fi
 }
@@ -139,7 +169,7 @@ start_api_server() {
 start_game_server() {
     echo -e "${BLUE}[INFO]${NC} Starting Godot Game Server..."
 
-    if check_running "$GAME_PID_FILE" "Game Server"; then
+    if check_running "$GAME_PID_FILE" "Game Server" "$GAME_PORT"; then
         return 0
     fi
 

@@ -108,7 +108,7 @@ func login(username: String, password: String) -> void:
 	if error != OK:
 		print("[AuthManager] HTTP Request failed: %d" % error)
 		_change_state(AuthState.ERROR)
-		login_failed.emit("Network error: %d" % error)
+		login_failed.emit(_format_request_start_error("login", error))
 		req.queue_free()
 
 ## Handle login response
@@ -118,7 +118,7 @@ func _on_login_completed(result: int, response_code: int, _headers: PackedString
 	if result != HTTPRequest.RESULT_SUCCESS:
 		print("[AuthManager] Login request failed: %d" % result)
 		_change_state(AuthState.ERROR)
-		login_failed.emit("Request failed: %d" % result)
+		login_failed.emit(_format_request_result_error("login", result))
 		return
 
 	if response_code != 200:
@@ -180,7 +180,7 @@ func register(username: String, email: String, password: String) -> void:
 	if error != OK:
 		print("[AuthManager] HTTP Request failed: %d" % error)
 		_change_state(AuthState.ERROR)
-		register_failed.emit("Network error: %d" % error)
+		register_failed.emit(_format_request_start_error("registration", error))
 		req.queue_free()
 
 ## Handle registration response
@@ -190,7 +190,7 @@ func _on_register_completed(result: int, response_code: int, _headers: PackedStr
 	if result != HTTPRequest.RESULT_SUCCESS:
 		print("[AuthManager] Registration request failed: %d" % result)
 		_change_state(AuthState.ERROR)
-		register_failed.emit("Request failed: %d" % result)
+		register_failed.emit(_format_request_result_error("registration", result))
 		return
 
 	if response_code != 201 and response_code != 200:
@@ -336,6 +336,24 @@ func _parse_error_response(body: PackedByteArray) -> String:
 		return json.data.get("error", "Unknown error")
 
 	return "Unknown error"
+
+
+func _format_request_start_error(action: String, error: int) -> String:
+	return "Could not start the %s request. Error code: %d" % [action, error]
+
+
+func _format_request_result_error(action: String, result: int) -> String:
+	match result:
+		HTTPRequest.RESULT_CANT_CONNECT, HTTPRequest.RESULT_CONNECTION_ERROR, HTTPRequest.RESULT_NO_RESPONSE:
+			return "Cannot reach the API server at %s. Make sure the API server is running, then try again." % api_base_url
+		HTTPRequest.RESULT_CANT_RESOLVE:
+			return "Cannot find the API server at %s. Check the server address and your network connection." % api_base_url
+		HTTPRequest.RESULT_TIMEOUT:
+			return "The API server at %s did not respond in time. Make sure it is running, then try again." % api_base_url
+		HTTPRequest.RESULT_TLS_HANDSHAKE_ERROR:
+			return "Could not establish a secure connection to the API server."
+		_:
+			return "%s request failed. Error code: %d" % [action.capitalize(), result]
 
 ## Save token to file
 func _save_token() -> void:

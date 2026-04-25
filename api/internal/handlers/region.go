@@ -3,8 +3,12 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/omega-realm/api/internal/middleware"
 	"github.com/omega-realm/api/internal/models"
@@ -14,6 +18,10 @@ import (
 type RegionHandler struct {
 	redis *redisClient.Client
 }
+
+const regionProbeTimeout = 500 * time.Millisecond
+
+var dialTCP = net.DialTimeout
 
 func NewRegionHandler(redis *redisClient.Client) *RegionHandler {
 	return &RegionHandler{redis: redis}
@@ -40,10 +48,12 @@ func (h *RegionHandler) GetRegions(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
-	// Get all regions
 	regions := models.GetAllRegions()
 
-	// Populate active player counts from Redis
+	// Probe game servers and only return regions that are currently reachable.
+	regions = h.getOnlineRegions(regions)
+
+	// Populate active player counts from Redis for online regions.
 	ctx := context.Background()
 	for _, region := range regions {
 		count, err := h.redis.GetActiveUsersByRegion(ctx, region.ID)
@@ -92,7 +102,7 @@ func (h *RegionHandler) SelectRegion(w http.ResponseWriter, r *http.Request) {
 	if !models.IsValidRegion(req.RegionID) {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ErrorResponse{
-			Error: "Invalid region. Valid regions are: asia, europe, us-west",
+			Error: "Invalid region. Valid regions are: local, asia, europe, us-west",
 		})
 		return
 	}
@@ -104,6 +114,7 @@ func (h *RegionHandler) SelectRegion(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to get region details"})
 		return
 	}
+	h.updateRegionAvailability(region)
 
 	// Check if region is available
 	if region.Status != models.RegionStatusOnline {
@@ -155,4 +166,67 @@ func (h *RegionHandler) SelectRegion(w http.ResponseWriter, r *http.Request) {
 		Region:       region,
 		WebSocketURL: region.WebSocketURL,
 	})
+}
+
+func (h *RegionHandler) getOnlineRegions(regions []*models.Region) []*models.Region {
+	var wg sync.WaitGroup
+	for _, region := range regions {
+		wg.Add(1)
+		go func(region *models.Region) {
+			defer wg.Done()
+			h.updateRegionAvailability(region)
+		}(region)
+	}
+	wg.Wait()
+
+	onlineRegions := make([]*models.Region, 0, len(regions))
+	for _, region := range regions {
+		if region.Status == models.RegionStatusOnline {
+			onlineRegions = append(onlineRegions, region)
+		}
+	}
+
+	return onlineRegions
+}
+
+func (h *RegionHandler) updateRegionAvailability(region *models.Region) {
+	if isWebSocketServerOnline(region.WebSocketURL, regionProbeTimeout) {
+		region.Status = models.RegionStatusOnline
+		return
+	}
+	region.Status = models.RegionStatusOffline
+}
+
+func isWebSocketServerOnline(webSocketURL string, timeout time.Duration) bool {
+	parsedURL, err := url.Parse(webSocketURL)
+	if err != nil {
+		return false
+	}
+	if parsedURL.Scheme != "ws" && parsedURL.Scheme != "wss" {
+		return false
+	}
+
+	hostName := parsedURL.Hostname()
+	if hostName == "" {
+		return false
+	}
+	port := parsedURL.Port()
+	if port == "" {
+		switch parsedURL.Scheme {
+		case "ws":
+			port = "80"
+		case "wss":
+			port = "443"
+		default:
+			return false
+		}
+	}
+
+	host := net.JoinHostPort(hostName, port)
+	conn, err := dialTCP("tcp", host, timeout)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
 }

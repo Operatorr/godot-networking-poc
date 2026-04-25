@@ -19,6 +19,9 @@ var is_logging_in: bool = false
 
 
 func _ready() -> void:
+	# Apply the same menu theme used by the post-login menu.
+	_apply_dark_theme()
+
 	# Connect UI signals
 	login_button.pressed.connect(_on_login_pressed)
 	create_account_button.pressed.connect(_on_create_account_pressed)
@@ -38,6 +41,9 @@ func _ready() -> void:
 	# Setup button audio
 	_setup_button_audio()
 
+	# Start background music
+	AudioManager.play_music("menu_bgm")
+
 	# Check for auto-login with saved token
 	_check_auto_login()
 
@@ -45,6 +51,27 @@ func _ready() -> void:
 	username_input.grab_focus()
 
 	print("[LoginScreen] Ready")
+
+
+## Apply dark cosmic horror theme to login elements
+func _apply_dark_theme() -> void:
+	# Dark background
+	var bg := ColorRect.new()
+	bg.color = Color(0.04, 0.02, 0.06, 1.0)
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bg.z_index = -1
+	add_child(bg)
+	move_child(bg, 0)
+
+	# Style title
+	var title_label: Label = $CenterContainer/VBoxContainer/TitleLabel
+	if title_label:
+		title_label.add_theme_color_override("font_color", Color(0.27, 0.53, 1.0))
+
+	# Style subtitle
+	var subtitle_label: Label = $CenterContainer/VBoxContainer/SubtitleLabel
+	if subtitle_label:
+		subtitle_label.add_theme_color_override("font_color", Color(0.4, 1.0, 0.8, 0.7))
 
 
 ## Setup Tab navigation between inputs
@@ -133,7 +160,7 @@ func _on_login_failed(error: String) -> void:
 
 ## Check if error is a network/connection error
 func _is_network_error(error: String) -> bool:
-	var network_indicators := ["Network error", "Request failed", "Connection", "Timeout"]
+	var network_indicators := ["Network error", "Request failed", "Connection", "Timeout", "Cannot reach", "Cannot find", "did not respond"]
 	for indicator in network_indicators:
 		if error.to_lower().contains(indicator.to_lower()):
 			return true

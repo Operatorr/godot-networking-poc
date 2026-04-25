@@ -136,13 +136,23 @@ func _on_regions_fetched(result: int, response_code: int, _headers: PackedString
 	var json := JSON.new()
 	var parse_result := json.parse(body.get_string_from_utf8())
 
-	if parse_result != OK or not json.data is Array:
+	if parse_result != OK:
+		push_warning("[MainMenu] Failed to parse regions response")
+		_populate_default_regions()
+		return
+
+	var region_data_list: Array = []
+	if json.data is Array:
+		region_data_list = json.data
+	elif json.data is Dictionary and json.data.has("regions") and json.data["regions"] is Array:
+		region_data_list = json.data["regions"]
+	else:
 		push_warning("[MainMenu] Failed to parse regions response")
 		_populate_default_regions()
 		return
 
 	regions.clear()
-	for region_data: Dictionary in json.data:
+	for region_data: Dictionary in region_data_list:
 		regions.append(RegionInfo.from_dict(region_data))
 
 	_populate_region_dropdown()
@@ -155,19 +165,19 @@ func _populate_region_dropdown() -> void:
 	var selected_index := 0
 	for i in range(regions.size()):
 		var region := regions[i]
-		region_dropdown.add_item(region.get_display_text(), i)
-
-		# Disable unavailable regions
 		if not region.is_available():
-			region_dropdown.set_item_disabled(i, true)
+			continue
+
+		region_dropdown.add_item(region.get_display_text(), i)
 
 		# Select saved preference
 		if region.id == preferences.selected_region:
-			selected_index = i
+			selected_index = region_dropdown.get_item_count() - 1
 
-	if regions.size() > 0:
+	if region_dropdown.get_item_count() > 0:
 		region_dropdown.select(selected_index)
-		GameManager.player_data["selected_region"] = regions[selected_index].id
+		var selected_region_index := region_dropdown.get_item_id(selected_index)
+		GameManager.player_data["selected_region"] = regions[selected_region_index].id
 
 
 ## Populate default regions if API fails
@@ -175,7 +185,8 @@ func _populate_default_regions() -> void:
 	regions.clear()
 
 	var default_regions := [
-		{"id": "us-west", "name": "US West", "websocket_url": "ws://localhost:8080", "status": "online", "active_players": 0, "max_players": 1000},
+		{"id": "local", "name": "Local", "websocket_url": "ws://localhost:8081", "status": "online", "active_players": 0, "max_players": 1000},
+		{"id": "us-west", "name": "US West", "websocket_url": "ws://us-west.omegagame.io:9001", "status": "offline", "active_players": 0, "max_players": 1000},
 		{"id": "us-east", "name": "US East", "websocket_url": "ws://localhost:8081", "status": "offline", "active_players": 0, "max_players": 1000},
 		{"id": "europe", "name": "Europe", "websocket_url": "ws://localhost:8082", "status": "offline", "active_players": 0, "max_players": 1000},
 		{"id": "asia", "name": "Asia", "websocket_url": "ws://localhost:8083", "status": "offline", "active_players": 0, "max_players": 1000}
@@ -189,10 +200,14 @@ func _populate_default_regions() -> void:
 
 ## Handle region selection
 func _on_region_selected(index: int) -> void:
-	if index < 0 or index >= regions.size():
+	if index < 0 or index >= region_dropdown.get_item_count():
 		return
 
-	var region := regions[index]
+	var region_index := region_dropdown.get_item_id(index)
+	if region_index < 0 or region_index >= regions.size():
+		return
+
+	var region := regions[region_index]
 	GameManager.player_data["selected_region"] = region.id
 	preferences.selected_region = region.id
 	preferences.save()
@@ -210,11 +225,16 @@ func _on_enter_world_pressed() -> void:
 		return
 
 	var selected_index := region_dropdown.selected
-	if selected_index < 0 or selected_index >= regions.size():
+	if selected_index < 0 or selected_index >= region_dropdown.get_item_count():
 		_show_error("Connection Error", "Please select a region.")
 		return
 
-	var region := regions[selected_index]
+	var region_index := region_dropdown.get_item_id(selected_index)
+	if region_index < 0 or region_index >= regions.size():
+		_show_error("Connection Error", "Please select a region.")
+		return
+
+	var region := regions[region_index]
 	if not region.is_available():
 		_show_error("Region Unavailable", "The selected region is currently unavailable.")
 		return
@@ -225,7 +245,7 @@ func _on_enter_world_pressed() -> void:
 	_update_status("Connecting to %s..." % region.name)
 
 	print("[MainMenu] Connecting to region: %s at %s" % [region.name, region.websocket_url])
-	NetworkManager.connect_to_server(region.websocket_url)
+	NetworkManager.connect_to_server(region.websocket_url, AuthManager.get_token())
 
 
 ## Handle successful server connection

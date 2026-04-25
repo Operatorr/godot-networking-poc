@@ -19,6 +19,36 @@ PID_DIR="$PROJECT_ROOT/.pids"
 API_PID_FILE="$PID_DIR/api_server.pid"
 GAME_PID_FILE="$PID_DIR/game_server.pid"
 
+# Load test environment if exists
+if [ -f "$PROJECT_ROOT/.env.test" ]; then
+    source "$PROJECT_ROOT/.env.test"
+fi
+
+# Load API .env if exists because the Go server reads PORT.
+if [ -f "$PROJECT_ROOT/api/.env" ]; then
+    set -a
+    source "$PROJECT_ROOT/api/.env"
+    set +a
+fi
+
+# Set defaults
+API_PORT="${PORT:-${API_PORT:-8080}}"
+GAME_PORT="${GAME_PORT:-8081}"
+
+process_exists() {
+    local pid="$1"
+
+    if kill -0 "$pid" 2>/dev/null; then
+        return 0
+    fi
+
+    if command -v lsof >/dev/null 2>&1 && lsof -p "$pid" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    return 1
+}
+
 # Parse arguments
 STOP_API=true
 STOP_GAME=true
@@ -53,44 +83,68 @@ done
 stop_service() {
     local pid_file="$1"
     local name="$2"
+    local port="$3"
+    local pids=""
 
-    if [ ! -f "$pid_file" ]; then
-        echo -e "${YELLOW}[WARN]${NC} $name PID file not found - service may not be running"
+    if [ -f "$pid_file" ]; then
+        local pid
+        pid=$(cat "$pid_file")
+        if process_exists "$pid"; then
+            pids="$pid"
+        else
+            echo -e "${YELLOW}[WARN]${NC} $name process (PID: $pid) not running"
+            rm -f "$pid_file"
+        fi
+    else
+        echo -e "${YELLOW}[WARN]${NC} $name PID file not found - checking port $port"
+    fi
+
+    if [ -n "$port" ] && command -v lsof >/dev/null 2>&1; then
+        local port_pids
+        port_pids=$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)
+        if [ -n "$port_pids" ]; then
+            pids=$(printf "%s\n%s\n" "$pids" "$port_pids" | sed '/^$/d' | sort -u)
+        fi
+    fi
+
+    if [ -z "$pids" ]; then
+        echo -e "${YELLOW}[WARN]${NC} $name is not running"
         return 0
     fi
 
-    local pid=$(cat "$pid_file")
+    local failed=false
+    local pid
+    for pid in $pids; do
+        echo -e "${BLUE}[INFO]${NC} Stopping $name (PID: $pid)..."
 
-    if ! kill -0 "$pid" 2>/dev/null; then
-        echo -e "${YELLOW}[WARN]${NC} $name process (PID: $pid) not running"
-        rm -f "$pid_file"
-        return 0
-    fi
+        # Try graceful shutdown first (SIGTERM)
+        kill -TERM "$pid" 2>/dev/null || true
 
-    echo -e "${BLUE}[INFO]${NC} Stopping $name (PID: $pid)..."
+        # Wait up to 5 seconds for graceful shutdown
+        local count=0
+        while process_exists "$pid" && [ $count -lt 5 ]; do
+            sleep 1
+            count=$((count + 1))
+        done
 
-    # Try graceful shutdown first (SIGTERM)
-    kill -TERM "$pid" 2>/dev/null
+        # Force kill if still running
+        if process_exists "$pid"; then
+            echo -e "${YELLOW}[WARN]${NC} $name didn't stop gracefully, forcing..."
+            kill -9 "$pid" 2>/dev/null || true
+            sleep 1
+        fi
 
-    # Wait up to 5 seconds for graceful shutdown
-    local count=0
-    while kill -0 "$pid" 2>/dev/null && [ $count -lt 5 ]; do
-        sleep 1
-        count=$((count + 1))
+        if ! process_exists "$pid"; then
+            echo -e "${GREEN}[OK]${NC} $name stopped"
+        else
+            echo -e "${RED}[ERROR]${NC} Failed to stop $name (PID: $pid)"
+            failed=true
+        fi
     done
 
-    # Force kill if still running
-    if kill -0 "$pid" 2>/dev/null; then
-        echo -e "${YELLOW}[WARN]${NC} $name didn't stop gracefully, forcing..."
-        kill -9 "$pid" 2>/dev/null
-        sleep 1
-    fi
-
-    if ! kill -0 "$pid" 2>/dev/null; then
-        echo -e "${GREEN}[OK]${NC} $name stopped"
+    if [ "$failed" = false ]; then
         rm -f "$pid_file"
     else
-        echo -e "${RED}[ERROR]${NC} Failed to stop $name"
         return 1
     fi
 }
@@ -102,11 +156,11 @@ echo "=========================================="
 echo ""
 
 if [ "$STOP_API" = true ]; then
-    stop_service "$API_PID_FILE" "API Server"
+    stop_service "$API_PID_FILE" "API Server" "$API_PORT"
 fi
 
 if [ "$STOP_GAME" = true ]; then
-    stop_service "$GAME_PID_FILE" "Game Server"
+    stop_service "$GAME_PID_FILE" "Game Server" "$GAME_PORT"
 fi
 
 echo ""
