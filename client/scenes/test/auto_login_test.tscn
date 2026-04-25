@@ -6,6 +6,8 @@ script/source = "## AutoLoginTest - Automated test that logs in and joins the ga
 ## Usage: Run this scene to automatically log in and spawn the player
 extends Node2D
 
+const TestConfigScript := preload(\"res://scripts/shared/test_config.gd\")
+
 ## Test states
 enum TestState {
 	INITIALIZING,
@@ -22,7 +24,7 @@ enum TestState {
 var state: TestState = TestState.INITIALIZING
 
 ## Test configuration
-var config: TestConfig = null
+var config = null
 
 ## Status label reference
 @onready var status_label: Label = $UI/StatusLabel
@@ -48,7 +50,7 @@ func _start_test() -> void:
 	_update_status(\"Loading test configuration...\")
 
 	# Load config
-	config = TestConfig.new()
+	config = TestConfigScript.new()
 	if not config.load_config():
 		_show_error(\"Failed to load .env.test file\\n\\nPlease create .env.test from .env.test.example\")
 		return

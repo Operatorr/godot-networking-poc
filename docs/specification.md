@@ -42,14 +42,14 @@ This project is a **Proof-of-Concept (POC)** designed to stress-test low-level n
 
 ### Client
 
--   **Engine:** Godot 4.5
+-   **Engine:** Godot 4.6
 -   **Language:** GDScript
 -   **Rendering:** 2D sprite-based
 -   **Networking:** WebSocket (Low Level API)
 
 ### Server
 
--   **Game Server:** Godot 4.5 Headless
+-   **Game Server:** Godot 4.6 Headless
 -   **API Server:** Go
 -   **Database:** PostgreSQL
 -   **Cache:** Redis
@@ -124,7 +124,7 @@ For 2D sprite-based game using TileMap:
 
 ### Client
 
--   **Engine:** Godot 4.5
+-   **Engine:** Godot 4.6
 -   **Language:** GDScript
 -   **Rendering:** 2D sprite-based
 

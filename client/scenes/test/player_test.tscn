@@ -10,12 +10,12 @@ extends Node2D
 
 func _input(event: InputEvent) -> void:
 	if event.is_action_pressed(\"ui_accept\"):  # Space bar
-		var player := $Player as Player
+		var player = $Player
 		if player:
 			player.take_damage(25)
 			print(\"Player HP: \", player.hp_component.current_hp)
 	elif event.is_action_pressed(\"ui_cancel\"):  # Escape - Reset
-		var player := $Player as Player
+		var player = $Player
 		if player:
 			player.reset()
 			print(\"Player reset\")

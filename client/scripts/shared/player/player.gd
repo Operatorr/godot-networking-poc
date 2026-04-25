@@ -45,10 +45,10 @@ var last_aim_direction: Vector2 = Vector2.RIGHT
 var _input_enabled: bool = true
 
 ## Reference to HP component
-@onready var hp_component: HPComponent = $HPComponent
+@onready var hp_component = $HPComponent
 
 ## Reference to projectile pool
-@onready var projectile_pool: ProjectilePool = $ProjectilePool
+@onready var projectile_pool = $ProjectilePool
 
 ## Reference to shoot cooldown timer
 @onready var shoot_cooldown_timer: Timer = $ShootCooldownTimer
@@ -141,7 +141,7 @@ func _shoot() -> void:
 	var spawn_pos := global_position + last_aim_direction * spawn_offset
 
 	# Spawn projectile from pool
-	var projectile := projectile_pool.spawn(spawn_pos, last_aim_direction, projectile_range)
+	var projectile = projectile_pool.spawn(spawn_pos, last_aim_direction, projectile_range)
 
 	if projectile:
 		# Start cooldown

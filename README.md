@@ -1,6 +1,6 @@
 # Omega Realm - Multiplayer Networking POC
 
-A proof-of-concept multiplayer game built with **Godot 4.5** and **Go**, designed to stress-test networking architecture for MMO-scale games.
+A proof-of-concept multiplayer game built with **Godot 4.6** and **Go**, designed to stress-test networking architecture for MMO-scale games.
 
 **Goal:** Validate that a single Godot headless server can handle **500-1000 concurrent players** while maintaining playable performance.
 
@@ -27,7 +27,7 @@ A proof-of-concept multiplayer game built with **Godot 4.5** and **Go**, designe
 ```
 ┌─────────────────┐         HTTP REST API        ┌─────────────────┐
 │  Game Client    │ ←──────────────────────────→ │   Go API        │
-│  (Godot 4.5)    │   (Auth, Characters,         │  (Port 8080)    │
+│  (Godot 4.6)    │   (Auth, Characters,         │  (Port 8080)    │
 │                 │    Leaderboards)             │                 │
 └────────┬────────┘                              └────────┬────────┘
          │                                                │
@@ -37,7 +37,7 @@ A proof-of-concept multiplayer game built with **Godot 4.5** and **Go**, designe
          ▼                                               ▼
 ┌─────────────────┐                              ┌─────────────────┐
 │  Game Server    │ ←────── HTTP (Stats) ──────→ │   Database      │
-│  (Godot 4.5     │                              │   PostgreSQL    │
+│  (Godot 4.6     │                              │   PostgreSQL    │
 │   Headless)     │                              │   Redis Cache   │
 └─────────────────┘                              └─────────────────┘
 ```
@@ -57,7 +57,7 @@ A proof-of-concept multiplayer game built with **Godot 4.5** and **Go**, designe
 
 | Layer | Technology | Version |
 |-------|------------|---------|
-| Game Engine | Godot | 4.5 |
+| Game Engine | Godot | 4.6 |
 | Scripting | GDScript | - |
 | API Backend | Go | 1.21+ |
 | Database | PostgreSQL | 15+ |
@@ -68,7 +68,7 @@ A proof-of-concept multiplayer game built with **Godot 4.5** and **Go**, designe
 
 ## Prerequisites
 
-- **Godot 4.5** - [Download](https://godotengine.org/download)
+- **Godot 4.6** - [Download](https://godotengine.org/download)
 - **Go 1.21+** - [Download](https://go.dev/dl/)
 - **PostgreSQL 15+** - Running locally or via Docker
 - **Redis** (optional) - For caching features
@@ -179,7 +179,7 @@ tail -f logs/game_server.log   # Godot server logs
 
 ```
 godot-networking-poc/
-├── client/                          # Godot 4.5 Project (Client + Server)
+├── client/                          # Godot 4.6 Project (Client + Server)
 │   ├── project.godot               # Project configuration
 │   ├── autoload/                   # Singleton scripts
 │   │   ├── game_manager.gd         # Game state management

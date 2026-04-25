@@ -3,6 +3,8 @@
 ## Manages login/register flows and authentication state
 extends Node
 
+const ClientConfigScript := preload("res://scripts/client/client_config.gd")
+
 ## Authentication states
 enum AuthState {
 	LOGGED_OUT,
@@ -26,7 +28,7 @@ var api_base_url: String = "http://localhost:8080"
 var api_timeout: float = 10.0
 
 ## Client configuration
-var _client_config: ClientConfig = null
+var _client_config = null
 
 ## Authentication state
 var current_state: AuthState = AuthState.LOGGED_OUT
@@ -52,7 +54,7 @@ func _ready() -> void:
 		return
 
 	# Load client configuration
-	_client_config = ClientConfig.new()
+	_client_config = ClientConfigScript.new()
 	api_base_url = _client_config.api_base_url
 	api_timeout = _client_config.api_timeout_seconds
 

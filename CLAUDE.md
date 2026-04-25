@@ -2,7 +2,7 @@
 
 ## Working on Tasks
 
-1. **use Context7** to get Godot 4.5 Documentation when writing scripts. Language: GDScript
+1. **use Context7** to get Godot 4.6 Documentation when writing scripts. Language: GDScript
 2. **use Context7** to get Golang documentation if needed
 3. **use godot-mcp** for interacting with Godot engine if neccesary
 4. **do not** commit with Claude as Co-Author
@@ -53,7 +53,7 @@ The `todolist.json` should follow this format:
 
 ```
   omega-networking/                   # Root (Git repo)
-  ├── client/                         # Godot 4.5 Project
+  ├── client/                         # Godot 4.6 Project
   │   ├── project.godot
   │   ├── export_presets.cfg         # Client AND Server exports
   │   ├── scenes/
@@ -100,9 +100,9 @@ The `todolist.json` should follow this format:
 ```
 
 ## Active Technologies
-- GDScript (Godot 4.5) (001-main-menu-ui)
-- GDScript (Godot 4.5) + Godot Engine 4.5 (built-in physics, CharacterBody2D, AnimatedSprite2D) (002-player-character)
+- GDScript (Godot 4.6) (001-main-menu-ui)
+- GDScript (Godot 4.6) + Godot Engine 4.6 (built-in physics, CharacterBody2D, AnimatedSprite2D) (002-player-character)
 - N/A (player state managed in memory; persistence handled by separate systems) (002-player-character)
 
 ## Recent Changes
-- 001-main-menu-ui: Added GDScript (Godot 4.5)
+- 001-main-menu-ui: Added GDScript (Godot 4.6)

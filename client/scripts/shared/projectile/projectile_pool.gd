@@ -10,10 +10,10 @@ const POOL_SIZE: int = 16
 const PROJECTILE_SCENE_PATH := "res://scenes/shared/projectile/projectile.tscn"
 
 ## All projectile instances
-var pool: Array[Projectile] = []
+var pool: Array = []
 
 ## Currently active projectiles (FIFO order for recycling)
-var active_projectiles: Array[Projectile] = []
+var active_projectiles: Array = []
 
 ## Preloaded projectile scene
 var _projectile_scene: PackedScene = null
@@ -28,7 +28,7 @@ func _ready() -> void:
 
 	# Pre-allocate pool
 	for i in POOL_SIZE:
-		var projectile: Projectile = _projectile_scene.instantiate()
+		var projectile = _projectile_scene.instantiate()
 		projectile.process_mode = Node.PROCESS_MODE_DISABLED
 		projectile.visible = false
 		projectile.monitoring = false
@@ -43,8 +43,8 @@ func _ready() -> void:
 ## @param direction: Normalized direction vector
 ## @param max_distance: Maximum travel distance
 ## @return: The activated projectile
-func spawn(pos: Vector2, dir: Vector2, max_dist: float) -> Projectile:
-	var projectile: Projectile = null
+func spawn(pos: Vector2, dir: Vector2, max_dist: float):
+	var projectile = null
 
 	# Try to find inactive projectile
 	for p in pool:
@@ -71,7 +71,7 @@ func spawn(pos: Vector2, dir: Vector2, max_dist: float) -> Projectile:
 ## Return a projectile to the pool
 ## Called automatically by Projectile.deactivate()
 ## @param projectile: The projectile to return
-func return_projectile(projectile: Projectile) -> void:
+func return_projectile(projectile) -> void:
 	active_projectiles.erase(projectile)
 
 

@@ -11,8 +11,8 @@ config_version=5
 [application]
 
 config/name="Omgea Networking"
-run/main_scene="res://scenes/main_menu.tscn"
-config/features=PackedStringArray("4.5", "Forward Plus")
+run/main_scene="res://scenes/client/menus/main_menu.tscn"
+config/features=PackedStringArray("4.6", "Forward Plus")
 config/icon="res://icon.svg"
 
 [autoload]
