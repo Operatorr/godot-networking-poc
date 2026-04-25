@@ -69,11 +69,16 @@ func to_entity_data() -> Dictionary:
 	}
 
 
+## Maximum queued inputs before overflow handling
+const MAX_INPUT_QUEUE_SIZE := 10
+
 ## Queue an input for processing
 func queue_input(input: Dictionary) -> void:
-	# Limit queue size to prevent memory issues
-	if input_queue.size() < 10:
-		input_queue.append(input)
+	if input_queue.size() >= MAX_INPUT_QUEUE_SIZE:
+		# Drop oldest input to make room; log overflow for monitoring
+		input_queue.pop_front()
+		print("[PlayerState] Input queue overflow for entity %d: dropped oldest input (queue=%d)" % [entity_id, MAX_INPUT_QUEUE_SIZE])
+	input_queue.append(input)
 
 
 ## Pop the next input from the queue
@@ -133,10 +138,14 @@ func apply_input(input: Dictionary, delta: float) -> Dictionary:
 
 	# Calculate server-authoritative velocity and position
 	velocity = move_direction * move_speed
-	var server_position := position + velocity * delta
-
-	# Clamp to map boundaries
-	server_position = GameConstants.clamp_to_bounds(server_position)
+	var previous_position := position
+	var server_position := GameConstants.move_with_obstacle_collision(
+		previous_position,
+		previous_position + velocity * delta,
+		GameConstants.PLAYER_HITBOX_RADIUS
+	)
+	if delta > 0.0:
+		velocity = (server_position - previous_position) / delta
 
 	# Validate client position against server calculation
 	var validation := _validate_position(client_position, server_position)

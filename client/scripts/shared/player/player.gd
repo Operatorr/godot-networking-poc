@@ -44,6 +44,11 @@ var last_aim_direction: Vector2 = Vector2.RIGHT
 ## Whether input processing is enabled
 var _input_enabled: bool = true
 
+## Footstep timing
+var _footstep_timer: float = 0.0
+const FOOTSTEP_WALK_INTERVAL := 0.3
+const FOOTSTEP_SPRINT_INTERVAL := 0.2
+
 ## Reference to HP component
 @onready var hp_component = $HPComponent
 
@@ -60,6 +65,11 @@ var _input_enabled: bool = true
 func _ready() -> void:
 	# Set motion mode for top-down game (no gravity)
 	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
+
+	# Apply procedural sprites
+	if animated_sprite:
+		animated_sprite.sprite_frames = ProceduralSprites.create_player_frames()
+		animated_sprite.modulate = Color.WHITE  # Override the placeholder blue tint
 
 	# Connect HP component signals
 	if hp_component:
@@ -94,6 +104,9 @@ func _physics_process(delta: float) -> void:
 
 	# Apply movement
 	move_and_slide()
+
+	# Footstep audio
+	_update_footsteps(delta)
 
 	# Update animation
 	_update_animation()
@@ -182,6 +195,8 @@ func _update_animation() -> void:
 				animated_sprite.play("hit")
 			return
 		ActionState.DEAD:
+			if animated_sprite.animation != "death":
+				animated_sprite.play("death")
 			return
 
 	# Movement state animations
@@ -192,6 +207,25 @@ func _update_animation() -> void:
 		MovementState.WALKING:
 			if animated_sprite.animation != "walk":
 				animated_sprite.play("walk")
+
+
+## Update footstep audio timer
+func _update_footsteps(delta: float) -> void:
+	if movement_state != MovementState.WALKING:
+		_footstep_timer = 0.0
+		return
+
+	var interval := FOOTSTEP_SPRINT_INTERVAL if Input.is_action_pressed("sprint") else FOOTSTEP_WALK_INTERVAL
+	_footstep_timer += delta
+	if _footstep_timer >= interval:
+		_footstep_timer -= interval
+		var audio := Engine.get_singleton("AudioManager") if Engine.has_singleton("AudioManager") else null
+		if audio == null:
+			var tree := get_tree()
+			if tree:
+				audio = tree.root.get_node_or_null("AudioManager")
+		if audio and audio.has_method("play_footstep"):
+			audio.play_footstep()
 
 
 func _on_animation_finished() -> void:

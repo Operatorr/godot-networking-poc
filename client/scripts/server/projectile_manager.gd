@@ -14,6 +14,11 @@ var _next_entity_id: int = 10000
 ## Debug logging flag
 var debug_logging: bool = true
 
+## Spatial grid cell size for collision partitioning.
+## Chosen so the max collision radius (~24 units) fits within one cell,
+## meaning we only need to check the 3x3 neighbourhood.
+const GRID_CELL_SIZE := 64.0
+
 
 ## Spawn a new projectile
 ## Returns the created ProjectileState or null if spawn failed
@@ -67,11 +72,43 @@ func update_all(delta: float) -> Array[int]:
 	return to_remove
 
 
-## Check collisions between projectiles and players
-## Returns array of hit events: { projectile_id, target_id, position }
+## Build a spatial hash grid from an array of entities that have a .position field.
+## Returns Dictionary[Vector2i, Array] mapping grid cells to entities.
+func _build_entity_grid(entities: Array) -> Dictionary:
+	var grid: Dictionary = {}
+	for entity in entities:
+		var cell := Vector2i(
+			floori(entity.position.x / GRID_CELL_SIZE),
+			floori(entity.position.y / GRID_CELL_SIZE)
+		)
+		if not grid.has(cell):
+			grid[cell] = []
+		grid[cell].append(entity)
+	return grid
+
+
+## Query entities in the same or adjacent cells (3x3 neighbourhood).
+func _query_nearby(grid: Dictionary, pos: Vector2) -> Array:
+	var result: Array = []
+	var cx := floori(pos.x / GRID_CELL_SIZE)
+	var cy := floori(pos.y / GRID_CELL_SIZE)
+	for dx in range(-1, 2):
+		for dy in range(-1, 2):
+			var cell := Vector2i(cx + dx, cy + dy)
+			if grid.has(cell):
+				result.append_array(grid[cell])
+	return result
+
+
+## Check collisions between projectiles and players using spatial grid.
+## Returns array of hit events: { projectile_id, target_id, owner_id, position }
 func check_collisions_with_players(player_manager: PlayerManager) -> Array[Dictionary]:
 	var hits: Array[Dictionary] = []
 	var to_remove: Array[int] = []
+
+	# Build spatial grid from alive players
+	var alive_players := player_manager.get_alive_players()
+	var player_grid := _build_entity_grid(alive_players)
 
 	for entity_id: int in projectiles.keys():
 		var proj: ProjectileState = projectiles[entity_id]
@@ -79,8 +116,10 @@ func check_collisions_with_players(player_manager: PlayerManager) -> Array[Dicti
 		if not proj.alive:
 			continue
 
-		# Check against all alive players
-		for player: PlayerState in player_manager.get_alive_players():
+		# Only check players in nearby cells
+		var nearby_players: Array = _query_nearby(player_grid, proj.position)
+
+		for player in nearby_players:
 			# Don't hit the owner
 			if proj.owner_id == player.entity_id:
 				continue
@@ -110,18 +149,22 @@ func check_collisions_with_players(player_manager: PlayerManager) -> Array[Dicti
 				break
 
 	# Remove projectiles that hit something
-	for entity_id in to_remove:
-		remove_projectile(entity_id)
+	for eid in to_remove:
+		remove_projectile(eid)
 
 	return hits
 
 
-## Check collisions between projectiles and monsters
+## Check collisions between projectiles and monsters using spatial grid.
 ## Only player projectiles can hit monsters (owner_id < 100000)
 ## Returns array of hit events: { projectile_id, target_id, owner_id, position }
 func check_collisions_with_monsters(monster_manager: MonsterManager) -> Array[Dictionary]:
 	var hits: Array[Dictionary] = []
 	var to_remove: Array[int] = []
+
+	# Build spatial grid from alive monsters
+	var alive_monsters := monster_manager.get_alive_monsters()
+	var monster_grid := _build_entity_grid(alive_monsters)
 
 	for entity_id: int in projectiles.keys():
 		var proj: ProjectileState = projectiles[entity_id]
@@ -133,8 +176,10 @@ func check_collisions_with_monsters(monster_manager: MonsterManager) -> Array[Di
 		if proj.owner_id >= 100000:
 			continue
 
-		# Check against all alive monsters
-		for monster: MonsterState in monster_manager.get_alive_monsters():
+		# Only check monsters in nearby cells
+		var nearby_monsters: Array = _query_nearby(monster_grid, proj.position)
+
+		for monster in nearby_monsters:
 			# Check distance for collision
 			var dist := proj.position.distance_to(monster.position)
 			var collision_dist := GameConstants.PROJECTILE_RADIUS + GameConstants.MONSTER_HITBOX_RADIUS
@@ -160,8 +205,8 @@ func check_collisions_with_monsters(monster_manager: MonsterManager) -> Array[Di
 				break
 
 	# Remove projectiles that hit something
-	for entity_id in to_remove:
-		remove_projectile(entity_id)
+	for eid in to_remove:
+		remove_projectile(eid)
 
 	return hits
 

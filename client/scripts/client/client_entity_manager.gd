@@ -21,6 +21,8 @@ var monster_entities: Dictionary = {}
 ## Projectile pool for network projectiles (separate from local player pool)
 var _projectile_pool: Array[Projectile] = []
 var _active_projectiles: Dictionary = {}  # entity_id -> Projectile
+## Ordered queue of active projectile entity IDs by spawn time (oldest first)
+var _active_projectile_order: Array[int] = []
 const NETWORK_PROJECTILE_POOL_SIZE := 64
 
 ## Reference to the entity container in the arena scene
@@ -28,6 +30,12 @@ var entity_container: Node2D = null
 
 ## Reference to InterpolationController
 var interpolation_controller: InterpolationController = null
+
+## Track previous animation states for remote player audio triggers
+var _player_prev_anim: Dictionary = {}  # entity_id -> int (AnimationState)
+
+## Cached AudioManager reference (lazy-initialized)
+var _audio_manager: Node = null
 
 ## Debug logging
 var debug_logging: bool = false
@@ -67,12 +75,19 @@ func _preload_scenes() -> void:
 		push_error("[ClientEntityManager] Failed to load projectile scene")
 
 
+## Get cached AudioManager reference (lazy init)
+func _get_audio_manager() -> Node:
+	if _audio_manager == null or not is_instance_valid(_audio_manager):
+		_audio_manager = get_tree().root.get_node_or_null("AudioManager")
+	return _audio_manager
+
+
 ## Initialize projectile pool for network-spawned projectiles
 func _initialize_projectile_pool() -> void:
 	if _projectile_packed == null or entity_container == null:
 		return
 
-	for i in NETWORK_PROJECTILE_POOL_SIZE:
+	for i in range(NETWORK_PROJECTILE_POOL_SIZE):
 		var projectile: Projectile = _projectile_packed.instantiate()
 		projectile.process_mode = Node.PROCESS_MODE_DISABLED
 		projectile.visible = false
@@ -142,6 +157,7 @@ func _despawn_remote_player(entity_id: int) -> void:
 
 	var remote_player: RemotePlayer = player_entities[entity_id]
 	player_entities.erase(entity_id)
+	_player_prev_anim.erase(entity_id)
 
 	if interpolation_controller:
 		interpolation_controller.unregister_entity_node(entity_id)
@@ -165,7 +181,17 @@ func _spawn_monster(entity_id: int, position: Vector2) -> void:
 	monster.entity_id = entity_id
 	monster.position = position
 
+	# Connect monster signals for audio feedback
+	monster.took_damage.connect(_on_monster_took_damage)
+	monster.died.connect(_on_monster_died)
+
 	entity_container.add_child(monster)
+
+	# Play monster spawn sound + effects
+	var audio := _get_audio_manager()
+	if audio:
+		audio.play_monster_spawn()
+	_spawn_monster_spawn_effects(position)
 	monster_entities[entity_id] = monster
 
 	# Register with InterpolationController for position updates
@@ -188,6 +214,8 @@ func _despawn_monster(entity_id: int) -> void:
 		interpolation_controller.unregister_entity_node(entity_id)
 
 	if is_instance_valid(monster):
+		# Spawn death effects at monster position before freeing
+		_spawn_monster_death_effects(monster.global_position)
 		monster.queue_free()
 
 	if debug_logging:
@@ -210,6 +238,11 @@ func _spawn_projectile(entity_id: int, position: Vector2) -> void:
 	projectile.monitorable = false
 
 	_active_projectiles[entity_id] = projectile
+	_active_projectile_order.append(entity_id)
+
+	# Connect projectile hit signal for impact audio
+	if projectile.hit.is_connected(_on_projectile_hit) == false:
+		projectile.hit.connect(_on_projectile_hit)
 
 	# Register with InterpolationController for position updates
 	if interpolation_controller:
@@ -226,6 +259,7 @@ func _despawn_projectile(entity_id: int) -> void:
 
 	var projectile: Projectile = _active_projectiles[entity_id]
 	_active_projectiles.erase(entity_id)
+	_active_projectile_order.erase(entity_id)
 
 	if interpolation_controller:
 		interpolation_controller.unregister_entity_node(entity_id)
@@ -241,15 +275,15 @@ func _despawn_projectile(entity_id: int) -> void:
 		print("[ClientEntityManager] Despawned projectile: id=%d" % entity_id)
 
 
-## Get a projectile from the pool
+## Get a projectile from the pool, evicting the oldest active if exhausted
 func _get_pooled_projectile() -> Projectile:
 	if _projectile_pool.is_empty():
-		# Pool exhausted - recycle oldest active
-		if _active_projectiles.is_empty():
+		# Pool exhausted - recycle oldest active by spawn time
+		if _active_projectile_order.is_empty():
 			push_warning("[ClientEntityManager] No projectiles available")
 			return null
 
-		var oldest_id: int = _active_projectiles.keys()[0]
+		var oldest_id: int = _active_projectile_order[0]
 		_despawn_projectile(oldest_id)
 
 		if _projectile_pool.is_empty():
@@ -269,11 +303,20 @@ func update_entity_visuals() -> void:
 		var remote_player: RemotePlayer = player_entities[entity_id]
 		if not is_instance_valid(remote_player):
 			player_entities.erase(entity_id)
+			_player_prev_anim.erase(entity_id)
 			continue
 
 		var anim_state := interpolation_controller.get_entity_animation_state(entity_id)
 		var flags := interpolation_controller.get_entity_flags(entity_id)
 		remote_player.update_from_network(anim_state, flags)
+
+		# Detect animation state transitions for audio + effects
+		var prev_anim: int = _player_prev_anim.get(entity_id, PacketTypes.AnimationState.IDLE)
+		if anim_state != prev_anim:
+			_play_remote_player_audio(anim_state)
+			if anim_state == PacketTypes.AnimationState.HIT:
+				_spawn_remote_hit_sparks(entity_id)
+			_player_prev_anim[entity_id] = anim_state
 
 	# Update monster visuals
 	for entity_id: int in monster_entities.keys():
@@ -295,6 +338,7 @@ func clear_all() -> void:
 		if is_instance_valid(node):
 			node.queue_free()
 	player_entities.clear()
+	_player_prev_anim.clear()
 
 	# Free monsters
 	for entity_id: int in monster_entities.keys():
@@ -311,9 +355,74 @@ func clear_all() -> void:
 			projectile.process_mode = Node.PROCESS_MODE_DISABLED
 			_projectile_pool.append(projectile)
 	_active_projectiles.clear()
+	_active_projectile_order.clear()
 
 	if debug_logging:
 		print("[ClientEntityManager] All entities cleared")
+
+
+## Handle monster taking damage (play audio)
+func _on_monster_took_damage(_amount: int) -> void:
+	var audio := _get_audio_manager()
+	if audio:
+		audio.play_monster_hit()
+
+
+## Handle monster death (play audio + effects)
+func _on_monster_died() -> void:
+	var audio := _get_audio_manager()
+	if audio:
+		audio.play_monster_death()
+
+
+## Spawn death particles for a monster at position
+func _spawn_monster_death_effects(pos: Vector2) -> void:
+	if entity_container == null:
+		return
+	var death_fx := ParticleEffects.create_death_explosion(pos, Color(0.8, 0.13, 0.13))
+	entity_container.add_child(death_fx)
+	var gore := ParticleEffects.create_gore_splatter(pos)
+	entity_container.add_child(gore)
+
+
+## Spawn spawn particles for a monster at position
+func _spawn_monster_spawn_effects(pos: Vector2) -> void:
+	if entity_container == null:
+		return
+	var spawn_fx := ParticleEffects.create_spawn_effect(pos, Color(0.8, 0.13, 0.13))
+	entity_container.add_child(spawn_fx)
+
+
+## Play audio for remote player animation state transitions
+func _play_remote_player_audio(anim_state: int) -> void:
+	var audio := _get_audio_manager()
+	if audio == null:
+		return
+
+	match anim_state:
+		PacketTypes.AnimationState.ATTACK:
+			audio.play_player_shoot()
+		PacketTypes.AnimationState.HIT:
+			audio.play_player_hit()
+		PacketTypes.AnimationState.DEATH:
+			audio.play_player_death()
+
+
+## Spawn hit sparks for a remote player
+func _spawn_remote_hit_sparks(entity_id: int) -> void:
+	if not player_entities.has(entity_id) or entity_container == null:
+		return
+	var player: RemotePlayer = player_entities[entity_id]
+	if is_instance_valid(player):
+		var sparks := ParticleEffects.create_hit_sparks(player.global_position, Color(0.6, 0.27, 0.8))
+		entity_container.add_child(sparks)
+
+
+## Handle projectile hit (play impact audio)
+func _on_projectile_hit(_body: Node2D) -> void:
+	var audio := _get_audio_manager()
+	if audio:
+		audio.play_projectile_impact()
 
 
 ## Get entity counts for debug

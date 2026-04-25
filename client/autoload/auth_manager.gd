@@ -39,9 +39,6 @@ var token_expiry: int = 0
 ## Runtime mode detection
 var is_server: bool = false
 
-## HTTP request node
-var http_request: HTTPRequest = null
-
 ## Called when the node enters the scene tree
 func _ready() -> void:
 	# Detect if running as dedicated server
@@ -61,11 +58,6 @@ func _ready() -> void:
 	if _client_config.debug_logging:
 		_client_config.print_config()
 
-	# Create HTTP request node (client only)
-	http_request = HTTPRequest.new()
-	add_child(http_request)
-	http_request.timeout = api_timeout
-
 	# Try to load saved token
 	_load_token()
 
@@ -84,6 +76,14 @@ func _process(_delta: float) -> void:
 			print("[AuthManager] Token expiring soon, refreshing...")
 			refresh_auth_token()
 
+## Create a dedicated HTTPRequest for a single API call.
+## Each request gets its own node so overlapping calls cannot interfere.
+func _create_http_request() -> HTTPRequest:
+	var req := HTTPRequest.new()
+	add_child(req)
+	req.timeout = api_timeout
+	return req
+
 ## Login with username and password
 func login(username: String, password: String) -> void:
 	if current_state == AuthState.LOGGING_IN:
@@ -100,20 +100,20 @@ func login(username: String, password: String) -> void:
 		"password": password
 	})
 
-	# Connect to request completion
-	if not http_request.request_completed.is_connected(_on_login_completed):
-		http_request.request_completed.connect(_on_login_completed)
+	var req := _create_http_request()
+	req.request_completed.connect(_on_login_completed.bind(req), CONNECT_ONE_SHOT)
 
-	var error = http_request.request(url, headers, HTTPClient.METHOD_POST, body)
+	var error = req.request(url, headers, HTTPClient.METHOD_POST, body)
 
 	if error != OK:
 		print("[AuthManager] HTTP Request failed: %d" % error)
 		_change_state(AuthState.ERROR)
 		login_failed.emit("Network error: %d" % error)
+		req.queue_free()
 
 ## Handle login response
-func _on_login_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
-	http_request.request_completed.disconnect(_on_login_completed)
+func _on_login_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray, req: HTTPRequest) -> void:
+	req.queue_free()
 
 	if result != HTTPRequest.RESULT_SUCCESS:
 		print("[AuthManager] Login request failed: %d" % result)
@@ -182,20 +182,20 @@ func register(username: String, email: String, password: String) -> void:
 		"password": password
 	})
 
-	# Connect to request completion
-	if not http_request.request_completed.is_connected(_on_register_completed):
-		http_request.request_completed.connect(_on_register_completed)
+	var req := _create_http_request()
+	req.request_completed.connect(_on_register_completed.bind(req), CONNECT_ONE_SHOT)
 
-	var error = http_request.request(url, headers, HTTPClient.METHOD_POST, body)
+	var error = req.request(url, headers, HTTPClient.METHOD_POST, body)
 
 	if error != OK:
 		print("[AuthManager] HTTP Request failed: %d" % error)
 		_change_state(AuthState.ERROR)
 		register_failed.emit("Network error: %d" % error)
+		req.queue_free()
 
 ## Handle registration response
-func _on_register_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
-	http_request.request_completed.disconnect(_on_register_completed)
+func _on_register_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray, req: HTTPRequest) -> void:
+	req.queue_free()
 
 	if result != HTTPRequest.RESULT_SUCCESS:
 		print("[AuthManager] Registration request failed: %d" % result)
@@ -282,18 +282,18 @@ func refresh_auth_token() -> void:
 	]
 	var body = JSON.stringify({"refresh_token": refresh_token})
 
-	# Connect to request completion
-	if not http_request.request_completed.is_connected(_on_refresh_completed):
-		http_request.request_completed.connect(_on_refresh_completed)
+	var req := _create_http_request()
+	req.request_completed.connect(_on_refresh_completed.bind(req), CONNECT_ONE_SHOT)
 
-	var error = http_request.request(url, headers, HTTPClient.METHOD_POST, body)
+	var error = req.request(url, headers, HTTPClient.METHOD_POST, body)
 
 	if error != OK:
 		print("[AuthManager] Token refresh request failed: %d" % error)
+		req.queue_free()
 
 ## Handle token refresh response
-func _on_refresh_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
-	http_request.request_completed.disconnect(_on_refresh_completed)
+func _on_refresh_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray, req: HTTPRequest) -> void:
+	req.queue_free()
 
 	if result != HTTPRequest.RESULT_SUCCESS or response_code != 200:
 		print("[AuthManager] Token refresh failed, logging out...")

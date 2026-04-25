@@ -4,7 +4,11 @@ extends Control
 
 
 var _killer_label: Label = null
+var _countdown_label: Label = null
 var _respawn_button: Button = null
+var _countdown_timer: float = 0.0
+var _countdown_active: bool = false
+const RESPAWN_COUNTDOWN := 3.0
 
 
 func _ready() -> void:
@@ -48,9 +52,17 @@ func _build_ui() -> void:
 	_killer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(_killer_label)
 
+	# Countdown label
+	_countdown_label = Label.new()
+	_countdown_label.text = ""
+	_countdown_label.add_theme_font_size_override("font_size", 28)
+	_countdown_label.add_theme_color_override("font_color", Color(0.9, 0.5, 0.5))
+	_countdown_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(_countdown_label)
+
 	# Spacer
 	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(0, 20)
+	spacer.custom_minimum_size = Vector2(0, 10)
 	vbox.add_child(spacer)
 
 	# Respawn button
@@ -62,6 +74,23 @@ func _build_ui() -> void:
 	vbox.add_child(_respawn_button)
 
 
+func _process(delta: float) -> void:
+	if not _countdown_active:
+		return
+	_countdown_timer -= delta
+	if _countdown_timer <= 0.0:
+		_countdown_active = false
+		_countdown_label.text = ""
+		_respawn_button.disabled = false
+		_respawn_button.text = "RESPAWN"
+	else:
+		var secs := ceili(_countdown_timer)
+		_countdown_label.text = "Respawn in %d..." % secs
+		# Pulse effect
+		var pulse := 0.7 + 0.3 * abs(sin(Time.get_ticks_msec() / 200.0))
+		_countdown_label.modulate.a = pulse
+
+
 ## Show death screen with killer information
 func show_death(killer_entity_id: int) -> void:
 	if killer_entity_id >= 100000:
@@ -71,6 +100,12 @@ func show_death(killer_entity_id: int) -> void:
 		_killer_label.text = "Killed by %s" % killer_name
 	else:
 		_killer_label.text = ""
+
+	# Start countdown
+	_countdown_timer = RESPAWN_COUNTDOWN
+	_countdown_active = true
+	_respawn_button.disabled = true
+	_respawn_button.text = "WAIT..."
 	visible = true
 
 

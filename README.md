@@ -309,7 +309,7 @@ GAME_SERVER_PORT=8081
 | Scene | Purpose |
 |-------|---------|
 | `client/scenes/test/player_test.tscn` | Simple player testing (no login required) |
-| `client/scenes/test/auto_login_test.tscn` | Full integration test with auto-login |
+| `client/scenes/test/auto_join_arena.tscn` | End-to-end test: login, connect, join networked arena |
 
 ### Running Tests
 

@@ -301,8 +301,12 @@ func _move_monster(monster: MonsterState, delta: float) -> void:
 	var velocity := monster.move_direction * GameConstants.MONSTER_SPEED
 	var new_position := monster.position + velocity * delta
 
-	# Clamp to map boundaries
-	monster.position = GameConstants.clamp_to_bounds(new_position)
+	# Resolve against map boundaries and arena obstacles
+	monster.position = GameConstants.move_with_obstacle_collision(
+		monster.position,
+		new_position,
+		GameConstants.MONSTER_HITBOX_RADIUS
+	)
 
 	# Update entity flags
 	monster.entity_flags |= PacketTypes.ENTITY_FLAG_MOVING

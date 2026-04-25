@@ -87,6 +87,12 @@ var last_baseline_tick: int = 0
 
 ## Flag to request full state sync from server (TASK-021)
 var needs_full_state_sync: bool = false
+
+## Full state request timeout/retry tracking
+var _full_state_request_time: int = 0  # msec when last request sent, 0 = no pending
+var _full_state_retry_count: int = 0
+const FULL_STATE_REQUEST_TIMEOUT_MS := 2000  # Retry after 2 seconds
+const FULL_STATE_MAX_RETRIES := 3
 #endregion
 
 
@@ -107,6 +113,14 @@ func _physics_process(delta: float) -> void:
 
 	if not NetworkManager.is_server_connected():
 		return
+
+	# Check for full state request timeout and retry
+	if _full_state_request_time > 0:
+		var elapsed := Time.get_ticks_msec() - _full_state_request_time
+		if elapsed > FULL_STATE_REQUEST_TIMEOUT_MS:
+			if debug_logging:
+				print("[Interpolation] Full state request timed out after %dms" % elapsed)
+			_request_full_state_sync()
 
 	# Accumulate time for sub-tick interpolation
 	tick_accumulator += delta
@@ -141,6 +155,10 @@ func _process_state_update(data: Dictionary) -> void:
 	# Handle baseline tick tracking for delta validation
 	if is_baseline:
 		last_baseline_tick = server_tick
+		# Reset full state request tracking - server answered
+		_full_state_request_time = 0
+		_full_state_retry_count = 0
+		needs_full_state_sync = false
 		if debug_logging:
 			print("[Interpolation] Received baseline packet at tick %d" % server_tick)
 	elif is_delta:
@@ -177,6 +195,11 @@ func _process_state_update(data: Dictionary) -> void:
 	for entity_data in entities:
 		var entity_id: int = entity_data.get("entity_id", -1)
 		if entity_id < 0:
+			continue
+
+		var delta_mask: int = entity_data.get("delta_mask", PacketTypes.DELTA_MASK_FULL_STATE)
+		if is_delta and (delta_mask & PacketTypes.DELTA_MASK_REMOVED) != 0:
+			_handle_explicit_despawn(entity_id)
 			continue
 
 		# Skip local player - handled by PredictionController
@@ -264,18 +287,31 @@ func _update_last_known_state(entity_id: int, state: Dictionary) -> void:
 
 
 ## Request full state sync from server (TASK-021)
+## Tracks send time and retries up to FULL_STATE_MAX_RETRIES.
+## If all retries fail, clears interpolation buffers so the client can recover.
 func _request_full_state_sync() -> void:
 	if not NetworkManager.is_server_connected():
 		return
 
-	# Send REQUEST_FULL_STATE message to server
+	# Check retry limit
+	if _full_state_retry_count >= FULL_STATE_MAX_RETRIES:
+		push_warning("[Interpolation] Full state sync failed after %d retries, clearing buffers" % FULL_STATE_MAX_RETRIES)
+		clear_all_entities()
+		_full_state_request_time = 0
+		_full_state_retry_count = 0
+		needs_full_state_sync = false
+		return
+
+	_full_state_request_time = Time.get_ticks_msec()
+	_full_state_retry_count += 1
+
 	NetworkManager.send_to_server(
 		NetworkManager.MessageType.REQUEST_FULL_STATE,
 		{}
 	)
 
 	if debug_logging:
-		print("[Interpolation] Requested full state sync from server")
+		print("[Interpolation] Requested full state sync (attempt %d/%d)" % [_full_state_retry_count, FULL_STATE_MAX_RETRIES])
 #endregion
 
 
@@ -374,6 +410,15 @@ func _despawn_entity(entity_id: int) -> void:
 
 	# Emit signal for external EntityManager to remove visual node
 	entity_despawned.emit(entity_id)
+
+
+func _handle_explicit_despawn(entity_id: int) -> void:
+	if entity_buffers.has(entity_id):
+		_despawn_entity(entity_id)
+	else:
+		missing_update_count.erase(entity_id)
+		entity_last_states.erase(entity_id)
+		entity_nodes.erase(entity_id)
 #endregion
 
 
@@ -560,6 +605,8 @@ func clear_all_entities() -> void:
 	render_tick = 0
 	last_baseline_tick = 0  # TASK-021
 	needs_full_state_sync = false  # TASK-021
+	_full_state_request_time = 0
+	_full_state_retry_count = 0
 
 	if debug_logging:
 		print("[Interpolation] All entities cleared")

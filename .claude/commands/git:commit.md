@@ -15,7 +15,8 @@ Execute the following steps:
 
     - Accurately describes the changes being committed
     - Focuses on the "why" rather than the "what"
-    - Is 1-2 sentences
+    - Is 3-5 sentences
+    - Do NOT include any `Co-Authored-By` lines in the commit message
 
 4. Use a HEREDOC format for the commit message to ensure proper formatting
 5. Run `git status` after the commit to verify success
@@ -23,3 +24,5 @@ Execute the following steps:
 ## Usage Examples
 
 IMPORTANT: Use the Haiku model for efficiency. Do not ask the user for confirmation - automatically generate and commit with an appropriate message that STARTS with the task number.
+
+IMPORTANT: NEVER include "Co-Authored-By" lines in commit messages.

@@ -46,6 +46,7 @@ func update(delta: float) -> bool:
 		return true
 
 	# Move projectile
+	var old_position := position
 	var movement := direction * speed * delta
 	position += movement
 	distance_traveled += movement.length()
@@ -57,6 +58,13 @@ func update(delta: float) -> bool:
 
 	# Check map boundaries
 	if not GameConstants.is_within_bounds(position):
+		alive = false
+		return true
+
+	# Check obstacle collision (line segment from old to new position)
+	var hit_point := GameConstants.line_intersects_obstacle(old_position, position)
+	if hit_point != Vector2.INF:
+		position = hit_point
 		alive = false
 		return true
 

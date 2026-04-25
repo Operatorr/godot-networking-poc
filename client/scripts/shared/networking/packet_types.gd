@@ -19,7 +19,8 @@ enum Type {
 	CONNECT_AUTH = 6,      ## Client -> Server: Authentication handshake (variable)
 	DISCONNECT = 7,        ## Client -> Server: Clean disconnect (4 bytes)
 	REQUEST_FULL_STATE = 8, ## Client -> Server: Request full state sync (TASK-021)
-	RESPAWN_REQUEST = 9    ## Client -> Server: Request respawn after death
+	RESPAWN_REQUEST = 9,   ## Client -> Server: Request respawn after death
+	SERVER_METRICS = 10    ## Server -> Client: Server performance metrics (1/sec)
 }
 
 ## Entity types for state updates
@@ -64,6 +65,7 @@ const ENTITY_FLAG_VISIBLE := 1 << 5
 const DELTA_MASK_POSITION := 1 << 0    ## Position (x, y) changed - 4 bytes if set
 const DELTA_MASK_ANIMATION := 1 << 1   ## Animation state changed - 1 byte if set
 const DELTA_MASK_FLAGS := 1 << 2       ## Entity flags changed - 1 byte if set
+const DELTA_MASK_REMOVED := 1 << 6     ## Entity should be removed client-side
 const DELTA_MASK_FULL_STATE := 1 << 7  ## Full state (new spawn or periodic sync)
 
 ## State update packet flags (TASK-021)
@@ -112,12 +114,13 @@ static func get_type_name(packet_type: int) -> String:
 		Type.DISCONNECT: return "DISCONNECT"
 		Type.REQUEST_FULL_STATE: return "REQUEST_FULL_STATE"
 		Type.RESPAWN_REQUEST: return "RESPAWN_REQUEST"
+		Type.SERVER_METRICS: return "SERVER_METRICS"
 		_: return "UNKNOWN(%d)" % packet_type
 
 
 ## Helper: Check if packet type is valid
 static func is_valid_type(packet_type: int) -> bool:
-	return packet_type >= Type.PLAYER_INPUT and packet_type <= Type.RESPAWN_REQUEST
+	return packet_type >= Type.PLAYER_INPUT and packet_type <= Type.SERVER_METRICS
 
 
 ## Helper: Encode input flags from dictionary
