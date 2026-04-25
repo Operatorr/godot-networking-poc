@@ -309,6 +309,7 @@ GAME_SERVER_PORT=8081
 | Scene | Purpose |
 |-------|---------|
 | `client/scenes/test/player_test.tscn` | Simple player testing (no login required) |
+| `client/scenes/test/login_character_test.tscn` | Headless integration test: login and verify character data is loaded |
 | `client/scenes/test/auto_join_arena.tscn` | End-to-end test: login, connect, join networked arena |
 
 ### Running Tests
@@ -323,6 +324,12 @@ godot --path . scenes/test/player_test.tscn
 1. Start all services (API, Database, optionally Game Server)
 2. Configure `.env.test` with valid credentials
 3. Run the auto-login test scene
+
+**Login Character Test:**
+```bash
+cd client
+godot --headless --path . scenes/test/login_character_test.tscn
+```
 
 ---
 

@@ -42,9 +42,10 @@ type RefreshTokenRequest struct {
 
 // AuthResponse represents the authentication response
 type AuthResponse struct {
-	AccessToken  string       `json:"access_token"`
-	RefreshToken string       `json:"refresh_token"`
-	User         *models.User `json:"user"`
+	AccessToken  string            `json:"access_token"`
+	RefreshToken string            `json:"refresh_token"`
+	User         *models.User      `json:"user"`
+	Character    *models.Character `json:"character,omitempty"`
 }
 
 // ErrorResponse represents an error response
@@ -215,6 +216,33 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var character *models.Character
+	characterQuery := `
+		SELECT id, user_id, name, class, race, realm, mode, level, created_at
+		FROM characters
+		WHERE user_id = $1
+	`
+	var foundCharacter models.Character
+	err = h.db.QueryRow(characterQuery, user.ID).Scan(
+		&foundCharacter.ID,
+		&foundCharacter.UserID,
+		&foundCharacter.Name,
+		&foundCharacter.Class,
+		&foundCharacter.Race,
+		&foundCharacter.Realm,
+		&foundCharacter.Mode,
+		&foundCharacter.Level,
+		&foundCharacter.CreatedAt,
+	)
+	if err == nil {
+		character = &foundCharacter
+	} else if err != sql.ErrNoRows {
+		log.Printf("[Auth] Failed to fetch character for user %d: %v", user.ID, err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Internal server error"})
+		return
+	}
+
 	// Clear password hash before sending
 	user.PasswordHash = ""
 
@@ -223,6 +251,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		User:         &user,
+		Character:    character,
 	})
 
 	log.Printf("[Auth] User logged in successfully: %s (ID: %d)", user.Username, user.ID)

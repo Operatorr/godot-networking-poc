@@ -31,6 +31,11 @@ CREATE TABLE IF NOT EXISTS characters (
     id SERIAL PRIMARY KEY,
     user_id INTEGER UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name VARCHAR(50) UNIQUE NOT NULL,
+    class VARCHAR(20) NOT NULL DEFAULT 'Warrior',
+    race VARCHAR(20) NOT NULL DEFAULT 'Human',
+    realm VARCHAR(50) NOT NULL DEFAULT 'Asia (Singapore)',
+    mode VARCHAR(20) NOT NULL DEFAULT 'softcore',
+    level SMALLINT NOT NULL DEFAULT 1,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT character_name_length CHECK (char_length(name) >= 3 AND char_length(name) <= 50)
@@ -38,6 +43,11 @@ CREATE TABLE IF NOT EXISTS characters (
 
 COMMENT ON TABLE characters IS 'Player characters - limited to one character per user';
 COMMENT ON COLUMN characters.user_id IS 'UNIQUE constraint enforces single character per user';
+COMMENT ON COLUMN characters.class IS 'Character class, defaulting to Warrior';
+COMMENT ON COLUMN characters.race IS 'Character race, defaulting to Human';
+COMMENT ON COLUMN characters.realm IS 'Character realm, defaulting to Asia (Singapore)';
+COMMENT ON COLUMN characters.mode IS 'Character mode, defaulting to softcore';
+COMMENT ON COLUMN characters.level IS 'Character level, defaulting to 1';
 
 -- Leaderboards table - PvP and monster kill statistics
 CREATE TABLE IF NOT EXISTS leaderboards (

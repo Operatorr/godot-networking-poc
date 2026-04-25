@@ -42,7 +42,7 @@ var is_server: bool = false
 ## Called when the node enters the scene tree
 func _ready() -> void:
 	# Detect if running as dedicated server
-	is_server = OS.has_feature("dedicated_server") or DisplayServer.get_name() == "headless"
+	is_server = (OS.has_feature("dedicated_server") or DisplayServer.get_name() == "headless") and not _is_test_scene()
 
 	print("[AuthManager] Initializing in %s mode..." % ("SERVER" if is_server else "CLIENT"))
 
@@ -139,31 +139,21 @@ func _on_login_completed(result: int, response_code: int, _headers: PackedString
 		login_failed.emit("Invalid response format")
 		return
 
-	var data = json.data
+	var data: Dictionary = json.data
 
 	# Store tokens
-	jwt_token = data.get("token", "")
-	refresh_token = data.get("refresh_token", "")
-	token_expiry = data.get("expiry", 0)
+	jwt_token = _variant_to_string(data.get("access_token", data.get("token", "")))
+	refresh_token = _variant_to_string(data.get("refresh_token", ""))
+	token_expiry = int(data.get("expiry", 0))
 
 	# Update GameManager with user data
-	var user_data = {
-		"user_id": data.get("user_id", ""),
-		"username": data.get("username", ""),
-		"character_id": data.get("character_id", ""),
-		"character_name": data.get("character_name", "")
-	}
-
-	var game_mgr = get_tree().root.get_node_or_null("GameManager")
-	if game_mgr:
-		game_mgr.set_player_data(user_data)
-
-	# Save token
-	_save_token()
-
-	print("[AuthManager] Login successful for user: %s" % user_data.username)
-	_change_state(AuthState.LOGGED_IN)
-	login_successful.emit(user_data)
+	var user_data: Dictionary = _extract_user_data(data)
+	var character: Dictionary = _extract_character_data(data)
+	if not character.is_empty():
+		_merge_character_data(user_data, character)
+		_complete_login(user_data)
+	else:
+		_fetch_character_after_login(user_data)
 
 ## Register new account
 func register(username: String, email: String, password: String) -> void:
@@ -221,18 +211,15 @@ func _on_register_completed(result: int, response_code: int, _headers: PackedStr
 		register_failed.emit("Invalid response format")
 		return
 
-	var data = json.data
+	var data: Dictionary = json.data
 
 	# Store tokens
-	jwt_token = data.get("token", "")
-	refresh_token = data.get("refresh_token", "")
-	token_expiry = data.get("expiry", 0)
+	jwt_token = _variant_to_string(data.get("access_token", data.get("token", "")))
+	refresh_token = _variant_to_string(data.get("refresh_token", ""))
+	token_expiry = int(data.get("expiry", 0))
 
 	# Update GameManager with user data
-	var user_data = {
-		"user_id": data.get("user_id", ""),
-		"username": data.get("username", "")
-	}
+	var user_data: Dictionary = _extract_user_data(data)
 
 	var game_mgr = get_tree().root.get_node_or_null("GameManager")
 	if game_mgr:
@@ -241,7 +228,7 @@ func _on_register_completed(result: int, response_code: int, _headers: PackedStr
 	# Save token
 	_save_token()
 
-	print("[AuthManager] Registration successful for user: %s" % user_data.username)
+	print("[AuthManager] Registration successful for user: %s" % user_data.get("username", "unknown"))
 	_change_state(AuthState.LOGGED_IN)
 	register_successful.emit(user_data)
 
@@ -309,9 +296,9 @@ func _on_refresh_completed(result: int, response_code: int, _headers: PackedStri
 		logout()
 		return
 
-	var data = json.data
-	jwt_token = data.get("token", "")
-	token_expiry = data.get("expiry", 0)
+	var data: Dictionary = json.data
+	jwt_token = _variant_to_string(data.get("access_token", data.get("token", "")))
+	token_expiry = int(data.get("expiry", 0))
 
 	_save_token()
 
@@ -407,3 +394,106 @@ func _clear_saved_token() -> void:
 func set_api_url(url: String) -> void:
 	api_base_url = url
 	print("[AuthManager] API URL set to: %s" % url)
+
+
+func _is_test_scene() -> bool:
+	var current_scene: Node = get_tree().current_scene
+	if current_scene == null:
+		var root := get_tree().root
+		if root.get_child_count() > 0:
+			current_scene = root.get_child(root.get_child_count() - 1)
+
+	return current_scene != null and current_scene.scene_file_path.begins_with("res://scenes/test/")
+
+
+func _extract_user_data(data: Dictionary) -> Dictionary:
+	var user: Dictionary = {}
+	var user_value: Variant = data.get("user", {})
+	if user_value is Dictionary:
+		user = user_value
+
+	return {
+		"user_id": _variant_to_string(data.get("user_id", user.get("id", ""))),
+		"username": _variant_to_string(data.get("username", user.get("username", ""))),
+		"character_id": _variant_to_string(data.get("character_id", "")),
+		"character_name": _variant_to_string(data.get("character_name", ""))
+	}
+
+
+func _extract_character_data(data: Dictionary) -> Dictionary:
+	var character_value: Variant = data.get("character", {})
+	if character_value is Dictionary:
+		return character_value
+	return {}
+
+
+func _merge_character_data(user_data: Dictionary, character: Dictionary) -> void:
+	var character_id: String = _variant_to_string(character.get("id", character.get("character_id", "")))
+	var character_name: String = _variant_to_string(character.get("name", character.get("character_name", "")))
+
+	if not character_id.is_empty():
+		user_data["character_id"] = character_id
+	if not character_name.is_empty():
+		user_data["character_name"] = character_name
+
+
+func _fetch_character_after_login(user_data: Dictionary) -> void:
+	if jwt_token.is_empty():
+		_complete_login(user_data)
+		return
+
+	var req := _create_http_request()
+	req.request_completed.connect(_on_login_character_completed.bind(req, user_data), CONNECT_ONE_SHOT)
+
+	var error := req.request(
+		api_base_url + "/api/character/me",
+		[get_auth_header()],
+		HTTPClient.METHOD_GET
+	)
+
+	if error != OK:
+		push_warning("[AuthManager] Character lookup request failed: %d" % error)
+		req.queue_free()
+		_complete_login(user_data)
+
+
+func _on_login_character_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray, req: HTTPRequest, user_data: Dictionary) -> void:
+	req.queue_free()
+
+	if result != HTTPRequest.RESULT_SUCCESS:
+		push_warning("[AuthManager] Character lookup failed: %d" % result)
+		_complete_login(user_data)
+		return
+
+	if response_code == 200:
+		var json := JSON.new()
+		var parse_error := json.parse(body.get_string_from_utf8())
+		if parse_error == OK and json.data is Dictionary:
+			var character: Dictionary = json.data
+			_merge_character_data(user_data, character)
+		else:
+			push_warning("[AuthManager] Failed to parse character lookup response")
+	elif response_code != 404:
+		push_warning("[AuthManager] Character lookup returned status: %d" % response_code)
+
+	_complete_login(user_data)
+
+
+func _complete_login(user_data: Dictionary) -> void:
+	var game_mgr = get_tree().root.get_node_or_null("GameManager")
+	if game_mgr:
+		game_mgr.set_player_data(user_data)
+
+	_save_token()
+
+	print("[AuthManager] Login successful for user: %s" % user_data.get("username", "unknown"))
+	_change_state(AuthState.LOGGED_IN)
+	login_successful.emit(user_data)
+
+
+func _variant_to_string(value: Variant) -> String:
+	if value == null:
+		return ""
+	if value is float and is_equal_approx(value, float(int(value))):
+		return str(int(value))
+	return str(value)

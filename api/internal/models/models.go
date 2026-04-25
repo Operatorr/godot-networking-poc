@@ -17,17 +17,22 @@ type Character struct {
 	ID        int       `json:"id"`
 	UserID    int       `json:"user_id"`
 	Name      string    `json:"name"`
+	Class     string    `json:"class"`
+	Race      string    `json:"race"`
+	Realm     string    `json:"realm"`
+	Mode      string    `json:"mode"`
+	Level     int       `json:"level"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
 // Leaderboard represents leaderboard stats
 type Leaderboard struct {
-	ID            int       `json:"id"`
-	CharacterID   int       `json:"character_id"`
-	PvPKills      int       `json:"pvp_kills"`
-	MonsterKills  int       `json:"monster_kills"`
-	Deaths        int       `json:"deaths"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID           int       `json:"id"`
+	CharacterID  int       `json:"character_id"`
+	PvPKills     int       `json:"pvp_kills"`
+	MonsterKills int       `json:"monster_kills"`
+	Deaths       int       `json:"deaths"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // Session represents a game session

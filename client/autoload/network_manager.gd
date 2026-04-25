@@ -87,7 +87,7 @@ var stats: Dictionary = {
 ## Called when the node enters the scene tree
 func _ready() -> void:
 	# Detect if running as dedicated server
-	is_server = OS.has_feature("dedicated_server") or DisplayServer.get_name() == "headless"
+	is_server = (OS.has_feature("dedicated_server") or DisplayServer.get_name() == "headless") and not _is_test_scene()
 
 	print("[NetworkManager] Initializing in %s mode..." % ("SERVER" if is_server else "CLIENT"))
 
@@ -116,6 +116,16 @@ func _initialize_server() -> void:
 ## Initialize as client
 func _initialize_client() -> void:
 	print("[NetworkManager] Client initialized, ready to connect")
+
+
+func _is_test_scene() -> bool:
+	var current_scene: Node = get_tree().current_scene
+	if current_scene == null:
+		var root := get_tree().root
+		if root.get_child_count() > 0:
+			current_scene = root.get_child(root.get_child_count() - 1)
+
+	return current_scene != null and current_scene.scene_file_path.begins_with("res://scenes/test/")
 
 ## Process loop - handles WebSocket polling and heartbeat
 func _process(delta: float) -> void:

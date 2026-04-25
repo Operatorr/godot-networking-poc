@@ -108,7 +108,9 @@ start_api_server() {
 
     # Load API .env if exists
     if [ -f "$PROJECT_ROOT/api/.env" ]; then
-        export $(cat "$PROJECT_ROOT/api/.env" | grep -v '^#' | xargs)
+        set -a
+        source "$PROJECT_ROOT/api/.env"
+        set +a
     fi
 
     # Build and run

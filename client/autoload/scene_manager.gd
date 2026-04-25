@@ -74,15 +74,16 @@ func _ready() -> void:
 	# Wait for other autoloads to initialize
 	await get_tree().process_frame
 
+	# Skip routing for test scenes (run via F6 or headless CLI)
+	if current_scene_name.begins_with("res://scenes/test/"):
+		print("[SceneManager] Test scene detected, skipping route")
+		return
+
 	# If server, load server scene
 	if is_server:
 		print("[SceneManager] Loading server scene...")
 		change_scene(SceneName.SERVER_MAIN, false)
 	else:
-		# Skip routing for test scenes (run via F6)
-		if current_scene_name.begins_with("res://scenes/test/"):
-			print("[SceneManager] Test scene detected, skipping route")
-			return
 		# Client: Route based on auth state
 		_route_to_initial_scene()
 

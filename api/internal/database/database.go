@@ -127,8 +127,20 @@ func (db *DB) InitSchema() error {
 		id SERIAL PRIMARY KEY,
 		user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
 		name VARCHAR(50) UNIQUE NOT NULL,
+		class VARCHAR(20) NOT NULL DEFAULT 'Warrior',
+		race VARCHAR(20) NOT NULL DEFAULT 'Human',
+		realm VARCHAR(50) NOT NULL DEFAULT 'Asia (Singapore)',
+		mode VARCHAR(20) NOT NULL DEFAULT 'softcore',
+		level SMALLINT NOT NULL DEFAULT 1,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);
+
+	-- Keep older locally initialized character tables aligned with the CMS schema.
+	ALTER TABLE characters ADD COLUMN IF NOT EXISTS class VARCHAR(20) NOT NULL DEFAULT 'Warrior';
+	ALTER TABLE characters ADD COLUMN IF NOT EXISTS race VARCHAR(20) NOT NULL DEFAULT 'Human';
+	ALTER TABLE characters ADD COLUMN IF NOT EXISTS realm VARCHAR(50) NOT NULL DEFAULT 'Asia (Singapore)';
+	ALTER TABLE characters ADD COLUMN IF NOT EXISTS mode VARCHAR(20) NOT NULL DEFAULT 'softcore';
+	ALTER TABLE characters ADD COLUMN IF NOT EXISTS level SMALLINT NOT NULL DEFAULT 1;
 
 	-- Leaderboards table
 	CREATE TABLE IF NOT EXISTS leaderboards (

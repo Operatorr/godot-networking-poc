@@ -56,7 +56,7 @@ var local_player_entity_id: int = -1
 ## Called when the node enters the scene tree
 func _ready() -> void:
 	# Detect if running as dedicated server
-	is_server = OS.has_feature("dedicated_server") or DisplayServer.get_name() == "headless"
+	is_server = (OS.has_feature("dedicated_server") or DisplayServer.get_name() == "headless") and not _is_test_scene()
 
 	print("[GameManager] Initializing in %s mode..." % ("SERVER" if is_server else "CLIENT"))
 
@@ -249,3 +249,13 @@ func get_local_player_entity_id() -> int:
 func clear_local_player_entity_id() -> void:
 	local_player_entity_id = -1
 	print("[GameManager] Local player entity ID cleared")
+
+
+func _is_test_scene() -> bool:
+	var current_scene: Node = get_tree().current_scene
+	if current_scene == null:
+		var root := get_tree().root
+		if root.get_child_count() > 0:
+			current_scene = root.get_child(root.get_child_count() - 1)
+
+	return current_scene != null and current_scene.scene_file_path.begins_with("res://scenes/test/")

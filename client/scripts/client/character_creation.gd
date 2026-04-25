@@ -172,15 +172,15 @@ func _on_create_completed(result: int, response_code: int, _headers: PackedStrin
 	if response_code == 201 or response_code == 200:
 		# Success - extract character data
 		var data: Dictionary = json.data
-		var character := data.get("character", {})
+		var character: Dictionary = data.get("character", {})
 
 		var character_name: String = character.get("name", "")
-		var character_id = character.get("id", "")
+		var character_id: String = str(character.get("id", ""))
 
 		# Update GameManager with character data
 		GameManager.set_player_data({
 			"character_name": character_name,
-			"character_id": str(character_id)
+			"character_id": character_id
 		})
 
 		print("[CharacterCreation] Character created successfully: %s" % character_name)

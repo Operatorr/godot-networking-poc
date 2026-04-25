@@ -22,7 +22,12 @@ func NewCharacterHandler(db *database.DB) *CharacterHandler {
 
 // CreateCharacterRequest represents the request body for character creation
 type CreateCharacterRequest struct {
-	Name string `json:"name"`
+	Name  string `json:"name"`
+	Class string `json:"class"`
+	Race  string `json:"race"`
+	Realm string `json:"realm"`
+	Mode  string `json:"mode"`
+	Level int    `json:"level"`
 }
 
 // CharacterSuccessResponse represents a success response with character data
@@ -45,11 +50,20 @@ func (h *CharacterHandler) GetCharacter(w http.ResponseWriter, r *http.Request) 
 
 	// Query character by user_id
 	var character models.Character
-	query := `SELECT id, user_id, name, created_at FROM characters WHERE user_id = $1`
+	query := `
+		SELECT id, user_id, name, class, race, realm, mode, level, created_at
+		FROM characters
+		WHERE user_id = $1
+	`
 	err := h.db.QueryRow(query, claims.UserID).Scan(
 		&character.ID,
 		&character.UserID,
 		&character.Name,
+		&character.Class,
+		&character.Race,
+		&character.Realm,
+		&character.Mode,
+		&character.Level,
 		&character.CreatedAt,
 	)
 
@@ -100,6 +114,12 @@ func (h *CharacterHandler) CreateCharacter(w http.ResponseWriter, r *http.Reques
 		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
 		return
 	}
+	normalizeCharacterRequest(&req)
+	if err := validateCharacterOptions(req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
+		return
+	}
 
 	// Check if user already has a character
 	var existingCharacterID int
@@ -121,14 +141,28 @@ func (h *CharacterHandler) CreateCharacter(w http.ResponseWriter, r *http.Reques
 	// Insert new character
 	var character models.Character
 	insertQuery := `
-		INSERT INTO characters (user_id, name)
-		VALUES ($1, $2)
-		RETURNING id, user_id, name, created_at
+		INSERT INTO characters (user_id, name, class, race, realm, mode, level)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING id, user_id, name, class, race, realm, mode, level, created_at
 	`
-	err = h.db.QueryRow(insertQuery, claims.UserID, req.Name).Scan(
+	err = h.db.QueryRow(
+		insertQuery,
+		claims.UserID,
+		req.Name,
+		req.Class,
+		req.Race,
+		req.Realm,
+		req.Mode,
+		req.Level,
+	).Scan(
 		&character.ID,
 		&character.UserID,
 		&character.Name,
+		&character.Class,
+		&character.Race,
+		&character.Realm,
+		&character.Mode,
+		&character.Level,
 		&character.CreatedAt,
 	)
 
@@ -157,6 +191,42 @@ func (h *CharacterHandler) CreateCharacter(w http.ResponseWriter, r *http.Reques
 		Message:   "Character created successfully",
 		Character: &character,
 	})
+}
+
+func normalizeCharacterRequest(req *CreateCharacterRequest) {
+	req.Class = defaultString(strings.TrimSpace(req.Class), "Warrior")
+	req.Race = defaultString(strings.TrimSpace(req.Race), "Human")
+	req.Realm = defaultString(strings.TrimSpace(req.Realm), "Asia (Singapore)")
+	req.Mode = defaultString(strings.TrimSpace(req.Mode), "softcore")
+	if req.Level == 0 {
+		req.Level = 1
+	}
+}
+
+func defaultString(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
+}
+
+func validateCharacterOptions(req CreateCharacterRequest) error {
+	if len(req.Class) > 20 {
+		return fmt.Errorf("character class must not exceed 20 characters")
+	}
+	if len(req.Race) > 20 {
+		return fmt.Errorf("character race must not exceed 20 characters")
+	}
+	if len(req.Realm) > 50 {
+		return fmt.Errorf("character realm must not exceed 50 characters")
+	}
+	if len(req.Mode) > 20 {
+		return fmt.Errorf("character mode must not exceed 20 characters")
+	}
+	if req.Level < 1 || req.Level > 32767 {
+		return fmt.Errorf("character level must be between 1 and 32767")
+	}
+	return nil
 }
 
 // validateCharacterName validates the character name
