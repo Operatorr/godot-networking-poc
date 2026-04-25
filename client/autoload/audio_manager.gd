@@ -7,6 +7,7 @@ extends Node
 const MASTER_BUS = "Master"
 const MUSIC_BUS = "Music"
 const SFX_BUS = "SFX"
+const ProceduralAudio := preload("res://scripts/shared/audio/procedural_audio.gd")
 
 ## Audio categories
 enum AudioCategory {
@@ -443,7 +444,7 @@ func register_audio(category: String, audio_name: String, stream: AudioStream) -
 
 ## Check if music is playing
 func is_music_playing() -> bool:
-	if music_player == null:
+	if is_server or music_player == null:
 		return false
 
 	return music_player.playing

@@ -7,6 +7,11 @@
 3. **use godot-mcp** for interacting with Godot engine if neccesary
 4. **do not** commit with Claude as Co-Author
 
+## GDScript Style
+
+- Prefer `class_name` references directly.
+- If a script must be preloaded because Godot cannot resolve a newer global class during headless startup, name the preload constant exactly like the exported class, e.g. `const Projectile := preload(".../projectile.gd")`. Do not introduce parallel `FooScript` aliases.
+
 ## Project Documentation
 
 ```
@@ -28,8 +33,10 @@ docs/ARCHITECTURE.md
   │   ├── export_presets.cfg         # Client AND Server exports
   │   ├── scenes/
   │   │   ├── client/               # Client-only scenes
-  │   │   │   ├── main_menu.tscn
-  │   │   │   └── game_ui.tscn
+  │   │   │   ├── menus/
+  │   │   │   │   └── main_menu.tscn
+  │   │   │   └── components/
+  │   │   │       └── game_ui.tscn
   │   │   ├── server/               # Server-only scenes
   │   │   │   └── server_main.tscn
   │   │   └── shared/               # Shared entities
@@ -86,8 +93,8 @@ docs/ARCHITECTURE.md
 
 ## Active Technologies
 - GDScript (Godot 4.6) (001-main-menu-ui)
-- GDScript (Godot 4.6) + Godot Engine 4.6 (built-in physics, CharacterBody2D, AnimatedSprite2D) (002-player-character)
-- N/A (player state managed in memory; persistence handled by separate systems) (002-player-character)
+- GDScript (Godot 4.6) + Godot Engine 4.6 (built-in physics, CharacterBody2D, AnimatedSprite2D)
+- In-memory player state; persistence handled by separate systems
 
 ## Recent Changes
 - 001-main-menu-ui: Added GDScript (Godot 4.6)

@@ -4,6 +4,7 @@ class_name ServerBroadcastService
 extends RefCounted
 
 const DeltaStateCacheClass = preload("res://scripts/server/delta_state_cache.gd")
+const LeaderboardManager := preload("res://scripts/server/leaderboard_manager.gd")
 
 var debug_logging: bool = false
 

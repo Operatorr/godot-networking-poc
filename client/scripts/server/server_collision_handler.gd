@@ -3,6 +3,8 @@
 class_name ServerCollisionHandler
 extends RefCounted
 
+const ServerBroadcastService := preload("res://scripts/server/server_broadcast_service.gd")
+
 var debug_logging: bool = false
 
 

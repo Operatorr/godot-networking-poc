@@ -24,7 +24,7 @@ enum TestState {
 var state: TestState = TestState.INITIALIZING
 
 ## Test configuration
-var config = null
+var config: TestConfigScript = null
 
 ## UI references
 @onready var status_label: Label = $UI/StatusLabel

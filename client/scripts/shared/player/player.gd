@@ -3,6 +3,11 @@
 class_name Player
 extends CharacterBody2D
 
+const HPComponent := preload("res://scripts/shared/player/hp_component.gd")
+const Projectile := preload("res://scripts/shared/projectile/projectile.gd")
+const ProjectilePool := preload("res://scripts/shared/projectile/projectile_pool.gd")
+const ProceduralSprites := preload("res://scripts/shared/visuals/procedural_sprites.gd")
+
 ## Movement state enum
 enum MovementState {
 	IDLE,    ## No movement input, playing idle animation
@@ -50,10 +55,10 @@ const FOOTSTEP_WALK_INTERVAL := 0.3
 const FOOTSTEP_SPRINT_INTERVAL := 0.2
 
 ## Reference to HP component
-@onready var hp_component = $HPComponent
+@onready var hp_component: HPComponent = $HPComponent
 
 ## Reference to projectile pool
-@onready var projectile_pool = $ProjectilePool
+@onready var projectile_pool: ProjectilePool = $ProjectilePool
 
 ## Reference to shoot cooldown timer
 @onready var shoot_cooldown_timer: Timer = $ShootCooldownTimer
@@ -154,7 +159,7 @@ func _shoot() -> void:
 	var spawn_pos := global_position + last_aim_direction * spawn_offset
 
 	# Spawn projectile from pool
-	var projectile = projectile_pool.spawn(spawn_pos, last_aim_direction, projectile_range)
+	var projectile: Projectile = projectile_pool.spawn(spawn_pos, last_aim_direction, projectile_range)
 
 	if projectile:
 		# Start cooldown

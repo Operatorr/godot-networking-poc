@@ -3,6 +3,8 @@
 class_name ProjectilePool
 extends Node
 
+const Projectile := preload("res://scripts/shared/projectile/projectile.gd")
+
 ## Maximum pooled projectiles per player
 const POOL_SIZE: int = 16
 
@@ -10,10 +12,10 @@ const POOL_SIZE: int = 16
 const PROJECTILE_SCENE_PATH := "res://scenes/shared/projectile/projectile.tscn"
 
 ## All projectile instances
-var pool: Array = []
+var pool: Array[Projectile] = []
 
 ## Currently active projectiles (FIFO order for recycling)
-var active_projectiles: Array = []
+var active_projectiles: Array[Projectile] = []
 
 ## Preloaded projectile scene
 var _projectile_scene: PackedScene = null
@@ -28,7 +30,8 @@ func _ready() -> void:
 
 	# Pre-allocate pool
 	for i in POOL_SIZE:
-		var projectile = _projectile_scene.instantiate()
+		var projectile := _projectile_scene.instantiate() as Projectile
+		assert(projectile != null, "ProjectilePool: Scene at %s does not instantiate a Projectile" % PROJECTILE_SCENE_PATH)
 		projectile.process_mode = Node.PROCESS_MODE_DISABLED
 		projectile.visible = false
 		projectile.monitoring = false
@@ -43,8 +46,8 @@ func _ready() -> void:
 ## @param direction: Normalized direction vector
 ## @param max_distance: Maximum travel distance
 ## @return: The activated projectile
-func spawn(pos: Vector2, dir: Vector2, max_dist: float):
-	var projectile = null
+func spawn(pos: Vector2, dir: Vector2, max_dist: float) -> Projectile:
+	var projectile: Projectile = null
 
 	# Try to find inactive projectile
 	for p in pool:
@@ -71,7 +74,7 @@ func spawn(pos: Vector2, dir: Vector2, max_dist: float):
 ## Return a projectile to the pool
 ## Called automatically by Projectile.deactivate()
 ## @param projectile: The projectile to return
-func return_projectile(projectile) -> void:
+func return_projectile(projectile: Projectile) -> void:
 	active_projectiles.erase(projectile)
 
 
@@ -84,6 +87,6 @@ func get_active_count() -> int:
 ## Deactivate all projectiles (e.g., on player death)
 func deactivate_all() -> void:
 	# Create a copy to avoid modification during iteration
-	var to_deactivate := active_projectiles.duplicate()
+	var to_deactivate: Array[Projectile] = active_projectiles.duplicate()
 	for projectile in to_deactivate:
 		projectile.deactivate()
