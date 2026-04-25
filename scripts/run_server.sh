@@ -12,7 +12,7 @@ cd "$(dirname "$0")/../client"
 # Check if Godot is available
 if ! command -v godot &> /dev/null; then
     echo "Error: Godot not found in PATH"
-    echo "Please install Godot 4.5 or add it to your PATH"
+    echo "Please install Godot 4.6 or add it to your PATH"
     exit 1
 fi
 

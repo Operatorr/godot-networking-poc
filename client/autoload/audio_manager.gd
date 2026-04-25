@@ -7,6 +7,7 @@ extends Node
 const MASTER_BUS = "Master"
 const MUSIC_BUS = "Music"
 const SFX_BUS = "SFX"
+const ProceduralAudio := preload("res://scripts/shared/audio/procedural_audio.gd")
 
 ## Audio categories
 enum AudioCategory {
@@ -157,6 +158,9 @@ func _generate_procedural_audio() -> void:
 
 ## Play music track
 func play_music(track_name: String, fade_in: bool = true) -> void:
+	if is_server or music_player == null:
+		return
+
 	if current_music_track == track_name and music_player.playing:
 		print("[AudioManager] Music track '%s' already playing" % track_name)
 		return
@@ -185,6 +189,9 @@ func play_music(track_name: String, fade_in: bool = true) -> void:
 
 ## Stop music
 func stop_music(fade_out: bool = true) -> void:
+	if is_server or music_player == null:
+		return
+
 	if not music_player.playing:
 		return
 
@@ -239,6 +246,9 @@ func _fade_out_music(duration: float) -> void:
 
 ## Play sound effect
 func play_sfx(sfx_name: String, category: AudioCategory = AudioCategory.SFX_UI) -> void:
+	if is_server:
+		return
+
 	var category_name = ""
 	var player_pool: Array[AudioStreamPlayer] = []
 
@@ -434,6 +444,9 @@ func register_audio(category: String, audio_name: String, stream: AudioStream) -
 
 ## Check if music is playing
 func is_music_playing() -> bool:
+	if is_server or music_player == null:
+		return false
+
 	return music_player.playing
 
 ## Get current music track

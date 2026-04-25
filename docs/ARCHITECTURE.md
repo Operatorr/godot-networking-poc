@@ -68,7 +68,7 @@ Omega Realm uses a **single Godot project with dual client/server export presets
 
 ```
 omega-networking/
-├── client/                          # Single Godot 4.5 Project (Client + Server)
+├── client/                          # Single Godot 4.6 Project (Client + Server)
 │   ├── project.godot               # Project configuration
 │   ├── export_presets.cfg          # Client AND Server export configurations
 │   ├── autoload/                   # Singletons (detect server mode at runtime)
@@ -123,7 +123,7 @@ omega-networking/
 ### Single Godot Project Approach
 
 **Why One Project?**
-- Godot 4.5 supports `OS.has_feature("dedicated_server")` feature tag detection
+- Godot 4.6 supports `OS.has_feature("dedicated_server")` feature tag detection
 - Client and server share identical game logic, physics, and entity definitions
 - Export presets with "Strip Visuals" automatically remove client assets from server builds
 - No code duplication for protocol, entities, or game rules
@@ -155,7 +155,7 @@ dedicated_server=true   # Adds "dedicated_server" feature tag
 ```
 ┌─────────────────┐         HTTP REST API        ┌─────────────────┐
 │  Game Client    │ ←──────────────────────────→ │   Go API        │
-│  (Godot 4.5)    │   (Auth, Characters,         │  (Port 8080)    │
+│  (Godot 4.6)    │   (Auth, Characters,         │  (Port 8080)    │
 │                 │    Leaderboards)              │                 │
 └────────┬────────┘                               └────────┬────────┘
          │                                                 │
@@ -166,7 +166,7 @@ dedicated_server=true   # Adds "dedicated_server" feature tag
          ▼                                                ▼
 ┌─────────────────┐                               ┌─────────────────┐
 │  Game Server    │ ←────── HTTP (Stats) ───────→ │   Database      │
-│  (Godot 4.5     │                                │   PostgreSQL    │
+│  (Godot 4.6     │                                │   PostgreSQL    │
 │   Headless)     │                                │   Redis Cache   │
 └─────────────────┘                               └─────────────────┘
 ```
@@ -749,13 +749,13 @@ Players in different shards need to:
 
 **Frontend:**
 
-- Godot 4.5 Desktop Client
+- Godot 4.6 Desktop Client
 - WebSocket for real-time communication
 - Delta compression for efficient state sync
 
 **Game Server:**
 
-- Godot 4.5 Headless Server
+- Godot 4.6 Headless Server
 - Authoritative architecture (server validates all actions)
 - ENet protocol (for legacy compatibility, though WebSocket preferred)
 - Sharded by zone (expandable)
@@ -886,7 +886,7 @@ After each stress test, document:
 ### Local Development Setup
 
 **Prerequisites:**
-- Godot 4.5
+- Godot 4.6
 - Go 1.21+
 - Docker & Docker Compose
 - PostgreSQL (or use Docker)

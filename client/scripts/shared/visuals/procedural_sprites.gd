@@ -255,7 +255,7 @@ static func _draw_direction_indicator(img: Image, center: Vector2, color: Color)
 
 static func _draw_monster_eyes(img: Image, center: Vector2, glow_color: Color) -> void:
 	# Asymmetric eyes - deliberately wrong placement
-	var eye_positions := [
+	var eye_positions: Array[Vector2i] = [
 		Vector2i(int(center.x) + 3, int(center.y) - 4),
 		Vector2i(int(center.x) + 5, int(center.y) - 1),
 		Vector2i(int(center.x) + 2, int(center.y) + 3),  # Third eye, unsettling
@@ -263,8 +263,8 @@ static func _draw_monster_eyes(img: Image, center: Vector2, glow_color: Color) -
 	for eye_pos in eye_positions:
 		for dy in range(-1, 2):
 			for dx in range(-1, 2):
-				var px := eye_pos.x + dx
-				var py := eye_pos.y + dy
+				var px: int = eye_pos.x + dx
+				var py: int = eye_pos.y + dy
 				if px >= 0 and px < 32 and py >= 0 and py < 32:
 					var dist := Vector2(dx, dy).length()
 					if dist < 1.5:
@@ -330,8 +330,8 @@ static func _create_attack_texture(core_color: Color, glow_color: Color, shell_c
 	var center := Vector2(size / 2.0, size / 2.0)
 
 	# Frame 0: extension (stretch right), Frame 1: energy flash, Frame 2: recoil
-	var stretch_x := [3.0, 0.0, -2.0][frame]
-	var flash_alpha := [0.0, 0.8, 0.2][frame]
+	var stretch_x: float = [3.0, 0.0, -2.0][frame]
+	var flash_alpha: float = [0.0, 0.8, 0.2][frame]
 
 	for y in range(size):
 		for x in range(size):
@@ -340,11 +340,11 @@ static func _create_attack_texture(core_color: Color, glow_color: Color, shell_c
 			var dist := adjusted.distance_to(center)
 			var angle := (adjusted - center).angle()
 
-			var base_r := 12.0 + stretch_x * 0.3
+			var base_r: float = 12.0 + stretch_x * 0.3
 			var wobble := sin(angle * 3.0 + 0.7) * 2.0 + sin(angle * 5.0) * 1.5
 			if is_monster:
 				wobble += sin(angle * 7.0 + 1.2) * 2.0
-			var radius := base_r + wobble
+			var radius: float = base_r + wobble
 
 			if dist > radius + 2.0:
 				# Energy discharge on frame 1
@@ -359,7 +359,7 @@ static func _create_attack_texture(core_color: Color, glow_color: Color, shell_c
 				c.a = (1.0 - (dist - radius) / 2.0) * 0.8
 				img.set_pixel(x, y, c)
 			else:
-				var t := dist / radius
+				var t: float = dist / radius
 				var c := glow_color.lerp(core_color, t)
 				# Flash overlay
 				c = c.lerp(Color.WHITE, flash_alpha * (1.0 - t))
@@ -411,9 +411,9 @@ static func _create_death_texture(core_color: Color, glow_color: Color, shell_co
 	var center := Vector2(size / 2.0, size / 2.0)
 
 	# Frame 0: intact + flash, 1: fragmenting, 2: scattered, 3: fading
-	var scale_factor := [1.0, 0.8, 0.5, 0.2][frame]
-	var alpha_mult := [1.0, 0.9, 0.6, 0.2][frame]
-	var fragment_spread := [0.0, 3.0, 8.0, 14.0][frame]
+	var scale_factor: float = [1.0, 0.8, 0.5, 0.2][frame]
+	var alpha_mult: float = [1.0, 0.9, 0.6, 0.2][frame]
+	var fragment_spread: float = [0.0, 3.0, 8.0, 14.0][frame]
 
 	if frame == 0:
 		# White flash death frame
@@ -433,15 +433,15 @@ static func _create_death_texture(core_color: Color, glow_color: Color, shell_co
 		# Use deterministic positions based on frame
 		for frag in range(num_frags):
 			var frag_angle := float(frag) / num_frags * TAU + 0.5
-			var frag_offset := Vector2(cos(frag_angle), sin(frag_angle)) * fragment_spread
-			var frag_center := center + frag_offset
-			var frag_radius := 5.0 * scale_factor
+			var frag_offset: Vector2 = Vector2(cos(frag_angle), sin(frag_angle)) * fragment_spread
+			var frag_center: Vector2 = center + frag_offset
+			var frag_radius: float = 5.0 * scale_factor
 
 			for y in range(size):
 				for x in range(size):
 					var dist := Vector2(x, y).distance_to(frag_center)
 					if dist < frag_radius:
-						var t := dist / frag_radius
+						var t: float = dist / frag_radius
 						var c := core_color.lerp(glow_color, t)
 						c.a = (1.0 - t) * alpha_mult
 						if c.a > 0.05:
@@ -459,8 +459,8 @@ static func _create_spawn_texture(core_color: Color, glow_color: Color, shell_co
 	var center := Vector2(size / 2.0, size / 2.0)
 
 	# Frame 0: dimensional tear (thin line), 1: coalescing, 2: nearly solid
-	var scale := [0.15, 0.6, 0.95][frame]
-	var noise_amount := [0.8, 0.4, 0.1][frame]
+	var scale: float = [0.15, 0.6, 0.95][frame]
+	var noise_amount: float = [0.8, 0.4, 0.1][frame]
 
 	for y in range(size):
 		for x in range(size):
@@ -468,15 +468,15 @@ static func _create_spawn_texture(core_color: Color, glow_color: Color, shell_co
 			var dist := pos.distance_to(center)
 			var angle := (pos - center).angle()
 
-			var radius := 13.0 * scale
-			var wobble := sin(angle * 5.0 + frame * 2.0) * 3.0 * noise_amount
+			var radius: float = 13.0 * scale
+			var wobble: float = sin(angle * 5.0 + frame * 2.0) * 3.0 * noise_amount
 
 			if frame == 0:
 				# Dimensional tear: thin vertical rift
-				var dx := abs(pos.x - center.x)
-				var dy := abs(pos.y - center.y)
+				var dx: float = abs(pos.x - center.x)
+				var dy: float = abs(pos.y - center.y)
 				if dx < 2.0 and dy < 10.0:
-					var t := dy / 10.0
+					var t: float = dy / 10.0
 					var c := glow_color.lerp(Color.WHITE, 1.0 - t)
 					c.a = 0.8
 					img.set_pixel(x, y, c)

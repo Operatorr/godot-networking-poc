@@ -8,6 +8,8 @@ script/source = "## AutoJoinArena - Bootstrapper that logs in and joins a networ
 ## Usage: Run this scene (F6) to skip the UI and jump straight into a game.
 extends Node2D
 
+const TestConfigScript := preload(\"res://scripts/shared/test_config.gd\")
+
 ## Test states
 enum TestState {
 	INITIALIZING,
@@ -22,7 +24,7 @@ enum TestState {
 var state: TestState = TestState.INITIALIZING
 
 ## Test configuration
-var config: TestConfig = null
+var config: TestConfigScript = null
 
 ## UI references
 @onready var status_label: Label = $UI/StatusLabel
@@ -44,7 +46,7 @@ func _start_test() -> void:
 	_update_status(\"Loading test configuration...\")
 
 	# Load config from .env.test
-	config = TestConfig.new()
+	config = TestConfigScript.new()
 	if not config.load_config():
 		_show_error(\"Failed to load .env.test file\\n\\nPlease create .env.test from .env.test.example\")
 		return

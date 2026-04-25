@@ -3,6 +3,11 @@
 ## Delegates collision, broadcasting, and metrics to focused helper classes
 extends Node
 
+const LeaderboardManager := preload("res://scripts/server/leaderboard_manager.gd")
+const ServerBroadcastService := preload("res://scripts/server/server_broadcast_service.gd")
+const ServerCollisionHandler := preload("res://scripts/server/server_collision_handler.gd")
+const ServerMetrics := preload("res://scripts/server/server_metrics.gd")
+
 ## Server configuration
 var config: ServerConfig = null
 
@@ -448,7 +453,7 @@ func _handle_respawn_request(peer_id: int) -> void:
 func _broadcast_server_metrics(nm: Node) -> void:
 	if nm == null or player_manager.get_player_count() == 0:
 		return
-	var m := server_metrics.get_metrics()
+	var m: Dictionary = server_metrics.get_metrics()
 	nm.broadcast_to_clients(
 		NetworkManager.MessageType.SERVER_METRICS,
 		m

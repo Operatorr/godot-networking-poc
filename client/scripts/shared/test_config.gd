@@ -117,12 +117,11 @@ func _get_project_root() -> String:
 func print_config() -> void:
 	print("[TestConfig] Configuration:")
 	print("  Username: %s" % username)
-	print("  Password: %s" % ("*" * password.length() if not password.is_empty() else "(not set)"))
+	print("  Password: %s" % ("********" if not password.is_empty() else "(not set)"))
 	print("  Character: %s" % (character_name if not character_name.is_empty() else "(first available)"))
 	print("  Realm: %s" % realm)
 	print("  API URL: %s" % api_server_url)
 	print("  Game Server: %s:%d" % [game_server_host, game_server_port])
-
 
 ## Check if required fields are set
 func is_valid() -> bool:
