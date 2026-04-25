@@ -187,13 +187,13 @@ def parse_state_update_header(payload: bytes) -> dict:
 def parse_server_metrics(payload: bytes) -> dict:
     """Parse SERVER_METRICS payload.
     Format: [u32 tick][u16 avg_tick*100][u16 max_tick*100][u16 players][u16 entities]
-            [u32 bytes_sent][u32 bytes_recv][u16 avg_bw_per_client]
-    Total: 20 bytes
+            [u32 bytes_sent][u32 bytes_recv][u32 avg_bw_per_client]
+    Total: 24 bytes
     """
-    if len(payload) < 20:
+    if len(payload) < 24:
         return {}
     tick, avg_tick_100, max_tick_100, players, entities, bytes_sent, bytes_recv, avg_bw = \
-        struct.unpack_from("<IHHHHIIH", payload, 0)
+        struct.unpack_from("<IHHHHIII", payload, 0)
     return {
         "tick_count": tick,
         "avg_tick_time_ms": avg_tick_100 / 100.0,
