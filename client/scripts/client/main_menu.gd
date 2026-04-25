@@ -24,6 +24,9 @@ var preferences: UserPreferences
 
 
 func _ready() -> void:
+	# Apply dark cosmic horror theme
+	_apply_dark_theme()
+
 	# Connect UI signals
 	enter_world_button.pressed.connect(_on_enter_world_pressed)
 	logout_button.pressed.connect(_on_logout_pressed)
@@ -62,6 +65,26 @@ func _ready() -> void:
 	_update_status("Ready")
 
 	print("[MainMenu] Ready")
+
+
+## Apply dark cosmic horror theme to menu elements
+func _apply_dark_theme() -> void:
+	# Dark background
+	var bg := ColorRect.new()
+	bg.color = Color(0.04, 0.02, 0.06, 1.0)
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bg.z_index = -1
+	add_child(bg)
+	move_child(bg, 0)
+
+	# Style title
+	var title_label: Label = $CenterContainer/VBoxContainer/TitleLabel
+	if title_label:
+		title_label.add_theme_color_override("font_color", Color(0.27, 0.53, 1.0))
+
+	# Style status label
+	if status_label:
+		status_label.add_theme_color_override("font_color", Color(0.4, 1.0, 0.8, 0.7))
 
 
 ## Update character display panel

@@ -22,7 +22,10 @@ var current_flags: int = 0
 
 func _ready() -> void:
 	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
+	# Apply procedural sprites (remote player variant)
 	if animated_sprite:
+		animated_sprite.sprite_frames = ProceduralSprites.create_remote_player_frames()
+		animated_sprite.modulate = Color.WHITE  # Override placeholder tint
 		animated_sprite.play("idle")
 	_update_name_label()
 

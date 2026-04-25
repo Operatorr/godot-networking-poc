@@ -7,7 +7,9 @@ extends Control
 signal leave_arena_requested
 
 var _resume_button: Button = null
+var _settings_button: Button = null
 var _leave_button: Button = null
+var _settings_menu: Control = null
 
 
 func _ready() -> void:
@@ -82,6 +84,14 @@ func _build_ui() -> void:
 	_resume_button.pressed.connect(_on_resume_pressed)
 	vbox.add_child(_resume_button)
 
+	# Settings button
+	_settings_button = Button.new()
+	_settings_button.text = "SETTINGS"
+	_settings_button.custom_minimum_size = Vector2(250, 48)
+	_settings_button.add_theme_font_size_override("font_size", 18)
+	_settings_button.pressed.connect(_on_settings_pressed)
+	vbox.add_child(_settings_button)
+
 	# Leave Arena button
 	_leave_button = Button.new()
 	_leave_button.text = "LEAVE ARENA"
@@ -89,6 +99,14 @@ func _build_ui() -> void:
 	_leave_button.add_theme_font_size_override("font_size", 18)
 	_leave_button.pressed.connect(_on_leave_pressed)
 	vbox.add_child(_leave_button)
+
+	# Settings menu overlay (created but hidden)
+	_settings_menu = Control.new()
+	_settings_menu.set_script(load("res://scripts/client/hud/settings_menu.gd"))
+	_settings_menu.name = "SettingsMenu"
+	_settings_menu.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_settings_menu.back_pressed.connect(_on_settings_back)
+	add_child(_settings_menu)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -104,6 +122,15 @@ func toggle() -> void:
 
 func _on_resume_pressed() -> void:
 	visible = false
+
+
+func _on_settings_pressed() -> void:
+	if _settings_menu:
+		_settings_menu.visible = true
+
+
+func _on_settings_back() -> void:
+	pass  # Settings menu hides itself
 
 
 func _on_leave_pressed() -> void:

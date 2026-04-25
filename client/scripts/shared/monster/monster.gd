@@ -30,7 +30,10 @@ var max_hp: int = GameConstants.MONSTER_HEALTH
 
 func _ready() -> void:
 	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
+	# Apply procedural sprites (monster variant)
 	if animated_sprite:
+		animated_sprite.sprite_frames = ProceduralSprites.create_monster_frames()
+		animated_sprite.modulate = Color.WHITE  # Override placeholder red tint
 		animated_sprite.play("idle")
 
 
@@ -83,9 +86,38 @@ func _update_flags(flags: int) -> void:
 func set_hp(hp: int) -> void:
 	var old_hp := current_hp
 	current_hp = hp
+	queue_redraw()
 
 	if hp < old_hp:
 		took_damage.emit(old_hp - hp)
+
+
+func _draw() -> void:
+	# Draw HP bar above monster when damaged
+	if current_hp >= max_hp or current_hp <= 0:
+		return
+
+	var bar_width := 40.0
+	var bar_height := 4.0
+	var bar_y := -25.0  # Above sprite
+	var hp_ratio := float(current_hp) / float(max_hp)
+
+	# Background
+	draw_rect(Rect2(Vector2(-bar_width / 2, bar_y), Vector2(bar_width, bar_height)), Color(0.1, 0.05, 0.05, 0.8), true)
+
+	# HP fill (green → yellow → red)
+	var fill_color: Color
+	if hp_ratio > 0.6:
+		fill_color = Color(0.2, 0.8, 0.2)
+	elif hp_ratio > 0.3:
+		fill_color = Color(0.8, 0.8, 0.2)
+	else:
+		fill_color = Color(0.8, 0.2, 0.2)
+
+	draw_rect(Rect2(Vector2(-bar_width / 2, bar_y), Vector2(bar_width * hp_ratio, bar_height)), fill_color, true)
+
+	# Border
+	draw_rect(Rect2(Vector2(-bar_width / 2, bar_y), Vector2(bar_width, bar_height)), Color(0.3, 0.15, 0.15, 0.6), false, 1.0)
 
 
 ## Get readable debug info

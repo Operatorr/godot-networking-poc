@@ -168,3 +168,151 @@ const MONSTER_RETARGET_INTERVAL := 1.0
 
 ## Lose interest distance - stop chasing if player beyond this
 const MONSTER_LOSE_INTEREST_DISTANCE := 400.0
+
+
+# =============================================================================
+# ARENA OBSTACLES
+# =============================================================================
+
+## Obstacle definitions: Array of Rect2(position, size) in world coordinates
+## Strategic placement creating cover, lanes, and choke points
+static var ARENA_OBSTACLES: Array[Rect2] = [
+	# Center cross - creates 4 approach lanes
+	Rect2(Vector2(-20, -200), Vector2(40, 160)),     # Center north pillar
+	Rect2(Vector2(-20, 40), Vector2(40, 160)),        # Center south pillar
+	Rect2(Vector2(-200, -20), Vector2(160, 40)),      # Center west pillar
+	Rect2(Vector2(40, -20), Vector2(160, 40)),        # Center east pillar
+
+	# Corner cover walls
+	Rect2(Vector2(-700, -700), Vector2(150, 30)),     # NW horizontal
+	Rect2(Vector2(-700, -700), Vector2(30, 150)),     # NW vertical
+	Rect2(Vector2(550, -700), Vector2(150, 30)),      # NE horizontal
+	Rect2(Vector2(670, -700), Vector2(30, 150)),      # NE vertical
+	Rect2(Vector2(-700, 670), Vector2(150, 30)),      # SW horizontal
+	Rect2(Vector2(-700, 550), Vector2(30, 150)),      # SW vertical
+	Rect2(Vector2(550, 670), Vector2(150, 30)),       # SE horizontal
+	Rect2(Vector2(670, 550), Vector2(30, 150)),       # SE vertical
+
+	# Mid-field barriers - break up sight lines
+	Rect2(Vector2(-450, -350), Vector2(100, 25)),     # NW mid barrier
+	Rect2(Vector2(350, -350), Vector2(100, 25)),      # NE mid barrier
+	Rect2(Vector2(-450, 325), Vector2(100, 25)),      # SW mid barrier
+	Rect2(Vector2(350, 325), Vector2(100, 25)),       # SE mid barrier
+]
+
+
+## Check if a point collides with any obstacle
+static func is_point_in_obstacle(point: Vector2) -> bool:
+	for obs in ARENA_OBSTACLES:
+		if obs.has_point(point):
+			return true
+	return false
+
+
+## Check if a circle collides with any obstacle
+static func circle_intersects_obstacle(center: Vector2, radius: float) -> bool:
+	for obs in ARENA_OBSTACLES:
+		# Expand rect by radius and check point
+		var expanded := Rect2(obs.position - Vector2(radius, radius), obs.size + Vector2(radius * 2, radius * 2))
+		if expanded.has_point(center):
+			return true
+	return false
+
+
+## Resolve movement against map bounds and arena obstacles.
+## Attempts axis-separated sliding when direct movement would hit a wall.
+static func move_with_obstacle_collision(from: Vector2, to: Vector2, radius: float) -> Vector2:
+	var target := clamp_to_bounds(to)
+	if not _movement_hits_obstacle(from, target, radius):
+		return target
+
+	var x_target := clamp_to_bounds(Vector2(target.x, from.y))
+	var y_target := clamp_to_bounds(Vector2(from.x, target.y))
+	var best_position := from
+	var best_distance := from.distance_squared_to(target)
+
+	if not _movement_hits_obstacle(from, x_target, radius):
+		best_position = x_target
+		best_distance = best_position.distance_squared_to(target)
+
+	if not _movement_hits_obstacle(from, y_target, radius):
+		var y_distance := y_target.distance_squared_to(target)
+		if y_distance < best_distance:
+			best_position = y_target
+
+	return best_position
+
+
+## Check if a swept circle movement crosses or ends inside an obstacle.
+static func _movement_hits_obstacle(from: Vector2, to: Vector2, radius: float) -> bool:
+	if from.is_equal_approx(to):
+		return circle_intersects_obstacle(to, radius)
+
+	for obs in ARENA_OBSTACLES:
+		var expanded := Rect2(obs.position - Vector2(radius, radius), obs.size + Vector2(radius * 2, radius * 2))
+		if expanded.has_point(to):
+			return true
+		if _line_rect_intersection(from, to, expanded) != Vector2.INF:
+			return true
+
+	return false
+
+
+## Check if a line segment intersects any obstacle (for projectile collision)
+## Returns the first intersection point or Vector2.INF if no intersection
+static func line_intersects_obstacle(from: Vector2, to: Vector2) -> Vector2:
+	var closest := Vector2.INF
+	var closest_dist := INF
+
+	for obs in ARENA_OBSTACLES:
+		var intersection := _line_rect_intersection(from, to, obs)
+		if intersection != Vector2.INF:
+			var dist := from.distance_squared_to(intersection)
+			if dist < closest_dist:
+				closest = intersection
+				closest_dist = dist
+
+	return closest
+
+
+## Line-rectangle intersection helper
+static func _line_rect_intersection(from: Vector2, to: Vector2, rect: Rect2) -> Vector2:
+	var dir := to - from
+	var t_min := 0.0
+	var t_max := 1.0
+
+	# Check X axis
+	if abs(dir.x) < 0.0001:
+		if from.x < rect.position.x or from.x > rect.position.x + rect.size.x:
+			return Vector2.INF
+	else:
+		var t1 := (rect.position.x - from.x) / dir.x
+		var t2 := (rect.position.x + rect.size.x - from.x) / dir.x
+		if t1 > t2:
+			var tmp := t1
+			t1 = t2
+			t2 = tmp
+		t_min = maxf(t_min, t1)
+		t_max = minf(t_max, t2)
+		if t_min > t_max:
+			return Vector2.INF
+
+	# Check Y axis
+	if abs(dir.y) < 0.0001:
+		if from.y < rect.position.y or from.y > rect.position.y + rect.size.y:
+			return Vector2.INF
+	else:
+		var t1 := (rect.position.y - from.y) / dir.y
+		var t2 := (rect.position.y + rect.size.y - from.y) / dir.y
+		if t1 > t2:
+			var tmp := t1
+			t1 = t2
+			t2 = tmp
+		t_min = maxf(t_min, t1)
+		t_max = minf(t_max, t2)
+		if t_min > t_max:
+			return Vector2.INF
+
+	if t_min >= 0.0 and t_min <= 1.0:
+		return from + dir * t_min
+	return Vector2.INF

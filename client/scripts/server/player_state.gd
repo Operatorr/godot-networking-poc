@@ -138,10 +138,14 @@ func apply_input(input: Dictionary, delta: float) -> Dictionary:
 
 	# Calculate server-authoritative velocity and position
 	velocity = move_direction * move_speed
-	var server_position := position + velocity * delta
-
-	# Clamp to map boundaries
-	server_position = GameConstants.clamp_to_bounds(server_position)
+	var previous_position := position
+	var server_position := GameConstants.move_with_obstacle_collision(
+		previous_position,
+		previous_position + velocity * delta,
+		GameConstants.PLAYER_HITBOX_RADIUS
+	)
+	if delta > 0.0:
+		velocity = (server_position - previous_position) / delta
 
 	# Validate client position against server calculation
 	var validation := _validate_position(client_position, server_position)

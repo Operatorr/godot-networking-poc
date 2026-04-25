@@ -38,52 +38,16 @@ var is_music_fading: bool = false
 const UI_SFX_POOL_SIZE: int = 8
 const COMBAT_SFX_POOL_SIZE: int = 16
 
-## Audio library (will be populated as assets are added)
-## Note: UI sounds loaded at runtime to handle missing assets gracefully
+## Audio library - populated with procedurally generated sounds at runtime
 var audio_library: Dictionary = {
-	"music": {
-		# "menu_bgm": preload("res://assets/audio/music/menu_bgm.ogg"),
-		# "arena_ambience": preload("res://assets/audio/ambience/arena_ambience.ogg")
-	},
-	"sfx_ui": {
-		# Loaded at runtime in _load_ui_sounds()
-	},
-	"sfx_player": {
-		# "player_shoot": preload("res://assets/audio/sfx/player_shoot.ogg"),
-		# "player_hit": preload("res://assets/audio/sfx/player_hit.ogg"),
-		# "player_death": preload("res://assets/audio/sfx/player_death.ogg")
-	},
-	"sfx_monster": {
-		# "monster_shoot": preload("res://assets/audio/sfx/monster_shoot.ogg"),
-		# "monster_hit": preload("res://assets/audio/sfx/monster_hit.ogg"),
-		# "monster_death": preload("res://assets/audio/sfx/monster_death.ogg")
-	}
+	"music": {},
+	"sfx_ui": {},
+	"sfx_player": {},
+	"sfx_monster": {}
 }
 
-## UI sound file paths
-const UI_SOUNDS: Dictionary = {
-	"button_hover": "res://assets/audio/sfx/button_hover.ogg",
-	"button_click": "res://assets/audio/sfx/button_click.ogg"
-}
-
-## Combat sound file paths (loaded at runtime to handle missing assets)
-const PLAYER_SOUNDS: Dictionary = {
-	"player_shoot": "res://assets/audio/sfx/player_shoot.ogg",
-	"player_hit": "res://assets/audio/sfx/player_hit.ogg",
-	"player_death": "res://assets/audio/sfx/player_death.ogg",
-	"player_kill": "res://assets/audio/sfx/player_kill.ogg"
-}
-
-const MONSTER_SOUNDS: Dictionary = {
-	"monster_spawn": "res://assets/audio/sfx/monster_spawn.ogg",
-	"monster_shoot": "res://assets/audio/sfx/monster_shoot.ogg",
-	"monster_hit": "res://assets/audio/sfx/monster_hit.ogg",
-	"monster_death": "res://assets/audio/sfx/monster_death.ogg"
-}
-
-const PROJECTILE_SOUNDS: Dictionary = {
-	"projectile_impact": "res://assets/audio/sfx/projectile_impact.ogg"
-}
+## Footstep alternation tracking
+var _footstep_alt: bool = false
 
 ## Called when the node enters the scene tree
 func _ready() -> void:
@@ -119,11 +83,8 @@ func _ready() -> void:
 	# Setup audio buses if they don't exist
 	_setup_audio_buses()
 
-	# Load UI sounds (handles missing assets gracefully)
-	_load_ui_sounds()
-
-	# Load combat sounds (handles missing assets gracefully)
-	_load_combat_sounds()
+	# Generate all sounds procedurally
+	_generate_procedural_audio()
 
 	# Connect to GameManager settings
 	var game_mgr = get_tree().root.get_node_or_null("GameManager")
@@ -166,49 +127,32 @@ func _setup_audio_buses() -> void:
 	print("[AudioManager] Audio buses configured")
 
 
-## Load UI sounds at runtime (handles missing assets gracefully)
-func _load_ui_sounds() -> void:
-	for sound_name: String in UI_SOUNDS:
-		var path: String = UI_SOUNDS[sound_name]
-		if ResourceLoader.exists(path):
-			var stream := load(path) as AudioStream
-			if stream:
-				audio_library["sfx_ui"][sound_name] = stream
-				print("[AudioManager] Loaded UI sound: %s" % sound_name)
-		else:
-			push_warning("[AudioManager] UI sound asset not found: %s - audio will be skipped" % path)
+## Generate all sounds procedurally using ProceduralAudio
+func _generate_procedural_audio() -> void:
+	print("[AudioManager] Generating procedural audio...")
 
-## Load combat sounds at runtime (handles missing assets gracefully)
-func _load_combat_sounds() -> void:
-	for sound_name: String in PLAYER_SOUNDS:
-		var path: String = PLAYER_SOUNDS[sound_name]
-		if ResourceLoader.exists(path):
-			var stream := load(path) as AudioStream
-			if stream:
-				audio_library["sfx_player"][sound_name] = stream
-				print("[AudioManager] Loaded player sound: %s" % sound_name)
-		else:
-			push_warning("[AudioManager] Player sound asset not found: %s - audio will be skipped" % path)
+	# Generate SFX
+	var sfx := ProceduralAudio.generate_all_sounds()
+	audio_library["sfx_ui"]["button_hover"] = sfx["button_hover"]
+	audio_library["sfx_ui"]["button_click"] = sfx["button_click"]
+	audio_library["sfx_player"]["player_shoot"] = sfx["player_shoot"]
+	audio_library["sfx_player"]["player_hit"] = sfx["player_hit"]
+	audio_library["sfx_player"]["player_death"] = sfx["player_death"]
+	audio_library["sfx_player"]["player_kill"] = sfx["player_kill"]
+	audio_library["sfx_player"]["projectile_impact"] = sfx["projectile_impact"]
+	audio_library["sfx_player"]["footstep_l"] = sfx["footstep_l"]
+	audio_library["sfx_player"]["footstep_r"] = sfx["footstep_r"]
+	audio_library["sfx_monster"]["monster_shoot"] = sfx["monster_shoot"]
+	audio_library["sfx_monster"]["monster_hit"] = sfx["monster_hit"]
+	audio_library["sfx_monster"]["monster_death"] = sfx["monster_death"]
+	audio_library["sfx_monster"]["monster_spawn"] = sfx["monster_spawn"]
 
-	for sound_name: String in MONSTER_SOUNDS:
-		var path: String = MONSTER_SOUNDS[sound_name]
-		if ResourceLoader.exists(path):
-			var stream := load(path) as AudioStream
-			if stream:
-				audio_library["sfx_monster"][sound_name] = stream
-				print("[AudioManager] Loaded monster sound: %s" % sound_name)
-		else:
-			push_warning("[AudioManager] Monster sound asset not found: %s - audio will be skipped" % path)
+	# Generate music
+	var music := ProceduralAudio.generate_music()
+	audio_library["music"]["menu_bgm"] = music["menu_bgm"]
+	audio_library["music"]["arena_ambience"] = music["arena_ambience"]
 
-	for sound_name: String in PROJECTILE_SOUNDS:
-		var path: String = PROJECTILE_SOUNDS[sound_name]
-		if ResourceLoader.exists(path):
-			var stream := load(path) as AudioStream
-			if stream:
-				audio_library["sfx_player"][sound_name] = stream
-				print("[AudioManager] Loaded projectile sound: %s" % sound_name)
-		else:
-			push_warning("[AudioManager] Projectile sound asset not found: %s - audio will be skipped" % path)
+	print("[AudioManager] Procedural audio generation complete (%d SFX, %d music)" % [sfx.size(), music.size()])
 
 
 ## Play music track
@@ -382,6 +326,12 @@ func play_monster_death() -> void:
 ## Play projectile impact sound
 func play_projectile_impact() -> void:
 	play_sfx("projectile_impact", AudioCategory.SFX_COMBAT)
+
+## Play footstep sound (alternates L/R)
+func play_footstep() -> void:
+	var step_name := "footstep_l" if not _footstep_alt else "footstep_r"
+	_footstep_alt = not _footstep_alt
+	play_sfx(step_name, AudioCategory.SFX_PLAYER)
 
 ## Play a sound by name with optional volume override
 ## Automatically selects the correct category based on sound_name prefix

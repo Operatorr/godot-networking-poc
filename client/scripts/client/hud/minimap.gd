@@ -10,6 +10,7 @@ const BORDER_COLOR := Color(0.4, 0.4, 0.45, 1.0)
 const SELF_COLOR := Color(0.2, 0.9, 0.3)
 const PLAYER_COLOR := Color(0.9, 0.2, 0.2)
 const MONSTER_COLOR := Color(0.9, 0.6, 0.1)
+const OBSTACLE_COLOR := Color(0.25, 0.1, 0.15, 0.8)
 
 ## References set by arena_base
 var interpolation_controller: Node = null
@@ -43,6 +44,13 @@ func _draw() -> void:
 
 	# Border
 	draw_rect(Rect2(Vector2.ZERO, Vector2(MINIMAP_SIZE, MINIMAP_SIZE)), BORDER_COLOR, false, 2.0)
+
+	# Draw obstacles
+	for obs: Rect2 in GameConstants.ARENA_OBSTACLES:
+		var map_pos := _world_to_minimap(obs.position)
+		var arena_size := _arena_max - _arena_min
+		var map_size := obs.size / arena_size * MINIMAP_SIZE
+		draw_rect(Rect2(map_pos, map_size), OBSTACLE_COLOR, true)
 
 	if local_player == null or not is_instance_valid(local_player):
 		return
