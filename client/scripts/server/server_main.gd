@@ -116,6 +116,7 @@ func _initialize_server() -> void:
 
 	broadcast_service = ServerBroadcastService.new()
 	broadcast_service.debug_logging = config.debug_logging
+	broadcast_service.aoi_radius = config.aoi_radius
 	broadcast_service.leaderboard_manager = LeaderboardManager.new()
 	broadcast_service.leaderboard_manager.debug_logging = config.debug_logging
 
@@ -145,8 +146,15 @@ func _process(delta: float) -> void:
 
 	# Update metrics periodically (every second)
 	if server_time - server_metrics.metrics.last_metrics_time >= 1.0:
+		var nm = _get_network_manager()
 		var entity_count := game_entities.size() + projectile_manager.get_projectile_count() + monster_manager.get_monster_count()
-		server_metrics.update_metrics(player_manager.get_player_count(), entity_count, tick_count)
+		var network_stats := {}
+		if nm:
+			network_stats = nm.get_stats()
+			network_stats["peer_bytes_sent"] = nm.peer_bytes_sent
+		server_metrics.update_metrics(player_manager.get_player_count(), entity_count, tick_count, network_stats)
+		# Broadcast server metrics to all connected clients
+		_broadcast_server_metrics(nm)
 
 
 ## Process a single server tick - core game loop
@@ -434,6 +442,17 @@ func _handle_respawn_request(peer_id: int) -> void:
 
 	if config.debug_logging:
 		print("[ServerMain] Player %d respawned at %s" % [state.entity_id, state.position])
+
+
+## Broadcast server metrics to all clients
+func _broadcast_server_metrics(nm: Node) -> void:
+	if nm == null or player_manager.get_player_count() == 0:
+		return
+	var m := server_metrics.get_metrics()
+	nm.broadcast_to_clients(
+		NetworkManager.MessageType.SERVER_METRICS,
+		m
+	)
 
 
 ## Get NetworkManager singleton

@@ -13,8 +13,14 @@ var leaderboard_manager: LeaderboardManager = null
 ## Delta state caches per client (TASK-021)
 var delta_caches: Dictionary = {}  # peer_id -> DeltaStateCache
 
+## Area of Interest radius (0 = disabled, send all entities)
+var aoi_radius: float = 0.0
 
-## Broadcast state updates to all connected clients (delta-compressed)
+## Per-client visible entity tracking for AoI exit notifications
+var client_visible_entities: Dictionary = {}  # peer_id -> Dictionary{entity_id: true}
+
+
+## Broadcast state updates to all connected clients (delta-compressed, AoI-filtered)
 func broadcast_state_updates(
 	player_manager: PlayerManager,
 	projectile_manager: ProjectileManager,
@@ -43,19 +49,66 @@ func broadcast_state_updates(
 		all_entities.append(monster_data)
 
 	# Send delta-compressed updates to each client
+	var aoi_enabled := aoi_radius > 0.0
+	var aoi_radius_sq := aoi_radius * aoi_radius
+
 	for state: PlayerState in player_manager.get_all_players():
 		var peer_id: int = state.peer_id
 		var cache = get_or_create_delta_cache(peer_id)
 
+		# AoI filter: only send entities within radius of this client's player
+		var visible_entities: Array[Dictionary]
+		if aoi_enabled:
+			visible_entities = _filter_entities_by_aoi(all_entities, state, aoi_radius_sq)
+		else:
+			visible_entities = all_entities
+
+		# Track visible entity set for AoI exit cleanup
+		var current_visible_ids: Dictionary = {}
+		for entity in visible_entities:
+			var entity_id: int = entity.get("id", -1)
+			if entity_id >= 0:
+				current_visible_ids[entity_id] = true
+
+		# Track entities that left AoI so delta packets can explicitly despawn them.
+		var removed_entity_ids: Array[int] = []
+		if aoi_enabled:
+			var prev_visible: Dictionary = client_visible_entities.get(peer_id, {})
+			for eid in prev_visible:
+				if not current_visible_ids.has(eid):
+					removed_entity_ids.append(int(eid))
+		client_visible_entities[peer_id] = current_visible_ids
+
 		var needs_baseline: bool = cache.needs_full_state_for_interval(tick_count)
 
 		var packet_data: Dictionary
-		if needs_baseline:
-			packet_data = _create_full_state_packet(all_entities, cache, tick_count)
+		if needs_baseline and removed_entity_ids.is_empty():
+			packet_data = _create_full_state_packet(visible_entities, cache, tick_count)
 		else:
-			packet_data = _create_delta_packet(all_entities, cache, tick_count)
+			packet_data = _create_delta_packet(visible_entities, cache, tick_count, removed_entity_ids)
 
 		network_manager.send_to_client(peer_id, NetworkManager.MessageType.STATE_UPDATE, packet_data)
+
+
+## Filter entities by Area of Interest radius around a player
+func _filter_entities_by_aoi(all_entities: Array[Dictionary], player: PlayerState, radius_sq: float) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	var player_pos := player.position
+	var player_eid: int = player.entity_id
+
+	for entity in all_entities:
+		var eid: int = entity.get("id", -1)
+		# Always include self
+		if eid == player_eid:
+			result.append(entity)
+			continue
+		# Distance check
+		var entity_pos: Vector2 = entity.get("position", Vector2.ZERO)
+		var dist_sq := player_pos.distance_squared_to(entity_pos)
+		if dist_sq <= radius_sq:
+			result.append(entity)
+
+	return result
 
 
 ## Handle client request for full state sync
@@ -172,11 +225,13 @@ func get_or_create_delta_cache(peer_id: int):
 ## Remove delta cache for a disconnected client
 func remove_delta_cache(peer_id: int) -> void:
 	delta_caches.erase(peer_id)
+	client_visible_entities.erase(peer_id)
 
 
 ## Clear all delta caches
 func clear_all_caches() -> void:
 	delta_caches.clear()
+	client_visible_entities.clear()
 
 
 ## Create a full state (baseline) packet
@@ -215,9 +270,22 @@ func _create_full_state_packet(entities: Array[Dictionary], cache, tick_count: i
 
 
 ## Create a delta-compressed packet
-func _create_delta_packet(entities: Array[Dictionary], cache, tick_count: int) -> Dictionary:
+func _create_delta_packet(
+	entities: Array[Dictionary],
+	cache,
+	tick_count: int,
+	removed_entity_ids: Array[int] = []
+) -> Dictionary:
 	var entity_data: Array[Dictionary] = []
 	var active_entity_ids: Array[int] = []
+
+	for entity_id in removed_entity_ids:
+		if entity_id < 0:
+			continue
+		entity_data.append({
+			"entity_id": entity_id,
+			"delta_mask": PacketTypes.DELTA_MASK_REMOVED
+		})
 
 	for entity in entities:
 		var entity_id: int = entity.get("id", -1)

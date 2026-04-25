@@ -11,7 +11,8 @@ const DEFAULTS := {
 	"region": "asia",
 	"debug_logging": true,
 	"heartbeat_timeout_seconds": 5.0,
-	"api_server_url": "http://localhost:8080"
+	"api_server_url": "http://localhost:8080",
+	"aoi_radius": 500.0
 }
 
 ## Configuration file paths (priority order)
@@ -42,6 +43,9 @@ var heartbeat_timeout_seconds: float:
 
 var api_server_url: String:
 	get: return _config.get("api_server_url", DEFAULTS.api_server_url)
+
+var aoi_radius: float:
+	get: return _config.get("aoi_radius", DEFAULTS.aoi_radius)
 
 
 ## Initialize and load configuration
@@ -118,3 +122,4 @@ func print_config() -> void:
 	print("  debug_logging: %s" % str(debug_logging))
 	print("  heartbeat_timeout: %.1fs" % heartbeat_timeout_seconds)
 	print("  api_server_url: %s" % api_server_url)
+	print("  aoi_radius: %.1f" % aoi_radius)

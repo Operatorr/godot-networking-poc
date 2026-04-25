@@ -34,6 +34,7 @@ class MessageType(IntEnum):
     DISCONNECT = 7
     REQUEST_FULL_STATE = 8
     RESPAWN_REQUEST = 9
+    SERVER_METRICS = 10
 
 
 class EntityType(IntEnum):
@@ -166,14 +167,43 @@ def parse_state_update_header(payload: bytes) -> dict:
     Returns dict with server_tick, state_flags, entity_count."""
     if len(payload) < 6:
         return {}
-    server_tick, state_flags, entity_count = struct.unpack_from("<IBB", payload, 0)
-    result = {
+    server_tick, state_flags = struct.unpack_from("<IB", payload, 0)
+    is_delta = bool(state_flags & STATE_FLAG_IS_DELTA)
+    # Delta packets have a 4-byte baseline_tick before entity_count
+    if is_delta:
+        if len(payload) < 10:
+            return {"server_tick": server_tick, "state_flags": state_flags, "is_delta": True, "entity_count": 0}
+        entity_count = struct.unpack_from("<B", payload, 9)[0]
+    else:
+        entity_count = struct.unpack_from("<B", payload, 5)[0]
+    return {
         "server_tick": server_tick,
         "state_flags": state_flags,
         "entity_count": entity_count,
-        "is_delta": bool(state_flags & STATE_FLAG_IS_DELTA),
+        "is_delta": is_delta,
     }
-    return result
+
+
+def parse_server_metrics(payload: bytes) -> dict:
+    """Parse SERVER_METRICS payload.
+    Format: [u32 tick][u16 avg_tick*100][u16 max_tick*100][u16 players][u16 entities]
+            [u32 bytes_sent][u32 bytes_recv][u32 avg_bw_per_client]
+    Total: 24 bytes
+    """
+    if len(payload) < 24:
+        return {}
+    tick, avg_tick_100, max_tick_100, players, entities, bytes_sent, bytes_recv, avg_bw = \
+        struct.unpack_from("<IHHHHIII", payload, 0)
+    return {
+        "tick_count": tick,
+        "avg_tick_time_ms": avg_tick_100 / 100.0,
+        "max_tick_time_ms": max_tick_100 / 100.0,
+        "player_count": players,
+        "entity_count": entities,
+        "total_bytes_sent": bytes_sent,
+        "total_bytes_received": bytes_recv,
+        "avg_bandwidth_per_client": avg_bw,
+    }
 
 
 # --- Metrics ---
@@ -194,6 +224,8 @@ class BotMetrics:
     disconnected: bool = False
     error_count: int = 0
     last_error: str = ""
+    # Server-reported metrics (from SERVER_METRICS packets)
+    server_metrics_snapshots: list[dict] = field(default_factory=list)
 
     @property
     def packet_loss_estimate(self) -> float:
@@ -236,7 +268,7 @@ class BotMetrics:
         return s[min(idx, len(s) - 1)]
 
     def summary(self) -> dict:
-        return {
+        result = {
             "packets_sent": self.packets_sent,
             "packets_received": self.packets_received,
             "bytes_sent": self.bytes_sent,
@@ -252,25 +284,44 @@ class BotMetrics:
             "connection_time_ms": round(self.connection_time_ms, 1),
             "error_count": self.error_count,
         }
+        if self.server_metrics_snapshots:
+            result["latest_server_metrics"] = self.server_metrics_snapshots[-1]
+        return result
 
 
 # --- Bot Client ---
 
+# Bot behavior modes for different benchmark scenarios
+BEHAVIOR_DEFAULT = "default"       # Random movement + 20% shooting (original behavior)
+BEHAVIOR_IDLE = "idle"             # Heartbeats only, no movement or shooting
+BEHAVIOR_MOVEMENT = "movement"     # Movement without shooting
+BEHAVIOR_COMBAT = "combat"         # Constant shooting + movement
+BEHAVIOR_CLUSTERED = "clustered"   # All bots converge to center (worst case AoI)
+
+VALID_BEHAVIORS = [BEHAVIOR_DEFAULT, BEHAVIOR_IDLE, BEHAVIOR_MOVEMENT, BEHAVIOR_COMBAT, BEHAVIOR_CLUSTERED]
+
+
 class OmegaRealmBot:
     """A single load-testing bot that connects to the game server via WebSocket."""
 
-    def __init__(self, bot_id: int, server_url: str, token: str = ""):
+    def __init__(self, bot_id: int, server_url: str, token: str = "", behavior: str = BEHAVIOR_DEFAULT):
         self.bot_id = bot_id
         self.server_url = server_url
         self.character_name = f"Bot_{bot_id:03d}"
         self.character_id = f"bot-{bot_id:03d}"
         self.token = token
+        self.behavior = behavior
         self.ws = None
         self.metrics = BotMetrics()
         self._running = False
         self._sequence = 0
-        self._pos_x = random.uniform(-200.0, 200.0)
-        self._pos_y = random.uniform(-200.0, 200.0)
+        if behavior == BEHAVIOR_CLUSTERED:
+            # All clustered bots start near origin
+            self._pos_x = random.uniform(-10.0, 10.0)
+            self._pos_y = random.uniform(-10.0, 10.0)
+        else:
+            self._pos_x = random.uniform(-200.0, 200.0)
+            self._pos_y = random.uniform(-200.0, 200.0)
         self._vel_x = 0.0
         self._vel_y = 0.0
         self._aim_angle = 0.0
@@ -349,8 +400,8 @@ class OmegaRealmBot:
                 await self._send_heartbeat()
                 self._last_heartbeat_sent = now
 
-            # Send player input at ~10Hz
-            if now - self._last_input_sent >= input_interval:
+            # Send player input at ~10Hz (skip for idle behavior)
+            if self.behavior != BEHAVIOR_IDLE and now - self._last_input_sent >= input_interval:
                 await self._send_random_input()
                 self._last_input_sent = now
 
@@ -386,30 +437,87 @@ class OmegaRealmBot:
             self._running = False
 
     async def _send_random_input(self):
-        """Send randomized PLAYER_INPUT to simulate gameplay."""
+        """Send PLAYER_INPUT based on configured behavior."""
         if self.ws is None:
             return
 
-        # Randomize movement direction (change occasionally)
-        if random.random() < 0.1:  # 10% chance to change direction each tick
-            directions = [
-                (INPUT_FLAG_MOVE_UP, 0, -200),
-                (INPUT_FLAG_MOVE_DOWN, 0, 200),
-                (INPUT_FLAG_MOVE_LEFT, -200, 0),
-                (INPUT_FLAG_MOVE_RIGHT, 200, 0),
-                (INPUT_FLAG_MOVE_UP | INPUT_FLAG_MOVE_RIGHT, 141, -141),
-                (INPUT_FLAG_MOVE_DOWN | INPUT_FLAG_MOVE_LEFT, -141, 141),
-                (0, 0, 0),  # Stop
-            ]
-            flags, vx, vy = random.choice(directions)
-            self._vel_x = vx
-            self._vel_y = vy
-            self._input_flags = flags
-        else:
-            self._input_flags = getattr(self, "_input_flags", 0)
+        shoot_flag = 0
 
-        # Occasionally shoot (20% chance)
-        shoot_flag = INPUT_FLAG_SHOOT if random.random() < 0.2 else 0
+        if self.behavior == BEHAVIOR_CLUSTERED:
+            # Move toward origin (0,0)
+            dx = -self._pos_x
+            dy = -self._pos_y
+            dist = math.sqrt(dx * dx + dy * dy)
+            if dist > 5.0:
+                speed = 200.0
+                self._vel_x = (dx / dist) * speed
+                self._vel_y = (dy / dist) * speed
+                self._input_flags = 0
+                if self._vel_y < -50: self._input_flags |= INPUT_FLAG_MOVE_UP
+                if self._vel_y > 50: self._input_flags |= INPUT_FLAG_MOVE_DOWN
+                if self._vel_x < -50: self._input_flags |= INPUT_FLAG_MOVE_LEFT
+                if self._vel_x > 50: self._input_flags |= INPUT_FLAG_MOVE_RIGHT
+            else:
+                self._vel_x = 0
+                self._vel_y = 0
+                self._input_flags = 0
+            shoot_flag = INPUT_FLAG_SHOOT if random.random() < 0.3 else 0
+
+        elif self.behavior == BEHAVIOR_COMBAT:
+            # Random movement + constant shooting
+            if random.random() < 0.15:
+                directions = [
+                    (INPUT_FLAG_MOVE_UP, 0, -200),
+                    (INPUT_FLAG_MOVE_DOWN, 0, 200),
+                    (INPUT_FLAG_MOVE_LEFT, -200, 0),
+                    (INPUT_FLAG_MOVE_RIGHT, 200, 0),
+                ]
+                flags, vx, vy = random.choice(directions)
+                self._vel_x = vx
+                self._vel_y = vy
+                self._input_flags = flags
+            else:
+                self._input_flags = getattr(self, "_input_flags", 0)
+            shoot_flag = INPUT_FLAG_SHOOT  # Always shooting
+
+        elif self.behavior == BEHAVIOR_MOVEMENT:
+            # Movement only, no shooting
+            if random.random() < 0.1:
+                directions = [
+                    (INPUT_FLAG_MOVE_UP, 0, -200),
+                    (INPUT_FLAG_MOVE_DOWN, 0, 200),
+                    (INPUT_FLAG_MOVE_LEFT, -200, 0),
+                    (INPUT_FLAG_MOVE_RIGHT, 200, 0),
+                    (INPUT_FLAG_MOVE_UP | INPUT_FLAG_MOVE_RIGHT, 141, -141),
+                    (INPUT_FLAG_MOVE_DOWN | INPUT_FLAG_MOVE_LEFT, -141, 141),
+                    (0, 0, 0),
+                ]
+                flags, vx, vy = random.choice(directions)
+                self._vel_x = vx
+                self._vel_y = vy
+                self._input_flags = flags
+            else:
+                self._input_flags = getattr(self, "_input_flags", 0)
+            shoot_flag = 0  # Never shoot
+
+        else:  # BEHAVIOR_DEFAULT
+            if random.random() < 0.1:
+                directions = [
+                    (INPUT_FLAG_MOVE_UP, 0, -200),
+                    (INPUT_FLAG_MOVE_DOWN, 0, 200),
+                    (INPUT_FLAG_MOVE_LEFT, -200, 0),
+                    (INPUT_FLAG_MOVE_RIGHT, 200, 0),
+                    (INPUT_FLAG_MOVE_UP | INPUT_FLAG_MOVE_RIGHT, 141, -141),
+                    (INPUT_FLAG_MOVE_DOWN | INPUT_FLAG_MOVE_LEFT, -141, 141),
+                    (0, 0, 0),
+                ]
+                flags, vx, vy = random.choice(directions)
+                self._vel_x = vx
+                self._vel_y = vy
+                self._input_flags = flags
+            else:
+                self._input_flags = getattr(self, "_input_flags", 0)
+            shoot_flag = INPUT_FLAG_SHOOT if random.random() < 0.2 else 0
 
         # Random aim angle
         self._aim_angle = random.uniform(-math.pi, math.pi)
@@ -461,6 +569,12 @@ class OmegaRealmBot:
 
         elif msg_type == MessageType.ACTION_CONFIRM:
             pass  # Bot doesn't need to process confirmations
+
+        elif msg_type == MessageType.SERVER_METRICS:
+            sm = parse_server_metrics(payload)
+            if sm:
+                sm["received_at"] = time.monotonic()
+                self.metrics.server_metrics_snapshots.append(sm)
 
     def __repr__(self):
         return f"OmegaRealmBot(id={self.bot_id}, name={self.character_name})"

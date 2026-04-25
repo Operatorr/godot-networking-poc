@@ -22,7 +22,8 @@ enum MessageType {
 	CONNECT_AUTH = 6,      ## Client -> Server: Authentication handshake
 	DISCONNECT = 7,        ## Client -> Server: Clean disconnect
 	REQUEST_FULL_STATE = 8, ## Client -> Server: Request full state sync (TASK-021)
-	RESPAWN_REQUEST = 9    ## Client -> Server: Request respawn after death
+	RESPAWN_REQUEST = 9,   ## Client -> Server: Request respawn after death
+	SERVER_METRICS = 10    ## Server -> Client: Server performance metrics (1/sec)
 }
 
 ## Signals - Client mode
@@ -50,6 +51,9 @@ var connected_peers: Dictionary = {}  # peer_id -> WebSocketPeer
 ## Server-side heartbeat tracking (per peer)
 var peer_last_heartbeat: Dictionary = {}  # peer_id -> float (timestamp)
 var server_heartbeat_timeout: float = 5.0  # Same as client timeout
+
+## Per-client bandwidth tracking (server mode)
+var peer_bytes_sent: Dictionary = {}  # peer_id -> int (total bytes sent)
 
 ## Connection state
 var current_state: ConnectionState = ConnectionState.DISCONNECTED
@@ -150,6 +154,7 @@ func _process_server(_delta: float) -> void:
 			print("[NetworkManager] Server: Client %d disconnected" % peer_id)
 			connected_peers.erase(peer_id)
 			peer_last_heartbeat.erase(peer_id)
+			peer_bytes_sent.erase(peer_id)
 			server_client_disconnected.emit(peer_id)
 
 	# Check for heartbeat timeouts
@@ -370,6 +375,10 @@ func send_to_client(peer_id: int, message_type: MessageType, data: Dictionary = 
 	if error == OK:
 		stats.packets_sent += 1
 		stats.bytes_sent += packet.size()
+		# Per-client bandwidth tracking
+		if not peer_bytes_sent.has(peer_id):
+			peer_bytes_sent[peer_id] = 0
+		peer_bytes_sent[peer_id] += packet.size()
 	else:
 		print("[NetworkManager] Server: Failed to send packet to peer %d: %d" % [peer_id, error])
 
@@ -399,6 +408,7 @@ func _disconnect_peer_timeout(peer_id: int) -> void:
 	ws_peer.close(1000, "Heartbeat timeout")
 	connected_peers.erase(peer_id)
 	peer_last_heartbeat.erase(peer_id)
+	peer_bytes_sent.erase(peer_id)
 	server_client_disconnected.emit(peer_id)
 
 
@@ -511,6 +521,17 @@ func _encode_packet(message_type: MessageType, data: Dictionary) -> PackedByteAr
 			# Empty payload - server infers from peer_id
 			writer.write_u32(Time.get_ticks_msec())
 
+		MessageType.SERVER_METRICS:
+			# Server performance metrics broadcast
+			writer.write_u32(data.get("tick_count", 0))
+			writer.write_u16(int(data.get("avg_tick_time_ms", 0.0) * 100))  # Fixed-point *100
+			writer.write_u16(int(data.get("max_tick_time_ms", 0.0) * 100))  # Fixed-point *100
+			writer.write_u16(data.get("player_count", 0))
+			writer.write_u16(data.get("entity_count", 0))
+			writer.write_u32(data.get("total_bytes_sent", 0))
+			writer.write_u32(data.get("total_bytes_received", 0))
+			writer.write_u32(int(data.get("avg_bandwidth_per_client", 0.0)))
+
 	writer.finalize_header()
 	return writer.get_buffer()
 
@@ -603,6 +624,18 @@ func _decode_packet(packet: PackedByteArray) -> Dictionary:
 		PacketTypes.Type.RESPAWN_REQUEST:
 			result.data = {
 				"timestamp": reader.read_u32()
+			}
+
+		PacketTypes.Type.SERVER_METRICS:
+			result.data = {
+				"tick_count": reader.read_u32(),
+				"avg_tick_time_ms": reader.read_u16() / 100.0,
+				"max_tick_time_ms": reader.read_u16() / 100.0,
+				"player_count": reader.read_u16(),
+				"entity_count": reader.read_u16(),
+				"total_bytes_sent": reader.read_u32(),
+				"total_bytes_received": reader.read_u32(),
+				"avg_bandwidth_per_client": reader.read_u32()
 			}
 
 	return result
