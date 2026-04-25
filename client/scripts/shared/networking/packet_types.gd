@@ -65,6 +65,7 @@ const ENTITY_FLAG_VISIBLE := 1 << 5
 const DELTA_MASK_POSITION := 1 << 0    ## Position (x, y) changed - 4 bytes if set
 const DELTA_MASK_ANIMATION := 1 << 1   ## Animation state changed - 1 byte if set
 const DELTA_MASK_FLAGS := 1 << 2       ## Entity flags changed - 1 byte if set
+const DELTA_MASK_REMOVED := 1 << 6     ## Entity should be removed client-side
 const DELTA_MASK_FULL_STATE := 1 << 7  ## Full state (new spawn or periodic sync)
 
 ## State update packet flags (TASK-021)

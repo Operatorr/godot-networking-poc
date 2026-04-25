@@ -66,23 +66,26 @@ func broadcast_state_updates(
 		# Track visible entity set for AoI exit cleanup
 		var current_visible_ids: Dictionary = {}
 		for entity in visible_entities:
-			current_visible_ids[entity.get("id", -1)] = true
+			var entity_id: int = entity.get("id", -1)
+			if entity_id >= 0:
+				current_visible_ids[entity_id] = true
 
-		# Clean up delta cache for entities that left AoI
+		# Track entities that left AoI so delta packets can explicitly despawn them.
+		var removed_entity_ids: Array[int] = []
 		if aoi_enabled:
 			var prev_visible: Dictionary = client_visible_entities.get(peer_id, {})
 			for eid in prev_visible:
 				if not current_visible_ids.has(eid):
-					cache.mark_entity_removed(eid)
+					removed_entity_ids.append(int(eid))
 		client_visible_entities[peer_id] = current_visible_ids
 
 		var needs_baseline: bool = cache.needs_full_state_for_interval(tick_count)
 
 		var packet_data: Dictionary
-		if needs_baseline:
+		if needs_baseline and removed_entity_ids.is_empty():
 			packet_data = _create_full_state_packet(visible_entities, cache, tick_count)
 		else:
-			packet_data = _create_delta_packet(visible_entities, cache, tick_count)
+			packet_data = _create_delta_packet(visible_entities, cache, tick_count, removed_entity_ids)
 
 		network_manager.send_to_client(peer_id, NetworkManager.MessageType.STATE_UPDATE, packet_data)
 
@@ -267,9 +270,22 @@ func _create_full_state_packet(entities: Array[Dictionary], cache, tick_count: i
 
 
 ## Create a delta-compressed packet
-func _create_delta_packet(entities: Array[Dictionary], cache, tick_count: int) -> Dictionary:
+func _create_delta_packet(
+	entities: Array[Dictionary],
+	cache,
+	tick_count: int,
+	removed_entity_ids: Array[int] = []
+) -> Dictionary:
 	var entity_data: Array[Dictionary] = []
 	var active_entity_ids: Array[int] = []
+
+	for entity_id in removed_entity_ids:
+		if entity_id < 0:
+			continue
+		entity_data.append({
+			"entity_id": entity_id,
+			"delta_mask": PacketTypes.DELTA_MASK_REMOVED
+		})
 
 	for entity in entities:
 		var entity_id: int = entity.get("id", -1)

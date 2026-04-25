@@ -197,6 +197,11 @@ func _process_state_update(data: Dictionary) -> void:
 		if entity_id < 0:
 			continue
 
+		var delta_mask: int = entity_data.get("delta_mask", PacketTypes.DELTA_MASK_FULL_STATE)
+		if is_delta and (delta_mask & PacketTypes.DELTA_MASK_REMOVED) != 0:
+			_handle_explicit_despawn(entity_id)
+			continue
+
 		# Skip local player - handled by PredictionController
 		if entity_id == local_entity_id:
 			continue
@@ -405,6 +410,15 @@ func _despawn_entity(entity_id: int) -> void:
 
 	# Emit signal for external EntityManager to remove visual node
 	entity_despawned.emit(entity_id)
+
+
+func _handle_explicit_despawn(entity_id: int) -> void:
+	if entity_buffers.has(entity_id):
+		_despawn_entity(entity_id)
+	else:
+		missing_update_count.erase(entity_id)
+		entity_last_states.erase(entity_id)
+		entity_nodes.erase(entity_id)
 #endregion
 
 

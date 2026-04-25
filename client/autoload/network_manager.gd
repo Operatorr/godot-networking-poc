@@ -530,7 +530,7 @@ func _encode_packet(message_type: MessageType, data: Dictionary) -> PackedByteAr
 			writer.write_u16(data.get("entity_count", 0))
 			writer.write_u32(data.get("total_bytes_sent", 0))
 			writer.write_u32(data.get("total_bytes_received", 0))
-			writer.write_u16(int(data.get("avg_bandwidth_per_client", 0.0)))
+			writer.write_u32(int(data.get("avg_bandwidth_per_client", 0.0)))
 
 	writer.finalize_header()
 	return writer.get_buffer()
@@ -635,7 +635,7 @@ func _decode_packet(packet: PackedByteArray) -> Dictionary:
 				"entity_count": reader.read_u16(),
 				"total_bytes_sent": reader.read_u32(),
 				"total_bytes_received": reader.read_u32(),
-				"avg_bandwidth_per_client": reader.read_u16()
+				"avg_bandwidth_per_client": reader.read_u32()
 			}
 
 	return result

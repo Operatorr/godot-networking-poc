@@ -18,9 +18,10 @@
 ##   [u8 state_flags]                     1 byte  - STATE_FLAG_IS_DELTA set
 ##   [u32 baseline_tick]                  4 bytes - tick of last full state
 ##   [u8 entity_count]                    1 byte
-##   For each entity (3-9 bytes):
+##   For each entity (3-10 bytes):
 ##     [u16 entity_id]                    2 bytes
 ##     [u8 delta_mask]                    1 byte  - which fields changed
+##     no additional fields               if DELTA_MASK_REMOVED
 ##     [s16 pos_x][s16 pos_y]             4 bytes (if DELTA_MASK_POSITION)
 ##     [u8 animation_state]               1 byte  (if DELTA_MASK_ANIMATION)
 ##     [u8 flags]                         1 byte  (if DELTA_MASK_FLAGS)
@@ -77,6 +78,9 @@ class EntityState extends RefCounted:
 	## Check if this is a full state (not delta)
 	func is_full_state() -> bool:
 		return (delta_mask & PacketTypes.DELTA_MASK_FULL_STATE) != 0
+
+	func is_removed() -> bool:
+		return (delta_mask & PacketTypes.DELTA_MASK_REMOVED) != 0
 
 	func is_alive() -> bool:
 		return (flags & PacketTypes.ENTITY_FLAG_ALIVE) != 0
@@ -139,12 +143,15 @@ func add_entity_delta(id: int, type: int, mask: int, pos: Vector2, anim: int, fl
 ## Add entity from dictionary
 func add_entity_dict(data: Dictionary) -> void:
 	var state = EntityState.new()
-	state.entity_id = data.get("id", 0)
-	state.entity_type = data.get("type", PacketTypes.EntityType.PLAYER)
+	state.entity_id = data.get("entity_id", data.get("id", 0))
+	state.entity_type = data.get("entity_type", data.get("type", PacketTypes.EntityType.PLAYER))
 	state.position = data.get("position", Vector2.ZERO)
-	state.animation_state = data.get("animation", PacketTypes.AnimationState.IDLE)
-	state.flags = data.get("flags", PacketTypes.ENTITY_FLAG_ALIVE | PacketTypes.ENTITY_FLAG_VISIBLE)
+	state.animation_state = data.get("animation_state", data.get("animation", PacketTypes.AnimationState.IDLE))
 	state.delta_mask = data.get("delta_mask", PacketTypes.DELTA_MASK_FULL_STATE)
+	if state.is_removed():
+		state.flags = 0
+	else:
+		state.flags = data.get("flags", PacketTypes.ENTITY_FLAG_ALIVE | PacketTypes.ENTITY_FLAG_VISIBLE)
 	entities.append(state)
 
 
@@ -269,6 +276,12 @@ static func _read_delta_entities(reader: PacketReader, packet: StateUpdatePacket
 			state.position = reader.read_vector2_compressed()
 			state.animation_state = reader.read_u8()
 			state.flags = reader.read_u8()
+		elif state.is_removed():
+			# Removal marker: entity_id + delta_mask only.
+			state.entity_type = last.get("entity_type", PacketTypes.EntityType.PLAYER)
+			state.position = last.get("position", Vector2.ZERO)
+			state.animation_state = last.get("animation_state", PacketTypes.AnimationState.IDLE)
+			state.flags = 0
 		else:
 			# Delta: merge with last known state
 			state.entity_type = last.get("entity_type", PacketTypes.EntityType.PLAYER)
@@ -350,6 +363,10 @@ func _get_delta_entity_size(entity: EntityState) -> int:
 	if entity.is_full_state():
 		# entity_id(2) + delta_mask(1) + type(1) + pos(4) + anim(1) + flags(1) = 10
 		return 10
+
+	if entity.is_removed():
+		# entity_id(2) + delta_mask(1)
+		return DELTA_ENTITY_MIN_SIZE
 
 	# entity_id(2) + delta_mask(1) = 3 base
 	var size := 3

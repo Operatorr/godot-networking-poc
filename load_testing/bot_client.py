@@ -193,7 +193,7 @@ def parse_server_metrics(payload: bytes) -> dict:
     if len(payload) < 20:
         return {}
     tick, avg_tick_100, max_tick_100, players, entities, bytes_sent, bytes_recv, avg_bw = \
-        struct.unpack_from("<IHHHHIIh", payload, 0)
+        struct.unpack_from("<IHHHHIIH", payload, 0)
     return {
         "tick_count": tick,
         "avg_tick_time_ms": avg_tick_100 / 100.0,
