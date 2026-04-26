@@ -3,11 +3,6 @@
 class_name Player
 extends CharacterBody2D
 
-const HPComponent := preload("res://scripts/shared/player/hp_component.gd")
-const Projectile := preload("res://scripts/shared/projectile/projectile.gd")
-const ProjectilePool := preload("res://scripts/shared/projectile/projectile_pool.gd")
-const ProceduralSprites := preload("res://scripts/shared/visuals/procedural_sprites.gd")
-
 ## Movement state enum
 enum MovementState {
 	IDLE,    ## No movement input, playing idle animation
@@ -24,9 +19,6 @@ enum ActionState {
 
 ## Emitted when the player fires a projectile
 signal shot_fired(position: Vector2, direction: Vector2)
-
-## Emitted when player state changes (for networking)
-signal state_changed(state_data: Dictionary)
 
 ## Movement speed in pixels per second
 @export var speed: float = 200.0

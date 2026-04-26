@@ -816,7 +816,6 @@ func _draw() -> void:
 func _draw_vein_branches() -> void:
 	# Deterministic "random" branches using position-based seed
 	var ix := arena_min.x
-	var branch_idx := 0
 	while ix <= arena_max.x:
 		var iy := arena_min.y
 		while iy <= arena_max.y:
@@ -831,7 +830,6 @@ func _draw_vein_branches() -> void:
 				end.x = clampf(end.x, arena_min.x, arena_max.x)
 				end.y = clampf(end.y, arena_min.y, arena_max.y)
 				draw_line(start, end, VEIN_BRANCH_COLOR, 1.0)
-			branch_idx += 1
 			iy += GRID_CELL_SIZE
 		ix += GRID_CELL_SIZE
 

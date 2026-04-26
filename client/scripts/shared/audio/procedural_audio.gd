@@ -47,7 +47,10 @@ static func generate_music() -> Dictionary:
 
 # ─── HELPER: Create AudioStreamWAV from float samples ───
 
-static func _samples_to_wav(samples: PackedFloat32Array, loop_mode: int = 0) -> AudioStreamWAV:
+static func _samples_to_wav(
+	samples: PackedFloat32Array,
+	loop_mode: AudioStreamWAV.LoopMode = AudioStreamWAV.LOOP_DISABLED
+) -> AudioStreamWAV:
 	var wav := AudioStreamWAV.new()
 	wav.format = AudioStreamWAV.FORMAT_16_BITS
 	wav.mix_rate = MIX_RATE
@@ -64,7 +67,7 @@ static func _samples_to_wav(samples: PackedFloat32Array, loop_mode: int = 0) -> 
 		pcm[i * 2 + 1] = (s16 >> 8) & 0xFF
 
 	wav.data = pcm
-	if loop_mode != 0:
+	if loop_mode != AudioStreamWAV.LOOP_DISABLED:
 		wav.loop_begin = 0
 		wav.loop_end = samples.size()
 	return wav

@@ -3,8 +3,6 @@
 class_name ProjectilePool
 extends Node
 
-const Projectile := preload("res://scripts/shared/projectile/projectile.gd")
-
 ## Maximum pooled projectiles per player
 const POOL_SIZE: int = 16
 

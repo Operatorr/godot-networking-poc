@@ -243,7 +243,6 @@ static func _draw_direction_indicator(img: Image, center: Vector2, color: Color)
 	for py in range(base_top.y, base_bot.y + 1):
 		var t := float(py - base_top.y) / float(base_bot.y - base_top.y) if base_bot.y != base_top.y else 0.5
 		var x_start := base_top.x
-		var x_end := int(lerpf(float(tip.x), float(tip.x), 0.0))
 		# Simple: draw from base_x to interpolated tip
 		var row_end := int(lerpf(float(base_top.x), float(tip.x), 1.0 - abs(t * 2.0 - 1.0)))
 		for px in range(x_start, mini(row_end + 1, 32)):
@@ -324,7 +323,7 @@ static func _create_walk_texture(core_color: Color, glow_color: Color, shell_col
 	return ImageTexture.create_from_image(img)
 
 
-static func _create_attack_texture(core_color: Color, glow_color: Color, shell_color: Color, is_humanoid: bool, is_monster: bool, frame: int) -> ImageTexture:
+static func _create_attack_texture(core_color: Color, glow_color: Color, _shell_color: Color, is_humanoid: bool, is_monster: bool, frame: int) -> ImageTexture:
 	var size := 32
 	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	var center := Vector2(size / 2.0, size / 2.0)
@@ -335,7 +334,6 @@ static func _create_attack_texture(core_color: Color, glow_color: Color, shell_c
 
 	for y in range(size):
 		for x in range(size):
-			var pos := Vector2(x, y)
 			var adjusted := Vector2(x - stretch_x * 0.5, y)
 			var dist := adjusted.distance_to(center)
 			var angle := (adjusted - center).angle()
@@ -405,7 +403,7 @@ static func _create_hit_texture(core_color: Color, shell_color: Color, frame: in
 	return ImageTexture.create_from_image(img)
 
 
-static func _create_death_texture(core_color: Color, glow_color: Color, shell_color: Color, is_monster: bool, frame: int) -> ImageTexture:
+static func _create_death_texture(core_color: Color, glow_color: Color, _shell_color: Color, is_monster: bool, frame: int) -> ImageTexture:
 	var size := 32
 	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	var center := Vector2(size / 2.0, size / 2.0)
@@ -453,7 +451,7 @@ static func _create_death_texture(core_color: Color, glow_color: Color, shell_co
 	return ImageTexture.create_from_image(img)
 
 
-static func _create_spawn_texture(core_color: Color, glow_color: Color, shell_color: Color, is_monster: bool, frame: int) -> ImageTexture:
+static func _create_spawn_texture(core_color: Color, glow_color: Color, _shell_color: Color, _is_monster: bool, frame: int) -> ImageTexture:
 	var size := 32
 	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	var center := Vector2(size / 2.0, size / 2.0)

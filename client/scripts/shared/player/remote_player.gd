@@ -31,8 +31,8 @@ func _ready() -> void:
 
 
 ## Set the character name and update label
-func set_character_name(name: String) -> void:
-	character_name = name
+func set_character_name(display_name: String) -> void:
+	character_name = display_name
 	_update_name_label()
 
 

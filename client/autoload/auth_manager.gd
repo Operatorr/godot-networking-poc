@@ -3,8 +3,6 @@
 ## Manages login/register flows and authentication state
 extends Node
 
-const ClientConfig := preload("res://scripts/client/client_config.gd")
-
 ## Authentication states
 enum AuthState {
 	LOGGED_OUT,

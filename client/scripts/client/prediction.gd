@@ -413,7 +413,6 @@ func _process_own_state_update(entity_data: Dictionary) -> void:
 
 #region Reconciliation
 func _reconcile(ack_sequence: int, server_position: Vector2) -> void:
-	var old_predicted := predicted_position
 	var discrepancy := predicted_position.distance_to(server_position)
 
 	if debug_logging:
@@ -511,7 +510,7 @@ func _update_player_visual() -> void:
 		player_node.position = predicted_position
 
 
-func _start_smooth_correction(from_position: Vector2) -> void:
+func _start_smooth_correction(_from_position: Vector2) -> void:
 	correction_target = predicted_position
 	is_correcting = true
 

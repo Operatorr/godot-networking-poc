@@ -7,7 +7,6 @@ extends Node
 const MASTER_BUS = "Master"
 const MUSIC_BUS = "Music"
 const SFX_BUS = "SFX"
-const ProceduralAudio := preload("res://scripts/shared/audio/procedural_audio.gd")
 const MAIN_MENU_MUSIC := preload("res://assets/audio/music/main_menu.wav")
 const MUSIC_TRACK_VOLUMES := {
 	"menu_bgm": 0.2

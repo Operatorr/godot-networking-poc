@@ -3,8 +3,6 @@
 class_name Projectile
 extends Area2D
 
-const ProceduralSprites := preload("res://scripts/shared/visuals/procedural_sprites.gd")
-
 ## Emitted when projectile hits something
 signal hit(body: Node2D)
 

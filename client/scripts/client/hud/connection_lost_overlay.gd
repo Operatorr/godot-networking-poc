@@ -4,7 +4,6 @@ extends Control
 
 
 var _status_label: Label = null
-var _spinner_angle: float = 0.0
 var _reconnect_timeout: float = 15.0
 var _timer: float = 0.0
 var _is_active: bool = false
