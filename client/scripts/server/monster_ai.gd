@@ -57,8 +57,9 @@ func _update_monster(monster: MonsterState, delta: float) -> bool:
 	# Update timers
 	monster.update_timers(delta)
 
-	# Re-evaluate target periodically
-	if monster.retarget_timer >= GameConstants.MONSTER_RETARGET_INTERVAL:
+	# Re-evaluate target periodically, and immediately for idle monsters
+	# so newly spawned enemies do not wait before entering the fight.
+	if monster.target_id == 0 or monster.retarget_timer >= GameConstants.MONSTER_RETARGET_INTERVAL:
 		monster.retarget_timer = 0.0
 		_select_target(monster)
 
@@ -105,7 +106,8 @@ func _select_target(monster: MonsterState) -> void:
 			nearest_dist = dist
 			nearest_player = player
 
-	# Check if target is within detection range
+	# Check if target is within detection range. Detection should be larger than
+	# the spawn visibility radius so spawned monsters begin moving toward players.
 	if nearest_dist <= GameConstants.MONSTER_DETECTION_RANGE:
 		monster.target_id = nearest_player.entity_id
 	elif nearest_dist > GameConstants.MONSTER_LOSE_INTEREST_DISTANCE:

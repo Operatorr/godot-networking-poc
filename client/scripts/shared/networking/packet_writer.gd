@@ -11,8 +11,8 @@ var _position: int = 0
 ## Initial buffer capacity
 const INITIAL_CAPACITY := 256
 
-## Position quantization scale (multiply by 100 for 0.01 precision)
-const POSITION_SCALE := 100.0
+## Position quantization scale (multiply by 10 for 0.1 precision)
+const POSITION_SCALE := 10.0
 ## Velocity quantization scale (multiply by 10 for 0.1 precision)
 const VELOCITY_SCALE := 10.0
 ## Angle quantization scale (multiply by 100 for 0.01 degree precision)
@@ -122,7 +122,7 @@ func write_bool(value: bool) -> PacketWriter:
 
 ## Write Vector2 as compressed 16-bit integers (4 bytes total)
 ## Quantization: position * POSITION_SCALE -> s16
-## Range: -327.68 to +327.67 units with 0.01 precision
+## Range: -3276.8 to +3276.7 units with 0.1 precision
 func write_vector2_compressed(vec: Vector2) -> PacketWriter:
 	var x_quantized: int = int(vec.x * POSITION_SCALE)
 	var y_quantized: int = int(vec.y * POSITION_SCALE)

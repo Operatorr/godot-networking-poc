@@ -105,10 +105,10 @@ func calculate_delta_mask(entity_id: int, current_state: Dictionary, current_tic
 
 
 ## Check if two positions are equal (within quantization precision)
-## Uses 0.01 precision to match PacketWriter.POSITION_SCALE
+## Uses 0.1 precision to match PacketWriter.POSITION_SCALE
 func _positions_equal(a: Vector2, b: Vector2) -> bool:
-	# Using 0.005 as threshold (half of 0.01 quantization step)
-	return absf(a.x - b.x) < 0.005 and absf(a.y - b.y) < 0.005
+	# Using 0.05 as threshold (half of 0.1 quantization step)
+	return absf(a.x - b.x) < 0.05 and absf(a.y - b.y) < 0.05
 
 
 ## Check if we should send full state due to interval

@@ -149,7 +149,9 @@ const MONSTER_FLEE_DISTANCE := 100.0
 const MONSTER_PREFERRED_DISTANCE := 150.0
 
 ## Detection range - monster starts chasing if player within this range
-const MONSTER_DETECTION_RANGE := 250.0
+## Must be greater than spawn visibility radius, otherwise freshly spawned
+## monsters can remain idle just outside the player's view.
+const MONSTER_DETECTION_RANGE := 650.0
 
 ## Shoot cooldown for monsters (2.5x player cooldown)
 const MONSTER_SHOOT_COOLDOWN := 0.75
@@ -167,7 +169,7 @@ const MONSTER_STEERING_RANDOMNESS := 0.15
 const MONSTER_RETARGET_INTERVAL := 1.0
 
 ## Lose interest distance - stop chasing if player beyond this
-const MONSTER_LOSE_INTEREST_DISTANCE := 400.0
+const MONSTER_LOSE_INTEREST_DISTANCE := 900.0
 
 
 # =============================================================================

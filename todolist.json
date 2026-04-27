@@ -4,9 +4,9 @@
 	"date": "2025-11-13",
 	"progress_summary": {
 		"total_tasks": 74,
-		"completed": 30,
+		"completed": 36,
 		"in_progress": 0,
-		"pending": 44
+		"pending": 38
 	},
 	"tasks": [
 		{
@@ -221,37 +221,37 @@
 					"id": "TASK-031",
 					"title": "Create base player scene",
 					"description": "Set up player node structure with sprites and colliders",
-					"status": "pending"
+					"status": "completed"
 				},
 				{
 					"id": "TASK-032",
 					"title": "Implement player movement system",
 					"description": "WASD 8-directional movement with state machine",
-					"status": "pending"
+					"status": "completed"
 				},
 				{
 					"id": "TASK-033",
 					"title": "Create player animation state machine",
 					"description": "Implement idle, walk, attack, and hit animations",
-					"status": "pending"
+					"status": "completed"
 				},
 				{
 					"id": "TASK-034",
 					"title": "Implement mouse aiming system",
 					"description": "Player rotation follows mouse cursor",
-					"status": "pending"
+					"status": "completed"
 				},
 				{
 					"id": "TASK-035",
 					"title": "Create shooting mechanics",
 					"description": "Left click to shoot projectile toward mouse",
-					"status": "pending"
+					"status": "completed"
 				},
 				{
 					"id": "TASK-036",
 					"title": "Implement HP system",
 					"description": "Basic health points with damage and death handling",
-					"status": "pending"
+					"status": "completed"
 				}
 			]
 		},

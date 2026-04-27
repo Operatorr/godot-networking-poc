@@ -9,7 +9,7 @@
 ##   For each entity (9 bytes each):
 ##     [u16 entity_id]                    2 bytes
 ##     [u8 entity_type]                   1 byte
-##     [s16 position_x][s16 position_y]   4 bytes
+##     [s16 position_x][s16 position_y]   4 bytes, 0.1-unit precision
 ##     [u8 animation_state]               1 byte
 ##     [u8 flags]                         1 byte
 ##
@@ -22,7 +22,7 @@
 ##     [u16 entity_id]                    2 bytes
 ##     [u8 delta_mask]                    1 byte  - which fields changed
 ##     no additional fields               if DELTA_MASK_REMOVED
-##     [s16 pos_x][s16 pos_y]             4 bytes (if DELTA_MASK_POSITION)
+##     [s16 pos_x][s16 pos_y]             4 bytes, 0.1-unit precision (if DELTA_MASK_POSITION)
 ##     [u8 animation_state]               1 byte  (if DELTA_MASK_ANIMATION)
 ##     [u8 flags]                         1 byte  (if DELTA_MASK_FLAGS)
 class_name StateUpdatePacket

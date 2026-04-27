@@ -11,8 +11,8 @@ var _position: int = 0
 ## Total buffer size
 var _size: int = 0
 
-## Position quantization scale (divide by 100 for 0.01 precision)
-const POSITION_SCALE := 100.0
+## Position quantization scale (divide by 10 for 0.1 precision)
+const POSITION_SCALE := 10.0
 ## Velocity quantization scale (divide by 10 for 0.1 precision)
 const VELOCITY_SCALE := 10.0
 ## Angle quantization scale (divide by 100 for 0.01 degree precision)

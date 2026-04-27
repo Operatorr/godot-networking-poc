@@ -44,6 +44,14 @@ animations = [{
 "loop": false,
 "name": &"hit",
 "speed": 10.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("PlaceholderTexture2D_1")
+}],
+"loop": false,
+"name": &"death",
+"speed": 10.0
 }]
 
 [node name="Player" type="CharacterBody2D"]

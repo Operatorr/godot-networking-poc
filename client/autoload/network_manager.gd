@@ -76,6 +76,8 @@ var heartbeat_interval: float = 1.0
 var heartbeat_timer: float = 0.0
 var last_heartbeat_received: float = 0.0
 var heartbeat_timeout_seconds: float = 5.0
+const UINT32_WRAP: int = 4294967296
+const MAX_REASONABLE_PING_MS: int = 10000
 
 ## Network statistics
 var stats: Dictionary = {
@@ -404,7 +406,7 @@ func _handle_server_incoming_packet(peer_id: int, ws_peer: WebSocketPeer) -> voi
 		MessageType.HEARTBEAT:
 			# Update last heartbeat time and respond immediately
 			peer_last_heartbeat[peer_id] = Time.get_ticks_msec() / 1000.0
-			send_to_client(peer_id, MessageType.HEARTBEAT, {"timestamp": Time.get_ticks_msec()})
+			send_to_client(peer_id, MessageType.HEARTBEAT, {"timestamp": data.get("timestamp", Time.get_ticks_msec())})
 			return
 		MessageType.DISCONNECT:
 			print("[NetworkManager] Server: Disconnect request from peer %d" % peer_id)
@@ -500,9 +502,18 @@ func send_heartbeat() -> void:
 func _handle_heartbeat_response(message: Dictionary) -> void:
 	var data = message.get("data", {})
 	if data.has("timestamp"):
-		var server_timestamp = data.get("timestamp", 0)
-		var now = Time.get_ticks_msec()
-		stats.ping_ms = now - server_timestamp
+		var sent_timestamp: int = int(data.get("timestamp", 0))
+		var ping_ms := _elapsed_msec_since_u32(sent_timestamp)
+		if ping_ms <= MAX_REASONABLE_PING_MS:
+			stats.ping_ms = ping_ms
+
+
+func _elapsed_msec_since_u32(timestamp_ms: int) -> int:
+	var now_u32: int = Time.get_ticks_msec() & 0xFFFFFFFF
+	var elapsed := now_u32 - (timestamp_ms & 0xFFFFFFFF)
+	if elapsed < 0:
+		elapsed += UINT32_WRAP
+	return elapsed
 
 ## Encode packet to binary format using PacketWriter
 ## Binary protocol as per ARCHITECTURE.md Section 4.3
