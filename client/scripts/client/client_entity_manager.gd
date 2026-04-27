@@ -93,8 +93,10 @@ func _initialize_projectile_pool() -> void:
 		projectile.visible = false
 		projectile.monitoring = false
 		projectile.monitorable = false
+		projectile.is_active = false
+		projectile.owner_pool = null
 		entity_container.add_child(projectile)
-		_projectile_pool.append(projectile)
+		_return_projectile_to_pool(projectile)
 
 
 ## Handle entity spawn from InterpolationController
@@ -269,7 +271,9 @@ func _despawn_projectile(entity_id: int) -> void:
 		projectile.visible = false
 		projectile.monitoring = false
 		projectile.monitorable = false
-		_projectile_pool.append(projectile)
+		projectile.is_active = false
+		projectile.owner_pool = null
+		_return_projectile_to_pool(projectile)
 
 	if debug_logging:
 		print("[ClientEntityManager] Despawned projectile: id=%d" % entity_id)
@@ -290,6 +294,14 @@ func _get_pooled_projectile() -> Projectile:
 			return null
 
 	return _projectile_pool.pop_back()
+
+
+## Return a network projectile to the inactive pool without duplicating it
+func _return_projectile_to_pool(projectile: Projectile) -> void:
+	if projectile == null or _projectile_pool.has(projectile):
+		return
+
+	_projectile_pool.append(projectile)
 
 
 ## Update animation/flag state for entities from InterpolationController
@@ -353,7 +365,11 @@ func clear_all() -> void:
 		if is_instance_valid(projectile):
 			projectile.visible = false
 			projectile.process_mode = Node.PROCESS_MODE_DISABLED
-			_projectile_pool.append(projectile)
+			projectile.monitoring = false
+			projectile.monitorable = false
+			projectile.is_active = false
+			projectile.owner_pool = null
+			_return_projectile_to_pool(projectile)
 	_active_projectiles.clear()
 	_active_projectile_order.clear()
 

@@ -24,7 +24,7 @@ signal shot_fired(position: Vector2, direction: Vector2)
 @export var speed: float = 200.0
 
 ## Maximum distance projectiles travel
-@export var projectile_range: float = 600.0
+@export var projectile_range: float = GameConstants.PROJECTILE_MAX_DISTANCE
 
 ## Seconds between shots (fire rate)
 @export var fire_rate: float = 0.3

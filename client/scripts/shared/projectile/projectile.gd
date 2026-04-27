@@ -7,10 +7,10 @@ extends Area2D
 signal hit(body: Node2D)
 
 ## Movement speed in pixels/second
-var speed: float = 400.0
+var speed: float = GameConstants.PROJECTILE_SPEED
 
 ## Maximum travel distance before deactivation
-var max_distance: float = 600.0
+var max_distance: float = GameConstants.PROJECTILE_MAX_DISTANCE
 
 ## Damage dealt on hit
 var damage: int = 25
@@ -23,6 +23,9 @@ var distance_traveled: float = 0.0
 
 ## Reference to managing pool for return
 var owner_pool: Node = null
+
+## Whether this projectile is active and should return to its pool
+var is_active: bool = false
 
 
 ## Cached sprite reference
@@ -61,6 +64,7 @@ func activate(pos: Vector2, dir: Vector2, max_dist: float, pool: Node) -> void:
 	max_distance = max_dist
 	distance_traveled = 0.0
 	owner_pool = pool
+	is_active = true
 
 	# Set rotation to match direction
 	rotation = direction.angle()
@@ -76,6 +80,13 @@ func activate(pos: Vector2, dir: Vector2, max_dist: float, pool: Node) -> void:
 
 ## Deactivate and return to pool
 func deactivate() -> void:
+	if not is_active:
+		return
+
+	is_active = false
+	var pool := owner_pool
+	owner_pool = null
+
 	# Disable processing and visibility
 	process_mode = Node.PROCESS_MODE_DISABLED
 	visible = false
@@ -89,10 +100,13 @@ func deactivate() -> void:
 	distance_traveled = 0.0
 
 	# Return to pool
-	if owner_pool and owner_pool.has_method("return_projectile"):
-		owner_pool.return_projectile(self)
+	if pool and pool.has_method("return_projectile"):
+		pool.return_projectile(self)
 
 
 func _on_body_entered(body: Node2D) -> void:
+	if not is_active:
+		return
+
 	hit.emit(body)
 	deactivate()

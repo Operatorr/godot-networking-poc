@@ -7,14 +7,14 @@ Create a git commit that summarizes the work.
 
 Use the current session context when available. Otherwise base the message on the staged diff.
 
-If this repo contains `app/data/changelog.json`, treat changelog maintenance as part of the commit workflow for shipped user-facing changes.
+If this repo contains `docs/changelog.json`, treat changelog maintenance as part of the commit workflow for shipped user-facing changes.
 
 ## Workflow
 
 1. Stage all intended changes with `git add .`
 2. Review the staged changes with `git diff --cached`
 3. If there is nothing staged, stop and report that clearly
-4. If `app/data/changelog.json` exists, decide whether the staged changes are user-facing enough to warrant a changelog entry
+4. If `docs/changelog.json` exists, decide whether the staged changes are user-facing enough to warrant a changelog entry
 5. Generate a concise commit message that:
    - accurately describes the change set
    - explains the why, not just the file-level what
@@ -22,7 +22,7 @@ If this repo contains `app/data/changelog.json`, treat changelog maintenance as 
    - starts with the task number when one is clearly available from the branch name or current context
    - never includes `Co-Authored-By` lines
 6. Create the main commit using a HEREDOC so multi-sentence formatting is preserved
-7. If a changelog entry is needed and `app/data/changelog.json` exists:
+7. If a changelog entry is needed and `docs/changelog.json` exists:
    - read the current file format before editing
    - add a new top entry summarizing the shipped behavior in `added` and `fixed`
    - use the short hash of the main commit as the `version`

@@ -351,7 +351,7 @@ func disconnect_from_server(reason: String = "User disconnect") -> void:
 	print("[NetworkManager] Disconnecting: %s" % reason)
 
 	# Send disconnect message
-	send_message(MessageType.DISCONNECT, {"reason": reason})
+	send_message(MessageType.DISCONNECT, {"reason": _get_disconnect_reason_code(reason)})
 
 	# Close WebSocket
 	ws_client.close(1000, reason)
@@ -515,6 +515,25 @@ func _elapsed_msec_since_u32(timestamp_ms: int) -> int:
 		elapsed += UINT32_WRAP
 	return elapsed
 
+
+func _get_disconnect_reason_code(reason: Variant) -> int:
+	if reason is int:
+		return reason
+
+	var reason_text := str(reason).to_lower()
+	if reason_text.contains("timeout"):
+		return PacketTypes.DisconnectReason.TIMEOUT
+	if reason_text.contains("kick"):
+		return PacketTypes.DisconnectReason.KICKED
+	if reason_text.contains("server shutdown"):
+		return PacketTypes.DisconnectReason.SERVER_SHUTDOWN
+	if reason_text.contains("invalid auth"):
+		return PacketTypes.DisconnectReason.INVALID_AUTH
+	if reason_text.contains("duplicate"):
+		return PacketTypes.DisconnectReason.DUPLICATE_SESSION
+	return PacketTypes.DisconnectReason.USER_QUIT
+
+
 ## Encode packet to binary format using PacketWriter
 ## Binary protocol as per ARCHITECTURE.md Section 4.3
 func _encode_packet(message_type: MessageType, data: Dictionary) -> PackedByteArray:
@@ -571,7 +590,7 @@ func _encode_packet(message_type: MessageType, data: Dictionary) -> PackedByteAr
 			writer.write_u8(AuthPacket.region_from_string(data.get("region", "Asia")))
 
 		MessageType.DISCONNECT:
-			writer.write_u8(data.get("reason", PacketTypes.DisconnectReason.USER_QUIT))
+			writer.write_u8(_get_disconnect_reason_code(data.get("reason", PacketTypes.DisconnectReason.USER_QUIT)))
 			writer.write_u32(Time.get_ticks_msec())
 
 		MessageType.REQUEST_FULL_STATE:

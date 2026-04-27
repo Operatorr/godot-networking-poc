@@ -93,7 +93,7 @@ func _process(delta: float) -> void:
 
 ## Show death screen with killer information
 func show_death(killer_entity_id: int) -> void:
-	if killer_entity_id >= 100000:
+	if killer_entity_id >= GameConstants.MONSTER_ENTITY_ID_START:
 		_killer_label.text = "Killed by Monster"
 	elif killer_entity_id > 0:
 		var killer_name := EntityNameCache.get_entity_name(killer_entity_id)

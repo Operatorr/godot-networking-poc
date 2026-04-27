@@ -1,9 +1,10 @@
 ## ServerStatusControl - Bottom-left server status display
-## Shows player count, ping, and server info
+## Shows player count, ping, FPS, and server info
 extends Control
 
 
 var _ping_label: Label = null
+var _fps_label: Label = null
 var _player_count_label: Label = null
 var _warning_label: Label = null
 var _update_timer: float = 0.0
@@ -24,7 +25,7 @@ func _build_ui() -> void:
 	anchor_bottom = 1.0
 	offset_left = 20
 	offset_right = 320
-	offset_top = -80
+	offset_top = -100
 	offset_bottom = -20
 
 	var vbox := VBoxContainer.new()
@@ -42,6 +43,12 @@ func _build_ui() -> void:
 	_ping_label.add_theme_color_override("font_color", Color(0.4, 0.9, 0.4))
 	_ping_label.text = "Ping: --ms"
 	vbox.add_child(_ping_label)
+
+	_fps_label = Label.new()
+	_fps_label.add_theme_font_size_override("font_size", 12)
+	_fps_label.add_theme_color_override("font_color", Color(0.4, 0.9, 0.4))
+	_fps_label.text = "FPS: --"
+	vbox.add_child(_fps_label)
 
 	_warning_label = Label.new()
 	_warning_label.add_theme_font_size_override("font_size", 12)
@@ -65,6 +72,7 @@ func _update_display() -> void:
 	var ping: float = stats.get("ping_ms", 0.0)
 
 	_ping_label.text = "Ping: %dms" % int(ping)
+	_fps_label.text = "FPS: %d" % Engine.get_frames_per_second()
 
 	# Color code ping
 	if ping < 100:

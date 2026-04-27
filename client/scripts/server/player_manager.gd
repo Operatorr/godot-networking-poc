@@ -10,13 +10,7 @@ var players: Dictionary = {}
 ## Entity ID counter for unique player entity IDs
 var _next_entity_id: int = 1
 
-## Fixed spawn points (placeholder until TASK-044)
-var _spawn_points: Array[Vector2] = [
-	Vector2(100, 100),
-	Vector2(-100, 100),
-	Vector2(100, -100),
-	Vector2(-100, -100)
-]
+## Round-robin index into shared arena spawn positions
 var _spawn_index: int = 0
 
 ## Debug logging flag
@@ -173,8 +167,13 @@ func check_heartbeat_timeouts(timeout_seconds: float) -> Array[int]:
 
 ## Get the next spawn position (round-robin)
 func _get_spawn_position() -> Vector2:
-	var pos = _spawn_points[_spawn_index]
-	_spawn_index = (_spawn_index + 1) % _spawn_points.size()
+	var spawn_points := GameConstants.get_valid_player_spawns()
+	if spawn_points.is_empty():
+		push_warning("[PlayerManager] No valid arena player spawns configured; using map center")
+		return GameConstants.clamp_to_bounds(Vector2.ZERO)
+
+	var pos := spawn_points[_spawn_index % spawn_points.size()]
+	_spawn_index = (_spawn_index + 1) % spawn_points.size()
 	return pos
 
 

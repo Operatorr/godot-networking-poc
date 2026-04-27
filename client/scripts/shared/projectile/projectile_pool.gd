@@ -63,6 +63,8 @@ func spawn(pos: Vector2, dir: Vector2, max_dist: float) -> Projectile:
 		return null
 
 	# Activate and track
+	while active_projectiles.has(projectile):
+		active_projectiles.erase(projectile)
 	projectile.activate(pos, dir, max_dist, self)
 	active_projectiles.append(projectile)
 
@@ -73,7 +75,8 @@ func spawn(pos: Vector2, dir: Vector2, max_dist: float) -> Projectile:
 ## Called automatically by Projectile.deactivate()
 ## @param projectile: The projectile to return
 func return_projectile(projectile: Projectile) -> void:
-	active_projectiles.erase(projectile)
+	while active_projectiles.has(projectile):
+		active_projectiles.erase(projectile)
 
 
 ## Get count of currently active projectiles

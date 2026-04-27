@@ -188,6 +188,9 @@ func _process_server_tick() -> void:
 		player_manager, projectile_manager, monster_manager, nm, tick_count
 	)
 
+	# 6. Remove dead monsters after death/removed state has been broadcast.
+	monster_manager.cleanup_dead_monsters()
+
 	# Track tick performance
 	var tick_time := (Time.get_ticks_usec() - tick_start) / 1000.0
 	server_metrics.record_tick_time(tick_time)

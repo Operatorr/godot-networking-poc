@@ -36,7 +36,7 @@ func _check_player_collisions(
 
 		# Determine damage based on projectile owner
 		var damage: int = GameConstants.PLAYER_PROJECTILE_DAMAGE
-		if hit.owner_id >= 100000:
+		if hit.owner_id >= GameConstants.MONSTER_ENTITY_ID_START:
 			damage = GameConstants.MONSTER_PROJECTILE_DAMAGE
 
 		# Record killer before damage (take_damage may set DEAD state)
@@ -54,7 +54,7 @@ func _check_player_collisions(
 			)
 
 		if killed and network_manager:
-			if hit.owner_id < 100000:
+			if hit.owner_id < GameConstants.MONSTER_ENTITY_ID_START:
 				# PvP kill: attribute to killer player
 				var killer := player_manager.get_player_by_entity_id(hit.owner_id)
 				if killer != null:

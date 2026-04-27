@@ -156,7 +156,7 @@ func check_collisions_with_players(player_manager: PlayerManager) -> Array[Dicti
 
 
 ## Check collisions between projectiles and monsters using spatial grid.
-## Only player projectiles can hit monsters (owner_id < 100000)
+## Only player projectiles can hit monsters.
 ## Returns array of hit events: { projectile_id, target_id, owner_id, position }
 func check_collisions_with_monsters(monster_manager: MonsterManager) -> Array[Dictionary]:
 	var hits: Array[Dictionary] = []
@@ -172,8 +172,8 @@ func check_collisions_with_monsters(monster_manager: MonsterManager) -> Array[Di
 		if not proj.alive:
 			continue
 
-		# Only player projectiles can hit monsters (monster entity IDs start at 100000)
-		if proj.owner_id >= 100000:
+		# Only player projectiles can hit monsters.
+		if proj.owner_id >= GameConstants.MONSTER_ENTITY_ID_START:
 			continue
 
 		# Only check monsters in nearby cells

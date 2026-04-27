@@ -4,7 +4,7 @@
 class_name MonsterState
 extends RefCounted
 
-## Unique entity ID for network sync (starts at 100000)
+## Unique entity ID for network sync
 var entity_id: int = 0
 
 ## Current position in world space

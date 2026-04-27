@@ -7,6 +7,11 @@ extends Node2D
 ## Preloaded player scene for local player
 const PLAYER_SCENE_PATH := "res://scenes/shared/player/player.tscn"
 
+## Tile atlas generation
+const TILE_ATLAS_COLUMNS := 3
+const ENVIRONMENT_COLLISION_LAYER := 8
+const TILEMAP_Z_INDEX := -10
+
 ## HUD script paths (loaded at runtime to avoid server-mode issues)
 const DEATH_SCREEN_PATH := "res://scripts/client/hud/death_screen.gd"
 const HP_BAR_PATH := "res://scripts/client/hud/hp_bar.gd"
@@ -79,8 +84,9 @@ const KILL_STREAK_WINDOW := 5.0  # Seconds between kills to count as streak
 func _ready() -> void:
 	is_server = OS.has_feature("dedicated_server") or DisplayServer.get_name() == "headless"
 
+	_setup_arena_tilemap()
+	_rebuild_spawn_markers()
 	_cache_spawn_points()
-	_create_obstacle_colliders()
 
 	if is_server:
 		# Server doesn't need visuals
@@ -488,11 +494,11 @@ func _handle_kill_event(data: Dictionary) -> void:
 	var local_id := GameManager.get_local_player_entity_id()
 
 	# Player killed a monster
-	if killer_id == local_id and victim_id >= 100000:
+	if killer_id == local_id and victim_id >= GameConstants.MONSTER_ENTITY_ID_START:
 		GameManager.update_stat("monster_kills", 1)
 
 	# Monster killed a player - show in kill feed
-	if killer_id >= 100000 and victim_id < 100000 and kill_feed:
+	if killer_id >= GameConstants.MONSTER_ENTITY_ID_START and victim_id < GameConstants.MONSTER_ENTITY_ID_START and kill_feed:
 		var victim_name := EntityNameCache.get_entity_name(victim_id)
 		kill_feed.add_kill("Monster", victim_name)
 
@@ -704,24 +710,113 @@ func on_scene_exit() -> void:
 	print("[ArenaBase] Scene exit cleanup complete")
 
 
-## Create StaticBody2D collision shapes for arena obstacles
-func _create_obstacle_colliders() -> void:
-	for i in range(GameConstants.ARENA_OBSTACLES.size()):
-		var obs: Rect2 = GameConstants.ARENA_OBSTACLES[i]
-		var body := StaticBody2D.new()
-		body.name = "Obstacle_%d" % i
-		body.position = obs.position + obs.size * 0.5  # Center of rect
-		body.collision_layer = 8  # Match boundary wall layer
-		body.collision_mask = 0
+## Set up the generated TileMapLayer backing the arena floor, walls, and obstacle cells.
+func _setup_arena_tilemap() -> void:
+	var tilemap := get_node_or_null("TileMapLayer") as TileMapLayer
+	if tilemap == null:
+		tilemap = TileMapLayer.new()
+		tilemap.name = "TileMapLayer"
+		add_child(tilemap)
+		move_child(tilemap, 0)
 
-		var shape := CollisionShape2D.new()
-		var rect_shape := RectangleShape2D.new()
-		rect_shape.size = obs.size
-		shape.shape = rect_shape
-		body.add_child(shape)
-		add_child(body)
+	tilemap.position = GameConstants.MAP_MIN
+	tilemap.z_index = TILEMAP_Z_INDEX
+	tilemap.collision_enabled = true
+	tilemap.tile_set = _create_arena_tileset()
+	tilemap.clear()
 
-	print("[ArenaBase] Created %d obstacle colliders" % GameConstants.ARENA_OBSTACLES.size())
+	for y in range(GameConstants.ARENA_TILE_ROWS):
+		for x in range(GameConstants.ARENA_TILE_COLUMNS):
+			var coords := Vector2i(x, y)
+			tilemap.set_cell(
+				coords,
+				GameConstants.ARENA_TILE_SOURCE_ID,
+				GameConstants.get_arena_tile_type(coords),
+				0
+			)
+
+
+## Create a runtime TileSet with floor, border, and obstacle tiles.
+func _create_arena_tileset() -> TileSet:
+	var tile_size := Vector2i(
+		int(GameConstants.ARENA_TILE_SIZE),
+		int(GameConstants.ARENA_TILE_SIZE)
+	)
+	var tile_set := TileSet.new()
+	tile_set.tile_size = tile_size
+	tile_set.add_physics_layer()
+	tile_set.set_physics_layer_collision_layer(0, ENVIRONMENT_COLLISION_LAYER)
+	tile_set.set_physics_layer_collision_mask(0, 0)
+
+	var atlas_source := TileSetAtlasSource.new()
+	atlas_source.texture_region_size = tile_size
+	atlas_source.texture = _create_arena_tile_atlas_texture(tile_size)
+	atlas_source.create_tile(GameConstants.ARENA_FLOOR_TILE)
+	atlas_source.create_tile(GameConstants.ARENA_BORDER_TILE)
+	atlas_source.create_tile(GameConstants.ARENA_OBSTACLE_TILE)
+
+	tile_set.add_source(atlas_source, GameConstants.ARENA_TILE_SOURCE_ID)
+	_add_tile_collision(atlas_source, GameConstants.ARENA_BORDER_TILE, tile_size)
+	_add_tile_collision(atlas_source, GameConstants.ARENA_OBSTACLE_TILE, tile_size)
+	return tile_set
+
+
+## Build a simple atlas texture so generated tiles are visible in editor and runtime.
+func _create_arena_tile_atlas_texture(tile_size: Vector2i) -> Texture2D:
+	var image := Image.create(
+		tile_size.x * TILE_ATLAS_COLUMNS,
+		tile_size.y,
+		false,
+		Image.FORMAT_RGBA8
+	)
+	image.fill(Color.TRANSPARENT)
+	image.fill_rect(Rect2i(Vector2i.ZERO, tile_size), FLOOR_COLOR)
+	image.fill_rect(Rect2i(Vector2i(tile_size.x, 0), tile_size), Color(0.18, 0.04, 0.06, 1.0))
+	image.fill_rect(Rect2i(Vector2i(tile_size.x * 2, 0), tile_size), Color(0.12, 0.03, 0.05, 1.0))
+	return ImageTexture.create_from_image(image)
+
+
+## Add full-tile collision to a generated tile.
+func _add_tile_collision(atlas_source: TileSetAtlasSource, atlas_coords: Vector2i, tile_size: Vector2i) -> void:
+	var tile_data := atlas_source.get_tile_data(atlas_coords, 0)
+	if tile_data == null:
+		return
+
+	var half_size := Vector2(float(tile_size.x), float(tile_size.y)) * 0.5
+	var points := PackedVector2Array([
+		Vector2(-half_size.x, -half_size.y),
+		Vector2(half_size.x, -half_size.y),
+		Vector2(half_size.x, half_size.y),
+		Vector2(-half_size.x, half_size.y),
+	])
+	tile_data.set_collision_polygons_count(0, 1)
+	tile_data.set_collision_polygon_points(0, 0, points)
+
+
+## Rebuild spawn markers from shared constants so scene markers match runtime spawn data.
+func _rebuild_spawn_markers() -> void:
+	var spawn_container := get_node_or_null("SpawnPoints") as Node2D
+	if spawn_container == null:
+		spawn_container = Node2D.new()
+		spawn_container.name = "SpawnPoints"
+		add_child(spawn_container)
+
+	for child in spawn_container.get_children():
+		if child is Marker2D and (child.name.begins_with("PlayerSpawn") or child.name.begins_with("MonsterSpawn")):
+			spawn_container.remove_child(child)
+			child.free()
+
+	_add_spawn_markers(spawn_container, "PlayerSpawn", GameConstants.get_valid_player_spawns())
+	_add_spawn_markers(spawn_container, "MonsterSpawn", GameConstants.get_valid_monster_spawns())
+
+
+## Add a named marker sequence to the spawn container.
+func _add_spawn_markers(spawn_container: Node2D, prefix: String, positions: Array[Vector2]) -> void:
+	for i in range(positions.size()):
+		var marker := Marker2D.new()
+		marker.name = "%s%d" % [prefix, i + 1]
+		marker.position = positions[i]
+		spawn_container.add_child(marker)
 
 
 ## Cache spawn point positions from child Marker2D nodes
@@ -762,12 +857,12 @@ func get_random_monster_spawn() -> Vector2:
 
 ## Get all player spawn positions
 func get_all_player_spawns() -> Array[Vector2]:
-	return _player_spawns
+	return _player_spawns.duplicate()
 
 
 ## Get all monster spawn positions
 func get_all_monster_spawns() -> Array[Vector2]:
-	return _monster_spawns
+	return _monster_spawns.duplicate()
 
 
 ## Get the EntityContainer node for adding dynamic entities

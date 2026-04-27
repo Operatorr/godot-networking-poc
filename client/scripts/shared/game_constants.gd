@@ -47,6 +47,52 @@ const MAP_MAX := Vector2(1000.0, 1000.0)
 
 
 # =============================================================================
+# ARENA LAYOUT
+# =============================================================================
+
+## Arena tile dimensions. 40x40 over the existing 2000-unit map gives 50-unit tiles.
+const ARENA_TILE_COLUMNS := 40
+const ARENA_TILE_ROWS := 40
+const ARENA_TILE_SIZE := 50.0
+const ARENA_TILE_SOURCE_ID := 0
+
+## Atlas coordinates used by the generated arena TileSet.
+const ARENA_FLOOR_TILE := Vector2i(0, 0)
+const ARENA_BORDER_TILE := Vector2i(1, 0)
+const ARENA_OBSTACLE_TILE := Vector2i(2, 0)
+
+## Shared arena player spawn positions in world coordinates.
+static var ARENA_PLAYER_SPAWNS: Array[Vector2] = [
+	Vector2(-800.0, -800.0),
+	Vector2(0.0, -800.0),
+	Vector2(800.0, -800.0),
+	Vector2(-800.0, 0.0),
+	Vector2(800.0, 0.0),
+	Vector2(-800.0, 800.0),
+	Vector2(0.0, 800.0),
+	Vector2(800.0, 800.0),
+	Vector2(-450.0, 450.0),
+	Vector2(450.0, -450.0),
+]
+
+## Shared preferred monster spawn anchors in world coordinates.
+static var ARENA_MONSTER_SPAWNS: Array[Vector2] = [
+	Vector2(-450.0, -800.0),
+	Vector2(450.0, -800.0),
+	Vector2(-900.0, -450.0),
+	Vector2(900.0, -450.0),
+	Vector2(-900.0, 450.0),
+	Vector2(900.0, 450.0),
+	Vector2(-450.0, 800.0),
+	Vector2(450.0, 800.0),
+	Vector2(0.0, -500.0),
+	Vector2(0.0, 500.0),
+	Vector2(-500.0, 0.0),
+	Vector2(500.0, 0.0),
+]
+
+
+# =============================================================================
 # HELPER FUNCTIONS
 # =============================================================================
 
@@ -64,11 +110,81 @@ static func is_within_bounds(pos: Vector2) -> bool:
 		and pos.y >= MAP_MIN.y and pos.y <= MAP_MAX.y
 
 
+## Check if a circle is fully within map boundaries
+static func is_circle_within_bounds(pos: Vector2, radius: float) -> bool:
+	return pos.x - radius >= MAP_MIN.x and pos.x + radius <= MAP_MAX.x \
+		and pos.y - radius >= MAP_MIN.y and pos.y + radius <= MAP_MAX.y
+
+
 ## Get movement speed based on whether sprinting
 static func get_movement_speed(is_sprinting: bool) -> float:
 	if is_sprinting:
 		return PLAYER_SPRINT_SPEED
 	return PLAYER_SPEED
+
+
+## Get a world-space rectangle for an arena tile.
+static func get_arena_tile_rect(tile_coords: Vector2i) -> Rect2:
+	return Rect2(
+		MAP_MIN + Vector2(float(tile_coords.x), float(tile_coords.y)) * ARENA_TILE_SIZE,
+		Vector2(ARENA_TILE_SIZE, ARENA_TILE_SIZE)
+	)
+
+
+## Check if the tile is on the arena border.
+static func is_arena_border_tile(tile_coords: Vector2i) -> bool:
+	return tile_coords.x == 0 \
+		or tile_coords.y == 0 \
+		or tile_coords.x == ARENA_TILE_COLUMNS - 1 \
+		or tile_coords.y == ARENA_TILE_ROWS - 1
+
+
+## Check if an arena tile overlaps any obstacle rectangle.
+static func is_arena_obstacle_tile(tile_coords: Vector2i) -> bool:
+	var tile_rect := get_arena_tile_rect(tile_coords)
+	for obs in ARENA_OBSTACLES:
+		if tile_rect.intersects(obs, true):
+			return true
+	return false
+
+
+## Get the atlas tile for a world-layout cell.
+static func get_arena_tile_type(tile_coords: Vector2i) -> Vector2i:
+	if is_arena_border_tile(tile_coords):
+		return ARENA_BORDER_TILE
+	if is_arena_obstacle_tile(tile_coords):
+		return ARENA_OBSTACLE_TILE
+	return ARENA_FLOOR_TILE
+
+
+## Check if a player spawn position is usable.
+static func is_valid_player_spawn_position(pos: Vector2) -> bool:
+	return is_circle_within_bounds(pos, PLAYER_HITBOX_RADIUS) \
+		and not circle_intersects_obstacle(pos, PLAYER_HITBOX_RADIUS)
+
+
+## Check if a monster spawn position is usable before player visibility checks.
+static func is_valid_monster_spawn_position(pos: Vector2) -> bool:
+	return is_circle_within_bounds(pos, MONSTER_HITBOX_RADIUS) \
+		and not circle_intersects_obstacle(pos, MONSTER_HITBOX_RADIUS)
+
+
+## Get shared player spawns, filtering invalid positions as a guardrail.
+static func get_valid_player_spawns() -> Array[Vector2]:
+	var result: Array[Vector2] = []
+	for pos in ARENA_PLAYER_SPAWNS:
+		if is_valid_player_spawn_position(pos):
+			result.append(pos)
+	return result
+
+
+## Get shared monster spawn anchors, filtering invalid positions as a guardrail.
+static func get_valid_monster_spawns() -> Array[Vector2]:
+	var result: Array[Vector2] = []
+	for pos in ARENA_MONSTER_SPAWNS:
+		if is_valid_monster_spawn_position(pos):
+			result.append(pos)
+	return result
 
 
 # =============================================================================
@@ -110,11 +226,35 @@ const MONSTER_SPAWN_RATE := 0.2
 ## Maximum active monsters in arena
 const MONSTER_MAX_COUNT := 20
 
+## Entity ID range reserved for monsters.
+## IDs must stay within u16 because the binary network protocol writes entity IDs as 16-bit values.
+const MONSTER_ENTITY_ID_START := 30000
+const MONSTER_ENTITY_ID_END := 39999
+
 ## Player visibility radius (spawn monsters outside this distance from players)
 const MONSTER_VISIBILITY_RADIUS := 300.0
 
+## Spawn monsters inside this band around players so they are outside direct visibility
+## but still inside AoI/detection and will join the fight.
+const MONSTER_SPAWN_MIN_DISTANCE := 320.0
+const MONSTER_SPAWN_MAX_DISTANCE := 450.0
+
+## Fraction of the monster budget reserved for regional map population.
+## The remainder is used for encounter pressure around players.
+const MONSTER_REGIONAL_SPAWN_RATIO := 0.6
+
+## Spawn director grid dimensions for regional population.
+const MONSTER_SPAWN_REGION_COLUMNS := 4
+const MONSTER_SPAWN_REGION_ROWS := 4
+
+## Soft per-region cap used by the regional population layer.
+const MONSTER_SPAWN_REGION_SOFT_CAP := 2
+
+## Candidate samples to test inside each selected region.
+const MONSTER_SPAWN_REGION_CANDIDATES := 8
+
 ## Maximum attempts to find valid spawn position before using fallback
-const MONSTER_SPAWN_ATTEMPTS := 10
+const MONSTER_SPAWN_ATTEMPTS := 20
 
 ## Default monster health
 const MONSTER_HEALTH := 50
