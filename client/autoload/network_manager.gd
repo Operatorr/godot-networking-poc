@@ -47,6 +47,7 @@ var ws_client: WebSocketPeer = null
 ## WebSocket server (for server mode)
 var ws_server: TCPServer = null
 var connected_peers: Dictionary = {}  # peer_id -> WebSocketPeer
+var peer_connection_announced: Dictionary = {}  # peer_id -> true after WebSocket is open and ServerMain was notified
 
 ## Server-side heartbeat tracking (per peer)
 var peer_last_heartbeat: Dictionary = {}  # peer_id -> float (timestamp)
@@ -151,9 +152,7 @@ func _process_server(_delta: float) -> void:
 		ws_peer.accept_stream(peer)
 		var peer_id = randi()  # Generate unique peer ID
 		connected_peers[peer_id] = ws_peer
-		peer_last_heartbeat[peer_id] = Time.get_ticks_msec() / 1000.0  # Initialize heartbeat tracking
-		print("[NetworkManager] Server: New client connected (ID: %d)" % peer_id)
-		server_client_connected.emit(peer_id)
+		print("[NetworkManager] Server: New client connecting (ID: %d)" % peer_id)
 
 	# Poll all connected peers
 	for peer_id in connected_peers.keys():
@@ -162,15 +161,24 @@ func _process_server(_delta: float) -> void:
 
 		var state = ws_peer.get_ready_state()
 		if state == WebSocketPeer.STATE_OPEN:
+			if not peer_connection_announced.has(peer_id):
+				peer_connection_announced[peer_id] = true
+				peer_last_heartbeat[peer_id] = Time.get_ticks_msec() / 1000.0
+				print("[NetworkManager] Server: New client connected (ID: %d)" % peer_id)
+				server_client_connected.emit(peer_id)
+
 			# Receive messages from this peer
 			while ws_peer.get_available_packet_count() > 0:
 				_handle_server_incoming_packet(peer_id, ws_peer)
 		elif state == WebSocketPeer.STATE_CLOSED:
+			var was_announced := peer_connection_announced.has(peer_id)
 			print("[NetworkManager] Server: Client %d disconnected" % peer_id)
 			connected_peers.erase(peer_id)
+			peer_connection_announced.erase(peer_id)
 			peer_last_heartbeat.erase(peer_id)
 			peer_bytes_sent.erase(peer_id)
-			server_client_disconnected.emit(peer_id)
+			if was_announced:
+				server_client_disconnected.emit(peer_id)
 
 	# Check for heartbeat timeouts
 	var current_time = Time.get_ticks_msec() / 1000.0
@@ -422,6 +430,9 @@ func send_to_client(peer_id: int, message_type: MessageType, data: Dictionary = 
 		return
 
 	var ws_peer: WebSocketPeer = connected_peers[peer_id]
+	if ws_peer.get_ready_state() != WebSocketPeer.STATE_OPEN:
+		return
+
 	var packet = _encode_packet(message_type, data)
 	var error = ws_peer.send(packet)
 
@@ -455,14 +466,18 @@ func disconnect_client(peer_id: int, reason: String = "Server disconnect") -> vo
 func _disconnect_peer_timeout(peer_id: int) -> void:
 	if not connected_peers.has(peer_id):
 		peer_last_heartbeat.erase(peer_id)  # Clean up stale entry
+		peer_connection_announced.erase(peer_id)
 		return
 
 	var ws_peer: WebSocketPeer = connected_peers[peer_id]
+	var was_announced := peer_connection_announced.has(peer_id)
 	ws_peer.close(1000, "Heartbeat timeout")
 	connected_peers.erase(peer_id)
+	peer_connection_announced.erase(peer_id)
 	peer_last_heartbeat.erase(peer_id)
 	peer_bytes_sent.erase(peer_id)
-	server_client_disconnected.emit(peer_id)
+	if was_announced:
+		server_client_disconnected.emit(peer_id)
 
 
 ## Get all connected peer IDs (server mode)
@@ -473,6 +488,9 @@ func get_connected_peer_ids() -> Array:
 func send_message(message_type: MessageType, data: Dictionary = {}) -> void:
 	if ws_client == null or current_state != ConnectionState.CONNECTED:
 		print("[NetworkManager] Cannot send message - not connected")
+		return
+	if ws_client.get_ready_state() != WebSocketPeer.STATE_OPEN:
+		print("[NetworkManager] Cannot send message - socket is not open")
 		return
 
 	var packet = _encode_packet(message_type, data)
@@ -758,7 +776,9 @@ func _attempt_reconnect() -> void:
 
 ## Check if connected to server
 func is_server_connected() -> bool:
-	return current_state == ConnectionState.CONNECTED and ws_client != null
+	return current_state == ConnectionState.CONNECTED \
+		and ws_client != null \
+		and ws_client.get_ready_state() == WebSocketPeer.STATE_OPEN
 
 ## Get network statistics
 func get_stats() -> Dictionary:

@@ -35,6 +35,7 @@ var is_alive: bool = true
 var shoot_cooldown: float = 0.0
 var life_state: PlayerLifeState = PlayerLifeState.ALIVE
 var invulnerability_timer: float = 0.0
+var respawn_timer: float = 0.0
 
 # Stats tracking
 var pvp_kills: int = 0
@@ -95,7 +96,7 @@ func has_queued_input() -> bool:
 
 ## Check if player can shoot (cooldown expired)
 func can_shoot() -> bool:
-	return is_alive and shoot_cooldown <= 0.0
+	return authenticated and is_alive and shoot_cooldown <= 0.0
 
 
 ## Start shoot cooldown after firing
@@ -113,6 +114,9 @@ func get_aim_direction() -> Vector2:
 func apply_input(input: Dictionary, delta: float) -> Dictionary:
 	# Dead players don't process input
 	if life_state == PlayerLifeState.DEAD:
+		velocity = Vector2.ZERO
+		input_flags = 0
+		_update_entity_flags()
 		return {"valid": true, "deviation": 0.0, "correction_needed": false, "server_position": position, "cheat_detected": false, "sequence": last_input_sequence}
 
 	# Decrement shoot cooldown
@@ -261,17 +265,19 @@ func reset_for_respawn(spawn_position: Vector2) -> void:
 	is_alive = true
 	life_state = PlayerLifeState.INVULNERABLE
 	invulnerability_timer = GameConstants.INVULNERABILITY_DURATION
+	respawn_timer = 0.0
 	shoot_cooldown = 0.0
 	input_flags = 0
 	input_queue.clear()
+	last_killer_id = -1
 	animation_state = PacketTypes.AnimationState.SPAWN
 	entity_flags = PacketTypes.ENTITY_FLAG_ALIVE | PacketTypes.ENTITY_FLAG_VISIBLE | PacketTypes.ENTITY_FLAG_INVULNERABLE
 
 
 ## Take damage and return true if killed
 ## Returns false if player is dead, invulnerable, or survives
-func take_damage(amount: int) -> bool:
-	if not is_alive:
+func take_damage(amount: int, source_id: int = -1) -> bool:
+	if not is_alive or amount <= 0:
 		return false
 
 	# Invulnerable players cannot take damage
@@ -281,15 +287,39 @@ func take_damage(amount: int) -> bool:
 	health = max(0, health - amount)
 
 	if health <= 0:
-		is_alive = false
-		life_state = PlayerLifeState.DEAD
-		deaths += 1
-		animation_state = PacketTypes.AnimationState.DEATH
-		entity_flags &= ~PacketTypes.ENTITY_FLAG_ALIVE
+		_mark_dead(source_id)
 		return true
 
 	animation_state = PacketTypes.AnimationState.HIT
 	return false
+
+
+## Move the player into the authoritative dead state exactly once.
+func _mark_dead(killer_id: int) -> void:
+	if life_state == PlayerLifeState.DEAD:
+		return
+
+	is_alive = false
+	life_state = PlayerLifeState.DEAD
+	health = 0
+	velocity = Vector2.ZERO
+	input_flags = 0
+	input_queue.clear()
+	shoot_cooldown = 0.0
+	respawn_timer = GameConstants.RESPAWN_DELAY
+	deaths += 1
+	last_killer_id = killer_id
+	animation_state = PacketTypes.AnimationState.DEATH
+	_update_entity_flags()
+
+
+## Update death respawn timer, returns true when respawn is due.
+func update_respawn_timer(delta: float) -> bool:
+	if life_state != PlayerLifeState.DEAD:
+		return false
+
+	respawn_timer = maxf(0.0, respawn_timer - delta)
+	return respawn_timer <= 0.0
 
 
 ## Update invulnerability timer, returns true if invulnerability just ended

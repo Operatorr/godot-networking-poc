@@ -192,7 +192,8 @@ func get_baseline_tick() -> int:
 
 
 ## Remove entities not in the provided set (cleanup stale entries)
-func cleanup_stale_entities(active_entity_ids: Array[int]) -> void:
+## Returns removed entity IDs so callers can send explicit despawn deltas.
+func cleanup_stale_entities(active_entity_ids: Array[int]) -> Array[int]:
 	var active_set: Dictionary = {}
 	for id in active_entity_ids:
 		active_set[id] = true
@@ -204,6 +205,8 @@ func cleanup_stale_entities(active_entity_ids: Array[int]) -> void:
 
 	for entity_id in to_remove:
 		mark_entity_removed(entity_id)
+
+	return to_remove
 #endregion
 
 

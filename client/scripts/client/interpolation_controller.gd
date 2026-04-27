@@ -419,6 +419,15 @@ func _handle_explicit_despawn(entity_id: int) -> void:
 		missing_update_count.erase(entity_id)
 		entity_last_states.erase(entity_id)
 		entity_nodes.erase(entity_id)
+
+
+## Forget an entity without requiring a server despawn marker.
+## Used when a pre-auth local player snapshot was briefly classified as remote.
+func forget_entity(entity_id: int) -> void:
+	entity_buffers.erase(entity_id)
+	missing_update_count.erase(entity_id)
+	entity_last_states.erase(entity_id)
+	entity_nodes.erase(entity_id)
 #endregion
 
 

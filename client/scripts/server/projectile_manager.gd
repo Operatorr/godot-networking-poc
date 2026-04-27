@@ -8,8 +8,8 @@ extends RefCounted
 var projectiles: Dictionary = {}
 
 ## Entity ID counter for unique projectile entity IDs
-## Starting at 10000 to avoid collision with player entity IDs
-var _next_entity_id: int = 10000
+## Uses a u16-safe reserved range to avoid collision with player and monster IDs.
+var _next_entity_id: int = GameConstants.PROJECTILE_ENTITY_ID_START
 
 ## Debug logging flag
 var debug_logging: bool = true
@@ -29,8 +29,10 @@ func spawn_projectile(owner_id: int, position: Vector2, direction: Vector2) -> P
 			print("[ProjectileManager] Cannot spawn projectile with zero direction")
 		return null
 
-	var entity_id = _next_entity_id
-	_next_entity_id += 1
+	var entity_id := _allocate_entity_id()
+	if entity_id < 0:
+		push_warning("[ProjectileManager] No available projectile entity IDs")
+		return null
 
 	var state = ProjectileState.create(entity_id, owner_id, position, direction)
 	projectiles[entity_id] = state
@@ -41,6 +43,21 @@ func spawn_projectile(owner_id: int, position: Vector2, direction: Vector2) -> P
 		])
 
 	return state
+
+
+## Allocate the next free projectile entity ID from the reserved range.
+func _allocate_entity_id() -> int:
+	var range_size := GameConstants.PROJECTILE_ENTITY_ID_END - GameConstants.PROJECTILE_ENTITY_ID_START + 1
+	for i in range(range_size):
+		var candidate := _next_entity_id
+		_next_entity_id += 1
+		if _next_entity_id > GameConstants.PROJECTILE_ENTITY_ID_END:
+			_next_entity_id = GameConstants.PROJECTILE_ENTITY_ID_START
+
+		if not projectiles.has(candidate):
+			return candidate
+
+	return -1
 
 
 ## Remove a projectile by entity_id

@@ -320,6 +320,8 @@ func _handle_player_info(data: Dictionary) -> void:
 		# (can happen if STATE_UPDATE arrived before PLAYER_INFO)
 		if client_entity_manager and client_entity_manager.player_entities.has(entity_id):
 			client_entity_manager._despawn_remote_player(entity_id)
+		if interpolation_controller:
+			interpolation_controller.forget_entity(entity_id)
 		return
 
 	# Update name in remote player if it exists
@@ -335,10 +337,16 @@ func _handle_state_update_for_local_player(data: Dictionary) -> void:
 	if local_id < 0:
 		return
 
+	var is_delta := (int(data.get("state_flags", 0)) & PacketTypes.STATE_FLAG_IS_DELTA) != 0
 	var entities: Array = data.get("entities", [])
 	for entity_data in entities:
 		var entity_id: int = entity_data.get("entity_id", -1)
 		if entity_id == local_id:
+			var delta_mask: int = entity_data.get("delta_mask", PacketTypes.DELTA_MASK_FULL_STATE)
+			if is_delta \
+				and (delta_mask & PacketTypes.DELTA_MASK_FULL_STATE) == 0 \
+				and (delta_mask & PacketTypes.DELTA_MASK_FLAGS) == 0:
+				return
 			_sync_local_player_state(entity_data)
 			break
 
@@ -403,6 +411,7 @@ func _handle_respawn_event(data: Dictionary) -> void:
 		if death_screen:
 			death_screen.hide_death()
 
+		_is_invulnerable = true
 		_last_killer_id = -1
 		print("[ArenaBase] Local player respawned at %s" % respawn_pos)
 
@@ -411,9 +420,13 @@ func _handle_respawn_event(data: Dictionary) -> void:
 func _handle_damage_event(data: Dictionary) -> void:
 	var target_id: int = data.get("target_id", -1)
 	var local_id := GameManager.get_local_player_entity_id()
+	var amount: int = data.get("event_data", {}).get("amount", 0)
+
+	if target_id >= GameConstants.MONSTER_ENTITY_ID_START and client_entity_manager:
+		client_entity_manager.apply_monster_damage(target_id, amount)
+		return
 
 	if target_id == local_id and local_player and is_instance_valid(local_player):
-		var amount: int = data.get("event_data", {}).get("amount", 0)
 		if amount > 0 and local_player.hp_component:
 			local_player.hp_component.take_damage(amount)
 
@@ -497,10 +510,16 @@ func _handle_kill_event(data: Dictionary) -> void:
 	if killer_id == local_id and victim_id >= GameConstants.MONSTER_ENTITY_ID_START:
 		GameManager.update_stat("monster_kills", 1)
 
+	if victim_id >= GameConstants.MONSTER_ENTITY_ID_START and client_entity_manager:
+		client_entity_manager.apply_monster_death(victim_id)
+
 	# Monster killed a player - show in kill feed
-	if killer_id >= GameConstants.MONSTER_ENTITY_ID_START and victim_id < GameConstants.MONSTER_ENTITY_ID_START and kill_feed:
-		var victim_name := EntityNameCache.get_entity_name(victim_id)
-		kill_feed.add_kill("Monster", victim_name)
+	if killer_id >= GameConstants.MONSTER_ENTITY_ID_START and victim_id < GameConstants.MONSTER_ENTITY_ID_START:
+		if victim_id == local_id:
+			GameManager.update_stat("deaths", 1)
+		if kill_feed:
+			var victim_name := EntityNameCache.get_entity_name(victim_id)
+			kill_feed.add_kill("Monster", victim_name)
 
 
 ## Handle leaderboard update

@@ -75,15 +75,17 @@ static func create(p_entity_id: int, p_position: Vector2, p_health: int = GameCo
 ## Apply damage to the monster
 ## Returns true if the monster was killed
 func take_damage(amount: int) -> bool:
-	if not is_alive:
+	if not is_alive or amount <= 0:
 		return false
 
-	health -= amount
+	health = maxi(health - amount, 0)
 
-	if health <= 0:
-		health = 0
+	if health == 0:
 		is_alive = false
+		move_direction = Vector2.ZERO
 		entity_flags &= ~PacketTypes.ENTITY_FLAG_ALIVE
+		entity_flags &= ~PacketTypes.ENTITY_FLAG_MOVING
+		entity_flags &= ~PacketTypes.ENTITY_FLAG_ATTACKING
 		animation_state = PacketTypes.AnimationState.DEATH
 		return true
 

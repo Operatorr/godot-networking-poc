@@ -31,7 +31,7 @@ func _check_player_collisions(
 
 	for hit in player_hits:
 		var target := player_manager.get_player_by_entity_id(hit.target_id)
-		if target == null:
+		if target == null or not target.authenticated:
 			continue
 
 		# Determine damage based on projectile owner
@@ -39,14 +39,16 @@ func _check_player_collisions(
 		if hit.owner_id >= GameConstants.MONSTER_ENTITY_ID_START:
 			damage = GameConstants.MONSTER_PROJECTILE_DAMAGE
 
-		# Record killer before damage (take_damage may set DEAD state)
-		target.last_killer_id = hit.owner_id
-		var killed := target.take_damage(damage)
+		var previous_health := target.health
+		var killed := target.take_damage(damage, hit.owner_id)
+		var damage_applied := previous_health - target.health
+		if damage_applied <= 0:
+			continue
 
 		# Broadcast DAMAGE event to all clients
 		if network_manager:
 			var damage_packet = GameEventPacket.create_damage(
-				hit.owner_id, hit.target_id, damage
+				hit.owner_id, hit.target_id, damage_applied
 			)
 			network_manager.broadcast_to_clients(
 				NetworkManager.MessageType.GAME_EVENT,
@@ -54,36 +56,11 @@ func _check_player_collisions(
 			)
 
 		if killed and network_manager:
-			if hit.owner_id < GameConstants.MONSTER_ENTITY_ID_START:
-				# PvP kill: attribute to killer player
-				var killer := player_manager.get_player_by_entity_id(hit.owner_id)
-				if killer != null:
-					killer.pvp_kills += 1
-				var kill_packet = GameEventPacket.create_kill_pvp(
-					hit.owner_id, hit.target_id
-				)
-				network_manager.broadcast_to_clients(
-					NetworkManager.MessageType.GAME_EVENT,
-					kill_packet.to_dict()
-				)
-
-				# Record kill in leaderboard and broadcast immediately
-				if broadcast_service and broadcast_service.leaderboard_manager:
-					broadcast_service.leaderboard_manager.record_pvp_kill(hit.owner_id, hit.target_id)
-					broadcast_service.broadcast_leaderboard(player_manager, network_manager)
-			else:
-				# PvE kill: monster killed player
-				var kill_packet = GameEventPacket.create_kill(
-					hit.owner_id, hit.target_id
-				)
-				network_manager.broadcast_to_clients(
-					NetworkManager.MessageType.GAME_EVENT,
-					kill_packet.to_dict()
-				)
+			_broadcast_player_kill(hit.owner_id, hit.target_id, player_manager, network_manager, broadcast_service)
 
 		if debug_logging:
 			print("[CollisionHandler] Player %d took %d damage from entity %d (killed=%s)" % [
-				hit.target_id, damage, hit.owner_id, killed
+				hit.target_id, damage_applied, hit.owner_id, killed
 			])
 
 
@@ -101,12 +78,20 @@ func _check_monster_collisions(
 		if monster == null:
 			continue
 
+		var killer := player_manager.get_player_by_entity_id(hit.owner_id)
+		if killer == null or not killer.authenticated or not killer.is_alive:
+			continue
+
+		var previous_health := monster.health
 		var killed := monster.take_damage(GameConstants.PLAYER_PROJECTILE_DAMAGE)
+		var damage_applied := previous_health - monster.health
+		if damage_applied <= 0:
+			continue
 
 		# Broadcast DAMAGE event to all clients
 		if network_manager:
 			var damage_packet = GameEventPacket.create_damage(
-				hit.owner_id, hit.target_id, GameConstants.PLAYER_PROJECTILE_DAMAGE
+				hit.owner_id, hit.target_id, damage_applied
 			)
 			network_manager.broadcast_to_clients(
 				NetworkManager.MessageType.GAME_EVENT,
@@ -115,9 +100,7 @@ func _check_monster_collisions(
 
 		# Attribute monster kill to player
 		if killed:
-			var killer := player_manager.get_player_by_entity_id(hit.owner_id)
-			if killer != null:
-				killer.monster_kills += 1
+			killer.monster_kills += 1
 
 			if network_manager:
 				var kill_packet = GameEventPacket.create_kill(
@@ -130,5 +113,40 @@ func _check_monster_collisions(
 
 		if debug_logging:
 			print("[CollisionHandler] Monster %d took %d damage from player %d (killed=%s)" % [
-				hit.target_id, GameConstants.PLAYER_PROJECTILE_DAMAGE, hit.owner_id, killed
+				hit.target_id, damage_applied, hit.owner_id, killed
 			])
+
+
+## Attribute a lethal hit on a player and broadcast the compatible kill event.
+func _broadcast_player_kill(
+	killer_id: int,
+	victim_id: int,
+	player_manager: PlayerManager,
+	network_manager: Node,
+	broadcast_service: ServerBroadcastService
+) -> void:
+	if killer_id < GameConstants.MONSTER_ENTITY_ID_START:
+		var killer := player_manager.get_player_by_entity_id(killer_id)
+		var victim := player_manager.get_player_by_entity_id(victim_id)
+		if killer == null or victim == null:
+			return
+		if killer.entity_id == victim.entity_id or not killer.authenticated:
+			return
+
+		killer.pvp_kills += 1
+		var kill_packet = GameEventPacket.create_kill_pvp(killer_id, victim_id)
+		network_manager.broadcast_to_clients(
+			NetworkManager.MessageType.GAME_EVENT,
+			kill_packet.to_dict()
+		)
+
+		if broadcast_service and broadcast_service.leaderboard_manager:
+			broadcast_service.leaderboard_manager.record_pvp_kill(killer_id, victim_id)
+			broadcast_service.broadcast_leaderboard(player_manager, network_manager)
+		return
+
+	var kill_packet = GameEventPacket.create_kill(killer_id, victim_id)
+	network_manager.broadcast_to_clients(
+		NetworkManager.MessageType.GAME_EVENT,
+		kill_packet.to_dict()
+	)

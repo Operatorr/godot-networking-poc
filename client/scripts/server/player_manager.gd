@@ -85,6 +85,10 @@ func queue_player_input(peer_id: int, input_data: Dictionary) -> void:
 		if debug_logging:
 			print("[PlayerManager] Cannot queue input for unknown player: %d" % peer_id)
 		return
+	if not state.authenticated:
+		if debug_logging:
+			print("[PlayerManager] Ignoring input from unauthenticated player: %d" % peer_id)
+		return
 
 	state.queue_input(input_data)
 
@@ -95,6 +99,9 @@ func process_all_inputs(delta: float) -> Array[Dictionary]:
 	var corrections: Array[Dictionary] = []
 
 	for state: PlayerState in players.values():
+		if not state.authenticated:
+			continue
+
 		while state.has_queued_input():
 			var input = state.pop_input()
 			var validation = state.apply_input(input, delta)
@@ -205,7 +212,7 @@ func get_authenticated_players() -> Array[PlayerState]:
 func get_alive_players() -> Array[PlayerState]:
 	var result: Array[PlayerState] = []
 	for state: PlayerState in players.values():
-		if state.is_alive:
+		if state.authenticated and state.is_alive:
 			result.append(state)
 	return result
 

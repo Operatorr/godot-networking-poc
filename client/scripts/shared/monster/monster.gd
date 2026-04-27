@@ -85,11 +85,11 @@ func _update_flags(flags: int) -> void:
 ## Set HP for visual feedback
 func set_hp(hp: int) -> void:
 	var old_hp := current_hp
-	current_hp = hp
+	current_hp = clampi(hp, 0, max_hp)
 	queue_redraw()
 
-	if hp < old_hp:
-		took_damage.emit(old_hp - hp)
+	if current_hp < old_hp:
+		took_damage.emit(old_hp - current_hp)
 
 
 func _draw() -> void:
@@ -100,7 +100,7 @@ func _draw() -> void:
 	var bar_width := 40.0
 	var bar_height := 4.0
 	var bar_y := -25.0  # Above sprite
-	var hp_ratio := float(current_hp) / float(max_hp)
+	var hp_ratio := clampf(float(current_hp) / float(maxi(max_hp, 1)), 0.0, 1.0)
 
 	# Background
 	draw_rect(Rect2(Vector2(-bar_width / 2, bar_y), Vector2(bar_width, bar_height)), Color(0.1, 0.05, 0.05, 0.8), true)

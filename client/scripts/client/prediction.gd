@@ -376,6 +376,7 @@ func _handle_action_confirm(data: Dictionary) -> void:
 func _handle_state_update(data: Dictionary) -> void:
 	var server_tick: int = data.get("server_tick", 0)
 	var entities: Array = data.get("entities", [])
+	var is_delta := (int(data.get("state_flags", 0)) & PacketTypes.STATE_FLAG_IS_DELTA) != 0
 
 	last_server_tick = server_tick
 
@@ -387,6 +388,11 @@ func _handle_state_update(data: Dictionary) -> void:
 	for entity_data in entities:
 		var entity_id: int = entity_data.get("entity_id", -1)
 		if entity_id == local_entity_id:
+			var delta_mask: int = entity_data.get("delta_mask", PacketTypes.DELTA_MASK_FULL_STATE)
+			if is_delta \
+				and (delta_mask & PacketTypes.DELTA_MASK_FULL_STATE) == 0 \
+				and (delta_mask & PacketTypes.DELTA_MASK_POSITION) == 0:
+				return
 			_process_own_state_update(entity_data)
 			break
 
