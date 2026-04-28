@@ -63,12 +63,19 @@ var connection_lost_overlay: Control = null
 
 ## Last known killer for death screen
 var _last_killer_id: int = -1
+var _local_death_feedback_played: bool = false
 
 ## Cached AudioManager reference (lazy-initialized)
 var _cached_audio_manager: Node = null
 
 ## Track if client has been initialized
 var _client_initialized: bool = false
+
+## True once the local player has been snapped to an authoritative server state.
+var _local_player_authority_synced: bool = false
+
+## Low-volume projectile sync diagnostics from client config.
+var projectile_sync_debug_logging: bool = false
 
 ## Camera zoom settings
 const CAMERA_ZOOM_DEFAULT := Vector2(1.5, 1.5)
@@ -132,6 +139,8 @@ func _setup_client() -> void:
 	if _client_initialized:
 		return
 	_client_initialized = true
+	var client_config := ClientConfig.new()
+	projectile_sync_debug_logging = client_config.projectile_sync_debug_logging
 
 	var entity_container := get_entity_container()
 	if entity_container == null:
@@ -173,6 +182,12 @@ func _setup_client() -> void:
 	# Spawn local player
 	_spawn_local_player(entity_container)
 
+	# Now that the message listener is wired, drive the auth handshake from the
+	# arena so PLAYER_INFO cannot arrive before _on_server_message is connected.
+	# Backstop: request a full state so a missed PLAYER_INFO can still recover.
+	NetworkManager.send_auth_handshake()
+	NetworkManager.send_message(NetworkManager.MessageType.REQUEST_FULL_STATE, {})
+
 	# Set up HUD
 	_setup_hud()
 
@@ -193,8 +208,10 @@ func _spawn_local_player(entity_container: Node2D) -> void:
 
 	local_player = player_scene.instantiate()
 	local_player.name = "LocalPlayer"
-	local_player.position = get_random_player_spawn()
+	local_player.position = Vector2.ZERO
+	local_player.visible = false
 	entity_container.add_child(local_player)
+	local_player.set_input_enabled(false)
 
 	# Connect local player signals for audio
 	local_player.shot_fired.connect(_on_local_player_shot)
@@ -202,17 +219,18 @@ func _spawn_local_player(entity_container: Node2D) -> void:
 	# Create and attach PredictionController
 	prediction_controller = PredictionController.new()
 	prediction_controller.name = "PredictionController"
+	prediction_controller.interpolation_controller = interpolation_controller
+	prediction_controller.projectile_sync_debug_logging = projectile_sync_debug_logging
 	local_player.add_child(prediction_controller)
 
-	# Set up prediction with initial position
-	# Entity ID will be set when we receive auth confirmation
+	# Set up prediction in pending mode. Entity ID and spawn position come from server state.
 	prediction_controller.setup(local_player, local_player.position)
 
 	# Camera starts at player position
 	if camera:
 		camera.position = local_player.position
 
-	print("[ArenaBase] Local player spawned at %s" % local_player.position)
+	print("[ArenaBase] Local player spawned pending authoritative server state")
 
 
 ## Set up HUD components on the HUDLayer
@@ -249,6 +267,8 @@ func _setup_hud() -> void:
 	death_screen = _create_hud_component(DEATH_SCREEN_PATH, "DeathScreen")
 	death_screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	hud_layer.add_child(death_screen)
+	if death_screen.has_signal("respawn_requested"):
+		death_screen.connect("respawn_requested", Callable(self, "_on_respawn_requested"))
 
 	# Pause Menu (full overlay, hidden by default)
 	pause_menu = _create_hud_component(PAUSE_MENU_PATH, "PauseMenu")
@@ -299,12 +319,16 @@ func _handle_game_event(data: Dictionary) -> void:
 			_handle_kill_event(data)
 		PacketTypes.GameEventType.LEADERBOARD_UPDATE:
 			_handle_leaderboard_update(data)
+		PacketTypes.GameEventType.PROJECTILE_FIRED:
+			_handle_projectile_fired_event(data)
 
 
 ## Handle PLAYER_INFO event - detect our own entity ID
 func _handle_player_info(data: Dictionary) -> void:
 	var entity_id: int = data.get("target_id", -1)
-	var char_name: String = data.get("event_data", {}).get("character_name", "")
+	var event_data: Dictionary = data.get("event_data", {})
+	var char_name: String = event_data.get("character_name", "")
+	var server_position: Vector2 = event_data.get("position", Vector2.ZERO)
 
 	# Check if this is our own player info
 	var our_char_name: String = GameManager.player_data.get("character_name", "")
@@ -313,8 +337,23 @@ func _handle_player_info(data: Dictionary) -> void:
 		GameManager.set_local_player_entity_id(entity_id)
 
 		if prediction_controller:
-			prediction_controller.local_entity_id = entity_id
+			prediction_controller.set_local_entity_id(entity_id)
 			print("[ArenaBase] Local player entity ID set: %d" % entity_id)
+
+		# Force-sync to the server-authoritative spawn so we don't render at
+		# Vector2.ZERO until the first STATE_UPDATE arrives. If a future
+		# regression sends PLAYER_INFO without a position, the STATE_UPDATE
+		# fallback in _handle_state_update_for_local_player still recovers.
+		if prediction_controller and not _local_player_authority_synced:
+			prediction_controller.force_sync(server_position)
+			prediction_controller.set_prediction_enabled(true)
+			_local_player_authority_synced = true
+			if local_player and is_instance_valid(local_player):
+				local_player.visible = true
+				local_player.set_input_enabled(true)
+			if camera:
+				camera.position = server_position
+			print("[ArenaBase] Local player authority synced from PLAYER_INFO at %s" % server_position)
 
 		# Clean up any accidentally spawned remote player for our entity
 		# (can happen if STATE_UPDATE arrived before PLAYER_INFO)
@@ -342,13 +381,50 @@ func _handle_state_update_for_local_player(data: Dictionary) -> void:
 	for entity_data in entities:
 		var entity_id: int = entity_data.get("entity_id", -1)
 		if entity_id == local_id:
-			var delta_mask: int = entity_data.get("delta_mask", PacketTypes.DELTA_MASK_FULL_STATE)
-			if is_delta \
-				and (delta_mask & PacketTypes.DELTA_MASK_FULL_STATE) == 0 \
-				and (delta_mask & PacketTypes.DELTA_MASK_FLAGS) == 0:
+			var has_position := _entity_state_has_position(entity_data, is_delta)
+			var has_flags := _entity_state_has_flags(entity_data, is_delta)
+			if is_delta and not has_position and not has_flags:
 				return
-			_sync_local_player_state(entity_data)
+			if prediction_controller \
+				and (not _local_player_authority_synced) \
+				and has_position:
+				var server_position: Vector2 = entity_data.get("position", local_player.position)
+				prediction_controller.force_sync(server_position)
+				prediction_controller.set_prediction_enabled(true)
+				_local_player_authority_synced = true
+				local_player.visible = true
+				local_player.set_input_enabled(true)
+				if camera:
+					camera.position = server_position
+				print("[ArenaBase] Local player authority synced at %s" % server_position)
+			# Only sync alive/invulnerable state when this packet actually carries
+			# the flags field. Position-only deltas decode with flags=0, which would
+			# otherwise be misread as "not alive" and falsely trigger the death screen.
+			if has_flags:
+				_sync_local_player_state(entity_data)
 			break
+
+
+## Whether this state entity contains an authoritative position field.
+func _entity_state_has_position(entity_data: Dictionary, is_delta: bool) -> bool:
+	if not is_delta:
+		return true
+
+	var delta_mask: int = entity_data.get("delta_mask", PacketTypes.DELTA_MASK_FULL_STATE)
+	return (delta_mask & PacketTypes.DELTA_MASK_FULL_STATE) != 0 \
+		or (delta_mask & PacketTypes.DELTA_MASK_POSITION) != 0
+
+
+## Whether this state entity contains an authoritative flags field. Delta
+## packets without DELTA_MASK_FLAGS arrive with flags=0 from the decoder, so
+## consumers must gate alive/dead reads on this check.
+func _entity_state_has_flags(entity_data: Dictionary, is_delta: bool) -> bool:
+	if not is_delta:
+		return true
+
+	var delta_mask: int = entity_data.get("delta_mask", PacketTypes.DELTA_MASK_FULL_STATE)
+	return (delta_mask & PacketTypes.DELTA_MASK_FULL_STATE) != 0 \
+		or (delta_mask & PacketTypes.DELTA_MASK_FLAGS) != 0
 
 
 ## Sync local player state from server (HP, flags, etc.)
@@ -360,29 +436,15 @@ func _sync_local_player_state(entity_data: Dictionary) -> void:
 	var is_alive := (flags & PacketTypes.ENTITY_FLAG_ALIVE) != 0
 
 	# Sync alive state - detect death
-	if not is_alive and local_player.action_state != Player.ActionState.DEAD:
-		local_player.action_state = Player.ActionState.DEAD
-		local_player.velocity = Vector2.ZERO
-		local_player.set_input_enabled(false)
-
-		# Play death sound
-		var audio := _get_audio_manager()
-		if audio:
-			audio.play_player_death()
-
-		# Death effects: large shake + white flash + death particles
-		if screen_effects:
-			screen_effects.shake(ScreenEffects.SHAKE_DEATH)
-			screen_effects.flash_death()
-
-		var death_particles := ParticleEffects.create_death_explosion(local_player.global_position, Color(0.27, 0.53, 1.0))
-		_add_effect_to_arena(death_particles)
-		var gore := ParticleEffects.create_gore_splatter(local_player.global_position)
-		_add_effect_to_arena(gore)
-
-		# Show death screen
-		if death_screen:
-			death_screen.show_death(_last_killer_id)
+	if not is_alive:
+		if local_player.action_state != Player.ActionState.DEAD:
+			local_player.action_state = Player.ActionState.DEAD
+			local_player.movement_state = Player.MovementState.IDLE
+			local_player.velocity = Vector2.ZERO
+			local_player.set_input_enabled(false)
+			if prediction_controller:
+				prediction_controller.set_prediction_enabled(false)
+		_play_local_death_feedback()
 
 	# Sync invulnerability visual
 	var is_invulnerable := (flags & PacketTypes.ENTITY_FLAG_INVULNERABLE) != 0
@@ -403,9 +465,13 @@ func _handle_respawn_event(data: Dictionary) -> void:
 		var respawn_pos: Vector2 = data.get("event_data", {}).get("position", Vector2.ZERO)
 		local_player.reset()
 		local_player.position = respawn_pos
+		local_player.visible = true
+		local_player.set_input_enabled(true)
+		_local_player_authority_synced = true
 
 		if prediction_controller:
 			prediction_controller.force_sync(respawn_pos)
+			prediction_controller.set_prediction_enabled(true)
 
 		# Hide death screen
 		if death_screen:
@@ -413,6 +479,7 @@ func _handle_respawn_event(data: Dictionary) -> void:
 
 		_is_invulnerable = true
 		_last_killer_id = -1
+		_local_death_feedback_played = false
 		print("[ArenaBase] Local player respawned at %s" % respawn_pos)
 
 
@@ -421,36 +488,122 @@ func _handle_damage_event(data: Dictionary) -> void:
 	var target_id: int = data.get("target_id", -1)
 	var local_id := GameManager.get_local_player_entity_id()
 	var amount: int = data.get("event_data", {}).get("amount", 0)
+	var source_id: int = data.get("source_id", -1)
 
 	if target_id >= GameConstants.MONSTER_ENTITY_ID_START and client_entity_manager:
 		client_entity_manager.apply_monster_damage(target_id, amount)
 		return
 
 	if target_id == local_id and local_player and is_instance_valid(local_player):
-		if amount > 0 and local_player.hp_component:
-			local_player.hp_component.take_damage(amount)
+		if source_id > 0:
+			_last_killer_id = source_id
 
-			# Play hit sound for local player taking damage
-			var audio := _get_audio_manager()
-			if audio:
-				audio.play_player_hit()
+		if amount > 0 and local_player.hp_component:
+			var was_dead := local_player.hp_component.is_dead
+			local_player.hp_component.take_damage(amount)
+			var is_dead := local_player.hp_component.is_dead
+
+			if is_dead and not was_dead:
+				local_player.movement_state = Player.MovementState.IDLE
+				local_player.velocity = Vector2.ZERO
+				local_player.set_input_enabled(false)
+				if prediction_controller:
+					prediction_controller.set_prediction_enabled(false)
+				_play_local_death_feedback()
+			else:
+				# Play hit sound for local player taking damage
+				var audio := _get_audio_manager()
+				if audio:
+					audio.play_player_hit()
 
 			# Spawn damage number
 			_spawn_damage_number(amount, local_player.global_position, false)
 
-			# Screen shake + red flash on hit
-			if screen_effects:
-				screen_effects.shake(ScreenEffects.SHAKE_HIT)
-				screen_effects.flash_damage()
+			if not is_dead:
+				# Screen shake + red flash on hit
+				if screen_effects:
+					screen_effects.shake(ScreenEffects.SHAKE_HIT)
+					screen_effects.flash_damage()
 
-			# Hit sparks at player position
-			var sparks := ParticleEffects.create_hit_sparks(local_player.global_position)
-			_add_effect_to_arena(sparks)
+				# Hit sparks at player position
+				var sparks := ParticleEffects.create_hit_sparks(local_player.global_position)
+				_add_effect_to_arena(sparks)
 
-		# Track killer for death screen
-		var source_id: int = data.get("source_id", -1)
-		if source_id > 0:
-			_last_killer_id = source_id
+
+## Play local death audio, particles, screen effects, and UI exactly once.
+func _play_local_death_feedback() -> void:
+	if _local_death_feedback_played:
+		return
+	if local_player == null or not is_instance_valid(local_player):
+		return
+
+	_local_death_feedback_played = true
+
+	var audio := _get_audio_manager()
+	if audio:
+		audio.play_player_death()
+
+	if screen_effects:
+		screen_effects.shake(ScreenEffects.SHAKE_DEATH)
+		screen_effects.flash_death()
+
+	var death_particles := ParticleEffects.create_death_explosion(local_player.global_position, Color(0.27, 0.53, 1.0))
+	_add_effect_to_arena(death_particles)
+	var gore := ParticleEffects.create_gore_splatter(local_player.global_position)
+	_add_effect_to_arena(gore)
+
+	if death_screen:
+		death_screen.show_death(_last_killer_id)
+
+
+## Handle authoritative projectile fire event for remote player and monster audio.
+func _handle_projectile_fired_event(data: Dictionary) -> void:
+	var source_id: int = data.get("source_id", -1)
+	var local_id := GameManager.get_local_player_entity_id()
+	if source_id <= 0:
+		return
+
+	if source_id == local_id:
+		_log_local_projectile_fired_event(data)
+		return
+
+	var audio := _get_audio_manager()
+	if audio == null:
+		return
+
+	if source_id >= GameConstants.MONSTER_ENTITY_ID_START:
+		if client_entity_manager == null or not client_entity_manager.monster_entities.has(source_id):
+			return
+		audio.play_monster_shoot()
+		return
+
+	if client_entity_manager == null or not client_entity_manager.player_entities.has(source_id):
+		return
+	audio.play_player_shoot()
+
+
+func _log_local_projectile_fired_event(data: Dictionary) -> void:
+	if not projectile_sync_debug_logging or prediction_controller == null:
+		return
+
+	var event_data: Dictionary = data.get("event_data", {})
+	if not event_data.has("position"):
+		return
+
+	var projectile_id: int = data.get("target_id", 0)
+	var server_spawn_pos: Vector2 = event_data.get("position", Vector2.ZERO)
+	var server_tick: int = event_data.get("server_tick", 0)
+	var predicted_pos := prediction_controller.predicted_position
+	var expected_muzzle_offset := GameConstants.PLAYER_HITBOX_RADIUS + GameConstants.PROJECTILE_RADIUS + 2.0
+
+	print("[ArenaBase] Local PROJECTILE_FIRED: projectile=%d server_tick=%d server_spawn_pos=%s predicted_player_pos=%s delta=%.2f expected_muzzle_offset=%.2f" % [
+		projectile_id,
+		server_tick,
+		server_spawn_pos,
+		predicted_pos,
+		server_spawn_pos.distance_to(predicted_pos),
+		expected_muzzle_offset
+	])
 
 
 ## Handle PvP kill event (for kill feed)
@@ -543,6 +696,10 @@ func _on_local_player_shot(pos: Vector2, dir: Vector2) -> void:
 	# Muzzle flash effect
 	var flash := ParticleEffects.create_muzzle_flash(pos, dir)
 	_add_effect_to_arena(flash)
+
+
+func _on_respawn_requested() -> void:
+	NetworkManager.send_message(NetworkManager.MessageType.RESPAWN_REQUEST, {})
 
 
 ## Show a "You eliminated [Name]" notification for the local player
@@ -686,6 +843,11 @@ func _on_reconnected() -> void:
 	if connection_lost_overlay and connection_lost_overlay.visible:
 		connection_lost_overlay.hide_overlay()
 
+	# _complete_connection cleared _auth_handshake_sent already; re-issue so the
+	# server re-broadcasts PLAYER_INFO and we can rediscover our entity_id.
+	NetworkManager.send_auth_handshake()
+	NetworkManager.send_message(NetworkManager.MessageType.REQUEST_FULL_STATE, {})
+
 
 ## Handle reconnect failure - return to main menu
 func _on_reconnect_failed() -> void:
@@ -725,6 +887,8 @@ func on_scene_exit() -> void:
 			interpolation_controller.clear_all_entities()
 
 		GameManager.clear_local_player_entity_id()
+		_local_player_authority_synced = false
+		_local_death_feedback_played = false
 
 	print("[ArenaBase] Scene exit cleanup complete")
 

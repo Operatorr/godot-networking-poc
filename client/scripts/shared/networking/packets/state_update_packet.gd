@@ -1,5 +1,5 @@
 ## StateUpdatePacket - Server state broadcast (variable size)
-## Sent from server to clients at 10Hz
+## Sent from server to clients at the authoritative tick cadence
 ## Contains all visible entities' states
 ##
 ## Full State Format:

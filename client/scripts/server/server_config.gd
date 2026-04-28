@@ -12,7 +12,7 @@ const DEFAULTS := {
 	"debug_logging": true,
 	"heartbeat_timeout_seconds": 5.0,
 	"api_server_url": "http://localhost:8080",
-	"aoi_radius": 500.0
+	"aoi_radius": 1000.0
 }
 
 ## Configuration file paths (priority order)

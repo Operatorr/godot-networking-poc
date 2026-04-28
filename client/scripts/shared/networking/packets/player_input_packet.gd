@@ -1,12 +1,14 @@
-## PlayerInputPacket - Client input packet (~12 bytes payload)
-## Sent from client to server at 10Hz (100ms intervals)
+## PlayerInputPacket - Client input packet (~16 bytes payload)
+## Sent from client to server at the authoritative tick cadence
 ## Format:
 ##   [s16 position_x][s16 position_y]     4 bytes - quantized position
 ##   [s16 velocity_x][s16 velocity_y]     4 bytes - quantized velocity
 ##   [u8 input_flags]                     1 byte  - WASD + actions
 ##   [s16 aim_angle]                      2 bytes - quantized aim direction
 ##   [u8 sequence_number]                 1 byte  - for server reconciliation
-## Total: 12 bytes payload
+##   [u16 client_render_tick]             2 bytes - tick remote entities were rendered at
+##   [u16 client_rtt_ms]                  2 bytes - latest client-measured round-trip time
+## Total: 16 bytes payload
 class_name PlayerInputPacket
 extends RefCounted
 
@@ -20,6 +22,10 @@ var input_flags: int = 0
 var aim_angle: float = 0.0
 ## Sequence number for server reconciliation (wraps at 255)
 var sequence_number: int = 0
+## Server tick the client was rendering remote entities at when this input was sent
+var client_render_tick: int = 0
+## Latest client-measured round-trip time in milliseconds
+var client_rtt_ms: int = 0
 
 
 func _init() -> void:
@@ -27,13 +33,23 @@ func _init() -> void:
 
 
 ## Create from current input state
-static func create(pos: Vector2, vel: Vector2, flags: int, angle: float, seq: int) -> PlayerInputPacket:
+static func create(
+	pos: Vector2,
+	vel: Vector2,
+	flags: int,
+	angle: float,
+	seq: int,
+	render_tick: int = 0,
+	rtt_ms: int = 0
+) -> PlayerInputPacket:
 	var packet = PlayerInputPacket.new()
 	packet.position = pos
 	packet.velocity = vel
 	packet.input_flags = flags
 	packet.aim_angle = angle
 	packet.sequence_number = seq & 0xFF
+	packet.client_render_tick = render_tick & 0xFFFF
+	packet.client_rtt_ms = clampi(rtt_ms, 0, 65535)
 	return packet
 
 
@@ -45,12 +61,14 @@ static func from_input_dict(input: Dictionary) -> PlayerInputPacket:
 	packet.input_flags = PacketTypes.encode_input_flags(input.get("keys", {}))
 	packet.aim_angle = input.get("aim_angle", 0.0)
 	packet.sequence_number = input.get("sequence", 0) & 0xFF
+	packet.client_render_tick = input.get("client_render_tick", 0) & 0xFFFF
+	packet.client_rtt_ms = clampi(input.get("client_rtt_ms", 0), 0, 65535)
 	return packet
 
 
 ## Write packet to buffer (includes header)
 func write() -> PackedByteArray:
-	var writer = PacketWriter.new(16)  # 3 header + 12 payload + 1 safety
+	var writer = PacketWriter.new(20)  # 3 header + 16 payload + 1 safety
 	writer.write_header(PacketTypes.Type.PLAYER_INPUT)
 	write_payload(writer)
 	writer.finalize_header()
@@ -64,6 +82,8 @@ func write_payload(writer: PacketWriter) -> void:
 	writer.write_u8(input_flags)
 	writer.write_angle_compressed(aim_angle)
 	writer.write_u8(sequence_number)
+	writer.write_u16(client_render_tick)
+	writer.write_u16(client_rtt_ms)
 
 
 ## Read packet from reader (assumes header already read)
@@ -74,6 +94,8 @@ static func read(reader: PacketReader) -> PlayerInputPacket:
 	packet.input_flags = reader.read_u8()
 	packet.aim_angle = reader.read_angle_compressed()
 	packet.sequence_number = reader.read_u8()
+	packet.client_render_tick = reader.read_u16()
+	packet.client_rtt_ms = reader.read_u16()
 	return packet
 
 
@@ -132,5 +154,7 @@ func to_dict() -> Dictionary:
 		"inputs": PacketTypes.decode_input_flags(input_flags),
 		"aim_angle": aim_angle,
 		"aim_degrees": rad_to_deg(aim_angle),
-		"sequence_number": sequence_number
+		"sequence_number": sequence_number,
+		"client_render_tick": client_render_tick,
+		"client_rtt_ms": client_rtt_ms
 	}

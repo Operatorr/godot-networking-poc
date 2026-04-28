@@ -233,6 +233,7 @@ func _on_animation_finished() -> void:
 
 func _on_hp_component_died() -> void:
 	action_state = ActionState.DEAD
+	movement_state = MovementState.IDLE
 	velocity = Vector2.ZERO
 	_input_enabled = false
 

@@ -11,7 +11,7 @@ const MAX_PACKET_SIZE := 65535
 
 ## Packet types as per ARCHITECTURE.md
 enum Type {
-	PLAYER_INPUT = 1,      ## Client -> Server: Movement, actions (~12 bytes)
+	PLAYER_INPUT = 1,      ## Client -> Server: Movement, actions (~16 bytes)
 	STATE_UPDATE = 2,      ## Server -> Client: Entity positions, animations (variable)
 	GAME_EVENT = 3,        ## Server -> Client: Damage, kills, status effects (50-200 bytes)
 	HEARTBEAT = 4,         ## Bidirectional: Keep-alive (4 bytes)
@@ -88,7 +88,8 @@ enum GameEventType {
 	CHAT_MESSAGE = 8,      ## Chat message
 	PLAYER_INFO = 9,       ## Player identity broadcast (entity_id -> character_name)
 	KILL_PVP = 10,         ## PvP kill event (killer/victim with names)
-	LEADERBOARD_UPDATE = 11 ## Top 10 leaderboard update
+	LEADERBOARD_UPDATE = 11, ## Top 10 leaderboard update
+	PROJECTILE_FIRED = 12 ## Entity fired a projectile
 }
 
 ## Disconnect reason codes

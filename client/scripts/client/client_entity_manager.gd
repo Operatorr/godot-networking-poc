@@ -460,15 +460,15 @@ func _spawn_monster_spawn_effects(pos: Vector2) -> void:
 	entity_container.add_child(spawn_fx)
 
 
-## Play audio for remote player animation state transitions
+## Play audio for remote player hit/death animation state transitions.
+## Shoot sounds are driven by authoritative PROJECTILE_FIRED events so held
+## attack animations do not miss repeated shots or double-play with events.
 func _play_remote_player_audio(anim_state: int) -> void:
 	var audio := _get_audio_manager()
 	if audio == null:
 		return
 
 	match anim_state:
-		PacketTypes.AnimationState.ATTACK:
-			audio.play_player_shoot()
 		PacketTypes.AnimationState.HIT:
 			audio.play_player_hit()
 		PacketTypes.AnimationState.DEATH:

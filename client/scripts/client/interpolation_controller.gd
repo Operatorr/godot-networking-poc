@@ -8,7 +8,7 @@ extends Node
 #region Constants
 ## Number of ticks to render behind real-time (100ms at 20Hz)
 ## Provides jitter absorption and smooth interpolation window
-const RENDER_DELAY_TICKS := 2
+const RENDER_DELAY_TICKS := GameConstants.REMOTE_ENTITY_RENDER_DELAY_TICKS
 
 ## Consecutive missing updates before despawning entity
 ## 3 ticks = 150ms grace period
@@ -549,6 +549,15 @@ func get_entity_position(entity_id: int) -> Vector2:
 		return before.position
 
 	return before.position.lerp(after.position, factor)
+
+
+## Get the newest server position in the interpolation buffer for diagnostics.
+func get_entity_latest_server_position(entity_id: int) -> Vector2:
+	if not entity_buffers.has(entity_id):
+		return Vector2.ZERO
+
+	var buffer: EntityStateBuffer = entity_buffers[entity_id]
+	return buffer.get_latest_position()
 
 
 ## Get animation state for an entity (not interpolated - snaps to latest)

@@ -61,6 +61,10 @@ var current_state: ConnectionState = ConnectionState.DISCONNECTED
 var server_url: String = ""
 var auth_token: String = ""
 var server_port: int = 8080
+## Idempotency for send_auth_handshake — true while a handshake is in flight or
+## has been acknowledged for the current WebSocket session. Cleared on every
+## fresh connection so reconnects can re-authenticate.
+var _auth_handshake_sent: bool = false
 
 ## Reconnection parameters (exponential backoff)
 var reconnect_attempts: int = 0
@@ -307,9 +311,11 @@ func _complete_connection() -> void:
 	_had_successful_connection = true
 	last_heartbeat_received = Time.get_ticks_msec() / 1000.0
 
-	# Send authentication handshake
-	if not auth_token.is_empty():
-		send_auth_handshake()
+	# Auth handshake is intentionally NOT sent here — the arena scene drives it
+	# from _setup_client once its server_message_received listener is bound.
+	# Reset the idempotency flag so the arena (or reconnect handler) can issue
+	# a fresh auth for this session.
+	_auth_handshake_sent = false
 
 	connected_to_server.emit()
 
@@ -330,8 +336,20 @@ func _fail_connection_attempt(error_message: String, is_reconnect: bool) -> void
 func _format_connection_error(url: String) -> String:
 	return "Cannot reach the game server at %s. Make sure the game server is running, then try again." % url
 
-## Send authentication handshake
+## Send authentication handshake. Idempotent within a connection session: a
+## second call without a fresh _complete_connection (i.e. without disconnect/
+## reconnect) is a no-op so the arena and reconnect hooks can both call it
+## defensively.
 func send_auth_handshake() -> void:
+	if _auth_handshake_sent:
+		return
+	if auth_token.is_empty():
+		print("[NetworkManager] send_auth_handshake skipped: no auth_token set")
+		return
+	if current_state != ConnectionState.CONNECTED:
+		print("[NetworkManager] send_auth_handshake skipped: not connected (state=%d)" % current_state)
+		return
+
 	var character_id = ""
 	var character_name = ""
 	var region = "Asia"
@@ -348,8 +366,11 @@ func send_auth_handshake() -> void:
 		"character_name": character_name,
 		"region": region
 	}
-	send_message(MessageType.CONNECT_AUTH, auth_data)
-	print("[NetworkManager] Authentication handshake sent")
+	if send_message(MessageType.CONNECT_AUTH, auth_data):
+		_auth_handshake_sent = true
+		print("[NetworkManager] Authentication handshake sent")
+	else:
+		print("[NetworkManager] Authentication handshake send failed; retry remains allowed")
 
 ## Disconnect from server
 func disconnect_from_server(reason: String = "User disconnect") -> void:
@@ -484,14 +505,15 @@ func _disconnect_peer_timeout(peer_id: int) -> void:
 func get_connected_peer_ids() -> Array:
 	return connected_peers.keys()
 
-## Send message to server
-func send_message(message_type: MessageType, data: Dictionary = {}) -> void:
+## Send message to server. Returns true once the packet has been accepted by
+## the WebSocket layer so callers can keep retryable state in sync.
+func send_message(message_type: MessageType, data: Dictionary = {}) -> bool:
 	if ws_client == null or current_state != ConnectionState.CONNECTED:
 		print("[NetworkManager] Cannot send message - not connected")
-		return
+		return false
 	if ws_client.get_ready_state() != WebSocketPeer.STATE_OPEN:
 		print("[NetworkManager] Cannot send message - socket is not open")
-		return
+		return false
 
 	var packet = _encode_packet(message_type, data)
 	var error = ws_client.send(packet)
@@ -499,14 +521,16 @@ func send_message(message_type: MessageType, data: Dictionary = {}) -> void:
 	if error == OK:
 		stats.packets_sent += 1
 		stats.bytes_sent += packet.size()
+		return true
 	else:
 		print("[NetworkManager] Failed to send packet: %d" % error)
+		return false
 
 ## Send message to server (alias for send_message for code clarity)
-func send_to_server(message_type: MessageType, data: Dictionary = {}) -> void:
-	send_message(message_type, data)
+func send_to_server(message_type: MessageType, data: Dictionary = {}) -> bool:
+	return send_message(message_type, data)
 
-## Send player input (10/sec as per spec)
+## Send player input at the client prediction cadence.
 func send_player_input(input_data: Dictionary) -> void:
 	send_message(MessageType.PLAYER_INPUT, input_data)
 
@@ -595,11 +619,11 @@ func _encode_packet(message_type: MessageType, data: Dictionary) -> PackedByteAr
 			_write_game_event_data(writer, data)
 
 		MessageType.ACTION_CONFIRM:
-			writer.write_u8(data.get("sequence", 0))
+			writer.write_u8(data.get("sequence_number", data.get("sequence", 0)))
 			writer.write_u8(data.get("action_type", 0))
-			writer.write_vector2_compressed(data.get("position", Vector2.ZERO))
-			writer.write_u8(data.get("result", 0))
-			writer.write_u16(data.get("tick", 0))
+			writer.write_vector2_compressed(data.get("corrected_position", data.get("position", Vector2.ZERO)))
+			writer.write_u8(data.get("result_code", data.get("result", 0)))
+			writer.write_u16(data.get("server_tick", data.get("tick", 0)))
 
 		MessageType.CONNECT_AUTH:
 			writer.write_string(data.get("token", ""))
@@ -643,8 +667,12 @@ func _write_game_event_data(writer: PacketWriter, data: Dictionary) -> void:
 		PacketTypes.GameEventType.DAMAGE:
 			writer.write_u16(event_data.get("amount", data.get("amount", 0)))
 			writer.write_u8(event_data.get("damage_type", data.get("damage_type", 0)))
-		PacketTypes.GameEventType.KILL, PacketTypes.GameEventType.KILL_PVP:
-			pass  # No extra data (killer=source_id, victim=target_id)
+		PacketTypes.GameEventType.KILL, \
+		PacketTypes.GameEventType.KILL_PVP:
+			pass  # No extra data.
+		PacketTypes.GameEventType.PROJECTILE_FIRED:
+			writer.write_vector2_compressed(event_data.get("position", data.get("position", Vector2.ZERO)))
+			writer.write_u16(event_data.get("server_tick", data.get("server_tick", 0)))
 		PacketTypes.GameEventType.RESPAWN:
 			writer.write_vector2_compressed(event_data.get("position", data.get("position", Vector2.ZERO)))
 		PacketTypes.GameEventType.EFFECT_APPLY:
@@ -654,6 +682,7 @@ func _write_game_event_data(writer: PacketWriter, data: Dictionary) -> void:
 			writer.write_u8(event_data.get("effect_id", data.get("effect_id", 0)))
 		PacketTypes.GameEventType.PLAYER_INFO:
 			writer.write_string(event_data.get("character_name", ""))
+			writer.write_vector2_compressed(event_data.get("position", Vector2.ZERO))
 		PacketTypes.GameEventType.LEADERBOARD_UPDATE:
 			var entries: Array = event_data.get("entries", [])
 			writer.write_u8(entries.size())
@@ -742,6 +771,7 @@ func _decode_packet(packet: PackedByteArray) -> Dictionary:
 ## Handle connection closed
 func _on_connection_closed(reason: String) -> void:
 	current_state = ConnectionState.DISCONNECTED
+	_auth_handshake_sent = false
 	disconnected_from_server.emit(reason)
 	if _had_successful_connection:
 		_schedule_reconnect()

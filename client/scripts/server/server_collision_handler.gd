@@ -79,8 +79,6 @@ func _check_monster_collisions(
 			continue
 
 		var killer := player_manager.get_player_by_entity_id(hit.owner_id)
-		if killer == null or not killer.authenticated or not killer.is_alive:
-			continue
 
 		var previous_health := monster.health
 		var killed := monster.take_damage(GameConstants.PLAYER_PROJECTILE_DAMAGE)
@@ -98,9 +96,11 @@ func _check_monster_collisions(
 				damage_packet.to_dict()
 			)
 
-		# Attribute monster kill to player
+		# Attribute the kill only when the shooter is still tracked, but keep
+		# already-fired projectiles authoritative even after death/disconnect.
 		if killed:
-			killer.monster_kills += 1
+			if killer != null and killer.authenticated:
+				killer.monster_kills += 1
 
 			if network_manager:
 				var kill_packet = GameEventPacket.create_kill(
@@ -126,20 +126,25 @@ func _broadcast_player_kill(
 	broadcast_service: ServerBroadcastService
 ) -> void:
 	if killer_id < GameConstants.MONSTER_ENTITY_ID_START:
-		var killer := player_manager.get_player_by_entity_id(killer_id)
-		var victim := player_manager.get_player_by_entity_id(victim_id)
-		if killer == null or victim == null:
-			return
-		if killer.entity_id == victim.entity_id or not killer.authenticated:
+		if killer_id == victim_id:
 			return
 
-		killer.pvp_kills += 1
+		var killer := player_manager.get_player_by_entity_id(killer_id)
+		if killer != null and not killer.authenticated:
+			return
+
+		# The shooter may have disconnected after firing; clients still need the
+		# kill event to drive feed and death-stat updates.
 		var kill_packet = GameEventPacket.create_kill_pvp(killer_id, victim_id)
 		network_manager.broadcast_to_clients(
 			NetworkManager.MessageType.GAME_EVENT,
 			kill_packet.to_dict()
 		)
 
+		if killer == null:
+			return
+
+		killer.pvp_kills += 1
 		if broadcast_service and broadcast_service.leaderboard_manager:
 			broadcast_service.leaderboard_manager.record_pvp_kill(killer_id, victim_id)
 			broadcast_service.broadcast_leaderboard(player_manager, network_manager)

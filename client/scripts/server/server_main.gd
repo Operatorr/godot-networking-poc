@@ -178,17 +178,21 @@ func _process_server_tick() -> void:
 	# 3. Run AI/monster logic
 	_update_monster_ai()
 
-	# 4. Process collisions (delegated to CollisionHandler)
+	# 4. Snapshot monster positions before collision/damage mutates state. Player
+	# projectile hit tests rewind to this short history.
+	monster_manager.record_position_snapshot(tick_count)
+
+	# 5. Process collisions (delegated to CollisionHandler)
 	collision_handler.process_collisions(
 		projectile_manager, player_manager, monster_manager, nm, broadcast_service
 	)
 
-	# 5. Broadcast state updates (delegated to BroadcastService)
+	# 6. Broadcast state updates (delegated to BroadcastService)
 	broadcast_service.broadcast_state_updates(
 		player_manager, projectile_manager, monster_manager, nm, tick_count
 	)
 
-	# 6. Remove dead monsters after death/removed state has been broadcast.
+	# 7. Remove dead monsters after death/removed state has been broadcast.
 	monster_manager.cleanup_dead_monsters()
 
 	# Track tick performance
@@ -200,44 +204,51 @@ func _process_server_tick() -> void:
 func _process_client_inputs() -> void:
 	var tick_interval := 1.0 / config.tick_rate
 
-	# Process shoot inputs before movement (TASK-014)
+	# Drain queued inputs into the persistent input model and advance one tick.
+	# Rising-edge SHOOT presses are queued onto state.pending_shots during ingest.
+	var move_results = player_manager.process_all_inputs(tick_interval, tick_count)
+
+	# Spawn projectiles for shoot edges captured during this tick's ingest pass,
+	# then continue auto-fire while SHOOT remains held across cooldown cycles.
 	_process_shoot_inputs()
 
-	var corrections = player_manager.process_all_inputs(tick_interval)
-
-	# Send correction packets to clients with invalid positions
-	if corrections.size() > 0:
-		_send_position_corrections(corrections)
+	# Confirm every processed move so clients can prune acknowledged inputs.
+	if move_results.size() > 0:
+		_send_move_confirmations(move_results)
 
 
-## Process shoot inputs and spawn projectiles (TASK-014)
+## Spawn projectiles for immediate shoot edges and sustained held auto-fire.
 func _process_shoot_inputs() -> void:
 	for state: PlayerState in player_manager.get_all_players():
-		# Check each queued input for shoot flag
-		for input in state.input_queue:
-			var flags: int = input.get("input_flags", 0)
-			if flags & PacketTypes.INPUT_FLAG_SHOOT:
-				_try_spawn_projectile(state, input)
+		while true:
+			var shot := state.pop_pending_shot()
+			if shot.is_empty():
+				break
+			_try_spawn_projectile(state, shot)
+
+		if state.is_shoot_held() and state.can_shoot():
+			_try_spawn_projectile(state, state.get_held_shot_input())
 
 
-## Send position correction packets to clients (TASK-013)
-func _send_position_corrections(corrections: Array[Dictionary]) -> void:
+## Send authoritative move confirmations/corrections to clients (TASK-013)
+func _send_move_confirmations(move_results: Array[Dictionary]) -> void:
 	var nm = _get_network_manager()
 	if nm == null:
 		return
 
-	for correction in corrections:
-		var peer_id: int = correction.peer_id
-		var sequence: int = correction.sequence
-		var position: Vector2 = correction.position
-		var cheat_detected: bool = correction.cheat_detected
+	for result in move_results:
+		var peer_id: int = result.peer_id
+		var sequence: int = result.sequence
+		var position: Vector2 = result.position
+		var success: bool = result.success
+		var cheat_detected: bool = result.cheat_detected
 
 		# Create correction packet using ActionConfirmPacket
 		var confirm_packet = ActionConfirmPacket.create_move_confirm(
 			sequence,
 			position,
 			tick_count,
-			false  # success=false indicates correction needed
+			success
 		)
 
 		# Send correction to the specific client
@@ -250,11 +261,11 @@ func _send_position_corrections(corrections: Array[Dictionary]) -> void:
 		# Log potential cheating attempts
 		if cheat_detected:
 			print("[ServerMain] CHEAT DETECTED: peer=%d teleport attempt (deviation=%.1f)" % [
-				peer_id, correction.deviation
+				peer_id, result.deviation
 			])
-		elif config.debug_logging:
+		elif config.debug_logging and not success:
 			print("[ServerMain] Position correction: peer=%d seq=%d deviation=%.1f" % [
-				peer_id, sequence, correction.deviation
+				peer_id, sequence, result.deviation
 			])
 
 
@@ -270,21 +281,110 @@ func _try_spawn_projectile(player: PlayerState, input: Dictionary) -> void:
 	# Get aim direction from input
 	var aim_angle: float = input.get("aim_angle", player.aim_angle)
 	var aim_direction := Vector2.from_angle(aim_angle)
+	var fire_origin_data: Dictionary = _get_validated_fire_origin(player, input)
+	var fire_origin: Vector2 = fire_origin_data.get("position", player.position)
+	var compensation_data: Dictionary = _get_pve_projectile_compensation(input)
+	var rewind_ticks: int = compensation_data.get("rewind_ticks", GameConstants.REMOTE_ENTITY_RENDER_DELAY_TICKS)
 
 	# Spawn position slightly in front of player to avoid self-collision
 	var spawn_offset := aim_direction * (GameConstants.PLAYER_HITBOX_RADIUS + GameConstants.PROJECTILE_RADIUS + 2.0)
-	var spawn_position := player.position + spawn_offset
+	var spawn_position := fire_origin + spawn_offset
 
 	# Spawn the projectile
 	var projectile := projectile_manager.spawn_projectile(
 		player.entity_id,
 		spawn_position,
-		aim_direction
+		aim_direction,
+		tick_count,
+		rewind_ticks,
+		compensation_data.get("client_render_tick", 0),
+		compensation_data.get("client_rtt_ms", 0),
+		compensation_data.get("source", "none")
 	)
 
 	if projectile != null:
+		if config.debug_logging:
+			_log_player_projectile_spawn(player, projectile, aim_angle, fire_origin_data)
+
 		# Start cooldown on successful spawn
 		player.start_shoot_cooldown()
+		_broadcast_projectile_fired(player.entity_id, projectile.entity_id, spawn_position, tick_count)
+
+
+func _get_validated_fire_origin(player: PlayerState, input: Dictionary) -> Dictionary:
+	var client_position: Vector2 = input.get("client_position", Vector2.INF)
+	var tolerance := _get_fire_origin_tolerance(input)
+	if client_position != Vector2.INF:
+		var delta := player.position.distance_to(client_position)
+		if delta <= tolerance:
+			return {
+				"position": client_position,
+				"source": "client_position",
+				"delta": delta,
+				"tolerance": tolerance
+			}
+
+	return {
+		"position": player.position,
+		"source": "server_position",
+		"delta": 0.0,
+		"tolerance": tolerance
+	}
+
+
+func _get_fire_origin_tolerance(input: Dictionary) -> float:
+	var client_rtt_ms: int = clampi(input.get("client_rtt_ms", 0), 0, 65535)
+	var one_way_seconds := float(client_rtt_ms) * 0.0005
+	var tick_interval := 1.0 / float(config.tick_rate)
+	var max_compensation_seconds := float(GameConstants.MAX_PVE_PROJECTILE_COMPENSATION_TICKS) / float(config.tick_rate)
+	one_way_seconds = minf(one_way_seconds, max_compensation_seconds)
+
+	# Bound client fire-origin trust much tighter than movement correction tolerance.
+	var predicted_gap := GameConstants.PLAYER_SPRINT_SPEED * (one_way_seconds + tick_interval)
+	return clampf(
+		predicted_gap + GameConstants.PROJECTILE_RADIUS,
+		GameConstants.PROJECTILE_RADIUS * 2.0,
+		GameConstants.POSITION_TOLERANCE
+	)
+
+
+func _get_pve_projectile_compensation(input: Dictionary) -> Dictionary:
+	var client_render_tick_16: int = input.get("client_render_tick", 0) & 0xFFFF
+	var client_rtt_ms: int = clampi(input.get("client_rtt_ms", 0), 0, 65535)
+
+	if client_render_tick_16 > 0:
+		var resolved_render_tick := _resolve_client_tick_u16(client_render_tick_16)
+		var render_tick_rewind := tick_count - resolved_render_tick
+		if render_tick_rewind >= 0:
+			return {
+				"rewind_ticks": clampi(render_tick_rewind, 0, GameConstants.MAX_PVE_PROJECTILE_COMPENSATION_TICKS),
+				"client_render_tick": resolved_render_tick,
+				"client_rtt_ms": client_rtt_ms,
+				"source": "client_render_tick" if render_tick_rewind <= GameConstants.MAX_PVE_PROJECTILE_COMPENSATION_TICKS else "client_render_tick_clamped"
+			}
+
+	var one_way_latency_ticks := 0
+	if client_rtt_ms > 0:
+		var tick_ms := 1000.0 / float(config.tick_rate)
+		one_way_latency_ticks = ceili((float(client_rtt_ms) * 0.5) / tick_ms)
+
+	var fallback_rewind := GameConstants.REMOTE_ENTITY_RENDER_DELAY_TICKS + one_way_latency_ticks
+	return {
+		"rewind_ticks": clampi(fallback_rewind, 0, GameConstants.MAX_PVE_PROJECTILE_COMPENSATION_TICKS),
+		"client_render_tick": 0,
+		"client_rtt_ms": client_rtt_ms,
+		"source": "rtt_fallback" if client_rtt_ms > 0 else "render_delay_fallback"
+	}
+
+
+func _resolve_client_tick_u16(client_tick_16: int) -> int:
+	var server_tick_16 := tick_count & 0xFFFF
+	var diff := client_tick_16 - server_tick_16
+	if diff > 32767:
+		diff -= 65536
+	elif diff < -32768:
+		diff += 65536
+	return tick_count + diff
 
 
 ## Update game state (positions, timers, etc.)
@@ -300,8 +400,8 @@ func _update_game_state() -> void:
 	# Update player invulnerability timers
 	_update_invulnerability_timers(tick_interval)
 
-	# Respawn dead players whose server-side delay has expired
-	_process_automatic_respawns(tick_interval)
+	# Advance death timers. Clients must request respawn after the delay expires.
+	_update_respawn_timers(tick_interval)
 
 	# Broadcast leaderboard periodically
 	leaderboard_timer += tick_interval
@@ -319,10 +419,70 @@ func _update_monster_ai() -> void:
 	var alive_monsters := monster_manager.get_alive_monsters()
 
 	# Update all monster AI - handles movement, targeting, and shooting
-	var projectiles_spawned := monster_ai.update_all(alive_monsters, tick_interval)
+	var monster_fire_events: Array[int] = monster_ai.update_all(alive_monsters, tick_interval)
 
-	if config.debug_logging and projectiles_spawned > 0:
-		print("[ServerMain] Monsters spawned %d projectiles this tick" % projectiles_spawned)
+	for monster_entity_id: int in monster_fire_events:
+		_broadcast_projectile_fired(monster_entity_id)
+
+	if config.debug_logging and monster_fire_events.size() > 0:
+		print("[ServerMain] Monsters spawned %d projectiles this tick" % monster_fire_events.size())
+
+
+## Broadcast a compact authoritative fire event after projectile creation.
+func _broadcast_projectile_fired(
+	source_entity_id: int,
+	projectile_entity_id: int = 0,
+	spawn_position: Vector2 = Vector2.ZERO,
+	server_tick: int = 0
+) -> void:
+	var nm = _get_network_manager()
+	if nm == null:
+		return
+
+	var event_packet = GameEventPacket.create_projectile_fired(
+		source_entity_id,
+		projectile_entity_id,
+		spawn_position,
+		server_tick
+	)
+	nm.broadcast_to_clients(
+		NetworkManager.MessageType.GAME_EVENT,
+		event_packet.to_dict()
+	)
+
+
+func _log_player_projectile_spawn(
+	player: PlayerState,
+	projectile: ProjectileState,
+	aim_angle: float,
+	fire_origin_data: Dictionary
+) -> void:
+	var closest := monster_manager.get_closest_alive_monster(projectile.position)
+	var closest_text := "none"
+	if closest != null:
+		closest_text = "monster=%d pos=%s dist=%.2f" % [
+			closest.entity_id,
+			closest.position,
+			projectile.position.distance_to(closest.position)
+		]
+
+	print("[ServerMain] Player projectile fired: player=%d projectile=%d tick=%d rewind_ticks=%d compensation=%s client_render_tick=%d client_rtt_ms=%d fire_origin=%s fire_origin_source=%s fire_origin_delta=%.2f fire_origin_tolerance=%.2f player_pos=%s spawn_pos=%s aim_angle=%.4f closest=%s" % [
+		player.entity_id,
+		projectile.entity_id,
+		tick_count,
+		projectile.collision_rewind_ticks,
+		projectile.lag_compensation_source,
+		projectile.client_render_tick,
+		projectile.client_rtt_ms,
+		fire_origin_data.get("position", player.position),
+		fire_origin_data.get("source", "server_position"),
+		fire_origin_data.get("delta", 0.0),
+		fire_origin_data.get("tolerance", 0.0),
+		player.position,
+		projectile.position,
+		aim_angle,
+		closest_text
+	])
 
 
 ## Update invulnerability timers for all players
@@ -331,11 +491,10 @@ func _update_invulnerability_timers(delta: float) -> void:
 		state.update_invulnerability(delta)
 
 
-## Respawn players automatically after their authoritative death timer expires.
-func _process_automatic_respawns(delta: float) -> void:
+## Advance dead-player respawn timers without automatically respawning them.
+func _update_respawn_timers(delta: float) -> void:
 	for state: PlayerState in player_manager.get_authenticated_players():
-		if state.update_respawn_timer(delta):
-			_respawn_player_and_broadcast(state.peer_id)
+		state.update_respawn_timer(delta)
 
 
 ## Handle client connection (TASK-012)
