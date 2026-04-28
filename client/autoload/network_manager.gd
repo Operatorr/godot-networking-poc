@@ -366,9 +366,11 @@ func send_auth_handshake() -> void:
 		"character_name": character_name,
 		"region": region
 	}
-	send_message(MessageType.CONNECT_AUTH, auth_data)
-	_auth_handshake_sent = true
-	print("[NetworkManager] Authentication handshake sent")
+	if send_message(MessageType.CONNECT_AUTH, auth_data):
+		_auth_handshake_sent = true
+		print("[NetworkManager] Authentication handshake sent")
+	else:
+		print("[NetworkManager] Authentication handshake send failed; retry remains allowed")
 
 ## Disconnect from server
 func disconnect_from_server(reason: String = "User disconnect") -> void:
@@ -503,14 +505,15 @@ func _disconnect_peer_timeout(peer_id: int) -> void:
 func get_connected_peer_ids() -> Array:
 	return connected_peers.keys()
 
-## Send message to server
-func send_message(message_type: MessageType, data: Dictionary = {}) -> void:
+## Send message to server. Returns true once the packet has been accepted by
+## the WebSocket layer so callers can keep retryable state in sync.
+func send_message(message_type: MessageType, data: Dictionary = {}) -> bool:
 	if ws_client == null or current_state != ConnectionState.CONNECTED:
 		print("[NetworkManager] Cannot send message - not connected")
-		return
+		return false
 	if ws_client.get_ready_state() != WebSocketPeer.STATE_OPEN:
 		print("[NetworkManager] Cannot send message - socket is not open")
-		return
+		return false
 
 	var packet = _encode_packet(message_type, data)
 	var error = ws_client.send(packet)
@@ -518,12 +521,14 @@ func send_message(message_type: MessageType, data: Dictionary = {}) -> void:
 	if error == OK:
 		stats.packets_sent += 1
 		stats.bytes_sent += packet.size()
+		return true
 	else:
 		print("[NetworkManager] Failed to send packet: %d" % error)
+		return false
 
 ## Send message to server (alias for send_message for code clarity)
-func send_to_server(message_type: MessageType, data: Dictionary = {}) -> void:
-	send_message(message_type, data)
+func send_to_server(message_type: MessageType, data: Dictionary = {}) -> bool:
+	return send_message(message_type, data)
 
 ## Send player input at the client prediction cadence.
 func send_player_input(input_data: Dictionary) -> void:

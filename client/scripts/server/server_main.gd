@@ -335,11 +335,12 @@ func _get_validated_fire_origin(player: PlayerState, input: Dictionary) -> Dicti
 func _get_fire_origin_tolerance(input: Dictionary) -> float:
 	var client_rtt_ms: int = clampi(input.get("client_rtt_ms", 0), 0, 65535)
 	var one_way_seconds := float(client_rtt_ms) * 0.0005
+	var tick_interval := 1.0 / float(config.tick_rate)
 	var max_compensation_seconds := float(GameConstants.MAX_PVE_PROJECTILE_COMPENSATION_TICKS) / float(config.tick_rate)
 	one_way_seconds = minf(one_way_seconds, max_compensation_seconds)
 
 	# Bound client fire-origin trust much tighter than movement correction tolerance.
-	var predicted_gap := GameConstants.PLAYER_SPRINT_SPEED * (one_way_seconds + GameConstants.SERVER_TICK_INTERVAL)
+	var predicted_gap := GameConstants.PLAYER_SPRINT_SPEED * (one_way_seconds + tick_interval)
 	return clampf(
 		predicted_gap + GameConstants.PROJECTILE_RADIUS,
 		GameConstants.PROJECTILE_RADIUS * 2.0,

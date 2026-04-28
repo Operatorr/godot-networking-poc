@@ -186,6 +186,10 @@ func _get_monster_grid_for_tick(
 	return monster_grids_by_tick[collision_tick]
 
 
+func _projectile_diagnostics_enabled() -> bool:
+	return debug_logging
+
+
 func _track_closest_monster(
 	proj: ProjectileState,
 	monsters: Array,
@@ -203,7 +207,7 @@ func _track_closest_monster(
 
 
 func _log_projectile_removal(state: ProjectileState) -> void:
-	if not debug_logging:
+	if not _projectile_diagnostics_enabled():
 		return
 
 	if state.is_player_projectile() and not state.removal_reason.ends_with("_hit"):
@@ -313,8 +317,9 @@ func check_collisions_with_monsters(monster_manager: MonsterManager) -> Array[Di
 			continue
 
 		var collision_tick := proj.get_lag_compensated_monster_tick()
-		var collision_monsters := _get_monster_list_for_tick(monster_manager, collision_tick, monster_lists_by_tick)
-		_track_closest_monster(proj, collision_monsters, collision_tick)
+		if _projectile_diagnostics_enabled():
+			var collision_monsters := _get_monster_list_for_tick(monster_manager, collision_tick, monster_lists_by_tick)
+			_track_closest_monster(proj, collision_monsters, collision_tick)
 
 		# Only check monsters in nearby cells
 		var monster_grid := _get_monster_grid_for_tick(
