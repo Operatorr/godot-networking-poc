@@ -208,7 +208,8 @@ func _process_client_inputs() -> void:
 	# Rising-edge SHOOT presses are queued onto state.pending_shots during ingest.
 	var move_results = player_manager.process_all_inputs(tick_interval, tick_count)
 
-	# Spawn projectiles for shoot edges captured during this tick's ingest pass.
+	# Spawn projectiles for shoot edges captured during this tick's ingest pass,
+	# then continue auto-fire while SHOOT remains held across cooldown cycles.
 	_process_shoot_inputs()
 
 	# Confirm every processed move so clients can prune acknowledged inputs.
@@ -216,7 +217,7 @@ func _process_client_inputs() -> void:
 		_send_move_confirmations(move_results)
 
 
-## Spawn projectiles for shoot edges queued during this tick's input ingest.
+## Spawn projectiles for immediate shoot edges and sustained held auto-fire.
 func _process_shoot_inputs() -> void:
 	for state: PlayerState in player_manager.get_all_players():
 		while true:
@@ -224,6 +225,9 @@ func _process_shoot_inputs() -> void:
 			if shot.is_empty():
 				break
 			_try_spawn_projectile(state, shot)
+
+		if state.is_shoot_held() and state.can_shoot():
+			_try_spawn_projectile(state, state.get_held_shot_input())
 
 
 ## Send authoritative move confirmations/corrections to clients (TASK-013)

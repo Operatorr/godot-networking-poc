@@ -35,7 +35,8 @@ var has_client_position: bool = false
 ## Server tick at which the most recent input was ingested.
 ## Used to zero out flags when a client stops sending (disconnect/timeout).
 var last_input_received_tick: int = 0
-## Queued shoot edges (rising-edge SHOOT presses). Drained by ServerMain.
+## Queued shoot edges (rising-edge SHOOT presses). Drained by ServerMain for
+## immediate fire attempts; held auto-fire is derived from input_flags each tick.
 var pending_shots: Array[Dictionary] = []
 var input_queue: Array[Dictionary] = []
 
@@ -128,7 +129,7 @@ func get_aim_direction() -> Vector2:
 
 ## Ingest a single input packet from the client.
 ## Updates the persistent input flags applied every tick by step().
-## Detects rising-edge SHOOT and queues it in pending_shots.
+## Detects rising-edge SHOOT and queues an immediate fire attempt in pending_shots.
 func ingest_input(input: Dictionary, server_tick: int) -> void:
 	if life_state == PlayerLifeState.DEAD:
 		# Dead players' inputs are discarded entirely.
@@ -174,6 +175,23 @@ func pop_pending_shot() -> Dictionary:
 	if pending_shots.is_empty():
 		return {}
 	return pending_shots.pop_front()
+
+
+## Returns true while the authoritative held SHOOT flag remains active.
+func is_shoot_held() -> bool:
+	return (input_flags & PacketTypes.INPUT_FLAG_SHOOT) != 0
+
+
+## Build a synthetic fire input from the latest persistent client state so
+## server-side auto-fire can continue while SHOOT is held across cooldowns.
+func get_held_shot_input() -> Dictionary:
+	return {
+		"sequence": last_input_sequence,
+		"aim_angle": aim_angle,
+		"client_position": last_client_position if has_client_position else Vector2.INF,
+		"client_render_tick": last_client_render_tick,
+		"client_rtt_ms": last_client_rtt_ms
+	}
 
 
 ## Advance the player's simulation by one server tick using the currently
