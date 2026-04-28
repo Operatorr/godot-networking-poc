@@ -518,10 +518,6 @@ func _on_client_connected(peer_id: int) -> void:
 	# Create delta cache for this client (TASK-021)
 	broadcast_service.get_or_create_delta_cache(peer_id)
 
-	# Register with leaderboard manager
-	if broadcast_service.leaderboard_manager and state:
-		broadcast_service.leaderboard_manager.register_player(state.entity_id)
-
 	print("[ServerMain] Player count: %d/%d" % [player_manager.get_player_count(), config.max_players])
 
 
@@ -579,7 +575,9 @@ func _handle_auth_request(peer_id: int, data: Dictionary) -> void:
 
 	# Authenticate player via PlayerManager
 	# TODO: Validate character_id with API server
-	player_manager.authenticate_player(peer_id, character_id, character_name)
+	var authenticated := player_manager.authenticate_player(peer_id, character_id, character_name)
+	if not authenticated:
+		return
 
 	# Broadcast PLAYER_INFO to all clients for the newly authenticated player
 	var nm = _get_network_manager()
@@ -587,6 +585,11 @@ func _handle_auth_request(peer_id: int, data: Dictionary) -> void:
 
 	# Send PLAYER_INFO for all existing players to the new client
 	broadcast_service.send_all_player_info_to_client(peer_id, player_manager, nm)
+
+	var state = player_manager.get_player(peer_id)
+	if broadcast_service.leaderboard_manager and state:
+		broadcast_service.leaderboard_manager.register_player(state.entity_id)
+		broadcast_service.broadcast_leaderboard(player_manager, nm)
 
 
 ## Handle client respawn request

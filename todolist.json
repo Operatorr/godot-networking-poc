@@ -4,9 +4,9 @@
 	"date": "2025-11-13",
 	"progress_summary": {
 		"total_tasks": 74,
-		"completed": 59,
+		"completed": 63,
 		"in_progress": 0,
-		"pending": 15
+		"pending": 11
 	},
 	"tasks": [
 		{
@@ -425,25 +425,25 @@
 					"id": "TASK-060",
 					"title": "Create PvP kill leaderboard UI",
 					"description": "Top-left highscore showing active players' PvP kills",
-					"status": "pending"
+					"status": "completed"
 				},
 				{
 					"id": "TASK-061",
 					"title": "Implement real-time leaderboard updates",
 					"description": "Update leaderboard when kills occur",
-					"status": "pending"
+					"status": "completed"
 				},
 				{
 					"id": "TASK-062",
 					"title": "Add player HP display",
 					"description": "Show current player health on screen",
-					"status": "pending"
+					"status": "completed"
 				},
 				{
 					"id": "TASK-063",
 					"title": "Create exit to menu keybind (T key)",
 					"description": "Implement T key to return to main menu",
-					"status": "pending"
+					"status": "completed"
 				}
 			]
 		},

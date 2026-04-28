@@ -13,11 +13,13 @@ var _flash_timer: float = 0.0
 
 const BAR_WIDTH := 300.0
 const BAR_HEIGHT := 24.0
+const DAMAGE_FLASH_SECONDS := 0.3
 
 
 func _ready() -> void:
 	_build_ui()
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	set_process(false)
 
 
 func _build_ui() -> void:
@@ -58,16 +60,23 @@ func _process(delta: float) -> void:
 		_bar_fill.modulate.a = 0.5 + 0.5 * sin(Time.get_ticks_msec() / 50.0)
 		if _flash_timer <= 0.0:
 			_bar_fill.modulate.a = 1.0
+			set_process(false)
 
 
 ## Update HP from external source
 func update_hp(current: int, max_hp: int) -> void:
+	current = maxi(current, 0)
+	max_hp = maxi(max_hp, 1)
+	if current == _current_hp and max_hp == _max_hp:
+		return
+
 	var took_damage := current < _current_hp
 	_current_hp = current
 	_max_hp = max_hp
 	_update_display()
 	if took_damage:
-		_flash_timer = 0.3
+		_flash_timer = DAMAGE_FLASH_SECONDS
+		set_process(true)
 
 
 func _update_display() -> void:
@@ -76,7 +85,7 @@ func _update_display() -> void:
 
 	_hp_label.text = "%d / %d HP" % [_current_hp, _max_hp]
 
-	var ratio := float(_current_hp) / float(maxi(_max_hp, 1))
+	var ratio := clampf(float(_current_hp) / float(_max_hp), 0.0, 1.0)
 	_bar_fill.size.x = (BAR_WIDTH - 4) * ratio
 
 	# Color gradient: green -> yellow -> red

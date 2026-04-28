@@ -70,6 +70,7 @@ var _cached_audio_manager: Node = null
 
 ## Track if client has been initialized
 var _client_initialized: bool = false
+var _is_leaving_arena: bool = false
 
 ## True once the local player has been snapped to an authoritative server state.
 var _local_player_authority_synced: bool = false
@@ -129,9 +130,6 @@ func _process(delta: float) -> void:
 
 	# Invulnerability shield visual
 	_update_invuln_shield()
-
-	# Update HP bar from local player
-	_update_hp_bar()
 
 
 ## Set up client-side systems
@@ -282,6 +280,8 @@ func _setup_hud() -> void:
 	hud_layer.add_child(connection_lost_overlay)
 	connection_lost_overlay.reconnect_failed.connect(_on_reconnect_failed)
 
+	_connect_local_hp_bar()
+
 	print("[ArenaBase] HUD setup complete")
 
 
@@ -291,6 +291,14 @@ func _create_hud_component(script_path: String, node_name: String) -> Control:
 	node.set_script(load(script_path))
 	node.name = node_name
 	return node
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("exit_to_menu"):
+		if event is InputEventKey and event.echo:
+			return
+		get_viewport().set_input_as_handled()
+		_leave_arena()
 
 
 ## Handle server messages for arena-level events
@@ -444,6 +452,8 @@ func _sync_local_player_state(entity_data: Dictionary) -> void:
 			local_player.set_input_enabled(false)
 			if prediction_controller:
 				prediction_controller.set_prediction_enabled(false)
+			if local_player.hp_component:
+				local_player.hp_component.set_hp(0)
 		_play_local_death_feedback()
 
 	# Sync invulnerability visual
@@ -831,6 +841,21 @@ func _update_hp_bar() -> void:
 	hp_bar.update_hp(local_player.hp_component.current_hp, local_player.hp_component.max_hp)
 
 
+func _connect_local_hp_bar() -> void:
+	if local_player == null or not is_instance_valid(local_player):
+		return
+	if local_player.hp_component == null:
+		return
+	if not local_player.hp_component.hp_changed.is_connected(_on_local_hp_changed):
+		local_player.hp_component.hp_changed.connect(_on_local_hp_changed)
+	_update_hp_bar()
+
+
+func _on_local_hp_changed(current_hp: int, max_hp: int) -> void:
+	if hp_bar:
+		hp_bar.update_hp(current_hp, max_hp)
+
+
 ## Handle disconnect from server
 func _on_disconnected(_reason: String) -> void:
 	if GameManager.current_state == GameManager.GameState.IN_ARENA:
@@ -861,6 +886,10 @@ func _on_leave_arena() -> void:
 
 ## Leave arena: disconnect and return to main menu
 func _leave_arena() -> void:
+	if _is_leaving_arena:
+		return
+	_is_leaving_arena = true
+
 	var audio := _get_audio_manager()
 	if audio:
 		audio.stop_music()
@@ -879,6 +908,9 @@ func on_scene_exit() -> void:
 			NetworkManager.disconnected_from_server.disconnect(_on_disconnected)
 		if NetworkManager.connected_to_server.is_connected(_on_reconnected):
 			NetworkManager.connected_to_server.disconnect(_on_reconnected)
+		if local_player and is_instance_valid(local_player) and local_player.hp_component:
+			if local_player.hp_component.hp_changed.is_connected(_on_local_hp_changed):
+				local_player.hp_component.hp_changed.disconnect(_on_local_hp_changed)
 
 		# Cleanup client resources
 		if client_entity_manager:

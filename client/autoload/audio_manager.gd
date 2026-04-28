@@ -8,9 +8,6 @@ const MASTER_BUS = "Master"
 const MUSIC_BUS = "Music"
 const SFX_BUS = "SFX"
 const MAIN_MENU_MUSIC := preload("res://assets/audio/music/main_menu.wav")
-const MUSIC_TRACK_VOLUMES := {
-	"menu_bgm": 0.2
-}
 const MUSIC_FADE_SILENCE_DB = -40.0
 
 ## Audio categories
@@ -29,6 +26,11 @@ signal volume_changed(bus_name: String, volume: float)
 ## Runtime mode detection
 var is_server: bool = false
 
+## Per-track music volume multipliers
+@export_group("Music Track Volumes")
+@export_range(0.0, 2.0, 0.01, "or_greater")
+var menu_bgm_volume: float = 0.2
+
 ## Audio players
 var music_player: AudioStreamPlayer = null
 var ui_sfx_players: Array[AudioStreamPlayer] = []
@@ -36,6 +38,7 @@ var combat_sfx_players: Array[AudioStreamPlayer] = []
 
 ## Current music state
 var current_music_track: String = ""
+var music_volume: float = 0.8
 var music_fade_duration: float = 1.0
 var is_music_fading: bool = false
 var _music_fade_tween: Tween = null
@@ -67,9 +70,12 @@ func _ready() -> void:
 		print("[AudioManager] Audio disabled in server mode")
 		return
 
+	# Setup audio buses before assigning players to them.
+	_setup_audio_buses()
+
 	# Create music player (client only)
 	music_player = AudioStreamPlayer.new()
-	music_player.bus = MUSIC_BUS
+	music_player.bus = MASTER_BUS
 	add_child(music_player)
 
 	# Create UI SFX player pool
@@ -85,9 +91,6 @@ func _ready() -> void:
 		player.bus = SFX_BUS
 		add_child(player)
 		combat_sfx_players.append(player)
-
-	# Setup audio buses if they don't exist
-	_setup_audio_buses()
 
 	# Generate all sounds procedurally
 	_generate_procedural_audio()
@@ -123,12 +126,20 @@ func _setup_audio_buses() -> void:
 	if not has_music_bus:
 		AudioServer.add_bus()
 		AudioServer.set_bus_name(AudioServer.bus_count - 1, MUSIC_BUS)
-		AudioServer.set_bus_send(AudioServer.get_bus_index(MUSIC_BUS), MASTER_BUS)
 
 	if not has_sfx_bus:
 		AudioServer.add_bus()
 		AudioServer.set_bus_name(AudioServer.bus_count - 1, SFX_BUS)
-		AudioServer.set_bus_send(AudioServer.get_bus_index(SFX_BUS), MASTER_BUS)
+
+	var music_bus_idx := AudioServer.get_bus_index(MUSIC_BUS)
+	if music_bus_idx != -1:
+		AudioServer.set_bus_send(music_bus_idx, MASTER_BUS)
+		AudioServer.set_bus_mute(music_bus_idx, false)
+
+	var sfx_bus_idx := AudioServer.get_bus_index(SFX_BUS)
+	if sfx_bus_idx != -1:
+		AudioServer.set_bus_send(sfx_bus_idx, MASTER_BUS)
+		AudioServer.set_bus_mute(sfx_bus_idx, false)
 
 	print("[AudioManager] Audio buses configured")
 
@@ -235,7 +246,12 @@ func _stop_music_fade() -> void:
 	is_music_fading = false
 
 func _get_music_track_volume_db(track_name: String) -> float:
-	var track_volume: float = MUSIC_TRACK_VOLUMES.get(track_name, 1.0)
+	var track_volume := music_volume
+
+	match track_name:
+		"menu_bgm":
+			track_volume *= menu_bgm_volume
+
 	return linear_to_db(track_volume) if track_volume > 0.0 else -80.0
 
 ## Play sound effect
@@ -383,7 +399,13 @@ func set_master_volume(volume: float) -> void:
 
 ## Set music volume (0.0 to 1.0)
 func set_music_volume(volume: float) -> void:
-	_set_bus_volume(MUSIC_BUS, volume)
+	music_volume = clamp(volume, 0.0, 1.0)
+
+	if music_player != null and music_player.playing and not is_music_fading:
+		music_player.volume_db = _get_music_track_volume_db(current_music_track)
+
+	print("[AudioManager] Set %s volume to %.2f" % [MUSIC_BUS, music_volume])
+	volume_changed.emit(MUSIC_BUS, music_volume)
 
 ## Set SFX volume (0.0 to 1.0)
 func set_sfx_volume(volume: float) -> void:
@@ -407,6 +429,9 @@ func _set_bus_volume(bus_name: String, volume: float) -> void:
 
 ## Get bus volume (0.0 to 1.0)
 func get_bus_volume(bus_name: String) -> float:
+	if bus_name == MUSIC_BUS:
+		return music_volume
+
 	var bus_idx = AudioServer.get_bus_index(bus_name)
 	if bus_idx == -1:
 		return 0.0

@@ -1,0 +1,7 @@
+[gd_scene format=3 uid="uid://dqaw2emkd1xqf"]
+
+[ext_resource type="Script" uid="uid://cm4tflxd2aar1" path="res://autoload/audio_manager.gd" id="1_audio_manager"]
+
+[node name="AudioManager" type="Node" unique_id=1224445223]
+script = ExtResource("1_audio_manager")
+menu_bgm_volume = 2.03
