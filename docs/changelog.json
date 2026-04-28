@@ -1,5 +1,15 @@
 [
   {
+    "version": "e706ca6",
+    "added": [
+      "Server-side projectile diagnostics now skip extra tracking work when debug logging is off."
+    ],
+    "fixed": [
+      "Auth handshakes only mark as sent after the packet is accepted, preserving retries on transient send failures.",
+      "Projectile fire-origin tolerance now uses the configured tick interval, keeping compensation aligned with server timing."
+    ]
+  },
+  {
     "version": "0d50090",
     "added": [
       "Client prediction now waits for an authoritative sync before becoming active."
