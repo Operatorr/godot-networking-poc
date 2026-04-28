@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3 uid="uid://bx17ud5rlw5bl"]
+[gd_scene load_steps=3 format=3 uid="uid://bx17ud5rlw5bl"]
 
-[ext_resource type="Texture2D" path="res://assets/ui/backgrounds/menu_background_003.jpg" id="1_menu_background"]
+[ext_resource type="VideoStream" path="res://assets/ui/backgrounds/background_video.ogv" id="1_bg_video"]
+[ext_resource type="FontFile" path="res://assets/fonts/CormorantUnicase-Bold.ttf" id="2_title_font"]
 
 [node name="BootScene" type="Control" unique_id=241549498]
 layout_mode = 3
@@ -10,7 +11,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="MenuBackground" type="TextureRect" parent="." unique_id=1323841039]
+[node name="MenuBackground" type="VideoStreamPlayer" parent="." unique_id=1323841039]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -18,9 +19,11 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-texture = ExtResource("1_menu_background")
-expand_mode = 1
-stretch_mode = 6
+stream = ExtResource("1_bg_video")
+volume_db = -80.0
+autoplay = true
+expand = true
+loop = true
 
 [node name="CenterContainer" type="CenterContainer" parent="." unique_id=1771313149]
 layout_mode = 1
@@ -31,8 +34,17 @@ grow_horizontal = 2
 grow_vertical = 2
 
 [node name="TitleLabel" type="Label" parent="CenterContainer" unique_id=1902428410]
+custom_minimum_size = Vector2(780, 120)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.27, 0.53, 1, 1)
-theme_override_font_sizes/font_size = 48
-text = "OMEGA ARENA"
+theme_override_colors/font_color = Color(0.12, 0.12, 0.11, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_colors/font_shadow_color = Color(0.62, 0.62, 0.58, 0.58)
+theme_override_constants/outline_size = 12
+theme_override_constants/shadow_offset_x = 0
+theme_override_constants/shadow_offset_y = 0
+theme_override_constants/shadow_outline_size = 18
+theme_override_fonts/font = ExtResource("2_title_font")
+theme_override_font_sizes/font_size = 72
+text = "OMEGA REALM"
 horizontal_alignment = 1
+vertical_alignment = 1

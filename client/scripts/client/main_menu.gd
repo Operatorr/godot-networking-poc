@@ -2,7 +2,14 @@
 ## Handles character display, region selection, and arena connection
 extends Control
 
-const MENU_BACKGROUND_PATH := "res://assets/ui/backgrounds/menu_background_003.jpg"
+const MenuFontHelper := preload("res://scripts/client/ui/menu_font_helper.gd")
+const MenuButtonHelper := preload("res://scripts/client/ui/menu_button_helper.gd")
+const MENU_BACKGROUND_PATH := "res://assets/ui/backgrounds/menu_background_004.jpg"
+const TITLE_FONT_PATH := "res://assets/fonts/CormorantUnicase-Bold.ttf"
+const TITLE_COLOR := Color(0.12, 0.12, 0.11)
+const TITLE_OUTLINE_COLOR := Color.BLACK
+const TITLE_GLOW_COLOR := Color(0.62, 0.62, 0.58, 0.58)
+const REGION_REFRESH_INTERVAL := 5.0
 
 ## UI Node references
 @onready var menu_background: TextureRect = $MenuBackground
@@ -18,6 +25,8 @@ const MENU_BACKGROUND_PATH := "res://assets/ui/backgrounds/menu_background_003.j
 
 ## Track connection state
 var _is_connecting: bool = false
+var _region_fetch_in_flight: bool = false
+var _region_refresh_timer: float = 0.0
 
 ## Cached regions data
 var regions: Array[RegionInfo] = []
@@ -29,6 +38,7 @@ var preferences: UserPreferences
 func _ready() -> void:
 	# Apply dark cosmic horror theme
 	_apply_dark_theme()
+	MenuFontHelper.apply_to_tree(self)
 
 	# Connect UI signals
 	enter_world_button.pressed.connect(_on_enter_world_pressed)
@@ -73,6 +83,13 @@ func _ready() -> void:
 	print("[MainMenu] Ready")
 
 
+func _process(delta: float) -> void:
+	_region_refresh_timer += delta
+	if _region_refresh_timer >= REGION_REFRESH_INTERVAL:
+		_region_refresh_timer = 0.0
+		_fetch_regions()
+
+
 ## Apply dark cosmic horror theme to menu elements
 func _apply_dark_theme() -> void:
 	# Keep the image background non-interactive and full screen.
@@ -90,11 +107,27 @@ func _apply_dark_theme() -> void:
 	# Style title
 	var title_label: Label = $CenterContainer/VBoxContainer/TitleLabel
 	if title_label:
-		title_label.add_theme_color_override("font_color", Color(0.27, 0.53, 1.0))
+		var title_font := load(TITLE_FONT_PATH) as FontFile
+		if title_font:
+			title_label.add_theme_font_override("font", title_font)
+		else:
+			push_warning("[MainMenu] Failed to load title font: %s" % TITLE_FONT_PATH)
+
+		title_label.text = "OMEGA REALM"
+		title_label.add_theme_color_override("font_color", TITLE_COLOR)
+		title_label.add_theme_color_override("font_outline_color", TITLE_OUTLINE_COLOR)
+		title_label.add_theme_color_override("font_shadow_color", TITLE_GLOW_COLOR)
+		title_label.add_theme_constant_override("outline_size", 8)
+		title_label.add_theme_constant_override("shadow_offset_x", 0)
+		title_label.add_theme_constant_override("shadow_offset_y", 0)
+		title_label.add_theme_constant_override("shadow_outline_size", 12)
+		title_label.add_theme_font_size_override("font_size", 56)
 
 	# Style status label
 	if status_label:
-		status_label.add_theme_color_override("font_color", Color(0.4, 1.0, 0.8, 0.7))
+		status_label.add_theme_color_override("font_color", Color.WHITE)
+
+	MenuButtonHelper.apply_to_buttons([enter_world_button, logout_button, exit_button])
 
 
 ## Update character display panel
@@ -120,15 +153,21 @@ func _toggle_enter_world_visibility() -> void:
 
 ## Fetch available regions from API
 func _fetch_regions() -> void:
+	if _region_fetch_in_flight:
+		return
+
 	# Create HTTP request for regions
 	var http := HTTPRequest.new()
 	add_child(http)
 	http.request_completed.connect(_on_regions_fetched.bind(http))
+	_region_fetch_in_flight = true
 
 	var url := AuthManager.api_base_url + "/api/regions"
 	var error := http.request(url)
 
 	if error != OK:
+		_region_fetch_in_flight = false
+		http.queue_free()
 		push_warning("[MainMenu] Failed to request regions: %d" % error)
 		_populate_default_regions()
 
@@ -136,6 +175,7 @@ func _fetch_regions() -> void:
 ## Handle regions API response
 func _on_regions_fetched(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray, http: HTTPRequest) -> void:
 	http.queue_free()
+	_region_fetch_in_flight = false
 
 	if result != HTTPRequest.RESULT_SUCCESS or response_code != 200:
 		push_warning("[MainMenu] Failed to fetch regions, using defaults")
@@ -194,11 +234,11 @@ func _populate_default_regions() -> void:
 	regions.clear()
 
 	var default_regions := [
-		{"id": "local", "name": "Local", "websocket_url": "ws://localhost:8081", "status": "online", "active_players": 0, "max_players": 1000},
-		{"id": "us-west", "name": "US West", "websocket_url": "ws://us-west.omegagame.io:9001", "status": "offline", "active_players": 0, "max_players": 1000},
-		{"id": "us-east", "name": "US East", "websocket_url": "ws://localhost:8081", "status": "offline", "active_players": 0, "max_players": 1000},
-		{"id": "europe", "name": "Europe", "websocket_url": "ws://localhost:8082", "status": "offline", "active_players": 0, "max_players": 1000},
-		{"id": "asia", "name": "Asia", "websocket_url": "ws://localhost:8083", "status": "offline", "active_players": 0, "max_players": 1000}
+		{"id": "local", "name": "Local", "websocket_url": "ws://localhost:8081", "status": "online", "active_players": 0, "max_players": RegionInfo.DEFAULT_MAX_PLAYERS},
+		{"id": "us-west", "name": "US West", "websocket_url": "ws://us-west.omegagame.io:9001", "status": "offline", "active_players": 0, "max_players": RegionInfo.DEFAULT_MAX_PLAYERS},
+		{"id": "us-east", "name": "US East", "websocket_url": "ws://localhost:8081", "status": "offline", "active_players": 0, "max_players": RegionInfo.DEFAULT_MAX_PLAYERS},
+		{"id": "europe", "name": "Europe", "websocket_url": "ws://localhost:8082", "status": "offline", "active_players": 0, "max_players": RegionInfo.DEFAULT_MAX_PLAYERS},
+		{"id": "asia", "name": "Asia", "websocket_url": "ws://localhost:8083", "status": "offline", "active_players": 0, "max_players": RegionInfo.DEFAULT_MAX_PLAYERS}
 	]
 
 	for data in default_regions:

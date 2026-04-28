@@ -3,7 +3,22 @@
 extends Control
 
 const TestConfigScript := preload("res://scripts/shared/test_config.gd")
-const MENU_BACKGROUND_PATH := "res://assets/ui/backgrounds/menu_background_003.jpg"
+const MenuFontHelper := preload("res://scripts/client/ui/menu_font_helper.gd")
+const MENU_BACKGROUND_PATH := "res://assets/ui/backgrounds/menu_background_004.jpg"
+const TITLE_FONT_PATH := "res://assets/fonts/CormorantUnicase-Bold.ttf"
+const TITLE_COLOR := Color(0.12, 0.12, 0.11)
+const TITLE_OUTLINE_COLOR := Color.BLACK
+const TITLE_GLOW_COLOR := Color(0.62, 0.62, 0.58, 0.58)
+const BUTTON_TEXTURE_PATH := "res://assets/ui/buttons/login_button_normal.png"
+const BUTTON_DISABLED_TEXTURE_PATH := "res://assets/ui/buttons/login_button_disabled.png"
+const BUTTON_TEXTURE_MARGINS := Vector4(32, 18, 32, 18)
+const BUTTON_MINIMUM_SIZE := Vector2(320, 72)
+const BUTTON_STATE_COLORS := {
+	"normal": Color(1.0, 1.0, 1.0, 1.0),
+	"hover": Color(1.18, 1.18, 1.12, 1.0),
+	"pressed": Color(0.62, 0.62, 0.58, 1.0),
+	"disabled": Color(0.72, 0.72, 0.68, 0.82),
+}
 
 ## External URLs for registration and password recovery
 @export var registration_url: String = "https://example.com/register"
@@ -26,6 +41,7 @@ var is_logging_in: bool = false
 func _ready() -> void:
 	# Apply the same menu theme used by the post-login menu.
 	_apply_dark_theme()
+	MenuFontHelper.apply_to_tree(self)
 
 	# Connect UI signals
 	login_button.pressed.connect(_on_login_pressed)
@@ -78,12 +94,81 @@ func _apply_dark_theme() -> void:
 	# Style title
 	var title_label: Label = $CenterContainer/VBoxContainer/TitleLabel
 	if title_label:
-		title_label.add_theme_color_override("font_color", Color(0.27, 0.53, 1.0))
+		var title_font := load(TITLE_FONT_PATH) as FontFile
+		if title_font:
+			title_label.add_theme_font_override("font", title_font)
+		else:
+			push_warning("[LoginScreen] Failed to load title font: %s" % TITLE_FONT_PATH)
+
+		title_label.text = "OMEGA REALM"
+		title_label.add_theme_color_override("font_color", TITLE_COLOR)
+		title_label.add_theme_color_override("font_outline_color", TITLE_OUTLINE_COLOR)
+		title_label.add_theme_color_override("font_shadow_color", TITLE_GLOW_COLOR)
+		title_label.add_theme_constant_override("outline_size", 8)
+		title_label.add_theme_constant_override("shadow_offset_x", 0)
+		title_label.add_theme_constant_override("shadow_offset_y", 0)
+		title_label.add_theme_constant_override("shadow_outline_size", 12)
+		title_label.add_theme_font_size_override("font_size", 56)
 
 	# Style subtitle
 	var subtitle_label: Label = $CenterContainer/VBoxContainer/SubtitleLabel
 	if subtitle_label:
-		subtitle_label.add_theme_color_override("font_color", Color(0.4, 1.0, 0.8, 0.7))
+		subtitle_label.add_theme_color_override("font_color", Color.WHITE)
+
+	_apply_pixel_button_theme()
+
+
+## Apply PixelLab-generated button frames while preserving native Button behavior.
+func _apply_pixel_button_theme() -> void:
+	var button_texture := load(BUTTON_TEXTURE_PATH) as Texture2D
+	if not button_texture:
+		push_warning("[LoginScreen] Failed to load button texture: %s" % BUTTON_TEXTURE_PATH)
+		return
+
+	var disabled_button_texture := load(BUTTON_DISABLED_TEXTURE_PATH) as Texture2D
+	if not disabled_button_texture:
+		push_warning("[LoginScreen] Failed to load disabled button texture: %s" % BUTTON_DISABLED_TEXTURE_PATH)
+		disabled_button_texture = button_texture
+
+	var button_styleboxes := {}
+	for state: String in BUTTON_STATE_COLORS:
+		var state_texture := disabled_button_texture if state == "disabled" else button_texture
+		button_styleboxes[state] = _create_button_stylebox(state_texture, BUTTON_STATE_COLORS[state])
+
+	var buttons: Array[Button] = [login_button, create_account_button, forgot_password_button]
+	for button in buttons:
+		button.flat = false
+		button.custom_minimum_size = BUTTON_MINIMUM_SIZE
+		button.add_theme_font_size_override("font_size", 24)
+		button.add_theme_color_override("font_color", Color(0.88, 0.86, 0.78))
+		button.add_theme_color_override("font_hover_color", Color(1.0, 0.98, 0.9))
+		button.add_theme_color_override("font_pressed_color", Color(0.62, 0.6, 0.54))
+		button.add_theme_color_override("font_disabled_color", Color(0.46, 0.46, 0.43))
+
+		if button_styleboxes.has("normal"):
+			button.add_theme_stylebox_override("normal", button_styleboxes["normal"])
+			button.add_theme_stylebox_override("focus", button_styleboxes["normal"])
+		if button_styleboxes.has("hover"):
+			button.add_theme_stylebox_override("hover", button_styleboxes["hover"])
+		if button_styleboxes.has("pressed"):
+			button.add_theme_stylebox_override("pressed", button_styleboxes["pressed"])
+		if button_styleboxes.has("disabled"):
+			button.add_theme_stylebox_override("disabled", button_styleboxes["disabled"])
+
+
+func _create_button_stylebox(texture: Texture2D, modulate_color: Color) -> StyleBoxTexture:
+	var stylebox := StyleBoxTexture.new()
+	stylebox.texture = texture
+	stylebox.modulate_color = modulate_color
+	stylebox.texture_margin_left = BUTTON_TEXTURE_MARGINS.x
+	stylebox.texture_margin_top = BUTTON_TEXTURE_MARGINS.y
+	stylebox.texture_margin_right = BUTTON_TEXTURE_MARGINS.z
+	stylebox.texture_margin_bottom = BUTTON_TEXTURE_MARGINS.w
+	stylebox.content_margin_left = 18.0
+	stylebox.content_margin_top = 10.0
+	stylebox.content_margin_right = 18.0
+	stylebox.content_margin_bottom = 10.0
+	return stylebox
 
 
 ## Setup Tab navigation between inputs

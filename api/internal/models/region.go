@@ -49,7 +49,7 @@ func GetRegionDetails(regionID string) *Region {
 			DisplayName:     "Local",
 			WebSocketURL:    "ws://localhost:8081",
 			Status:          RegionStatusOnline,
-			MaxPlayers:      1000,
+			MaxPlayers:      100,
 			LatencyEstimate: "< 10ms",
 		},
 		RegionAsia: {

@@ -1,7 +1,8 @@
-[gd_scene load_steps=3 format=3 uid="uid://c2character_creation"]
+[gd_scene load_steps=4 format=3 uid="uid://c2character_creation"]
 
 [ext_resource type="Script" path="res://scripts/client/character_creation.gd" id="1_script"]
 [ext_resource type="PackedScene" uid="uid://c2error_dialog" path="res://scenes/client/menus/components/error_dialog.tscn" id="2_error_dialog"]
+[ext_resource type="FontFile" path="res://assets/fonts/CormorantUnicase-Bold.ttf" id="3_title_font"]
 
 [node name="CharacterCreation" type="Control"]
 layout_mode = 3
@@ -21,14 +22,25 @@ grow_horizontal = 2
 grow_vertical = 2
 
 [node name="VBoxContainer" type="VBoxContainer" parent="CenterContainer"]
+custom_minimum_size = Vector2(520, 0)
 layout_mode = 2
 theme_override_constants/separation = 15
 
 [node name="TitleLabel" type="Label" parent="CenterContainer/VBoxContainer"]
+custom_minimum_size = Vector2(520, 86)
 layout_mode = 2
-theme_override_font_sizes/font_size = 48
-text = "OMEGA ARENA"
+theme_override_colors/font_color = Color(0.12, 0.12, 0.11, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_colors/font_shadow_color = Color(0.62, 0.62, 0.58, 0.58)
+theme_override_constants/outline_size = 8
+theme_override_constants/shadow_offset_x = 0
+theme_override_constants/shadow_offset_y = 0
+theme_override_constants/shadow_outline_size = 12
+theme_override_fonts/font = ExtResource("3_title_font")
+theme_override_font_sizes/font_size = 56
+text = "OMEGA REALM"
 horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="SubtitleLabel" type="Label" parent="CenterContainer/VBoxContainer"]
 layout_mode = 2
@@ -44,8 +56,9 @@ layout_mode = 2
 text = "Character Name"
 
 [node name="NameInput" type="LineEdit" parent="CenterContainer/VBoxContainer"]
-custom_minimum_size = Vector2(300, 40)
+custom_minimum_size = Vector2(520, 40)
 layout_mode = 2
+size_flags_horizontal = 3
 placeholder_text = "Enter a unique name (3-16 characters)"
 max_length = 16
 
@@ -60,9 +73,9 @@ horizontal_alignment = 1
 layout_mode = 2
 
 [node name="CreateButton" type="Button" parent="CenterContainer/VBoxContainer"]
-custom_minimum_size = Vector2(300, 50)
+custom_minimum_size = Vector2(520, 72)
 layout_mode = 2
-size_flags_horizontal = 4
+size_flags_horizontal = 3
 disabled = true
 theme_override_font_sizes/font_size = 18
 text = "Create Character"
@@ -71,10 +84,9 @@ text = "Create Character"
 layout_mode = 2
 
 [node name="BackButton" type="Button" parent="CenterContainer/VBoxContainer"]
-custom_minimum_size = Vector2(200, 40)
+custom_minimum_size = Vector2(520, 72)
 layout_mode = 2
-size_flags_horizontal = 4
-flat = true
+size_flags_horizontal = 3
 text = "Back to Login"
 
 [node name="ErrorDialog" parent="." instance=ExtResource("2_error_dialog")]

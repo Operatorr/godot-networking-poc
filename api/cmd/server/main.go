@@ -91,6 +91,7 @@ func main() {
 
 	// Region routes
 	mux.HandleFunc("/api/regions", regionHandler.GetRegions)
+	mux.HandleFunc("/api/regions/heartbeat", regionHandler.UpdateRegionHeartbeat)
 	mux.HandleFunc("/api/regions/select", middleware.RequireAuth(regionHandler.SelectRegion))
 
 	// CORS middleware

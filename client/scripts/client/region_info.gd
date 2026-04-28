@@ -3,6 +3,8 @@
 class_name RegionInfo
 extends RefCounted
 
+const DEFAULT_MAX_PLAYERS := 100
+
 var id: String              ## e.g., "local", "asia", "europe", "us-west"
 var name: String            ## Display name, e.g., "Asia"
 var websocket_url: String   ## Game server WebSocket URL
@@ -19,7 +21,7 @@ static func from_dict(data: Dictionary) -> RegionInfo:
 	region.websocket_url = data.get("websocket_url", "")
 	region.status = data.get("status", "offline")
 	region.active_players = data.get("active_players", 0)
-	region.max_players = data.get("max_players", 1000)
+	region.max_players = data.get("max_players", DEFAULT_MAX_PLAYERS)
 	return region
 
 

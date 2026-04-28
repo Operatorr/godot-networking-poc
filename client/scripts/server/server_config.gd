@@ -8,7 +8,7 @@ const DEFAULTS := {
 	"port": 8081,
 	"tick_rate": 30,
 	"max_players": 100,
-	"region": "asia",
+	"region": "local",
 	"debug_logging": true,
 	"heartbeat_timeout_seconds": 5.0,
 	"api_server_url": "http://localhost:8080",

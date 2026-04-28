@@ -2,6 +2,9 @@
 ## Validates name and creates character via API
 extends Control
 
+const MenuFontHelper := preload("res://scripts/client/ui/menu_font_helper.gd")
+const MenuButtonHelper := preload("res://scripts/client/ui/menu_button_helper.gd")
+
 ## Name validation constants
 const MIN_NAME_LENGTH: int = 3
 const MAX_NAME_LENGTH: int = 16
@@ -22,6 +25,9 @@ var http_request: HTTPRequest
 
 
 func _ready() -> void:
+	MenuFontHelper.apply_to_tree(self)
+	MenuButtonHelper.apply_to_buttons([create_button, back_button])
+
 	# Create HTTP request node
 	http_request = HTTPRequest.new()
 	add_child(http_request)

@@ -44,10 +44,17 @@ var server_metrics: ServerMetrics = null
 ## Leaderboard broadcast timer (periodic fallback)
 var leaderboard_timer: float = 0.0
 const LEADERBOARD_BROADCAST_INTERVAL := 5.0
+const REGION_STATUS_HEARTBEAT_INTERVAL := 2.0
 
 ## Tick loop state
 var tick_timer: float = 0.0
 var tick_count: int = 0
+
+## Live region status publisher for the API region list.
+var region_status_timer: float = 0.0
+var region_status_request: HTTPRequest = null
+var region_status_request_in_flight: bool = false
+var region_status_warning_logged: bool = false
 
 
 ## Called when the node enters the scene tree
@@ -131,6 +138,7 @@ func _initialize_server() -> void:
 
 	server_metrics = ServerMetrics.new()
 	server_metrics.debug_logging = config.debug_logging
+	_setup_region_status_publisher()
 
 	game_entities.clear()
 
@@ -165,6 +173,11 @@ func _process(delta: float) -> void:
 		server_metrics.update_metrics(player_manager.get_player_count(), entity_count, tick_count, network_stats)
 		# Broadcast server metrics to all connected clients
 		_broadcast_server_metrics(nm)
+
+	region_status_timer += delta
+	if region_status_timer >= REGION_STATUS_HEARTBEAT_INTERVAL:
+		region_status_timer = 0.0
+		_publish_region_status()
 
 
 ## Process a single server tick - core game loop
@@ -647,6 +660,57 @@ func _respawn_player_and_broadcast(peer_id: int) -> bool:
 		print("[ServerMain] Player %d respawned at %s" % [state.entity_id, state.position])
 
 	return true
+
+
+## Prepare the HTTP publisher used by the API's region list.
+func _setup_region_status_publisher() -> void:
+	if config.api_server_url.is_empty():
+		return
+
+	region_status_request = HTTPRequest.new()
+	add_child(region_status_request)
+	region_status_request.request_completed.connect(_on_region_status_published)
+	_publish_region_status()
+
+
+## Publish current live capacity to the API so menus can show connected bots/players.
+func _publish_region_status(status: String = "online") -> void:
+	if region_status_request == null or region_status_request_in_flight:
+		return
+
+	var url := config.api_server_url.rstrip("/") + "/api/regions/heartbeat"
+	var body := JSON.stringify({
+		"region_id": config.region,
+		"active_players": player_manager.get_player_count(),
+		"max_players": config.max_players,
+		"websocket_url": "ws://localhost:%d" % config.port,
+		"status": status
+	})
+	var headers := PackedStringArray(["Content-Type: application/json"])
+	var heartbeat_token := OS.get_environment("REGION_HEARTBEAT_TOKEN")
+	if not heartbeat_token.is_empty():
+		headers.append("X-Region-Heartbeat-Token: %s" % heartbeat_token)
+	var error := region_status_request.request(url, headers, HTTPClient.METHOD_POST, body)
+	if error != OK:
+		region_status_request_in_flight = false
+		if config.debug_logging and not region_status_warning_logged:
+			push_warning("[ServerMain] Failed to publish region status: %d" % error)
+			region_status_warning_logged = true
+		return
+
+	region_status_request_in_flight = true
+
+
+func _on_region_status_published(result: int, response_code: int, _headers: PackedStringArray, _body: PackedByteArray) -> void:
+	region_status_request_in_flight = false
+
+	if config.debug_logging and (result != HTTPRequest.RESULT_SUCCESS or response_code < 200 or response_code >= 300):
+		if not region_status_warning_logged:
+			push_warning("[ServerMain] Region status publish failed: result=%d response=%d" % [result, response_code])
+			region_status_warning_logged = true
+		return
+
+	region_status_warning_logged = false
 
 
 ## Broadcast server metrics to all clients
