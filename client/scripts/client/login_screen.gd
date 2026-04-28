@@ -3,7 +3,7 @@
 extends Control
 
 const TestConfigScript := preload("res://scripts/shared/test_config.gd")
-const MENU_BACKGROUND_PATH := "res://assets/ui/backgrounds/menu_background.png"
+const MENU_BACKGROUND_PATH := "res://assets/ui/backgrounds/menu_background_003.jpg"
 
 ## External URLs for registration and password recovery
 @export var registration_url: String = "https://example.com/register"

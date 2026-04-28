@@ -109,7 +109,7 @@ def aggregate_metrics(bots: list[OmegaRealmBot], duration: float) -> AggregatedM
 
     for bot in bots:
         m = bot.metrics
-        if m.disconnected or bot.ws is None:
+        if m.disconnected:
             agg.disconnected_bots += 1
         else:
             agg.connected_bots += 1

@@ -2,7 +2,7 @@
 ## Handles character display, region selection, and arena connection
 extends Control
 
-const MENU_BACKGROUND_PATH := "res://assets/ui/backgrounds/menu_background.png"
+const MENU_BACKGROUND_PATH := "res://assets/ui/backgrounds/menu_background_003.jpg"
 
 ## UI Node references
 @onready var menu_background: TextureRect = $MenuBackground

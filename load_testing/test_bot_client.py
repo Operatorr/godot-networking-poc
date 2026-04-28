@@ -11,6 +11,7 @@ from bot_client import (
     OmegaRealmBot,
     parse_state_update,
 )
+from bot_swarm import aggregate_metrics
 
 
 def _full_state_payload(tick: int, entities: list[tuple[int, int, float, float, int, int]]) -> bytes:
@@ -97,6 +98,24 @@ class BotClientParserTests(unittest.TestCase):
 
         self.assertEqual(states[30000].entity_type, EntityType.MONSTER)
         self.assertAlmostEqual(states[30000].x, 1.5)
+
+    def test_aggregate_metrics_uses_recorded_disconnect_state(self):
+        healthy_bot = OmegaRealmBot(1, "ws://localhost:8081")
+        healthy_bot.ws = None
+        healthy_bot.metrics.disconnected = False
+        healthy_bot.metrics.bytes_sent = 1024
+        healthy_bot.metrics.bytes_received = 1024
+
+        failed_bot = OmegaRealmBot(2, "ws://localhost:8081")
+        failed_bot.ws = None
+        failed_bot.metrics.disconnected = True
+
+        agg = aggregate_metrics([healthy_bot, failed_bot], 2.0)
+
+        self.assertEqual(agg.connected_bots, 1)
+        self.assertEqual(agg.disconnected_bots, 1)
+        self.assertEqual(agg.crash_rate_pct, 50.0)
+        self.assertEqual(agg.avg_bandwidth_per_player_kbps, 1.0)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 [gd_scene load_steps=2 format=3 uid="uid://bx17ud5rlw5bl"]
 
-[ext_resource type="Texture2D" path="res://assets/ui/backgrounds/menu_background.png" id="1_menu_background"]
+[ext_resource type="Texture2D" path="res://assets/ui/backgrounds/menu_background_003.jpg" id="1_menu_background"]
 
 [node name="BootScene" type="Control" unique_id=241549498]
 layout_mode = 3

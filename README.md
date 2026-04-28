@@ -530,4 +530,17 @@ For more details, see the [LICENSE.md](LICENSE.md) file.
 
 ---
 
+## GUI Pallette
+
+- #111418 background
+- #1E2430 panel dark
+- #2E3748 panel mid
+- #5B657A border/inactive
+- #E7D9B4 primary text
+- #FFF6D6 highlighted text
+- #E3A23B primary accent / selected button
+- #C96B2C pressed state / warning
+- #4DA6A8 secondary accent / submenu / info
+- #A84D6E danger / quit / destructive option
+
 **Last Updated:** December 2025
