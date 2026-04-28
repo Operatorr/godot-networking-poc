@@ -178,17 +178,21 @@ func _process_server_tick() -> void:
 	# 3. Run AI/monster logic
 	_update_monster_ai()
 
-	# 4. Process collisions (delegated to CollisionHandler)
+	# 4. Snapshot monster positions before collision/damage mutates state. Player
+	# projectile hit tests rewind to this short history.
+	monster_manager.record_position_snapshot(tick_count)
+
+	# 5. Process collisions (delegated to CollisionHandler)
 	collision_handler.process_collisions(
 		projectile_manager, player_manager, monster_manager, nm, broadcast_service
 	)
 
-	# 5. Broadcast state updates (delegated to BroadcastService)
+	# 6. Broadcast state updates (delegated to BroadcastService)
 	broadcast_service.broadcast_state_updates(
 		player_manager, projectile_manager, monster_manager, nm, tick_count
 	)
 
-	# 6. Remove dead monsters after death/removed state has been broadcast.
+	# 7. Remove dead monsters after death/removed state has been broadcast.
 	monster_manager.cleanup_dead_monsters()
 
 	# Track tick performance
@@ -282,13 +286,18 @@ func _try_spawn_projectile(player: PlayerState, input: Dictionary) -> void:
 	var projectile := projectile_manager.spawn_projectile(
 		player.entity_id,
 		spawn_position,
-		aim_direction
+		aim_direction,
+		tick_count,
+		GameConstants.REMOTE_ENTITY_RENDER_DELAY_TICKS
 	)
 
 	if projectile != null:
+		if config.debug_logging:
+			_log_player_projectile_spawn(player, projectile, aim_angle)
+
 		# Start cooldown on successful spawn
 		player.start_shoot_cooldown()
-		_broadcast_projectile_fired(player.entity_id)
+		_broadcast_projectile_fired(player.entity_id, projectile.entity_id, spawn_position, tick_count)
 
 
 ## Update game state (positions, timers, etc.)
@@ -333,16 +342,48 @@ func _update_monster_ai() -> void:
 
 
 ## Broadcast a compact authoritative fire event after projectile creation.
-func _broadcast_projectile_fired(source_entity_id: int) -> void:
+func _broadcast_projectile_fired(
+	source_entity_id: int,
+	projectile_entity_id: int = 0,
+	spawn_position: Vector2 = Vector2.ZERO,
+	server_tick: int = 0
+) -> void:
 	var nm = _get_network_manager()
 	if nm == null:
 		return
 
-	var event_packet = GameEventPacket.create_projectile_fired(source_entity_id)
+	var event_packet = GameEventPacket.create_projectile_fired(
+		source_entity_id,
+		projectile_entity_id,
+		spawn_position,
+		server_tick
+	)
 	nm.broadcast_to_clients(
 		NetworkManager.MessageType.GAME_EVENT,
 		event_packet.to_dict()
 	)
+
+
+func _log_player_projectile_spawn(player: PlayerState, projectile: ProjectileState, aim_angle: float) -> void:
+	var closest := monster_manager.get_closest_alive_monster(projectile.position)
+	var closest_text := "none"
+	if closest != null:
+		closest_text = "monster=%d pos=%s dist=%.2f" % [
+			closest.entity_id,
+			closest.position,
+			projectile.position.distance_to(closest.position)
+		]
+
+	print("[ServerMain] Player projectile fired: player=%d projectile=%d tick=%d rewind_ticks=%d player_pos=%s spawn_pos=%s aim_angle=%.4f closest=%s" % [
+		player.entity_id,
+		projectile.entity_id,
+		tick_count,
+		projectile.collision_rewind_ticks,
+		player.position,
+		projectile.position,
+		aim_angle,
+		closest_text
+	])
 
 
 ## Update invulnerability timers for all players

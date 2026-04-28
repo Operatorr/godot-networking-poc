@@ -14,6 +14,11 @@ const SERVER_TICK_RATE := 30.0
 ## Authoritative server simulation interval in seconds.
 const SERVER_TICK_INTERVAL := 1.0 / SERVER_TICK_RATE
 
+## Remote entities are rendered this many authoritative ticks behind the newest
+## snapshot. Server-side lag compensation rewinds monsters by the same amount
+## for player projectile collision checks.
+const REMOTE_ENTITY_RENDER_DELAY_TICKS := 2
+
 
 # =============================================================================
 # MOVEMENT SPEEDS

@@ -7,7 +7,8 @@ extends RefCounted
 const DEFAULTS := {
 	"api_base_url": "http://localhost:8080",
 	"api_timeout_seconds": 10.0,
-	"debug_logging": true
+	"debug_logging": true,
+	"projectile_sync_debug_logging": true
 }
 
 ## Configuration file paths (priority order)
@@ -26,6 +27,9 @@ var api_timeout_seconds: float:
 
 var debug_logging: bool:
 	get: return _config.get("debug_logging", DEFAULTS.debug_logging)
+
+var projectile_sync_debug_logging: bool:
+	get: return _config.get("projectile_sync_debug_logging", DEFAULTS.projectile_sync_debug_logging)
 
 
 ## Initialize and load configuration
@@ -101,3 +105,4 @@ func print_config() -> void:
 	print("  api_base_url: %s" % api_base_url)
 	print("  api_timeout_seconds: %.1fs" % api_timeout_seconds)
 	print("  debug_logging: %s" % str(debug_logging))
+	print("  projectile_sync_debug_logging: %s" % str(projectile_sync_debug_logging))

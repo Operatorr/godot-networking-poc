@@ -74,6 +74,9 @@ var _client_initialized: bool = false
 ## True once the local player has been snapped to an authoritative server state.
 var _local_player_authority_synced: bool = false
 
+## Low-volume projectile sync diagnostics from client config.
+var projectile_sync_debug_logging: bool = false
+
 ## Camera zoom settings
 const CAMERA_ZOOM_DEFAULT := Vector2(1.5, 1.5)
 const CAMERA_ZOOM_SPRINT := Vector2(1.35, 1.35)
@@ -136,6 +139,8 @@ func _setup_client() -> void:
 	if _client_initialized:
 		return
 	_client_initialized = true
+	var client_config := ClientConfig.new()
+	projectile_sync_debug_logging = client_config.projectile_sync_debug_logging
 
 	var entity_container := get_entity_container()
 	if entity_container == null:
@@ -214,6 +219,8 @@ func _spawn_local_player(entity_container: Node2D) -> void:
 	# Create and attach PredictionController
 	prediction_controller = PredictionController.new()
 	prediction_controller.name = "PredictionController"
+	prediction_controller.interpolation_controller = interpolation_controller
+	prediction_controller.projectile_sync_debug_logging = projectile_sync_debug_logging
 	local_player.add_child(prediction_controller)
 
 	# Set up prediction in pending mode. Entity ID and spawn position come from server state.
@@ -541,7 +548,12 @@ func _play_local_death_feedback() -> void:
 ## Handle authoritative projectile fire event for remote player and monster audio.
 func _handle_projectile_fired_event(data: Dictionary) -> void:
 	var source_id: int = data.get("source_id", -1)
-	if source_id <= 0 or source_id == GameManager.get_local_player_entity_id():
+	var local_id := GameManager.get_local_player_entity_id()
+	if source_id <= 0:
+		return
+
+	if source_id == local_id:
+		_log_local_projectile_fired_event(data)
 		return
 
 	var audio := _get_audio_manager()
@@ -557,6 +569,30 @@ func _handle_projectile_fired_event(data: Dictionary) -> void:
 	if client_entity_manager == null or not client_entity_manager.player_entities.has(source_id):
 		return
 	audio.play_player_shoot()
+
+
+func _log_local_projectile_fired_event(data: Dictionary) -> void:
+	if not projectile_sync_debug_logging or prediction_controller == null:
+		return
+
+	var event_data: Dictionary = data.get("event_data", {})
+	if not event_data.has("position"):
+		return
+
+	var projectile_id: int = data.get("target_id", 0)
+	var server_spawn_pos: Vector2 = event_data.get("position", Vector2.ZERO)
+	var server_tick: int = event_data.get("server_tick", 0)
+	var predicted_pos := prediction_controller.predicted_position
+	var expected_muzzle_offset := GameConstants.PLAYER_HITBOX_RADIUS + GameConstants.PROJECTILE_RADIUS + 2.0
+
+	print("[ArenaBase] Local PROJECTILE_FIRED: projectile=%d server_tick=%d server_spawn_pos=%s predicted_player_pos=%s delta=%.2f expected_muzzle_offset=%.2f" % [
+		projectile_id,
+		server_tick,
+		server_spawn_pos,
+		predicted_pos,
+		server_spawn_pos.distance_to(predicted_pos),
+		expected_muzzle_offset
+	])
 
 
 ## Handle PvP kill event (for kill feed)

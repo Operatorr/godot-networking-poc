@@ -22,6 +22,8 @@ signal reconciliation_complete(replayed_inputs: int)
 @export var max_buffer_size: int = 256
 ## Enable debug output
 @export var debug_logging: bool = false
+## Enable low-volume shoot diagnostics for projectile/server sync issues
+@export var projectile_sync_debug_logging: bool = false
 ## Threshold for instant teleport vs smooth correction (units)
 @export var teleport_threshold: float = 150.0
 ## Ignore tiny quantization jitter from compressed server positions.
@@ -32,6 +34,9 @@ signal reconciliation_complete(replayed_inputs: int)
 #region State Variables
 ## Reference to the controlled player node
 var player_node: Node2D = null
+
+## Optional remote-entity interpolation reference for shoot diagnostics
+var interpolation_controller: InterpolationController = null
 
 ## Local player's entity ID (set during spawn/connection)
 var local_entity_id: int = -1
@@ -144,7 +149,10 @@ func _physics_process(delta: float) -> void:
 		return
 
 	# Step 1: Capture current frame's input
+	var previous_input_flags := current_input_flags
 	current_input_flags = _capture_input_flags()
+	if projectile_sync_debug_logging:
+		_log_shoot_edge(previous_input_flags, current_input_flags)
 
 	# Step 2: Apply local prediction immediately
 	_apply_local_prediction(current_input_flags, delta)
@@ -194,6 +202,49 @@ func _get_aim_angle() -> float:
 	# Calculate angle from player to mouse
 	var mouse_pos := player_node.get_global_mouse_position()
 	return predicted_position.angle_to_point(mouse_pos)
+
+
+func _log_shoot_edge(previous_flags: int, new_flags: int) -> void:
+	var was_shooting := (previous_flags & PacketTypes.INPUT_FLAG_SHOOT) != 0
+	var is_shooting := (new_flags & PacketTypes.INPUT_FLAG_SHOOT) != 0
+	if not is_shooting or was_shooting or player_node == null:
+		return
+
+	var mouse_pos := player_node.get_global_mouse_position()
+	var aim_angle := predicted_position.angle_to_point(mouse_pos)
+	var monster_text := "none"
+
+	if interpolation_controller != null:
+		var monster_ids := interpolation_controller.get_entities_by_type(PacketTypes.EntityType.MONSTER)
+		var lines: Array[String] = []
+		for monster_id: int in monster_ids:
+			var rendered_pos := interpolation_controller.get_entity_position(monster_id)
+			var latest_pos := interpolation_controller.get_entity_latest_server_position(monster_id)
+			lines.append("%d rendered=%s latest=%s gap=%.2f" % [
+				monster_id,
+				rendered_pos,
+				latest_pos,
+				rendered_pos.distance_to(latest_pos)
+			])
+
+		if not lines.is_empty():
+			monster_text = ""
+			for line in lines:
+				if not monster_text.is_empty():
+					monster_text += "; "
+				monster_text += line
+
+	var render_tick := interpolation_controller.render_tick if interpolation_controller != null else -1
+	var newest_tick := interpolation_controller.current_server_tick if interpolation_controller != null else -1
+	print("[Prediction] Shoot edge: local_entity=%d predicted_pos=%s mouse_world=%s aim_angle=%.4f server_tick=%d render_tick=%d monsters=[%s]" % [
+		local_entity_id,
+		predicted_position,
+		mouse_pos,
+		aim_angle,
+		newest_tick,
+		render_tick,
+		monster_text
+	])
 #endregion
 
 

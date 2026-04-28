@@ -663,9 +663,11 @@ func _write_game_event_data(writer: PacketWriter, data: Dictionary) -> void:
 			writer.write_u16(event_data.get("amount", data.get("amount", 0)))
 			writer.write_u8(event_data.get("damage_type", data.get("damage_type", 0)))
 		PacketTypes.GameEventType.KILL, \
-		PacketTypes.GameEventType.KILL_PVP, \
-		PacketTypes.GameEventType.PROJECTILE_FIRED:
+		PacketTypes.GameEventType.KILL_PVP:
 			pass  # No extra data.
+		PacketTypes.GameEventType.PROJECTILE_FIRED:
+			writer.write_vector2_compressed(event_data.get("position", data.get("position", Vector2.ZERO)))
+			writer.write_u16(event_data.get("server_tick", data.get("server_tick", 0)))
 		PacketTypes.GameEventType.RESPAWN:
 			writer.write_vector2_compressed(event_data.get("position", data.get("position", Vector2.ZERO)))
 		PacketTypes.GameEventType.EFFECT_APPLY:

@@ -54,11 +54,20 @@ static func create_kill_pvp(killer_id: int, victim_id: int) -> GameEventPacket:
 
 
 ## Create a projectile fired event.
-static func create_projectile_fired(source: int) -> GameEventPacket:
+static func create_projectile_fired(
+	source: int,
+	projectile_id: int = 0,
+	spawn_position: Vector2 = Vector2.ZERO,
+	server_tick: int = 0
+) -> GameEventPacket:
 	var packet = GameEventPacket.new()
 	packet.event_type = PacketTypes.GameEventType.PROJECTILE_FIRED
 	packet.source_id = source
-	packet.target_id = 0
+	packet.target_id = projectile_id
+	packet.event_data = {
+		"position": spawn_position,
+		"server_tick": server_tick
+	}
 	return packet
 
 
@@ -136,10 +145,13 @@ func write_payload(writer: PacketWriter) -> void:
 			writer.write_u8(event_data.get("damage_type", 0))
 
 		PacketTypes.GameEventType.KILL, \
-		PacketTypes.GameEventType.KILL_PVP, \
-		PacketTypes.GameEventType.PROJECTILE_FIRED:
+		PacketTypes.GameEventType.KILL_PVP:
 			# No additional data needed.
 			pass
+
+		PacketTypes.GameEventType.PROJECTILE_FIRED:
+			writer.write_vector2_compressed(event_data.get("position", Vector2.ZERO))
+			writer.write_u16(event_data.get("server_tick", 0))
 
 		PacketTypes.GameEventType.RESPAWN:
 			var pos: Vector2 = event_data.get("position", Vector2.ZERO)
@@ -185,9 +197,14 @@ static func read(reader: PacketReader) -> GameEventPacket:
 			}
 
 		PacketTypes.GameEventType.KILL, \
-		PacketTypes.GameEventType.KILL_PVP, \
-		PacketTypes.GameEventType.PROJECTILE_FIRED:
+		PacketTypes.GameEventType.KILL_PVP:
 			packet.event_data = {}
+
+		PacketTypes.GameEventType.PROJECTILE_FIRED:
+			packet.event_data = {
+				"position": reader.read_vector2_compressed(),
+				"server_tick": reader.read_u16()
+			}
 
 		PacketTypes.GameEventType.RESPAWN:
 			packet.event_data = {
