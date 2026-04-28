@@ -5,6 +5,7 @@
 ##   [u16 char_id_length][utf8 char_id]       variable - character ID
 ##   [u16 char_name_length][utf8 char_name]   variable - character display name
 ##   [u8 region_code]                         1 byte   - region enum
+##   [u8 color_r][u8 color_g][u8 color_b]      3 bytes  - optional player color
 class_name AuthPacket
 extends RefCounted
 
@@ -24,6 +25,8 @@ var character_id: String = ""
 var character_name: String = ""
 ## Selected region
 var region: int = Region.ASIA
+## Selected player color. Optional on the wire for compatibility with old clients.
+var player_color: Color = Color(0.27, 0.53, 1.0)
 
 
 func _init() -> void:
@@ -31,12 +34,19 @@ func _init() -> void:
 
 
 ## Create auth packet
-static func create(auth_token: String, char_id: String, char_name: String, reg: int = Region.ASIA) -> AuthPacket:
+static func create(
+	auth_token: String,
+	char_id: String,
+	char_name: String,
+	reg: int = Region.ASIA,
+	color: Color = Color(0.27, 0.53, 1.0)
+) -> AuthPacket:
 	var packet = AuthPacket.new()
 	packet.token = auth_token
 	packet.character_id = char_id
 	packet.character_name = char_name
 	packet.region = reg
+	packet.player_color = color
 	return packet
 
 
@@ -46,7 +56,7 @@ func write() -> PackedByteArray:
 	var token_bytes = token.to_utf8_buffer().size()
 	var char_bytes = character_id.to_utf8_buffer().size()
 	var name_bytes = character_name.to_utf8_buffer().size()
-	var size = 3 + 2 + token_bytes + 2 + char_bytes + 2 + name_bytes + 1 + 4  # header + strings + region + safety
+	var size = 3 + 2 + token_bytes + 2 + char_bytes + 2 + name_bytes + 1 + 3 + 4  # header + strings + region + color + safety
 
 	var writer = PacketWriter.new(size)
 	writer.write_header(PacketTypes.Type.CONNECT_AUTH)
@@ -62,6 +72,7 @@ func write_payload(writer: PacketWriter) -> void:
 	writer.write_string(character_id)
 	writer.write_string(character_name)
 	writer.write_u8(region)
+	_write_color_rgb(writer, player_color)
 
 
 ## Read packet from reader (assumes header already read)
@@ -71,6 +82,8 @@ static func read(reader: PacketReader) -> AuthPacket:
 	packet.character_id = reader.read_string()
 	packet.character_name = reader.read_string()
 	packet.region = reader.read_u8()
+	if reader.remaining() >= 3:
+		packet.player_color = _read_color_rgb(reader)
 	return packet
 
 
@@ -108,5 +121,21 @@ func to_dict() -> Dictionary:
 		"character_id": character_id,
 		"character_name": character_name,
 		"region": region,
-		"region_name": get_region_name()
+		"region_name": get_region_name(),
+		"player_color": player_color
 	}
+
+
+static func _write_color_rgb(writer: PacketWriter, color: Color) -> void:
+	writer.write_u8(clampi(roundi(color.r * 255.0), 0, 255))
+	writer.write_u8(clampi(roundi(color.g * 255.0), 0, 255))
+	writer.write_u8(clampi(roundi(color.b * 255.0), 0, 255))
+
+
+static func _read_color_rgb(reader: PacketReader) -> Color:
+	return Color(
+		float(reader.read_u8()) / 255.0,
+		float(reader.read_u8()) / 255.0,
+		float(reader.read_u8()) / 255.0,
+		1.0
+	)

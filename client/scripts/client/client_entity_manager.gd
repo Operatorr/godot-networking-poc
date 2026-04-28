@@ -24,6 +24,7 @@ var _projectile_pool: Array[Projectile] = []
 var _active_projectiles: Dictionary = {}  # entity_id -> Projectile
 ## Ordered queue of active projectile entity IDs by spawn time (oldest first)
 var _active_projectile_order: Array[int] = []
+var _projectile_sources: Dictionary = {}  # projectile_id -> source_entity_id
 const NETWORK_PROJECTILE_POOL_SIZE := 64
 
 ## Reference to the entity container in the arena scene
@@ -54,6 +55,8 @@ func setup(container: Node2D, interp_controller: InterpolationController) -> voi
 	if interpolation_controller:
 		interpolation_controller.entity_spawned.connect(_on_entity_spawned)
 		interpolation_controller.entity_despawned.connect(_on_entity_despawned)
+	if EntityNameCache and not EntityNameCache.entity_color_updated.is_connected(_on_entity_color_updated):
+		EntityNameCache.entity_color_updated.connect(_on_entity_color_updated)
 
 	# Pre-allocate projectile pool
 	_initialize_projectile_pool()
@@ -144,6 +147,7 @@ func _spawn_remote_player(entity_id: int, position: Vector2) -> void:
 	# Try to get character name from EntityNameCache
 	var cached_name := EntityNameCache.get_entity_name(entity_id)
 	remote_player.set_character_name(cached_name)
+	remote_player.set_player_color(EntityNameCache.get_entity_color(entity_id))
 
 	entity_container.add_child(remote_player)
 	player_entities[entity_id] = remote_player
@@ -267,6 +271,7 @@ func _spawn_projectile(entity_id: int, position: Vector2) -> void:
 		return
 
 	projectile.global_position = position
+	projectile.reset_projectile_color()
 	projectile.process_mode = Node.PROCESS_MODE_DISABLED  # Server controls movement
 	projectile.visible = true
 	projectile.monitoring = false  # Client doesn't detect collisions
@@ -274,6 +279,7 @@ func _spawn_projectile(entity_id: int, position: Vector2) -> void:
 
 	_active_projectiles[entity_id] = projectile
 	_active_projectile_order.append(entity_id)
+	_apply_projectile_color(entity_id)
 
 	# Connect projectile hit signal for impact audio
 	if projectile.hit.is_connected(_on_projectile_hit) == false:
@@ -295,6 +301,7 @@ func _despawn_projectile(entity_id: int) -> void:
 	var projectile: Projectile = _active_projectiles[entity_id]
 	_active_projectiles.erase(entity_id)
 	_active_projectile_order.erase(entity_id)
+	_projectile_sources.erase(entity_id)
 
 	if interpolation_controller:
 		interpolation_controller.unregister_entity_node(entity_id)
@@ -306,6 +313,7 @@ func _despawn_projectile(entity_id: int) -> void:
 		projectile.monitorable = false
 		projectile.is_active = false
 		projectile.owner_pool = null
+		projectile.reset_projectile_color()
 		_return_projectile_to_pool(projectile)
 
 	if debug_logging:
@@ -403,9 +411,11 @@ func clear_all() -> void:
 			projectile.monitorable = false
 			projectile.is_active = false
 			projectile.owner_pool = null
+			projectile.reset_projectile_color()
 			_return_projectile_to_pool(projectile)
 	_active_projectiles.clear()
 	_active_projectile_order.clear()
+	_projectile_sources.clear()
 
 	if debug_logging:
 		print("[ClientEntityManager] All entities cleared")
@@ -490,6 +500,42 @@ func _on_projectile_hit(_body: Node2D) -> void:
 	var audio := _get_audio_manager()
 	if audio:
 		audio.play_projectile_impact()
+
+
+## Register authoritative projectile ownership from PROJECTILE_FIRED events.
+func register_projectile_source(projectile_id: int, source_entity_id: int) -> void:
+	if projectile_id <= 0 or source_entity_id <= 0:
+		return
+	_projectile_sources[projectile_id] = source_entity_id
+	_apply_projectile_color(projectile_id)
+
+
+func _apply_projectile_color(projectile_id: int) -> void:
+	if not _active_projectiles.has(projectile_id):
+		return
+	var source_id: int = _projectile_sources.get(projectile_id, -1)
+	if source_id <= 0 or source_id >= GameConstants.MONSTER_ENTITY_ID_START:
+		return
+	var projectile: Projectile = _active_projectiles[projectile_id]
+	if is_instance_valid(projectile):
+		projectile.set_projectile_color(_get_player_color(source_id))
+
+
+func _get_player_color(entity_id: int) -> Color:
+	if entity_id == GameManager.get_local_player_entity_id():
+		return GameManager.player_data.get("player_color", Color(0.27, 0.53, 1.0))
+	return EntityNameCache.get_entity_color(entity_id)
+
+
+func _on_entity_color_updated(entity_id: int, player_color: Color) -> void:
+	if player_entities.has(entity_id):
+		var remote_player: RemotePlayer = player_entities[entity_id]
+		if is_instance_valid(remote_player):
+			remote_player.set_player_color(player_color)
+
+	for projectile_id: int in _projectile_sources.keys():
+		if int(_projectile_sources[projectile_id]) == entity_id:
+			_apply_projectile_color(projectile_id)
 
 
 ## Get entity counts for debug

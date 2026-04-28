@@ -9,6 +9,7 @@ var entity_id: int = -1
 
 ## Character name for display
 var character_name: String = ""
+var player_color: Color = Color(0.27, 0.53, 1.0)
 
 ## Visual components
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
@@ -24,7 +25,7 @@ func _ready() -> void:
 	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
 	# Apply procedural sprites (remote player variant)
 	if animated_sprite:
-		animated_sprite.sprite_frames = ProceduralSprites.create_remote_player_frames()
+		animated_sprite.sprite_frames = ProceduralSprites.create_remote_player_frames_for_color(player_color)
 		animated_sprite.modulate = Color.WHITE  # Override placeholder tint
 		animated_sprite.play("idle")
 	_update_name_label()
@@ -34,6 +35,19 @@ func _ready() -> void:
 func set_character_name(display_name: String) -> void:
 	character_name = display_name
 	_update_name_label()
+
+
+## Set the player color and regenerate procedural frames.
+func set_player_color(color: Color) -> void:
+	color.a = 1.0
+	player_color = color
+	if animated_sprite:
+		var current_animation := animated_sprite.animation
+		var alpha := animated_sprite.modulate.a
+		animated_sprite.sprite_frames = ProceduralSprites.create_remote_player_frames_for_color(player_color)
+		animated_sprite.modulate = Color(1, 1, 1, alpha)
+		if not current_animation.is_empty() and animated_sprite.sprite_frames.has_animation(current_animation):
+			animated_sprite.play(current_animation)
 
 
 ## Update visual state from network data

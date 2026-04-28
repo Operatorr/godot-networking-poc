@@ -153,7 +153,8 @@ func handle_full_state_request(
 		var event_packet = GameEventPacket.create_player_info(
 			state.entity_id,
 			state.character_name,
-			state.position
+			state.position,
+			state.player_color
 		)
 		network_manager.send_to_client(
 			peer_id,
@@ -208,7 +209,8 @@ func broadcast_player_info(peer_id: int, player_manager: PlayerManager, network_
 	var event_packet = GameEventPacket.create_player_info(
 		state.entity_id,
 		state.character_name,
-		state.position
+		state.position,
+		state.player_color
 	)
 
 	network_manager.broadcast_to_clients(
@@ -231,7 +233,8 @@ func send_all_player_info_to_client(peer_id: int, player_manager: PlayerManager,
 		var event_packet = GameEventPacket.create_player_info(
 			state.entity_id,
 			state.character_name,
-			state.position
+			state.position,
+			state.player_color
 		)
 
 		network_manager.send_to_client(

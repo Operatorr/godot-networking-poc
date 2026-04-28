@@ -207,6 +207,7 @@ func _spawn_local_player(entity_container: Node2D) -> void:
 	local_player = player_scene.instantiate()
 	local_player.name = "LocalPlayer"
 	local_player.position = Vector2.ZERO
+	local_player.set_player_color(GameManager.player_data.get("player_color", Color(0.27, 0.53, 1.0)))
 	local_player.visible = false
 	entity_container.add_child(local_player)
 	local_player.set_input_enabled(false)
@@ -338,6 +339,9 @@ func _handle_player_info(data: Dictionary) -> void:
 	var event_data: Dictionary = data.get("event_data", {})
 	var char_name: String = event_data.get("character_name", "")
 	var server_position: Vector2 = event_data.get("position", Vector2.ZERO)
+	var player_color: Color = event_data.get("player_color", Color(0.27, 0.53, 1.0))
+	if entity_id > 0:
+		EntityNameCache.set_entity_color(entity_id, player_color)
 
 	# Check if this is our own player info
 	var our_char_name: String = GameManager.player_data.get("character_name", "")
@@ -348,6 +352,8 @@ func _handle_player_info(data: Dictionary) -> void:
 		if prediction_controller:
 			prediction_controller.set_local_entity_id(entity_id)
 			print("[ArenaBase] Local player entity ID set: %d" % entity_id)
+		if local_player and is_instance_valid(local_player):
+			local_player.set_player_color(player_color)
 
 		# Force-sync to the server-authoritative spawn so we don't render at
 		# Vector2.ZERO until the first STATE_UPDATE arrives. If a future
@@ -377,6 +383,7 @@ func _handle_player_info(data: Dictionary) -> void:
 		var remote_player: RemotePlayer = client_entity_manager.player_entities[entity_id]
 		if is_instance_valid(remote_player):
 			remote_player.set_character_name(char_name)
+			remote_player.set_player_color(player_color)
 
 
 ## Handle state updates to extract local player HP/flags
@@ -570,9 +577,12 @@ func _play_local_death_feedback() -> void:
 ## Handle authoritative projectile fire event for remote player and monster audio.
 func _handle_projectile_fired_event(data: Dictionary) -> void:
 	var source_id: int = data.get("source_id", -1)
+	var projectile_id: int = data.get("target_id", 0)
 	var local_id := GameManager.get_local_player_entity_id()
 	if source_id <= 0:
 		return
+	if client_entity_manager and projectile_id > 0:
+		client_entity_manager.register_projectile_source(projectile_id, source_id)
 
 	if source_id == local_id:
 		_log_local_projectile_fired_event(data)

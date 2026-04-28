@@ -572,10 +572,11 @@ func _handle_auth_request(peer_id: int, data: Dictionary) -> void:
 
 	var character_id = data.get("character_id", "")
 	var character_name = data.get("character_name", "Player_%d" % peer_id)
+	var player_color: Color = data.get("player_color", Color(0.27, 0.53, 1.0))
 
 	# Authenticate player via PlayerManager
 	# TODO: Validate character_id with API server
-	var authenticated := player_manager.authenticate_player(peer_id, character_id, character_name)
+	var authenticated := player_manager.authenticate_player(peer_id, character_id, character_name, player_color)
 	if not authenticated:
 		return
 

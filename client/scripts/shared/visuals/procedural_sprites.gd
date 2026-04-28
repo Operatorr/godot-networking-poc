@@ -39,9 +39,24 @@ static func create_player_frames() -> SpriteFrames:
 	return _create_entity_frames(PLAYER_CORE, PLAYER_GLOW, PLAYER_SHELL, true)
 
 
+## Create SpriteFrames for a player with a selected core color
+static func create_player_frames_for_color(player_color: Color) -> SpriteFrames:
+	return _create_entity_frames(
+		_normalized_color(player_color),
+		_get_player_glow(player_color),
+		_get_player_shell(player_color),
+		true
+	)
+
+
 ## Create SpriteFrames for remote player
 static func create_remote_player_frames() -> SpriteFrames:
 	return _create_entity_frames(REMOTE_CORE, REMOTE_GLOW, REMOTE_SHELL, true)
+
+
+## Create SpriteFrames for a remote player with a selected core color
+static func create_remote_player_frames_for_color(player_color: Color) -> SpriteFrames:
+	return create_player_frames_for_color(player_color)
 
 
 ## Create SpriteFrames for monster
@@ -50,10 +65,12 @@ static func create_monster_frames() -> SpriteFrames:
 
 
 ## Create projectile texture
-static func create_projectile_texture(size: int = 16) -> ImageTexture:
+static func create_projectile_texture(size: int = 16, projectile_color: Color = PROJ_MID) -> ImageTexture:
 	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	var center := Vector2(size / 2.0, size / 2.0)
 	var max_r := size / 2.0
+	var mid_color := _normalized_color(projectile_color)
+	var corona_color := mid_color.lerp(Color(1.0, 0.9, 0.35), 0.45)
 
 	for y in range(size):
 		for x in range(size):
@@ -65,23 +82,47 @@ static func create_projectile_texture(size: int = 16) -> ImageTexture:
 			elif norm < 0.25:
 				# White-hot center
 				var t := norm / 0.25
-				var c := PROJ_CENTER.lerp(PROJ_MID, t * t)
+				var c := PROJ_CENTER.lerp(mid_color, t * t)
 				c.a = 1.0
 				img.set_pixel(x, y, c)
 			elif norm < 0.6:
 				# Blue to gold transition
 				var t := (norm - 0.25) / 0.35
-				var c := PROJ_MID.lerp(PROJ_CORONA, t)
+				var c := mid_color.lerp(corona_color, t)
 				c.a = 1.0 - t * 0.3
 				img.set_pixel(x, y, c)
 			else:
 				# Outer corona fade
 				var t := (norm - 0.6) / 0.4
-				var c := PROJ_CORONA
+				var c := corona_color
 				c.a = (1.0 - t) * 0.5
 				img.set_pixel(x, y, c)
 
 	return ImageTexture.create_from_image(img)
+
+
+static func _normalized_color(color: Color) -> Color:
+	return Color(
+		clampf(color.r, 0.0, 1.0),
+		clampf(color.g, 0.0, 1.0),
+		clampf(color.b, 0.0, 1.0),
+		1.0
+	)
+
+
+static func _get_player_glow(player_color: Color) -> Color:
+	var color := _normalized_color(player_color)
+	return color.lerp(Color.WHITE, 0.45)
+
+
+static func _get_player_shell(player_color: Color) -> Color:
+	var color := _normalized_color(player_color)
+	return Color(
+		clampf(color.r * 0.18, 0.02, 0.25),
+		clampf(color.g * 0.18, 0.02, 0.25),
+		clampf(color.b * 0.18, 0.02, 0.25),
+		1.0
+	)
 
 
 ## Create a second projectile frame (slightly pulsed)
