@@ -10,6 +10,9 @@ var _monster_manager: MonsterManager = null
 ## Reference to player manager for visibility checks
 var _player_manager: PlayerManager = null
 
+## Configurable spawn rate in monsters per second.
+var spawn_rate: float = GameConstants.MONSTER_SPAWN_RATE
+
 ## Time accumulator for spawn rate
 var _spawn_timer: float = 0.0
 
@@ -27,9 +30,14 @@ var debug_logging: bool = true
 
 
 ## Initialize spawner with required managers
-func _init(monster_manager: MonsterManager, player_manager: PlayerManager) -> void:
+func _init(
+	monster_manager: MonsterManager,
+	player_manager: PlayerManager,
+	initial_spawn_rate: float = GameConstants.MONSTER_SPAWN_RATE
+) -> void:
 	_monster_manager = monster_manager
 	_player_manager = player_manager
+	spawn_rate = maxf(initial_spawn_rate, 0.01)
 	_build_spawn_regions()
 
 
@@ -53,7 +61,7 @@ func update(delta: float) -> void:
 	_spawn_timer += delta
 
 	# Calculate spawn interval from rate
-	var spawn_interval := 1.0 / GameConstants.MONSTER_SPAWN_RATE
+	var spawn_interval := 1.0 / spawn_rate
 
 	# Spawn monsters while timer exceeds interval
 	while _spawn_timer >= spawn_interval:
@@ -299,10 +307,26 @@ func _is_valid_spawn_position(position: Vector2) -> bool:
 	if GameConstants.circle_intersects_obstacle(position, GameConstants.MONSTER_HITBOX_RADIUS):
 		return false
 
+	if _would_overlap_existing_monster(position):
+		return false
+
 	if _is_position_visible_to_players(position):
 		return false
 
 	return true
+
+
+## Check whether a spawn would overlap an existing alive monster.
+func _would_overlap_existing_monster(position: Vector2) -> bool:
+	if _monster_manager == null:
+		return false
+
+	var closest := _monster_manager.get_closest_alive_monster(position)
+	if closest == null:
+		return false
+
+	var min_distance := GameConstants.MONSTER_SPAWN_SEPARATION
+	return closest.position.distance_squared_to(position) < min_distance * min_distance
 
 
 ## Check whether a point is within distance of any alive player.

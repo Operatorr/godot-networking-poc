@@ -252,7 +252,7 @@ const INVULNERABILITY_DURATION := 3.0
 const MONSTER_SPAWN_RATE := 0.2
 
 ## Maximum active monsters in arena
-const MONSTER_MAX_COUNT := 20
+const MONSTER_MAX_COUNT := 100
 
 ## Entity ID range reserved for monsters.
 ## IDs must stay within u16 because the binary network protocol writes entity IDs as 16-bit values.
@@ -289,6 +289,10 @@ const MONSTER_HEALTH := 50
 
 ## Monster hitbox radius for collision
 const MONSTER_HITBOX_RADIUS := 16.0
+
+## Minimum center-to-center spacing for new monster spawns.
+## Slightly larger than pure hitbox contact to avoid visually stacked spawns.
+const MONSTER_SPAWN_SEPARATION := MONSTER_HITBOX_RADIUS * 2.25
 
 
 # =============================================================================

@@ -8,6 +8,10 @@ const ServerBroadcastService := preload("res://scripts/server/server_broadcast_s
 const ServerCollisionHandler := preload("res://scripts/server/server_collision_handler.gd")
 const ServerMetrics := preload("res://scripts/server/server_metrics.gd")
 
+@export_group("Monster Spawning")
+@export_range(0.05, 5.0, 0.05)
+var monster_spawn_rate: float = GameConstants.MONSTER_SPAWN_RATE * 2.0
+
 ## Server configuration
 var config: ServerConfig = null
 
@@ -109,7 +113,7 @@ func _initialize_server() -> void:
 
 	monster_manager = MonsterManager.new()
 	monster_manager.debug_logging = config.debug_logging
-	monster_spawner = MonsterSpawner.new(monster_manager, player_manager)
+	monster_spawner = MonsterSpawner.new(monster_manager, player_manager, monster_spawn_rate)
 	monster_spawner.debug_logging = config.debug_logging
 
 	monster_ai = MonsterAI.new(player_manager, projectile_manager)
@@ -132,6 +136,7 @@ func _initialize_server() -> void:
 
 	set_process(true)
 	print("[ServerMain] Server running at %d Hz tick rate" % config.tick_rate)
+	print("[ServerMain] Monster spawn rate set to %.2f monsters/sec" % monster_spawn_rate)
 
 
 ## Process loop - runs the server tick

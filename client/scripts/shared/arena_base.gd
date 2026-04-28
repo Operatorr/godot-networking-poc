@@ -82,6 +82,7 @@ var projectile_sync_debug_logging: bool = false
 const CAMERA_ZOOM_DEFAULT := Vector2(1.5, 1.5)
 const CAMERA_ZOOM_SPRINT := Vector2(1.35, 1.35)
 const CAMERA_ZOOM_SPEED := 3.0
+const SERVER_STATUS_MAX_PLAYERS := 100
 
 ## Kill streak tracking
 var _kill_streak_count: int = 0
@@ -111,6 +112,11 @@ func _process(delta: float) -> void:
 	# Update entity visuals from interpolation data
 	if client_entity_manager:
 		client_entity_manager.update_entity_visuals()
+		if server_status and server_status.has_method("update_monster_count"):
+			server_status.update_monster_count(
+				client_entity_manager.monster_entities.size(),
+				GameConstants.MONSTER_MAX_COUNT
+			)
 
 	# Camera follows local player
 	if camera and local_player and is_instance_valid(local_player):
@@ -725,8 +731,7 @@ func _handle_leaderboard_update(data: Dictionary) -> void:
 
 	# Update server status player count from leaderboard entry count
 	if server_status:
-		var region: String = GameManager.player_data.get("selected_region", "")
-		server_status.update_player_count(entries.size(), 100, region)
+		server_status.update_player_count(entries.size(), SERVER_STATUS_MAX_PLAYERS)
 
 
 ## Handle local player shooting (for audio + effects)

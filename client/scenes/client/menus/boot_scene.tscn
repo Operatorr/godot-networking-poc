@@ -1,4 +1,6 @@
-[gd_scene format=3 uid="uid://bx17ud5rlw5bl"]
+[gd_scene load_steps=2 format=3 uid="uid://bx17ud5rlw5bl"]
+
+[ext_resource type="Texture2D" path="res://assets/ui/backgrounds/menu_background.png" id="1_menu_background"]
 
 [node name="BootScene" type="Control" unique_id=241549498]
 layout_mode = 3
@@ -8,14 +10,17 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="Background" type="ColorRect" parent="." unique_id=1323841039]
+[node name="MenuBackground" type="TextureRect" parent="." unique_id=1323841039]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0.04, 0.02, 0.06, 1)
+mouse_filter = 2
+texture = ExtResource("1_menu_background")
+expand_mode = 1
+stretch_mode = 6
 
 [node name="CenterContainer" type="CenterContainer" parent="." unique_id=1771313149]
 layout_mode = 1
