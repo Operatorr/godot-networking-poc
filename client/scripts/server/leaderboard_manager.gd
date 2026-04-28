@@ -17,7 +17,7 @@ class LeaderboardEntry:
 ## All tracked player entries: entity_id -> LeaderboardEntry
 var _entries: Dictionary = {}
 
-## Cached sorted top-10 (rebuilt on each kill)
+## Cached sorted entries (rebuilt on joins, leaves, and kills)
 var _top_entries: Array = []
 
 ## Debug logging
@@ -27,6 +27,9 @@ var debug_logging: bool = false
 ## Record a PvP kill and rebuild the leaderboard
 ## Returns the top-10 entries for broadcast
 func record_pvp_kill(killer_id: int, victim_id: int) -> Array:
+	if killer_id <= 0 or victim_id <= 0 or killer_id == victim_id:
+		return get_top_n(10)
+
 	var killer_entry := _find_or_create_entry(killer_id)
 	killer_entry.pvp_kills += 1
 
@@ -58,7 +61,10 @@ func get_top_n(count: int) -> Array:
 
 ## Register a player (call when player joins)
 func register_player(entity_id: int) -> void:
+	if entity_id <= 0:
+		return
 	_find_or_create_entry(entity_id)
+	_rebuild_top_entries()
 
 
 ## Remove a player (call when player disconnects)
@@ -96,5 +102,7 @@ func _find_or_create_entry(entity_id: int) -> LeaderboardEntry:
 func _rebuild_top_entries() -> void:
 	_top_entries = _entries.values()
 	_top_entries.sort_custom(func(a: LeaderboardEntry, b: LeaderboardEntry):
+		if a.pvp_kills == b.pvp_kills:
+			return a.entity_id < b.entity_id
 		return a.pvp_kills > b.pvp_kills
 	)

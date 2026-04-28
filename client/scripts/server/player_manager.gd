@@ -144,7 +144,12 @@ func collect_state_updates(server_tick: int) -> Dictionary:
 
 
 ## Authenticate a player with character data
-func authenticate_player(peer_id: int, character_id: String, character_name: String) -> bool:
+func authenticate_player(
+	peer_id: int,
+	character_id: String,
+	character_name: String,
+	player_color: Color = Color(0.27, 0.53, 1.0)
+) -> bool:
 	var state = get_player(peer_id)
 	if state == null:
 		if debug_logging:
@@ -154,6 +159,7 @@ func authenticate_player(peer_id: int, character_id: String, character_name: Str
 	state.authenticated = true
 	state.character_id = character_id
 	state.character_name = character_name
+	state.player_color = player_color
 
 	if debug_logging:
 		print("[PlayerManager] Player authenticated: peer=%d, char=%s, name=%s" % [peer_id, character_id, character_name])

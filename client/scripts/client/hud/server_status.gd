@@ -6,6 +6,7 @@ extends Control
 var _ping_label: Label = null
 var _fps_label: Label = null
 var _player_count_label: Label = null
+var _monster_count_label: Label = null
 var _warning_label: Label = null
 var _update_timer: float = 0.0
 
@@ -25,7 +26,7 @@ func _build_ui() -> void:
 	anchor_bottom = 1.0
 	offset_left = 20
 	offset_right = 320
-	offset_top = -100
+	offset_top = -120
 	offset_bottom = -20
 
 	var vbox := VBoxContainer.new()
@@ -35,8 +36,14 @@ func _build_ui() -> void:
 	_player_count_label = Label.new()
 	_player_count_label.add_theme_font_size_override("font_size", 12)
 	_player_count_label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
-	_player_count_label.text = "Players: --"
+	_player_count_label.text = "Players: --/--"
 	vbox.add_child(_player_count_label)
+
+	_monster_count_label = Label.new()
+	_monster_count_label.add_theme_font_size_override("font_size", 12)
+	_monster_count_label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
+	_monster_count_label.text = "Monsters: --/--"
+	vbox.add_child(_monster_count_label)
 
 	_ping_label = Label.new()
 	_ping_label.add_theme_font_size_override("font_size", 12)
@@ -87,6 +94,11 @@ func _update_display() -> void:
 		_warning_label.visible = true
 
 
-## Update player count externally (from leaderboard or server data)
-func update_player_count(count: int, max_players: int, region: String) -> void:
-	_player_count_label.text = "%d/%d Players Online (Server: %s)" % [count, max_players, region]
+## Update player count externally.
+func update_player_count(count: int, max_players: int, _region: String = "") -> void:
+	_player_count_label.text = "Players: %d/%d" % [count, max_players]
+
+
+## Update monster count externally.
+func update_monster_count(count: int, max_monsters: int) -> void:
+	_monster_count_label.text = "Monsters: %d/%d" % [count, max_monsters]

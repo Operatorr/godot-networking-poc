@@ -30,12 +30,13 @@ var is_active: bool = false
 
 ## Cached sprite reference
 var _sprite: Sprite2D = null
+var projectile_color: Color = ProceduralSprites.PROJ_MID
 
 func _ready() -> void:
 	# Apply procedural projectile texture
 	_sprite = get_node_or_null("Sprite2D")
 	if _sprite:
-		_sprite.texture = ProceduralSprites.create_projectile_texture()
+		_sprite.texture = ProceduralSprites.create_projectile_texture(16, projectile_color)
 		_sprite.modulate = Color.WHITE  # Override placeholder yellow tint
 
 	# Connect body_entered signal for collision detection
@@ -76,6 +77,21 @@ func activate(pos: Vector2, dir: Vector2, max_dist: float, pool: Node) -> void:
 	# Enable collision detection
 	monitoring = true
 	monitorable = true
+
+
+## Tint projectile visuals to match a player. Monster projectiles use reset color.
+func set_projectile_color(color: Color) -> void:
+	color.a = 1.0
+	projectile_color = color
+	if _sprite == null:
+		_sprite = get_node_or_null("Sprite2D")
+	if _sprite:
+		_sprite.texture = ProceduralSprites.create_projectile_texture(16, projectile_color)
+		_sprite.modulate = Color.WHITE
+
+
+func reset_projectile_color() -> void:
+	set_projectile_color(ProceduralSprites.PROJ_MID)
 
 
 ## Deactivate and return to pool

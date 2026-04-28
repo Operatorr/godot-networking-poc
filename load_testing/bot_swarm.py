@@ -24,7 +24,7 @@ from datetime import datetime
 from bot_client import (
     BotMetrics, OmegaRealmBot,
     BEHAVIOR_DEFAULT, BEHAVIOR_IDLE, BEHAVIOR_MOVEMENT,
-    BEHAVIOR_COMBAT, BEHAVIOR_CLUSTERED, VALID_BEHAVIORS,
+    BEHAVIOR_COMBAT, BEHAVIOR_CLUSTERED, BEHAVIOR_STRATEGY, VALID_BEHAVIORS,
 )
 
 logger = logging.getLogger("bot_swarm")
@@ -40,6 +40,7 @@ SCENARIOS = {
     "movement": {"bots": 100, "duration": 120, "behavior": BEHAVIOR_MOVEMENT, "description": "Movement throughput (100 bots moving, 2 min)"},
     "combat": {"bots": 100, "duration": 120, "behavior": BEHAVIOR_COMBAT, "description": "Combat stress (100 bots constant shooting, 2 min)"},
     "clustered": {"bots": 100, "duration": 120, "behavior": BEHAVIOR_CLUSTERED, "description": "AoI worst case (100 bots clustered, 2 min)"},
+    "strategy": {"bots": 10, "duration": 0, "behavior": BEHAVIOR_STRATEGY, "description": "Gameplay bots (10 bots, run until stopped)"},
 }
 
 # Success criteria from the epic
@@ -403,6 +404,7 @@ async def spawn_bots(count: int, server_url: str, stagger_ms: float = 100, behav
 async def run_load_test(bot_count: int, duration: int, server_url: str, stagger_ms: float = 100, behavior: str = BEHAVIOR_DEFAULT) -> tuple[AggregatedMetrics, list[OmegaRealmBot]]:
     """Execute a full load test: spawn bots, run, collect metrics."""
     logger.info(f"Starting load test: {bot_count} bots, {duration}s duration, behavior={behavior}, server={server_url}")
+    started_at = time.monotonic()
 
     # Phase 1: Spawn bots
     logger.info("Phase 1: Spawning bots...")
@@ -413,12 +415,18 @@ async def run_load_test(bot_count: int, duration: int, server_url: str, stagger_
         logger.error("No bots connected! Aborting test.")
         return aggregate_metrics(bots, 0), bots
 
-    logger.info(f"Phase 2: Running test for {duration} seconds with {len(connected_bots)} bots...")
+    duration_text = "until interrupted" if duration <= 0 else f"{duration} seconds"
+    logger.info(f"Phase 2: Running test for {duration_text} with {len(connected_bots)} bots...")
 
     # Phase 2: Run all bots concurrently with periodic metric snapshots
     tasks = [bot.run(duration) for bot in connected_bots]
     snapshot_task = asyncio.create_task(_collect_time_series(bots, duration))
-    await asyncio.gather(*tasks, return_exceptions=True)
+    try:
+        await asyncio.gather(*tasks, return_exceptions=True)
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        for bot in connected_bots:
+            bot._running = False
+        logger.info("Interrupted; disconnecting bots...")
     snapshot_task.cancel()
     try:
         await snapshot_task
@@ -431,7 +439,8 @@ async def run_load_test(bot_count: int, duration: int, server_url: str, stagger_
     disconnect_tasks = [bot.disconnect() for bot in bots]
     await asyncio.gather(*disconnect_tasks, return_exceptions=True)
 
-    agg = aggregate_metrics(bots, duration)
+    elapsed = time.monotonic() - started_at
+    agg = aggregate_metrics(bots, elapsed if duration <= 0 else duration)
     return agg, bots
 
 
@@ -446,9 +455,11 @@ Predefined scenarios:
   baseline  - 50 bots, 2 minutes (validate basic functionality)
   target    - 100 bots, 5 minutes (validate success metrics)
   stress    - 200 bots, 5 minutes (find breaking point)
+  strategy  - 10 gameplay bots, run until interrupted
 
 Examples:
   python bot_swarm.py --scenario baseline --server ws://localhost:8081
+  python bot_swarm.py --scenario strategy --server ws://localhost:8081 --no-report
   python bot_swarm.py --bots 75 --duration 120 --server ws://10.0.0.1:8081
         """,
     )
@@ -458,7 +469,7 @@ Examples:
     parser.add_argument("--bots", "-b", type=int, default=None,
                         help="Number of bots to spawn")
     parser.add_argument("--duration", "-d", type=int, default=None,
-                        help="Test duration in seconds")
+                        help="Test duration in seconds (0 = run until interrupted)")
     parser.add_argument("--scenario", choices=SCENARIOS.keys(), default=None,
                         help="Use a predefined test scenario")
     parser.add_argument("--stagger", type=float, default=100,
@@ -466,7 +477,9 @@ Examples:
     parser.add_argument("--output", "-o", default=None,
                         help="Save JSON report to file (default: report_<timestamp>.json)")
     parser.add_argument("--behavior", choices=VALID_BEHAVIORS, default=None,
-                        help="Bot behavior mode (default, idle, movement, combat, clustered)")
+                        help="Bot behavior mode (default, idle, movement, combat, clustered, strategy)")
+    parser.add_argument("--no-report", action="store_true",
+                        help="Skip JSON report and success-criteria exit code")
     parser.add_argument("--verbose", "-v", action="store_true",
                         help="Enable verbose/debug logging")
 
@@ -487,13 +500,13 @@ async def main():
     # Determine bot count, duration, and behavior
     if args.scenario:
         scenario = SCENARIOS[args.scenario]
-        bot_count = args.bots or scenario["bots"]
-        duration = args.duration or scenario["duration"]
+        bot_count = args.bots if args.bots is not None else scenario["bots"]
+        duration = args.duration if args.duration is not None else scenario["duration"]
         behavior = args.behavior or scenario.get("behavior", BEHAVIOR_DEFAULT)
         logger.info(f"Scenario: {args.scenario} - {scenario['description']}")
     else:
-        bot_count = args.bots or 50
-        duration = args.duration or 120
+        bot_count = args.bots if args.bots is not None else 50
+        duration = args.duration if args.duration is not None else 120
         behavior = args.behavior or BEHAVIOR_DEFAULT
 
     server_url = args.server
@@ -501,18 +514,24 @@ async def main():
     # Run load test
     agg, bots = await run_load_test(bot_count, duration, server_url, args.stagger, behavior)
 
+    if args.no_report:
+        if agg.connected_bots == 0:
+            sys.exit(1)
+        return
+
     # Generate report
     report = generate_report(agg, server_url)
     print(report)
+
+    # Exit code based on success criteria
+    success = evaluate_success(agg)
+    all_passed = all(r["passed"] for r in success.values())
 
     # Save JSON report
     output_path = args.output or f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     save_report_json(agg, bots, server_url, output_path)
     logger.info(f"JSON report saved to: {output_path}")
 
-    # Exit code based on success criteria
-    success = evaluate_success(agg)
-    all_passed = all(r["passed"] for r in success.values())
     sys.exit(0 if all_passed else 1)
 
 

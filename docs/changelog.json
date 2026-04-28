@@ -1,5 +1,24 @@
 [
   {
+    "version": "e591463",
+    "added": [
+      "Networked arenas now keep immediate local shot feedback by playing muzzle flashes and shoot audio as the local player fires."
+    ],
+    "fixed": [
+      "The local client no longer spawns gameplay projectiles in shared arenas, preventing duplicate shots when the server owns projectile creation."
+    ]
+  },
+  {
+    "version": "272b053",
+    "added": [
+      "The client now initializes audio through a scene-backed autoload, with separate menu music volume control."
+    ],
+    "fixed": [
+      "Leaderboards update deterministically from authenticated players, de-duplicate repeated entries, and render kill counts consistently.",
+      "The local HP bar now follows health changes directly, and leaving the arena from the T key is handled centrally."
+    ]
+  },
+  {
     "version": "e706ca6",
     "added": [
       "Server-side projectile diagnostics now skip extra tracking work when debug logging is off."

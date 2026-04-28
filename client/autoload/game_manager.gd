@@ -26,7 +26,8 @@ var player_data: Dictionary = {
 	"character_id": "",
 	"user_id": "",
 	"selected_region": "Asia",  ## Default region
-	"session_id": ""
+	"session_id": "",
+	"player_color": Color(0.27, 0.53, 1.0)
 }
 
 ## Game settings
@@ -222,7 +223,8 @@ func clear_player_data() -> void:
 		"character_id": "",
 		"user_id": "",
 		"selected_region": player_data.get("selected_region", "Asia"),
-		"session_id": ""
+		"session_id": "",
+		"player_color": player_data.get("player_color", Color(0.27, 0.53, 1.0))
 	}
 	player_data_updated.emit()
 	print("[GameManager] Player data cleared")

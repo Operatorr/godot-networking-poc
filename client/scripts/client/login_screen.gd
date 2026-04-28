@@ -3,6 +3,7 @@
 extends Control
 
 const TestConfigScript := preload("res://scripts/shared/test_config.gd")
+const MENU_BACKGROUND_PATH := "res://assets/ui/backgrounds/menu_background_003.jpg"
 
 ## External URLs for registration and password recovery
 @export var registration_url: String = "https://example.com/register"
@@ -10,6 +11,7 @@ const TestConfigScript := preload("res://scripts/shared/test_config.gd")
 @export var prefill_test_credentials_from_env: bool = false
 
 ## UI node references
+@onready var menu_background: TextureRect = $MenuBackground
 @onready var username_input: LineEdit = $CenterContainer/VBoxContainer/UsernameInput
 @onready var password_input: LineEdit = $CenterContainer/VBoxContainer/PasswordInput
 @onready var login_button: Button = $CenterContainer/VBoxContainer/LoginButton
@@ -61,13 +63,17 @@ func _ready() -> void:
 
 ## Apply dark cosmic horror theme to login elements
 func _apply_dark_theme() -> void:
-	# Dark background
-	var bg := ColorRect.new()
-	bg.color = Color(0.04, 0.02, 0.06, 1.0)
-	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	bg.z_index = -1
-	add_child(bg)
-	move_child(bg, 0)
+	# Keep the shared menu background non-interactive and full screen.
+	if menu_background:
+		var background_texture := load(MENU_BACKGROUND_PATH) as Texture2D
+		if background_texture:
+			menu_background.texture = background_texture
+		else:
+			push_warning("[LoginScreen] Failed to load menu background: %s" % MENU_BACKGROUND_PATH)
+		menu_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		menu_background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		menu_background.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		menu_background.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 
 	# Style title
 	var title_label: Label = $CenterContainer/VBoxContainer/TitleLabel

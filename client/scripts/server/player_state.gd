@@ -12,6 +12,7 @@ var entity_id: int = 0          ## Unique ID for network sync
 var peer_id: int = 0            ## WebSocket peer identifier
 var character_id: String = ""
 var character_name: String = ""
+var player_color: Color = Color(0.27, 0.53, 1.0)
 
 # Connection
 var connected_at: float = 0.0
@@ -453,6 +454,7 @@ func to_dict() -> Dictionary:
 		"peer_id": peer_id,
 		"character_id": character_id,
 		"character_name": character_name,
+		"player_color": player_color,
 		"authenticated": authenticated,
 		"position": position,
 		"velocity": velocity,

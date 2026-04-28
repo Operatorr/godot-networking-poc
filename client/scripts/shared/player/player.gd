@@ -29,6 +29,10 @@ signal shot_fired(position: Vector2, direction: Vector2)
 ## Seconds between shots (fire rate)
 @export var fire_rate: float = 0.3
 
+## Whether this player should spawn gameplay projectiles locally.
+## Networked arenas disable this; the server owns projectile spawning there.
+@export var local_projectile_spawning_enabled: bool = true
+
 ## Current movement state
 var movement_state: MovementState = MovementState.IDLE
 
@@ -40,6 +44,7 @@ var last_aim_direction: Vector2 = Vector2.RIGHT
 
 ## Whether input processing is enabled
 var _input_enabled: bool = true
+var player_color: Color = Color(0.27, 0.53, 1.0)
 
 ## Footstep timing
 var _footstep_timer: float = 0.0
@@ -65,7 +70,8 @@ func _ready() -> void:
 
 	# Apply procedural sprites
 	if animated_sprite:
-		animated_sprite.sprite_frames = ProceduralSprites.create_player_frames()
+		player_color = _get_configured_player_color()
+		animated_sprite.sprite_frames = ProceduralSprites.create_player_frames_for_color(player_color)
 		animated_sprite.modulate = Color.WHITE  # Override the placeholder blue tint
 
 	# Connect HP component signals
@@ -137,6 +143,9 @@ func _handle_aiming() -> void:
 
 ## Handle shooting input
 func _handle_shooting() -> void:
+	if not local_projectile_spawning_enabled:
+		return
+
 	if Input.is_action_pressed("shoot") and shoot_cooldown_timer.is_stopped():
 		_shoot()
 
@@ -321,6 +330,31 @@ func apply_state(state: Dictionary) -> void:
 ## @param enabled: Whether to process input
 func set_input_enabled(enabled: bool) -> void:
 	_input_enabled = enabled
+
+
+## Enable/disable local gameplay projectile spawning.
+func set_local_projectile_spawning_enabled(enabled: bool) -> void:
+	local_projectile_spawning_enabled = enabled
+
+
+## Apply the selected player color to procedural frames.
+func set_player_color(color: Color) -> void:
+	color.a = 1.0
+	player_color = color
+	if animated_sprite:
+		var alpha := animated_sprite.modulate.a
+		animated_sprite.sprite_frames = ProceduralSprites.create_player_frames_for_color(player_color)
+		animated_sprite.modulate = Color(1, 1, 1, alpha)
+
+
+func _get_configured_player_color() -> Color:
+	var tree := get_tree()
+	if tree == null:
+		return player_color
+	var game_mgr = tree.root.get_node_or_null("GameManager")
+	if game_mgr == null:
+		return player_color
+	return game_mgr.player_data.get("player_color", player_color)
 
 
 ## Get readable state name for debugging

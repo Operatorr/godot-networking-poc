@@ -2,9 +2,12 @@
 ## Handles character display, region selection, and arena connection
 extends Control
 
+const MENU_BACKGROUND_PATH := "res://assets/ui/backgrounds/menu_background_003.jpg"
+
 ## UI Node references
+@onready var menu_background: TextureRect = $MenuBackground
 @onready var character_panel: Control = $CenterContainer/VBoxContainer/CharacterPanel
-@onready var character_portrait: TextureRect = $CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer/CharacterPortrait
+@onready var player_color_picker: ColorPickerButton = $CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer/PlayerColorPicker
 @onready var character_name_label: Label = $CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer/CharacterInfo/CharacterNameLabel
 @onready var region_dropdown: OptionButton = $CenterContainer/VBoxContainer/RegionDropdown
 @onready var enter_world_button: Button = $CenterContainer/VBoxContainer/EnterWorldButton
@@ -32,6 +35,7 @@ func _ready() -> void:
 	logout_button.pressed.connect(_on_logout_pressed)
 	exit_button.pressed.connect(_on_exit_pressed)
 	region_dropdown.item_selected.connect(_on_region_selected)
+	player_color_picker.color_changed.connect(_on_player_color_changed)
 
 	# Connect ErrorDialog signals
 	error_dialog.retry_pressed.connect(_on_error_retry)
@@ -47,6 +51,8 @@ func _ready() -> void:
 
 	# Load user preferences
 	preferences = UserPreferences.load_preferences()
+	GameManager.player_data["player_color"] = preferences.player_color
+	player_color_picker.color = preferences.player_color
 
 	# Update UI
 	_update_character_display()
@@ -69,13 +75,17 @@ func _ready() -> void:
 
 ## Apply dark cosmic horror theme to menu elements
 func _apply_dark_theme() -> void:
-	# Dark background
-	var bg := ColorRect.new()
-	bg.color = Color(0.04, 0.02, 0.06, 1.0)
-	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	bg.z_index = -1
-	add_child(bg)
-	move_child(bg, 0)
+	# Keep the image background non-interactive and full screen.
+	if menu_background:
+		var background_texture := load(MENU_BACKGROUND_PATH) as Texture2D
+		if background_texture:
+			menu_background.texture = background_texture
+		else:
+			push_warning("[MainMenu] Failed to load menu background: %s" % MENU_BACKGROUND_PATH)
+		menu_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		menu_background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		menu_background.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		menu_background.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 
 	# Style title
 	var title_label: Label = $CenterContainer/VBoxContainer/TitleLabel
@@ -99,9 +109,8 @@ func _update_character_display() -> void:
 		character_name_label.text = char_name
 		character_panel.visible = true
 
-	# Portrait would be loaded from character data if available
-	# For now, use placeholder
-	# character_portrait.texture = load("res://assets/portraits/default.png")
+	if player_color_picker:
+		player_color_picker.color = player_data.get("player_color", UserPreferences.DEFAULT_PLAYER_COLOR)
 
 
 ## Toggle Enter World button visibility based on character existence
@@ -213,6 +222,14 @@ func _on_region_selected(index: int) -> void:
 	preferences.save()
 
 	print("[MainMenu] Selected region: %s" % region.name)
+
+
+## Handle local player color selection
+func _on_player_color_changed(color: Color) -> void:
+	color.a = 1.0
+	GameManager.player_data["player_color"] = color
+	preferences.player_color = color
+	preferences.save()
 
 
 ## Handle Enter World button press

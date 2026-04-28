@@ -14,6 +14,7 @@ var _vbox: VBoxContainer = null
 var _is_expanded: bool = false
 var _flash_entity_id: int = -1
 var _flash_tween: Tween = null
+var _last_signature: String = ""
 
 
 func _ready() -> void:
@@ -77,17 +78,70 @@ func _build_ui() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey:
-		if event.physical_keycode == KEY_TAB:
+		if event.physical_keycode == KEY_TAB and not event.echo:
 			_is_expanded = event.pressed
 			_refresh_display()
 
 
 ## Update leaderboard entries from server data
 func update_entries(entries: Array) -> void:
+	var sanitized := _sanitize_entries(entries)
+	var signature := _make_signature(sanitized)
+	if signature == _last_signature:
+		return
+
 	_entries.clear()
-	for entry in entries:
+	for entry in sanitized:
 		_entries.append(entry)
+	_last_signature = signature
 	_refresh_display()
+
+
+func _sanitize_entries(entries: Array) -> Array[Dictionary]:
+	var by_entity_id: Dictionary = {}
+
+	for raw_entry in entries:
+		if not raw_entry is Dictionary:
+			continue
+
+		var entity_id := int(raw_entry.get("entity_id", 0))
+		if entity_id <= 0:
+			continue
+
+		var kills := clampi(int(raw_entry.get("pvp_kills", 0)), 0, 65535)
+		var existing: Dictionary = by_entity_id.get(entity_id, {})
+		if existing.is_empty() or kills > int(existing.get("pvp_kills", 0)):
+			by_entity_id[entity_id] = {
+				"entity_id": entity_id,
+				"pvp_kills": kills
+			}
+
+	var sanitized: Array[Dictionary] = []
+	for entry in by_entity_id.values():
+		sanitized.append(entry)
+
+	sanitized.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var a_kills := int(a.get("pvp_kills", 0))
+		var b_kills := int(b.get("pvp_kills", 0))
+		if a_kills == b_kills:
+			return int(a.get("entity_id", 0)) < int(b.get("entity_id", 0))
+		return a_kills > b_kills
+	)
+
+	if sanitized.size() > EXPANDED_COUNT:
+		sanitized.resize(EXPANDED_COUNT)
+
+	return sanitized
+
+
+func _make_signature(entries: Array[Dictionary]) -> String:
+	var parts: PackedStringArray = []
+	for entry in entries:
+		parts.append("%d:%d" % [
+			int(entry.get("entity_id", 0)),
+			int(entry.get("pvp_kills", 0))
+		])
+	return "|".join(parts)
 
 
 func _refresh_display() -> void:
@@ -100,7 +154,8 @@ func _refresh_display() -> void:
 			var entity_id: int = entry.get("entity_id", 0)
 			var kills: int = entry.get("pvp_kills", 0)
 			var player_name := EntityNameCache.get_entity_name(entity_id)
-			_labels[i].text = "%d. %s - %d kills" % [i + 1, player_name, kills]
+			var kill_text := "kill" if kills == 1 else "kills"
+			_labels[i].text = "%d. %s - %d %s" % [i + 1, player_name, kills, kill_text]
 			_labels[i].visible = true
 
 			# Color priority: flash > local player > default

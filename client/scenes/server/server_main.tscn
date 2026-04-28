@@ -1,11 +1,12 @@
-[gd_scene load_steps=2 format=3 uid="uid://c7h8jx0wyl4mu"]
+[gd_scene format=3 uid="uid://c7h8jx0wyl4mu"]
 
-[ext_resource type="Script" path="res://scripts/server/server_main.gd" id="1_q6g47"]
+[ext_resource type="Script" uid="uid://dyaah4majpsob" path="res://scripts/server/server_main.gd" id="1_q6g47"]
 
-[node name="ServerMain" type="Node"]
+[node name="ServerMain" type="Node" unique_id=1248552245]
 script = ExtResource("1_q6g47")
+monster_spawn_rate = 2.0
 
-[node name="ServerLabel" type="Label" parent="."]
+[node name="ServerLabel" type="Label" parent="." unique_id=1784488413]
 offset_right = 400.0
 offset_bottom = 50.0
 text = "Dedicated Server Running

@@ -153,7 +153,8 @@ func handle_full_state_request(
 		var event_packet = GameEventPacket.create_player_info(
 			state.entity_id,
 			state.character_name,
-			state.position
+			state.position,
+			state.player_color
 		)
 		network_manager.send_to_client(
 			peer_id,
@@ -175,11 +176,17 @@ func broadcast_leaderboard(player_manager: PlayerManager, network_manager: Node)
 		entries = leaderboard_manager.get_top_n(10)
 	else:
 		# Fallback: collect from player states directly
-		var players := player_manager.get_all_players()
+		var players := player_manager.get_authenticated_players()
 		entries = []
 		for state: PlayerState in players:
 			entries.append({"entity_id": state.entity_id, "pvp_kills": state.pvp_kills})
-		entries.sort_custom(func(a, b): return a.pvp_kills > b.pvp_kills)
+		entries.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+			var a_kills := int(a.get("pvp_kills", 0))
+			var b_kills := int(b.get("pvp_kills", 0))
+			if a_kills == b_kills:
+				return int(a.get("entity_id", 0)) < int(b.get("entity_id", 0))
+			return a_kills > b_kills
+		)
 		if entries.size() > 10:
 			entries.resize(10)
 
@@ -202,7 +209,8 @@ func broadcast_player_info(peer_id: int, player_manager: PlayerManager, network_
 	var event_packet = GameEventPacket.create_player_info(
 		state.entity_id,
 		state.character_name,
-		state.position
+		state.position,
+		state.player_color
 	)
 
 	network_manager.broadcast_to_clients(
@@ -225,7 +233,8 @@ func send_all_player_info_to_client(peer_id: int, player_manager: PlayerManager,
 		var event_packet = GameEventPacket.create_player_info(
 			state.entity_id,
 			state.character_name,
-			state.position
+			state.position,
+			state.player_color
 		)
 
 		network_manager.send_to_client(

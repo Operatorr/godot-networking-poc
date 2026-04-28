@@ -353,18 +353,21 @@ func send_auth_handshake() -> void:
 	var character_id = ""
 	var character_name = ""
 	var region = "Asia"
+	var player_color := Color(0.27, 0.53, 1.0)
 
 	var game_mgr = get_tree().root.get_node_or_null("GameManager")
 	if game_mgr:
 		character_id = game_mgr.player_data.get("character_id", "")
 		character_name = game_mgr.player_data.get("character_name", "")
 		region = game_mgr.player_data.get("selected_region", "Asia")
+		player_color = game_mgr.player_data.get("player_color", player_color)
 
 	var auth_data = {
 		"token": auth_token,
 		"character_id": character_id,
 		"character_name": character_name,
-		"region": region
+		"region": region,
+		"player_color": player_color
 	}
 	if send_message(MessageType.CONNECT_AUTH, auth_data):
 		_auth_handshake_sent = true
@@ -630,6 +633,7 @@ func _encode_packet(message_type: MessageType, data: Dictionary) -> PackedByteAr
 			writer.write_string(data.get("character_id", ""))
 			writer.write_string(data.get("character_name", ""))
 			writer.write_u8(AuthPacket.region_from_string(data.get("region", "Asia")))
+			_write_color_rgb(writer, data.get("player_color", Color(0.27, 0.53, 1.0)))
 
 		MessageType.DISCONNECT:
 			writer.write_u8(_get_disconnect_reason_code(data.get("reason", PacketTypes.DisconnectReason.USER_QUIT)))
@@ -683,12 +687,19 @@ func _write_game_event_data(writer: PacketWriter, data: Dictionary) -> void:
 		PacketTypes.GameEventType.PLAYER_INFO:
 			writer.write_string(event_data.get("character_name", ""))
 			writer.write_vector2_compressed(event_data.get("position", Vector2.ZERO))
+			_write_color_rgb(writer, event_data.get("player_color", Color(0.27, 0.53, 1.0)))
 		PacketTypes.GameEventType.LEADERBOARD_UPDATE:
 			var entries: Array = event_data.get("entries", [])
 			writer.write_u8(entries.size())
 			for entry in entries:
 				writer.write_u16(entry.get("entity_id", 0))
 				writer.write_u16(entry.get("pvp_kills", 0))
+
+
+func _write_color_rgb(writer: PacketWriter, color: Color) -> void:
+	writer.write_u8(clampi(roundi(color.r * 255.0), 0, 255))
+	writer.write_u8(clampi(roundi(color.g * 255.0), 0, 255))
+	writer.write_u8(clampi(roundi(color.b * 255.0), 0, 255))
 
 
 ## Decode packet from binary format using PacketReader

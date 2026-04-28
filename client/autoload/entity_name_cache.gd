@@ -5,6 +5,10 @@ extends Node
 
 ## Entity ID to character name mapping
 var entity_names: Dictionary = {}  # entity_id (int) -> character_name (String)
+## Entity ID to player color mapping
+var entity_colors: Dictionary = {}  # entity_id (int) -> Color
+
+signal entity_color_updated(entity_id: int, player_color: Color)
 
 ## Runtime mode detection
 var _is_server: bool = false
@@ -41,10 +45,12 @@ func _on_server_message(message_type: int, data: Dictionary) -> void:
 		var entity_id: int = data.get("target_id", 0)
 		var event_data: Dictionary = data.get("event_data", {})
 		var character_name: String = event_data.get("character_name", "")
+		var player_color: Color = event_data.get("player_color", Color(0.27, 0.53, 1.0))
 
 		if entity_id > 0 and not character_name.is_empty():
 			set_entity_name(entity_id, character_name)
-			print("[EntityNameCache] Cached: entity %d -> '%s'" % [entity_id, character_name])
+			set_entity_color(entity_id, player_color)
+			print("[EntityNameCache] Cached: entity %d -> '%s' color=%s" % [entity_id, character_name, player_color])
 
 
 ## Add or update entity name
@@ -52,11 +58,25 @@ func set_entity_name(entity_id: int, character_name: String) -> void:
 	entity_names[entity_id] = character_name
 
 
+## Add or update entity color
+func set_entity_color(entity_id: int, player_color: Color) -> void:
+	player_color.a = 1.0
+	entity_colors[entity_id] = player_color
+	entity_color_updated.emit(entity_id, player_color)
+
+
 ## Get entity name with fallback
 func get_entity_name(entity_id: int) -> String:
 	if entity_names.has(entity_id):
 		return entity_names[entity_id]
 	return "Player_%d" % entity_id
+
+
+## Get entity color with fallback
+func get_entity_color(entity_id: int) -> Color:
+	if entity_colors.has(entity_id):
+		return entity_colors[entity_id]
+	return Color(0.27, 0.53, 1.0)
 
 
 ## Check if an entity name is cached
@@ -72,8 +92,10 @@ func get_cached_count() -> int:
 ## Clear all cached names
 func clear() -> void:
 	entity_names.clear()
+	entity_colors.clear()
 
 
 ## Remove specific entity name
 func remove_entity_name(entity_id: int) -> void:
 	entity_names.erase(entity_id)
+	entity_colors.erase(entity_id)

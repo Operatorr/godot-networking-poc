@@ -70,6 +70,7 @@ var _cached_audio_manager: Node = null
 
 ## Track if client has been initialized
 var _client_initialized: bool = false
+var _is_leaving_arena: bool = false
 
 ## True once the local player has been snapped to an authoritative server state.
 var _local_player_authority_synced: bool = false
@@ -81,6 +82,7 @@ var projectile_sync_debug_logging: bool = false
 const CAMERA_ZOOM_DEFAULT := Vector2(1.5, 1.5)
 const CAMERA_ZOOM_SPRINT := Vector2(1.35, 1.35)
 const CAMERA_ZOOM_SPEED := 3.0
+const SERVER_STATUS_MAX_PLAYERS := 100
 
 ## Kill streak tracking
 var _kill_streak_count: int = 0
@@ -110,6 +112,11 @@ func _process(delta: float) -> void:
 	# Update entity visuals from interpolation data
 	if client_entity_manager:
 		client_entity_manager.update_entity_visuals()
+		if server_status and server_status.has_method("update_monster_count"):
+			server_status.update_monster_count(
+				client_entity_manager.monster_entities.size(),
+				GameConstants.MONSTER_MAX_COUNT
+			)
 
 	# Camera follows local player
 	if camera and local_player and is_instance_valid(local_player):
@@ -129,9 +136,6 @@ func _process(delta: float) -> void:
 
 	# Invulnerability shield visual
 	_update_invuln_shield()
-
-	# Update HP bar from local player
-	_update_hp_bar()
 
 
 ## Set up client-side systems
@@ -209,9 +213,11 @@ func _spawn_local_player(entity_container: Node2D) -> void:
 	local_player = player_scene.instantiate()
 	local_player.name = "LocalPlayer"
 	local_player.position = Vector2.ZERO
+	local_player.set_player_color(GameManager.player_data.get("player_color", Color(0.27, 0.53, 1.0)))
 	local_player.visible = false
 	entity_container.add_child(local_player)
 	local_player.set_input_enabled(false)
+	local_player.set_local_projectile_spawning_enabled(false)
 
 	# Connect local player signals for audio
 	local_player.shot_fired.connect(_on_local_player_shot)
@@ -282,6 +288,8 @@ func _setup_hud() -> void:
 	hud_layer.add_child(connection_lost_overlay)
 	connection_lost_overlay.reconnect_failed.connect(_on_reconnect_failed)
 
+	_connect_local_hp_bar()
+
 	print("[ArenaBase] HUD setup complete")
 
 
@@ -291,6 +299,14 @@ func _create_hud_component(script_path: String, node_name: String) -> Control:
 	node.set_script(load(script_path))
 	node.name = node_name
 	return node
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("exit_to_menu"):
+		if event is InputEventKey and event.echo:
+			return
+		get_viewport().set_input_as_handled()
+		_leave_arena()
 
 
 ## Handle server messages for arena-level events
@@ -329,6 +345,9 @@ func _handle_player_info(data: Dictionary) -> void:
 	var event_data: Dictionary = data.get("event_data", {})
 	var char_name: String = event_data.get("character_name", "")
 	var server_position: Vector2 = event_data.get("position", Vector2.ZERO)
+	var player_color: Color = event_data.get("player_color", Color(0.27, 0.53, 1.0))
+	if entity_id > 0:
+		EntityNameCache.set_entity_color(entity_id, player_color)
 
 	# Check if this is our own player info
 	var our_char_name: String = GameManager.player_data.get("character_name", "")
@@ -339,6 +358,8 @@ func _handle_player_info(data: Dictionary) -> void:
 		if prediction_controller:
 			prediction_controller.set_local_entity_id(entity_id)
 			print("[ArenaBase] Local player entity ID set: %d" % entity_id)
+		if local_player and is_instance_valid(local_player):
+			local_player.set_player_color(player_color)
 
 		# Force-sync to the server-authoritative spawn so we don't render at
 		# Vector2.ZERO until the first STATE_UPDATE arrives. If a future
@@ -368,6 +389,7 @@ func _handle_player_info(data: Dictionary) -> void:
 		var remote_player: RemotePlayer = client_entity_manager.player_entities[entity_id]
 		if is_instance_valid(remote_player):
 			remote_player.set_character_name(char_name)
+			remote_player.set_player_color(player_color)
 
 
 ## Handle state updates to extract local player HP/flags
@@ -444,6 +466,8 @@ func _sync_local_player_state(entity_data: Dictionary) -> void:
 			local_player.set_input_enabled(false)
 			if prediction_controller:
 				prediction_controller.set_prediction_enabled(false)
+			if local_player.hp_component:
+				local_player.hp_component.set_hp(0)
 		_play_local_death_feedback()
 
 	# Sync invulnerability visual
@@ -559,12 +583,16 @@ func _play_local_death_feedback() -> void:
 ## Handle authoritative projectile fire event for remote player and monster audio.
 func _handle_projectile_fired_event(data: Dictionary) -> void:
 	var source_id: int = data.get("source_id", -1)
+	var projectile_id: int = data.get("target_id", 0)
 	var local_id := GameManager.get_local_player_entity_id()
 	if source_id <= 0:
 		return
+	if client_entity_manager and projectile_id > 0:
+		client_entity_manager.register_projectile_source(projectile_id, source_id)
 
 	if source_id == local_id:
 		_log_local_projectile_fired_event(data)
+		_play_local_projectile_fired_feedback(data)
 		return
 
 	var audio := _get_audio_manager()
@@ -604,6 +632,26 @@ func _log_local_projectile_fired_event(data: Dictionary) -> void:
 		server_spawn_pos.distance_to(predicted_pos),
 		expected_muzzle_offset
 	])
+
+
+func _play_local_projectile_fired_feedback(data: Dictionary) -> void:
+	var event_data: Dictionary = data.get("event_data", {})
+	var spawn_pos: Vector2 = event_data.get("position", Vector2.ZERO)
+	var direction := Vector2.RIGHT
+
+	if local_player and is_instance_valid(local_player):
+		var from_player := spawn_pos - local_player.global_position
+		if from_player.length_squared() > 0.01:
+			direction = from_player.normalized()
+		else:
+			direction = local_player.last_aim_direction
+
+	var audio := _get_audio_manager()
+	if audio:
+		audio.play_player_shoot()
+
+	var flash := ParticleEffects.create_muzzle_flash(spawn_pos, direction)
+	_add_effect_to_arena(flash)
 
 
 ## Handle PvP kill event (for kill feed)
@@ -683,8 +731,7 @@ func _handle_leaderboard_update(data: Dictionary) -> void:
 
 	# Update server status player count from leaderboard entry count
 	if server_status:
-		var region: String = GameManager.player_data.get("selected_region", "")
-		server_status.update_player_count(entries.size(), 100, region)
+		server_status.update_player_count(entries.size(), SERVER_STATUS_MAX_PLAYERS)
 
 
 ## Handle local player shooting (for audio + effects)
@@ -831,6 +878,21 @@ func _update_hp_bar() -> void:
 	hp_bar.update_hp(local_player.hp_component.current_hp, local_player.hp_component.max_hp)
 
 
+func _connect_local_hp_bar() -> void:
+	if local_player == null or not is_instance_valid(local_player):
+		return
+	if local_player.hp_component == null:
+		return
+	if not local_player.hp_component.hp_changed.is_connected(_on_local_hp_changed):
+		local_player.hp_component.hp_changed.connect(_on_local_hp_changed)
+	_update_hp_bar()
+
+
+func _on_local_hp_changed(current_hp: int, max_hp: int) -> void:
+	if hp_bar:
+		hp_bar.update_hp(current_hp, max_hp)
+
+
 ## Handle disconnect from server
 func _on_disconnected(_reason: String) -> void:
 	if GameManager.current_state == GameManager.GameState.IN_ARENA:
@@ -861,6 +923,10 @@ func _on_leave_arena() -> void:
 
 ## Leave arena: disconnect and return to main menu
 func _leave_arena() -> void:
+	if _is_leaving_arena:
+		return
+	_is_leaving_arena = true
+
 	var audio := _get_audio_manager()
 	if audio:
 		audio.stop_music()
@@ -879,6 +945,9 @@ func on_scene_exit() -> void:
 			NetworkManager.disconnected_from_server.disconnect(_on_disconnected)
 		if NetworkManager.connected_to_server.is_connected(_on_reconnected):
 			NetworkManager.connected_to_server.disconnect(_on_reconnected)
+		if local_player and is_instance_valid(local_player) and local_player.hp_component:
+			if local_player.hp_component.hp_changed.is_connected(_on_local_hp_changed):
+				local_player.hp_component.hp_changed.disconnect(_on_local_hp_changed)
 
 		# Cleanup client resources
 		if client_entity_manager:

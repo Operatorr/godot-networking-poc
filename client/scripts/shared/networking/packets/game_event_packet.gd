@@ -86,14 +86,20 @@ static func create_respawn(entity_id: int, spawn_position: Vector2) -> GameEvent
 ## Create a player info event (identity broadcast)
 ## Includes the server-authoritative position so clients can force-sync the
 ## local player's predicted position to match the spawn the server picked.
-static func create_player_info(entity_id: int, character_name: String, position: Vector2 = Vector2.ZERO) -> GameEventPacket:
+static func create_player_info(
+	entity_id: int,
+	character_name: String,
+	position: Vector2 = Vector2.ZERO,
+	player_color: Color = Color(0.27, 0.53, 1.0)
+) -> GameEventPacket:
 	var packet = GameEventPacket.new()
 	packet.event_type = PacketTypes.GameEventType.PLAYER_INFO
 	packet.source_id = 0
 	packet.target_id = entity_id
 	packet.event_data = {
 		"character_name": character_name,
-		"position": position
+		"position": position,
+		"player_color": player_color
 	}
 	return packet
 
@@ -167,6 +173,7 @@ func write_payload(writer: PacketWriter) -> void:
 		PacketTypes.GameEventType.PLAYER_INFO:
 			writer.write_string(event_data.get("character_name", ""))
 			writer.write_vector2_compressed(event_data.get("position", Vector2.ZERO))
+			_write_color_rgb(writer, event_data.get("player_color", Color(0.27, 0.53, 1.0)))
 
 		PacketTypes.GameEventType.LEADERBOARD_UPDATE:
 			var entries: Array = event_data.get("entries", [])
@@ -225,7 +232,8 @@ static func read(reader: PacketReader) -> GameEventPacket:
 		PacketTypes.GameEventType.PLAYER_INFO:
 			packet.event_data = {
 				"character_name": reader.read_string(),
-				"position": reader.read_vector2_compressed()
+				"position": reader.read_vector2_compressed(),
+				"player_color": _read_color_rgb(reader) if reader.remaining() >= 3 else Color(0.27, 0.53, 1.0)
 			}
 
 		PacketTypes.GameEventType.LEADERBOARD_UPDATE:
@@ -277,3 +285,18 @@ func to_dict() -> Dictionary:
 		"target_id": target_id,
 		"event_data": event_data
 	}
+
+
+static func _write_color_rgb(writer: PacketWriter, color: Color) -> void:
+	writer.write_u8(clampi(roundi(color.r * 255.0), 0, 255))
+	writer.write_u8(clampi(roundi(color.g * 255.0), 0, 255))
+	writer.write_u8(clampi(roundi(color.b * 255.0), 0, 255))
+
+
+static func _read_color_rgb(reader: PacketReader) -> Color:
+	return Color(
+		float(reader.read_u8()) / 255.0,
+		float(reader.read_u8()) / 255.0,
+		float(reader.read_u8()) / 255.0,
+		1.0
+	)

@@ -16,8 +16,14 @@ import logging
 from dataclasses import dataclass, field
 from enum import IntEnum
 
-import websockets
-from websockets.exceptions import ConnectionClosed
+try:
+    import websockets
+    from websockets.exceptions import ConnectionClosed
+except ModuleNotFoundError:
+    websockets = None
+
+    class ConnectionClosed(Exception):
+        pass
 
 logger = logging.getLogger("bot_client")
 
@@ -75,10 +81,14 @@ STATE_FLAG_BASELINE = 1 << 1
 DELTA_MASK_POSITION = 1 << 0
 DELTA_MASK_ANIMATION = 1 << 1
 DELTA_MASK_FLAGS = 1 << 2
+DELTA_MASK_REMOVED = 1 << 6
 DELTA_MASK_FULL_STATE = 1 << 7
 
+ENTITY_FLAG_ALIVE = 1 << 0
+ENTITY_FLAG_VISIBLE = 1 << 5
+
 # Quantization scales
-POSITION_SCALE = 100.0
+POSITION_SCALE = 10.0
 VELOCITY_SCALE = 10.0
 ANGLE_SCALE = 100.0
 
@@ -93,9 +103,15 @@ def build_header(msg_type: int, payload: bytes) -> bytes:
     return struct.pack("<BH", msg_type, len(payload)) + payload
 
 
-def build_connect_auth(token: str, character_id: str, character_name: str, region: int = 0) -> bytes:
+def build_connect_auth(
+    token: str,
+    character_id: str,
+    character_name: str,
+    region: int = 0,
+    player_color: tuple[int, int, int] | None = None,
+) -> bytes:
     """Build CONNECT_AUTH packet.
-    Format: [string token][string char_id][string char_name][u8 region]
+    Format: [string token][string char_id][string char_name][u8 region][optional rgb]
     Strings are: [u16 length][utf8 bytes]
     """
     payload = bytearray()
@@ -104,6 +120,8 @@ def build_connect_auth(token: str, character_id: str, character_name: str, regio
         payload += struct.pack("<H", len(encoded))
         payload += encoded
     payload += struct.pack("<B", region)
+    if player_color is not None:
+        payload += bytes(max(0, min(255, int(c))) for c in player_color[:3])
     return build_header(MessageType.CONNECT_AUTH, bytes(payload))
 
 
@@ -191,6 +209,166 @@ def parse_state_update_header(payload: bytes) -> dict:
         "state_flags": state_flags,
         "entity_count": entity_count,
         "is_delta": is_delta,
+    }
+
+
+@dataclass
+class EntitySnapshot:
+    entity_id: int
+    entity_type: int
+    x: float = 0.0
+    y: float = 0.0
+    animation_state: int = 0
+    flags: int = ENTITY_FLAG_ALIVE | ENTITY_FLAG_VISIBLE
+
+    @property
+    def alive(self) -> bool:
+        return bool(self.flags & ENTITY_FLAG_ALIVE)
+
+    def distance_sq_to(self, other: "EntitySnapshot") -> float:
+        dx = self.x - other.x
+        dy = self.y - other.y
+        return dx * dx + dy * dy
+
+
+def _read_u8(payload: bytes, offset: int) -> tuple[int, int]:
+    return struct.unpack_from("<B", payload, offset)[0], offset + 1
+
+
+def _read_u16(payload: bytes, offset: int) -> tuple[int, int]:
+    return struct.unpack_from("<H", payload, offset)[0], offset + 2
+
+
+def _read_s16(payload: bytes, offset: int) -> tuple[int, int]:
+    return struct.unpack_from("<h", payload, offset)[0], offset + 2
+
+
+def _read_string(payload: bytes, offset: int) -> tuple[str, int]:
+    length, offset = _read_u16(payload, offset)
+    raw = payload[offset:offset + length]
+    return raw.decode("utf-8", errors="replace"), offset + length
+
+
+def parse_state_update(payload: bytes, last_states: dict[int, EntitySnapshot] | None = None) -> dict:
+    """Parse full/delta STATE_UPDATE payload and update an entity snapshot map."""
+    if last_states is None:
+        last_states = {}
+    if len(payload) < 6:
+        return {}
+
+    offset = 0
+    server_tick = struct.unpack_from("<I", payload, offset)[0]
+    offset += 4
+    state_flags, offset = _read_u8(payload, offset)
+    is_delta = bool(state_flags & STATE_FLAG_IS_DELTA)
+    baseline_tick = 0
+    if is_delta:
+        if len(payload) < offset + 5:
+            return {"server_tick": server_tick, "state_flags": state_flags, "is_delta": True, "entities": []}
+        baseline_tick = struct.unpack_from("<I", payload, offset)[0]
+        offset += 4
+
+    entity_count, offset = _read_u8(payload, offset)
+    parsed: list[EntitySnapshot] = []
+    removed: list[int] = []
+
+    for _ in range(entity_count):
+        if offset + 3 > len(payload):
+            break
+
+        entity_id, offset = _read_u16(payload, offset)
+
+        if not is_delta:
+            if offset + 7 > len(payload):
+                break
+            entity_type, offset = _read_u8(payload, offset)
+            qx, offset = _read_s16(payload, offset)
+            qy, offset = _read_s16(payload, offset)
+            animation_state, offset = _read_u8(payload, offset)
+            flags, offset = _read_u8(payload, offset)
+            snapshot = EntitySnapshot(entity_id, entity_type, qx / POSITION_SCALE, qy / POSITION_SCALE, animation_state, flags)
+            last_states[entity_id] = snapshot
+            parsed.append(snapshot)
+            continue
+
+        delta_mask, offset = _read_u8(payload, offset)
+        previous = last_states.get(entity_id, EntitySnapshot(entity_id, EntityType.PLAYER))
+
+        if delta_mask & DELTA_MASK_REMOVED:
+            last_states.pop(entity_id, None)
+            removed.append(entity_id)
+            continue
+
+        if delta_mask & DELTA_MASK_FULL_STATE:
+            if offset + 7 > len(payload):
+                break
+            entity_type, offset = _read_u8(payload, offset)
+            qx, offset = _read_s16(payload, offset)
+            qy, offset = _read_s16(payload, offset)
+            animation_state, offset = _read_u8(payload, offset)
+            flags, offset = _read_u8(payload, offset)
+            snapshot = EntitySnapshot(entity_id, entity_type, qx / POSITION_SCALE, qy / POSITION_SCALE, animation_state, flags)
+        else:
+            entity_type = previous.entity_type
+            x = previous.x
+            y = previous.y
+            animation_state = previous.animation_state
+            flags = previous.flags
+            if delta_mask & DELTA_MASK_POSITION:
+                qx, offset = _read_s16(payload, offset)
+                qy, offset = _read_s16(payload, offset)
+                x = qx / POSITION_SCALE
+                y = qy / POSITION_SCALE
+            if delta_mask & DELTA_MASK_ANIMATION:
+                animation_state, offset = _read_u8(payload, offset)
+            if delta_mask & DELTA_MASK_FLAGS:
+                flags, offset = _read_u8(payload, offset)
+            snapshot = EntitySnapshot(entity_id, entity_type, x, y, animation_state, flags)
+
+        last_states[entity_id] = snapshot
+        parsed.append(snapshot)
+
+    return {
+        "server_tick": server_tick,
+        "state_flags": state_flags,
+        "baseline_tick": baseline_tick,
+        "entity_count": entity_count,
+        "is_delta": is_delta,
+        "entities": parsed,
+        "removed": removed,
+    }
+
+
+def parse_game_event(payload: bytes) -> dict:
+    """Parse the GAME_EVENT fields bots need for identity and respawn state."""
+    if len(payload) < 5:
+        return {}
+
+    offset = 0
+    event_type, offset = _read_u8(payload, offset)
+    source_id, offset = _read_u16(payload, offset)
+    target_id, offset = _read_u16(payload, offset)
+    event_data: dict = {}
+
+    if event_type == GameEventType.PLAYER_INFO:
+        character_name, offset = _read_string(payload, offset)
+        if offset + 4 <= len(payload):
+            qx, offset = _read_s16(payload, offset)
+            qy, offset = _read_s16(payload, offset)
+            event_data["position"] = (qx / POSITION_SCALE, qy / POSITION_SCALE)
+        if offset + 3 <= len(payload):
+            event_data["player_color"] = tuple(payload[offset:offset + 3])
+        event_data["character_name"] = character_name
+    elif event_type == GameEventType.RESPAWN and offset + 4 <= len(payload):
+        qx, offset = _read_s16(payload, offset)
+        qy, offset = _read_s16(payload, offset)
+        event_data["position"] = (qx / POSITION_SCALE, qy / POSITION_SCALE)
+
+    return {
+        "event_type": event_type,
+        "source_id": source_id,
+        "target_id": target_id,
+        "event_data": event_data,
     }
 
 
@@ -307,8 +485,51 @@ BEHAVIOR_IDLE = "idle"             # Heartbeats only, no movement or shooting
 BEHAVIOR_MOVEMENT = "movement"     # Movement without shooting
 BEHAVIOR_COMBAT = "combat"         # Constant shooting + movement
 BEHAVIOR_CLUSTERED = "clustered"   # All bots converge to center (worst case AoI)
+BEHAVIOR_STRATEGY = "strategy"     # Gameplay bot: targets monsters, then players
 
-VALID_BEHAVIORS = [BEHAVIOR_DEFAULT, BEHAVIOR_IDLE, BEHAVIOR_MOVEMENT, BEHAVIOR_COMBAT, BEHAVIOR_CLUSTERED]
+VALID_BEHAVIORS = [
+    BEHAVIOR_DEFAULT, BEHAVIOR_IDLE, BEHAVIOR_MOVEMENT, BEHAVIOR_COMBAT,
+    BEHAVIOR_CLUSTERED, BEHAVIOR_STRATEGY,
+]
+
+BOT_ADJECTIVES = [
+    "Bright", "Swift", "Solar", "Neon", "Vivid", "Prime", "Sharp", "Nova",
+    "Quick", "Lunar", "Azure", "Crimson",
+]
+BOT_NOUNS = [
+    "Rift", "Pulse", "Comet", "Warden", "Spark", "Vex", "Echo", "Runner",
+    "Aegis", "Bolt", "Drift", "Flare",
+]
+
+
+def generate_bot_identity(bot_id: int) -> tuple[str, str]:
+    adjective = BOT_ADJECTIVES[(bot_id - 1) % len(BOT_ADJECTIVES)]
+    noun = BOT_NOUNS[((bot_id - 1) // len(BOT_ADJECTIVES)) % len(BOT_NOUNS)]
+    name = f"{adjective}{noun}{bot_id % 100:02d}"
+    return f"bot-{bot_id:04d}", name[:24]
+
+
+def generate_bright_color(bot_id: int) -> tuple[int, int, int]:
+    hue = ((bot_id * 0.61803398875) % 1.0)
+    sector = int(hue * 6)
+    frac = hue * 6 - sector
+    value = 255
+    min_channel = 80
+    mid = int(min_channel + frac * (value - min_channel))
+    inv_mid = int(value - frac * (value - min_channel))
+    match sector % 6:
+        case 0:
+            return value, mid, min_channel
+        case 1:
+            return inv_mid, value, min_channel
+        case 2:
+            return min_channel, value, mid
+        case 3:
+            return min_channel, inv_mid, value
+        case 4:
+            return mid, min_channel, value
+        case _:
+            return value, min_channel, inv_mid
 
 
 class OmegaRealmBot:
@@ -317,8 +538,8 @@ class OmegaRealmBot:
     def __init__(self, bot_id: int, server_url: str, token: str = "", behavior: str = BEHAVIOR_DEFAULT):
         self.bot_id = bot_id
         self.server_url = server_url
-        self.character_name = f"Bot_{bot_id:03d}"
-        self.character_id = f"bot-{bot_id:03d}"
+        self.character_id, self.character_name = generate_bot_identity(bot_id)
+        self.player_color = generate_bright_color(bot_id)
         self.token = token
         self.behavior = behavior
         self.ws = None
@@ -338,10 +559,16 @@ class OmegaRealmBot:
         self._last_heartbeat_sent = 0.0
         self._last_input_sent = 0.0
         self._last_rtt_ms = 0
+        self._entity_id: int | None = None
+        self._entities: dict[int, EntitySnapshot] = {}
+        self._dead_since: float | None = None
+        self._last_respawn_sent = 0.0
 
     async def connect(self, timeout: float = 10.0) -> bool:
         """Connect to the game server and send auth handshake."""
         try:
+            if websockets is None:
+                raise RuntimeError("Missing dependency: install load_testing/requirements.txt")
             t0 = time.monotonic()
             self.ws = await asyncio.wait_for(
                 websockets.connect(self.server_url, max_size=2**20, ping_interval=None),
@@ -351,7 +578,7 @@ class OmegaRealmBot:
 
             # Send CONNECT_AUTH
             auth_packet = build_connect_auth(
-                self.token, self.character_id, self.character_name, 0
+                self.token, self.character_id, self.character_name, 0, self.player_color
             )
             await self.ws.send(auth_packet)
             self.metrics.packets_sent += 1
@@ -361,6 +588,7 @@ class OmegaRealmBot:
             return True
         except Exception as e:
             self.metrics.error_count += 1
+            self.metrics.disconnected = True
             self.metrics.last_error = str(e)
             logger.warning(f"Bot {self.bot_id}: Connection failed: {e}")
             return False
@@ -403,7 +631,7 @@ class OmegaRealmBot:
         input_interval = 1.0 / 10.0  # 10Hz input rate
         heartbeat_interval = 1.0
 
-        while time.monotonic() - start < duration and self._running:
+        while self._within_duration(start, duration) and self._running:
             now = time.monotonic()
 
             # Send heartbeat every ~1 second
@@ -413,7 +641,10 @@ class OmegaRealmBot:
 
             # Send player input at ~10Hz (skip for idle behavior)
             if self.behavior != BEHAVIOR_IDLE and now - self._last_input_sent >= input_interval:
-                await self._send_random_input()
+                if self.behavior == BEHAVIOR_STRATEGY:
+                    await self._send_strategy_input()
+                else:
+                    await self._send_random_input()
                 self._last_input_sent = now
 
             await asyncio.sleep(0.02)  # 50Hz poll rate for timing accuracy
@@ -421,7 +652,7 @@ class OmegaRealmBot:
     async def _recv_loop(self, start: float, duration: float):
         """Receive and parse server messages."""
         try:
-            while time.monotonic() - start < duration and self._running:
+            while self._within_duration(start, duration) and self._running:
                 try:
                     msg = await asyncio.wait_for(self.ws.recv(), timeout=0.5)
                     if isinstance(msg, bytes):
@@ -433,6 +664,9 @@ class OmegaRealmBot:
         except ConnectionClosed:
             self.metrics.disconnected = True
             logger.debug(f"Bot {self.bot_id}: Connection closed by server")
+
+    def _within_duration(self, start: float, duration: float) -> bool:
+        return duration <= 0 or time.monotonic() - start < duration
 
     async def _send_heartbeat(self):
         """Send heartbeat with current timestamp."""
@@ -556,6 +790,154 @@ class OmegaRealmBot:
         except ConnectionClosed:
             self._running = False
 
+    async def _send_strategy_input(self):
+        """Send PLAYER_INPUT from a simple target-seeking gameplay strategy."""
+        if self.ws is None:
+            return
+
+        now = time.monotonic()
+        self_snapshot = self._get_self_snapshot()
+        if self_snapshot is not None:
+            self._pos_x = self_snapshot.x
+            self._pos_y = self_snapshot.y
+            if not self_snapshot.alive:
+                if self._dead_since is None:
+                    self._dead_since = now
+                self._vel_x = 0.0
+                self._vel_y = 0.0
+                self._input_flags = 0
+                if now - self._dead_since >= 3.2 and now - self._last_respawn_sent >= 1.0:
+                    await self._send_respawn_request()
+                    self._last_respawn_sent = now
+                await self._send_input_packet(0)
+                return
+            self._dead_since = None
+
+        target = self.select_target()
+        shoot_flag = 0
+        self._input_flags = 0
+
+        if target is not None:
+            dx = target.x - self._pos_x
+            dy = target.y - self._pos_y
+            dist = max(0.001, math.sqrt(dx * dx + dy * dy))
+            self._aim_angle = math.atan2(dy, dx)
+
+            desired_min = 260.0 if target.entity_type == EntityType.MONSTER else 220.0
+            desired_max = 520.0
+            move_x = 0.0
+            move_y = 0.0
+
+            if dist > desired_max:
+                move_x = dx / dist
+                move_y = dy / dist
+            elif dist < desired_min:
+                move_x = -dx / dist
+                move_y = -dy / dist
+            else:
+                strafe = 1.0 if (self.bot_id + int(time.monotonic() * 2)) % 2 == 0 else -1.0
+                move_x = (-dy / dist) * strafe
+                move_y = (dx / dist) * strafe
+                shoot_flag = INPUT_FLAG_SHOOT
+
+            self._set_velocity_from_direction(move_x, move_y, sprint=False)
+            if dist <= 650.0:
+                shoot_flag = INPUT_FLAG_SHOOT
+        else:
+            if random.random() < 0.05:
+                angle = random.uniform(-math.pi, math.pi)
+                self._set_velocity_from_direction(math.cos(angle), math.sin(angle), sprint=False)
+            else:
+                self._set_input_flags_from_velocity()
+            self._aim_angle = random.uniform(-math.pi, math.pi)
+
+        dt = 0.1
+        self._pos_x = max(-1000, min(1000, self._pos_x + self._vel_x * dt))
+        self._pos_y = max(-1000, min(1000, self._pos_y + self._vel_y * dt))
+        await self._send_input_packet(shoot_flag)
+
+    def select_target(self) -> EntitySnapshot | None:
+        """Prefer nearest alive monster, then nearest alive non-self player."""
+        self_snapshot = self._get_self_snapshot()
+        origin = self_snapshot or EntitySnapshot(-1, EntityType.PLAYER, self._pos_x, self._pos_y)
+        self_id = self._entity_id
+
+        monsters = [
+            e for e in self._entities.values()
+            if e.entity_type == EntityType.MONSTER and e.alive
+        ]
+        if monsters:
+            return min(monsters, key=lambda e: e.distance_sq_to(origin))
+
+        players = [
+            e for e in self._entities.values()
+            if e.entity_type == EntityType.PLAYER and e.alive and e.entity_id != self_id
+        ]
+        if players:
+            return min(players, key=lambda e: e.distance_sq_to(origin))
+
+        return None
+
+    def _get_self_snapshot(self) -> EntitySnapshot | None:
+        if self._entity_id is None:
+            return None
+        return self._entities.get(self._entity_id)
+
+    def _set_velocity_from_direction(self, x: float, y: float, sprint: bool) -> None:
+        length = math.sqrt(x * x + y * y)
+        if length < 0.001:
+            self._vel_x = 0.0
+            self._vel_y = 0.0
+        else:
+            speed = 320.0 if sprint else 200.0
+            self._vel_x = (x / length) * speed
+            self._vel_y = (y / length) * speed
+        self._set_input_flags_from_velocity(sprint)
+
+    def _set_input_flags_from_velocity(self, sprint: bool = False) -> None:
+        flags = 0
+        if self._vel_y < -35:
+            flags |= INPUT_FLAG_MOVE_UP
+        if self._vel_y > 35:
+            flags |= INPUT_FLAG_MOVE_DOWN
+        if self._vel_x < -35:
+            flags |= INPUT_FLAG_MOVE_LEFT
+        if self._vel_x > 35:
+            flags |= INPUT_FLAG_MOVE_RIGHT
+        if sprint:
+            flags |= INPUT_FLAG_SPRINT
+        self._input_flags = flags
+
+    async def _send_input_packet(self, extra_flags: int = 0):
+        self._sequence = (self._sequence + 1) & 0xFF
+        try:
+            pkt = build_player_input(
+                self._pos_x, self._pos_y,
+                self._vel_x, self._vel_y,
+                self._input_flags | extra_flags,
+                self._aim_angle,
+                self._sequence,
+                0,
+                self._last_rtt_ms,
+            )
+            await self.ws.send(pkt)
+            self.metrics.packets_sent += 1
+            self.metrics.bytes_sent += len(pkt)
+        except ConnectionClosed:
+            self._running = False
+
+    async def _send_respawn_request(self):
+        if self.ws is None:
+            return
+        try:
+            pkt = build_respawn_request()
+            await self.ws.send(pkt)
+            self.metrics.packets_sent += 1
+            self.metrics.bytes_sent += len(pkt)
+            logger.debug(f"Bot {self.bot_id}: Respawn requested")
+        except ConnectionClosed:
+            self._running = False
+
     def _handle_message(self, data: bytes):
         """Parse incoming binary packet and update metrics."""
         msg_type, payload_len, payload = parse_header(data)
@@ -577,9 +959,17 @@ class OmegaRealmBot:
             header = parse_state_update_header(payload)
             if header and "server_tick" in header:
                 self.metrics.server_ticks_seen.append(header["server_tick"])
+            parsed = parse_state_update(payload, self._entities)
+            if parsed and self._entity_id is not None:
+                self_snapshot = self._entities.get(self._entity_id)
+                if self_snapshot is not None:
+                    self._pos_x = self_snapshot.x
+                    self._pos_y = self_snapshot.y
 
         elif msg_type == MessageType.GAME_EVENT:
             self.metrics.game_events_received += 1
+            event = parse_game_event(payload)
+            self._handle_game_event(event)
 
         elif msg_type == MessageType.ACTION_CONFIRM:
             pass  # Bot doesn't need to process confirmations
@@ -589,6 +979,27 @@ class OmegaRealmBot:
             if sm:
                 sm["received_at"] = time.monotonic()
                 self.metrics.server_metrics_snapshots.append(sm)
+
+    def _handle_game_event(self, event: dict):
+        if not event:
+            return
+
+        event_type = event.get("event_type")
+        target_id = event.get("target_id", 0)
+        event_data = event.get("event_data", {})
+
+        if event_type == GameEventType.PLAYER_INFO:
+            if event_data.get("character_name") == self.character_name:
+                self._entity_id = target_id
+                pos = event_data.get("position")
+                if pos:
+                    self._pos_x, self._pos_y = pos
+                logger.debug(f"Bot {self.bot_id}: Assigned entity_id={self._entity_id}")
+        elif event_type == GameEventType.RESPAWN and target_id == self._entity_id:
+            self._dead_since = None
+            pos = event_data.get("position")
+            if pos:
+                self._pos_x, self._pos_y = pos
 
     def __repr__(self):
         return f"OmegaRealmBot(id={self.bot_id}, name={self.character_name})"
