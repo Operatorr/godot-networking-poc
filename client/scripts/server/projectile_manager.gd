@@ -27,7 +27,10 @@ func spawn_projectile(
 	position: Vector2,
 	direction: Vector2,
 	spawn_tick: int = 0,
-	collision_rewind_ticks: int = 0
+	collision_rewind_ticks: int = 0,
+	client_render_tick: int = 0,
+	client_rtt_ms: int = 0,
+	lag_compensation_source: String = "none"
 ) -> ProjectileState:
 	# Validate direction
 	if direction.is_zero_approx():
@@ -40,12 +43,30 @@ func spawn_projectile(
 		push_warning("[ProjectileManager] No available projectile entity IDs")
 		return null
 
-	var state = ProjectileState.create(entity_id, owner_id, position, direction, spawn_tick, collision_rewind_ticks)
+	var state = ProjectileState.create(
+		entity_id,
+		owner_id,
+		position,
+		direction,
+		spawn_tick,
+		collision_rewind_ticks,
+		client_render_tick,
+		client_rtt_ms,
+		lag_compensation_source
+	)
 	projectiles[entity_id] = state
 
 	if debug_logging:
-		print("[ProjectileManager] Projectile spawned: entity=%d, owner=%d, pos=%s, dir=%s, tick=%d, rewind_ticks=%d" % [
-			entity_id, owner_id, position, direction, spawn_tick, collision_rewind_ticks
+		print("[ProjectileManager] Projectile spawned: entity=%d, owner=%d, pos=%s, dir=%s, tick=%d, rewind_ticks=%d, compensation=%s, client_render_tick=%d, client_rtt_ms=%d" % [
+			entity_id,
+			owner_id,
+			position,
+			direction,
+			spawn_tick,
+			collision_rewind_ticks,
+			lag_compensation_source,
+			client_render_tick,
+			client_rtt_ms
 		])
 
 	return state
@@ -196,12 +217,16 @@ func _log_projectile_removal(state: ProjectileState) -> void:
 				state.closest_monster_tick
 			]
 
-		print("[ProjectileManager] Player projectile removed without hit: entity=%d owner=%d reason=%s pos=%s distance=%.1f closest=%s" % [
+		print("[ProjectileManager] Player projectile removed without hit: entity=%d owner=%d reason=%s pos=%s distance=%.1f rewind_ticks=%d compensation=%s client_render_tick=%d client_rtt_ms=%d closest=%s" % [
 			state.entity_id,
 			state.owner_id,
 			state.removal_reason,
 			state.position,
 			state.distance_traveled,
+			state.collision_rewind_ticks,
+			state.lag_compensation_source,
+			state.client_render_tick,
+			state.client_rtt_ms,
 			closest_text
 		])
 		return

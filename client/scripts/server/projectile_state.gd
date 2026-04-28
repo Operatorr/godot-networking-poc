@@ -37,6 +37,11 @@ var simulation_ticks: int = 0
 ## How many ticks to rewind monster positions for player projectile hits
 var collision_rewind_ticks: int = 0
 
+## Client timing metadata used to derive collision_rewind_ticks
+var client_render_tick: int = 0
+var client_rtt_ms: int = 0
+var lag_compensation_source: String = "none"
+
 ## Last non-hit reason that made the projectile inactive
 var removal_reason: String = ""
 
@@ -55,7 +60,10 @@ static func create(
 	p_position: Vector2,
 	p_direction: Vector2,
 	p_spawn_tick: int = 0,
-	p_collision_rewind_ticks: int = 0
+	p_collision_rewind_ticks: int = 0,
+	p_client_render_tick: int = 0,
+	p_client_rtt_ms: int = 0,
+	p_lag_compensation_source: String = "none"
 ) -> ProjectileState:
 	var state = ProjectileState.new()
 	state.entity_id = p_entity_id
@@ -69,6 +77,9 @@ static func create(
 	state.spawn_tick = p_spawn_tick
 	state.simulation_ticks = 0
 	state.collision_rewind_ticks = p_collision_rewind_ticks
+	state.client_render_tick = p_client_render_tick
+	state.client_rtt_ms = p_client_rtt_ms
+	state.lag_compensation_source = p_lag_compensation_source
 	state.removal_reason = ""
 	state.closest_distance_to_monster = INF
 	state.closest_monster_id = -1
@@ -169,6 +180,9 @@ func to_dict() -> Dictionary:
 		"spawn_tick": spawn_tick,
 		"simulation_ticks": simulation_ticks,
 		"collision_rewind_ticks": collision_rewind_ticks,
+		"client_render_tick": client_render_tick,
+		"client_rtt_ms": client_rtt_ms,
+		"lag_compensation_source": lag_compensation_source,
 		"removal_reason": removal_reason,
 		"closest_distance_to_monster": closest_distance_to_monster,
 		"closest_monster_id": closest_monster_id,

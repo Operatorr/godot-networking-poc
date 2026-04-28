@@ -19,6 +19,10 @@ const SERVER_TICK_INTERVAL := 1.0 / SERVER_TICK_RATE
 ## for player projectile collision checks.
 const REMOTE_ENTITY_RENDER_DELAY_TICKS := 2
 
+## PvE-only projectile lag compensation cap. PvP should use a lower cap and
+## stricter validation when player-vs-player projectile compensation is added.
+const MAX_PVE_PROJECTILE_COMPENSATION_TICKS := 6
+
 
 # =============================================================================
 # MOVEMENT SPEEDS
@@ -232,7 +236,7 @@ const PLAYER_HITBOX_RADIUS := 16.0
 ## Cooldown between shots (seconds)
 const SHOOT_COOLDOWN := 0.3
 
-## Delay before a dead player is automatically respawned (seconds)
+## Delay before a dead player may manually request respawn (seconds)
 const RESPAWN_DELAY := 3.0
 
 ## Post-respawn invulnerability duration (seconds)

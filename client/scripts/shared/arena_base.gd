@@ -267,6 +267,8 @@ func _setup_hud() -> void:
 	death_screen = _create_hud_component(DEATH_SCREEN_PATH, "DeathScreen")
 	death_screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	hud_layer.add_child(death_screen)
+	if death_screen.has_signal("respawn_requested"):
+		death_screen.connect("respawn_requested", Callable(self, "_on_respawn_requested"))
 
 	# Pause Menu (full overlay, hidden by default)
 	pause_menu = _create_hud_component(PAUSE_MENU_PATH, "PauseMenu")
@@ -344,6 +346,7 @@ func _handle_player_info(data: Dictionary) -> void:
 		# fallback in _handle_state_update_for_local_player still recovers.
 		if prediction_controller and not _local_player_authority_synced:
 			prediction_controller.force_sync(server_position)
+			prediction_controller.set_prediction_enabled(true)
 			_local_player_authority_synced = true
 			if local_player and is_instance_valid(local_player):
 				local_player.visible = true
@@ -387,6 +390,7 @@ func _handle_state_update_for_local_player(data: Dictionary) -> void:
 				and has_position:
 				var server_position: Vector2 = entity_data.get("position", local_player.position)
 				prediction_controller.force_sync(server_position)
+				prediction_controller.set_prediction_enabled(true)
 				_local_player_authority_synced = true
 				local_player.visible = true
 				local_player.set_input_enabled(true)
@@ -435,8 +439,11 @@ func _sync_local_player_state(entity_data: Dictionary) -> void:
 	if not is_alive:
 		if local_player.action_state != Player.ActionState.DEAD:
 			local_player.action_state = Player.ActionState.DEAD
+			local_player.movement_state = Player.MovementState.IDLE
 			local_player.velocity = Vector2.ZERO
 			local_player.set_input_enabled(false)
+			if prediction_controller:
+				prediction_controller.set_prediction_enabled(false)
 		_play_local_death_feedback()
 
 	# Sync invulnerability visual
@@ -464,6 +471,7 @@ func _handle_respawn_event(data: Dictionary) -> void:
 
 		if prediction_controller:
 			prediction_controller.force_sync(respawn_pos)
+			prediction_controller.set_prediction_enabled(true)
 
 		# Hide death screen
 		if death_screen:
@@ -496,8 +504,11 @@ func _handle_damage_event(data: Dictionary) -> void:
 			var is_dead := local_player.hp_component.is_dead
 
 			if is_dead and not was_dead:
+				local_player.movement_state = Player.MovementState.IDLE
 				local_player.velocity = Vector2.ZERO
 				local_player.set_input_enabled(false)
+				if prediction_controller:
+					prediction_controller.set_prediction_enabled(false)
 				_play_local_death_feedback()
 			else:
 				# Play hit sound for local player taking damage
@@ -685,6 +696,10 @@ func _on_local_player_shot(pos: Vector2, dir: Vector2) -> void:
 	# Muzzle flash effect
 	var flash := ParticleEffects.create_muzzle_flash(pos, dir)
 	_add_effect_to_arena(flash)
+
+
+func _on_respawn_requested() -> void:
+	NetworkManager.send_message(NetworkManager.MessageType.RESPAWN_REQUEST, {})
 
 
 ## Show a "You eliminated [Name]" notification for the local player

@@ -113,16 +113,26 @@ def build_player_input(
     input_flags: int,
     aim_angle: float,
     sequence: int,
+    client_render_tick: int = 0,
+    client_rtt_ms: int = 0,
 ) -> bytes:
-    """Build PLAYER_INPUT packet (12 bytes payload).
-    Format: [s16 pos_x][s16 pos_y][s16 vel_x][s16 vel_y][u8 flags][s16 aim][u8 seq]
+    """Build PLAYER_INPUT packet (16 bytes payload).
+    Format: [s16 pos_x][s16 pos_y][s16 vel_x][s16 vel_y][u8 flags][s16 aim][u8 seq][u16 render_tick][u16 rtt_ms]
     """
     qpx = max(-32768, min(32767, int(pos_x * POSITION_SCALE)))
     qpy = max(-32768, min(32767, int(pos_y * POSITION_SCALE)))
     qvx = max(-32768, min(32767, int(vel_x * VELOCITY_SCALE)))
     qvy = max(-32768, min(32767, int(vel_y * VELOCITY_SCALE)))
     qaim = max(-32768, min(32767, int(aim_angle * ANGLE_SCALE)))
-    payload = struct.pack("<hhhhBhB", qpx, qpy, qvx, qvy, input_flags & 0xFF, qaim, sequence & 0xFF)
+    payload = struct.pack(
+        "<hhhhBhBHH",
+        qpx, qpy, qvx, qvy,
+        input_flags & 0xFF,
+        qaim,
+        sequence & 0xFF,
+        client_render_tick & 0xFFFF,
+        max(0, min(65535, int(client_rtt_ms))),
+    )
     return build_header(MessageType.PLAYER_INPUT, payload)
 
 
@@ -327,6 +337,7 @@ class OmegaRealmBot:
         self._aim_angle = 0.0
         self._last_heartbeat_sent = 0.0
         self._last_input_sent = 0.0
+        self._last_rtt_ms = 0
 
     async def connect(self, timeout: float = 10.0) -> bool:
         """Connect to the game server and send auth handshake."""
@@ -536,6 +547,8 @@ class OmegaRealmBot:
                 self._input_flags | shoot_flag,
                 self._aim_angle,
                 self._sequence,
+                0,  # No render interpolation in the headless load-test bot.
+                self._last_rtt_ms,
             )
             await self.ws.send(pkt)
             self.metrics.packets_sent += 1
@@ -556,6 +569,7 @@ class OmegaRealmBot:
                 # The server echoes back our timestamp, so RTT = now - sent_timestamp
                 rtt = now_ms - server_ts
                 if 0 < rtt < 10000:  # Sanity check (0-10s)
+                    self._last_rtt_ms = rtt
                     self.metrics.latencies_ms.append(rtt)
 
         elif msg_type == MessageType.STATE_UPDATE:

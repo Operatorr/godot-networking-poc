@@ -26,6 +26,9 @@ var aim_angle: float = 0.0
 # Input - persistent flags applied every server tick until next ingest_input or stale timeout
 var input_flags: int = 0
 var last_input_sequence: int = 0
+## Latest network timing metadata reported by the client input stream.
+var last_client_render_tick: int = 0
+var last_client_rtt_ms: int = 0
 ## Most recent client-reported position, kept for per-tick deviation check.
 var last_client_position: Vector2 = Vector2.ZERO
 var has_client_position: bool = false
@@ -134,6 +137,10 @@ func ingest_input(input: Dictionary, server_tick: int) -> void:
 	var new_flags: int = input.get("input_flags", 0)
 	var new_sequence: int = input.get("sequence_number", input.get("sequence", last_input_sequence))
 	var new_aim: float = input.get("aim_angle", aim_angle)
+	var client_render_tick: int = input.get("client_render_tick", last_client_render_tick)
+	var client_rtt_ms: int = input.get("client_rtt_ms", last_client_rtt_ms)
+	var client_position: Variant = input.get("position", null)
+	var client_velocity: Variant = input.get("velocity", null)
 
 	# Detect rising-edge SHOOT (new press, not held continuation).
 	var was_shooting := (input_flags & PacketTypes.INPUT_FLAG_SHOOT) != 0
@@ -141,17 +148,22 @@ func ingest_input(input: Dictionary, server_tick: int) -> void:
 	if is_shooting and not was_shooting:
 		pending_shots.append({
 			"sequence": new_sequence,
-			"aim_angle": new_aim
+			"aim_angle": new_aim,
+			"client_position": client_position if client_position is Vector2 else Vector2.INF,
+			"client_velocity": client_velocity if client_velocity is Vector2 else Vector2.ZERO,
+			"client_render_tick": client_render_tick,
+			"client_rtt_ms": client_rtt_ms
 		})
 
 	# Update persistent flags
 	input_flags = new_flags
 	last_input_sequence = new_sequence
 	aim_angle = new_aim
+	last_client_render_tick = client_render_tick
+	last_client_rtt_ms = client_rtt_ms
 	last_input_received_tick = server_tick
 
 	# Track latest client-reported position for deviation check
-	var client_position: Variant = input.get("position", null)
 	if client_position is Vector2:
 		last_client_position = client_position
 		has_client_position = true

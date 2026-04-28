@@ -11,7 +11,7 @@ const MAX_PACKET_SIZE := 65535
 
 ## Packet types as per ARCHITECTURE.md
 enum Type {
-	PLAYER_INPUT = 1,      ## Client -> Server: Movement, actions (~12 bytes)
+	PLAYER_INPUT = 1,      ## Client -> Server: Movement, actions (~16 bytes)
 	STATE_UPDATE = 2,      ## Server -> Client: Entity positions, animations (variable)
 	GAME_EVENT = 3,        ## Server -> Client: Damage, kills, status effects (50-200 bytes)
 	HEARTBEAT = 4,         ## Bidirectional: Keep-alive (4 bytes)

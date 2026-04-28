@@ -72,6 +72,9 @@ const INPUT_SEND_INTERVAL: float = GameConstants.SERVER_TICK_INTERVAL
 
 ## Current frame's accumulated input flags
 var current_input_flags: int = 0
+
+## Whether prediction and input sending are enabled for the local player.
+var prediction_enabled: bool = true
 #endregion
 
 
@@ -145,6 +148,7 @@ func _physics_process(delta: float) -> void:
 		return
 
 	if not is_active():
+		current_input_flags = 0
 		predicted_velocity = Vector2.ZERO
 		return
 
@@ -245,6 +249,12 @@ func _log_shoot_edge(previous_flags: int, new_flags: int) -> void:
 		render_tick,
 		monster_text
 	])
+
+
+func _get_client_render_tick() -> int:
+	if interpolation_controller != null:
+		return interpolation_controller.render_tick & 0xFFFF
+	return maxi(0, last_server_tick - GameConstants.REMOTE_ENTITY_RENDER_DELAY_TICKS) & 0xFFFF
 #endregion
 
 
@@ -357,6 +367,9 @@ func _send_input_to_server() -> void:
 
 	var seq := _advance_sequence()
 	var aim_angle := _get_aim_angle()
+	var network_stats := NetworkManager.get_stats()
+	var client_render_tick := _get_client_render_tick()
+	var client_rtt_ms := int(network_stats.get("ping_ms", 0.0))
 
 	# Store one replay snapshot per sent input. The server applies one input over
 	# one authoritative tick, so replay uses the same interval.
@@ -392,14 +405,16 @@ func _send_input_to_server() -> void:
 			"interact": bool(current_input_flags & PacketTypes.INPUT_FLAG_INTERACT)
 		},
 		"aim_angle": aim_angle,
-		"sequence": seq
+		"sequence": seq,
+		"client_render_tick": client_render_tick,
+		"client_rtt_ms": client_rtt_ms
 	}
 
 	NetworkManager.send_player_input(input_data)
 
 	if debug_logging:
-		print("[Prediction] Sent input: seq=%d, pos=%s, flags=%d" % [
-			seq, predicted_position, current_input_flags
+		print("[Prediction] Sent input: seq=%d, pos=%s, flags=%d, render_tick=%d, rtt_ms=%d" % [
+			seq, predicted_position, current_input_flags, client_render_tick, client_rtt_ms
 		])
 #endregion
 
@@ -658,7 +673,20 @@ func get_debug_info() -> Dictionary:
 
 ## Check if prediction is active
 func is_active() -> bool:
-	return player_node != null and local_entity_id >= 0 and has_authoritative_position
+	return prediction_enabled and player_node != null and local_entity_id >= 0 and has_authoritative_position
+
+
+## Enable or disable local prediction and outbound input.
+func set_prediction_enabled(enabled: bool) -> void:
+	if prediction_enabled == enabled:
+		return
+
+	prediction_enabled = enabled
+	current_input_flags = 0
+	predicted_velocity = Vector2.ZERO
+	input_send_timer = 0.0
+	input_buffer.clear()
+	is_correcting = false
 
 
 ## Set local entity ID once PLAYER_INFO identifies this client.
