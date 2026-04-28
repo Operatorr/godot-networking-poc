@@ -38,7 +38,7 @@ func broadcast_state_updates(
 	# Collect all entity states
 	var all_entities: Array[Dictionary] = []
 
-	for state: PlayerState in player_manager.get_all_players():
+	for state: PlayerState in player_manager.get_authenticated_players():
 		all_entities.append(state.to_entity_data())
 
 	var projectile_updates = projectile_manager.collect_state_updates()
@@ -53,7 +53,7 @@ func broadcast_state_updates(
 	var aoi_enabled := aoi_radius > 0.0
 	var aoi_radius_sq := aoi_radius * aoi_radius
 
-	for state: PlayerState in player_manager.get_all_players():
+	for state: PlayerState in player_manager.get_authenticated_players():
 		var peer_id: int = state.peer_id
 		var cache = get_or_create_delta_cache(peer_id)
 
@@ -129,7 +129,7 @@ func handle_full_state_request(
 
 	var all_entities: Array[Dictionary] = []
 
-	for state: PlayerState in player_manager.get_all_players():
+	for state: PlayerState in player_manager.get_authenticated_players():
 		all_entities.append(state.to_entity_data())
 
 	var projectile_updates = projectile_manager.collect_state_updates()
@@ -200,6 +200,8 @@ func send_all_player_info_to_client(peer_id: int, player_manager: PlayerManager,
 		return
 
 	for state: PlayerState in player_manager.get_all_players():
+		if not state.authenticated:
+			continue
 		if state.peer_id == peer_id:
 			continue  # Skip self
 
@@ -279,10 +281,12 @@ func _create_delta_packet(
 ) -> Dictionary:
 	var entity_data: Array[Dictionary] = []
 	var active_entity_ids: Array[int] = []
+	var removed_set: Dictionary = {}
 
 	for entity_id in removed_entity_ids:
 		if entity_id < 0:
 			continue
+		removed_set[entity_id] = true
 		entity_data.append({
 			"entity_id": entity_id,
 			"delta_mask": PacketTypes.DELTA_MASK_REMOVED
@@ -318,7 +322,14 @@ func _create_delta_packet(
 
 		cache.update_cache(entity_id, current_state, tick_count)
 
-	cache.cleanup_stale_entities(active_entity_ids)
+	var stale_entity_ids: Array[int] = cache.cleanup_stale_entities(active_entity_ids)
+	for entity_id in stale_entity_ids:
+		if removed_set.has(entity_id):
+			continue
+		entity_data.append({
+			"entity_id": entity_id,
+			"delta_mask": PacketTypes.DELTA_MASK_REMOVED
+		})
 
 	return {
 		"tick": tick_count,

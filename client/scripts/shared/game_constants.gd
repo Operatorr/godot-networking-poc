@@ -200,6 +200,11 @@ const PROJECTILE_MAX_DISTANCE := 800.0
 ## Projectile collision radius (units)
 const PROJECTILE_RADIUS := 8.0
 
+## Entity ID range reserved for projectiles.
+## IDs must stay below the monster range because network entity IDs are u16.
+const PROJECTILE_ENTITY_ID_START := 10000
+const PROJECTILE_ENTITY_ID_END := 29999
+
 ## Player hitbox radius for projectile collision (units)
 const PLAYER_HITBOX_RADIUS := 16.0
 
@@ -210,6 +215,9 @@ const PLAYER_HITBOX_RADIUS := 16.0
 
 ## Cooldown between shots (seconds)
 const SHOOT_COOLDOWN := 0.3
+
+## Delay before a dead player is automatically respawned (seconds)
+const RESPAWN_DELAY := 3.0
 
 ## Post-respawn invulnerability duration (seconds)
 const INVULNERABILITY_DURATION := 3.0

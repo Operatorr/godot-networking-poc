@@ -17,6 +17,7 @@ var _projectile_packed: PackedScene = null
 ## Active entity nodes: entity_id -> Node2D
 var player_entities: Dictionary = {}
 var monster_entities: Dictionary = {}
+var _dead_monster_effects_played: Dictionary = {}
 
 ## Projectile pool for network projectiles (separate from local player pool)
 var _projectile_pool: Array[Projectile] = []
@@ -125,6 +126,11 @@ func _on_entity_despawned(entity_id: int) -> void:
 
 ## Spawn a remote player visual
 func _spawn_remote_player(entity_id: int, position: Vector2) -> void:
+	if entity_id == GameManager.get_local_player_entity_id():
+		if interpolation_controller:
+			interpolation_controller.forget_entity(entity_id)
+		return
+
 	if player_entities.has(entity_id):
 		return
 
@@ -185,7 +191,7 @@ func _spawn_monster(entity_id: int, position: Vector2) -> void:
 
 	# Connect monster signals for audio feedback
 	monster.took_damage.connect(_on_monster_took_damage)
-	monster.died.connect(_on_monster_died)
+	monster.died.connect(_on_monster_died.bind(entity_id))
 
 	entity_container.add_child(monster)
 
@@ -216,12 +222,39 @@ func _despawn_monster(entity_id: int) -> void:
 		interpolation_controller.unregister_entity_node(entity_id)
 
 	if is_instance_valid(monster):
-		# Spawn death effects at monster position before freeing
-		_spawn_monster_death_effects(monster.global_position)
 		monster.queue_free()
+
+	_dead_monster_effects_played.erase(entity_id)
 
 	if debug_logging:
 		print("[ClientEntityManager] Despawned monster: id=%d" % entity_id)
+
+
+## Apply server-authoritative monster damage for local visual feedback.
+func apply_monster_damage(entity_id: int, amount: int) -> void:
+	if amount <= 0 or not monster_entities.has(entity_id):
+		return
+
+	var monster: Monster = monster_entities[entity_id]
+	if not is_instance_valid(monster):
+		return
+
+	monster.set_hp(maxi(monster.current_hp - amount, 0))
+
+
+## Apply server-authoritative monster death feedback immediately from kill events.
+func apply_monster_death(entity_id: int) -> void:
+	if not monster_entities.has(entity_id):
+		return
+
+	var monster: Monster = monster_entities[entity_id]
+	if not is_instance_valid(monster):
+		return
+
+	monster.current_hp = 0
+	monster.queue_redraw()
+	monster.visible = false
+	_play_monster_death_once(entity_id, monster.global_position)
 
 
 ## Spawn a projectile from pool
@@ -358,6 +391,7 @@ func clear_all() -> void:
 		if is_instance_valid(node):
 			node.queue_free()
 	monster_entities.clear()
+	_dead_monster_effects_played.clear()
 
 	# Return all projectiles to pool
 	for entity_id: int in _active_projectiles.keys():
@@ -385,10 +419,27 @@ func _on_monster_took_damage(_amount: int) -> void:
 
 
 ## Handle monster death (play audio + effects)
-func _on_monster_died() -> void:
+func _on_monster_died(entity_id: int) -> void:
+	if not monster_entities.has(entity_id):
+		return
+
+	var monster: Monster = monster_entities[entity_id]
+	if not is_instance_valid(monster):
+		return
+
+	_play_monster_death_once(entity_id, monster.global_position)
+
+
+## Play monster death effects once for a network entity.
+func _play_monster_death_once(entity_id: int, pos: Vector2) -> void:
+	if _dead_monster_effects_played.has(entity_id):
+		return
+
+	_dead_monster_effects_played[entity_id] = true
 	var audio := _get_audio_manager()
 	if audio:
 		audio.play_monster_death()
+	_spawn_monster_death_effects(pos)
 
 
 ## Spawn death particles for a monster at position

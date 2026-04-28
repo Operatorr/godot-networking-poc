@@ -260,6 +260,9 @@ func _send_position_corrections(corrections: Array[Dictionary]) -> void:
 
 ## Try to spawn a projectile from player shoot input (TASK-014)
 func _try_spawn_projectile(player: PlayerState, input: Dictionary) -> void:
+	if player.life_state == PlayerState.PlayerLifeState.INVULNERABLE:
+		player.end_invulnerability()
+
 	# Check shoot cooldown
 	if not player.can_shoot():
 		return
@@ -297,6 +300,9 @@ func _update_game_state() -> void:
 	# Update player invulnerability timers
 	_update_invulnerability_timers(tick_interval)
 
+	# Respawn dead players whose server-side delay has expired
+	_process_automatic_respawns(tick_interval)
+
 	# Broadcast leaderboard periodically
 	leaderboard_timer += tick_interval
 	if leaderboard_timer >= LEADERBOARD_BROADCAST_INTERVAL:
@@ -323,6 +329,13 @@ func _update_monster_ai() -> void:
 func _update_invulnerability_timers(delta: float) -> void:
 	for state: PlayerState in player_manager.get_all_players():
 		state.update_invulnerability(delta)
+
+
+## Respawn players automatically after their authoritative death timer expires.
+func _process_automatic_respawns(delta: float) -> void:
+	for state: PlayerState in player_manager.get_authenticated_players():
+		if state.update_respawn_timer(delta):
+			_respawn_player_and_broadcast(state.peer_id)
 
 
 ## Handle client connection (TASK-012)
@@ -432,15 +445,29 @@ func _handle_respawn_request(peer_id: int) -> void:
 			print("[ServerMain] Respawn rejected: peer %d is still alive" % peer_id)
 		return
 
+	if state.respawn_timer > 0.0:
+		if config.debug_logging:
+			print("[ServerMain] Respawn rejected: peer %d has %.2fs remaining" % [peer_id, state.respawn_timer])
+		return
+
+	_respawn_player_and_broadcast(peer_id)
+
+
+## Respawn a player and broadcast the authoritative respawn event.
+func _respawn_player_and_broadcast(peer_id: int) -> bool:
+	var state = player_manager.get_player(peer_id)
+	if state == null:
+		return false
+
 	# Respawn via PlayerManager
 	var success = player_manager.respawn_player(peer_id)
 	if not success:
-		return
+		return false
 
 	# Broadcast RESPAWN event to all clients
 	var nm = _get_network_manager()
 	if nm == null:
-		return
+		return true
 
 	var respawn_packet = GameEventPacket.create_respawn(state.entity_id, state.position)
 	nm.broadcast_to_clients(
@@ -450,6 +477,8 @@ func _handle_respawn_request(peer_id: int) -> void:
 
 	if config.debug_logging:
 		print("[ServerMain] Player %d respawned at %s" % [state.entity_id, state.position])
+
+	return true
 
 
 ## Broadcast server metrics to all clients

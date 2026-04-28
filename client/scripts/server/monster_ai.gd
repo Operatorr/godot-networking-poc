@@ -98,19 +98,24 @@ func _select_target(monster: MonsterState) -> void:
 		return
 
 	var nearest_player: PlayerState = null
-	var nearest_dist := INF
+	var nearest_dist_sq := INF
 
 	for player in players:
-		var dist := monster.position.distance_to(player.position)
-		if dist < nearest_dist:
-			nearest_dist = dist
+		var dist_sq := monster.position.distance_squared_to(player.position)
+		if dist_sq < nearest_dist_sq:
+			nearest_dist_sq = dist_sq
 			nearest_player = player
 
 	# Check if target is within detection range. Detection should be larger than
 	# the spawn visibility radius so spawned monsters begin moving toward players.
-	if nearest_dist <= GameConstants.MONSTER_DETECTION_RANGE:
+	if nearest_player == null:
+		return
+
+	var detection_range_sq := GameConstants.MONSTER_DETECTION_RANGE * GameConstants.MONSTER_DETECTION_RANGE
+	var lose_interest_distance_sq := GameConstants.MONSTER_LOSE_INTEREST_DISTANCE * GameConstants.MONSTER_LOSE_INTEREST_DISTANCE
+	if nearest_dist_sq <= detection_range_sq:
 		monster.target_id = nearest_player.entity_id
-	elif nearest_dist > GameConstants.MONSTER_LOSE_INTEREST_DISTANCE:
+	elif nearest_dist_sq > lose_interest_distance_sq:
 		# Lost target - too far away
 		monster.target_id = 0
 		_transition_to_state(monster, AIState.IDLE)
@@ -197,8 +202,9 @@ func _process_attack_state(monster: MonsterState, _delta: float) -> bool:
 	# Try to shoot
 	if monster.can_shoot():
 		spawned = _spawn_monster_projectile(monster, to_target.normalized())
-		monster.start_shoot_cooldown()
-		monster.attack_timer = GameConstants.MONSTER_ATTACK_DURATION
+		if spawned:
+			monster.start_shoot_cooldown()
+			monster.attack_timer = GameConstants.MONSTER_ATTACK_DURATION
 
 	# After attack duration, consider resuming chase
 	if monster.attack_timer <= 0.0 and monster.shoot_cooldown <= 0.0:

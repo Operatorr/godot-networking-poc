@@ -108,14 +108,15 @@ func cleanup_dead_monsters() -> void:
 		remove_monster(entity_id)
 
 
-## Collect state updates for all active monsters
+## Collect state updates for all active monsters.
+## Dead monsters remain in the manager until end-of-tick cleanup so clients receive
+## one final death animation/flag update before the explicit despawn delta.
 ## Returns array of entity data dictionaries for StateUpdatePacket
 func collect_state_updates() -> Array[Dictionary]:
 	var updates: Array[Dictionary] = []
 
 	for state: MonsterState in monsters.values():
-		if state.is_alive:
-			updates.append(state.to_entity_data())
+		updates.append(state.to_entity_data())
 
 	return updates
 

@@ -1,14 +1,12 @@
-## DeathScreen - Death overlay with killer info and respawn button
+## DeathScreen - Death overlay with killer info and automatic respawn countdown
 ## Shown when local player dies, hidden on respawn
 extends Control
 
 
 var _killer_label: Label = null
 var _countdown_label: Label = null
-var _respawn_button: Button = null
 var _countdown_timer: float = 0.0
 var _countdown_active: bool = false
-const RESPAWN_COUNTDOWN := 3.0
 
 
 func _ready() -> void:
@@ -65,14 +63,6 @@ func _build_ui() -> void:
 	spacer.custom_minimum_size = Vector2(0, 10)
 	vbox.add_child(spacer)
 
-	# Respawn button
-	_respawn_button = Button.new()
-	_respawn_button.text = "RESPAWN"
-	_respawn_button.custom_minimum_size = Vector2(200, 50)
-	_respawn_button.add_theme_font_size_override("font_size", 24)
-	_respawn_button.pressed.connect(_on_respawn_pressed)
-	vbox.add_child(_respawn_button)
-
 
 func _process(delta: float) -> void:
 	if not _countdown_active:
@@ -80,9 +70,8 @@ func _process(delta: float) -> void:
 	_countdown_timer -= delta
 	if _countdown_timer <= 0.0:
 		_countdown_active = false
-		_countdown_label.text = ""
-		_respawn_button.disabled = false
-		_respawn_button.text = "RESPAWN"
+		_countdown_label.text = "Respawning..."
+		_countdown_label.modulate.a = 1.0
 	else:
 		var secs := ceili(_countdown_timer)
 		_countdown_label.text = "Respawn in %d..." % secs
@@ -102,24 +91,18 @@ func show_death(killer_entity_id: int) -> void:
 		_killer_label.text = ""
 
 	# Start countdown
-	_countdown_timer = RESPAWN_COUNTDOWN
+	_countdown_timer = GameConstants.RESPAWN_DELAY
 	_countdown_active = true
-	_respawn_button.disabled = true
-	_respawn_button.text = "WAIT..."
+	_countdown_label.text = "Respawn in %d..." % ceili(_countdown_timer)
+	_countdown_label.modulate.a = 1.0
 	visible = true
 
 
 ## Hide death screen
 func hide_death() -> void:
+	_countdown_active = false
+	_countdown_timer = 0.0
+	if _countdown_label:
+		_countdown_label.text = ""
+		_countdown_label.modulate.a = 1.0
 	visible = false
-
-
-func _on_respawn_pressed() -> void:
-	_respawn_button.disabled = true
-	NetworkManager.send_message(
-		NetworkManager.MessageType.RESPAWN_REQUEST, {}
-	)
-	# Re-enable after short delay in case of failure
-	await get_tree().create_timer(2.0).timeout
-	if visible:
-		_respawn_button.disabled = false

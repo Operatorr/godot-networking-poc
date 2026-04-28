@@ -62,6 +62,8 @@ func _update_animation(anim_state: int) -> void:
 			anim_name = "hit"
 		PacketTypes.AnimationState.DEATH:
 			anim_name = "death"
+		PacketTypes.AnimationState.SPAWN:
+			anim_name = "idle"
 		_:
 			anim_name = "idle"
 
@@ -74,7 +76,9 @@ func _update_flags(flags: int) -> void:
 	var is_alive := (flags & PacketTypes.ENTITY_FLAG_ALIVE) != 0
 	var is_invulnerable := (flags & PacketTypes.ENTITY_FLAG_INVULNERABLE) != 0
 
-	visible = is_alive
+	visible = (flags & PacketTypes.ENTITY_FLAG_VISIBLE) != 0
+	if collision_shape:
+		collision_shape.disabled = not is_alive
 
 	# Visual feedback for invulnerability (flashing)
 	if animated_sprite:
