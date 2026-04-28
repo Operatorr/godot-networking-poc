@@ -4,4 +4,3 @@
 
 [node name="AudioManager" type="Node" unique_id=1224445223]
 script = ExtResource("1_audio_manager")
-menu_bgm_volume = 2.03

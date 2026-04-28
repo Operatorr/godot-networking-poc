@@ -29,6 +29,10 @@ signal shot_fired(position: Vector2, direction: Vector2)
 ## Seconds between shots (fire rate)
 @export var fire_rate: float = 0.3
 
+## Whether this player should spawn gameplay projectiles locally.
+## Networked arenas disable this; the server owns projectile spawning there.
+@export var local_projectile_spawning_enabled: bool = true
+
 ## Current movement state
 var movement_state: MovementState = MovementState.IDLE
 
@@ -137,6 +141,9 @@ func _handle_aiming() -> void:
 
 ## Handle shooting input
 func _handle_shooting() -> void:
+	if not local_projectile_spawning_enabled:
+		return
+
 	if Input.is_action_pressed("shoot") and shoot_cooldown_timer.is_stopped():
 		_shoot()
 
@@ -321,6 +328,11 @@ func apply_state(state: Dictionary) -> void:
 ## @param enabled: Whether to process input
 func set_input_enabled(enabled: bool) -> void:
 	_input_enabled = enabled
+
+
+## Enable/disable local gameplay projectile spawning.
+func set_local_projectile_spawning_enabled(enabled: bool) -> void:
+	local_projectile_spawning_enabled = enabled
 
 
 ## Get readable state name for debugging

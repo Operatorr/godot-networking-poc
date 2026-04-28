@@ -210,6 +210,7 @@ func _spawn_local_player(entity_container: Node2D) -> void:
 	local_player.visible = false
 	entity_container.add_child(local_player)
 	local_player.set_input_enabled(false)
+	local_player.set_local_projectile_spawning_enabled(false)
 
 	# Connect local player signals for audio
 	local_player.shot_fired.connect(_on_local_player_shot)
@@ -575,6 +576,7 @@ func _handle_projectile_fired_event(data: Dictionary) -> void:
 
 	if source_id == local_id:
 		_log_local_projectile_fired_event(data)
+		_play_local_projectile_fired_feedback(data)
 		return
 
 	var audio := _get_audio_manager()
@@ -614,6 +616,26 @@ func _log_local_projectile_fired_event(data: Dictionary) -> void:
 		server_spawn_pos.distance_to(predicted_pos),
 		expected_muzzle_offset
 	])
+
+
+func _play_local_projectile_fired_feedback(data: Dictionary) -> void:
+	var event_data: Dictionary = data.get("event_data", {})
+	var spawn_pos: Vector2 = event_data.get("position", Vector2.ZERO)
+	var direction := Vector2.RIGHT
+
+	if local_player and is_instance_valid(local_player):
+		var from_player := spawn_pos - local_player.global_position
+		if from_player.length_squared() > 0.01:
+			direction = from_player.normalized()
+		else:
+			direction = local_player.last_aim_direction
+
+	var audio := _get_audio_manager()
+	if audio:
+		audio.play_player_shoot()
+
+	var flash := ParticleEffects.create_muzzle_flash(spawn_pos, direction)
+	_add_effect_to_arena(flash)
 
 
 ## Handle PvP kill event (for kill feed)
