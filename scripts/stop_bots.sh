@@ -55,6 +55,7 @@ fi
 
 if ! kill -0 "$BOT_PID" 2>/dev/null; then
   echo "Bot process $BOT_PID is not running"
+  echo "It likely exited before this stop request completed. Check the bot log from start_bots.sh for the failure reason."
   rm -f "$PID_FILE"
   exit 0
 fi

@@ -8,6 +8,7 @@ const MASTER_BUS = "Master"
 const MUSIC_BUS = "Music"
 const SFX_BUS = "SFX"
 const MAIN_MENU_MUSIC := preload("res://assets/audio/music/main_menu.wav")
+const ARENA_GAMEPLAY_MUSIC := preload("res://assets/audio/music/arena_gameplay.wav")
 const MUSIC_FADE_SILENCE_DB = -40.0
 
 ## Audio categories
@@ -30,6 +31,8 @@ var is_server: bool = false
 @export_group("Music Track Volumes")
 @export_range(0.0, 2.0, 0.01, "or_greater")
 var menu_bgm_volume: float = 0.2
+@export_range(0.0, 2.0, 0.01, "or_greater")
+var arena_bgm_volume: float = 0.2
 
 ## Audio players
 var music_player: AudioStreamPlayer = null
@@ -167,11 +170,14 @@ func _generate_procedural_audio() -> void:
 	# Generate music
 	var music := ProceduralAudio.generate_music()
 	var menu_music: AudioStream = MAIN_MENU_MUSIC
+	var arena_music: AudioStream = ARENA_GAMEPLAY_MUSIC
 	if menu_music is AudioStreamWAV:
 		menu_music.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	if arena_music is AudioStreamWAV:
+		arena_music.loop_mode = AudioStreamWAV.LOOP_FORWARD
 
 	audio_library["music"]["menu_bgm"] = menu_music
-	audio_library["music"]["arena_ambience"] = music["arena_ambience"]
+	audio_library["music"]["arena_ambience"] = arena_music
 
 	print("[AudioManager] Procedural audio generation complete (%d SFX, %d music)" % [sfx.size(), music.size()])
 
@@ -251,6 +257,8 @@ func _get_music_track_volume_db(track_name: String) -> float:
 	match track_name:
 		"menu_bgm":
 			track_volume *= menu_bgm_volume
+		"arena_ambience":
+			track_volume *= arena_bgm_volume
 
 	return linear_to_db(track_volume) if track_volume > 0.0 else -80.0
 

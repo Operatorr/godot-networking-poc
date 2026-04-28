@@ -21,9 +21,11 @@ python bot_swarm.py --scenario baseline
 
 # Gameplay bots: 10 bots that target monsters/players in the background
 ../scripts/start_bots.sh --bots 10
+./scripts/start_bots.sh --bots 10
 
 # Stop background gameplay bots
 ../scripts/stop_bots.sh
+./scripts/stop_bots.sh
 
 # Target load: 100 bots, 5 minutes
 python bot_swarm.py --scenario target

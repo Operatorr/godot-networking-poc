@@ -55,3 +55,6 @@ tmp/
 
 # API environment
 api/.env
+
+# Load testing Python virtual environment
+load_testing/venv/

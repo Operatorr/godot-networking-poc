@@ -9,7 +9,6 @@ TMP_BASE="${TMP_BASE%/}"
 PID_FILE="$TMP_BASE/omgea-bots.pid"
 LOG_FILE="$TMP_BASE/omgea-bots.log"
 FOREGROUND="0"
-PYTHON_BIN="${PYTHON_BIN:-python3}"
 
 usage() {
   cat <<EOF
@@ -77,8 +76,38 @@ if (( BOT_COUNT < 1 || BOT_COUNT > 10 )); then
 fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ -n "${PYTHON_BIN:-}" ]]; then
+  SELECTED_PYTHON="$PYTHON_BIN"
+elif [[ -x "$ROOT_DIR/load_testing/venv/bin/python" ]]; then
+  SELECTED_PYTHON="$ROOT_DIR/load_testing/venv/bin/python"
+else
+  SELECTED_PYTHON="python3"
+fi
+
+require_python_dependency() {
+  local module_name="$1"
+
+  if ! "$SELECTED_PYTHON" -c "import ${module_name}" >/dev/null 2>&1; then
+    cat >&2 <<EOF
+Missing Python dependency: ${module_name}
+
+Install the bot runtime dependencies before starting bots:
+  cd load_testing
+  python3 -m venv venv
+  source venv/bin/activate
+  pip install -r requirements.txt
+
+Or install directly with:
+  $SELECTED_PYTHON -m pip install -r "$ROOT_DIR/load_testing/requirements.txt"
+EOF
+    exit 1
+  fi
+}
+
+require_python_dependency "websockets"
+
 CMD=(
-  "$PYTHON_BIN" "$ROOT_DIR/load_testing/bot_swarm.py"
+  "$SELECTED_PYTHON" "$ROOT_DIR/load_testing/bot_swarm.py"
   --server "$SERVER_URL"
   --bots "$BOT_COUNT"
   --duration 0
@@ -90,7 +119,7 @@ CMD=(
 echo "Starting $BOT_COUNT gameplay bots against $SERVER_URL"
 
 if [[ "$FOREGROUND" == "1" ]]; then
-  echo "Running in foreground. Press Ctrl+C to stop."
+  echo "Running in foreground with $SELECTED_PYTHON. Press Ctrl+C to stop."
   "${CMD[@]}"
 else
   if [[ -f "$PID_FILE" ]]; then
@@ -114,7 +143,7 @@ else
     tail -20 "$LOG_FILE" >&2 || true
     exit 1
   fi
-  echo "Bots started with PID $BOT_PID"
+  echo "Bots started with PID $BOT_PID using $SELECTED_PYTHON"
   echo "Log: $LOG_FILE"
   echo "Stop with: scripts/stop_bots.sh --pid-file \"$PID_FILE\""
 fi
