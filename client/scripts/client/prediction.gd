@@ -24,6 +24,8 @@ signal reconciliation_complete(replayed_inputs: int)
 @export var debug_logging: bool = false
 ## Threshold for instant teleport vs smooth correction (units)
 @export var teleport_threshold: float = 150.0
+## Ignore tiny quantization jitter from compressed server positions.
+@export var server_position_epsilon: float = 4.0
 #endregion
 
 
@@ -39,6 +41,9 @@ var predicted_position: Vector2 = Vector2.ZERO
 
 ## Current predicted velocity
 var predicted_velocity: Vector2 = Vector2.ZERO
+
+## True after receiving and applying at least one authoritative server position.
+var has_authoritative_position: bool = false
 
 ## Last acknowledged sequence number from server (-1 = none yet)
 var last_ack_sequence: int = -1
@@ -56,9 +61,9 @@ var is_correcting: bool = false
 ## Server tick tracking for ordering
 var last_server_tick: int = 0
 
-## Input send rate limiting (10Hz)
+## Input send rate limiting. Match the authoritative server tick interval.
 var input_send_timer: float = 0.0
-const INPUT_SEND_INTERVAL: float = 0.1  ## 10 Hz = 100ms
+const INPUT_SEND_INTERVAL: float = GameConstants.SERVER_TICK_INTERVAL
 
 ## Current frame's accumulated input flags
 var current_input_flags: int = 0
@@ -117,6 +122,7 @@ func setup(player: Node2D, initial_position: Vector2, entity_id: int = -1) -> vo
 	local_entity_id = entity_id
 	predicted_position = initial_position
 	correction_target = initial_position
+	has_authoritative_position = false
 	_reset_state()
 
 	if debug_logging:
@@ -133,6 +139,10 @@ func _physics_process(delta: float) -> void:
 	if not NetworkManager.is_server_connected():
 		return
 
+	if not is_active():
+		predicted_velocity = Vector2.ZERO
+		return
+
 	# Step 1: Capture current frame's input
 	current_input_flags = _capture_input_flags()
 
@@ -143,7 +153,7 @@ func _physics_process(delta: float) -> void:
 	if is_correcting:
 		_apply_smooth_correction(delta)
 
-	# Step 4: Send input to server at 10Hz
+	# Step 4: Send input to server at the server tick cadence
 	input_send_timer += delta
 	if input_send_timer >= INPUT_SEND_INTERVAL:
 		_send_input_to_server()
@@ -204,18 +214,6 @@ func _apply_local_prediction(input_flags: int, delta: float) -> void:
 	)
 	if delta > 0.0:
 		predicted_velocity = (predicted_position - position_before) / delta
-
-	# Store input snapshot for reconciliation
-	var snapshot := InputSnapshot.create(
-		current_sequence,
-		input_flags,
-		position_before,
-		predicted_position,
-		predicted_velocity,
-		_get_aim_angle(),
-		delta
-	)
-	_store_input(snapshot)
 
 	# Update visual position (unless correcting)
 	_update_player_visual()
@@ -303,10 +301,30 @@ func _advance_sequence() -> int:
 
 #region Network Communication
 func _send_input_to_server() -> void:
-	if not NetworkManager.is_server_connected():
+	if not is_active() or not NetworkManager.is_server_connected():
 		return
 
 	var seq := _advance_sequence()
+	var aim_angle := _get_aim_angle()
+
+	# Store one replay snapshot per sent input. The server applies one input over
+	# one authoritative tick, so replay uses the same interval.
+	var replay_velocity := _get_direction_from_flags(current_input_flags) * _get_speed_from_flags(current_input_flags)
+	var replay_end := GameConstants.move_with_obstacle_collision(
+		predicted_position,
+		predicted_position + replay_velocity * INPUT_SEND_INTERVAL,
+		GameConstants.PLAYER_HITBOX_RADIUS
+	)
+	var snapshot := InputSnapshot.create(
+		seq,
+		current_input_flags,
+		predicted_position,
+		replay_end,
+		replay_velocity,
+		aim_angle,
+		INPUT_SEND_INTERVAL
+	)
+	_store_input(snapshot)
 
 	# Build input data dictionary matching expected format
 	var input_data := {
@@ -322,7 +340,7 @@ func _send_input_to_server() -> void:
 			"sprint": bool(current_input_flags & PacketTypes.INPUT_FLAG_SPRINT),
 			"interact": bool(current_input_flags & PacketTypes.INPUT_FLAG_INTERACT)
 		},
-		"aim_angle": _get_aim_angle(),
+		"aim_angle": aim_angle,
 		"sequence": seq
 	}
 
@@ -369,8 +387,12 @@ func _handle_action_confirm(data: Dictionary) -> void:
 	if result_code != ActionConfirmPacket.ResultCode.SUCCESS:
 		_reconcile(sequence, corrected_position)
 	else:
-		# Just prune the buffer
-		_prune_acknowledged_inputs()
+		if not has_authoritative_position:
+			force_sync(corrected_position)
+		elif predicted_position.distance_to(corrected_position) > server_position_epsilon:
+			_reconcile(sequence, corrected_position)
+		else:
+			_prune_acknowledged_inputs()
 
 
 func _handle_state_update(data: Dictionary) -> void:
@@ -400,20 +422,22 @@ func _handle_state_update(data: Dictionary) -> void:
 func _process_own_state_update(entity_data: Dictionary) -> void:
 	var server_position: Vector2 = entity_data.get("position", Vector2.ZERO)
 
+	if not has_authoritative_position:
+		force_sync(server_position)
+		return
+
 	# If no unacknowledged inputs, sync directly to server position
 	if input_buffer.is_empty():
-		predicted_position = server_position
-		_update_player_visual()
+		_apply_authoritative_position_without_replay(server_position)
 		return
 
 	# Otherwise, check for significant drift (possible packet loss)
 	var discrepancy := predicted_position.distance_to(server_position)
 
-	if discrepancy > GameConstants.CORRECTION_THRESHOLD * 2.0:
-		# Large drift without ActionConfirm - possible packet loss scenario
+	if discrepancy > server_position_epsilon:
 		if debug_logging:
-			print("[Prediction] StateUpdate: Large drift detected (%.2f), no ActionConfirm" % discrepancy)
-		# Could implement recovery here, but for now just log
+			print("[Prediction] StateUpdate drift detected (%.2f), reconciling from server position" % discrepancy)
+		_reconcile(last_ack_sequence, server_position)
 #endregion
 
 
@@ -429,6 +453,7 @@ func _reconcile(ack_sequence: int, server_position: Vector2) -> void:
 
 	# Step 1: Reset to server's authoritative position
 	predicted_position = server_position
+	has_authoritative_position = true
 
 	# Step 2: Collect and replay unacknowledged inputs in order
 	var unacked_sequences := _get_unacknowledged_sequences(ack_sequence)
@@ -555,8 +580,10 @@ func _apply_smooth_correction(delta: float) -> void:
 func force_sync(server_position: Vector2) -> void:
 	input_buffer.clear()
 	predicted_position = server_position
+	predicted_velocity = Vector2.ZERO
 	correction_target = server_position
 	is_correcting = false
+	has_authoritative_position = true
 	if player_node:
 		player_node.position = server_position
 
@@ -573,11 +600,37 @@ func get_debug_info() -> Dictionary:
 		"last_ack_sequence": last_ack_sequence,
 		"buffer_size": input_buffer.size(),
 		"is_correcting": is_correcting,
-		"local_entity_id": local_entity_id
+		"local_entity_id": local_entity_id,
+		"has_authoritative_position": has_authoritative_position
 	}
 
 
 ## Check if prediction is active
 func is_active() -> bool:
-	return player_node != null and local_entity_id >= 0
+	return player_node != null and local_entity_id >= 0 and has_authoritative_position
+
+
+## Set local entity ID once PLAYER_INFO identifies this client.
+func set_local_entity_id(entity_id: int) -> void:
+	local_entity_id = entity_id
+
+
+## Check if the controller has applied an authoritative spawn/server position.
+func has_authoritative_sync() -> bool:
+	return has_authoritative_position
+
+
+func _apply_authoritative_position_without_replay(server_position: Vector2) -> void:
+	var discrepancy := predicted_position.distance_to(server_position)
+	predicted_position = server_position
+	correction_target = server_position
+	has_authoritative_position = true
+
+	if discrepancy > teleport_threshold:
+		_apply_instant_correction()
+	elif discrepancy > server_position_epsilon:
+		var visual_pos := player_node.position if player_node else predicted_position
+		_start_smooth_correction(visual_pos)
+	else:
+		_update_player_visual()
 #endregion

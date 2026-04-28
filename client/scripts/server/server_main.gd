@@ -200,44 +200,47 @@ func _process_server_tick() -> void:
 func _process_client_inputs() -> void:
 	var tick_interval := 1.0 / config.tick_rate
 
-	# Process shoot inputs before movement (TASK-014)
+	# Drain queued inputs into the persistent input model and advance one tick.
+	# Rising-edge SHOOT presses are queued onto state.pending_shots during ingest.
+	var move_results = player_manager.process_all_inputs(tick_interval, tick_count)
+
+	# Spawn projectiles for shoot edges captured during this tick's ingest pass.
 	_process_shoot_inputs()
 
-	var corrections = player_manager.process_all_inputs(tick_interval)
-
-	# Send correction packets to clients with invalid positions
-	if corrections.size() > 0:
-		_send_position_corrections(corrections)
+	# Confirm every processed move so clients can prune acknowledged inputs.
+	if move_results.size() > 0:
+		_send_move_confirmations(move_results)
 
 
-## Process shoot inputs and spawn projectiles (TASK-014)
+## Spawn projectiles for shoot edges queued during this tick's input ingest.
 func _process_shoot_inputs() -> void:
 	for state: PlayerState in player_manager.get_all_players():
-		# Check each queued input for shoot flag
-		for input in state.input_queue:
-			var flags: int = input.get("input_flags", 0)
-			if flags & PacketTypes.INPUT_FLAG_SHOOT:
-				_try_spawn_projectile(state, input)
+		while true:
+			var shot := state.pop_pending_shot()
+			if shot.is_empty():
+				break
+			_try_spawn_projectile(state, shot)
 
 
-## Send position correction packets to clients (TASK-013)
-func _send_position_corrections(corrections: Array[Dictionary]) -> void:
+## Send authoritative move confirmations/corrections to clients (TASK-013)
+func _send_move_confirmations(move_results: Array[Dictionary]) -> void:
 	var nm = _get_network_manager()
 	if nm == null:
 		return
 
-	for correction in corrections:
-		var peer_id: int = correction.peer_id
-		var sequence: int = correction.sequence
-		var position: Vector2 = correction.position
-		var cheat_detected: bool = correction.cheat_detected
+	for result in move_results:
+		var peer_id: int = result.peer_id
+		var sequence: int = result.sequence
+		var position: Vector2 = result.position
+		var success: bool = result.success
+		var cheat_detected: bool = result.cheat_detected
 
 		# Create correction packet using ActionConfirmPacket
 		var confirm_packet = ActionConfirmPacket.create_move_confirm(
 			sequence,
 			position,
 			tick_count,
-			false  # success=false indicates correction needed
+			success
 		)
 
 		# Send correction to the specific client
@@ -250,11 +253,11 @@ func _send_position_corrections(corrections: Array[Dictionary]) -> void:
 		# Log potential cheating attempts
 		if cheat_detected:
 			print("[ServerMain] CHEAT DETECTED: peer=%d teleport attempt (deviation=%.1f)" % [
-				peer_id, correction.deviation
+				peer_id, result.deviation
 			])
-		elif config.debug_logging:
+		elif config.debug_logging and not success:
 			print("[ServerMain] Position correction: peer=%d seq=%d deviation=%.1f" % [
-				peer_id, sequence, correction.deviation
+				peer_id, sequence, result.deviation
 			])
 
 
@@ -285,6 +288,7 @@ func _try_spawn_projectile(player: PlayerState, input: Dictionary) -> void:
 	if projectile != null:
 		# Start cooldown on successful spawn
 		player.start_shoot_cooldown()
+		_broadcast_projectile_fired(player.entity_id)
 
 
 ## Update game state (positions, timers, etc.)
@@ -319,10 +323,26 @@ func _update_monster_ai() -> void:
 	var alive_monsters := monster_manager.get_alive_monsters()
 
 	# Update all monster AI - handles movement, targeting, and shooting
-	var projectiles_spawned := monster_ai.update_all(alive_monsters, tick_interval)
+	var monster_fire_events: Array[int] = monster_ai.update_all(alive_monsters, tick_interval)
 
-	if config.debug_logging and projectiles_spawned > 0:
-		print("[ServerMain] Monsters spawned %d projectiles this tick" % projectiles_spawned)
+	for monster_entity_id: int in monster_fire_events:
+		_broadcast_projectile_fired(monster_entity_id)
+
+	if config.debug_logging and monster_fire_events.size() > 0:
+		print("[ServerMain] Monsters spawned %d projectiles this tick" % monster_fire_events.size())
+
+
+## Broadcast a compact authoritative fire event after projectile creation.
+func _broadcast_projectile_fired(source_entity_id: int) -> void:
+	var nm = _get_network_manager()
+	if nm == null:
+		return
+
+	var event_packet = GameEventPacket.create_projectile_fired(source_entity_id)
+	nm.broadcast_to_clients(
+		NetworkManager.MessageType.GAME_EVENT,
+		event_packet.to_dict()
+	)
 
 
 ## Update invulnerability timers for all players

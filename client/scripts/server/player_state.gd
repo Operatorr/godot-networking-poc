@@ -23,9 +23,17 @@ var position: Vector2 = Vector2.ZERO
 var velocity: Vector2 = Vector2.ZERO
 var aim_angle: float = 0.0
 
-# Input
+# Input - persistent flags applied every server tick until next ingest_input or stale timeout
 var input_flags: int = 0
 var last_input_sequence: int = 0
+## Most recent client-reported position, kept for per-tick deviation check.
+var last_client_position: Vector2 = Vector2.ZERO
+var has_client_position: bool = false
+## Server tick at which the most recent input was ingested.
+## Used to zero out flags when a client stops sending (disconnect/timeout).
+var last_input_received_tick: int = 0
+## Queued shoot edges (rising-edge SHOOT presses). Drained by ServerMain.
+var pending_shots: Array[Dictionary] = []
 var input_queue: Array[Dictionary] = []
 
 # Combat
@@ -46,6 +54,12 @@ var last_killer_id: int = -1
 # Animation & Flags
 var animation_state: int = PacketTypes.AnimationState.IDLE
 var entity_flags: int = PacketTypes.ENTITY_FLAG_ALIVE | PacketTypes.ENTITY_FLAG_VISIBLE
+
+
+## Stale-input timeout in server ticks. After this many ticks without a fresh
+## input the persistent flags are cleared so a stalled/disconnecting client does
+## not keep sliding across the arena.
+const STALE_INPUT_TICK_LIMIT := 6
 
 
 ## Create a new PlayerState with the given peer_id and entity_id
@@ -109,39 +123,82 @@ func get_aim_direction() -> Vector2:
 	return Vector2.from_angle(aim_angle)
 
 
-## Apply input with server-authoritative movement validation
-## Returns validation result dictionary with correction info if needed
-func apply_input(input: Dictionary, delta: float) -> Dictionary:
-	# Dead players don't process input
+## Ingest a single input packet from the client.
+## Updates the persistent input flags applied every tick by step().
+## Detects rising-edge SHOOT and queues it in pending_shots.
+func ingest_input(input: Dictionary, server_tick: int) -> void:
+	if life_state == PlayerLifeState.DEAD:
+		# Dead players' inputs are discarded entirely.
+		return
+
+	var new_flags: int = input.get("input_flags", 0)
+	var new_sequence: int = input.get("sequence_number", input.get("sequence", last_input_sequence))
+	var new_aim: float = input.get("aim_angle", aim_angle)
+
+	# Detect rising-edge SHOOT (new press, not held continuation).
+	var was_shooting := (input_flags & PacketTypes.INPUT_FLAG_SHOOT) != 0
+	var is_shooting := (new_flags & PacketTypes.INPUT_FLAG_SHOOT) != 0
+	if is_shooting and not was_shooting:
+		pending_shots.append({
+			"sequence": new_sequence,
+			"aim_angle": new_aim
+		})
+
+	# Update persistent flags
+	input_flags = new_flags
+	last_input_sequence = new_sequence
+	aim_angle = new_aim
+	last_input_received_tick = server_tick
+
+	# Track latest client-reported position for deviation check
+	var client_position: Variant = input.get("position", null)
+	if client_position is Vector2:
+		last_client_position = client_position
+		has_client_position = true
+
+
+## Pop the next pending rising-edge SHOOT (or empty dict if none).
+func pop_pending_shot() -> Dictionary:
+	if pending_shots.is_empty():
+		return {}
+	return pending_shots.pop_front()
+
+
+## Advance the player's simulation by one server tick using the currently
+## held input flags. Returns a validation dict (correction info if needed).
+func step(delta: float, server_tick: int) -> Dictionary:
+	# Drop stale input if the client has gone silent.
+	# Always allow the very first tick after connect (last_input_received_tick == 0).
+	if last_input_received_tick > 0 and server_tick - last_input_received_tick > STALE_INPUT_TICK_LIMIT:
+		input_flags = 0
+
+	# Dead players don't process movement
 	if life_state == PlayerLifeState.DEAD:
 		velocity = Vector2.ZERO
 		input_flags = 0
 		_update_entity_flags()
-		return {"valid": true, "deviation": 0.0, "correction_needed": false, "server_position": position, "cheat_detected": false, "sequence": last_input_sequence}
+		return {
+			"valid": true,
+			"deviation": 0.0,
+			"correction_needed": false,
+			"server_position": position,
+			"cheat_detected": false,
+			"sequence": last_input_sequence
+		}
 
-	# Decrement shoot cooldown
+	# Decrement shoot cooldown each tick
 	if shoot_cooldown > 0.0:
 		shoot_cooldown = maxf(0.0, shoot_cooldown - delta)
 
-	# Store raw input data
-	input_flags = input.get("input_flags", 0)
-	last_input_sequence = input.get("sequence", last_input_sequence)
-
-	# End invulnerability if player moves or shoots
+	# End invulnerability on active input
 	if life_state == PlayerLifeState.INVULNERABLE and has_active_input():
 		end_invulnerability()
 
-	# Get client-reported position for validation
-	var client_position: Vector2 = input.get("position", position)
-	if not client_position is Vector2:
-		client_position = position
-
-	# Calculate server-authoritative movement from input flags
+	# Compute server-authoritative movement from persistent flags
 	var move_direction := _calculate_movement_direction(input_flags)
 	var move_speed := _calculate_movement_speed(input_flags)
-
-	# Calculate server-authoritative velocity and position
 	velocity = move_direction * move_speed
+
 	var previous_position := position
 	var server_position := GameConstants.move_with_obstacle_collision(
 		previous_position,
@@ -150,20 +207,24 @@ func apply_input(input: Dictionary, delta: float) -> Dictionary:
 	)
 	if delta > 0.0:
 		velocity = (server_position - previous_position) / delta
-
-	# Validate client position against server calculation
-	var validation := _validate_position(client_position, server_position)
-
-	# Always use server-calculated position (authoritative)
 	position = server_position
 
-	# Update aim angle (trust client aim)
-	aim_angle = input.get("aim_angle", aim_angle)
+	# Validate latest client position against authoritative position
+	var validation: Dictionary
+	if has_client_position:
+		validation = _validate_position(last_client_position, server_position)
+	else:
+		validation = {
+			"valid": true,
+			"deviation": 0.0,
+			"correction_needed": false,
+			"server_position": server_position,
+			"cheat_detected": false,
+			"sequence": last_input_sequence
+		}
 
 	# Update animation state based on movement
 	_update_animation_state()
-
-	# Update entity flags
 	_update_entity_flags()
 
 	return validation
@@ -269,6 +330,9 @@ func reset_for_respawn(spawn_position: Vector2) -> void:
 	shoot_cooldown = 0.0
 	input_flags = 0
 	input_queue.clear()
+	pending_shots.clear()
+	has_client_position = false
+	last_input_received_tick = 0
 	last_killer_id = -1
 	animation_state = PacketTypes.AnimationState.SPAWN
 	entity_flags = PacketTypes.ENTITY_FLAG_ALIVE | PacketTypes.ENTITY_FLAG_VISIBLE | PacketTypes.ENTITY_FLAG_INVULNERABLE
@@ -305,6 +369,7 @@ func _mark_dead(killer_id: int) -> void:
 	velocity = Vector2.ZERO
 	input_flags = 0
 	input_queue.clear()
+	pending_shots.clear()
 	shoot_cooldown = 0.0
 	respawn_timer = GameConstants.RESPAWN_DELAY
 	deaths += 1

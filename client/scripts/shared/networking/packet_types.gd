@@ -88,7 +88,8 @@ enum GameEventType {
 	CHAT_MESSAGE = 8,      ## Chat message
 	PLAYER_INFO = 9,       ## Player identity broadcast (entity_id -> character_name)
 	KILL_PVP = 10,         ## PvP kill event (killer/victim with names)
-	LEADERBOARD_UPDATE = 11 ## Top 10 leaderboard update
+	LEADERBOARD_UPDATE = 11, ## Top 10 leaderboard update
+	PROJECTILE_FIRED = 12 ## Entity fired a projectile
 }
 
 ## Disconnect reason codes

@@ -38,14 +38,14 @@ func _init(player_manager: PlayerManager, projectile_manager: ProjectileManager)
 # MAIN UPDATE LOOP
 # =============================================================================
 
-## Update AI for all monsters
-## Returns number of projectiles spawned this tick
-func update_all(monsters: Array[MonsterState], delta: float) -> int:
-	var projectiles_spawned := 0
+## Update AI for all monsters.
+## Returns entity IDs for monsters that spawned projectiles this tick.
+func update_all(monsters: Array[MonsterState], delta: float) -> Array[int]:
+	var fired_entity_ids: Array[int] = []
 	for monster in monsters:
 		if _update_monster(monster, delta):
-			projectiles_spawned += 1
-	return projectiles_spawned
+			fired_entity_ids.append(monster.entity_id)
+	return fired_entity_ids
 
 
 ## Update AI for a single monster

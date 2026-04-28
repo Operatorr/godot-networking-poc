@@ -93,30 +93,40 @@ func queue_player_input(peer_id: int, input_data: Dictionary) -> void:
 	state.queue_input(input_data)
 
 
-## Process all queued inputs for all players
-## Returns array of corrections needed for clients with invalid positions
-func process_all_inputs(delta: float) -> Array[Dictionary]:
-	var corrections: Array[Dictionary] = []
+## Process all queued inputs for all players and advance one server tick.
+## Drains each player's queued inputs into the persistent input model, then
+## simulates exactly one tick of movement. Returns a single move-confirmation
+## per player per tick (using the latest ingested sequence) so clients can
+## prune their prediction buffer and reconcile if the server flagged a drift.
+func process_all_inputs(delta: float, server_tick: int) -> Array[Dictionary]:
+	var move_results: Array[Dictionary] = []
 
 	for state: PlayerState in players.values():
 		if not state.authenticated:
 			continue
 
+		# Drain queued inputs into the persistent flags. Rising-edge SHOOT events
+		# are recorded in state.pending_shots for ServerMain to consume.
+		var had_input := state.has_queued_input()
 		while state.has_queued_input():
-			var input = state.pop_input()
-			var validation = state.apply_input(input, delta)
+			state.ingest_input(state.pop_input(), server_tick)
 
-			# Collect corrections for players that need them
-			if validation.correction_needed:
-				corrections.append({
-					"peer_id": state.peer_id,
-					"sequence": validation.sequence,
-					"position": validation.server_position,
-					"cheat_detected": validation.cheat_detected,
-					"deviation": validation.deviation
-				})
+		# Simulate exactly one tick using the persistent flags.
+		var validation = state.step(delta, server_tick)
 
-	return corrections
+		# Only ack the client when we ingested at least one fresh input;
+		# otherwise we'd flood ACTION_CONFIRM with stale sequences.
+		if had_input:
+			move_results.append({
+				"peer_id": state.peer_id,
+				"sequence": validation.sequence,
+				"position": validation.server_position,
+				"success": not validation.correction_needed,
+				"cheat_detected": validation.cheat_detected,
+				"deviation": validation.deviation
+			})
+
+	return move_results
 
 
 ## Collect state updates for broadcasting to clients

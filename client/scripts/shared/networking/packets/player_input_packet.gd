@@ -1,5 +1,5 @@
 ## PlayerInputPacket - Client input packet (~12 bytes payload)
-## Sent from client to server at 10Hz (100ms intervals)
+## Sent from client to server at the authoritative tick cadence
 ## Format:
 ##   [s16 position_x][s16 position_y]     4 bytes - quantized position
 ##   [s16 velocity_x][s16 velocity_y]     4 bytes - quantized velocity

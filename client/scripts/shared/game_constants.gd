@@ -5,6 +5,17 @@ extends RefCounted
 
 
 # =============================================================================
+# NETWORK SIMULATION
+# =============================================================================
+
+## Authoritative server simulation rate.
+const SERVER_TICK_RATE := 30.0
+
+## Authoritative server simulation interval in seconds.
+const SERVER_TICK_INTERVAL := 1.0 / SERVER_TICK_RATE
+
+
+# =============================================================================
 # MOVEMENT SPEEDS
 # =============================================================================
 

@@ -145,6 +145,22 @@ func handle_full_state_request(
 
 	network_manager.send_to_client(peer_id, NetworkManager.MessageType.STATE_UPDATE, packet_data)
 
+	# Re-issue PLAYER_INFO for every authenticated player, including the
+	# requester. This is the recovery path when the initial PLAYER_INFO was
+	# missed (e.g. arrived before the client's listener was bound), and it is
+	# what lets the client (re)discover its own entity_id.
+	for state: PlayerState in player_manager.get_authenticated_players():
+		var event_packet = GameEventPacket.create_player_info(
+			state.entity_id,
+			state.character_name,
+			state.position
+		)
+		network_manager.send_to_client(
+			peer_id,
+			NetworkManager.MessageType.GAME_EVENT,
+			event_packet.to_dict()
+		)
+
 	if debug_logging:
 		print("[BroadcastService] Sent full state to peer %d (%d entities)" % [peer_id, all_entities.size()])
 
@@ -185,7 +201,8 @@ func broadcast_player_info(peer_id: int, player_manager: PlayerManager, network_
 
 	var event_packet = GameEventPacket.create_player_info(
 		state.entity_id,
-		state.character_name
+		state.character_name,
+		state.position
 	)
 
 	network_manager.broadcast_to_clients(
@@ -207,7 +224,8 @@ func send_all_player_info_to_client(peer_id: int, player_manager: PlayerManager,
 
 		var event_packet = GameEventPacket.create_player_info(
 			state.entity_id,
-			state.character_name
+			state.character_name,
+			state.position
 		)
 
 		network_manager.send_to_client(
