@@ -376,13 +376,24 @@ async def _collect_time_series(bots: list[OmegaRealmBot], duration: float):
 
 # --- Swarm Execution ---
 
-async def spawn_bots(count: int, server_url: str, stagger_ms: float = 100, behavior: str = BEHAVIOR_DEFAULT) -> list[OmegaRealmBot]:
+def clamp_difficulty(value: float) -> float:
+    return max(0.0, min(1.0, float(value)))
+
+
+async def spawn_bots(
+    count: int,
+    server_url: str,
+    stagger_ms: float = 100,
+    behavior: str = BEHAVIOR_DEFAULT,
+    difficulty: float = 1.0,
+) -> list[OmegaRealmBot]:
     """Spawn bots with staggered connections to avoid thundering herd."""
     bots = []
     connected = 0
+    difficulty = clamp_difficulty(difficulty)
 
     for i in range(count):
-        bot = OmegaRealmBot(i + 1, server_url, behavior=behavior)
+        bot = OmegaRealmBot(i + 1, server_url, behavior=behavior, difficulty=difficulty)
         success = await bot.connect(timeout=15.0)
         bots.append(bot)
 
@@ -401,14 +412,25 @@ async def spawn_bots(count: int, server_url: str, stagger_ms: float = 100, behav
     return bots
 
 
-async def run_load_test(bot_count: int, duration: int, server_url: str, stagger_ms: float = 100, behavior: str = BEHAVIOR_DEFAULT) -> tuple[AggregatedMetrics, list[OmegaRealmBot]]:
+async def run_load_test(
+    bot_count: int,
+    duration: int,
+    server_url: str,
+    stagger_ms: float = 100,
+    behavior: str = BEHAVIOR_DEFAULT,
+    difficulty: float = 1.0,
+) -> tuple[AggregatedMetrics, list[OmegaRealmBot]]:
     """Execute a full load test: spawn bots, run, collect metrics."""
-    logger.info(f"Starting load test: {bot_count} bots, {duration}s duration, behavior={behavior}, server={server_url}")
+    difficulty = clamp_difficulty(difficulty)
+    logger.info(
+        f"Starting load test: {bot_count} bots, {duration}s duration, "
+        f"behavior={behavior}, difficulty={difficulty:.2f}, server={server_url}"
+    )
     started_at = time.monotonic()
 
     # Phase 1: Spawn bots
     logger.info("Phase 1: Spawning bots...")
-    bots = await spawn_bots(bot_count, server_url, stagger_ms, behavior)
+    bots = await spawn_bots(bot_count, server_url, stagger_ms, behavior, difficulty)
 
     connected_bots = [b for b in bots if b.ws is not None]
     if not connected_bots:
@@ -478,6 +500,8 @@ Examples:
                         help="Save JSON report to file (default: report_<timestamp>.json)")
     parser.add_argument("--behavior", choices=VALID_BEHAVIORS, default=None,
                         help="Bot behavior mode (default, idle, movement, combat, clustered, strategy)")
+    parser.add_argument("--difficulty", type=float, default=1.0,
+                        help="Bot tactical difficulty from 0.0 to 1.0 (default: 1.0)")
     parser.add_argument("--no-report", action="store_true",
                         help="Skip JSON report and success-criteria exit code")
     parser.add_argument("--verbose", "-v", action="store_true",
@@ -510,9 +534,10 @@ async def main():
         behavior = args.behavior or BEHAVIOR_DEFAULT
 
     server_url = args.server
+    difficulty = clamp_difficulty(args.difficulty)
 
     # Run load test
-    agg, bots = await run_load_test(bot_count, duration, server_url, args.stagger, behavior)
+    agg, bots = await run_load_test(bot_count, duration, server_url, args.stagger, behavior, difficulty)
 
     if args.no_report:
         if agg.connected_bots == 0:

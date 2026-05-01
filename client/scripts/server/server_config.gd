@@ -12,7 +12,26 @@ const DEFAULTS := {
 	"debug_logging": true,
 	"heartbeat_timeout_seconds": 5.0,
 	"api_server_url": "http://localhost:8080",
-	"aoi_radius": 1000.0
+	"aoi_radius": 1000.0,
+	## AoI hysteresis: once an entity is visible it stays visible until the
+	## viewer is more than aoi_exit_radius away. Avoids edge flicker where an
+	## entity oscillating across the AoI boundary causes spawn/despawn churn.
+	"aoi_exit_radius": 1100.0,
+	## LOD radii (squared distance bands within AoI). Position-only deltas for
+	## entities in the MID/FAR bands are throttled to reduce bandwidth.
+	"lod_near_radius": 400.0,
+	"lod_mid_radius": 700.0,
+	## LOD position-only update intervals (in ticks). Higher = less frequent.
+	"lod_mid_interval": 2,
+	"lod_far_interval": 4,
+	## Per-tick packet batching - merge multiple packets into one WebSocket frame.
+	"packet_batching_enabled": true,
+	## Snapshot rate (Hz). Decoupled from tick_rate so physics can run faster
+	## than the snapshot stream sent to clients. Defaults to tick_rate when
+	## set to 0 - no behavior change vs. pre-decouple.
+	"snapshot_rate_hz": 0,
+	## Difficulty of server-side monster tactical behavior, clamped 0.0..1.0.
+	"monster_ai_difficulty": 0.85
 }
 
 ## Configuration file paths (priority order)
@@ -46,6 +65,37 @@ var api_server_url: String:
 
 var aoi_radius: float:
 	get: return _config.get("aoi_radius", DEFAULTS.aoi_radius)
+
+var aoi_exit_radius: float:
+	get: return _config.get("aoi_exit_radius", DEFAULTS.aoi_exit_radius)
+
+var lod_near_radius: float:
+	get: return _config.get("lod_near_radius", DEFAULTS.lod_near_radius)
+
+var lod_mid_radius: float:
+	get: return _config.get("lod_mid_radius", DEFAULTS.lod_mid_radius)
+
+var lod_mid_interval: int:
+	get: return _config.get("lod_mid_interval", DEFAULTS.lod_mid_interval)
+
+var lod_far_interval: int:
+	get: return _config.get("lod_far_interval", DEFAULTS.lod_far_interval)
+
+var packet_batching_enabled: bool:
+	get: return _config.get("packet_batching_enabled", DEFAULTS.packet_batching_enabled)
+
+var monster_ai_difficulty: float:
+	get: return clampf(_config.get("monster_ai_difficulty", DEFAULTS.monster_ai_difficulty), 0.0, 1.0)
+
+## Effective snapshot rate, falling back to tick_rate when not configured. The
+## snapshot loop never fires faster than the physics tick, so this value is
+## clamped to (0, tick_rate].
+var snapshot_rate_hz: int:
+	get:
+		var raw: int = _config.get("snapshot_rate_hz", DEFAULTS.snapshot_rate_hz)
+		if raw <= 0:
+			return tick_rate
+		return mini(raw, tick_rate)
 
 
 ## Initialize and load configuration
@@ -122,4 +172,9 @@ func print_config() -> void:
 	print("  debug_logging: %s" % str(debug_logging))
 	print("  heartbeat_timeout: %.1fs" % heartbeat_timeout_seconds)
 	print("  api_server_url: %s" % api_server_url)
-	print("  aoi_radius: %.1f" % aoi_radius)
+	print("  aoi_radius: %.1f (exit %.1f)" % [aoi_radius, aoi_exit_radius])
+	print("  lod_radii: near=%.1f mid=%.1f" % [lod_near_radius, lod_mid_radius])
+	print("  lod_intervals: mid=%dt far=%dt" % [lod_mid_interval, lod_far_interval])
+	print("  packet_batching: %s" % str(packet_batching_enabled))
+	print("  snapshot_rate: %d Hz" % snapshot_rate_hz)
+	print("  monster_ai_difficulty: %.2f" % monster_ai_difficulty)

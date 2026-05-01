@@ -18,9 +18,11 @@ const DESPAWN_THRESHOLD := 3
 ## 2 ticks = 100ms of extrapolation
 const MAX_EXTRAPOLATION_TICKS := 2
 
-## Distance threshold for instant teleport vs interpolation
-## Matches GameConstants.TELEPORT_THRESHOLD
-const TELEPORT_THRESHOLD := 150.0
+## Distance threshold for instant teleport vs interpolation. Sourced from
+## GameConstants so client and server validation stay in lockstep — drift
+## here causes the client to smooth across genuine teleports (or, conversely,
+## warp on legitimate fast movement).
+const TELEPORT_THRESHOLD := GameConstants.TELEPORT_THRESHOLD
 #endregion
 
 

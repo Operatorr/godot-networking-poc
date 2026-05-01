@@ -1,8 +1,9 @@
-[gd_scene load_steps=4 format=3 uid="uid://c2login_screen"]
+[gd_scene load_steps=5 format=3 uid="uid://c2login_screen"]
 
 [ext_resource type="Script" path="res://scripts/client/login_screen.gd" id="1_script"]
 [ext_resource type="PackedScene" uid="uid://c2error_dialog" path="res://scenes/client/menus/components/error_dialog.tscn" id="2_error_dialog"]
 [ext_resource type="FontFile" path="res://assets/fonts/CormorantUnicase-Bold.ttf" id="3_title_font"]
+[ext_resource type="VideoStream" path="res://assets/ui/backgrounds/menu_background_loop.ogv" id="4_bg_video"]
 
 [node name="LoginScreen" type="Control"]
 layout_mode = 3
@@ -14,7 +15,7 @@ grow_vertical = 2
 script = ExtResource("1_script")
 prefill_test_credentials_from_env = true
 
-[node name="MenuBackground" type="TextureRect" parent="."]
+[node name="MenuBackground" type="VideoStreamPlayer" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -22,8 +23,11 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-expand_mode = 1
-stretch_mode = 6
+stream = ExtResource("4_bg_video")
+volume_db = -80.0
+autoplay = true
+expand = true
+loop = true
 
 [node name="CenterContainer" type="CenterContainer" parent="."]
 layout_mode = 1

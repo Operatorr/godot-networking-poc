@@ -4,7 +4,7 @@
 
 [node name="ServerMain" type="Node" unique_id=1248552245]
 script = ExtResource("1_q6g47")
-monster_spawn_rate = 2.0
+monster_spawn_rate = 0.1
 
 [node name="ServerLabel" type="Label" parent="." unique_id=1784488413]
 offset_right = 400.0

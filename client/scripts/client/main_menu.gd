@@ -12,7 +12,7 @@ const TITLE_GLOW_COLOR := Color(0.62, 0.62, 0.58, 0.58)
 const REGION_REFRESH_INTERVAL := 5.0
 
 ## UI Node references
-@onready var menu_background: TextureRect = $MenuBackground
+@onready var menu_background: Control = $MenuBackground
 @onready var character_panel: Control = $CenterContainer/VBoxContainer/CharacterPanel
 @onready var player_color_picker: ColorPickerButton = $CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer/PlayerColorPicker
 @onready var character_name_label: Label = $CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer/CharacterInfo/CharacterNameLabel
@@ -92,17 +92,28 @@ func _process(delta: float) -> void:
 
 ## Apply dark cosmic horror theme to menu elements
 func _apply_dark_theme() -> void:
-	# Keep the image background non-interactive and full screen.
+	# Keep the menu background non-interactive and full screen.
 	if menu_background:
-		var background_texture := load(MENU_BACKGROUND_PATH) as Texture2D
-		if background_texture:
-			menu_background.texture = background_texture
-		else:
-			push_warning("[MainMenu] Failed to load menu background: %s" % MENU_BACKGROUND_PATH)
 		menu_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		menu_background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		menu_background.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		menu_background.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+
+		if menu_background is TextureRect:
+			var texture_background := menu_background as TextureRect
+			var background_texture := load(MENU_BACKGROUND_PATH) as Texture2D
+			if background_texture:
+				texture_background.texture = background_texture
+			else:
+				push_warning("[MainMenu] Failed to load menu background: %s" % MENU_BACKGROUND_PATH)
+			texture_background.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			texture_background.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		elif menu_background is VideoStreamPlayer:
+			var video_background := menu_background as VideoStreamPlayer
+			video_background.expand = true
+			video_background.loop = true
+			if video_background.stream != null and not video_background.is_playing():
+				video_background.play()
+		else:
+			push_warning("[MainMenu] Unsupported MenuBackground node type: %s" % menu_background.get_class())
 
 	# Style title
 	var title_label: Label = $CenterContainer/VBoxContainer/TitleLabel

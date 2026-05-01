@@ -26,7 +26,7 @@ const BUTTON_STATE_COLORS := {
 @export var prefill_test_credentials_from_env: bool = false
 
 ## UI node references
-@onready var menu_background: TextureRect = $MenuBackground
+@onready var menu_background: Control = $MenuBackground
 @onready var username_input: LineEdit = $CenterContainer/VBoxContainer/UsernameInput
 @onready var password_input: LineEdit = $CenterContainer/VBoxContainer/PasswordInput
 @onready var login_button: Button = $CenterContainer/VBoxContainer/LoginButton
@@ -81,15 +81,26 @@ func _ready() -> void:
 func _apply_dark_theme() -> void:
 	# Keep the shared menu background non-interactive and full screen.
 	if menu_background:
-		var background_texture := load(MENU_BACKGROUND_PATH) as Texture2D
-		if background_texture:
-			menu_background.texture = background_texture
-		else:
-			push_warning("[LoginScreen] Failed to load menu background: %s" % MENU_BACKGROUND_PATH)
 		menu_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		menu_background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		menu_background.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		menu_background.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+
+		if menu_background is TextureRect:
+			var texture_background := menu_background as TextureRect
+			var background_texture := load(MENU_BACKGROUND_PATH) as Texture2D
+			if background_texture:
+				texture_background.texture = background_texture
+			else:
+				push_warning("[LoginScreen] Failed to load menu background: %s" % MENU_BACKGROUND_PATH)
+			texture_background.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			texture_background.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		elif menu_background is VideoStreamPlayer:
+			var video_background := menu_background as VideoStreamPlayer
+			video_background.expand = true
+			video_background.loop = true
+			if video_background.stream != null and not video_background.is_playing():
+				video_background.play()
+		else:
+			push_warning("[LoginScreen] Unsupported MenuBackground node type: %s" % menu_background.get_class())
 
 	# Style title
 	var title_label: Label = $CenterContainer/VBoxContainer/TitleLabel

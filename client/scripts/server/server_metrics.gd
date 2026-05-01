@@ -15,7 +15,11 @@ var metrics: Dictionary = {
 	"total_bytes_sent": 0,
 	"total_bytes_received": 0,
 	"avg_bandwidth_per_client": 0.0,
-	"last_metrics_time": 0.0
+	"last_metrics_time": 0.0,
+	## Per-channel byte breakdown sampled from NetworkManager.bytes_sent_by_type
+	## (§8.1). Map of MessageType -> bytes since server start; consumers diff
+	## against a previous snapshot to derive bytes/sec per channel.
+	"bytes_sent_by_type": {}
 }
 
 var _tick_times: Array[float] = []
@@ -50,6 +54,10 @@ func update_metrics(player_count: int, entity_count: int, tick_count: int, netwo
 	metrics.entity_count = entity_count
 	metrics.total_bytes_sent = network_stats.get("bytes_sent", 0)
 	metrics.total_bytes_received = network_stats.get("bytes_received", 0)
+	# Per-channel byte breakdown (§8.1). Stored cumulatively; rate work is
+	# left to consumers so we don't lose the absolute counter on a sample miss.
+	if network_stats.has("bytes_sent_by_type"):
+		metrics.bytes_sent_by_type = network_stats.bytes_sent_by_type
 
 	# Calculate average bandwidth per client as a rate (bytes/sec)
 	var peer_bytes: Dictionary = network_stats.get("peer_bytes_sent", {})
@@ -115,5 +123,6 @@ func clear() -> void:
 		"total_bytes_sent": 0,
 		"total_bytes_received": 0,
 		"avg_bandwidth_per_client": 0.0,
-		"last_metrics_time": _prev_metrics_time
+		"last_metrics_time": _prev_metrics_time,
+		"bytes_sent_by_type": {}
 	}

@@ -23,7 +23,8 @@ enum MessageType {
 	DISCONNECT = 7,        ## Client -> Server: Clean disconnect
 	REQUEST_FULL_STATE = 8, ## Client -> Server: Request full state sync (TASK-021)
 	RESPAWN_REQUEST = 9,   ## Client -> Server: Request respawn after death
-	SERVER_METRICS = 10    ## Server -> Client: Server performance metrics (1/sec)
+	SERVER_METRICS = 10,   ## Server -> Client: Server performance metrics (1/sec)
+	BATCH = 11             ## Server -> Client: Multiple packets in one frame (TASK-066)
 }
 
 ## Signals - Client mode
@@ -56,6 +57,15 @@ var server_heartbeat_timeout: float = 5.0  # Same as client timeout
 ## Per-client bandwidth tracking (server mode)
 var peer_bytes_sent: Dictionary = {}  # peer_id -> int (total bytes sent)
 
+## Per-tick packet batching state (server mode, TASK-066). When a batch window
+## is open, send_to_client appends encoded packets here instead of writing to
+## the WebSocket immediately. flush_batches() then concatenates each peer's
+## queue into a single BATCH packet and sends it as one WebSocket frame.
+var _batching_active: bool = false
+var _pending_batches: Dictionary = {}  # peer_id -> Array[PackedByteArray]
+## Hard cap on packets per BATCH frame (u8 count field on the wire).
+const BATCH_MAX_PACKETS := 255
+
 ## Connection state
 var current_state: ConnectionState = ConnectionState.DISCONNECTED
 var server_url: String = ""
@@ -84,6 +94,14 @@ var heartbeat_timeout_seconds: float = 5.0
 const UINT32_WRAP: int = 4294967296
 const MAX_REASONABLE_PING_MS: int = 10000
 
+## Estimated offset between local Time.get_ticks_msec() and the server's
+## wall clock, in milliseconds (§5.4). Computed as
+## `server_ms - (local_ms - rtt/2)` and low-pass-filtered to ride out jitter.
+## A value of `0` means no sample has been received yet.
+var server_clock_offset_ms: float = 0.0
+var server_clock_offset_samples: int = 0
+const SERVER_CLOCK_FILTER_ALPHA := 0.2  ## EMA weight for new samples.
+
 ## Network statistics
 var stats: Dictionary = {
 	"packets_sent": 0,
@@ -93,6 +111,11 @@ var stats: Dictionary = {
 	"ping_ms": 0.0,
 	"last_ping_time": 0.0
 }
+
+## Per-channel egress breakdown (server mode, §8.1 of
+## NETWORK_PERFORMANCE_UPGRADES.md). Keyed by MessageType. BATCH frames are
+## tallied separately so envelope overhead is visible in dashboards.
+var bytes_sent_by_type: Dictionary = {}
 
 ## Called when the node enters the scene tree
 func _ready() -> void:
@@ -400,22 +423,52 @@ func _handle_incoming_packet() -> void:
 	stats.packets_received += 1
 	stats.bytes_received += packet.size()
 
-	# Decode packet (binary format as per ARCHITECTURE.md)
-	var message = _decode_packet(packet)
+	_dispatch_received_buffer(packet)
 
-	if message == null:
+
+## Dispatch a single inbound buffer, transparently unwrapping BATCH envelopes
+## (TASK-066). Inner packets are dispatched in order so listeners observe the
+## same sequence the server queued during its tick.
+func _dispatch_received_buffer(packet: PackedByteArray) -> void:
+	if packet.size() < PacketTypes.HEADER_SIZE:
+		print("[NetworkManager] Received undersized packet (%d bytes)" % packet.size())
+		return
+
+	var packet_type: int = packet.decode_u8(0)
+	if packet_type == MessageType.BATCH:
+		_dispatch_batch_buffer(packet)
+		return
+
+	var message = _decode_packet(packet)
+	if message == null or message.is_empty():
 		print("[NetworkManager] Failed to decode packet")
 		return
 
 	var message_type: MessageType = message.get("type", MessageType.HEARTBEAT)
-
-	# Update heartbeat timestamp
 	if message_type == MessageType.HEARTBEAT:
 		last_heartbeat_received = Time.get_ticks_msec() / 1000.0
 		_handle_heartbeat_response(message)
 	else:
-		# Emit signal for other systems to handle
 		server_message_received.emit(message_type, message.get("data", {}))
+
+
+func _dispatch_batch_buffer(packet: PackedByteArray) -> void:
+	# [u8 BATCH][u16 payload_len][u8 count][N inner_packets...]
+	if packet.size() < PacketTypes.HEADER_SIZE + 1:
+		return
+	var count: int = packet.decode_u8(PacketTypes.HEADER_SIZE)
+	var pos: int = PacketTypes.HEADER_SIZE + 1
+	for i in count:
+		if pos + PacketTypes.HEADER_SIZE > packet.size():
+			print("[NetworkManager] BATCH truncated at packet %d/%d" % [i, count])
+			return
+		var inner_len: int = packet.decode_u16(pos + 1)
+		var inner_size: int = PacketTypes.HEADER_SIZE + inner_len
+		if pos + inner_size > packet.size():
+			print("[NetworkManager] BATCH inner packet %d overflows envelope" % i)
+			return
+		_dispatch_received_buffer(packet.slice(pos, pos + inner_size))
+		pos += inner_size
 
 ## Handle incoming packet from client (server receiving)
 func _handle_server_incoming_packet(peer_id: int, ws_peer: WebSocketPeer) -> void:
@@ -438,7 +491,11 @@ func _handle_server_incoming_packet(peer_id: int, ws_peer: WebSocketPeer) -> voi
 		MessageType.HEARTBEAT:
 			# Update last heartbeat time and respond immediately
 			peer_last_heartbeat[peer_id] = Time.get_ticks_msec() / 1000.0
-			send_to_client(peer_id, MessageType.HEARTBEAT, {"timestamp": data.get("timestamp", Time.get_ticks_msec())})
+			# §5.4: stamp the reply with our wall clock so the client can sync.
+			send_to_client(peer_id, MessageType.HEARTBEAT, {
+				"timestamp": data.get("timestamp", Time.get_ticks_msec()),
+				"server_ms": Time.get_ticks_msec() & 0xFFFFFFFF
+			})
 			return
 		MessageType.DISCONNECT:
 			print("[NetworkManager] Server: Disconnect request from peer %d" % peer_id)
@@ -448,7 +505,9 @@ func _handle_server_incoming_packet(peer_id: int, ws_peer: WebSocketPeer) -> voi
 	# Emit signal for ServerMain to handle game-related messages
 	server_client_message.emit(peer_id, message_type, data)
 
-## Send message from server to specific client
+## Send message from server to specific client. While a tick batch window is
+## open (see begin_batch / flush_batches), the encoded packet is queued and
+## emitted as part of a single BATCH WebSocket frame at flush time (TASK-066).
 func send_to_client(peer_id: int, message_type: MessageType, data: Dictionary = {}) -> void:
 	if not connected_peers.has(peer_id):
 		return
@@ -458,23 +517,117 @@ func send_to_client(peer_id: int, message_type: MessageType, data: Dictionary = 
 		return
 
 	var packet = _encode_packet(message_type, data)
-	var error = ws_peer.send(packet)
+	# Account against the channel before transport (§8.1). The batch envelope
+	# adds a small wrapper at flush time which is tallied separately.
+	_record_bytes_for_type(message_type, packet.size())
 
-	if error == OK:
-		stats.packets_sent += 1
-		stats.bytes_sent += packet.size()
-		# Per-client bandwidth tracking
-		if not peer_bytes_sent.has(peer_id):
-			peer_bytes_sent[peer_id] = 0
-		peer_bytes_sent[peer_id] += packet.size()
-	else:
-		print("[NetworkManager] Server: Failed to send packet to peer %d: %d" % [peer_id, error])
+	if _batching_active:
+		_enqueue_for_batch(peer_id, packet)
+		return
+
+	_send_raw_to_peer(peer_id, packet)
 
 
 ## Send message from server to all connected clients
 func broadcast_to_clients(message_type: MessageType, data: Dictionary = {}) -> void:
 	for peer_id in connected_peers.keys():
 		send_to_client(peer_id, message_type, data)
+
+
+## Begin a per-tick batching window (TASK-066). Subsequent send_to_client and
+## broadcast_to_clients calls are buffered per-peer until flush_batches() is
+## called. Safe to call when batching is already active (no-op).
+func begin_batch() -> void:
+	if _batching_active:
+		return
+	_batching_active = true
+	_pending_batches.clear()
+
+
+## Flush queued packets accumulated since begin_batch(). Each peer's queue is
+## emitted as a single WebSocket frame: a one-element queue is sent as the
+## inner packet directly (no envelope overhead) while multi-packet queues are
+## wrapped in a BATCH frame so the client receives one WS message per peer
+## per tick.
+func flush_batches() -> void:
+	if not _batching_active:
+		return
+	_batching_active = false
+
+	for peer_id in _pending_batches.keys():
+		var queue: Array = _pending_batches[peer_id]
+		if queue.is_empty():
+			continue
+
+		if queue.size() == 1:
+			_send_raw_to_peer(peer_id, queue[0])
+			continue
+
+		# Split into chunks if a single tick produced more than BATCH_MAX_PACKETS
+		# packets for this peer. In practice this only happens under stress and
+		# keeps each frame's count field within u8.
+		var idx := 0
+		while idx < queue.size():
+			var end: int = mini(idx + BATCH_MAX_PACKETS, queue.size())
+			var chunk := queue.slice(idx, end)
+			_send_raw_to_peer(peer_id, _build_batch_packet(chunk))
+			idx = end
+
+	_pending_batches.clear()
+
+
+## Discard any pending batched packets without sending them. Used during
+## shutdown so we never write to a half-torn-down peer.
+func clear_batches() -> void:
+	_batching_active = false
+	_pending_batches.clear()
+
+
+func _enqueue_for_batch(peer_id: int, packet: PackedByteArray) -> void:
+	if not _pending_batches.has(peer_id):
+		_pending_batches[peer_id] = []
+	(_pending_batches[peer_id] as Array).append(packet)
+
+
+## Wrap N inner packets in a BATCH envelope: [u8 BATCH][u16 payload_len][u8 N][packets...]
+func _build_batch_packet(inner_packets: Array) -> PackedByteArray:
+	var writer = PacketWriter.new()
+	writer.write_header(MessageType.BATCH)
+	writer.write_u8(inner_packets.size())
+	var inner_bytes := 0
+	for inner in inner_packets:
+		writer.write_bytes(inner)
+		inner_bytes += (inner as PackedByteArray).size()
+	writer.finalize_header()
+	var envelope := writer.get_buffer()
+	# Inner packets are already tallied against their respective channels at
+	# send_to_client(). Only the envelope overhead is attributed to BATCH.
+	_record_bytes_for_type(MessageType.BATCH, envelope.size() - inner_bytes)
+	return envelope
+
+
+func _record_bytes_for_type(message_type: int, byte_count: int) -> void:
+	if byte_count <= 0:
+		return
+	bytes_sent_by_type[message_type] = int(bytes_sent_by_type.get(message_type, 0)) + byte_count
+
+
+func _send_raw_to_peer(peer_id: int, packet: PackedByteArray) -> bool:
+	var ws_peer: WebSocketPeer = connected_peers.get(peer_id)
+	if ws_peer == null or ws_peer.get_ready_state() != WebSocketPeer.STATE_OPEN:
+		return false
+
+	var error = ws_peer.send(packet)
+	if error == OK:
+		stats.packets_sent += 1
+		stats.bytes_sent += packet.size()
+		if not peer_bytes_sent.has(peer_id):
+			peer_bytes_sent[peer_id] = 0
+		peer_bytes_sent[peer_id] += packet.size()
+		return true
+
+	print("[NetworkManager] Server: Failed to send packet to peer %d: %d" % [peer_id, error])
+	return false
 
 
 ## Disconnect a client from server
@@ -543,14 +696,43 @@ func send_heartbeat() -> void:
 	send_message(MessageType.HEARTBEAT, {"timestamp": Time.get_ticks_msec()})
 	stats.last_ping_time = Time.get_ticks_msec() / 1000.0
 
-## Handle heartbeat response
+## Handle heartbeat response. Updates RTT and the server-clock offset (§5.4).
 func _handle_heartbeat_response(message: Dictionary) -> void:
 	var data = message.get("data", {})
-	if data.has("timestamp"):
-		var sent_timestamp: int = int(data.get("timestamp", 0))
-		var ping_ms := _elapsed_msec_since_u32(sent_timestamp)
-		if ping_ms <= MAX_REASONABLE_PING_MS:
-			stats.ping_ms = ping_ms
+	if not data.has("timestamp"):
+		return
+
+	var sent_timestamp: int = int(data.get("timestamp", 0))
+	var ping_ms := _elapsed_msec_since_u32(sent_timestamp)
+	if ping_ms <= MAX_REASONABLE_PING_MS:
+		stats.ping_ms = ping_ms
+	else:
+		return  # Bogus sample; don't pollute the clock estimate either.
+
+	var server_ms: int = int(data.get("server_ms", 0))
+	if server_ms == 0:
+		return  # Older server / not stamped this reply.
+
+	# Estimate when on the local clock the server stamped the reply: roughly
+	# half an RTT before we received it.
+	var arrival_local_ms: int = Time.get_ticks_msec() & 0xFFFFFFFF
+	var server_send_local_ms: int = arrival_local_ms - int(ping_ms / 2.0)
+	var sample := float(server_ms - server_send_local_ms)
+
+	if server_clock_offset_samples == 0:
+		server_clock_offset_ms = sample
+	else:
+		server_clock_offset_ms = lerpf(server_clock_offset_ms, sample, SERVER_CLOCK_FILTER_ALPHA)
+	server_clock_offset_samples += 1
+
+
+## Server time in milliseconds estimated from the local clock plus the
+## low-pass-filtered offset (§5.4). Returns 0 until at least one heartbeat
+## reply has carried `server_ms`, so callers can detect "no sync yet."
+func get_server_time_ms() -> int:
+	if server_clock_offset_samples == 0:
+		return 0
+	return int(round(float(Time.get_ticks_msec() & 0xFFFFFFFF) + server_clock_offset_ms))
 
 
 func _elapsed_msec_since_u32(timestamp_ms: int) -> int:
@@ -587,7 +769,12 @@ func _encode_packet(message_type: MessageType, data: Dictionary) -> PackedByteAr
 
 	match message_type:
 		MessageType.HEARTBEAT:
+			# Wire format (8 bytes, both directions, §5.4 of
+			# NETWORK_PERFORMANCE_UPGRADES.md):
+			#   [u32 timestamp]  - echoed client send time for RTT
+			#   [u32 server_ms]  - server wall clock; set by server, 0 on client
 			writer.write_u32(data.get("timestamp", Time.get_ticks_msec()))
+			writer.write_u32(data.get("server_ms", 0))
 
 		MessageType.PLAYER_INPUT:
 			var input_packet = PlayerInputPacket.from_input_dict(data)
@@ -724,8 +911,12 @@ func _decode_packet(packet: PackedByteArray) -> Dictionary:
 
 	match packet_type:
 		PacketTypes.Type.HEARTBEAT:
+			# §5.4: heartbeat now carries both echoed client timestamp and the
+			# server's wall clock so the client can maintain a low-pass-filtered
+			# clock offset for interpolation alignment.
 			result.data = {
-				"timestamp": reader.read_u32()
+				"timestamp": reader.read_u32(),
+				"server_ms": reader.read_u32()
 			}
 
 		PacketTypes.Type.PLAYER_INPUT:
@@ -821,9 +1012,14 @@ func is_server_connected() -> bool:
 		and ws_client != null \
 		and ws_client.get_ready_state() == WebSocketPeer.STATE_OPEN
 
-## Get network statistics
+## Get network statistics. Includes the per-channel byte breakdown when in
+## server mode (§8.1) so dashboards / tests can detect when one packet type
+## starts dominating egress.
 func get_stats() -> Dictionary:
-	return stats.duplicate()
+	var snapshot: Dictionary = stats.duplicate()
+	if not bytes_sent_by_type.is_empty():
+		snapshot["bytes_sent_by_type"] = bytes_sent_by_type.duplicate()
+	return snapshot
 
 ## Reset statistics
 func reset_stats() -> void:

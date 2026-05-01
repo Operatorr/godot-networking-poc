@@ -8,6 +8,7 @@ Protocol reference: client/scripts/shared/networking/packet_types.gd
 """
 
 import asyncio
+import heapq
 import struct
 import time
 import random
@@ -41,6 +42,7 @@ class MessageType(IntEnum):
     REQUEST_FULL_STATE = 8
     RESPAWN_REQUEST = 9
     SERVER_METRICS = 10
+    BATCH = 11
 
 
 class EntityType(IntEnum):
@@ -94,6 +96,390 @@ ANGLE_SCALE = 100.0
 
 # Header size
 HEADER_SIZE = 3  # [u8 type][u16 payload_length]
+
+# Mirrored gameplay constants from client/scripts/shared/game_constants.gd.
+# Keep these in sync with the authoritative server values so bots make legal
+# decisions while still using only network-visible state.
+SERVER_TICK_RATE = 30.0
+PLAYER_SPEED = 200.0
+PLAYER_SPRINT_MULTIPLIER = 1.6
+PLAYER_SPRINT_SPEED = PLAYER_SPEED * PLAYER_SPRINT_MULTIPLIER
+MAP_MIN_X = -1000.0
+MAP_MIN_Y = -1000.0
+MAP_MAX_X = 1000.0
+MAP_MAX_Y = 1000.0
+PROJECTILE_SPEED = 400.0
+PROJECTILE_MAX_DISTANCE = 800.0
+PROJECTILE_RADIUS = 8.0
+PLAYER_HITBOX_RADIUS = 16.0
+MONSTER_HITBOX_RADIUS = 16.0
+MONSTER_PROJECTILE_SPEED = 300.0
+MONSTER_ATTACK_RANGE = 200.0
+MONSTER_FLEE_DISTANCE = 100.0
+MONSTER_DETECTION_RANGE = 650.0
+BOT_AOI_RADIUS = 1000.0
+BOT_OBSTACLE_LOOKAHEAD = 80.0
+BOT_BOUNDARY_AVOID_DISTANCE = 130.0
+BOT_SEPARATION_DISTANCE = 90.0
+BOT_INPUT_INTERVAL = 0.1
+NAV_CELL_SIZE = 100.0
+NAV_COLUMNS = int((MAP_MAX_X - MAP_MIN_X) / NAV_CELL_SIZE)
+NAV_ROWS = int((MAP_MAX_Y - MAP_MIN_Y) / NAV_CELL_SIZE)
+INF = float("inf")
+
+STRATEGY_STATE_HUNT = "hunt"
+STRATEGY_STATE_ENGAGE = "engage"
+STRATEGY_STATE_FLANK = "flank"
+STRATEGY_STATE_EVADE = "evade"
+STRATEGY_STATE_DEAD = "dead"
+
+ARENA_OBSTACLES: tuple[tuple[float, float, float, float], ...] = (
+    (-20.0, -200.0, 40.0, 160.0),
+    (-20.0, 40.0, 40.0, 160.0),
+    (-200.0, -20.0, 160.0, 40.0),
+    (40.0, -20.0, 160.0, 40.0),
+    (-700.0, -700.0, 150.0, 30.0),
+    (-700.0, -700.0, 30.0, 150.0),
+    (550.0, -700.0, 150.0, 30.0),
+    (670.0, -700.0, 30.0, 150.0),
+    (-700.0, 670.0, 150.0, 30.0),
+    (-700.0, 550.0, 30.0, 150.0),
+    (550.0, 670.0, 150.0, 30.0),
+    (670.0, 550.0, 30.0, 150.0),
+    (-450.0, -350.0, 100.0, 25.0),
+    (350.0, -350.0, 100.0, 25.0),
+    (-450.0, 325.0, 100.0, 25.0),
+    (350.0, 325.0, 100.0, 25.0),
+)
+
+ARENA_PLAYER_SPAWNS: tuple[tuple[float, float], ...] = (
+    (-800.0, -800.0),
+    (0.0, -800.0),
+    (800.0, -800.0),
+    (-800.0, 0.0),
+    (800.0, 0.0),
+    (-800.0, 800.0),
+    (0.0, 800.0),
+    (800.0, 800.0),
+    (-450.0, 450.0),
+    (450.0, -450.0),
+)
+
+ARENA_MONSTER_SPAWNS: tuple[tuple[float, float], ...] = (
+    (-450.0, -800.0),
+    (450.0, -800.0),
+    (-900.0, -450.0),
+    (900.0, -450.0),
+    (-900.0, 450.0),
+    (900.0, 450.0),
+    (-450.0, 800.0),
+    (450.0, 800.0),
+    (0.0, -500.0),
+    (0.0, 500.0),
+    (-500.0, 0.0),
+    (500.0, 0.0),
+)
+
+HUNT_PATROL_POINTS: tuple[tuple[float, float], ...] = (
+    (0.0, -760.0),
+    (760.0, -760.0),
+    (760.0, 0.0),
+    (760.0, 760.0),
+    (0.0, 760.0),
+    (-760.0, 760.0),
+    (-760.0, 0.0),
+    (-760.0, -760.0),
+    (-520.0, -520.0),
+    (520.0, -520.0),
+    (520.0, 520.0),
+    (-520.0, 520.0),
+    (0.0, -520.0),
+    (520.0, 0.0),
+    (0.0, 520.0),
+    (-520.0, 0.0),
+)
+
+
+def _clamp(value: float, min_value: float, max_value: float) -> float:
+    return max(min_value, min(max_value, value))
+
+
+def _clamp_difficulty(value: float) -> float:
+    try:
+        return _clamp(float(value), 0.0, 1.0)
+    except (TypeError, ValueError):
+        return 1.0
+
+
+def _length(x: float, y: float) -> float:
+    return math.sqrt(x * x + y * y)
+
+
+def _normalize(x: float, y: float) -> tuple[float, float]:
+    length = _length(x, y)
+    if length < 0.001:
+        return 0.0, 0.0
+    return x / length, y / length
+
+
+def _distance_point_to_segment(
+    px: float,
+    py: float,
+    ax: float,
+    ay: float,
+    bx: float,
+    by: float,
+) -> float:
+    abx = bx - ax
+    aby = by - ay
+    ab_len_sq = abx * abx + aby * aby
+    if ab_len_sq <= 0.0001:
+        return _length(px - ax, py - ay)
+    t = _clamp(((px - ax) * abx + (py - ay) * aby) / ab_len_sq, 0.0, 1.0)
+    closest_x = ax + abx * t
+    closest_y = ay + aby * t
+    return _length(px - closest_x, py - closest_y)
+
+
+def _point_in_rect(px: float, py: float, rect: tuple[float, float, float, float]) -> bool:
+    rx, ry, rw, rh = rect
+    return rx <= px <= rx + rw and ry <= py <= ry + rh
+
+
+def _expanded_rect(rect: tuple[float, float, float, float], radius: float) -> tuple[float, float, float, float]:
+    rx, ry, rw, rh = rect
+    return rx - radius, ry - radius, rw + radius * 2.0, rh + radius * 2.0
+
+
+def circle_intersects_obstacle(x: float, y: float, radius: float) -> bool:
+    for obs in ARENA_OBSTACLES:
+        if _point_in_rect(x, y, _expanded_rect(obs, radius)):
+            return True
+    return False
+
+
+def _line_rect_intersection(
+    ax: float,
+    ay: float,
+    bx: float,
+    by: float,
+    rect: tuple[float, float, float, float],
+) -> tuple[float, float] | None:
+    rx, ry, rw, rh = rect
+    dx = bx - ax
+    dy = by - ay
+    t_min = 0.0
+    t_max = 1.0
+
+    if abs(dx) < 0.0001:
+        if ax < rx or ax > rx + rw:
+            return None
+    else:
+        t1 = (rx - ax) / dx
+        t2 = (rx + rw - ax) / dx
+        if t1 > t2:
+            t1, t2 = t2, t1
+        t_min = max(t_min, t1)
+        t_max = min(t_max, t2)
+        if t_min > t_max:
+            return None
+
+    if abs(dy) < 0.0001:
+        if ay < ry or ay > ry + rh:
+            return None
+    else:
+        t1 = (ry - ay) / dy
+        t2 = (ry + rh - ay) / dy
+        if t1 > t2:
+            t1, t2 = t2, t1
+        t_min = max(t_min, t1)
+        t_max = min(t_max, t2)
+        if t_min > t_max:
+            return None
+
+    if 0.0 <= t_min <= 1.0:
+        return ax + dx * t_min, ay + dy * t_min
+    return None
+
+
+def line_intersects_obstacle(ax: float, ay: float, bx: float, by: float) -> bool:
+    for obs in ARENA_OBSTACLES:
+        if _line_rect_intersection(ax, ay, bx, by, obs) is not None:
+            return True
+    return False
+
+
+def _movement_hits_obstacle(
+    ax: float,
+    ay: float,
+    bx: float,
+    by: float,
+    radius: float,
+) -> bool:
+    if circle_intersects_obstacle(bx, by, radius):
+        return True
+    for obs in ARENA_OBSTACLES:
+        if _line_rect_intersection(ax, ay, bx, by, _expanded_rect(obs, radius)) is not None:
+            return True
+    return False
+
+
+def move_with_obstacle_collision(
+    ax: float,
+    ay: float,
+    bx: float,
+    by: float,
+    radius: float,
+) -> tuple[float, float]:
+    target_x = _clamp(bx, MAP_MIN_X, MAP_MAX_X)
+    target_y = _clamp(by, MAP_MIN_Y, MAP_MAX_Y)
+    if not _movement_hits_obstacle(ax, ay, target_x, target_y, radius):
+        return target_x, target_y
+
+    x_target = (_clamp(target_x, MAP_MIN_X, MAP_MAX_X), _clamp(ay, MAP_MIN_Y, MAP_MAX_Y))
+    y_target = (_clamp(ax, MAP_MIN_X, MAP_MAX_X), _clamp(target_y, MAP_MIN_Y, MAP_MAX_Y))
+    best_x, best_y = ax, ay
+    best_dist_sq = (target_x - ax) ** 2 + (target_y - ay) ** 2
+
+    if not _movement_hits_obstacle(ax, ay, x_target[0], x_target[1], radius):
+        best_x, best_y = x_target
+        best_dist_sq = (target_x - best_x) ** 2 + (target_y - best_y) ** 2
+
+    if not _movement_hits_obstacle(ax, ay, y_target[0], y_target[1], radius):
+        y_dist_sq = (target_x - y_target[0]) ** 2 + (target_y - y_target[1]) ** 2
+        if y_dist_sq < best_dist_sq:
+            best_x, best_y = y_target
+
+    return best_x, best_y
+
+
+def _is_walkable_point(x: float, y: float, radius: float = PLAYER_HITBOX_RADIUS) -> bool:
+    return (
+        MAP_MIN_X + radius <= x <= MAP_MAX_X - radius
+        and MAP_MIN_Y + radius <= y <= MAP_MAX_Y - radius
+        and not circle_intersects_obstacle(x, y, radius)
+    )
+
+
+def _world_to_nav_cell(x: float, y: float) -> tuple[int, int]:
+    col = int((x - MAP_MIN_X) / NAV_CELL_SIZE)
+    row = int((y - MAP_MIN_Y) / NAV_CELL_SIZE)
+    return max(0, min(NAV_COLUMNS - 1, col)), max(0, min(NAV_ROWS - 1, row))
+
+
+def _nav_cell_center(cell: tuple[int, int]) -> tuple[float, float]:
+    col, row = cell
+    return (
+        MAP_MIN_X + (col + 0.5) * NAV_CELL_SIZE,
+        MAP_MIN_Y + (row + 0.5) * NAV_CELL_SIZE,
+    )
+
+
+def _is_walkable_nav_cell(cell: tuple[int, int]) -> bool:
+    col, row = cell
+    if col < 0 or row < 0 or col >= NAV_COLUMNS or row >= NAV_ROWS:
+        return False
+    x, y = _nav_cell_center(cell)
+    return _is_walkable_point(x, y)
+
+
+def _nearest_walkable_nav_cell(x: float, y: float) -> tuple[int, int]:
+    start = _world_to_nav_cell(x, y)
+    if _is_walkable_nav_cell(start):
+        return start
+
+    for radius in range(1, max(NAV_COLUMNS, NAV_ROWS)):
+        candidates: list[tuple[int, int]] = []
+        for dx in range(-radius, radius + 1):
+            candidates.append((start[0] + dx, start[1] - radius))
+            candidates.append((start[0] + dx, start[1] + radius))
+        for dy in range(-radius + 1, radius):
+            candidates.append((start[0] - radius, start[1] + dy))
+            candidates.append((start[0] + radius, start[1] + dy))
+        walkable = [cell for cell in candidates if _is_walkable_nav_cell(cell)]
+        if walkable:
+            return min(walkable, key=lambda cell: (_nav_cell_center(cell)[0] - x) ** 2 + (_nav_cell_center(cell)[1] - y) ** 2)
+    return start
+
+
+def _find_nav_path(start_x: float, start_y: float, goal_x: float, goal_y: float) -> list[tuple[float, float]]:
+    start = _nearest_walkable_nav_cell(start_x, start_y)
+    goal = _nearest_walkable_nav_cell(goal_x, goal_y)
+    if start == goal:
+        return [(goal_x, goal_y)] if _is_walkable_point(goal_x, goal_y) else [_nav_cell_center(goal)]
+
+    def heuristic(cell: tuple[int, int]) -> float:
+        return math.hypot(goal[0] - cell[0], goal[1] - cell[1])
+
+    open_set: list[tuple[float, float, tuple[int, int]]] = []
+    heapq.heappush(open_set, (heuristic(start), 0.0, start))
+    came_from: dict[tuple[int, int], tuple[int, int]] = {}
+    g_score: dict[tuple[int, int], float] = {start: 0.0}
+    closed: set[tuple[int, int]] = set()
+    neighbors = (
+        (-1, 0), (1, 0), (0, -1), (0, 1),
+        (-1, -1), (-1, 1), (1, -1), (1, 1),
+    )
+
+    while open_set:
+        _, current_cost, current = heapq.heappop(open_set)
+        if current in closed:
+            continue
+        if current == goal:
+            cells: list[tuple[int, int]] = [current]
+            while current in came_from:
+                current = came_from[current]
+                cells.append(current)
+            cells.reverse()
+            path = [_nav_cell_center(cell) for cell in cells[1:]]
+            if _is_walkable_point(goal_x, goal_y):
+                path.append((goal_x, goal_y))
+            return _smooth_nav_path(start_x, start_y, path)
+
+        closed.add(current)
+        for dx, dy in neighbors:
+            neighbor = (current[0] + dx, current[1] + dy)
+            if not _is_walkable_nav_cell(neighbor):
+                continue
+            if dx != 0 and dy != 0:
+                if not _is_walkable_nav_cell((current[0] + dx, current[1])) or not _is_walkable_nav_cell((current[0], current[1] + dy)):
+                    continue
+            current_x, current_y = _nav_cell_center(current)
+            neighbor_x, neighbor_y = _nav_cell_center(neighbor)
+            if _movement_hits_obstacle(current_x, current_y, neighbor_x, neighbor_y, PLAYER_HITBOX_RADIUS):
+                continue
+            step_cost = 1.4142 if dx != 0 and dy != 0 else 1.0
+            tentative = current_cost + step_cost
+            if tentative >= g_score.get(neighbor, INF):
+                continue
+            came_from[neighbor] = current
+            g_score[neighbor] = tentative
+            heapq.heappush(open_set, (tentative + heuristic(neighbor), tentative, neighbor))
+
+    fallback = _nav_cell_center(goal)
+    return [(fallback[0], fallback[1])]
+
+
+def _smooth_nav_path(start_x: float, start_y: float, path: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    if len(path) <= 1:
+        return path
+
+    result: list[tuple[float, float]] = []
+    anchor_x = start_x
+    anchor_y = start_y
+    index = 0
+    while index < len(path):
+        furthest = index
+        for candidate in range(len(path) - 1, index - 1, -1):
+            px, py = path[candidate]
+            if not _movement_hits_obstacle(anchor_x, anchor_y, px, py, PLAYER_HITBOX_RADIUS):
+                furthest = candidate
+                break
+        waypoint = path[furthest]
+        result.append(waypoint)
+        anchor_x, anchor_y = waypoint
+        index = furthest + 1
+    return result
 
 
 # --- Packet Builder (little-endian) ---
@@ -220,15 +606,71 @@ class EntitySnapshot:
     y: float = 0.0
     animation_state: int = 0
     flags: int = ENTITY_FLAG_ALIVE | ENTITY_FLAG_VISIBLE
+    vx: float = 0.0
+    vy: float = 0.0
+    last_seen_tick: int = 0
+    last_seen_at: float = 0.0
 
     @property
     def alive(self) -> bool:
         return bool(self.flags & ENTITY_FLAG_ALIVE)
 
+    @property
+    def visible(self) -> bool:
+        return bool(self.flags & ENTITY_FLAG_VISIBLE)
+
     def distance_sq_to(self, other: "EntitySnapshot") -> float:
         dx = self.x - other.x
         dy = self.y - other.y
         return dx * dx + dy * dy
+
+    def distance_to(self, other: "EntitySnapshot") -> float:
+        return math.sqrt(self.distance_sq_to(other))
+
+
+@dataclass
+class TacticalDecision:
+    move_x: float = 0.0
+    move_y: float = 0.0
+    aim_angle: float = 0.0
+    shoot: bool = False
+    sprint: bool = False
+    target_id: int | None = None
+    state: str = STRATEGY_STATE_HUNT
+
+
+def _tracked_snapshot(
+    entity_id: int,
+    entity_type: int,
+    x: float,
+    y: float,
+    animation_state: int,
+    flags: int,
+    previous: EntitySnapshot | None,
+    server_tick: int,
+) -> EntitySnapshot:
+    snapshot = EntitySnapshot(
+        entity_id,
+        entity_type,
+        x,
+        y,
+        animation_state,
+        flags,
+        last_seen_tick=server_tick,
+        last_seen_at=time.monotonic(),
+    )
+    if previous is None:
+        return snapshot
+
+    tick_delta = max(1, server_tick - previous.last_seen_tick)
+    dt = tick_delta / SERVER_TICK_RATE
+    if abs(x - previous.x) > 0.01 or abs(y - previous.y) > 0.01:
+        snapshot.vx = (x - previous.x) / dt
+        snapshot.vy = (y - previous.y) / dt
+    else:
+        snapshot.vx = 0.0
+        snapshot.vy = 0.0
+    return snapshot
 
 
 def _read_u8(payload: bytes, offset: int) -> tuple[int, int]:
@@ -286,7 +728,16 @@ def parse_state_update(payload: bytes, last_states: dict[int, EntitySnapshot] | 
             qy, offset = _read_s16(payload, offset)
             animation_state, offset = _read_u8(payload, offset)
             flags, offset = _read_u8(payload, offset)
-            snapshot = EntitySnapshot(entity_id, entity_type, qx / POSITION_SCALE, qy / POSITION_SCALE, animation_state, flags)
+            snapshot = _tracked_snapshot(
+                entity_id,
+                entity_type,
+                qx / POSITION_SCALE,
+                qy / POSITION_SCALE,
+                animation_state,
+                flags,
+                last_states.get(entity_id),
+                server_tick,
+            )
             last_states[entity_id] = snapshot
             parsed.append(snapshot)
             continue
@@ -307,7 +758,16 @@ def parse_state_update(payload: bytes, last_states: dict[int, EntitySnapshot] | 
             qy, offset = _read_s16(payload, offset)
             animation_state, offset = _read_u8(payload, offset)
             flags, offset = _read_u8(payload, offset)
-            snapshot = EntitySnapshot(entity_id, entity_type, qx / POSITION_SCALE, qy / POSITION_SCALE, animation_state, flags)
+            snapshot = _tracked_snapshot(
+                entity_id,
+                entity_type,
+                qx / POSITION_SCALE,
+                qy / POSITION_SCALE,
+                animation_state,
+                flags,
+                previous,
+                server_tick,
+            )
         else:
             entity_type = previous.entity_type
             x = previous.x
@@ -323,7 +783,16 @@ def parse_state_update(payload: bytes, last_states: dict[int, EntitySnapshot] | 
                 animation_state, offset = _read_u8(payload, offset)
             if delta_mask & DELTA_MASK_FLAGS:
                 flags, offset = _read_u8(payload, offset)
-            snapshot = EntitySnapshot(entity_id, entity_type, x, y, animation_state, flags)
+            snapshot = _tracked_snapshot(
+                entity_id,
+                entity_type,
+                x,
+                y,
+                animation_state,
+                flags,
+                previous,
+                server_tick,
+            )
 
         last_states[entity_id] = snapshot
         parsed.append(snapshot)
@@ -535,13 +1004,21 @@ def generate_bright_color(bot_id: int) -> tuple[int, int, int]:
 class OmegaRealmBot:
     """A single load-testing bot that connects to the game server via WebSocket."""
 
-    def __init__(self, bot_id: int, server_url: str, token: str = "", behavior: str = BEHAVIOR_DEFAULT):
+    def __init__(
+        self,
+        bot_id: int,
+        server_url: str,
+        token: str = "",
+        behavior: str = BEHAVIOR_DEFAULT,
+        difficulty: float = 1.0,
+    ):
         self.bot_id = bot_id
         self.server_url = server_url
         self.character_id, self.character_name = generate_bot_identity(bot_id)
         self.player_color = generate_bright_color(bot_id)
         self.token = token
         self.behavior = behavior
+        self.difficulty = _clamp_difficulty(difficulty)
         self.ws = None
         self.metrics = BotMetrics()
         self._running = False
@@ -556,13 +1033,39 @@ class OmegaRealmBot:
         self._vel_x = 0.0
         self._vel_y = 0.0
         self._aim_angle = 0.0
+        self._input_flags = 0
         self._last_heartbeat_sent = 0.0
         self._last_input_sent = 0.0
         self._last_rtt_ms = 0
+        self._latest_server_tick = 0
         self._entity_id: int | None = None
         self._entities: dict[int, EntitySnapshot] = {}
         self._dead_since: float | None = None
         self._last_respawn_sent = 0.0
+        self._target_id: int | None = None
+        self._last_decision_time = 0.0
+        self._decision_cache: TacticalDecision | None = None
+        self._explore_angle = random.uniform(-math.pi, math.pi)
+        self._explore_until = 0.0
+        self._strafe_dir = 1.0 if bot_id % 2 == 0 else -1.0
+        self._strategy_state = STRATEGY_STATE_HUNT
+        self._hunt_goal: tuple[float, float] | None = None
+        self._hunt_path: list[tuple[float, float]] = []
+        self._hunt_path_index = 0
+        self._hunt_goal_started_at = 0.0
+        self._hunt_last_progress_pos = (self._pos_x, self._pos_y)
+        self._hunt_last_progress_at = 0.0
+        self._hunt_goal_visits: dict[tuple[float, float], float] = {}
+        self._blocked_target_id: int | None = None
+        self._blocked_since = 0.0
+        self._last_clear_shot_at = 0.0
+        self._flank_target_id: int | None = None
+        self._flank_goal: tuple[float, float] | None = None
+        self._flank_path: list[tuple[float, float]] = []
+        self._flank_path_index = 0
+        self._flank_started_at = 0.0
+        self._flank_last_progress_pos = (self._pos_x, self._pos_y)
+        self._flank_last_progress_at = 0.0
 
     async def connect(self, timeout: float = 10.0) -> bool:
         """Connect to the game server and send auth handshake."""
@@ -781,7 +1284,7 @@ class OmegaRealmBot:
                 self._input_flags | shoot_flag,
                 self._aim_angle,
                 self._sequence,
-                0,  # No render interpolation in the headless load-test bot.
+                self._latest_server_tick & 0xFFFF,
                 self._last_rtt_ms,
             )
             await self.ws.send(pkt)
@@ -791,7 +1294,7 @@ class OmegaRealmBot:
             self._running = False
 
     async def _send_strategy_input(self):
-        """Send PLAYER_INPUT from a simple target-seeking gameplay strategy."""
+        """Send PLAYER_INPUT from a difficulty-scaled tactical gameplay strategy."""
         if self.ws is None:
             return
 
@@ -801,6 +1304,7 @@ class OmegaRealmBot:
             self._pos_x = self_snapshot.x
             self._pos_y = self_snapshot.y
             if not self_snapshot.alive:
+                self._strategy_state = STRATEGY_STATE_DEAD
                 if self._dead_since is None:
                     self._dead_since = now
                 self._vel_x = 0.0
@@ -813,70 +1317,688 @@ class OmegaRealmBot:
                 return
             self._dead_since = None
 
-        target = self.select_target()
-        shoot_flag = 0
-        self._input_flags = 0
+        decision = self._get_strategy_decision(now, self_snapshot)
+        self._aim_angle = decision.aim_angle
+        self._set_velocity_from_direction(decision.move_x, decision.move_y, sprint=decision.sprint)
 
-        if target is not None:
-            dx = target.x - self._pos_x
-            dy = target.y - self._pos_y
-            dist = max(0.001, math.sqrt(dx * dx + dy * dy))
-            self._aim_angle = math.atan2(dy, dx)
-
-            desired_min = 260.0 if target.entity_type == EntityType.MONSTER else 220.0
-            desired_max = 520.0
-            move_x = 0.0
-            move_y = 0.0
-
-            if dist > desired_max:
-                move_x = dx / dist
-                move_y = dy / dist
-            elif dist < desired_min:
-                move_x = -dx / dist
-                move_y = -dy / dist
-            else:
-                strafe = 1.0 if (self.bot_id + int(time.monotonic() * 2)) % 2 == 0 else -1.0
-                move_x = (-dy / dist) * strafe
-                move_y = (dx / dist) * strafe
-                shoot_flag = INPUT_FLAG_SHOOT
-
-            self._set_velocity_from_direction(move_x, move_y, sprint=False)
-            if dist <= 650.0:
-                shoot_flag = INPUT_FLAG_SHOOT
-        else:
-            if random.random() < 0.05:
-                angle = random.uniform(-math.pi, math.pi)
-                self._set_velocity_from_direction(math.cos(angle), math.sin(angle), sprint=False)
-            else:
-                self._set_input_flags_from_velocity()
-            self._aim_angle = random.uniform(-math.pi, math.pi)
-
-        dt = 0.1
-        self._pos_x = max(-1000, min(1000, self._pos_x + self._vel_x * dt))
-        self._pos_y = max(-1000, min(1000, self._pos_y + self._vel_y * dt))
+        dt = BOT_INPUT_INTERVAL
+        self._pos_x, self._pos_y = move_with_obstacle_collision(
+            self._pos_x,
+            self._pos_y,
+            self._pos_x + self._vel_x * dt,
+            self._pos_y + self._vel_y * dt,
+            PLAYER_HITBOX_RADIUS,
+        )
+        shoot_flag = INPUT_FLAG_SHOOT if decision.shoot else 0
         await self._send_input_packet(shoot_flag)
 
-    def select_target(self) -> EntitySnapshot | None:
-        """Prefer nearest alive monster, then nearest alive non-self player."""
+    def select_target(self, now: float | None = None) -> EntitySnapshot | None:
+        """Select the best visible combat target using score, threat, and stickiness."""
         self_snapshot = self._get_self_snapshot()
         origin = self_snapshot or EntitySnapshot(-1, EntityType.PLAYER, self._pos_x, self._pos_y)
-        self_id = self._entity_id
+        now = time.monotonic() if now is None else now
 
-        monsters = [
-            e for e in self._entities.values()
-            if e.entity_type == EntityType.MONSTER and e.alive
-        ]
-        if monsters:
-            return min(monsters, key=lambda e: e.distance_sq_to(origin))
+        best: EntitySnapshot | None = None
+        best_score = -INF
+        for entity in self._entities.values():
+            score = self._score_target(entity, origin, now)
+            if score > best_score:
+                best = entity
+                best_score = score
 
-        players = [
-            e for e in self._entities.values()
-            if e.entity_type == EntityType.PLAYER and e.alive and e.entity_id != self_id
-        ]
-        if players:
-            return min(players, key=lambda e: e.distance_sq_to(origin))
-
+        if best is not None and best_score > -INF:
+            self._target_id = best.entity_id
+            return best
+        self._target_id = None
+        self._reset_blocked_target()
+        self._reset_flank()
         return None
+
+    def _score_target(self, entity: EntitySnapshot, origin: EntitySnapshot, now: float | None = None) -> float:
+        if entity.entity_id == self._entity_id:
+            return -INF
+        if entity.entity_type not in (EntityType.PLAYER, EntityType.MONSTER):
+            return -INF
+        if not entity.alive or not entity.visible:
+            return -INF
+
+        dist = entity.distance_to(origin)
+        if dist > BOT_AOI_RADIUS * 1.25:
+            return -INF
+
+        now = time.monotonic() if now is None else now
+        age = 0.0 if entity.last_seen_at <= 0.0 else max(0.0, now - entity.last_seen_at)
+        freshness = _clamp(1.0 - age / 1.5, 0.0, 1.0)
+        distance_score = _clamp(1.0 - dist / BOT_AOI_RADIUS, 0.0, 1.0) * 35.0
+
+        if entity.entity_type == EntityType.MONSTER:
+            base_score = 65.0
+            threat_score = _clamp(1.0 - dist / MONSTER_DETECTION_RANGE, 0.0, 1.0) * 22.0
+        else:
+            base_score = 30.0
+            threat_score = _clamp(1.0 - dist / 520.0, 0.0, 1.0) * 30.0
+
+        speed = _length(entity.vx, entity.vy)
+        movement_threat = _clamp(speed / PLAYER_SPRINT_SPEED, 0.0, 1.0) * 8.0
+        stickiness = 22.0 * (0.5 + self.difficulty * 0.5) if entity.entity_id == self._target_id else 0.0
+        return base_score + distance_score + threat_score + movement_threat + freshness * 12.0 + stickiness
+
+    def _get_strategy_decision(self, now: float, self_snapshot: EntitySnapshot | None) -> TacticalDecision:
+        reaction_interval = 0.04 + (1.0 - self.difficulty) * 0.46
+        if self._decision_cache is None or now - self._last_decision_time >= reaction_interval:
+            self._decision_cache = self._compute_strategy_decision(now, self_snapshot)
+            self._last_decision_time = now
+        return self._decision_cache
+
+    def _compute_strategy_decision(
+        self,
+        now: float | None = None,
+        self_snapshot: EntitySnapshot | None = None,
+    ) -> TacticalDecision:
+        now = time.monotonic() if now is None else now
+        origin = self_snapshot or self._get_self_snapshot() or EntitySnapshot(
+            -1, EntityType.PLAYER, self._pos_x, self._pos_y
+        )
+        target = self.select_target(now)
+
+        if target is None:
+            decision = self._hunt_decision(origin, now)
+        else:
+            self._strategy_state = STRATEGY_STATE_ENGAGE
+            dx = target.x - origin.x
+            dy = target.y - origin.y
+            dist = max(0.001, _length(dx, dy))
+            move_x, move_y, sprint = self._movement_for_target(origin, target, dist, now)
+            decision = TacticalDecision(move_x, move_y, self._aim_angle, False, sprint, target.entity_id, STRATEGY_STATE_ENGAGE)
+
+        dodge = self._best_projectile_dodge(origin)
+        if dodge is not None:
+            self._strategy_state = STRATEGY_STATE_EVADE
+            dodge_x, dodge_y, urgency = dodge
+            decision.move_x = decision.move_x * 0.35 + dodge_x * (1.2 + urgency)
+            decision.move_y = decision.move_y * 0.35 + dodge_y * (1.2 + urgency)
+            decision.sprint = urgency > 0.25 or self.difficulty >= 0.6
+            decision.state = STRATEGY_STATE_EVADE
+
+        sep_x, sep_y = self._target_separation_vector(origin)
+        decision.move_x += sep_x * 0.45
+        decision.move_y += sep_y * 0.45
+        decision.move_x, decision.move_y = self._steer_around_static_hazards(
+            origin.x,
+            origin.y,
+            decision.move_x,
+            decision.move_y,
+        )
+        decision.move_x, decision.move_y = self._quantize_movement_direction(
+            decision.move_x,
+            decision.move_y,
+            decision.sprint,
+        )
+
+        if target is not None:
+            decision = self._finalize_target_decision(origin, target, decision, now)
+        return decision
+
+    def _finalize_target_decision(
+        self,
+        origin: EntitySnapshot,
+        target: EntitySnapshot,
+        decision: TacticalDecision,
+        now: float,
+    ) -> TacticalDecision:
+        decision = self._aim_and_score_shot(origin, target, decision, apply_error=True)
+        if decision.shoot:
+            self._reset_blocked_target()
+            if decision.state != STRATEGY_STATE_FLANK:
+                self._reset_flank()
+            self._last_clear_shot_at = now
+            return decision
+
+        fire_x, fire_y = self._project_fire_origin(origin, decision.move_x, decision.move_y, decision.sprint)
+        predicted_x, predicted_y = self._predict_target_position(target, PROJECTILE_SPEED, EntitySnapshot(-1, EntityType.PLAYER, fire_x, fire_y))
+        clear_shot = self._line_of_fire_clear(fire_x, fire_y, predicted_x, predicted_y)
+        if clear_shot:
+            self._reset_blocked_target()
+            self._last_clear_shot_at = now
+            return decision
+
+        self._record_blocked_target(target.entity_id, now)
+        if decision.state != STRATEGY_STATE_EVADE and self._should_flank_blocked_target(target, now):
+            flank_decision = self._flank_decision(origin, target, now)
+            flank_decision.move_x, flank_decision.move_y = self._steer_around_static_hazards(
+                origin.x,
+                origin.y,
+                flank_decision.move_x,
+                flank_decision.move_y,
+            )
+            flank_decision.move_x, flank_decision.move_y = self._quantize_movement_direction(
+                flank_decision.move_x,
+                flank_decision.move_y,
+                flank_decision.sprint,
+            )
+            return self._aim_and_score_shot(origin, target, flank_decision, apply_error=False)
+
+        return decision
+
+    def _aim_and_score_shot(
+        self,
+        origin: EntitySnapshot,
+        target: EntitySnapshot,
+        decision: TacticalDecision,
+        apply_error: bool,
+    ) -> TacticalDecision:
+        fire_x, fire_y = self._project_fire_origin(
+            origin,
+            decision.move_x,
+            decision.move_y,
+            decision.sprint,
+        )
+        aim_origin = EntitySnapshot(-1, EntityType.PLAYER, fire_x, fire_y)
+        predicted_x, predicted_y = self._predict_target_position(target, PROJECTILE_SPEED, aim_origin)
+        decision.aim_angle = math.atan2(predicted_y - fire_y, predicted_x - fire_x)
+        if apply_error:
+            decision.aim_angle += self._difficulty_aim_error(_length(target.x - fire_x, target.y - fire_y))
+
+        clear_shot = self._line_of_fire_clear(fire_x, fire_y, predicted_x, predicted_y)
+        shoot_range = self._accurate_shoot_range(target)
+        fire_distance = _length(target.x - fire_x, target.y - fire_y)
+        decision.shoot = clear_shot and fire_distance <= shoot_range
+        return decision
+
+    def _record_blocked_target(self, target_id: int, now: float) -> None:
+        if self._blocked_target_id != target_id:
+            self._blocked_target_id = target_id
+            self._blocked_since = now
+
+    def _reset_blocked_target(self) -> None:
+        self._blocked_target_id = None
+        self._blocked_since = 0.0
+
+    def _should_flank_blocked_target(self, target: EntitySnapshot, now: float) -> bool:
+        if self._blocked_target_id != target.entity_id or self._blocked_since <= 0.0:
+            return False
+        delay = 1.4 - self.difficulty * 0.9
+        return now - self._blocked_since >= delay
+
+    def _reset_flank(self) -> None:
+        self._flank_target_id = None
+        self._flank_goal = None
+        self._flank_path = []
+        self._flank_path_index = 0
+        self._flank_started_at = 0.0
+
+    def _flank_decision(self, origin: EntitySnapshot, target: EntitySnapshot, now: float) -> TacticalDecision:
+        self._strategy_state = STRATEGY_STATE_FLANK
+        if self._flank_needs_replan(origin, target, now):
+            self._set_flank_goal(origin, target, now)
+
+        waypoint = self._current_flank_waypoint(origin)
+        if waypoint is None:
+            self._set_flank_goal(origin, target, now)
+            waypoint = self._current_flank_waypoint(origin)
+
+        if waypoint is None:
+            dx = target.x - origin.x
+            dy = target.y - origin.y
+        else:
+            dx = waypoint[0] - origin.x
+            dy = waypoint[1] - origin.y
+
+        move_x, move_y = _normalize(dx, dy)
+        aim_angle = math.atan2(target.y - origin.y, target.x - origin.x)
+        return TacticalDecision(move_x, move_y, aim_angle, False, True, target.entity_id, STRATEGY_STATE_FLANK)
+
+    def _flank_needs_replan(self, origin: EntitySnapshot, target: EntitySnapshot, now: float) -> bool:
+        if self._flank_target_id != target.entity_id or self._flank_goal is None:
+            return True
+        if now - self._flank_started_at > 8.0:
+            return True
+        if self._flank_goal is not None and _length(self._flank_goal[0] - origin.x, self._flank_goal[1] - origin.y) < 70.0:
+            return True
+
+        moved = _length(origin.x - self._flank_last_progress_pos[0], origin.y - self._flank_last_progress_pos[1])
+        if moved >= 45.0:
+            self._flank_last_progress_pos = (origin.x, origin.y)
+            self._flank_last_progress_at = now
+            return False
+        return now - self._flank_last_progress_at > 1.8
+
+    def _set_flank_goal(self, origin: EntitySnapshot, target: EntitySnapshot, now: float) -> None:
+        self._flank_target_id = target.entity_id
+        self._flank_goal = self._choose_flank_goal(origin, target)
+        if self._flank_goal is None:
+            self._flank_goal = self._choose_hunt_goal(origin, now)
+        self._flank_path = _find_nav_path(origin.x, origin.y, self._flank_goal[0], self._flank_goal[1])
+        self._flank_path_index = 0
+        self._flank_started_at = now
+        self._flank_last_progress_pos = (origin.x, origin.y)
+        self._flank_last_progress_at = now
+
+    def _current_flank_waypoint(self, origin: EntitySnapshot) -> tuple[float, float] | None:
+        while self._flank_path_index < len(self._flank_path):
+            waypoint = self._flank_path[self._flank_path_index]
+            if _length(waypoint[0] - origin.x, waypoint[1] - origin.y) >= 65.0:
+                return waypoint
+            self._flank_path_index += 1
+
+        if self._flank_goal is not None and _length(self._flank_goal[0] - origin.x, self._flank_goal[1] - origin.y) >= 65.0:
+            return self._flank_goal
+        return None
+
+    def _choose_flank_goal(self, origin: EntitySnapshot, target: EntitySnapshot) -> tuple[float, float] | None:
+        base_angle = math.atan2(origin.y - target.y, origin.x - target.x)
+        angle_offsets = (
+            math.pi * 0.5,
+            -math.pi * 0.5,
+            math.pi * 0.75,
+            -math.pi * 0.75,
+            math.pi,
+            math.pi * 0.25,
+            -math.pi * 0.25,
+        )
+        radii = (260.0, 340.0, 430.0, 520.0)
+        best_goal: tuple[float, float] | None = None
+        best_score = INF
+
+        for radius in radii:
+            for offset in angle_offsets:
+                angle = base_angle + offset
+                goal = (
+                    _clamp(target.x + math.cos(angle) * radius, MAP_MIN_X + 70.0, MAP_MAX_X - 70.0),
+                    _clamp(target.y + math.sin(angle) * radius, MAP_MIN_Y + 70.0, MAP_MAX_Y - 70.0),
+                )
+                if not _is_walkable_point(goal[0], goal[1]):
+                    continue
+                if not self._line_of_fire_clear(goal[0], goal[1], target.x, target.y):
+                    continue
+
+                path = _find_nav_path(origin.x, origin.y, goal[0], goal[1])
+                if not path:
+                    continue
+                path_cost = self._path_length((origin.x, origin.y), path)
+                target_distance = _length(goal[0] - target.x, goal[1] - target.y)
+                distance_penalty = abs(target_distance - 340.0) * 0.35
+                side_bonus = -80.0 if abs(offset) <= math.pi * 0.55 else 0.0
+                score = path_cost + distance_penalty + side_bonus
+                if score < best_score:
+                    best_score = score
+                    best_goal = goal
+
+        return best_goal
+
+    def _path_length(self, start: tuple[float, float], path: list[tuple[float, float]]) -> float:
+        total = 0.0
+        from_x, from_y = start
+        for to_x, to_y in path:
+            total += _length(to_x - from_x, to_y - from_y)
+            from_x, from_y = to_x, to_y
+        return total
+
+    def _hunt_decision(self, origin: EntitySnapshot, now: float) -> TacticalDecision:
+        self._strategy_state = STRATEGY_STATE_HUNT
+        if self._hunt_last_progress_at <= 0.0:
+            self._hunt_last_progress_at = now
+            self._hunt_last_progress_pos = (origin.x, origin.y)
+
+        if self._hunt_goal is None or self._hunt_goal_reached(origin) or self._hunt_is_stale_or_stuck(origin, now):
+            self._set_hunt_goal(self._choose_hunt_goal(origin, now), origin, now)
+
+        waypoint = self._current_hunt_waypoint(origin)
+        if waypoint is None:
+            self._set_hunt_goal(self._choose_hunt_goal(origin, now), origin, now)
+            waypoint = self._current_hunt_waypoint(origin)
+
+        if waypoint is None:
+            move_x, move_y = self._exploration_direction(origin, now)
+            aim_angle = math.atan2(move_y, move_x) if move_x != 0.0 or move_y != 0.0 else self._aim_angle
+            return TacticalDecision(move_x, move_y, aim_angle, False, True, None, STRATEGY_STATE_HUNT)
+
+        dx = waypoint[0] - origin.x
+        dy = waypoint[1] - origin.y
+        move_x, move_y = _normalize(dx, dy)
+        aim_angle = math.atan2(move_y, move_x) if move_x != 0.0 or move_y != 0.0 else self._aim_angle
+        return TacticalDecision(move_x, move_y, aim_angle, False, True, None, STRATEGY_STATE_HUNT)
+
+    def _hunt_goal_reached(self, origin: EntitySnapshot) -> bool:
+        if self._hunt_goal is None:
+            return True
+        return _length(self._hunt_goal[0] - origin.x, self._hunt_goal[1] - origin.y) < 85.0
+
+    def _hunt_is_stale_or_stuck(self, origin: EntitySnapshot, now: float) -> bool:
+        if self._hunt_goal_started_at > 0.0 and now - self._hunt_goal_started_at > 24.0:
+            return True
+
+        moved = _length(origin.x - self._hunt_last_progress_pos[0], origin.y - self._hunt_last_progress_pos[1])
+        if moved >= 45.0:
+            self._hunt_last_progress_pos = (origin.x, origin.y)
+            self._hunt_last_progress_at = now
+            return False
+
+        return now - self._hunt_last_progress_at > 2.2
+
+    def _set_hunt_goal(self, goal: tuple[float, float], origin: EntitySnapshot, now: float) -> None:
+        if self._hunt_goal is not None:
+            self._hunt_goal_visits[self._hunt_goal] = now
+
+        self._hunt_goal = goal
+        self._hunt_path = _find_nav_path(origin.x, origin.y, goal[0], goal[1])
+        self._hunt_path_index = 0
+        self._hunt_goal_started_at = now
+        self._hunt_last_progress_pos = (origin.x, origin.y)
+        self._hunt_last_progress_at = now
+        self._explore_angle = math.atan2(goal[1] - origin.y, goal[0] - origin.x)
+
+    def _current_hunt_waypoint(self, origin: EntitySnapshot) -> tuple[float, float] | None:
+        while self._hunt_path_index < len(self._hunt_path):
+            waypoint = self._hunt_path[self._hunt_path_index]
+            if _length(waypoint[0] - origin.x, waypoint[1] - origin.y) >= 70.0:
+                return waypoint
+            self._hunt_path_index += 1
+
+        if self._hunt_goal is not None and not self._hunt_goal_reached(origin):
+            return self._hunt_goal
+        return None
+
+    def _choose_hunt_goal(self, origin: EntitySnapshot, now: float) -> tuple[float, float]:
+        candidates = list(dict.fromkeys(ARENA_MONSTER_SPAWNS + ARENA_PLAYER_SPAWNS + HUNT_PATROL_POINTS))
+        best_goal: tuple[float, float] | None = None
+        best_score = -INF
+
+        for goal in candidates:
+            if not _is_walkable_point(goal[0], goal[1]):
+                continue
+            dist = _length(goal[0] - origin.x, goal[1] - origin.y)
+            if dist < 180.0:
+                continue
+
+            last_visit = self._hunt_goal_visits.get(goal, 0.0)
+            revisit_score = 40.0 if last_visit <= 0.0 else _clamp((now - last_visit) / 20.0, 0.0, 1.0) * 40.0
+            distance_score = _clamp(dist / 1100.0, 0.0, 1.0) * 25.0
+            type_score = 25.0 if goal in ARENA_MONSTER_SPAWNS else 14.0 if goal in ARENA_PLAYER_SPAWNS else 8.0
+            bot_spread = ((self.bot_id * 37 + int(goal[0] * 0.13) + int(goal[1] * 0.07)) % 17) * 0.5
+            random_jitter = random.uniform(0.0, 8.0)
+            same_goal_penalty = 35.0 if goal == self._hunt_goal else 0.0
+            score = revisit_score + distance_score + type_score + bot_spread + random_jitter - same_goal_penalty
+
+            if score > best_score:
+                best_score = score
+                best_goal = goal
+
+        if best_goal is not None:
+            return best_goal
+
+        angle = math.atan2(-origin.y, -origin.x) + random.uniform(-1.1, 1.1)
+        fallback = (
+            _clamp(origin.x + math.cos(angle) * 520.0, MAP_MIN_X + 120.0, MAP_MAX_X - 120.0),
+            _clamp(origin.y + math.sin(angle) * 520.0, MAP_MIN_Y + 120.0, MAP_MAX_Y - 120.0),
+        )
+        if _is_walkable_point(fallback[0], fallback[1]):
+            return fallback
+        cell = _nearest_walkable_nav_cell(fallback[0], fallback[1])
+        return _nav_cell_center(cell)
+
+    def _movement_for_target(
+        self,
+        origin: EntitySnapshot,
+        target: EntitySnapshot,
+        dist: float,
+        now: float,
+    ) -> tuple[float, float, bool]:
+        dx = target.x - origin.x
+        dy = target.y - origin.y
+        toward_x, toward_y = _normalize(dx, dy)
+        perp_x = -toward_y * self._strafe_dir
+        perp_y = toward_x * self._strafe_dir
+
+        if int(now * 0.45 + self.bot_id) % 2 == 0:
+            self._strafe_dir = 1.0
+        else:
+            self._strafe_dir = -1.0
+
+        if target.entity_type == EntityType.MONSTER:
+            preferred_min = 260.0 + self.difficulty * 40.0
+            preferred_max = 360.0 + self.difficulty * 80.0
+            hard_close = MONSTER_FLEE_DISTANCE + 65.0
+        else:
+            preferred_min = 260.0 + self.difficulty * 45.0
+            preferred_max = 460.0 + self.difficulty * 100.0
+            hard_close = 210.0
+
+        if dist < hard_close:
+            return -toward_x + perp_x * 0.45, -toward_y + perp_y * 0.45, True
+        if dist < preferred_min:
+            return -toward_x * 0.85 + perp_x * 0.65, -toward_y * 0.85 + perp_y * 0.65, self.difficulty > 0.55
+        if dist > preferred_max:
+            sprint = dist > preferred_max + 220.0 and self.difficulty > 0.35
+            return toward_x + perp_x * 0.16, toward_y + perp_y * 0.16, sprint
+
+        radial_bias = 0.0
+        midpoint = (preferred_min + preferred_max) * 0.5
+        if dist < midpoint:
+            radial_bias = -0.25
+        elif dist > midpoint + 80.0:
+            radial_bias = 0.20
+        orbit_weight = 0.45 + self.difficulty * 0.25
+        return (
+            perp_x * orbit_weight + toward_x * radial_bias,
+            perp_y * orbit_weight + toward_y * radial_bias,
+            False,
+        )
+
+    def _accurate_shoot_range(self, target: EntitySnapshot) -> float:
+        if target.entity_type == EntityType.MONSTER:
+            return 520.0 + self.difficulty * 100.0
+        return 580.0 + self.difficulty * 80.0
+
+    def _predict_target_position(
+        self,
+        target: EntitySnapshot,
+        projectile_speed: float = PROJECTILE_SPEED,
+        origin: EntitySnapshot | None = None,
+    ) -> tuple[float, float]:
+        origin = origin or self._get_self_snapshot() or EntitySnapshot(
+            -1, EntityType.PLAYER, self._pos_x, self._pos_y
+        )
+        rx = target.x - origin.x
+        ry = target.y - origin.y
+        tvx = target.vx
+        tvy = target.vy
+        a = tvx * tvx + tvy * tvy - projectile_speed * projectile_speed
+        b = 2.0 * (rx * tvx + ry * tvy)
+        c = rx * rx + ry * ry
+        t = math.sqrt(c) / max(1.0, projectile_speed)
+
+        if abs(a) < 0.0001:
+            if abs(b) > 0.0001:
+                linear_t = -c / b
+                if linear_t > 0.0:
+                    t = linear_t
+        else:
+            disc = b * b - 4.0 * a * c
+            if disc >= 0.0:
+                root = math.sqrt(disc)
+                t1 = (-b - root) / (2.0 * a)
+                t2 = (-b + root) / (2.0 * a)
+                candidates = [candidate for candidate in (t1, t2) if candidate > 0.0]
+                if candidates:
+                    t = min(candidates)
+
+        reaction_lead = (1.0 - self.difficulty) * 0.10
+        t = _clamp(t + reaction_lead, 0.0, 2.2)
+        return target.x + tvx * t, target.y + tvy * t
+
+    def _difficulty_aim_error(self, distance: float) -> float:
+        max_error = (1.0 - self.difficulty) * (0.18 + min(distance, PROJECTILE_MAX_DISTANCE) / PROJECTILE_MAX_DISTANCE * 0.16)
+        if max_error <= 0.0001:
+            return 0.0
+        return random.gauss(0.0, max_error)
+
+    def _best_projectile_dodge(self, origin: EntitySnapshot) -> tuple[float, float, float] | None:
+        best: tuple[float, float, float] | None = None
+        for projectile in self._entities.values():
+            if projectile.entity_type != EntityType.PROJECTILE or not projectile.visible:
+                continue
+            dodge = self._projectile_dodge_vector(projectile, origin)
+            if dodge is None:
+                continue
+            if best is None or dodge[2] > best[2]:
+                best = dodge
+        return best
+
+    def _projectile_dodge_vector(
+        self,
+        projectile: EntitySnapshot,
+        origin: EntitySnapshot | None = None,
+    ) -> tuple[float, float, float] | None:
+        origin = origin or self._get_self_snapshot() or EntitySnapshot(
+            -1, EntityType.PLAYER, self._pos_x, self._pos_y
+        )
+        pvx = projectile.vx
+        pvy = projectile.vy
+        speed = _length(pvx, pvy)
+        if speed < 20.0:
+            return None
+
+        rel_x = origin.x - projectile.x
+        rel_y = origin.y - projectile.y
+        closing = rel_x * pvx + rel_y * pvy
+        if closing <= 0.0:
+            return None
+
+        time_to_closest = closing / (speed * speed)
+        reaction_window = 0.45 + self.difficulty * 0.65
+        if time_to_closest < -0.05 or time_to_closest > reaction_window:
+            return None
+
+        closest_x = projectile.x + pvx * time_to_closest
+        closest_y = projectile.y + pvy * time_to_closest
+        miss_distance = _length(origin.x - closest_x, origin.y - closest_y)
+        danger_radius = PLAYER_HITBOX_RADIUS + PROJECTILE_RADIUS + 18.0 + self.difficulty * 22.0
+        if miss_distance > danger_radius:
+            return None
+
+        perp_x = -pvy / speed
+        perp_y = pvx / speed
+        away_x = origin.x - closest_x
+        away_y = origin.y - closest_y
+        if _length(away_x, away_y) < 0.001:
+            perp_x *= self._strafe_dir
+            perp_y *= self._strafe_dir
+        elif away_x * perp_x + away_y * perp_y < 0.0:
+            perp_x *= -1.0
+            perp_y *= -1.0
+
+        urgency = _clamp(1.0 - (time_to_closest / max(0.001, reaction_window)), 0.0, 1.0)
+        return perp_x, perp_y, urgency
+
+    def _target_separation_vector(self, origin: EntitySnapshot) -> tuple[float, float]:
+        sep_x = 0.0
+        sep_y = 0.0
+        for entity in self._entities.values():
+            if entity.entity_id == self._entity_id or not entity.alive:
+                continue
+            if entity.entity_type not in (EntityType.PLAYER, EntityType.MONSTER):
+                continue
+            dx = origin.x - entity.x
+            dy = origin.y - entity.y
+            dist = _length(dx, dy)
+            if 0.001 < dist < BOT_SEPARATION_DISTANCE:
+                weight = (BOT_SEPARATION_DISTANCE - dist) / BOT_SEPARATION_DISTANCE
+                sep_x += (dx / dist) * weight
+                sep_y += (dy / dist) * weight
+        return sep_x, sep_y
+
+    def _exploration_direction(self, origin: EntitySnapshot, now: float) -> tuple[float, float]:
+        if now >= self._explore_until:
+            if abs(origin.x) > 760.0 or abs(origin.y) > 760.0:
+                self._explore_angle = math.atan2(-origin.y, -origin.x) + random.uniform(-0.7, 0.7)
+            else:
+                self._explore_angle = random.uniform(-math.pi, math.pi)
+            self._explore_until = now + random.uniform(1.2, 3.2)
+        return math.cos(self._explore_angle), math.sin(self._explore_angle)
+
+    def _steer_around_static_hazards(
+        self,
+        x: float,
+        y: float,
+        move_x: float,
+        move_y: float,
+    ) -> tuple[float, float]:
+        move_x, move_y = _normalize(move_x, move_y)
+        avoid_x = 0.0
+        avoid_y = 0.0
+
+        if x < MAP_MIN_X + BOT_BOUNDARY_AVOID_DISTANCE:
+            avoid_x += (MAP_MIN_X + BOT_BOUNDARY_AVOID_DISTANCE - x) / BOT_BOUNDARY_AVOID_DISTANCE
+        elif x > MAP_MAX_X - BOT_BOUNDARY_AVOID_DISTANCE:
+            avoid_x -= (x - (MAP_MAX_X - BOT_BOUNDARY_AVOID_DISTANCE)) / BOT_BOUNDARY_AVOID_DISTANCE
+        if y < MAP_MIN_Y + BOT_BOUNDARY_AVOID_DISTANCE:
+            avoid_y += (MAP_MIN_Y + BOT_BOUNDARY_AVOID_DISTANCE - y) / BOT_BOUNDARY_AVOID_DISTANCE
+        elif y > MAP_MAX_Y - BOT_BOUNDARY_AVOID_DISTANCE:
+            avoid_y -= (y - (MAP_MAX_Y - BOT_BOUNDARY_AVOID_DISTANCE)) / BOT_BOUNDARY_AVOID_DISTANCE
+
+        look_x = x + move_x * BOT_OBSTACLE_LOOKAHEAD
+        look_y = y + move_y * BOT_OBSTACLE_LOOKAHEAD
+        if circle_intersects_obstacle(look_x, look_y, PLAYER_HITBOX_RADIUS):
+            best_x, best_y = -move_y, move_x
+            best_clearance = -1.0
+            for angle_offset in (math.pi / 4.0, -math.pi / 4.0, math.pi / 2.0, -math.pi / 2.0, math.pi):
+                angle = math.atan2(move_y, move_x) + angle_offset
+                cand_x = math.cos(angle)
+                cand_y = math.sin(angle)
+                probe_x = x + cand_x * BOT_OBSTACLE_LOOKAHEAD
+                probe_y = y + cand_y * BOT_OBSTACLE_LOOKAHEAD
+                clearance = 0.0 if circle_intersects_obstacle(probe_x, probe_y, PLAYER_HITBOX_RADIUS) else 1.0
+                clearance += min(
+                    _distance_point_to_segment(probe_x, probe_y, x, y, look_x, look_y) / BOT_OBSTACLE_LOOKAHEAD,
+                    1.0,
+                )
+                if clearance > best_clearance:
+                    best_clearance = clearance
+                    best_x, best_y = cand_x, cand_y
+            avoid_x += best_x * 1.2
+            avoid_y += best_y * 1.2
+
+        return _normalize(move_x + avoid_x, move_y + avoid_y)
+
+    def _line_of_fire_clear(self, ax: float, ay: float, bx: float, by: float) -> bool:
+        return not line_intersects_obstacle(ax, ay, bx, by)
+
+    def _quantize_movement_direction(self, x: float, y: float, sprint: bool = False) -> tuple[float, float]:
+        nx, ny = _normalize(x, y)
+        if nx == 0.0 and ny == 0.0:
+            return 0.0, 0.0
+
+        speed = PLAYER_SPRINT_SPEED if sprint else PLAYER_SPEED
+        threshold = 35.0 / speed
+        qx = 0.0
+        qy = 0.0
+        if abs(nx) > threshold:
+            qx = 1.0 if nx > 0.0 else -1.0
+        if abs(ny) > threshold:
+            qy = 1.0 if ny > 0.0 else -1.0
+        return _normalize(qx, qy)
+
+    def _project_fire_origin(
+        self,
+        origin: EntitySnapshot,
+        move_x: float,
+        move_y: float,
+        sprint: bool,
+        dt: float = BOT_INPUT_INTERVAL,
+    ) -> tuple[float, float]:
+        qx, qy = self._quantize_movement_direction(move_x, move_y, sprint)
+        if qx == 0.0 and qy == 0.0:
+            return origin.x, origin.y
+
+        speed = PLAYER_SPRINT_SPEED if sprint else PLAYER_SPEED
+        return move_with_obstacle_collision(
+            origin.x,
+            origin.y,
+            origin.x + qx * speed * dt,
+            origin.y + qy * speed * dt,
+            PLAYER_HITBOX_RADIUS,
+        )
 
     def _get_self_snapshot(self) -> EntitySnapshot | None:
         if self._entity_id is None:
@@ -884,14 +2006,14 @@ class OmegaRealmBot:
         return self._entities.get(self._entity_id)
 
     def _set_velocity_from_direction(self, x: float, y: float, sprint: bool) -> None:
-        length = math.sqrt(x * x + y * y)
-        if length < 0.001:
+        x, y = self._quantize_movement_direction(x, y, sprint)
+        if x == 0.0 and y == 0.0:
             self._vel_x = 0.0
             self._vel_y = 0.0
         else:
-            speed = 320.0 if sprint else 200.0
-            self._vel_x = (x / length) * speed
-            self._vel_y = (y / length) * speed
+            speed = PLAYER_SPRINT_SPEED if sprint else PLAYER_SPEED
+            self._vel_x = x * speed
+            self._vel_y = y * speed
         self._set_input_flags_from_velocity(sprint)
 
     def _set_input_flags_from_velocity(self, sprint: bool = False) -> None:
@@ -917,7 +2039,7 @@ class OmegaRealmBot:
                 self._input_flags | extra_flags,
                 self._aim_angle,
                 self._sequence,
-                0,
+                self._latest_server_tick & 0xFFFF,
                 self._last_rtt_ms,
             )
             await self.ws.send(pkt)
@@ -939,8 +2061,33 @@ class OmegaRealmBot:
             self._running = False
 
     def _handle_message(self, data: bytes):
-        """Parse incoming binary packet and update metrics."""
-        msg_type, payload_len, payload = parse_header(data)
+        """Parse incoming binary packet(s) and update metrics."""
+        offset = 0
+        while offset + HEADER_SIZE <= len(data):
+            msg_type, payload_len = struct.unpack_from("<BH", data, offset)
+            packet_end = offset + HEADER_SIZE + payload_len
+            if packet_end > len(data):
+                logger.debug(
+                    "Bot %d: Truncated packet type=%d payload_len=%d frame_len=%d offset=%d",
+                    self.bot_id,
+                    msg_type,
+                    payload_len,
+                    len(data),
+                    offset,
+                )
+                return
+            payload = data[offset + HEADER_SIZE:packet_end]
+            self._handle_single_message(msg_type, payload)
+            offset = packet_end
+
+        if offset != len(data):
+            logger.debug("Bot %d: Ignored %d trailing packet bytes", self.bot_id, len(data) - offset)
+
+    def _handle_single_message(self, msg_type: int, payload: bytes):
+        """Handle one decoded packet payload."""
+        if msg_type == MessageType.BATCH:
+            self._handle_batch_payload(payload)
+            return
 
         if msg_type == MessageType.HEARTBEAT:
             self.metrics.heartbeats_received += 1
@@ -958,7 +2105,8 @@ class OmegaRealmBot:
             self.metrics.state_updates_received += 1
             header = parse_state_update_header(payload)
             if header and "server_tick" in header:
-                self.metrics.server_ticks_seen.append(header["server_tick"])
+                self._latest_server_tick = header["server_tick"]
+                self.metrics.server_ticks_seen.append(self._latest_server_tick)
             parsed = parse_state_update(payload, self._entities)
             if parsed and self._entity_id is not None:
                 self_snapshot = self._entities.get(self._entity_id)
@@ -979,6 +2127,26 @@ class OmegaRealmBot:
             if sm:
                 sm["received_at"] = time.monotonic()
                 self.metrics.server_metrics_snapshots.append(sm)
+
+    def _handle_batch_payload(self, payload: bytes):
+        """Unwrap a server BATCH packet: [u8 count][inner packets...]"""
+        if not payload:
+            return
+
+        count = payload[0]
+        offset = 1
+        for index in range(count):
+            if offset + HEADER_SIZE > len(payload):
+                logger.debug("Bot %d: Truncated batch at packet %d/%d", self.bot_id, index, count)
+                return
+            msg_type, payload_len = struct.unpack_from("<BH", payload, offset)
+            packet_end = offset + HEADER_SIZE + payload_len
+            if packet_end > len(payload):
+                logger.debug("Bot %d: Batch packet %d/%d overflows envelope", self.bot_id, index, count)
+                return
+            inner_payload = payload[offset + HEADER_SIZE:packet_end]
+            self._handle_single_message(msg_type, inner_payload)
+            offset = packet_end
 
     def _handle_game_event(self, event: dict):
         if not event:

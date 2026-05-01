@@ -141,6 +141,35 @@ func update_cache(entity_id: int, state: Dictionary, tick: int) -> void:
 	)
 
 
+## Mask-aware update used after sending a partial delta. Only fields whose bit
+## is set in `mask` are written into the cache, so LOD-throttled fields keep
+## their previous cached value and remain dirty for the next eligible tick.
+func update_cache_partial(entity_id: int, state: Dictionary, mask: int, tick: int) -> void:
+	var entity_type: int = state.get("entity_type", PacketTypes.EntityType.PLAYER)
+
+	if not _cache.has(entity_id):
+		_cache[entity_id] = CachedEntityState.create(entity_id, entity_type)
+
+	var cached: CachedEntityState = _cache[entity_id]
+	cached.entity_type = entity_type
+
+	# Full state always rewrites every tracked field.
+	if (mask & PacketTypes.DELTA_MASK_FULL_STATE) != 0:
+		cached.position = state.get("position", Vector2.ZERO)
+		cached.animation_state = state.get("animation_state", PacketTypes.AnimationState.IDLE)
+		cached.flags = state.get("flags", 0)
+	else:
+		if (mask & PacketTypes.DELTA_MASK_POSITION) != 0:
+			cached.position = state.get("position", Vector2.ZERO)
+		if (mask & PacketTypes.DELTA_MASK_ANIMATION) != 0:
+			cached.animation_state = state.get("animation_state", PacketTypes.AnimationState.IDLE)
+		if (mask & PacketTypes.DELTA_MASK_FLAGS) != 0:
+			cached.flags = state.get("flags", 0)
+
+	cached.last_tick_sent = tick
+	cached.is_new = false
+
+
 ## Update cache for all entities after a full state broadcast
 func update_cache_batch(entities: Array, tick: int) -> void:
 	for entity_data in entities:
