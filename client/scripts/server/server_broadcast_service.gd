@@ -5,6 +5,7 @@ extends RefCounted
 
 const DeltaStateCacheClass = preload("res://scripts/server/delta_state_cache.gd")
 const LeaderboardManager := preload("res://scripts/server/leaderboard_manager.gd")
+const SnapshotSchedulerClass := preload("res://scripts/server/snapshot_scheduler.gd")
 
 ## LOD tier identifiers used for distance-scaled update frequency (TASK-065).
 const LOD_NEAR := 0
@@ -33,12 +34,24 @@ var aoi_exit_radius: float = 0.0
 var lod_near_radius_sq: float = 0.0
 var lod_mid_radius_sq: float = 0.0
 
-## LOD position-update intervals in ticks for each LOD tier (TASK-065).
-## Indexed by LOD_NEAR/LOD_MID/LOD_FAR.
-var lod_intervals: Array[int] = [1, 2, 4]
-
 ## Per-client visible entity tracking for AoI exit notifications
 var client_visible_entities: Dictionary = {}  # peer_id -> Dictionary{entity_id: true}
+
+## Per-snapshot byte budget for the priority scheduler (§1.2). 0 disables the
+## budget so the scheduler still sorts but never defers.
+var max_snapshot_bytes: int = 1200
+
+## Per-peer SnapshotScheduler instances. Created lazily alongside delta caches.
+var snapshot_schedulers: Dictionary = {}  # peer_id -> SnapshotScheduler
+
+## Diagnostics published from the most recent broadcast tick. ServerMain reads
+## these into ServerMetrics for the SERVER_METRICS broadcast (§8.2).
+var last_tick_diagnostics: Dictionary = {
+	"entities_deferred_per_tick": 0,
+	"max_queue_age_ticks": 0,
+	"peers_at_budget_pct": 0,
+	"peers_evaluated": 0
+}
 
 
 ## Broadcast state updates to all connected clients (delta-compressed, AoI-filtered)
@@ -73,7 +86,13 @@ func broadcast_state_updates(
 	var aoi_enabled := aoi_radius > 0.0
 	var aoi_enter_radius_sq := aoi_radius * aoi_radius
 	var aoi_exit_sq: float = aoi_exit_radius * aoi_exit_radius if aoi_exit_radius > aoi_radius else aoi_enter_radius_sq
-	var lod_throttling_enabled := aoi_enabled and (lod_intervals[LOD_MID] > 1 or lod_intervals[LOD_FAR] > 1)
+
+	# Reset per-tick scheduler diagnostics (§8.2). Aggregated below as each peer
+	# is processed; surfaced via `last_tick_diagnostics` for ServerMetrics.
+	var tick_total_deferred := 0
+	var tick_max_queue_age := 0
+	var tick_peers_at_budget := 0
+	var tick_peers_evaluated := 0
 
 	for state: PlayerState in player_manager.get_authenticated_players():
 		var peer_id: int = state.peer_id
@@ -88,8 +107,10 @@ func broadcast_state_updates(
 		var visible_entities: Array[Dictionary]
 		var visible_lods: PackedByteArray = PackedByteArray()
 		if aoi_enabled:
+			# `tag_lod` is always true under AoI: the scheduler uses LOD tiers
+			# as the distance penalty in priority calculation (§1.2).
 			var aoi_result: Dictionary = _filter_entities_by_aoi(
-				all_entities, state, aoi_enter_radius_sq, aoi_exit_sq, prev_visible, lod_throttling_enabled
+				all_entities, state, aoi_enter_radius_sq, aoi_exit_sq, prev_visible, true
 			)
 			visible_entities = aoi_result.entities
 			visible_lods = aoi_result.lods
@@ -117,9 +138,34 @@ func broadcast_state_updates(
 		if needs_baseline and removed_entity_ids.is_empty():
 			packet_data = _create_full_state_packet(visible_entities, cache, tick_count)
 		else:
-			packet_data = _create_delta_packet(visible_entities, cache, tick_count, removed_entity_ids, lod_throttling_enabled, visible_lods)
+			var scheduler := get_or_create_scheduler(peer_id)
+			var sched_stats: Dictionary = {}
+			packet_data = _create_delta_packet(
+				visible_entities,
+				cache,
+				tick_count,
+				removed_entity_ids,
+				visible_lods,
+				scheduler,
+				sched_stats
+			)
+			tick_peers_evaluated += 1
+			tick_total_deferred += int(sched_stats.get("deferred", 0))
+			var age: int = int(sched_stats.get("max_queue_age", 0))
+			if age > tick_max_queue_age:
+				tick_max_queue_age = age
+			if bool(sched_stats.get("hit_budget", false)):
+				tick_peers_at_budget += 1
 
 		network_manager.send_to_client(peer_id, NetworkManager.MessageType.STATE_UPDATE, packet_data)
+
+	last_tick_diagnostics.entities_deferred_per_tick = tick_total_deferred
+	last_tick_diagnostics.max_queue_age_ticks = tick_max_queue_age
+	last_tick_diagnostics.peers_evaluated = tick_peers_evaluated
+	last_tick_diagnostics.peers_at_budget_pct = (
+		int(round(100.0 * float(tick_peers_at_budget) / float(tick_peers_evaluated)))
+		if tick_peers_evaluated > 0 else 0
+	)
 
 
 ## Filter entities by Area of Interest with hysteresis (TASK-064). Entities
@@ -171,14 +217,11 @@ func _classify_lod(dist_sq: float) -> int:
 	return LOD_FAR
 
 
-## Decide whether to emit a position-only delta for an entity at the given LOD
-## tier this tick. Spreads the load across ticks using `entity_id` as an
-## offset so all FAR entities don't bunch up on the same tick.
-func _should_send_position_for_lod(entity_id: int, tick: int, lod: int) -> bool:
-	var interval: int = lod_intervals[lod] if lod >= 0 and lod < lod_intervals.size() else 1
-	if interval <= 1:
-		return true
-	return ((tick + entity_id) % interval) == 0
+## Get or lazily create the snapshot scheduler for a given peer (§1.2).
+func get_or_create_scheduler(peer_id: int) -> SnapshotSchedulerClass:
+	if not snapshot_schedulers.has(peer_id):
+		snapshot_schedulers[peer_id] = SnapshotSchedulerClass.new()
+	return snapshot_schedulers[peer_id]
 
 
 ## Handle client request for full state sync
@@ -325,12 +368,14 @@ func get_or_create_delta_cache(peer_id: int):
 func remove_delta_cache(peer_id: int) -> void:
 	delta_caches.erase(peer_id)
 	client_visible_entities.erase(peer_id)
+	snapshot_schedulers.erase(peer_id)
 
 
 ## Clear all delta caches
 func clear_all_caches() -> void:
 	delta_caches.clear()
 	client_visible_entities.clear()
+	snapshot_schedulers.clear()
 
 
 ## Create a full state (baseline) packet
@@ -368,29 +413,48 @@ func _create_full_state_packet(entities: Array[Dictionary], cache, tick_count: i
 	}
 
 
-## Create a delta-compressed packet
+## Create a delta-compressed packet, using the priority scheduler (§1.2) to
+## stay within `max_snapshot_bytes`. Removed entities (AoI exits and stale
+## cache entries) are pinned so a client never loses an entity it had been
+## tracking; everything else is sorted by priority and fits as budget allows.
 func _create_delta_packet(
 	entities: Array[Dictionary],
 	cache,
 	tick_count: int,
-	removed_entity_ids: Array[int] = [],
-	lod_throttling_enabled: bool = false,
-	lod_tiers: PackedByteArray = PackedByteArray()
+	removed_entity_ids: Array[int],
+	lod_tiers: PackedByteArray,
+	scheduler: SnapshotSchedulerClass,
+	out_stats: Dictionary
 ) -> Dictionary:
-	var entity_data: Array[Dictionary] = []
+	scheduler.reset()
+
+	# Pre-compute every candidate entry. We stage them in a parallel array so
+	# the scheduler can address them by index after sorting.
+	var staged: Array[Dictionary] = []
+	var has_lod_tiers := lod_tiers.size() == entities.size()
 	var active_entity_ids: Array[int] = []
 	var removed_set: Dictionary = {}
 
+	# Removed entries (AoI exits) — pinned, scheduler always emits.
 	for entity_id in removed_entity_ids:
 		if entity_id < 0:
 			continue
 		removed_set[entity_id] = true
-		entity_data.append({
+		var idx := staged.size()
+		staged.append({
 			"entity_id": entity_id,
-			"delta_mask": PacketTypes.DELTA_MASK_REMOVED
+			"delta_mask": PacketTypes.DELTA_MASK_REMOVED,
 		})
-
-	var has_lod_tiers := lod_tiers.size() == entities.size()
+		scheduler.add_candidate(
+			idx,
+			entity_id,
+			PacketTypes.EntityType.PLAYER,
+			LOD_NEAR,
+			PacketTypes.DELTA_MASK_REMOVED,
+			SnapshotSchedulerClass.encoded_size_for_mask(PacketTypes.DELTA_MASK_REMOVED),
+			0,
+			true
+		)
 
 	for i in entities.size():
 		var entity: Dictionary = entities[i]
@@ -408,43 +472,79 @@ func _create_delta_packet(
 		}
 
 		var delta_mask: int = cache.calculate_delta_mask(entity_id, current_state, tick_count)
-
 		if delta_mask == 0:
 			continue
 
-		# TASK-065: Throttle position-only deltas for distant entities. State
-		# transitions (animation/flag changes), full-state syncs, and brand-new
-		# spawns are never throttled because they carry visible game events.
-		if lod_throttling_enabled and (delta_mask & PacketTypes.DELTA_MASK_FULL_STATE) == 0:
-			var lod: int = lod_tiers[i] if has_lod_tiers else LOD_NEAR
-			if (delta_mask & PacketTypes.DELTA_MASK_POSITION) != 0 \
-					and not _should_send_position_for_lod(entity_id, tick_count, lod):
-				delta_mask &= ~PacketTypes.DELTA_MASK_POSITION
-				if delta_mask == 0:
-					continue
+		var lod: int = lod_tiers[i] if has_lod_tiers else LOD_NEAR
+		var cached_state = cache.get_cached_state(entity_id)
+		var ticks_since_last := tick_count - int(cached_state.last_tick_sent) if cached_state else tick_count
 
-		entity_data.append({
+		var idx := staged.size()
+		staged.append({
 			"entity_id": entity_id,
 			"entity_type": current_state.entity_type,
 			"position": current_state.position,
 			"animation_state": current_state.animation_state,
 			"flags": current_state.flags,
-			"delta_mask": delta_mask
+			"delta_mask": delta_mask,
+			# Track for cache update after scheduling resolves.
+			"_current_state": current_state,
 		})
+		scheduler.add_candidate(
+			idx,
+			entity_id,
+			int(current_state.entity_type),
+			lod,
+			delta_mask,
+			SnapshotSchedulerClass.encoded_size_for_mask(delta_mask),
+			ticks_since_last,
+			false
+		)
 
-		# Use mask-aware update so a throttled position bit keeps the cache
-		# dirty for the next eligible tick (otherwise we would clobber the
-		# previously-cached value and never resend the missed move).
-		cache.update_cache_partial(entity_id, current_state, delta_mask, tick_count)
-
+	# Stale cache entries become explicit despawn deltas. Pinned for the same
+	# reason as AoI exits: dropping them strands an entity on the client.
 	var stale_entity_ids: Array[int] = cache.cleanup_stale_entities(active_entity_ids)
 	for entity_id in stale_entity_ids:
 		if removed_set.has(entity_id):
 			continue
-		entity_data.append({
+		var idx := staged.size()
+		staged.append({
 			"entity_id": entity_id,
-			"delta_mask": PacketTypes.DELTA_MASK_REMOVED
+			"delta_mask": PacketTypes.DELTA_MASK_REMOVED,
 		})
+		scheduler.add_candidate(
+			idx,
+			entity_id,
+			PacketTypes.EntityType.PLAYER,
+			LOD_NEAR,
+			PacketTypes.DELTA_MASK_REMOVED,
+			SnapshotSchedulerClass.encoded_size_for_mask(PacketTypes.DELTA_MASK_REMOVED),
+			0,
+			true
+		)
+
+	var result: SnapshotSchedulerClass.Result = scheduler.schedule(max_snapshot_bytes)
+
+	var entity_data: Array[Dictionary] = []
+	for idx in result.selected_indices:
+		var entry: Dictionary = staged[idx]
+		# Update the cache only for the entries that actually went out — deferred
+		# entities keep their stale cache entry so they re-priority next tick.
+		if entry.has("_current_state"):
+			cache.update_cache_partial(
+				entry.entity_id,
+				entry["_current_state"],
+				int(entry.delta_mask),
+				tick_count
+			)
+			entry.erase("_current_state")
+		entity_data.append(entry)
+
+	out_stats["deferred"] = result.deferred_count
+	out_stats["max_queue_age"] = result.max_queue_age_ticks
+	out_stats["bytes_used"] = result.bytes_used
+	out_stats["hit_budget"] = result.hit_budget
+	out_stats["candidates"] = result.candidate_count
 
 	return {
 		"tick": tick_count,

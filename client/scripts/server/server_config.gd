@@ -18,18 +18,19 @@ const DEFAULTS := {
 	## entity oscillating across the AoI boundary causes spawn/despawn churn.
 	"aoi_exit_radius": 1100.0,
 	## LOD radii (squared distance bands within AoI). Position-only deltas for
-	## entities in the MID/FAR bands are throttled to reduce bandwidth.
+	## entities in the MID/FAR bands feed the scheduler's distance penalty (§1.2).
 	"lod_near_radius": 400.0,
 	"lod_mid_radius": 700.0,
-	## LOD position-only update intervals (in ticks). Higher = less frequent.
-	"lod_mid_interval": 2,
-	"lod_far_interval": 4,
 	## Per-tick packet batching - merge multiple packets into one WebSocket frame.
 	"packet_batching_enabled": true,
 	## Snapshot rate (Hz). Decoupled from tick_rate so physics can run faster
 	## than the snapshot stream sent to clients. Defaults to tick_rate when
 	## set to 0 - no behavior change vs. pre-decouple.
 	"snapshot_rate_hz": 0,
+	## Per-peer per-snapshot byte budget for the priority scheduler (§1.2).
+	## ~1200 fits a typical MTU-aligned WebSocket payload after framing overhead.
+	## 0 disables the budget (scheduler still sorts but never defers).
+	"max_snapshot_bytes": 1200,
 	## Difficulty of server-side monster tactical behavior, clamped 0.0..1.0.
 	"monster_ai_difficulty": 0.85
 }
@@ -75,12 +76,6 @@ var lod_near_radius: float:
 var lod_mid_radius: float:
 	get: return _config.get("lod_mid_radius", DEFAULTS.lod_mid_radius)
 
-var lod_mid_interval: int:
-	get: return _config.get("lod_mid_interval", DEFAULTS.lod_mid_interval)
-
-var lod_far_interval: int:
-	get: return _config.get("lod_far_interval", DEFAULTS.lod_far_interval)
-
 var packet_batching_enabled: bool:
 	get: return _config.get("packet_batching_enabled", DEFAULTS.packet_batching_enabled)
 
@@ -96,6 +91,9 @@ var snapshot_rate_hz: int:
 		if raw <= 0:
 			return tick_rate
 		return mini(raw, tick_rate)
+
+var max_snapshot_bytes: int:
+	get: return maxi(0, _config.get("max_snapshot_bytes", DEFAULTS.max_snapshot_bytes))
 
 
 ## Initialize and load configuration
@@ -174,7 +172,7 @@ func print_config() -> void:
 	print("  api_server_url: %s" % api_server_url)
 	print("  aoi_radius: %.1f (exit %.1f)" % [aoi_radius, aoi_exit_radius])
 	print("  lod_radii: near=%.1f mid=%.1f" % [lod_near_radius, lod_mid_radius])
-	print("  lod_intervals: mid=%dt far=%dt" % [lod_mid_interval, lod_far_interval])
 	print("  packet_batching: %s" % str(packet_batching_enabled))
 	print("  snapshot_rate: %d Hz" % snapshot_rate_hz)
+	print("  max_snapshot_bytes: %d" % max_snapshot_bytes)
 	print("  monster_ai_difficulty: %.2f" % monster_ai_difficulty)

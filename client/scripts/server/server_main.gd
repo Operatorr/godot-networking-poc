@@ -144,7 +144,7 @@ func _initialize_server() -> void:
 	broadcast_service.aoi_exit_radius = config.aoi_exit_radius
 	broadcast_service.lod_near_radius_sq = config.lod_near_radius * config.lod_near_radius
 	broadcast_service.lod_mid_radius_sq = config.lod_mid_radius * config.lod_mid_radius
-	broadcast_service.lod_intervals = [1, maxi(1, config.lod_mid_interval), maxi(1, config.lod_far_interval)]
+	broadcast_service.max_snapshot_bytes = config.max_snapshot_bytes
 	broadcast_service.leaderboard_manager = LeaderboardManager.new()
 	broadcast_service.leaderboard_manager.debug_logging = config.debug_logging
 

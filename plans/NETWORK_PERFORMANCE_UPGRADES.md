@@ -351,7 +351,7 @@ The order matters: each phase unblocks the next.
 | Phase | Tracks                              | Status     | Why this order                                                     |
 | ----- | ----------------------------------- | ---------- | ------------------------------------------------------------------ |
 | **1** | §8.1 (per-channel bytes), §7.2 (no AoI dict alloc), §5.3 (teleport parity), §5.4 (clock sync), §1.1 (decoupled snapshot rate) | **Shipped** | Need numbers before tuning; ship the highest-leverage decoupling so subsequent work has knobs. |
-| **2** | §1.2 (priority queue), §1.3 (rate budget), §8.2 (scheduler diagnostics), §8.3 (bot regression suite) | **In progress** | All four tracks land in **one PR**, sequenced internally as: **(1)** §8.3 first → **(2)** §1.2 + §8.2 together → **(3)** §1.3 last (CONNECT_AUTH wire change). Step 1 shipped; steps 2–3 pending. |
+| **2** | §1.2 (priority queue), §1.3 (rate budget), §8.2 (scheduler diagnostics), §8.3 (bot regression suite) | **In progress** | Step 1 shipped. Step 2 is halfway through: scheduler module + config knobs are implemented, broadcast-service wiring is in progress, ServerMetrics diagnostics and unit tests remain. Step 3 still pending. |
 | **3** | §3.1 (uniform grid)                 | TODO       | Single focused PR. Promotes `projectile_manager`'s ad-hoc grid scaffolding to a shared `spatial_grid.gd` used by AoI, projectile broad-phase, monster spawn validity, and the static obstacle test. CPU headroom for higher peer counts; enables PvP rewind work. |
 | **4** | §2 (wire format), §7.1 (writer pool), §7.3 (de-box state) | TODO | Single PR with `WIRE_VERSION` bump. **All three §2 sub-changes** (varint IDs, delta-encoded positions, drop redundant entity_type) ship together — bot suite from Phase 2 is the symmetry net. **§7.3 ships** (typed `EntityWireSnapshot` replaces the `to_entity_data()` Dict). |
 | **5** | §4 (PvP rewind), §5.1 (straddle interp), §5.2 (effect throttle guard) | TODO | Player-feel work — dependent on §1 timestamps + §3 grid. Exploration confirmed §5.2 is **already correct** (prediction.gd::_replay_input does no FX firing); ship it as a comment + debug-only assertion that locks the invariant in. |
@@ -388,6 +388,17 @@ artifacts:
 Phase 2 is being shipped as a **single PR** ordered into three internal steps so
 each commit is independently reviewable while the bot regression suite (step 1)
 guards the behavioral changes that follow (steps 2–3).
+
+Current resume status:
+
+- **Done:** implement `client/scripts/server/snapshot_scheduler.gd`.
+- **Done:** add scheduler config knobs (`ServerConfig.max_snapshot_bytes`,
+  default `1200`, wired into `ServerBroadcastService` from `ServerMain`).
+- **In progress:** wire scheduler into `server_broadcast_service.gd`.
+- **Open:** plumb scheduler diagnostics through `ServerMetrics` and the
+  `SERVER_METRICS` payload.
+- **Open:** add unit tests for `SnapshotScheduler` and the broadcast-service
+  scheduling edge cases.
 
 #### Step 1 — Bot regression suite (§8.3) — **Shipped**
 
@@ -432,34 +443,61 @@ CONNECT_AUTH wire change forces a server boot anyway. Synthetic pass / fail /
 skip paths verified via in-process bot fabrication; existing `test_bot_client.py`
 suite (19 tests) still green.
 
-#### Step 2 — Priority queue + scheduler diagnostics (§1.2 + §8.2) — TODO
+#### Step 2 — Priority queue + scheduler diagnostics (§1.2 + §8.2) — **In progress**
 
-Replaces modulo LOD gating in `server_broadcast_service.gd::_should_send_position_for_lod`
-(line 177) with a per-peer priority queue.
+Replaces the old modulo LOD gating
+(`server_broadcast_service.gd::_should_send_position_for_lod`) with a per-peer
+priority queue. That helper has been removed in the current diff, and LOD
+tiers now feed the scheduler as a distance penalty instead of fixed update
+intervals.
 
-- New `client/scripts/server/snapshot_scheduler.gd` (RefCounted), one instance
-  per peer alongside `DeltaStateCache` in the broadcast service.
-- Per-entity priority is computed inline during the AoI-filtered loop:
+Implemented in the current diff:
+
+- `client/scripts/server/snapshot_scheduler.gd` (new `RefCounted`) owns
+  candidate priority calculation, pinned candidate handling, byte-budget
+  selection, and result diagnostics (`deferred_count`,
+  `max_queue_age_ticks`, `bytes_used`, `hit_budget`, `candidate_count`).
+- `ServerConfig.max_snapshot_bytes` added with default `1200`; `0` disables
+  budget deferral while preserving scheduler ordering.
+- `ServerMain._initialize_server` assigns `config.max_snapshot_bytes` to
+  `broadcast_service.max_snapshot_bytes`.
+- `ServerBroadcastService` preloads `SnapshotScheduler`, creates one scheduler
+  per peer alongside `DeltaStateCache`, and erases scheduler state on peer
+  disconnect / cache clear.
+- `_create_delta_packet` now stages candidate entries, pins removals / stale
+  despawns so clients do not retain orphaned entities, schedules everything
+  else against `max_snapshot_bytes`, and only updates the delta cache for
+  entries that were actually selected. Deferred entities should therefore
+  stay dirty and bubble up on later snapshots.
+- `ServerBroadcastService.last_tick_diagnostics` is populated with
+  `entities_deferred_per_tick`, `max_queue_age_ticks`, `peers_at_budget_pct`,
+  and `peers_evaluated`, but these values are not yet exposed through
+  `ServerMetrics`.
+
+Priority details currently implemented:
 
   ```
   priority = importance(entity_type)              # PLAYER=10, PROJECTILE=8, MONSTER=4
            + (current_tick - cache.last_tick_sent[entity_id])
-           - distance_penalty(dist_sq)            # 0 at NEAR → 8 at FAR
-           + change_bonus(delta_mask)             # 0/+2/+4/+6 by mask bit
+           - distance_penalty(lod_tier)           # NEAR=0, MID=4, FAR=8
+           + change_bonus(delta_mask)             # position/anim/flags +2 each; full/remove +6
   ```
 
-  Sort descending; encode in order until `max_snapshot_bytes` (default 1200)
-  reached. Use existing `_get_delta_entity_size`
-  (`state_update_packet.gd:362`) to predict per-entity cost without
-  speculative encoding. Deferred entities accrue staleness naturally and
-  bubble up next tick — no starvation.
-- `cache.last_tick_sent` already exists on `CachedEntityState`
-  (`delta_state_cache.gd:10`), so no new per-entity state needed.
-- §8.2 diagnostics: per-tick `entities_deferred_per_tick`,
-  `max_queue_age_ticks`, `peers_at_budget_pct` plumbed through
-  `ServerMetrics.update_metrics` into the `SERVER_METRICS` packet. The new
-  bot-suite `assert_lod_cadence` is the safety net that catches a regression
-  where the queue starves any band.
+Remaining Step 2 work before closing it:
+
+- Finish / verify the broadcast-service integration. Pay special attention to
+  full-state baseline behavior, pinned removals exceeding the byte budget, and
+  cache correctness for deferred partial deltas.
+- Plumb `broadcast_service.last_tick_diagnostics` into
+  `ServerMetrics.update_metrics`, store it in `ServerMetrics.metrics`, and
+  include it in the `SERVER_METRICS` packet.
+- Add focused unit coverage for `SnapshotScheduler.compute_priority`,
+  `schedule(max_bytes)`, pinned candidates, zero-budget behavior, deterministic
+  priority tie-breaking, and deferred-candidate cache behavior in
+  `_create_delta_packet`.
+- Run the existing bot-client tests plus the Phase 2 assertion suite after the
+  diagnostics surface is complete. The new `assert_lod_cadence` remains the
+  safety net for starvation across LOD bands.
 
 #### Step 3 — Per-client bandwidth budget (§1.3) — TODO
 
