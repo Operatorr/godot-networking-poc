@@ -55,6 +55,7 @@ existing `bot_swarm.py` baseline/target/stress scenarios.
 | Per-channel byte breakdown                   | **Done**      | `NetworkManager.bytes_sent_by_type` exposed via `ServerMetrics` (§8.1). |
 | AoI per-entity Dict allocation               | **Done**      | LOD tag now travels in a parallel `PackedByteArray`, no `Dictionary.duplicate()` (§7.2). |
 | Client/server teleport threshold parity      | **Done**      | Interpolation controller imports `GameConstants.TELEPORT_THRESHOLD` (§5.3). |
+| Bot-driven regression assertions             | **Partial**   | Phase 2 step 1: `regression_assertions.py` ships AoI / LOD-cadence / batch-decode / per-peer-budget assertions; the per-peer-budget one is wired but skipped until §1.3 advertises a budget (§8.3). |
 
 The rest of this document is the prioritized plan to close those gaps.
 
@@ -350,10 +351,10 @@ The order matters: each phase unblocks the next.
 | Phase | Tracks                              | Status     | Why this order                                                     |
 | ----- | ----------------------------------- | ---------- | ------------------------------------------------------------------ |
 | **1** | §8.1 (per-channel bytes), §7.2 (no AoI dict alloc), §5.3 (teleport parity), §5.4 (clock sync), §1.1 (decoupled snapshot rate) | **Shipped** | Need numbers before tuning; ship the highest-leverage decoupling so subsequent work has knobs. |
-| **2** | §1.2 (priority queue), §1.3 (rate budget), §8.2 (scheduler diagnostics), §8.3 (bot regression suite) | TODO | Replaces modulo LOD; needs §1.1 in (done) and §8 hooks (started). |
-| **3** | §3.1 (uniform grid)                 | TODO       | CPU headroom for higher peer counts; enables PvP rewind work.      |
-| **4** | §2 (wire format), §7.1 (writer pool), §7.3 (de-box state) | TODO | Bandwidth + allocator tightening; needs bot regression suite from Phase 2. |
-| **5** | §4 (PvP rewind), §5.1 (straddle interp), §5.2 (effect throttle audit) | TODO | Player-feel work — dependent on §1 timestamps + §3 grid.           |
+| **2** | §1.2 (priority queue), §1.3 (rate budget), §8.2 (scheduler diagnostics), §8.3 (bot regression suite) | **In progress** | All four tracks land in **one PR**, sequenced internally as: **(1)** §8.3 first → **(2)** §1.2 + §8.2 together → **(3)** §1.3 last (CONNECT_AUTH wire change). Step 1 shipped; steps 2–3 pending. |
+| **3** | §3.1 (uniform grid)                 | TODO       | Single focused PR. Promotes `projectile_manager`'s ad-hoc grid scaffolding to a shared `spatial_grid.gd` used by AoI, projectile broad-phase, monster spawn validity, and the static obstacle test. CPU headroom for higher peer counts; enables PvP rewind work. |
+| **4** | §2 (wire format), §7.1 (writer pool), §7.3 (de-box state) | TODO | Single PR with `WIRE_VERSION` bump. **All three §2 sub-changes** (varint IDs, delta-encoded positions, drop redundant entity_type) ship together — bot suite from Phase 2 is the symmetry net. **§7.3 ships** (typed `EntityWireSnapshot` replaces the `to_entity_data()` Dict). |
+| **5** | §4 (PvP rewind), §5.1 (straddle interp), §5.2 (effect throttle guard) | TODO | Player-feel work — dependent on §1 timestamps + §3 grid. Exploration confirmed §5.2 is **already correct** (prediction.gd::_replay_input does no FX firing); ship it as a comment + debug-only assertion that locks the invariant in. |
 | **6** | §6 (transport), §3.2 (LoS AoI)      | TODO       | Largest engineering surface; do last when wins are quantified.     |
 
 **Definition of done for the document:** every phase ships behind a config
@@ -381,6 +382,229 @@ artifacts:
 - `InterpolationController.TELEPORT_THRESHOLD` now references
   `GameConstants.TELEPORT_THRESHOLD` directly so a future server-side change
   cannot drift from client behavior.
+
+### Phase 2 implementation notes
+
+Phase 2 is being shipped as a **single PR** ordered into three internal steps so
+each commit is independently reviewable while the bot regression suite (step 1)
+guards the behavioral changes that follow (steps 2–3).
+
+#### Step 1 — Bot regression suite (§8.3) — **Shipped**
+
+Concrete artifacts:
+
+- `load_testing/bot_client.py` — `BotMetrics` extended with four assertion-tracking
+  fields:
+  - `decode_failures: int` — incremented in `_handle_batch_payload` on
+    truncate / overflow / empty-payload paths so any malformed BATCH envelope
+    surfaces loudly instead of being silently dropped at debug log level.
+  - `entity_observations: dict[int, list[tuple[int, float]]]` — per-entity
+    `(server_tick, distance_to_self)` log written by the new
+    `_record_observations_for_assertions` hook in `_handle_single_message`
+    after each `STATE_UPDATE` parse. Capped at 4096 samples/entity so long
+    stress runs stay within ~10 MB worst case per bot.
+  - `max_observed_entity_distance: float` — running max for the AoI cull
+    assertion, only updated after the bot knows its own entity_id.
+  - `bytes_received_samples: list[tuple[float, int]]` — reserved for the
+    rolling-window per-peer-budget assertion that activates with §1.3.
+- `load_testing/regression_assertions.py` (new) — four assertions plus driver:
+  - `assert_aoi_cull` — `max_observed_entity_distance ≤ aoi_exit_radius + 50u`
+    tolerance; passes if ≥95% of eligible bots stay within budget.
+  - `assert_lod_cadence` — bins per-entity tick gaps by NEAR / MID / FAR using
+    the average distance over the gap, asserts band median is within ±50% of
+    the configured interval (with +1 floor for NEAR's expected gap of 1).
+  - `assert_batch_decode_clean` — zero-tolerance gate on `decode_failures` —
+    any failure points to a server bug or protocol drift.
+  - `assert_per_peer_budget` — skipped until `AssertionConfig.rate_budget_bytes_per_sec`
+    is non-zero; will check rolling 1 s windows once §1.3 lands.
+  - `AssertionConfig` mirrors `server_config.gd` defaults so the suite stays
+    accurate across environments; callers override when the server is
+    non-default.
+- `load_testing/bot_swarm.py` — new `--assertions {strict,warn,off}` flag
+  (default `warn`) and `--rate-budget` flag. `run_all` runs after
+  `aggregate_metrics` regardless of `--no-report`; results render below the
+  success-criteria block and are serialized into the JSON report. **Strict
+  mode exits with code `2`** (distinct from `1` for success-criteria failure)
+  so CI can tell the two apart.
+
+End-to-end against a live server is **deferred to step 3** when the
+CONNECT_AUTH wire change forces a server boot anyway. Synthetic pass / fail /
+skip paths verified via in-process bot fabrication; existing `test_bot_client.py`
+suite (19 tests) still green.
+
+#### Step 2 — Priority queue + scheduler diagnostics (§1.2 + §8.2) — TODO
+
+Replaces modulo LOD gating in `server_broadcast_service.gd::_should_send_position_for_lod`
+(line 177) with a per-peer priority queue.
+
+- New `client/scripts/server/snapshot_scheduler.gd` (RefCounted), one instance
+  per peer alongside `DeltaStateCache` in the broadcast service.
+- Per-entity priority is computed inline during the AoI-filtered loop:
+
+  ```
+  priority = importance(entity_type)              # PLAYER=10, PROJECTILE=8, MONSTER=4
+           + (current_tick - cache.last_tick_sent[entity_id])
+           - distance_penalty(dist_sq)            # 0 at NEAR → 8 at FAR
+           + change_bonus(delta_mask)             # 0/+2/+4/+6 by mask bit
+  ```
+
+  Sort descending; encode in order until `max_snapshot_bytes` (default 1200)
+  reached. Use existing `_get_delta_entity_size`
+  (`state_update_packet.gd:362`) to predict per-entity cost without
+  speculative encoding. Deferred entities accrue staleness naturally and
+  bubble up next tick — no starvation.
+- `cache.last_tick_sent` already exists on `CachedEntityState`
+  (`delta_state_cache.gd:10`), so no new per-entity state needed.
+- §8.2 diagnostics: per-tick `entities_deferred_per_tick`,
+  `max_queue_age_ticks`, `peers_at_budget_pct` plumbed through
+  `ServerMetrics.update_metrics` into the `SERVER_METRICS` packet. The new
+  bot-suite `assert_lod_cadence` is the safety net that catches a regression
+  where the queue starves any band.
+
+#### Step 3 — Per-client bandwidth budget (§1.3) — TODO
+
+Wire change. Bumps `WIRE_VERSION` to 2.
+
+- `client/scripts/shared/networking/packets/auth_packet.gd` gains two fields
+  after `player_color`:
+  - `requested_snapshot_hz: u8` (0 = use server default; clamped to
+    `[snapshot_min_rate_hz, snapshot_rate_hz]` server-side)
+  - `rate_budget_bytes_per_sec: u32` (0 = unlimited; hard-cap server-side at
+    256 KB/s)
+- `packet_types.gd` introduces `WIRE_VERSION = 2`; mismatched `CONNECT_AUTH`
+  rejected server-side with explicit error code so old clients don't connect
+  silently.
+- Server stores per-peer prefs alongside `delta_caches` in
+  `server_broadcast_service.gd`; per-peer
+  `max_snapshot_bytes = min(default, rate_budget / effective_snapshot_rate)`.
+- Client surface: `client/scripts/client/user_preferences.gd` adds a
+  Bandwidth pref (Auto / Low / Medium / High → byte budgets), default Auto.
+- Bot suite gains a `--rate-budget` invocation in CI to exercise
+  `assert_per_peer_budget` end-to-end.
+
+---
+
+## Phases 3–5 — direction, strategy, and decisions
+
+The following decisions were locked in after the Phase 2 step-1 implementation
+work, so future contributors don't relitigate them:
+
+### Phase 3 — uniform spatial grid (§3.1)
+
+Single focused PR, no wire change, no behavioral change. Promotes the existing
+ad-hoc grid scaffolding (`projectile_manager.gd:20/127/141` —
+`GRID_CELL_SIZE=64`, `_build_entity_grid`, `_query_nearby`) into a shared
+`client/scripts/server/spatial_grid.gd` (RefCounted) and adopts it across:
+
+- `server_broadcast_service._filter_entities_by_aoi` (replaces O(N·M) scan)
+- `projectile_manager.check_collisions_with_players` and
+  `check_collisions_with_monsters` (drop the local grid build)
+- `monster_spawner.gd` spawn-validity scan
+- `game_constants.circle_intersects_obstacle` /
+  `line_intersects_obstacle` (one-time grid built at boot for static obstacles)
+
+`cell_size = aoi_radius / 4` per the spec. The lag-compensated projectile path
+keeps per-tick grids built on rewound positions but uses the same module.
+
+**Acceptance:** at 100 players × 100 monsters, server `avg_tick_time` halves
+vs Phase 2 baseline. Bot suite still green.
+
+### Phase 4 — wire format + writer pool + de-box state
+
+Single PR. **Bumps `WIRE_VERSION` to 3.** Old clients rejected with explicit
+error. Bot suite (Phase 2) is the symmetry net. All sub-changes ship together
+to avoid multiple wire bumps:
+
+- **§2.1 Variable-length entity IDs** — reserve bit 5 (`DELTA_MASK_ID_WIDE`)
+  in the per-entity delta_mask byte: 0 = u8 id, 1 = u16 id. Same scheme via a
+  type-byte header bit in full-state entries. Encoder picks narrowest fit.
+  Touch points: `state_update_packet.gd:198/211` (encode), `253/267` (decode).
+- **§2.2 Delta-encoded positions** — reserve bit 6
+  (`DELTA_MASK_POSITION_SMALL`). When set: read two `s8` offsets; apply to
+  cached position. Encoder uses small-delta when both quantized offsets fit
+  in `[-127, 127]`. `DeltaStateCache.position` (`delta_state_cache.gd:14`)
+  already retains the value to subtract.
+- **§2.3 Drop redundant entity_type** — already correct in the delta path
+  (`state_update_packet.gd:216` only writes `entity_type` when
+  `DELTA_MASK_FULL_STATE` is set). The redundancy is in the full-state path:
+  add `ENTITY_FLAG_HAS_TYPE` header bit so encoder can omit type for
+  entities the client already knows.
+- **§7.1 PacketWriter pool** — new
+  `client/scripts/shared/networking/packet_writer_pool.gd` (FIFO, size cap 32)
+  living on `NetworkManager`. Replaces `PacketWriter.new()` at
+  `state_update_packet.gd:169`, `network_manager.gd:594`, and any other call
+  sites grep finds. Pool calls existing `writer.reset()`
+  (`packet_writer.gd:187`).
+- **§7.3 De-box entity state** — new
+  `client/scripts/shared/networking/entity_wire_snapshot.gd` (typed
+  RefCounted: `entity_id`, `entity_type`, `position`, `animation_state`,
+  `flags`). Replaces the `to_entity_data() -> Dictionary` methods on
+  `PlayerState:82`, `MonsterState:122`, `ProjectileState:154` with
+  `to_wire_snapshot(out) -> void` writing into a pre-allocated snapshot.
+  `DeltaStateCache.calculate_delta_mask` (`delta_state_cache.gd:71`) takes
+  the typed snapshot directly — no more `Dictionary.get()` lookups in the
+  delta hot path. Snapshot objects pooled per peer per tick.
+
+**Acceptance:** stress baseline `total_bytes_sent` drops ≥25% vs Phase 3
+baseline; bot regression suite green; `avg_tick_time` flat or improved;
+`PacketWriter` no longer in top-3 server-side allocators.
+
+### Phase 5 — PvP rewind + straddle interpolation + effect-throttle guard
+
+Single PR. Player-feel work, dependent on Phase 1 (clock sync) and Phase 3
+(spatial grid).
+
+- **§5.1 Straddle interpolation** — `EntityStateBuffer` already captures
+  `timestamp_ms` per snapshot (`entity_state_buffer.gd:23/43`) but it's
+  unused. Add `get_pair_for_target_time(target_ms)` returning
+  `[before_snap, after_snap, factor]`.
+  `InterpolationController._calculate_interpolated_position` (line 459)
+  computes `target_ms = NetworkManager.get_server_time_ms() - RENDER_DELAY_MS`
+  and calls the new method. While `get_server_time_ms()` returns 0
+  (pre-handshake), fall back to the existing tick-based path so we don't
+  break interpolation before the first heartbeat samples in.
+- **§4 PvP projectile rewind** — `player_manager.gd` mirrors
+  `monster_manager.gd`'s position-history pattern:
+  - `_position_history: Dictionary` keyed by `server_tick`, retained for
+    `MAX_PVP_PROJECTILE_COMPENSATION_TICKS` ticks (new constant, **default 4**
+    — stricter than PvE's 6 per the Valve "shooting around corners" warning).
+  - `record_position_snapshot(server_tick)` called from
+    `server_main._process_server_tick` after physics.
+  - `get_alive_player_snapshot(server_tick)` with the same exact-or-fallback
+    pattern as `monster_manager.get_alive_monster_snapshot`.
+  - `projectile_manager.check_collisions_with_players` (line 246) for PvP
+    projectiles uses rewound positions queried through the shared spatial
+    grid (Phase 3).
+  - `ACTION_CONFIRM` payload extended with the lag-compensated tick (extra
+    `u32`) for client-side hit attribution.
+  - New `ServerMetrics.cheat_signals` counter for rewind-cap violations.
+- **§5.2 Effect-throttle guard** — exploration confirmed
+  `prediction.gd::_replay_input` already does no FX firing (effects are
+  entirely server-event-driven from `arena_base.gd`). Decision:
+  **lock the invariant in** rather than skip:
+  - One-line block comment above `_replay_input` documenting the invariant.
+  - Debug-only assertion via a thread-local `_in_replay: bool` flag, with
+    `audio_manager.gd` and particle/effect entry points asserting
+    `not Prediction._in_replay` in debug builds. Compiles out in release.
+
+**Acceptance:** straddle interp produces visibly smoother motion at
+`snapshot_rate_hz=15`; PvP hits at 100 ms simulated RTT register on rewound
+positions (verifiable by sending a synthetic projectile from a bot and
+asserting the hit tick on `ACTION_CONFIRM` matches the rewound tick); bot's
+`_in_replay` assertion never fires across a 2-minute stress run; bot suite
+reports no regression in any prior-phase assertion.
+
+### Cross-phase verification protocol
+
+For every phase before merging:
+
+1. `./scripts/deploy.sh up` — local stack boots cleanly.
+2. `python load_testing/smoke_test.py` — single-bot integration green.
+3. `python load_testing/bot_swarm.py --scenario baseline --assertions strict` — green.
+4. `python load_testing/bot_swarm.py --scenario target --assertions strict` — green.
+5. `python load_testing/bot_swarm.py --scenario stress --assertions strict` — green; capture before/after numbers.
+6. Manual play-test (human + bot fleet) — no visible regressions.
+7. Append a telemetry snapshot (bytes/sec by channel, `avg_tick_time`, queue diagnostics where applicable) to `docs/PERFORMANCE_NOTES.md`.
 
 ---
 

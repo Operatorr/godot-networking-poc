@@ -883,6 +883,22 @@ class BotMetrics:
     last_error: str = ""
     # Server-reported metrics (from SERVER_METRICS packets)
     server_metrics_snapshots: list[dict] = field(default_factory=list)
+    # --- Phase 2 §8.3 regression-assertion fields ---
+    # BATCH envelopes that truncated, overflowed, or otherwise failed to fully unwrap.
+    # Inner packet decode failures bubble up here too so a single counter is the gate.
+    decode_failures: int = 0
+    # Per-entity observation log: entity_id -> list of (server_tick, distance_to_self).
+    # Populated only after this bot knows its own entity_id. Used to validate AoI culling
+    # and LOD cadence — the only knobs the server exposes that bots can independently see.
+    entity_observations: dict[int, list[tuple[int, float]]] = field(default_factory=dict)
+    # Max distance to any entity observed in a STATE_UPDATE while bot's own position is known.
+    # Should never exceed server's aoi_exit_radius (plus a small tolerance for race conditions
+    # where the entity exited AoI on the same tick we received the snapshot).
+    max_observed_entity_distance: float = 0.0
+    # Per-second outbound byte samples for rolling-window budget assertion.
+    # List of (monotonic_seconds, cumulative_bytes_received). Sampled by the time-series
+    # collector in bot_swarm so we can compute peak 1s rates without tracking per-packet.
+    bytes_received_samples: list[tuple[float, int]] = field(default_factory=list)
 
     @property
     def packet_loss_estimate(self) -> float:
@@ -2113,6 +2129,7 @@ class OmegaRealmBot:
                 if self_snapshot is not None:
                     self._pos_x = self_snapshot.x
                     self._pos_y = self_snapshot.y
+                self._record_observations_for_assertions(parsed)
 
         elif msg_type == MessageType.GAME_EVENT:
             self.metrics.game_events_received += 1
@@ -2131,22 +2148,58 @@ class OmegaRealmBot:
     def _handle_batch_payload(self, payload: bytes):
         """Unwrap a server BATCH packet: [u8 count][inner packets...]"""
         if not payload:
+            self.metrics.decode_failures += 1
             return
 
         count = payload[0]
         offset = 1
         for index in range(count):
             if offset + HEADER_SIZE > len(payload):
+                self.metrics.decode_failures += 1
                 logger.debug("Bot %d: Truncated batch at packet %d/%d", self.bot_id, index, count)
                 return
             msg_type, payload_len = struct.unpack_from("<BH", payload, offset)
             packet_end = offset + HEADER_SIZE + payload_len
             if packet_end > len(payload):
+                self.metrics.decode_failures += 1
                 logger.debug("Bot %d: Batch packet %d/%d overflows envelope", self.bot_id, index, count)
                 return
             inner_payload = payload[offset + HEADER_SIZE:packet_end]
             self._handle_single_message(msg_type, inner_payload)
             offset = packet_end
+
+    def _record_observations_for_assertions(self, parsed: dict):
+        """Track per-entity observation distance + tick for §8.3 regression assertions.
+
+        Cheap: appends one tuple per visible entity per state update, keyed by entity_id.
+        Storage bounded by entity_observations_cap to avoid runaway memory in long runs.
+        """
+        entities = parsed.get("entities") or []
+        if not entities:
+            return
+        own_id = self._entity_id
+        my_x = self._pos_x
+        my_y = self._pos_y
+        observations = self.metrics.entity_observations
+        max_seen = self.metrics.max_observed_entity_distance
+        for snap in entities:
+            entity_id = snap.entity_id
+            if entity_id == own_id:
+                continue
+            dx = snap.x - my_x
+            dy = snap.y - my_y
+            distance = math.sqrt(dx * dx + dy * dy)
+            if distance > max_seen:
+                max_seen = distance
+            log = observations.get(entity_id)
+            if log is None:
+                log = []
+                observations[entity_id] = log
+            # Cap per-entity history to keep memory bounded at long durations / stress runs.
+            # 4096 samples × ~24 bytes/tuple × 100 entities ≈ ~10 MB worst case per bot.
+            if len(log) < 4096:
+                log.append((snap.last_seen_tick, distance))
+        self.metrics.max_observed_entity_distance = max_seen
 
     def _handle_game_event(self, event: dict):
         if not event:

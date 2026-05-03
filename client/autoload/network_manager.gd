@@ -60,11 +60,14 @@ var peer_bytes_sent: Dictionary = {}  # peer_id -> int (total bytes sent)
 ## Per-tick packet batching state (server mode, TASK-066). When a batch window
 ## is open, send_to_client appends encoded packets here instead of writing to
 ## the WebSocket immediately. flush_batches() then concatenates each peer's
-## queue into a single BATCH packet and sends it as one WebSocket frame.
+## queue into BATCH packets capped by the on-wire count and payload fields.
 var _batching_active: bool = false
 var _pending_batches: Dictionary = {}  # peer_id -> Array[PackedByteArray]
 ## Hard cap on packets per BATCH frame (u8 count field on the wire).
 const BATCH_MAX_PACKETS := 255
+## BATCH payload is [u8 count][inner packets...], and the packet header stores
+## payload length as u16. Leave one byte for the count field.
+const BATCH_MAX_INNER_BYTES := PacketTypes.MAX_PACKET_SIZE - 1
 
 ## Connection state
 var current_state: ConnectionState = ConnectionState.DISCONNECTED
@@ -545,10 +548,9 @@ func begin_batch() -> void:
 
 
 ## Flush queued packets accumulated since begin_batch(). Each peer's queue is
-## emitted as a single WebSocket frame: a one-element queue is sent as the
-## inner packet directly (no envelope overhead) while multi-packet queues are
-## wrapped in a BATCH frame so the client receives one WS message per peer
-## per tick.
+## emitted as one or more WebSocket frames: one-packet chunks are sent directly
+## with no envelope overhead, while multi-packet chunks are wrapped in BATCH
+## frames sized to fit the u8 count and u16 payload length fields.
 func flush_batches() -> void:
 	if not _batching_active:
 		return
@@ -559,19 +561,32 @@ func flush_batches() -> void:
 		if queue.is_empty():
 			continue
 
-		if queue.size() == 1:
-			_send_raw_to_peer(peer_id, queue[0])
-			continue
+		var chunk: Array = []
+		var chunk_inner_bytes := 0
+		for packet_variant in queue:
+			var packet := packet_variant as PackedByteArray
+			var packet_bytes := packet.size()
 
-		# Split into chunks if a single tick produced more than BATCH_MAX_PACKETS
-		# packets for this peer. In practice this only happens under stress and
-		# keeps each frame's count field within u8.
-		var idx := 0
-		while idx < queue.size():
-			var end: int = mini(idx + BATCH_MAX_PACKETS, queue.size())
-			var chunk := queue.slice(idx, end)
-			_send_raw_to_peer(peer_id, _build_batch_packet(chunk))
-			idx = end
+			if not chunk.is_empty() and (
+				chunk.size() >= BATCH_MAX_PACKETS
+				or chunk_inner_bytes + packet_bytes > BATCH_MAX_INNER_BYTES
+			):
+				_send_batch_chunk_to_peer(peer_id, chunk)
+				chunk = []
+				chunk_inner_bytes = 0
+
+			if packet_bytes > BATCH_MAX_INNER_BYTES:
+				# This packet cannot fit inside any BATCH envelope because the
+				# u8 count byte would push the payload length past u16. Send it
+				# directly; its own header was finalized when encoded.
+				_send_raw_to_peer(peer_id, packet)
+				continue
+
+			chunk.append(packet)
+			chunk_inner_bytes += packet_bytes
+
+		if not chunk.is_empty():
+			_send_batch_chunk_to_peer(peer_id, chunk)
 
 	_pending_batches.clear()
 
@@ -587,6 +602,13 @@ func _enqueue_for_batch(peer_id: int, packet: PackedByteArray) -> void:
 	if not _pending_batches.has(peer_id):
 		_pending_batches[peer_id] = []
 	(_pending_batches[peer_id] as Array).append(packet)
+
+
+func _send_batch_chunk_to_peer(peer_id: int, chunk: Array) -> void:
+	if chunk.size() == 1:
+		_send_raw_to_peer(peer_id, chunk[0])
+		return
+	_send_raw_to_peer(peer_id, _build_batch_packet(chunk))
 
 
 ## Wrap N inner packets in a BATCH envelope: [u8 BATCH][u16 payload_len][u8 N][packets...]
