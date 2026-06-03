@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://scripts/client/main_menu.gd" id="1_script"]
 [ext_resource type="PackedScene" uid="uid://c2error_dialog" path="res://scenes/client/menus/components/error_dialog.tscn" id="2_error_dialog"]
 [ext_resource type="FontFile" path="res://assets/fonts/CormorantUnicase-Bold.ttf" id="3_title_font"]
-[ext_resource type="VideoStream" path="res://assets/ui/backgrounds/background_video.ogv" id="4_bg_video"]
+[ext_resource type="VideoStream" path="res://assets/ui/backgrounds/menu_background_loop.ogv" id="4_bg_video"]
 
 [node name="MainMenu" type="Control"]
 layout_mode = 3

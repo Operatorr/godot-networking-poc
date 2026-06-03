@@ -1,6 +1,6 @@
 [gd_scene load_steps=3 format=3 uid="uid://bx17ud5rlw5bl"]
 
-[ext_resource type="VideoStream" path="res://assets/ui/backgrounds/background_video.ogv" id="1_bg_video"]
+[ext_resource type="Texture2D" path="res://assets/ui/backgrounds/menu_background_004.jpg" id="1_bg_image"]
 [ext_resource type="FontFile" path="res://assets/fonts/CormorantUnicase-Bold.ttf" id="2_title_font"]
 
 [node name="BootScene" type="Control" unique_id=241549498]
@@ -11,7 +11,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="MenuBackground" type="VideoStreamPlayer" parent="." unique_id=1323841039]
+[node name="MenuBackground" type="TextureRect" parent="." unique_id=1323841039]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -19,11 +19,9 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-stream = ExtResource("1_bg_video")
-volume_db = -80.0
-autoplay = true
-expand = true
-loop = true
+texture = ExtResource("1_bg_image")
+expand_mode = 1
+stretch_mode = 6
 
 [node name="CenterContainer" type="CenterContainer" parent="." unique_id=1771313149]
 layout_mode = 1

@@ -50,6 +50,14 @@ const REGION_STATUS_HEARTBEAT_INTERVAL := 2.0
 var tick_timer: float = 0.0
 var tick_count: int = 0
 
+## Snapshot scheduler state (§1.1 of NETWORK_PERFORMANCE_UPGRADES.md). Decoupled
+## from the physics tick: snapshots may fire less often than ticks under a
+## reduced snapshot_rate_hz. snapshot_due is set by the accumulator at the top
+## of the tick and consumed by the broadcast step.
+var snapshot_accumulator: float = 0.0
+var snapshot_interval: float = 0.0
+var snapshot_due: bool = false
+
 ## Live region status publisher for the API region list.
 var region_status_timer: float = 0.0
 var region_status_request: HTTPRequest = null
@@ -123,7 +131,7 @@ func _initialize_server() -> void:
 	monster_spawner = MonsterSpawner.new(monster_manager, player_manager, monster_spawn_rate)
 	monster_spawner.debug_logging = config.debug_logging
 
-	monster_ai = MonsterAI.new(player_manager, projectile_manager)
+	monster_ai = MonsterAI.new(player_manager, projectile_manager, config.monster_ai_difficulty)
 	monster_ai.debug_logging = config.debug_logging
 
 	# Extracted service components
@@ -133,6 +141,10 @@ func _initialize_server() -> void:
 	broadcast_service = ServerBroadcastService.new()
 	broadcast_service.debug_logging = config.debug_logging
 	broadcast_service.aoi_radius = config.aoi_radius
+	broadcast_service.aoi_exit_radius = config.aoi_exit_radius
+	broadcast_service.lod_near_radius_sq = config.lod_near_radius * config.lod_near_radius
+	broadcast_service.lod_mid_radius_sq = config.lod_mid_radius * config.lod_mid_radius
+	broadcast_service.max_snapshot_bytes = config.max_snapshot_bytes
 	broadcast_service.leaderboard_manager = LeaderboardManager.new()
 	broadcast_service.leaderboard_manager.debug_logging = config.debug_logging
 
@@ -142,8 +154,15 @@ func _initialize_server() -> void:
 
 	game_entities.clear()
 
+	# Snapshot interval is derived from the configured snapshot rate. When the
+	# snapshot rate equals the tick rate (default) snapshot_due is true on
+	# every tick, preserving the legacy behavior.
+	snapshot_interval = 1.0 / float(maxi(1, config.snapshot_rate_hz))
+	snapshot_accumulator = 0.0
+
 	set_process(true)
 	print("[ServerMain] Server running at %d Hz tick rate" % config.tick_rate)
+	print("[ServerMain] Snapshot rate: %d Hz" % config.snapshot_rate_hz)
 	print("[ServerMain] Monster spawn rate set to %.2f monsters/sec" % monster_spawn_rate)
 
 
@@ -185,7 +204,28 @@ func _process_server_tick() -> void:
 	var tick_start := Time.get_ticks_usec()
 	tick_count += 1
 
+	# Snapshot accumulator (§1.1): only mark a snapshot due when enough wall
+	# time has elapsed at the configured snapshot rate. Events still fire every
+	# tick - state-update bandwidth is decoupled, but damage/kill broadcasts
+	# stay snappy.
+	var tick_dt: float = 1.0 / float(maxi(1, config.tick_rate))
+	snapshot_accumulator += tick_dt
+	if snapshot_accumulator >= snapshot_interval:
+		snapshot_accumulator -= snapshot_interval
+		# Guard against runaway accumulator drift if tick stalls (e.g. spike).
+		if snapshot_accumulator > snapshot_interval:
+			snapshot_accumulator = 0.0
+		snapshot_due = true
+
 	var nm = _get_network_manager()
+
+	# Open a packet-batch window for this tick (TASK-066). Every send_to_client
+	# / broadcast_to_clients call within the tick is queued per-peer and flushed
+	# as a single WebSocket frame at the end, slashing per-frame overhead when
+	# inputs, collisions, and state updates all fire on the same tick.
+	var batching: bool = nm != null and config.packet_batching_enabled
+	if batching:
+		nm.begin_batch()
 
 	# 1. Process incoming client inputs
 	_process_client_inputs()
@@ -205,13 +245,18 @@ func _process_server_tick() -> void:
 		projectile_manager, player_manager, monster_manager, nm, broadcast_service
 	)
 
-	# 6. Broadcast state updates (delegated to BroadcastService)
-	broadcast_service.broadcast_state_updates(
-		player_manager, projectile_manager, monster_manager, nm, tick_count
-	)
+	# 6. Broadcast state updates only on snapshot ticks (§1.1).
+	if snapshot_due:
+		broadcast_service.broadcast_state_updates(
+			player_manager, projectile_manager, monster_manager, nm, tick_count
+		)
+		snapshot_due = false
 
 	# 7. Remove dead monsters after death/removed state has been broadcast.
 	monster_manager.cleanup_dead_monsters()
+
+	if batching:
+		nm.flush_batches()
 
 	# Track tick performance
 	var tick_time := (Time.get_ticks_usec() - tick_start) / 1000.0
@@ -752,6 +797,10 @@ func shutdown(reason: String = "Server shutdown") -> void:
 	# Notify all connected clients
 	var nm = _get_network_manager()
 	if nm != null:
+		# Discard any half-built tick batch - shutdown takes precedence and we
+		# need each peer to receive the DISCONNECT immediately.
+		if nm.has_method("clear_batches"):
+			nm.clear_batches()
 		for state: PlayerState in player_manager.get_all_players():
 			nm.send_to_client(
 				state.peer_id,

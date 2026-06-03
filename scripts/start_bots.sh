@@ -3,6 +3,7 @@ set -euo pipefail
 
 SERVER_URL="ws://localhost:8081"
 BOT_COUNT="10"
+DIFFICULTY="1.0"
 STAGGER_MS="200"
 TMP_BASE="${TMPDIR:-/tmp}"
 TMP_BASE="${TMP_BASE%/}"
@@ -12,13 +13,14 @@ FOREGROUND="0"
 
 usage() {
   cat <<EOF
-Usage: $0 [--server ws://host:port] [--bots count] [--stagger ms] [--log file] [--pid-file file] [--foreground]
+Usage: $0 [--server ws://host:port] [--bots count] [--difficulty 0.0..1.0] [--stagger ms] [--log file] [--pid-file file] [--foreground]
 
 Starts long-running external WebSocket gameplay bots that authenticate and play like clients.
 
 Options:
   --server      WebSocket server URL (default: ws://localhost:8081)
   --bots        Number of bots, capped at 10 by default workflow (default: 10)
+  --difficulty  Bot tactical difficulty from 0.0 to 1.0 (default: 1.0)
   --stagger     Milliseconds between bot connects (default: 200)
   --log         Bot output log file (default: $LOG_FILE)
   --pid-file    PID file for stop_bots.sh (default: $PID_FILE)
@@ -35,6 +37,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --bots|-b)
       BOT_COUNT="$2"
+      shift 2
+      ;;
+    --difficulty)
+      DIFFICULTY="$2"
       shift 2
       ;;
     --stagger)
@@ -72,6 +78,16 @@ fi
 
 if (( BOT_COUNT < 1 || BOT_COUNT > 10 )); then
   echo "--bots must be between 1 and 10" >&2
+  exit 1
+fi
+
+if ! [[ "$DIFFICULTY" =~ ^([0-9]+([.][0-9]*)?|[.][0-9]+)$ ]]; then
+  echo "--difficulty must be a number between 0.0 and 1.0" >&2
+  exit 1
+fi
+
+if ! awk -v value="$DIFFICULTY" 'BEGIN { exit !(value >= 0.0 && value <= 1.0) }'; then
+  echo "--difficulty must be between 0.0 and 1.0" >&2
   exit 1
 fi
 
@@ -113,10 +129,11 @@ CMD=(
   --duration 0
   --stagger "$STAGGER_MS"
   --behavior strategy
+  --difficulty "$DIFFICULTY"
   --no-report
 )
 
-echo "Starting $BOT_COUNT gameplay bots against $SERVER_URL"
+echo "Starting $BOT_COUNT gameplay bots against $SERVER_URL at difficulty $DIFFICULTY"
 
 if [[ "$FOREGROUND" == "1" ]]; then
   echo "Running in foreground with $SELECTED_PYTHON. Press Ctrl+C to stop."

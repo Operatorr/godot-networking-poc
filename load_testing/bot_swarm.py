@@ -26,6 +26,7 @@ from bot_client import (
     BEHAVIOR_DEFAULT, BEHAVIOR_IDLE, BEHAVIOR_MOVEMENT,
     BEHAVIOR_COMBAT, BEHAVIOR_CLUSTERED, BEHAVIOR_STRATEGY, VALID_BEHAVIORS,
 )
+import regression_assertions
 
 logger = logging.getLogger("bot_swarm")
 
@@ -282,7 +283,8 @@ def generate_report(agg: AggregatedMetrics, server_url: str) -> str:
     return "\n".join(lines)
 
 
-def save_report_json(agg: AggregatedMetrics, bots: list[OmegaRealmBot], server_url: str, filepath: str):
+def save_report_json(agg: AggregatedMetrics, bots: list[OmegaRealmBot], server_url: str, filepath: str,
+                     assertion_results: list[regression_assertions.AssertionResult] | None = None):
     """Save detailed metrics as JSON for further analysis."""
     success = evaluate_success(agg)
     report = {
@@ -318,6 +320,17 @@ def save_report_json(agg: AggregatedMetrics, bots: list[OmegaRealmBot], server_u
         "time_series": _time_series_snapshots,
         "per_bot": [bot.metrics.summary() for bot in bots],
     }
+    if assertion_results:
+        report["regression_assertions"] = [
+            {
+                "name": r.name,
+                "passed": r.passed,
+                "skipped": r.skipped,
+                "message": r.message,
+                "details": r.details,
+            }
+            for r in assertion_results
+        ]
 
     with open(filepath, "w") as f:
         json.dump(report, f, indent=2)
@@ -376,13 +389,24 @@ async def _collect_time_series(bots: list[OmegaRealmBot], duration: float):
 
 # --- Swarm Execution ---
 
-async def spawn_bots(count: int, server_url: str, stagger_ms: float = 100, behavior: str = BEHAVIOR_DEFAULT) -> list[OmegaRealmBot]:
+def clamp_difficulty(value: float) -> float:
+    return max(0.0, min(1.0, float(value)))
+
+
+async def spawn_bots(
+    count: int,
+    server_url: str,
+    stagger_ms: float = 100,
+    behavior: str = BEHAVIOR_DEFAULT,
+    difficulty: float = 1.0,
+) -> list[OmegaRealmBot]:
     """Spawn bots with staggered connections to avoid thundering herd."""
     bots = []
     connected = 0
+    difficulty = clamp_difficulty(difficulty)
 
     for i in range(count):
-        bot = OmegaRealmBot(i + 1, server_url, behavior=behavior)
+        bot = OmegaRealmBot(i + 1, server_url, behavior=behavior, difficulty=difficulty)
         success = await bot.connect(timeout=15.0)
         bots.append(bot)
 
@@ -401,14 +425,25 @@ async def spawn_bots(count: int, server_url: str, stagger_ms: float = 100, behav
     return bots
 
 
-async def run_load_test(bot_count: int, duration: int, server_url: str, stagger_ms: float = 100, behavior: str = BEHAVIOR_DEFAULT) -> tuple[AggregatedMetrics, list[OmegaRealmBot]]:
+async def run_load_test(
+    bot_count: int,
+    duration: int,
+    server_url: str,
+    stagger_ms: float = 100,
+    behavior: str = BEHAVIOR_DEFAULT,
+    difficulty: float = 1.0,
+) -> tuple[AggregatedMetrics, list[OmegaRealmBot]]:
     """Execute a full load test: spawn bots, run, collect metrics."""
-    logger.info(f"Starting load test: {bot_count} bots, {duration}s duration, behavior={behavior}, server={server_url}")
+    difficulty = clamp_difficulty(difficulty)
+    logger.info(
+        f"Starting load test: {bot_count} bots, {duration}s duration, "
+        f"behavior={behavior}, difficulty={difficulty:.2f}, server={server_url}"
+    )
     started_at = time.monotonic()
 
     # Phase 1: Spawn bots
     logger.info("Phase 1: Spawning bots...")
-    bots = await spawn_bots(bot_count, server_url, stagger_ms, behavior)
+    bots = await spawn_bots(bot_count, server_url, stagger_ms, behavior, difficulty)
 
     connected_bots = [b for b in bots if b.ws is not None]
     if not connected_bots:
@@ -478,8 +513,17 @@ Examples:
                         help="Save JSON report to file (default: report_<timestamp>.json)")
     parser.add_argument("--behavior", choices=VALID_BEHAVIORS, default=None,
                         help="Bot behavior mode (default, idle, movement, combat, clustered, strategy)")
+    parser.add_argument("--difficulty", type=float, default=1.0,
+                        help="Bot tactical difficulty from 0.0 to 1.0 (default: 1.0)")
     parser.add_argument("--no-report", action="store_true",
                         help="Skip JSON report and success-criteria exit code")
+    parser.add_argument("--assertions", choices=["strict", "warn", "off"], default="warn",
+                        help="Phase 2 §8.3 regression assertions: strict fails the run on any "
+                             "violation, warn prints results without affecting exit code, off "
+                             "skips the suite entirely (default: warn)")
+    parser.add_argument("--rate-budget", type=int, default=0,
+                        help="Bytes/sec budget the per-peer-budget assertion gates on. "
+                             "0 (default) skips that assertion until §1.3 ships.")
     parser.add_argument("--verbose", "-v", action="store_true",
                         help="Enable verbose/debug logging")
 
@@ -510,28 +554,48 @@ async def main():
         behavior = args.behavior or BEHAVIOR_DEFAULT
 
     server_url = args.server
+    difficulty = clamp_difficulty(args.difficulty)
 
     # Run load test
-    agg, bots = await run_load_test(bot_count, duration, server_url, args.stagger, behavior)
+    agg, bots = await run_load_test(bot_count, duration, server_url, args.stagger, behavior, difficulty)
+
+    # Run §8.3 regression assertions (independent of --no-report). Strict mode
+    # gates the exit code; warn mode prints but does not fail the run; off skips.
+    assertion_results: list[regression_assertions.AssertionResult] = []
+    if args.assertions != "off":
+        cfg = regression_assertions.AssertionConfig(
+            rate_budget_bytes_per_sec=args.rate_budget,
+        )
+        assertion_results = regression_assertions.run_all(bots, agg.duration_seconds, cfg)
 
     if args.no_report:
+        if assertion_results:
+            print(regression_assertions.format_results(assertion_results))
         if agg.connected_bots == 0:
             sys.exit(1)
+        if args.assertions == "strict" and any(not r.passed for r in assertion_results):
+            sys.exit(2)
         return
 
     # Generate report
     report = generate_report(agg, server_url)
     print(report)
+    if assertion_results:
+        print(regression_assertions.format_results(assertion_results))
+        print()
 
     # Exit code based on success criteria
     success = evaluate_success(agg)
     all_passed = all(r["passed"] for r in success.values())
+    assertions_passed = all(r.passed for r in assertion_results)
 
     # Save JSON report
     output_path = args.output or f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    save_report_json(agg, bots, server_url, output_path)
+    save_report_json(agg, bots, server_url, output_path, assertion_results)
     logger.info(f"JSON report saved to: {output_path}")
 
+    if args.assertions == "strict" and not assertions_passed:
+        sys.exit(2)
     sys.exit(0 if all_passed else 1)
 
 
