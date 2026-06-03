@@ -1,37 +1,42 @@
 ---
 name: git-commit
-description: Create a git commit for the current worktree when the user asks Codex to commit the current changes, make a commit with an auto-generated message, or stage and commit finished work. Use this skill for commit-message generation and commit execution. Do not use it for reviewing history, rebasing, pushing, or other general git tasks.
+description: Stage all repository changes and create a git commit with an auto-generated message after inspecting status, diff, and recent commit style. Use when the user asks to commit changes, save changes in git, stage and commit, or create a commit without needing confirmation.
+argument-hint: "Optional summary of the work to commit"
 ---
 
-Create a git commit that summarizes the work.
+# Git Commit
 
-Use the current session context when available. Otherwise base the message on the staged diff.
-
-If this repo contains `docs/changelog.json`, treat changelog maintenance as part of the commit workflow for shipped user-facing changes.
+Commit all current repository changes with an auto-generated message. Do not ask the user for confirmation.
 
 ## Workflow
 
-1. Stage all intended changes with `git add .`
-2. Review the staged changes with `git diff --cached`
-3. If there is nothing staged, stop and report that clearly
-4. If `docs/changelog.json` exists, decide whether the staged changes are user-facing enough to warrant a changelog entry
-5. Generate a concise commit message that:
-   - accurately describes the change set
-   - explains the why, not just the file-level what
-   - is 2-5 sentences
-   - starts with the task number when one is clearly available from the branch name or current context
-   - never includes `Co-Authored-By` lines
-6. Create the main commit using a HEREDOC so multi-sentence formatting is preserved
-7. If a changelog entry is needed and `docs/changelog.json` exists:
-   - read the current file format before editing
-   - add a new top entry summarizing the shipped behavior in `added` and `fixed`
-   - use the short hash of the main commit as the `version`
-   - stage the changelog update and create a second focused commit for it
-8. Run `git status` after committing to verify success
+1. Inspect state in parallel:
+   - `git status --short` — what will be staged
+   - `git diff --stat` and `git diff` — the actual changes
+   - `git log -5 --oneline` — to match the repo's existing commit style
+2. If there is nothing to commit, report that and stop. Do not create an empty commit.
+3. Stage everything from the repository root:
+   - `git add -A`
+4. Generate a commit message:
+   - Subject line is ≤ 72 characters and summarizes the change.
+   - Body is 2–5 sentences focused on the why more than the what.
+   - If the current branch name contains a task/issue number such as `feature/ABC-123-name`, start the subject with that number. Otherwise omit it.
+   - Do not include `Co-Authored-By` lines.
+5. Commit using a HEREDOC so formatting is preserved:
 
-## Behavior
+   ```sh
+   git commit -m "$(cat <<'EOF'
+   <subject>
 
-- Do not ask the user for confirmation before committing unless they explicitly asked for a review-only or draft-only step
-- Never rewrite, amend, or squash existing commits unless the user explicitly asks
-- Do not include unrelated observations or tool output in the commit message
-- Do not skip the changelog just because the version depends on the commit hash; make the main commit first, then add the changelog entry in a follow-up commit when needed
+   <body>
+   EOF
+   )"
+   ```
+
+6. Run `git status` after the commit to verify success.
+
+## Failure handling
+
+- If a pre-commit hook modifies files, fails, or leaves staged/unstaged changes, report that state rather than silently retrying.
+- If a summary of the work is already in context or supplied as arguments, use it when writing the commit message.
+- Never include `Co-Authored-By` lines in commit messages.
