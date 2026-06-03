@@ -32,6 +32,12 @@ they are what actually make localhost feel sluggish.
 
 ---
 
+## ⚑ Applied on branch `perf/p0-p1-netcode-fixes` (2026-06-03 — pending play-test)
+
+Fixes **#1, #2, #3, #4, #5, #6** below are **implemented** on that branch (headless import
+parses clean; the *feel* is not yet play-tested). #7–#15 remain open. When the branch merges,
+fold these into "Already done" and flip the affected netcode docs' status tags.
+
 ## P0 — decisive, small. Do these first.
 
 ### 1. The "30 fps at 100 fps" stutter — enable physics interpolation

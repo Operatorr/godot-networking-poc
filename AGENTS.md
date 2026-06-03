@@ -87,10 +87,11 @@ cd load_testing && python bot_swarm.py --scenario target --server ws://<host>:80
 - All gameplay state is server-authoritative and in-memory; the Go API owns only
   account/character/leaderboard persistence.
 
-## Known invariant violations under active fix
+## Known invariant violations — fixed on branch `perf/p0-p1-netcode-fixes`
 
-These are *targets the code does not yet meet* — see the roadmap, do not assume they hold:
+Fixed on that branch (pending play-test + merge); on `master` they still hold as violations:
 
-- The Local player should be moved by the `PredictionController` **only**; today `Player.gd`
-  also moves it (double-ownership). → `docs/systems/players-movement.md`
-- Render smoothness should not depend on FPS; today motion steps at 30 Hz. → `docs/netcode/smoothness-render.md`
+- The Local player must be moved by the `PredictionController` **only**. *Fixed:* `Player.gd`
+  `prediction_owns_movement` skips its own `move_and_slide`. → `docs/systems/players-movement.md`
+- Render smoothness must not depend on FPS. *Fixed:* `physics_interpolation=true` + discontinuity
+  resets + camera uses the interpolated transform. → `docs/netcode/smoothness-render.md`

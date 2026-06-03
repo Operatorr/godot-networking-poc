@@ -615,6 +615,9 @@ func _start_smooth_correction(_from_position: Vector2) -> void:
 func _apply_instant_correction() -> void:
 	if player_node != null:
 		player_node.position = predicted_position
+		# Hard correction is a discontinuity — don't let physics_interpolation
+		# visually lerp the local player across the snap.
+		player_node.reset_physics_interpolation()
 	correction_target = predicted_position
 	is_correcting = false
 
@@ -652,6 +655,7 @@ func force_sync(server_position: Vector2) -> void:
 	has_authoritative_position = true
 	if player_node:
 		player_node.position = server_position
+		player_node.reset_physics_interpolation()
 
 	if debug_logging:
 		print("[Prediction] Force synced to %s" % server_position)

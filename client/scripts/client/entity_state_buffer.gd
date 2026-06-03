@@ -6,12 +6,13 @@ extends RefCounted
 
 
 #region Constants
-## Maximum snapshots to store (250ms of history at 20Hz tick rate)
+## Maximum snapshots to store (~166ms of history at the 30Hz snapshot rate)
 ## 2 ticks for render delay + 3 ticks safety margin for jitter
 const BUFFER_SIZE := 5
 
-## Tick interval in seconds (server runs at 20Hz)
-const TICK_INTERVAL_SEC := 0.05
+## Tick interval in seconds. Seeded from the real server tick rate so interpolation
+## timing matches the 30Hz snapshot cadence (was hardcoded 0.05 = 20Hz, stale).
+const TICK_INTERVAL_SEC := GameConstants.SERVER_TICK_INTERVAL
 #endregion
 
 
@@ -78,7 +79,7 @@ var spawn_tick: int = -1
 var despawn_pending: bool = false
 
 ## Estimated tick interval in milliseconds (calibrated from received packets)
-var estimated_tick_interval_ms: float = 50.0
+var estimated_tick_interval_ms: float = GameConstants.SERVER_TICK_INTERVAL * 1000.0
 #endregion
 
 

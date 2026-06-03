@@ -33,6 +33,11 @@ signal shot_fired(position: Vector2, direction: Vector2)
 ## Networked arenas disable this; the server owns projectile spawning there.
 @export var local_projectile_spawning_enabled: bool = true
 
+## When true, the PredictionController is the sole authority over this player's
+## position — Player.gd skips its own move_and_slide() integration so the two
+## don't fight (the "steering boat" double-movement bug). Aiming/animation stay on.
+@export var prediction_owns_movement: bool = false
+
 ## Current movement state
 var movement_state: MovementState = MovementState.IDLE
 
@@ -96,17 +101,22 @@ func _physics_process(delta: float) -> void:
 	# Hit state blocks movement briefly
 	if action_state == ActionState.HIT:
 		velocity = Vector2.ZERO
-		move_and_slide()
+		if not prediction_owns_movement:
+			move_and_slide()
 		return
 
-	# Handle input if enabled
+	# Handle input if enabled. _handle_movement still runs under prediction
+	# ownership so movement_state (and thus animation) stays correct; only the
+	# position integration below is skipped.
 	if _input_enabled:
 		_handle_movement()
 		_handle_aiming()
 		_handle_shooting()
 
-	# Apply movement
-	move_and_slide()
+	# Apply movement — but NOT when the PredictionController owns this player's
+	# position, or the two integrators fight (the "steering boat" bug).
+	if not prediction_owns_movement:
+		move_and_slide()
 
 	# Footstep audio
 	_update_footsteps(delta)

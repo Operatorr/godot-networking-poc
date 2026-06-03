@@ -118,9 +118,12 @@ func _process(delta: float) -> void:
 				GameConstants.MONSTER_MAX_COUNT
 			)
 
-	# Camera follows local player
+	# Camera follows local player. Use the physics-interpolated transform so the
+	# camera (and the whole scrolling world) tracks the smoothed render position
+	# instead of the 30Hz-stepped physics position — otherwise the world still
+	# visibly steps even with physics_interpolation enabled.
 	if camera and local_player and is_instance_valid(local_player):
-		camera.position = local_player.position
+		camera.position = local_player.get_global_transform_interpolated().origin
 
 		# Camera zoom on sprint
 		var target_zoom := CAMERA_ZOOM_DEFAULT
@@ -158,6 +161,9 @@ func _setup_client() -> void:
 	camera.position_smoothing_enabled = true
 	camera.position_smoothing_speed = 10.0
 	add_child(camera)
+	# Driven manually each render frame from the player's interpolated transform,
+	# so keep the camera itself out of physics interpolation (avoids double-handling).
+	camera.set_physics_interpolation_mode(Node.PHYSICS_INTERPOLATION_MODE_OFF)
 
 	# Create ScreenEffects
 	screen_effects = ScreenEffects.new()
@@ -218,6 +224,9 @@ func _spawn_local_player(entity_container: Node2D) -> void:
 	entity_container.add_child(local_player)
 	local_player.set_input_enabled(false)
 	local_player.set_local_projectile_spawning_enabled(false)
+	# PredictionController is the sole mover for the networked local player; stop
+	# Player.gd from also running move_and_slide (kills the double-movement jitter).
+	local_player.prediction_owns_movement = true
 
 	# Connect local player signals for audio
 	local_player.shot_fired.connect(_on_local_player_shot)

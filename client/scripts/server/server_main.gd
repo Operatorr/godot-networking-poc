@@ -283,13 +283,22 @@ func _process_client_inputs() -> void:
 ## Spawn projectiles for immediate shoot edges and sustained held auto-fire.
 func _process_shoot_inputs() -> void:
 	for state: PlayerState in player_manager.get_all_players():
+		# Fire at most ONE shot per player per tick. SHOOT_COOLDOWN (0.3s) makes more
+		# than one legitimate shot per 33ms tick impossible, so collapsing duplicate
+		# same-tick rising edges AND the held auto-fire into a single fire here removes
+		# the "shots come out as pairs" bug (two firing surfaces firing the same tick).
+		var fired_this_tick := false
 		while true:
 			var shot := state.pop_pending_shot()
 			if shot.is_empty():
 				break
-			_try_spawn_projectile(state, shot)
+			if not fired_this_tick:
+				fired_this_tick = true
+				_try_spawn_projectile(state, shot)
+			# else: duplicate rising-edge drained in the same tick — coalesced/dropped.
 
-		if state.is_shoot_held() and state.can_shoot():
+		# Held auto-fire only if no rising-edge press already fired this tick.
+		if not fired_this_tick and state.is_shoot_held() and state.can_shoot():
 			_try_spawn_projectile(state, state.get_held_shot_input())
 
 

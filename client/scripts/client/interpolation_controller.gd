@@ -6,9 +6,15 @@ extends Node
 
 
 #region Constants
-## Number of ticks to render behind real-time (100ms at 20Hz)
-## Provides jitter absorption and smooth interpolation window
+## Base/default number of ticks to render behind real-time (~66ms at 30Hz).
+## Used as the starting value; the EFFECTIVE delay is adaptive (see below).
 const RENDER_DELAY_TICKS := GameConstants.REMOTE_ENTITY_RENDER_DELAY_TICKS
+
+## Adaptive render-delay bounds. On a jitter-free LAN/localhost the effective delay
+## collapses toward MIN (~33ms at 30Hz) instead of the old fixed ~66ms; under jitter
+## it grows toward MAX. Smooth remote motion without a constant latency penalty.
+const MIN_RENDER_DELAY_TICKS := 1
+const MAX_RENDER_DELAY_TICKS := 3
 
 ## Consecutive missing updates before despawning entity
 ## 3 ticks = 150ms grace period
@@ -71,8 +77,17 @@ var render_tick: int = 0
 ## Accumulated time since last tick for sub-tick interpolation
 var tick_accumulator: float = 0.0
 
-## Estimated tick interval in seconds (calibrated from received packets)
-var estimated_tick_interval: float = 0.05  ## 20Hz default
+## Estimated tick interval in seconds (calibrated from received packets).
+## Seeded from the real server tick rate so timing is correct before calibration
+## (was hardcoded 0.05 = 20Hz, causing micro-stutter until the EMA converged).
+var estimated_tick_interval: float = GameConstants.SERVER_TICK_INTERVAL
+
+## Smoothed estimate of snapshot inter-arrival jitter, in milliseconds.
+var estimated_jitter_ms: float = 0.0
+
+## Effective (adaptive) render delay in ticks, smoothed to avoid flapping between
+## integer tick offsets. render_tick = current_server_tick - round(this).
+var render_delay_ticks_smooth: float = float(RENDER_DELAY_TICKS)
 
 ## Time when last state update was received
 var last_update_time_ms: int = 0
@@ -181,9 +196,22 @@ func _process_state_update(data: Dictionary) -> void:
 				var measured_interval := float(time_delta) / 1000.0 / float(tick_delta)
 				# Smoothly adjust estimate
 				estimated_tick_interval = lerpf(estimated_tick_interval, measured_interval, 0.1)
+				# Adapt render delay to measured jitter: target = one snapshot
+				# interval + 2x jitter margin, clamped to [MIN, MAX] ticks and
+				# smoothed so it doesn't flap between integer tick offsets.
+				var interval_dev_ms := absf(measured_interval - estimated_tick_interval) * 1000.0
+				estimated_jitter_ms = lerpf(estimated_jitter_ms, interval_dev_ms, 0.1)
+				var interval_ms := maxf(estimated_tick_interval * 1000.0, 0.001)
+				var target_ms := interval_ms + 2.0 * estimated_jitter_ms
+				var target_ticks := clampf(
+					target_ms / interval_ms,
+					float(MIN_RENDER_DELAY_TICKS),
+					float(MAX_RENDER_DELAY_TICKS)
+				)
+				render_delay_ticks_smooth = lerpf(render_delay_ticks_smooth, target_ticks, 0.05)
 
 		current_server_tick = server_tick
-		render_tick = maxi(0, server_tick - RENDER_DELAY_TICKS)
+		render_tick = maxi(0, server_tick - roundi(render_delay_ticks_smooth))
 		tick_accumulator = 0.0
 		last_update_time_ms = Time.get_ticks_msec()
 
@@ -371,6 +399,9 @@ func _handle_entity_update(
 			var node: Node2D = entity_nodes[entity_id]
 			if is_instance_valid(node):
 				node.position = position
+				# Discontinuous jump: reset interpolation so physics_interpolation
+				# doesn't visually lerp the node across the teleport.
+				node.reset_physics_interpolation()
 
 	# Add new snapshot to buffer
 	buffer.add_snapshot(server_tick, position, animation_state, flags, entity_type)
@@ -520,6 +551,8 @@ func register_entity_node(entity_id: int, node: Node2D) -> void:
 	# Set initial position from buffer
 	var buffer: EntityStateBuffer = entity_buffers[entity_id]
 	node.position = buffer.get_latest_position()
+	# Fresh placement is a discontinuity — don't lerp from the node's old transform.
+	node.reset_physics_interpolation()
 
 	if debug_logging:
 		print("[Interpolation] Node registered for entity %d" % entity_id)
@@ -645,8 +678,10 @@ func get_debug_info() -> Dictionary:
 	return {
 		"current_server_tick": current_server_tick,
 		"render_tick": render_tick,
-		"render_delay_ms": RENDER_DELAY_TICKS * estimated_tick_interval * 1000.0,
+		"render_delay_ticks": render_delay_ticks_smooth,
+		"render_delay_ms": render_delay_ticks_smooth * estimated_tick_interval * 1000.0,
 		"estimated_tick_interval_ms": estimated_tick_interval * 1000.0,
+		"estimated_jitter_ms": estimated_jitter_ms,
 		"entity_count": entity_count,
 		"registered_nodes": registered_nodes,
 		"players": players,
