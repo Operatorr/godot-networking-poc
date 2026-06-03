@@ -42,7 +42,7 @@ fold these into "Already done" and flip the affected netcode docs' status tags.
 
 ### 1. The "30 fps at 100 fps" stutter — enable physics interpolation
 - **Problem:** Every visible node position is written only in `_physics_process` (30 Hz) and Godot's physics interpolation is off, so motion steps 30×/s at any frame rate.
-- **Fix:** Set `physics/common/physics_interpolation = true`; call `reset_physics_interpolation()` on every discontinuity (spawn / teleport / hard correction); read the camera from `local_player.get_global_transform_interpolated()` instead of raw `.position`.
+- **Fix:** Set `physics/common/physics_interpolation = true`; call `reset_physics_interpolation()` on every discontinuity (spawn / teleport / hard correction); in 2D, drive Camera2D from the local player's post-prediction physics-tick visual position instead of raw render-frame `.position` because `get_global_transform_interpolated()` is 3D-only.
 - **Evidence:** `project.godot:100-103` (tick 30, no interpolation key → off); writes in `prediction.gd:602-607`, `interpolation_controller.gd:454`; camera reads raw position at `arena_base.gd:122-123`.
 - **Effort:** small · **Impact:** decisive · **Status:** Planned
 - Full design: [`../../netcode/smoothness-render.md`](../../netcode/smoothness-render.md) — this is fix #1 there too.

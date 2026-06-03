@@ -12,6 +12,8 @@ signal correction_applied(correction_amount: float)
 signal prediction_mismatch(predicted_pos: Vector2, server_pos: Vector2)
 ## Emitted when reconciliation completes
 signal reconciliation_complete(replayed_inputs: int)
+## Emitted when the local player's visual position changes.
+signal visual_position_updated(visual_position: Vector2, is_discontinuous: bool)
 #endregion
 
 
@@ -145,11 +147,13 @@ func _physics_process(delta: float) -> void:
 
 	# Skip if not connected
 	if not NetworkManager.is_server_connected():
+		_emit_visual_position_updated(false)
 		return
 
 	if not is_active():
 		current_input_flags = 0
 		predicted_velocity = Vector2.ZERO
+		_emit_visual_position_updated(false)
 		return
 
 	# Step 1: Capture current frame's input
@@ -170,6 +174,8 @@ func _physics_process(delta: float) -> void:
 	if input_send_timer >= INPUT_SEND_INTERVAL:
 		_send_input_to_server()
 		input_send_timer -= INPUT_SEND_INTERVAL
+
+	_emit_visual_position_updated(false)
 #endregion
 
 
@@ -618,6 +624,7 @@ func _apply_instant_correction() -> void:
 		# Hard correction is a discontinuity — don't let physics_interpolation
 		# visually lerp the local player across the snap.
 		player_node.reset_physics_interpolation()
+		_emit_visual_position_updated(true)
 	correction_target = predicted_position
 	is_correcting = false
 
@@ -656,6 +663,7 @@ func force_sync(server_position: Vector2) -> void:
 	if player_node:
 		player_node.position = server_position
 		player_node.reset_physics_interpolation()
+	_emit_visual_position_updated(true)
 
 	if debug_logging:
 		print("[Prediction] Force synced to %s" % server_position)
@@ -691,6 +699,11 @@ func set_prediction_enabled(enabled: bool) -> void:
 	input_send_timer = 0.0
 	input_buffer.clear()
 	is_correcting = false
+
+
+func _emit_visual_position_updated(is_discontinuous: bool) -> void:
+	if player_node:
+		visual_position_updated.emit(player_node.position, is_discontinuous)
 
 
 ## Set local entity ID once PLAYER_INFO identifies this client.

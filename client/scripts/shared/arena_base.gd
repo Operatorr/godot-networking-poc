@@ -118,13 +118,7 @@ func _process(delta: float) -> void:
 				GameConstants.MONSTER_MAX_COUNT
 			)
 
-	# Camera follows local player. Use the physics-interpolated transform so the
-	# camera (and the whole scrolling world) tracks the smoothed render position
-	# instead of the 30Hz-stepped physics position — otherwise the world still
-	# visibly steps even with physics_interpolation enabled.
 	if camera and local_player and is_instance_valid(local_player):
-		camera.position = local_player.get_global_transform_interpolated().origin
-
 		# Camera zoom on sprint
 		var target_zoom := CAMERA_ZOOM_DEFAULT
 		if Input.is_action_pressed("sprint") and local_player.movement_state == Player.MovementState.WALKING:
@@ -139,6 +133,25 @@ func _process(delta: float) -> void:
 
 	# Invulnerability shield visual
 	_update_invuln_shield()
+
+
+func _snap_camera_to(target_position: Vector2) -> void:
+	if camera == null:
+		return
+
+	camera.position = target_position
+	camera.reset_smoothing()
+	camera.reset_physics_interpolation()
+
+
+func _on_local_player_visual_position_updated(target_position: Vector2, is_discontinuous: bool) -> void:
+	if camera == null:
+		return
+
+	if is_discontinuous:
+		_snap_camera_to(target_position)
+	else:
+		camera.position = target_position
 
 
 ## Set up client-side systems
@@ -158,12 +171,17 @@ func _setup_client() -> void:
 	camera = Camera2D.new()
 	camera.name = "ArenaCamera"
 	camera.zoom = Vector2(1.5, 1.5)
-	camera.position_smoothing_enabled = true
-	camera.position_smoothing_speed = 10.0
+	# The camera follows an already-interpolated target path. Camera2D position
+	# smoothing is forced to physics mode when physics interpolation is enabled,
+	# which adds warning noise and extra follow lag here.
+	camera.position_smoothing_enabled = false
+	# Match the callback Godot requires under physics interpolation before the
+	# camera enters the tree, avoiding the engine-side override warning.
+	camera.process_callback = Camera2D.CAMERA2D_PROCESS_PHYSICS
 	add_child(camera)
-	# Driven manually each render frame from the player's interpolated transform,
-	# so keep the camera itself out of physics interpolation (avoids double-handling).
-	camera.set_physics_interpolation_mode(Node.PHYSICS_INTERPOLATION_MODE_OFF)
+	# Camera position is written on physics ticks by PredictionController, so let
+	# Godot interpolate Camera2D between those physics states on render frames.
+	camera.set_physics_interpolation_mode(Node.PHYSICS_INTERPOLATION_MODE_ON)
 
 	# Create ScreenEffects
 	screen_effects = ScreenEffects.new()
@@ -236,6 +254,7 @@ func _spawn_local_player(entity_container: Node2D) -> void:
 	prediction_controller.name = "PredictionController"
 	prediction_controller.interpolation_controller = interpolation_controller
 	prediction_controller.projectile_sync_debug_logging = projectile_sync_debug_logging
+	prediction_controller.visual_position_updated.connect(_on_local_player_visual_position_updated)
 	local_player.add_child(prediction_controller)
 
 	# Set up prediction in pending mode. Entity ID and spawn position come from server state.
@@ -243,7 +262,7 @@ func _spawn_local_player(entity_container: Node2D) -> void:
 
 	# Camera starts at player position
 	if camera:
-		camera.position = local_player.position
+		_snap_camera_to(local_player.position)
 
 	print("[ArenaBase] Local player spawned pending authoritative server state")
 
@@ -382,7 +401,7 @@ func _handle_player_info(data: Dictionary) -> void:
 				local_player.visible = true
 				local_player.set_input_enabled(true)
 			if camera:
-				camera.position = server_position
+				_snap_camera_to(server_position)
 			print("[ArenaBase] Local player authority synced from PLAYER_INFO at %s" % server_position)
 
 		# Clean up any accidentally spawned remote player for our entity
@@ -426,7 +445,7 @@ func _handle_state_update_for_local_player(data: Dictionary) -> void:
 				local_player.visible = true
 				local_player.set_input_enabled(true)
 				if camera:
-					camera.position = server_position
+					_snap_camera_to(server_position)
 				print("[ArenaBase] Local player authority synced at %s" % server_position)
 			# Only sync alive/invulnerable state when this packet actually carries
 			# the flags field. Position-only deltas decode with flags=0, which would
@@ -505,6 +524,8 @@ func _handle_respawn_event(data: Dictionary) -> void:
 		if prediction_controller:
 			prediction_controller.force_sync(respawn_pos)
 			prediction_controller.set_prediction_enabled(true)
+		if camera:
+			_snap_camera_to(respawn_pos)
 
 		# Hide death screen
 		if death_screen:

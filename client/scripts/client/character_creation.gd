@@ -69,8 +69,8 @@ func _setup_focus_navigation() -> void:
 
 
 ## Validate character name
-func _validate_name(name: String) -> bool:
-	var stripped := name.strip_edges()
+func _validate_name(character_name: String) -> bool:
+	var stripped := character_name.strip_edges()
 
 	# Check length
 	if stripped.length() < MIN_NAME_LENGTH:

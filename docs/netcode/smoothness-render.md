@@ -57,9 +57,11 @@ the last two physics states automatically — smooth motion at any FPS, with nea
    node will visibly lerp *across* the jump. Call `node.reset_physics_interpolation()` at:
    - interpolation teleport-snap (`interpolation_controller.gd:~370`) and entity registration (`:~518`)
    - prediction force-sync (`prediction.gd:~646`) and instant correction (`prediction.gd:~615`)
-3. **Camera:** stop reading the raw `local_player.position` each frame. Either parent the camera
-   to the player, or read `local_player.get_global_transform_interpolated()` so the camera tracks
-   the *interpolated* position; otherwise the camera (and the whole world) still steps.
+3. **Camera:** stop reading the raw `local_player.position` each frame. In 2D,
+   `get_global_transform_interpolated()` is not available; either parent the camera to the player
+   so it inherits the player's interpolated transform, or drive Camera2D from the local player's
+   post-prediction physics-tick visual position and let Camera2D interpolate between those states.
+   Otherwise the camera (and the whole world) still steps.
 4. Optional polish: set `application/run/max_fps` (or `Engine.max_fps`) now that smoothness no
    longer depends on raw frame count.
 
