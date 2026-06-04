@@ -40,6 +40,14 @@ var _cache: Dictionary = {}
 ## Tick when the last baseline (full state) was sent
 var _baseline_tick: int = 0
 
+## Tick of the most recent Baseline this peer has CONFIRMED receiving (BASELINE_ACK, #14).
+var _acked_baseline_tick: int = 0
+## Tick of the most recent Baseline SENT but not yet acked. 0 = none outstanding.
+var _pending_baseline_tick: int = 0
+## Ticks to wait for an ack before assuming the Baseline was lost and resending.
+## On TCP this never trips (reliable, ordered); meaningful only under #12 UDP transport.
+const BASELINE_ACK_TIMEOUT_TICKS := 30
+
 ## Peer ID this cache belongs to (for debugging)
 var peer_id: int = 0
 
@@ -198,14 +206,41 @@ func get_cached_state(entity_id: int) -> CachedEntityState:
 ## Reset baseline tick (call after sending full state)
 func reset_baseline(tick: int) -> void:
 	_baseline_tick = tick
+	# The just-sent Baseline now awaits a BASELINE_ACK from this peer (#14).
+	_pending_baseline_tick = tick
 	if debug_logging:
 		print("[DeltaCache] Baseline reset to tick %d (peer=%d)" % [tick, peer_id])
+
+
+## Record a BASELINE_ACK from this peer (#14). INERT on TCP (baselines are never
+## dropped); under #12 UDP transport this clears the resend timer so a delivered
+## Baseline is not needlessly resent.
+func mark_baseline_acked(acked_tick: int) -> void:
+	# Accept the highest ack we have seen; ignore stale/duplicate acks.
+	if acked_tick >= _acked_baseline_tick:
+		_acked_baseline_tick = acked_tick
+	# Clear the pending flag once the outstanding baseline (or a newer one) is confirmed.
+	if acked_tick >= _pending_baseline_tick:
+		_pending_baseline_tick = 0
+
+
+## Whether a previously-sent Baseline went un-acked past the timeout and should be
+## resent proactively (#14). PROACTIVE complement to the client's REQUEST_FULL_STATE
+## reactive recovery. Never fires on TCP; only meaningful under #12 UDP transport.
+func needs_baseline_resend(current_tick: int) -> bool:
+	# No baseline ever sent -> first baseline still needed (interval path handles tick 0..100).
+	if _baseline_tick == 0:
+		return false
+	# An outstanding (un-acked) baseline older than the timeout -> resend proactively.
+	return _pending_baseline_tick > 0 and (current_tick - _pending_baseline_tick) >= BASELINE_ACK_TIMEOUT_TICKS
 
 
 ## Clear all cached states
 func clear() -> void:
 	_cache.clear()
 	_baseline_tick = 0
+	_acked_baseline_tick = 0
+	_pending_baseline_tick = 0
 	if debug_logging:
 		print("[DeltaCache] Cache cleared (peer=%d)" % peer_id)
 
@@ -244,6 +279,8 @@ func get_debug_info() -> Dictionary:
 	return {
 		"peer_id": peer_id,
 		"entity_count": _cache.size(),
-		"baseline_tick": _baseline_tick
+		"baseline_tick": _baseline_tick,
+		"acked_baseline_tick": _acked_baseline_tick,
+		"pending_baseline_tick": _pending_baseline_tick
 	}
 #endregion

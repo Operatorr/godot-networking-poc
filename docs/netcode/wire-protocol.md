@@ -1,6 +1,7 @@
 # Wire protocol & packet formats
 
-**Status:** Implemented (verified 2026-06-03 against code).
+**Status:** Implemented (verified 2026-06-04 against code; #11 u16 widen, #13 `CONNECT_AUTH` budget,
+#14 `BASELINE_ACK`, and #15 `SERVER_METRICS` `sched_*` fields all landed).
 
 > The binary format every byte on the wire conforms to. All numbers here are read directly from
 > `packet_writer.gd` / `packet_reader.gd` and the per-packet schema classes under
@@ -44,7 +45,7 @@ never bites in normal play.
 
 ## Message types (`PacketTypes.Type`)
 
-`packet_types.gd:13-25`. Direction and payload size as built today:
+`packet_types.gd:16-29`. Direction and payload size as built today:
 
 | #  | Type                | Dir   | Payload                              | Schema                       |
 | -- | ------------------- | ----- | ------------------------------------ | ---------------------------- |
@@ -53,27 +54,28 @@ never bites in normal play.
 | 3  | `GAME_EVENT`        | S→C   | variable, per event type             | `game_event_packet.gd`       |
 | 4  | `HEARTBEAT`         | C↔S   | 4 B (`[u32 timestamp_ms]`)           | `heartbeat_packet.gd`        |
 | 5  | `ACTION_CONFIRM`    | S→C   | 9 B                                  | `action_confirm_packet.gd`   |
-| 6  | `CONNECT_AUTH`      | C→S   | variable (strings)                   | `auth_packet.gd`             |
+| 6  | `CONNECT_AUTH`      | C→S   | variable (strings + budget)          | `auth_packet.gd`             |
 | 7  | `DISCONNECT`        | C→S   | 5 B                                  | `disconnect_packet.gd`       |
 | 8  | `REQUEST_FULL_STATE`| C→S   | empty (header only)                  | —                            |
 | 9  | `RESPAWN_REQUEST`   | C→S   | empty (header only)                  | —                            |
 | 10 | `SERVER_METRICS`    | S→C   | variable (1/sec)                     | —                            |
 | 11 | `BATCH`             | S→C   | framed sub-packets                   | (transport)                  |
+| 12 | `BASELINE_ACK`      | C→S   | 4 B (`[u32 baseline_tick]`)          | — (inline in `network_manager.gd`) |
 
-`is_valid_type()` accepts `1..11` (`packet_types.gd:125-126`).
+`is_valid_type()` accepts `1..12` (`packet_types.gd:133-134`).
 
 ## STATE_UPDATE — the Snapshot
 
 `state_update_packet.gd`. Two modes selected by `state_flags` bit `STATE_FLAG_IS_DELTA`
-(`packet_types.gd:74`). The packet prefix (wire header + state header) differs by mode:
+(`packet_types.gd:78`). The packet prefix (wire header + state header) differs by mode:
 
-**Full-state Snapshot** — 10-byte prefix, then 9 bytes/entity:
+**Full-state Snapshot** — 10-byte prefix (was 9 before the u16 widen), then 9 bytes/entity:
 
 ```
 [u8 type=2][u16 len]        3  wire header
 [u32 server_tick]           4
 [u8 state_flags]            1  (delta bit clear)
-[u8 entity_count]           1  ← u8: HARD CAP 255
+[u16 entity_count]          2  ← u16 (was u8); ceiling is now the byte budget, not 255
 per entity (9 B):
   [u16 entity_id]           2
   [u8 entity_type]          1  (1=PLAYER 2=MONSTER 3=PROJECTILE)
@@ -82,16 +84,16 @@ per entity (9 B):
   [u8 flags]                1  (ENTITY_FLAG_* bitfield)
 ```
 
-`state_update_packet.gd:5-14`, write `:193-202`, read `:249-259`, `ENTITY_SIZE := 9` (`:32`).
+`state_update_packet.gd:5-14`, write `:193-204`, read `:253-263`, `ENTITY_SIZE := 9` (`:32`).
 
-**Delta Snapshot** — 14-byte prefix (adds `baseline_tick`), then 3–10 bytes/entity:
+**Delta Snapshot** — 14-byte prefix (adds `baseline_tick`; was 13 before the u16 widen), then 3–10 bytes/entity:
 
 ```
 [u8 type=2][u16 len]        3
 [u32 server_tick]           4
 [u8 state_flags]            1  (STATE_FLAG_IS_DELTA set)
 [u32 baseline_tick]         4  ← tick of the Baseline this diffs against
-[u8 entity_count]           1  ← u8: HARD CAP 255
+[u16 entity_count]          2  ← u16 (was u8); ceiling is now the byte budget, not 255
 per entity (variable):
   [u16 entity_id]           2
   [u8 delta_mask]           1
@@ -103,11 +105,11 @@ per entity (variable):
   flags       (DELTA_MASK_FLAGS):      flags1
 ```
 
-`state_update_packet.gd:16-27`, write `:206-227`, read `:263-307`, sizes `:362-379`. The smallest
+`state_update_packet.gd:16-27`, write `:208-231`, read `:267-311`, sizes `:366-383`. The smallest
 delta entity (3 B) is a bare removal; the largest (10 B) is an inline full-state entity inside a
 delta packet (e.g. a freshly-spawned entity). A position-only delta is 7 B.
 
-### Delta mask (8-bit, `packet_types.gd:64-70`)
+### Delta mask (8-bit, `packet_types.gd:68-74`)
 
 | Bit | Constant                 | Meaning                                   |
 | --- | ------------------------ | ----------------------------------------- |
@@ -118,30 +120,36 @@ delta packet (e.g. a freshly-spawned entity). A position-only delta is 7 B.
 | 7   | `DELTA_MASK_FULL_STATE`  | full entity inline (Baseline of one)      |
 
 Bits 3–5 are unused. The Snapshot reader merges each delta against the client's last known state
-for that `entity_id` (`state_update_packet.gd:285-305`); unchanged fields are carried forward, so
+for that `entity_id` (`state_update_packet.gd:289-309`); unchanged fields are carried forward, so
 a stale-but-present entity costs only its 3-byte id+mask.
 
 ### Baseline cadence
 
-`DELTA_FULL_STATE_INTERVAL := 100` (`packet_types.gd:78`): the server forces a full-state
-Baseline every 100 Ticks regardless of what changed (the inline comment "~5 seconds at 20Hz" is
-**stale** — the server ticks at 30 Hz, so this is ~3.3 s; see [`server-tick-broadcast.md`](server-tick-broadcast.md)).
-There is **no Baseline ack** — the client cannot tell the server which Baseline it actually holds;
-it trusts that a delta's `baseline_tick` matches state it kept. A dropped Baseline followed by
-deltas reconstructs against a wrong prior until the next forced Baseline.
+`DELTA_FULL_STATE_INTERVAL := 100` (`packet_types.gd:85`): the server forces a full-state
+Baseline every 100 Ticks regardless of what changed (~3.3 s at the 30 Hz tick; the inline comment
+is now correct; see [`server-tick-broadcast.md`](server-tick-broadcast.md)). The client now
+**acks** each received Baseline via a `BASELINE_ACK` packet (below); the server tracks the per-peer
+acked/pending Baseline and resends on a gap rather than waiting out the full 100-Tick cadence. This
+ack path is **inert on today's TCP** transport (reliable in-order delivery never drops a Baseline)
+— it is forward-looking for the [ADR 0003](../adr/0003-enet-udp-transport.md) ENet/UDP transport,
+where a dropped ch0 datagram is real.
 
-### Correctness cliff: u8 `entity_count` caps a Snapshot at 255 entities
+### Resolved: `entity_count` was a u8 capping a Snapshot at 255 entities
 
-Both writers cap the count with `mini(entities.size(), 255)` (`state_update_packet.gd:194,207`).
-`entity_count` is a **u8** — a Snapshot physically cannot describe more than 255 entities, and the
-overflow is **silently truncated**, not split across packets. At MMO target densities this is a
-real ceiling: 200 players + up to 100 monsters (`MONSTER_MAX_COUNT`) + projectiles can exceed 255
-*visible* entities for one viewer. The per-viewer AoI + budget scheduler
-([`interest-mgmt-aoi.md`](interest-mgmt-aoi.md)) usually keeps a single viewer's list under that,
-but nothing in the wire layer *enforces* it: if the scheduler hands ≥256 entities to `write()`,
-entities past index 254 vanish for that client with no error. Worse, the periodic **Baseline is
-unbudgeted** — it tries to emit every AoI entity at full 9/10 bytes, so it is the most likely place
-to brush the cap (and the per-peer 1200-byte snapshot budget). Wire-v3 (below) lifts this to u16.
+**Fixed (2026-06-04).** Both writers previously capped the count with `mini(entities.size(), 255)`
+on a **u8** field, so any Snapshot with >255 entities was **silently truncated** — and the
+periodic, **unbudgeted** Baseline (which emits every AoI entity at full 9/10 bytes) was the most
+likely place to brush it.
+
+`entity_count` is now a **u16**, capped at `STATE_MAX_ENTITIES = 65535`
+(`packet_types.gd:13`); both writers use `mini(entities.size(), STATE_MAX_ENTITIES)`
+(`state_update_packet.gd:195,210`) and both readers `read_u16` (`:254,268`). The old hard 255 cliff
+is **gone**. The real ceiling is now the **`MAX_PACKET_SIZE` / byte budget** (`u16` payload length,
+65535 B), not the count field — a packet runs out of *bytes* long before it runs out of *count*.
+The broadcast service still increments a `snapshot_count_overflow` diagnostic and `push_warning`s if
+a Snapshot would even exceed the (now far-larger) wire cap (`server_broadcast_service.gd:509-510`),
+surfaced via `SERVER_METRICS`. This was a wire change with **no `PROTOCOL_VERSION` byte added** (see
+"wire-v3" below — the remaining size optimizations are still unbuilt).
 
 ## PLAYER_INPUT — client intent (16-byte payload)
 
@@ -162,12 +170,12 @@ Sent at 30 Hz from `_physics_process` (see [`client-prediction.md`](client-predi
 replay buffer is 256 deep. `client_render_tick` lets the server reconstruct what the shooter saw
 for PvE [Lag compensation](../CONTEXT.md); `client_rtt_ms` feeds server-side latency stats.
 
-### Input-flag bitfield (`packet_types.gd:47-54`)
+### Input-flag bitfield (`packet_types.gd:51-58`)
 
 `MOVE_UP=1<<0, MOVE_DOWN=1<<1, MOVE_LEFT=1<<2, MOVE_RIGHT=1<<3, SHOOT=1<<4, ABILITY=1<<5,
-SPRINT=1<<6, INTERACT=1<<7`. Encode/decode helpers at `packet_types.gd:130-154`.
+SPRINT=1<<6, INTERACT=1<<7`. Encode/decode helpers at `packet_types.gd:138-162`.
 
-### Entity-flag bitfield (`packet_types.gd:57-62`)
+### Entity-flag bitfield (`packet_types.gd:60-66`)
 
 `ALIVE=1<<0, MOVING=1<<1, ATTACKING=1<<2, INVULNERABLE=1<<3, STUNNED=1<<4, VISIBLE=1<<5`.
 Carried in the entity `flags` byte of STATE_UPDATE; bits 6–7 free.
@@ -181,7 +189,7 @@ Carried in the entity `flags` byte of STATE_UPDATE; bits 6–7 free.
 … type-specific tail …
 ```
 
-`GameEventType` (`packet_types.gd:81-94`) and the tail each one serializes:
+`GameEventType` (`packet_types.gd:88-101`) and the tail each one serializes:
 
 | #  | Event                | Tail on the wire                                              |
 | -- | -------------------- | ------------------------------------------------------------ |
@@ -217,39 +225,79 @@ the server's reply carries `server_ms`, which the client uses for clock-offset e
 [`transport-websocket.md`](transport-websocket.md).
 
 **DISCONNECT** (C→S, 5 B payload) — `disconnect_packet.gd:37-39`:
-`[u8 reason_code][u32 timestamp_ms]`, `reason_code` from `DisconnectReason` (`packet_types.gd:97-104`).
+`[u8 reason_code][u32 timestamp_ms]`, `reason_code` from `DisconnectReason` (`packet_types.gd:104-111`).
 
-**CONNECT_AUTH** (C→S, variable) — `auth_packet.gd:70-75`:
-`[string token][string char_id][string char_name][u8 region][u8 r][u8 g][u8 b]`. Strings are
-length-prefixed `[u16 len][utf8]` (`packet_writer.gd:100-115`). `region` is the `Region` enum
-(`auth_packet.gd:13-18`). Color is optional-on-wire (read only if ≥3 bytes remain, `:85`).
+**CONNECT_AUTH** (C→S, variable) — `auth_packet.gd`:
+`[string token][string char_id][string char_name][u8 region][u8 r][u8 g][u8 b][u32 bandwidth_budget_bps]`.
+Strings are length-prefixed `[u16 len][utf8]` (`packet_writer.gd:100-115`). `region` is the `Region`
+enum (`auth_packet.gd:13-18`). Color is optional-on-wire (read only if ≥3 bytes remain). The trailing
+**`[u32 bandwidth_budget_bps]`** is the client's advertised egress budget in bytes/sec (#13,
+`auth_packet.gd:33,82-85`); it is append-only and **length-gated on read** (old clients omit it and the
+server then falls back to `default_client_bandwidth_bps`). u32 because a realistic budget (~60k–200k B/s)
+overflows u16. The server clamps it to `[min,max]` config and derives each peer's per-Snapshot byte cap
+`= clamp(budget / snapshot_rate_hz, 256, max_snapshot_bytes)` — see
+[`server-tick-broadcast.md`](server-tick-broadcast.md).
 
-## Planned: wire-v3
+**BASELINE_ACK** (C→S, 4 B payload) — encoded/decoded inline in `network_manager.gd` (`:848`-ish
+encode, `:1017` decode), not a `*_packet.gd` class: `[u32 baseline_tick]`. The client sends one on
+**every** received full-state Baseline, carrying that Baseline's `server_tick`
+(`interpolation_controller.gd:185`); the server marks the per-peer Baseline acked
+(`server_broadcast_service.gd:446-452` → `delta_state_cache.gd:218-224`). **Inert on TCP** (Baselines
+don't drop); forward-looking for the [ADR 0003](../adr/0003-enet-udp-transport.md) ENet transport.
 
-Not built. Tracked in `plans/CODEX_NETWORK_PERFORMANCE_UPGRADES.md` (Phase 4). Three changes:
+**SERVER_METRICS** (S→C, fixed-length, 1 Hz) — encoded inline in `network_manager.gd:863-880`,
+decoded `:1003-1015`. A flat little-endian record (no entity loop):
 
-1. **`entity_count` u8 → u16** in STATE_UPDATE — removes the 255-entity silent-truncation cliff
-   above (the load-bearing fix).
-2. **s8 small-delta positions** — most per-tick movement is ≤±12.7 units (player speed 200 ⇒
+```
+[u32 tick_count]                4
+[u16 avg_tick_time_ms ×100]     2  fixed-point ×100
+[u16 max_tick_time_ms ×100]     2  fixed-point ×100
+[u16 player_count]              2
+[u16 entity_count]              2
+[u32 total_bytes_sent]          4
+[u32 total_bytes_received]      4
+[u32 avg_bandwidth_per_client]  4  bytes/sec
+── appended scheduler diagnostics (#15) ──
+[u16 sched_entities_deferred]   2
+[u16 sched_max_queue_age_ticks] 2
+[u8  sched_peers_at_budget_pct] 1
+[u16 sched_peers_evaluated]     2
+[u16 sched_snapshot_overflow]   2  (the #11 wire-cap overflow counter)
+```
+
+The five trailing `sched_*` fields are the scheduler diagnostics plumbed from
+`ServerBroadcastService.last_tick_diagnostics` → `ServerMetrics` → this packet → the HUD
+`server_status` panel. They are a **fixed-length append** — encode and decode must stay in lockstep
+(`mini()`/`clampi()` guard against u16/u8 overflow at the 1000-player target). See
+[`performance-budgets.md`](performance-budgets.md).
+
+## Planned: wire-v3 (remaining size optimizations)
+
+The load-bearing **`entity_count` u8 → u16** widen **shipped (2026-06-04)** — see "Resolved" above.
+Two encoding-only optimizations from the original v3 list remain unbuilt (tracked in
+`plans/CODEX_NETWORK_PERFORMANCE_UPGRADES.md` Phase 4):
+
+1. **s8 small-delta positions** — most per-tick movement is ≤±12.7 units (player speed 200 ⇒
    ~6.7 u/tick at 30 Hz), so a 1-byte-per-axis small-delta mode would halve the 4-byte position
    field for the common case, falling back to s16 only on large jumps/teleports.
-3. **Drop redundant `entity_type` in deltas** — `entity_type` never changes after spawn, yet a
-   full-state delta entity re-sends it every Baseline (`state_update_packet.gd:216,275`); the
+2. **Drop redundant `entity_type` in deltas** — `entity_type` never changes after spawn, yet a
+   full-state delta entity re-sends it every Baseline (`state_update_packet.gd:220,279`); the
    client already caches it from the prior full state.
 
-Each is encoding-only and gated behind a protocol-version negotiation that does not exist today
-(there is no version byte on the wire — adding one is implied by v3).
+Each is encoding-only. Note that **no protocol-version byte was added** with the u16 widen — there is
+still no version byte on the wire, so either remaining optimization would need a compatibility
+strategy of its own.
 
 ## The eight questions
 
-- **Client:** encodes `PLAYER_INPUT`/`CONNECT_AUTH`/`HEARTBEAT`/`DISCONNECT`/`REQUEST_FULL_STATE`/`RESPAWN_REQUEST`; decodes every S→C packet.
+- **Client:** encodes `PLAYER_INPUT`/`CONNECT_AUTH` (with the trailing bandwidth budget)/`HEARTBEAT`/`DISCONNECT`/`REQUEST_FULL_STATE`/`RESPAWN_REQUEST`/`BASELINE_ACK`; decodes every S→C packet.
 - **Server:** encodes `STATE_UPDATE`/`GAME_EVENT`/`ACTION_CONFIRM`/`HEARTBEAT`/`SERVER_METRICS`, packs them into `BATCH`; decodes client input/auth.
 - **Predicted:** nothing here — the wire format carries predicted *inputs* (`PLAYER_INPUT`) and authoritative *corrections* (`ACTION_CONFIRM`), but encoding itself predicts nothing.
 - **Replicated:** all world state, as quantized full-state or delta entities in `STATE_UPDATE`, diffed against a Baseline every 100 Ticks.
 - **Persisted:** nothing — the wire layer is in-memory framing only; the Go API persists accounts/characters/leaderboard out of band.
 - **Validated:** `PacketReader._check_bounds` guards every read against buffer underflow (`packet_reader.gd:29-33`); `is_valid_type` range-checks the type byte; the u16 length bounds the frame.
-- **Can fail:** Snapshot exceeding 255 entities → silent truncation (u8 cap); dropped Baseline with no ack → deltas reconstruct against wrong state until the next forced Baseline; position outside ±3276.7 → clamped (irrelevant inside the 2000² Arena).
-- **Tested:** round-trip unit tests on each `*_packet.gd` (`write()` → `from_buffer()`); the truncation cliff and missing-Baseline-ack paths have **no** test today.
+- **Can fail:** a Snapshot can still overflow the **byte budget** (`MAX_PACKET_SIZE`/`u16` payload length) — far harder to hit than the old u8 255 cap, and now signalled by `snapshot_count_overflow`; a dropped Baseline is repaired by the `BASELINE_ACK` resend path (inert on TCP, live on the planned ENet transport); position outside ±3276.7 → clamped (irrelevant inside the 2000² Arena).
+- **Tested:** round-trip unit tests on each `*_packet.gd` (`write()` → `from_buffer()`); the Python bot decoder tracks the u16 `entity_count`, the appended `SERVER_METRICS` `sched_*` fields, and the trailing `CONNECT_AUTH` budget in lockstep; the `BASELINE_ACK` resend path has **no** loss-injection test today (it is inert on TCP).
 
 ## See also
 

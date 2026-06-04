@@ -1,0 +1,6 @@
+{
+	"_comment": "Authoritative, export-safe manifest of monster definition ids. To add a monster: drop <id>.json beside this file and add <id> here.",
+	"monsters": [
+		"toxic_slime"
+	]
+}

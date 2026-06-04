@@ -13,6 +13,11 @@ var peer_id: int = 0            ## WebSocket peer identifier
 var character_id: String = ""
 var character_name: String = ""
 var player_color: Color = Color(0.27, 0.53, 1.0)
+## Client-advertised egress budget (bytes/sec), clamped to config bounds at auth.
+var bandwidth_budget_bps: int = 0
+## Resolved per-peer per-snapshot byte cap, computed once at auth from
+## budget/snapshot_rate. 0 = fall back to the broadcast service default.
+var max_snapshot_bytes: int = 0
 
 # Connection
 var connected_at: float = 0.0

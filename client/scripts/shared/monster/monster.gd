@@ -30,10 +30,20 @@ var max_hp: int = GameConstants.MONSTER_HEALTH
 
 func _ready() -> void:
 	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
-	# Apply procedural sprites (monster variant)
+
+	# Pull appearance + HP from the data-driven monster definition. The wire does
+	# not yet carry a per-monster archetype, so all monsters render as the default
+	# (Toxic Slime); once a subtype byte is added this keys off the real archetype.
+	var definition := MonsterDatabase.get_shared().get_default_definition()
+	max_hp = definition.max_health
+	current_hp = definition.max_health
+
+	# Apply procedural sprites (monster variant) from the definition's palette
 	if animated_sprite:
-		animated_sprite.sprite_frames = ProceduralSprites.create_monster_frames()
-		animated_sprite.modulate = Color.WHITE  # Override placeholder red tint
+		animated_sprite.sprite_frames = ProceduralSprites.create_monster_frames_from_colors(
+			definition.core_color, definition.glow_color, definition.shell_color
+		)
+		animated_sprite.modulate = Color.WHITE  # Override placeholder tint
 		animated_sprite.play("idle")
 
 

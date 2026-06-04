@@ -255,6 +255,7 @@ func _spawn_local_player(entity_container: Node2D) -> void:
 	prediction_controller.interpolation_controller = interpolation_controller
 	prediction_controller.projectile_sync_debug_logging = projectile_sync_debug_logging
 	prediction_controller.visual_position_updated.connect(_on_local_player_visual_position_updated)
+	prediction_controller.shoot_predicted.connect(_on_local_shoot_predicted)
 	local_player.add_child(prediction_controller)
 
 	# Set up prediction in pending mode. Entity ID and spawn position come from server state.
@@ -664,24 +665,13 @@ func _log_local_projectile_fired_event(data: Dictionary) -> void:
 	])
 
 
-func _play_local_projectile_fired_feedback(data: Dictionary) -> void:
-	var event_data: Dictionary = data.get("event_data", {})
-	var spawn_pos: Vector2 = event_data.get("position", Vector2.ZERO)
-	var direction := Vector2.RIGHT
-
-	if local_player and is_instance_valid(local_player):
-		var from_player := spawn_pos - local_player.global_position
-		if from_player.length_squared() > 0.01:
-			direction = from_player.normalized()
-		else:
-			direction = local_player.last_aim_direction
-
-	var audio := _get_audio_manager()
-	if audio:
-		audio.play_player_shoot()
-
-	var flash := ParticleEffects.create_muzzle_flash(spawn_pos, direction)
-	_add_effect_to_arena(flash)
+## Server PROJECTILE_FIRED arrival for the LOCAL player. Cosmetics (muzzle flash,
+## tracer, audio) are now driven instantly off the predicted shoot edge
+## (_on_local_shoot_predicted), so this path intentionally does NOT redraw a flash
+## or replay audio — that would double-fire one trigger pull. Projectile-source
+## registration and logging happen in _handle_projectile_fired_event.
+func _play_local_projectile_fired_feedback(_data: Dictionary) -> void:
+	pass
 
 
 ## Handle PvP kill event (for kill feed)
@@ -750,7 +740,10 @@ func _handle_kill_event(data: Dictionary) -> void:
 			GameManager.update_stat("deaths", 1)
 		if kill_feed:
 			var victim_name := EntityNameCache.get_entity_name(victim_id)
-			kill_feed.add_kill("Monster", victim_name)
+			# Display name comes from the monster catalogue (data-driven). The wire
+			# carries no per-monster archetype yet, so this is the default type.
+			var monster_name := MonsterDatabase.get_shared().get_default_definition().display_name
+			kill_feed.add_kill(monster_name, victim_name)
 
 
 ## Handle leaderboard update
@@ -762,6 +755,24 @@ func _handle_leaderboard_update(data: Dictionary) -> void:
 	# Update server status player count from leaderboard entry count
 	if server_status:
 		server_status.update_player_count(entries.size(), SERVER_STATUS_MAX_PLAYERS)
+
+
+## Immediate cosmetic feedback for the local player's predicted shoot edge.
+## Cosmetic only — draws a muzzle flash + tracer and plays audio the instant the
+## trigger is pulled, without waiting for the server PROJECTILE_FIRED round-trip.
+## Does NOT spawn a Projectile and does NOT touch prediction state.
+func _on_local_shoot_predicted(muzzle: Vector2, dir: Vector2) -> void:
+	var audio := _get_audio_manager()
+	if audio:
+		audio.play_player_shoot()
+
+	var flash := ParticleEffects.create_muzzle_flash(muzzle, dir)
+	_add_effect_to_arena(flash)
+
+	var tracer_color: Color = GameManager.player_data.get("player_color", Color(0.27, 0.53, 1.0))
+	var tracer_end := muzzle + dir * GameConstants.PROJECTILE_MAX_DISTANCE * 0.4
+	var tracer := ParticleEffects.create_tracer(muzzle, tracer_end, tracer_color)
+	_add_effect_to_arena(tracer)
 
 
 ## Handle local player shooting (for audio + effects)

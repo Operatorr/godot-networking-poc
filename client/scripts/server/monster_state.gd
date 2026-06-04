@@ -7,6 +7,13 @@ extends RefCounted
 ## Unique entity ID for network sync
 var entity_id: int = 0
 
+## Monster archetype id (key into MonsterDatabase). Drives stats/AI/appearance.
+var type_id: String = MonsterDatabase.DEFAULT_MONSTER_ID
+
+## Data-driven definition backing this monster. Always set after create*();
+## the AI reads tuning (ranges, speeds, cooldowns) from here, not from globals.
+var definition: MonsterDefinition = null
+
 ## Current position in world space
 var position: Vector2 = Vector2.ZERO
 
@@ -58,13 +65,34 @@ var steering_offset: Vector2 = Vector2.ZERO
 var steering_timer: float = 0.0
 
 
-## Create a new MonsterState
+## Create a new MonsterState (legacy/back-compat path; uses the default Toxic
+## Slime definition). Prefer create_from_definition for data-driven spawns.
 static func create(p_entity_id: int, p_position: Vector2, p_health: int = GameConstants.MONSTER_HEALTH) -> MonsterState:
 	var state = MonsterState.new()
 	state.entity_id = p_entity_id
 	state.position = p_position
+	state.definition = MonsterDefinition.default()
+	state.type_id = state.definition.id
 	state.health = p_health
 	state.max_health = p_health
+	state.is_alive = true
+	state.spawn_time = 0.0
+	state.animation_state = PacketTypes.AnimationState.IDLE
+	state.entity_flags = PacketTypes.ENTITY_FLAG_ALIVE | PacketTypes.ENTITY_FLAG_VISIBLE
+	return state
+
+
+## Create a MonsterState seeded from a data-driven definition. This is the
+## data-driven spawn path used by MonsterFactory.
+static func create_from_definition(p_entity_id: int, p_position: Vector2, p_definition: MonsterDefinition) -> MonsterState:
+	var def := p_definition if p_definition != null else MonsterDefinition.default()
+	var state = MonsterState.new()
+	state.entity_id = p_entity_id
+	state.position = p_position
+	state.definition = def
+	state.type_id = def.id
+	state.health = def.max_health
+	state.max_health = def.max_health
 	state.is_alive = true
 	state.spawn_time = 0.0
 	state.animation_state = PacketTypes.AnimationState.IDLE
@@ -103,9 +131,9 @@ func can_shoot() -> bool:
 	return is_alive and shoot_cooldown <= 0.0
 
 
-## Start shoot cooldown after firing
+## Start shoot cooldown after firing (from the monster's definition)
 func start_shoot_cooldown() -> void:
-	shoot_cooldown = GameConstants.MONSTER_SHOOT_COOLDOWN
+	shoot_cooldown = definition.shoot_cooldown if definition != null else GameConstants.MONSTER_SHOOT_COOLDOWN
 
 
 ## Update all AI timers (called each tick)
@@ -133,6 +161,7 @@ func to_entity_data() -> Dictionary:
 func to_dict() -> Dictionary:
 	return {
 		"entity_id": entity_id,
+		"type_id": type_id,
 		"position": position,
 		"health": health,
 		"max_health": max_health,

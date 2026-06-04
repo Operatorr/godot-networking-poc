@@ -21,6 +21,10 @@ class MonsterPositionSnapshot extends RefCounted:
 ## All active monsters: entity_id -> MonsterState
 var monsters: Dictionary = {}
 
+## Factory that assembles MonsterState from data-driven definitions.
+## Lazily defaults to the shared monster catalogue if not injected.
+var _factory: MonsterFactory = null
+
 ## Entity ID counter for unique monster entity IDs
 ## Uses a u16-safe reserved range to avoid collision with players (1+) and projectiles (10000+).
 var _next_entity_id: int = GameConstants.MONSTER_ENTITY_ID_START
@@ -34,20 +38,34 @@ var _position_history_ticks: Array[int] = []
 const POSITION_HISTORY_TICKS := 8
 
 
-## Spawn a new monster at the given position
-## Returns the created MonsterState
-func spawn_monster(position: Vector2) -> MonsterState:
+## Inject the factory (and thus the monster catalogue) used for spawning.
+func set_factory(factory: MonsterFactory) -> void:
+	_factory = factory
+
+
+## Get the factory, lazily defaulting to the shared monster catalogue.
+func _get_factory() -> MonsterFactory:
+	if _factory == null:
+		_factory = MonsterFactory.new()
+	return _factory
+
+
+## Spawn a new monster of the given archetype at the given position.
+## Returns the created MonsterState (built from its data-driven definition).
+func spawn_monster(position: Vector2, type_id: String = MonsterDatabase.DEFAULT_MONSTER_ID) -> MonsterState:
 	var entity_id := _allocate_entity_id()
 	if entity_id < 0:
 		push_warning("[MonsterManager] No available monster entity IDs")
 		return null
 
-	var state = MonsterState.create(entity_id, position, GameConstants.MONSTER_HEALTH)
+	var state := _get_factory().create(type_id, entity_id, position)
+	if state == null:
+		return null
 	monsters[entity_id] = state
 
 	if debug_logging:
-		print("[MonsterManager] Monster spawned: entity=%d, pos=%s, health=%d" % [
-			entity_id, position, state.health
+		print("[MonsterManager] Monster spawned: entity=%d, type=%s, pos=%s, health=%d" % [
+			entity_id, state.type_id, position, state.health
 		])
 
 	return state

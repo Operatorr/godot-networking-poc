@@ -9,6 +9,9 @@ const HEADER_SIZE := 3
 ## Maximum packet size (64KB)
 const MAX_PACKET_SIZE := 65535
 
+## Maximum entities a single STATE_UPDATE can declare (u16 entity_count cap)
+const STATE_MAX_ENTITIES := 65535
+
 ## Packet types as per ARCHITECTURE.md
 enum Type {
 	PLAYER_INPUT = 1,      ## Client -> Server: Movement, actions (~16 bytes)
@@ -21,7 +24,8 @@ enum Type {
 	REQUEST_FULL_STATE = 8, ## Client -> Server: Request full state sync (TASK-021)
 	RESPAWN_REQUEST = 9,   ## Client -> Server: Request respawn after death
 	SERVER_METRICS = 10,   ## Server -> Client: Server performance metrics (1/sec)
-	BATCH = 11             ## Server -> Client: Multiple packets in a single WS frame (TASK-066)
+	BATCH = 11,            ## Server -> Client: Multiple packets in a single WS frame (TASK-066)
+	BASELINE_ACK = 12      ## Client -> Server: acknowledge a received full-state Baseline (#14, forward-looking for UDP transport #12)
 }
 
 ## Entity types for state updates
@@ -75,7 +79,10 @@ const STATE_FLAG_IS_DELTA := 1 << 0    ## Packet contains delta-encoded entities
 const STATE_FLAG_BASELINE := 1 << 1    ## This is a baseline (full state) packet
 
 ## Delta compression configuration
-const DELTA_FULL_STATE_INTERVAL := 100 ## Ticks between forced full state (~5 seconds at 20Hz)
+## TICK-DERIVED: cadence halves in wall-clock at 60 Hz (~3.3s @30 -> ~1.7s @60),
+## so 60 Hz forces full baselines twice as often = more downstream bandwidth.
+## See docs/netcode/perf-notes/tick-rate-30-vs-60.md.
+const DELTA_FULL_STATE_INTERVAL := 100 ## Ticks between forced full state (~3.3s at 30Hz)
 
 ## Game event types
 enum GameEventType {
@@ -118,12 +125,13 @@ static func get_type_name(packet_type: int) -> String:
 		Type.RESPAWN_REQUEST: return "RESPAWN_REQUEST"
 		Type.SERVER_METRICS: return "SERVER_METRICS"
 		Type.BATCH: return "BATCH"
+		Type.BASELINE_ACK: return "BASELINE_ACK"
 		_: return "UNKNOWN(%d)" % packet_type
 
 
 ## Helper: Check if packet type is valid
 static func is_valid_type(packet_type: int) -> bool:
-	return packet_type >= Type.PLAYER_INPUT and packet_type <= Type.BATCH
+	return packet_type >= Type.PLAYER_INPUT and packet_type <= Type.BASELINE_ACK
 
 
 ## Helper: Encode input flags from dictionary

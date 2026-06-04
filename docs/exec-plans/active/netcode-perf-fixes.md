@@ -22,8 +22,8 @@ Mapping to the `plans/` phases (so you can see what's already shipped):
 | `plans/` phase | State | Covers fixes here |
 | --- | --- | --- |
 | Phase 1 | **Shipped** | per-channel byte metrics, AoI dict-alloc removal, clock sync, teleport-parity, decoupled snapshot rate (the *knob* behind #3) |
-| Phase 2 | **In progress** | priority/budget snapshot scheduler exists & is wired; #15 (diagnostics→ServerMetrics) and #13 (per-client rate budget) are the open tail |
-| Phases 3–6 | **Planned** | #9 spatial grid, #11/#7 wire+PvP, #12 transport |
+| Phase 2 | **Shipped** | priority/budget snapshot scheduler; #15 (diagnostics→ServerMetrics) and #13 (per-client rate budget) **done 2026-06-04** |
+| Phases 3–6 | **Shipped** | #9 spatial grid, #10 AoI tune, #11 wire u16, #7 PvP lag-comp, #12 transport seam, #14 baseline acks **done 2026-06-04** (#12 ENet impl behind the seam is still deferred) |
 
 Note: several of the highest-felt fixes (#1, #2, #4) are **client-render / ownership** problems
 that the `plans/` docs barely cover — they came out of the latency/smoothness investigation in
@@ -35,8 +35,18 @@ they are what actually make localhost feel sluggish.
 ## ⚑ Applied on branch `perf/p0-p1-netcode-fixes` (2026-06-03 — pending play-test)
 
 Fixes **#1, #2, #3, #4, #5, #6** below are **implemented** on that branch (headless import
-parses clean; the *feel* is not yet play-tested). #7–#15 remain open. When the branch merges,
+parses clean; the *feel* is not yet play-tested). When the branch merges,
 fold these into "Already done" and flip the affected netcode docs' status tags.
+
+## ⚑ P2/P3 batch landed (2026-06-04)
+
+Fixes **#7, #8, #9, #10, #11, #12, #13, #14, #15** below are **implemented** (headless import
+parses clean). Their rows are marked **Status: Done (2026-06-04)** in place. The one caveat: #12
+ships only the **transport seam** (`Transport` / `WebSocketTransport`) — the ENet-over-UDP impl
+behind it is a deferred, human-approved follow-up (see
+[`../../adr/0003-enet-udp-transport.md`](../../adr/0003-enet-udp-transport.md)). #14 (baseline
+acks) is **inert on today's TCP** transport and only earns its keep once #12's ENet datagram path
+lands.
 
 ## P0 — decisive, small. Do these first.
 
@@ -91,38 +101,38 @@ fold these into "Already done" and flip the affected netcode docs' status tags.
 ## P2 — high impact, medium effort.
 
 ### 7. PvP hits use no lag compensation and tunnel — add rewind + swept test + client feedback
-- **Problem:** PvP collision uses the *current* Tick, a point-distance check, no rewind and no swept path — so projectiles tunnel through players (~13 px/Tick at 400 u/s vs a 24 px hit window) and you must lead targets. The client also shows **no** muzzle/tracer until the full round-trip, since projectiles spawn only from server `STATE_UPDATE`. (PvE already lag-compensates with a swept segment, cap 6 Ticks / 200 ms.)
-- **Fix:** Mirror the PvE rewind for players (stricter cap, ~4 Ticks per the "shooting around corners" rule); replace point-distance with a swept-segment test; add **client-side muzzle/tracer feedback** on shoot input (cosmetic only — damage stays server-confirmed).
-- **Evidence:** PvP point-distance, current Tick `projectile_manager.gd:251,269`; client spawns projectiles only from state `client_entity_manager.gd:114`; PvE cap `game_constants.gd` (`MAX_PVE_PROJECTILE_COMPENSATION_TICKS`).
-- **Effort:** medium · **Impact:** high · **Status:** Planned (**Phase 5** in `plans/NETWORK_PERFORMANCE_UPGRADES.md §4`; depends on #9 grid + clock sync from Phase 1).
+- **Problem (was):** PvP collision used the *current* Tick, a point-distance check, no rewind and no swept path — so projectiles tunneled through players (~13 px/Tick at 400 u/s vs a 24 px hit window) and you had to lead targets. The client also showed **no** muzzle/tracer until the full round-trip, since projectiles spawned only from server `STATE_UPDATE`. (PvE already lag-compensated with a swept segment, cap 6 Ticks / 200 ms.)
+- **Fix (done):** `check_collisions_with_players` now rewinds each player roster to a per-projectile PvP lag-comp tick (`get_lag_compensated_player_tick`) drawn from `PlayerManager.record_position_snapshot` history, and tests the swept segment `previous_position → position` with `_closest_point_on_segment` — mirroring the PvE path. The rewind is capped stricter than PvE at `MAX_PVP_PROJECTILE_COMPENSATION_TICKS=4` (~133 ms) so a peeker who broke line of sight can't be retro-hit. Client now draws a **cosmetic muzzle/tracer** on the SHOOT rising edge (`PredictionController.shoot_predicted` → `arena_base._on_local_shoot_predicted`); damage stays server-confirmed.
+- **Evidence:** swept PvP rewind `projectile_manager.gd:273-331`,`:302`; rewind tick `projectile_state.gd:158-161`; player history `player_manager.gd:256-285`, recorded `server_main.gd:254`; PvP cap clamp `server_main.gd:382-386`, `game_constants.gd:45` (`MAX_PVP_PROJECTILE_COMPENSATION_TICKS=4`); shoot edge `prediction.gd:281-302`, handler `arena_base.gd:764`; local spawn stays disabled `arena_base.gd:244`.
+- **Effort:** medium · **Impact:** high · **Status:** Done (2026-06-04).
 - See: [`../../systems/combat-hits.md`](../../systems/combat-hits.md) · [`../../netcode/interpolation.md`](../../netcode/interpolation.md) (Render delay the shooter saw).
 
 ### 8. Input/Tick at 30 Hz limits responsiveness — evaluate 60 Hz
 - **Problem:** Input is sampled and sent at 30 Hz inside `_physics_process`; raising to 60 Hz halves input latency and the per-Tick stutter floor — but doubles client prediction/interpolation CPU and roughly doubles upstream packet rate.
-- **Fix:** Trial `physics_ticks_per_second=60` (input cadence follows it via `INPUT_SEND_INTERVAL`); measure CPU and bandwidth against the budgets before committing. Complement to #1, not a replacement.
-- **Evidence:** sample+send in `_physics_process` `prediction.gd:142,157`; cadence derives from tick `prediction.gd:71` (`INPUT_SEND_INTERVAL = SERVER_TICK_INTERVAL`); tick `project.godot:102`.
-- **Effort:** medium · **Impact:** medium · **Status:** Planned
-- See: [`../../netcode/smoothness-render.md`](../../netcode/smoothness-render.md) ("Raise 30→60" alternative), [`../../netcode/performance-budgets.md`](../../netcode/performance-budgets.md).
+- **Fix (done — toggle + protocol, default stays 30):** `GameConstants.SERVER_TICK_RATE` is now the single client-side tick authority; `game_manager._ready()` applies it via `Engine.physics_ticks_per_second`, and `server_config.gd`'s default `tick_rate` derives from it (with a `GAME_SERVER_TICK_RATE` env override; JSON still wins for the server sim). The 30-vs-60 **measurement protocol** is captured in [`../../netcode/perf-notes/tick-rate-30-vs-60.md`](../../netcode/perf-notes/tick-rate-30-vs-60.md) (**results PENDING** — no load run yet). **Default is 30 Hz** and stays 30 until a run proves 60 fits the budgets.
+- **Evidence:** single authority `game_constants.gd:22` (`SERVER_TICK_RATE := 30.0`); client clock `game_manager.gd:70`; config default `server_config.gd:13`, env override `server_config.gd:161-164`; send cadence `prediction.gd:73` (`INPUT_SEND_INTERVAL = SERVER_TICK_INTERVAL`).
+- **Effort:** medium · **Impact:** medium · **Status:** Done (2026-06-04) — toggle + protocol shipped; **60 Hz measurement pending**, default 30.
+- See: [`../../netcode/smoothness-render.md`](../../netcode/smoothness-render.md) ("Raise 30→60" alternative), [`../../netcode/perf-notes/tick-rate-30-vs-60.md`](../../netcode/perf-notes/tick-rate-30-vs-60.md), [`../../netcode/performance-budgets.md`](../../netcode/performance-budgets.md).
 
 ### 9. AoI is O(N²) per Snapshot — add a spatial-grid broad-phase
-- **Problem:** Broadcast filters AoI per player → O(players × entities) every Snapshot Tick, with no shared spatial broad-phase. `projectile_manager` has a 64-unit collision grid but it is not reused for AoI.
-- **Fix:** Promote that ad-hoc grid into a shared `spatial_grid.gd` (cell ≈ aoi_radius/4) built once per Tick; AoI, projectile broad-phase, and monster spawn-validity query it.
-- **Evidence:** per-player AoI scan `server_broadcast_service.gd:86-120`; existing collision grid `projectile_manager.gd` (`_build_entity_grid` / `_query_nearby`).
-- **Effort:** medium · **Impact:** high (at scale; low felt at small counts) · **Status:** Planned (**Phase 3**, `plans/NETWORK_PERFORMANCE_UPGRADES.md §3.1`).
+- **Problem (was):** Broadcast filtered AoI per player → O(players × entities) every Snapshot Tick, with no shared spatial broad-phase. `projectile_manager` had a 64-unit collision grid but it was not reused for AoI.
+- **Fix (done):** New `spatial_grid.gd` (`class_name SpatialGrid`); the broadcast service builds **one shared current-tick grid** via `build_aoi_grid` and the per-peer AoI scan queries it (`query_radius`) instead of walking every entity. Same visible-set semantics. Projectile/monster collision grids are unchanged.
+- **Evidence:** new grid `spatial_grid.gd:7` (`SpatialGrid`),`:53` (`query_radius`); shared grid built `server_main.gd:269`, `server_broadcast_service.gd:79-103`; AoI query `server_broadcast_service.gd:161`.
+- **Effort:** medium · **Impact:** high (at scale; low felt at small counts) · **Status:** Done (2026-06-04).
 - See: [`../../netcode/interest-mgmt-aoi.md`](../../netcode/interest-mgmt-aoi.md).
 
 ### 10. AoI radius barely culls — tune it down vs the map
-- **Problem:** AoI enter radius 1000 on a 2000×2000 Arena covers ~78% of the map, so when players cluster it culls almost nothing — defeating the point of AoI.
-- **Fix:** Lower enter/exit radii (keep hysteresis) so AoI meaningfully bounds visible entity count at the cluster; validate against the `clustered` load scenario. Cheap once #9 lands.
-- **Evidence:** `aoi_radius=1000` / exit 1100 `data/config/server_config.json` + `server_broadcast_service.gd:24,30`; map bounds `game_constants.gd` (MAP_MIN/MAP_MAX ±1000).
-- **Effort:** small · **Impact:** medium · **Status:** Planned
+- **Problem (was):** AoI enter radius 1000 on a 2000×2000 Arena covers ~78% of the map, so when players cluster it culled almost nothing — defeating the point of AoI.
+- **Fix (done):** Enter radius 1000→**700**, exit 1100→**800** (keeps hysteresis). 700 stays gameplay-safe: it is ≥ `MONSTER_DETECTION_RANGE` (650), so a monster that can aggro a player is always inside that player's AoI. `regression_assertions.py` defaults updated to 700/800 in lockstep.
+- **Evidence:** defaults `server_config.gd:19` (`aoi_radius:700.0`),`:23` (`aoi_exit_radius:800.0`); JSON `data/config/server_config.json` (`aoi_radius:700.0`, `aoi_exit_radius:800.0`); detection range `game_constants.gd:347` (`MONSTER_DETECTION_RANGE:650.0`); harness `load_testing/regression_assertions.py:29-30`.
+- **Effort:** small · **Impact:** medium · **Status:** Done (2026-06-04).
 - See: [`../../netcode/interest-mgmt-aoi.md`](../../netcode/interest-mgmt-aoi.md).
 
 ### 11. `entity_count` u8 caps a Snapshot at 255 entities (silent truncation) — widen to u16
-- **Problem:** Per-Snapshot entity count is written as u8, so any Snapshot with >255 entities silently drops the overflow — and forced full-state baselines have no byte budget, so a crowded baseline truncates with no signal.
-- **Fix:** Widen the count field to u16 (wire-version bump); add a metric/warning when a Snapshot would exceed the count. The budget scheduler (#13) makes 255 less likely but does not remove the hard cap.
-- **Evidence:** `state_update_packet.gd:194,207` (`write_u8(mini(entities.size(), 255))`), decode `:250,264`.
-- **Effort:** medium (wire change) · **Impact:** medium · **Status:** Planned (**Phase 4** wire batch, `plans/NETWORK_PERFORMANCE_UPGRADES.md §2`; the truncation risk is flagged P0 in `plans/CODEX…`).
+- **Problem (was):** Per-Snapshot entity count was written as u8, so any Snapshot with >255 entities silently dropped the overflow.
+- **Fix (done):** `entity_count` widened **u8 → u16** in both full-state and delta paths (encode + decode); `STATE_MAX_ENTITIES=65535` added. The old hard 255 cap is **gone** — the real ceiling is now the `MAX_PACKET_SIZE`/byte budget, not the count field. The broadcast service tracks `snapshot_count_overflow` and `push_warning`s on the (now far rarer) wire-cap overflow. The Python bot decoder was updated in lockstep. No `PROTOCOL_VERSION` constant was added.
+- **Evidence:** `state_update_packet.gd:195-196,210-211` (`write_u16(mini(.., STATE_MAX_ENTITIES))`), decode `:254,268`; `packet_types.gd:13` (`STATE_MAX_ENTITIES:=65535`); overflow metric `server_broadcast_service.gd:509-510`.
+- **Effort:** medium (wire change) · **Impact:** medium · **Status:** Done (2026-06-04).
 - See: [`../../netcode/wire-protocol.md`](../../netcode/wire-protocol.md).
 
 ---
@@ -131,30 +141,30 @@ fold these into "Already done" and flip the affected netcode docs' status tags.
 
 ### 12. WebSocket/TCP head-of-line blocking — move state to datagrams
 - **Problem:** All traffic is WebSocket-over-TCP both directions, so one lost segment stalls **all** subsequent state until retransmit — exactly the wrong failure mode for continuous Snapshots.
-- **Fix:** Keep WebSocket for the reliable channel (auth, Game events, leaderboard); move `STATE_UPDATE` + `PLAYER_INPUT` to a WebRTC/WebTransport datagram channel with WebSocket fallback. Define a transport abstraction first.
-- **Evidence:** server `TCPServer.listen` + `WebSocketPeer.accept_stream`, client `connect_to_url` in `network_manager.gd`; polled per Frame in `_process`.
-- **Effort:** large · **Impact:** high (on lossy WAN; ~nil on localhost) · **Status:** Planned (**Phase 6**, `plans/NETWORK_PERFORMANCE_UPGRADES.md §6`).
-- See: [`../../netcode/transport-websocket.md`](../../netcode/transport-websocket.md), [`../../adr/0001-websocket-tcp-transport.md`](../../adr/0001-websocket-tcp-transport.md).
+- **Fix (seam done; ENet impl deferred):** A **transport abstraction seam** now exists — `transport.gd` (`class_name Transport`) + `websocket_transport.gd` (`class_name WebSocketTransport`); `network_manager.gd` delegates every raw socket verb through it with **zero behaviour / wire change**. The datagram target is **ENet-over-UDP** (not WebRTC/WebTransport — the game is native-only and the server will be ported to Rust, so `rusty_enet` keeps one wire format across both languages). The ENet `Transport` subclass is a deferred, human-approved follow-up; `STATE_UPDATE`+`PLAYER_INPUT` ride unreliable/unsequenced ch0, reliable traffic ch1. Recorded in [ADR 0003](../../adr/0003-enet-udp-transport.md), which supersedes 0001's substrate.
+- **Evidence:** seam `client/autoload/transport/transport.gd:22`, `websocket_transport.gd:11`; ADR `../../adr/0003-enet-udp-transport.md`.
+- **Effort:** large · **Impact:** high (on lossy WAN; ~nil on localhost) · **Status:** Done — seam landed (2026-06-04); **ENet datagram impl deferred** (human-approved follow-up).
+- See: [`../../netcode/transport-websocket.md`](../../netcode/transport-websocket.md), [`../../adr/0003-enet-udp-transport.md`](../../adr/0003-enet-udp-transport.md).
 
 ### 13. No per-client bandwidth budget — add a `rate` ceiling
-- **Problem:** The priority scheduler defers per-Snapshot bytes (`max_snapshot_bytes=1200`) but there is no per-second per-peer ceiling, so a marginal connection can still be saturated.
-- **Fix:** Clients advertise a bytes/sec budget in `CONNECT_AUTH`; scheduler sizes `max_snapshot_bytes = budget / effective_snapshot_rate` and gates non-essential events. Hard-cap server-side.
-- **Evidence:** budget field exists `server_broadcast_service.gd` (`max_snapshot_bytes`) + `snapshot_scheduler.gd`; no per-sec gate yet.
-- **Effort:** medium (wire change) · **Impact:** medium · **Status:** Planned (**Phase 2 / §1.3** — the open tail of the in-progress phase).
+- **Problem (was):** The priority scheduler deferred per-Snapshot bytes (`max_snapshot_bytes=1200`) but there was no per-second per-peer ceiling, so a marginal connection could still be saturated.
+- **Fix (done):** `CONNECT_AUTH` gained a trailing `[u32 bandwidth_budget_bps]` (length-gated read; old clients fall back to the server default). The server clamps the advertised budget to `[min,max]` config and derives a per-peer `max_snapshot_bytes = clamp(budget / snapshot_rate_hz, MIN_SNAPSHOT_FLOOR=256, max_snapshot_bytes)`. New config keys `default_client_bandwidth_bps=120000`, `max=200000`, `min=24000`.
+- **Evidence:** wire field `auth_packet.gd:33,82-85`, client encoder `network_manager.gd:848`; per-peer derive `server_main.gd:51` (`MIN_SNAPSHOT_FLOOR:=256`),`:700-702`; config keys `server_config.gd:43,45,47`; per-peer cap `server_broadcast_service.gd:300-308`.
+- **Effort:** medium (wire change) · **Impact:** medium · **Status:** Done (2026-06-04).
 - See: [`../../netcode/server-tick-broadcast.md`](../../netcode/server-tick-broadcast.md).
 
 ### 14. Baselines are never acked — add baseline acks
-- **Problem:** A forced full-state Baseline is sent every 100 Ticks with no acknowledgement, so a dropped Baseline leaves the client diffing deltas against a stale base until the next forced one.
-- **Fix:** Have clients ack the Baseline Tick; server tracks per-peer acked Baseline and resends on gap instead of waiting for the 100-Tick cadence.
-- **Evidence:** forced baseline cadence in `state_update_packet.gd` / `server_broadcast_service.gd` (no ack path).
-- **Effort:** medium · **Impact:** low (medium under loss) · **Status:** Planned
-- See: [`../../netcode/wire-protocol.md`](../../netcode/wire-protocol.md).
+- **Problem (was):** A forced full-state Baseline was sent every 100 Ticks with no acknowledgement, so a dropped Baseline left the client diffing deltas against a stale base until the next forced one.
+- **Fix (done — inert on TCP):** New `BASELINE_ACK=12` packet (C→S, `[u32 baseline_tick]`). The client acks the `server_tick` of each received full-state Baseline in `interpolation_controller`; the server (`delta_state_cache` + `server_broadcast_service`) tracks per-peer acked/pending Baseline and resends on a gap, retaining the 100-Tick interval as a floor. **Inert on today's TCP** (reliable in-order delivery means Baselines don't drop) — this is forward-looking for the #12 ENet/UDP transport.
+- **Evidence:** packet `packet_types.gd:28` (`BASELINE_ACK=12`); client ack `interpolation_controller.gd:185`; server track/resend `delta_state_cache.gd:44-47,210,218-224`, `server_broadcast_service.gd:446-452`; decode `network_manager.gd:1017`.
+- **Effort:** medium · **Impact:** low (medium under loss, once on UDP) · **Status:** Done (2026-06-04) — inert on TCP.
+- See: [`../../netcode/wire-protocol.md`](../../netcode/wire-protocol.md), [`../../adr/0003-enet-udp-transport.md`](../../adr/0003-enet-udp-transport.md).
 
 ### 15. Scheduler diagnostics not surfaced — plumb them to ServerMetrics
-- **Problem:** The Phase 2 scheduler computes `deferred_count`, `max_queue_age_ticks`, `peers_at_budget` into `last_tick_diagnostics`, but they never reach `ServerMetrics` / the `SERVER_METRICS` packet — so you can't see whether the queue is starving entities.
-- **Fix:** Copy `broadcast_service.last_tick_diagnostics` into `ServerMetrics.update_metrics` and the `SERVER_METRICS` payload; surface in the HUD.
-- **Evidence:** diagnostics produced in `snapshot_scheduler.gd` + `server_broadcast_service.gd` (`last_tick_diagnostics`); not consumed by `server_metrics.gd`.
-- **Effort:** small · **Impact:** low (enabling — unblocks tuning #9/#10/#13) · **Status:** In-progress (**Phase 2 / §8.2** open item).
+- **Problem (was):** The Phase 2 scheduler computed `entities_deferred_per_tick`, `max_queue_age_ticks`, `peers_at_budget_pct` into `last_tick_diagnostics`, but they never reached `ServerMetrics` / the `SERVER_METRICS` packet — so you couldn't see whether the queue was starving entities.
+- **Fix (done):** `broadcast_service.last_tick_diagnostics` (`entities_deferred_per_tick`, `max_queue_age_ticks`, `peers_at_budget_pct`, `peers_evaluated`, plus #11's `snapshot_count_overflow`) now flow into `ServerMetrics`, get encoded into the `SERVER_METRICS` packet as appended fixed-length `sched_*` fields, and render in the HUD `server_status` panel.
+- **Evidence:** diagnostics `server_broadcast_service.gd:62-67,221-226`; metrics fields `server_metrics.gd:27-31,74-75`; wire encode/decode `network_manager.gd:876-880,1010-1014`; HUD `server_status.gd:65-69,125-127`.
+- **Effort:** small · **Impact:** low (enabling — unblocks tuning #9/#10/#13) · **Status:** Done (2026-06-04).
 - See: [`../../netcode/performance-budgets.md`](../../netcode/performance-budgets.md).
 
 ---
@@ -185,7 +195,7 @@ what's solved.
 - **Replicated:** Remote entities via Snapshots — #3/#4/#6 govern their cadence and smoothness; #9/#10/#11/#13/#14 govern what/how much is replicated.
 - **Persisted:** nothing here touches persistence — all gameplay state stays in-memory; the Go API owns only accounts/characters/leaderboard.
 - **Validated:** server stays authoritative for every fix; #7 keeps damage server-confirmed, client shows only cosmetics.
-- **Can fail:** #1 without `reset_physics_interpolation()` → lerp across teleports; #7 PvP rewind without a cap → "shot around corners"; #11 left as u8 → silent entity drop >255; #12 datagram negotiation failure → must fall back to WebSocket.
+- **Can fail:** #1 without `reset_physics_interpolation()` → lerp across teleports; #7 PvP rewind is capped at 4 Ticks so a peeker can't be "shot around corners"; #11 is now u16 (overflow only at the far rarer `MAX_PACKET_SIZE`/byte ceiling, which `snapshot_count_overflow` warns on); #12's ENet datagram impl (deferred) must fall back to the `WebSocketTransport` seam on negotiation failure.
 - **Tested:** `load_testing/bot_swarm.py` scenarios (baseline/target/clustered/combat/stress) + `regression_assertions.py` (AoI cull, LOD cadence, batch-decode) gate #3/#9/#10/#11/#13; #1/#2/#7 need manual play-test + smoke test (no automated frame-pacing/feel test today).
 
 ## See also

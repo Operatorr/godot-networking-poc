@@ -6,17 +6,21 @@ extends RefCounted
 ## Default configuration values
 const DEFAULTS := {
 	"port": 8081,
-	"tick_rate": 30,
+	## Code default tracks the single client-side authority (GameConstants).
+	## server_config.json STILL OVERRIDES this at runtime (JSON wins for the
+	## server sim), so keep JSON tick_rate in sync with GameConstants.SERVER_TICK_RATE
+	## for an honest test. See docs/netcode/perf-notes/tick-rate-30-vs-60.md.
+	"tick_rate": int(GameConstants.SERVER_TICK_RATE),
 	"max_players": 100,
 	"region": "local",
 	"debug_logging": true,
 	"heartbeat_timeout_seconds": 5.0,
 	"api_server_url": "http://localhost:8080",
-	"aoi_radius": 1000.0,
+	"aoi_radius": 700.0,
 	## AoI hysteresis: once an entity is visible it stays visible until the
 	## viewer is more than aoi_exit_radius away. Avoids edge flicker where an
 	## entity oscillating across the AoI boundary causes spawn/despawn churn.
-	"aoi_exit_radius": 1100.0,
+	"aoi_exit_radius": 800.0,
 	## LOD radii (squared distance bands within AoI). Position-only deltas for
 	## entities in the MID/FAR bands feed the scheduler's distance penalty (§1.2).
 	"lod_near_radius": 400.0,
@@ -31,6 +35,16 @@ const DEFAULTS := {
 	## ~1200 fits a typical MTU-aligned WebSocket payload after framing overhead.
 	## 0 disables the budget (scheduler still sorts but never defers).
 	"max_snapshot_bytes": 1200,
+	## Per-client bandwidth budget (bytes/sec). The client advertises a desired
+	## egress budget in CONNECT_AUTH; the server clamps it to
+	## [min_client_bandwidth_bps, max_client_bandwidth_bps] and derives a per-peer
+	## snapshot byte cap = clamp(budget / snapshot_rate_hz, floor, max_snapshot_bytes).
+	## default applies when a client advertises 0 ("let the server decide").
+	"default_client_bandwidth_bps": 120000,
+	## Server-side HARD CAP — any advertised value is clamped down to this.
+	"max_client_bandwidth_bps": 200000,
+	## Floor so a hostile/marginal advert can't starve a peer to nothing.
+	"min_client_bandwidth_bps": 24000,
 	## Difficulty of server-side monster tactical behavior, clamped 0.0..1.0.
 	"monster_ai_difficulty": 0.85
 }
@@ -95,6 +109,15 @@ var snapshot_rate_hz: int:
 var max_snapshot_bytes: int:
 	get: return maxi(0, _config.get("max_snapshot_bytes", DEFAULTS.max_snapshot_bytes))
 
+var default_client_bandwidth_bps: int:
+	get: return maxi(0, _config.get("default_client_bandwidth_bps", DEFAULTS.default_client_bandwidth_bps))
+
+var max_client_bandwidth_bps: int:
+	get: return maxi(0, _config.get("max_client_bandwidth_bps", DEFAULTS.max_client_bandwidth_bps))
+
+var min_client_bandwidth_bps: int:
+	get: return maxi(0, _config.get("min_client_bandwidth_bps", DEFAULTS.min_client_bandwidth_bps))
+
 
 ## Initialize and load configuration
 func _init() -> void:
@@ -112,6 +135,7 @@ func load_config() -> void:
 		if loaded != null:
 			_merge_config(loaded)
 			print("[ServerConfig] Loaded config from: %s" % CONFIG_PATH_USER)
+			_apply_env_overrides()
 			return
 
 	# Fall back to res:// path (embedded in export)
@@ -120,9 +144,24 @@ func load_config() -> void:
 		if loaded != null:
 			_merge_config(loaded)
 			print("[ServerConfig] Loaded config from: %s" % CONFIG_PATH_RES)
+			_apply_env_overrides()
 			return
 
 	print("[ServerConfig] No config file found, using defaults")
+	_apply_env_overrides()
+
+
+## Apply environment-variable overrides on top of file/default config. Lets a
+## Docker container retune without rebuilding the baked-in server_config.json
+## (the game-server image has no config volume mount). Highest precedence.
+##   GAME_SERVER_TICK_RATE - integer tick rate (see deployment/.env.example).
+## NOTE: for an honest 60 Hz trial this only moves the SERVER clock; the client
+## clock still follows GameConstants.SERVER_TICK_RATE, so keep them in sync.
+func _apply_env_overrides() -> void:
+	var env_tick := OS.get_environment("GAME_SERVER_TICK_RATE")
+	if env_tick.is_valid_int():
+		_config["tick_rate"] = env_tick.to_int()
+		print("[ServerConfig] tick_rate overridden by GAME_SERVER_TICK_RATE=%d" % _config["tick_rate"])
 
 
 ## Load JSON from file path
@@ -175,4 +214,7 @@ func print_config() -> void:
 	print("  packet_batching: %s" % str(packet_batching_enabled))
 	print("  snapshot_rate: %d Hz" % snapshot_rate_hz)
 	print("  max_snapshot_bytes: %d" % max_snapshot_bytes)
+	print("  client_bandwidth_bps: default=%d clamp=[%d, %d]" % [
+		default_client_bandwidth_bps, min_client_bandwidth_bps, max_client_bandwidth_bps
+	])
 	print("  monster_ai_difficulty: %.2f" % monster_ai_difficulty)

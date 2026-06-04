@@ -5,7 +5,7 @@
 ## Full State Format:
 ##   [u32 server_tick]                    4 bytes - server tick number
 ##   [u8 state_flags]                     1 byte  - packet flags (TASK-021)
-##   [u8 entity_count]                    1 byte  - number of entities
+##   [u16 entity_count]                   2 bytes - number of entities
 ##   For each entity (9 bytes each):
 ##     [u16 entity_id]                    2 bytes
 ##     [u8 entity_type]                   1 byte
@@ -17,7 +17,7 @@
 ##   [u32 server_tick]                    4 bytes
 ##   [u8 state_flags]                     1 byte  - STATE_FLAG_IS_DELTA set
 ##   [u32 baseline_tick]                  4 bytes - tick of last full state
-##   [u8 entity_count]                    1 byte
+##   [u16 entity_count]                   2 bytes
 ##   For each entity (3-10 bytes):
 ##     [u16 entity_id]                    2 bytes
 ##     [u8 delta_mask]                    1 byte  - which fields changed
@@ -160,11 +160,11 @@ func write() -> PackedByteArray:
 	# Estimate size based on packet mode
 	var estimated_size: int
 	if is_delta():
-		# Delta: header(3) + tick(4) + flags(1) + baseline(4) + count(1) + entities(variable)
-		estimated_size = 3 + 4 + 1 + 4 + 1 + (entities.size() * ENTITY_SIZE) + 8
+		# Delta: header(3) + tick(4) + flags(1) + baseline(4) + count(2) + entities(variable)
+		estimated_size = 3 + 4 + 1 + 4 + 2 + (entities.size() * ENTITY_SIZE) + 8
 	else:
-		# Full: header(3) + tick(4) + flags(1) + count(1) + entities(9 each)
-		estimated_size = 3 + 4 + 1 + 1 + (entities.size() * ENTITY_SIZE) + 4
+		# Full: header(3) + tick(4) + flags(1) + count(2) + entities(9 each)
+		estimated_size = 3 + 4 + 1 + 2 + (entities.size() * ENTITY_SIZE) + 4
 
 	var writer = PacketWriter.new(estimated_size)
 
@@ -191,9 +191,11 @@ func write_payload(writer: PacketWriter) -> void:
 
 ## Write entities in full state format
 func _write_full_entities(writer: PacketWriter) -> void:
-	writer.write_u8(mini(entities.size(), 255))
+	# Single emitted-count source so the header and loop body can never diverge.
+	var emitted := mini(entities.size(), PacketTypes.STATE_MAX_ENTITIES)
+	writer.write_u16(emitted)
 
-	for i in range(mini(entities.size(), 255)):
+	for i in range(emitted):
 		var entity: EntityState = entities[i]
 		writer.write_u16(entity.entity_id)
 		writer.write_u8(entity.entity_type)
@@ -204,9 +206,11 @@ func _write_full_entities(writer: PacketWriter) -> void:
 
 ## Write entities in delta format (TASK-021)
 func _write_delta_entities(writer: PacketWriter) -> void:
-	writer.write_u8(mini(entities.size(), 255))
+	# Single emitted-count source so the header and loop body can never diverge.
+	var emitted := mini(entities.size(), PacketTypes.STATE_MAX_ENTITIES)
+	writer.write_u16(emitted)
 
-	for i in range(mini(entities.size(), 255)):
+	for i in range(emitted):
 		var entity: EntityState = entities[i]
 		writer.write_u16(entity.entity_id)
 		writer.write_u8(entity.delta_mask)
@@ -247,7 +251,7 @@ static func read(reader: PacketReader, last_states: Dictionary = {}) -> StateUpd
 
 ## Read full state entities
 static func _read_full_entities(reader: PacketReader, packet: StateUpdatePacket) -> void:
-	var entity_count = reader.read_u8()
+	var entity_count = reader.read_u16()
 	for i in range(entity_count):
 		var state = EntityState.new()
 		state.entity_id = reader.read_u16()
@@ -261,7 +265,7 @@ static func _read_full_entities(reader: PacketReader, packet: StateUpdatePacket)
 
 ## Read delta entities and reconstruct full state (TASK-021)
 static func _read_delta_entities(reader: PacketReader, packet: StateUpdatePacket, last_states: Dictionary) -> void:
-	var entity_count = reader.read_u8()
+	var entity_count = reader.read_u16()
 	for i in range(entity_count):
 		var state = EntityState.new()
 		state.entity_id = reader.read_u16()
@@ -348,14 +352,14 @@ func get_projectiles() -> Array[EntityState]:
 ## Calculate packet size in bytes
 func get_size() -> int:
 	if is_delta():
-		# Delta: header(3) + tick(4) + flags(1) + baseline(4) + count(1) + variable entities
+		# Delta: header(3) + tick(4) + flags(1) + baseline(4) + count(2) + variable entities
 		var entity_bytes := 0
 		for entity in entities:
 			entity_bytes += _get_delta_entity_size(entity)
-		return 3 + 4 + 1 + 4 + 1 + entity_bytes
+		return 3 + 4 + 1 + 4 + 2 + entity_bytes
 	else:
-		# Full state: header(3) + tick(4) + flags(1) + count(1) + entities(9 each)
-		return 3 + 4 + 1 + 1 + (entities.size() * ENTITY_SIZE)
+		# Full state: header(3) + tick(4) + flags(1) + count(2) + entities(9 each)
+		return 3 + 4 + 1 + 2 + (entities.size() * ENTITY_SIZE)
 
 
 ## Calculate size of a single delta-encoded entity (TASK-021)

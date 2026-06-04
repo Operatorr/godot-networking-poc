@@ -72,10 +72,16 @@ the last two physics states automatically — smooth motion at any FPS, with nea
   hand-maintain buffers for prediction, interpolation, *and* the camera, plus the same reset
   handling. More code, more bug surface. Choose only if you need per-entity control the engine
   setting can't give.
-- **Raise `physics_ticks_per_second` 30→60** — halves the stepping (60 updates/sec) and helps,
-  but still steps on a 100/144 Hz display, and it doubles client prediction/interpolation CPU and
-  shifts input cadence (`INPUT_SEND_INTERVAL` derives from `SERVER_TICK_INTERVAL`,
-  `prediction.gd:71`). A complementary knob, **not** the primary fix.
+- **Raise the tick rate 30→60** — halves the stepping (60 updates/sec) and helps, but still steps on
+  a 100/144 Hz display, and it doubles client prediction/interpolation CPU and shifts input cadence
+  (`INPUT_SEND_INTERVAL` derives from `SERVER_TICK_INTERVAL`, `prediction.gd:78`). A complementary
+  knob, **not** the primary fix. The tick rate is now a single gated toggle: `GameConstants.SERVER_TICK_RATE`
+  is the one client-side authority (`game_manager._ready()` applies it via
+  `Engine.physics_ticks_per_second`, `game_manager.gd:70`), and `server_config.gd`'s default tick rate
+  derives from it (with a `GAME_SERVER_TICK_RATE` env override; JSON still wins for the server sim).
+  **The default stays 30 Hz** — 60 Hz is unmeasured; the A/B protocol and a clearly-marked empty
+  results table live in [`perf-notes/tick-rate-30-vs-60.md`](perf-notes/tick-rate-30-vs-60.md)
+  (results PENDING). Do not assume 60 Hz is enabled.
 
 > Recommended: built-in physics interpolation (decisive) **plus** consider 60 Hz later for input
 > responsiveness — but interpolation alone resolves the "looks like 30 fps" complaint.
@@ -101,4 +107,5 @@ the last two physics states automatically — smooth motion at any FPS, with nea
 
 - [`latency-budget.md`](latency-budget.md) — the latency problem felt alongside this
 - [`interpolation.md`](interpolation.md) · [`client-prediction.md`](client-prediction.md)
-- [`../exec-plans/active/netcode-perf-fixes.md`](../exec-plans/active/netcode-perf-fixes.md) — this is fix #1
+- [`perf-notes/tick-rate-30-vs-60.md`](perf-notes/tick-rate-30-vs-60.md) — the gated 30→60 tick trial (#8), results PENDING
+- [`../exec-plans/active/netcode-perf-fixes.md`](../exec-plans/active/netcode-perf-fixes.md) — this is fix #1 (the 30→60 trial is #8)

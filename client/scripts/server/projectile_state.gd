@@ -37,6 +37,10 @@ var simulation_ticks: int = 0
 ## How many ticks to rewind monster positions for player projectile hits
 var collision_rewind_ticks: int = 0
 
+## How many ticks to rewind player positions for PvP projectile hits.
+## Capped stricter than the PvE rewind to limit "shoot around corners".
+var pvp_collision_rewind_ticks: int = 0
+
 ## Client timing metadata used to derive collision_rewind_ticks
 var client_render_tick: int = 0
 var client_rtt_ms: int = 0
@@ -63,7 +67,8 @@ static func create(
 	p_collision_rewind_ticks: int = 0,
 	p_client_render_tick: int = 0,
 	p_client_rtt_ms: int = 0,
-	p_lag_compensation_source: String = "none"
+	p_lag_compensation_source: String = "none",
+	p_pvp_collision_rewind_ticks: int = 0
 ) -> ProjectileState:
 	var state = ProjectileState.new()
 	state.entity_id = p_entity_id
@@ -77,6 +82,7 @@ static func create(
 	state.spawn_tick = p_spawn_tick
 	state.simulation_ticks = 0
 	state.collision_rewind_ticks = p_collision_rewind_ticks
+	state.pvp_collision_rewind_ticks = p_pvp_collision_rewind_ticks
 	state.client_render_tick = p_client_render_tick
 	state.client_rtt_ms = p_client_rtt_ms
 	state.lag_compensation_source = p_lag_compensation_source
@@ -146,6 +152,15 @@ func get_lag_compensated_monster_tick() -> int:
 	return maxi(0, spawn_tick - collision_rewind_ticks + simulation_ticks)
 
 
+## Player collision snapshots advance with projectile age in the same delayed
+## world the firing client rendered when the shot was aimed. Uses the stricter
+## PvP rewind cap so peekers who have broken line of sight are not retro-hit.
+func get_lag_compensated_player_tick() -> int:
+	if pvp_collision_rewind_ticks <= 0:
+		return spawn_tick + simulation_ticks
+	return maxi(0, spawn_tick - pvp_collision_rewind_ticks + simulation_ticks)
+
+
 func is_player_projectile() -> bool:
 	return owner_id < GameConstants.MONSTER_ENTITY_ID_START
 
@@ -180,6 +195,7 @@ func to_dict() -> Dictionary:
 		"spawn_tick": spawn_tick,
 		"simulation_ticks": simulation_ticks,
 		"collision_rewind_ticks": collision_rewind_ticks,
+		"pvp_collision_rewind_ticks": pvp_collision_rewind_ticks,
 		"client_render_tick": client_render_tick,
 		"client_rtt_ms": client_rtt_ms,
 		"lag_compensation_source": lag_compensation_source,

@@ -30,7 +30,8 @@ func spawn_projectile(
 	collision_rewind_ticks: int = 0,
 	client_render_tick: int = 0,
 	client_rtt_ms: int = 0,
-	lag_compensation_source: String = "none"
+	lag_compensation_source: String = "none",
+	pvp_collision_rewind_ticks: int = 0
 ) -> ProjectileState:
 	# Validate direction
 	if direction.is_zero_approx():
@@ -52,7 +53,8 @@ func spawn_projectile(
 		collision_rewind_ticks,
 		client_render_tick,
 		client_rtt_ms,
-		lag_compensation_source
+		lag_compensation_source,
+		pvp_collision_rewind_ticks
 	)
 	projectiles[entity_id] = state
 
@@ -186,6 +188,28 @@ func _get_monster_grid_for_tick(
 	return monster_grids_by_tick[collision_tick]
 
 
+func _get_player_list_for_tick(
+	player_manager: PlayerManager,
+	collision_tick: int,
+	player_lists_by_tick: Dictionary
+) -> Array:
+	if not player_lists_by_tick.has(collision_tick):
+		player_lists_by_tick[collision_tick] = player_manager.get_alive_player_snapshot(collision_tick)
+	return player_lists_by_tick[collision_tick]
+
+
+func _get_player_grid_for_tick(
+	player_manager: PlayerManager,
+	collision_tick: int,
+	player_lists_by_tick: Dictionary,
+	player_grids_by_tick: Dictionary
+) -> Dictionary:
+	if not player_grids_by_tick.has(collision_tick):
+		var players := _get_player_list_for_tick(player_manager, collision_tick, player_lists_by_tick)
+		player_grids_by_tick[collision_tick] = _build_entity_grid(players)
+	return player_grids_by_tick[collision_tick]
+
+
 func _projectile_diagnostics_enabled() -> bool:
 	return debug_logging
 
@@ -241,15 +265,16 @@ func _log_projectile_removal(state: ProjectileState) -> void:
 	])
 
 
-## Check collisions between projectiles and players using spatial grid.
+## Check collisions between projectiles and players using a lag-compensated,
+## swept-segment test. Player positions are rewound to the projectile's PvP
+## collision tick, mirroring the monster path, and the projectile's travel
+## segment (previous_position -> position) is tested against each rewound player.
 ## Returns array of hit events: { projectile_id, target_id, owner_id, position }
 func check_collisions_with_players(player_manager: PlayerManager) -> Array[Dictionary]:
 	var hits: Array[Dictionary] = []
 	var to_remove: Array[int] = []
-
-	# Build spatial grid from alive players
-	var alive_players := player_manager.get_alive_players()
-	var player_grid := _build_entity_grid(alive_players)
+	var player_lists_by_tick: Dictionary = {}
+	var player_grids_by_tick: Dictionary = {}
 
 	for entity_id: int in projectiles.keys():
 		var proj: ProjectileState = projectiles[entity_id]
@@ -257,7 +282,15 @@ func check_collisions_with_players(player_manager: PlayerManager) -> Array[Dicti
 		if not proj.alive:
 			continue
 
-		# Only check players in nearby cells
+		var collision_tick := proj.get_lag_compensated_player_tick()
+
+		# Only check players in nearby cells of the rewound roster.
+		var player_grid := _get_player_grid_for_tick(
+			player_manager,
+			collision_tick,
+			player_lists_by_tick,
+			player_grids_by_tick
+		)
 		var nearby_players: Array = _query_nearby(player_grid, proj.position)
 
 		for player in nearby_players:
@@ -265,8 +298,9 @@ func check_collisions_with_players(player_manager: PlayerManager) -> Array[Dicti
 			if proj.owner_id == player.entity_id:
 				continue
 
-			# Check distance for collision
-			var dist := proj.position.distance_to(player.position)
+			# Check swept projectile path against the lag-compensated player position.
+			var hit_position: Vector2 = _closest_point_on_segment(player.position, proj.previous_position, proj.position)
+			var dist: float = player.position.distance_to(hit_position)
 			var collision_dist := GameConstants.PROJECTILE_RADIUS + GameConstants.PLAYER_HITBOX_RADIUS
 
 			if dist < collision_dist:
@@ -279,12 +313,12 @@ func check_collisions_with_players(player_manager: PlayerManager) -> Array[Dicti
 					"projectile_id": entity_id,
 					"target_id": player.entity_id,
 					"owner_id": proj.owner_id,
-					"position": proj.position
+					"position": hit_position
 				})
 
 				if debug_logging:
-					print("[ProjectileManager] Hit: projectile=%d hit player=%d at %s" % [
-						entity_id, player.entity_id, proj.position
+					print("[ProjectileManager] Lag-compensated hit: projectile=%d hit player=%d at %s dist=%.2f snapshot_tick=%d snapshot_pos=%s" % [
+						entity_id, player.entity_id, hit_position, dist, collision_tick, player.position
 					])
 
 				# Only hit one target per projectile

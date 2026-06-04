@@ -1,12 +1,16 @@
 # Transport — WebSocket over TCP
 
-**Status:** Implemented (verified 2026-06-03 against code)
+**Status:** Implemented (verified 2026-06-04 against code). A **transport-abstraction seam**
+(`Transport` / `WebSocketTransport`, #12) now sits under `NetworkManager` with **zero behaviour or
+wire change**; the WebSocket-over-TCP mechanism below is unchanged. The deferred datagram target is
+now **ENet-over-UDP** (not WebRTC/WebTransport) — see [ADR 0003](../adr/0003-enet-udp-transport.md).
 
 > The wire *format* (header, quantization, delta masks, BATCH framing) lives in
 > [`wire-protocol.md`](wire-protocol.md). This doc is the *transport* underneath it: how bytes
 > actually move, when they move, and the one property that dominates behaviour under packet
 > loss — **TCP head-of-line blocking**. The chosen transport is a known liability for a
-> real-time shooter; see [`../adr/0001-websocket-tcp-transport.md`](../adr/0001-websocket-tcp-transport.md).
+> real-time shooter; see [ADR 0001](../adr/0001-websocket-tcp-transport.md) (the original WebSocket/TCP
+> decision) and [ADR 0003](../adr/0003-enet-udp-transport.md) (which supersedes its substrate).
 
 ## What the transport is
 
@@ -14,6 +18,16 @@ A single **WebSocket connection per client, carried over TCP, used in both direc
 client→server input and server→client Snapshots/Game events all share the same socket.
 The same `NetworkManager` autoload runs both sides, mode-detected at startup
 (`network_manager.gd:126`).
+
+**Transport seam (#12).** `NetworkManager` no longer touches the socket directly — every raw socket
+verb is delegated through a `Transport` interface (`client/autoload/transport/transport.gd`,
+`class_name Transport`), whose default implementation is `WebSocketTransport`
+(`websocket_transport.gd`, `class_name WebSocketTransport`). This is a pure refactor: **behaviour and
+bytes on the wire are identical to before.** The seam exists so the eventual ENet-over-UDP transport
+([ADR 0003](../adr/0003-enet-udp-transport.md)) is a `Transport` *subclass swap*, not a `NetworkManager`
+rewrite — the entire layer above (`PacketWriter`/`PacketReader`, prediction, interpolation, the tick
+loop) is transport-agnostic. The ENet implementation itself is **not built** (a deferred,
+human-approved follow-up).
 
 | Side | Setup | Evidence |
 |------|-------|----------|
@@ -41,7 +55,7 @@ on the server Tick (`network_manager.gd:167-171`). This is the load-bearing timi
    (`:241-242`). BATCH frames are transparently unwrapped here (`:441`, `_dispatch_batch_buffer`).
 3. Heartbeat send (1 Hz) and timeout check (`:245-255`).
 
-The Tick loop (`server_main.gd:170-183`, 30 Hz) and the Snapshot cadence (20 Hz live, see
+The Tick loop (`server_main.gd:178-188`, 30 Hz) and the Snapshot cadence (30 Hz live, see
 [`server-tick-broadcast.md`](server-tick-broadcast.md)) drive *when state is produced*; the
 socket is only *serviced* on render Frames. On a headless server `_process` Frame rate is
 uncapped, so polling is effectively continuous — but it is structurally Frame-driven, not
@@ -108,23 +122,31 @@ the lost one is retransmitted (one RTT minimum). For this game that means:
 There is no application-level mitigation in code today — no out-of-band heartbeat channel, no
 selective drop. The fix is a transport change, deliberately deferred (below).
 
-## Deferred: WebRTC / WebTransport
+## Deferred: ENet over UDP
 
-An unreliable/unordered datagram transport (WebRTC DataChannel in unreliable mode, or
-WebTransport over HTTP/3/QUIC) would let Snapshots be sent **unreliable + unordered** (drop the
-stale, keep the newest) while reliable Game events ride a separate reliable channel — eliminating
-head-of-line blocking for state. This is **Planned**, not built: the rationale, the trade-offs,
-and why WebSocket/TCP was chosen first (browser reach, simplest path to a working POC) are
-recorded in [`../adr/0001-websocket-tcp-transport.md`](../adr/0001-websocket-tcp-transport.md).
+An unreliable/unordered datagram transport would let Snapshots be sent **unreliable + unsequenced**
+(drop the stale, keep the newest) while reliable Game events / auth ride a separate reliable,
+ordered channel — eliminating head-of-line blocking for state. The chosen target is **ENet-over-UDP**
+via Godot's built-in `ENetConnection` with raw channels (ch0 unreliable for `STATE_UPDATE` +
+`PLAYER_INPUT`, ch1 reliable for everything else), keeping the existing `PacketWriter`/`PacketReader`
+binary protocol on top.
+
+This **supersedes** the earlier WebRTC/WebTransport plan: the game is **native-only** (no browser
+client), so browser reach — the sole reason ADR 0001 rejected ENet and preferred WebRTC — no longer
+applies, and the server's planned Rust port can reuse the **wire-compatible** `rusty_enet`. ENet is
+also built into Godot 4.6 with no extra plugin or signalling/ICE/DTLS dance. The transport **seam** is
+built (above); the ENet `Transport` subclass is **deferred** (human-approved follow-up). Full
+rationale and trade-offs in [ADR 0003](../adr/0003-enet-udp-transport.md).
 
 ## Planned work (summary)
 
-| Item | Why |
-|------|-----|
-| Poll on the Tick (not every Frame) | drain input at a known cadence vs the 30 Hz sim |
-| Buffer sizing — `inbound/outbound_buffer_size`, `max_queued_packets` | survive 500–1000 peers without silent default limits |
-| `send() != OK` as backpressure | drop/coalesce or rate-budget instead of logged no-op |
-| Transport change to WebRTC/WebTransport | kill TCP head-of-line blocking for Snapshots |
+| Item | Why | Status |
+|------|-----|--------|
+| Transport-abstraction seam | make the datagram swap a subclass, not a rewrite | ✅ done (#12) |
+| Poll on the Tick (not every Frame) | drain input at a known cadence vs the 30 Hz sim | planned |
+| Buffer sizing — `inbound/outbound_buffer_size`, `max_queued_packets` | survive 500–1000 peers without silent default limits | planned |
+| `send() != OK` as backpressure | drop/coalesce or rate-budget instead of logged no-op | planned |
+| ENet-over-UDP `Transport` impl behind the seam | kill TCP head-of-line blocking for Snapshots | deferred ([ADR 0003](../adr/0003-enet-udp-transport.md)) |
 
 ## The eight questions
 
@@ -139,14 +161,16 @@ recorded in [`../adr/0001-websocket-tcp-transport.md`](../adr/0001-websocket-tcp
 - **Validated:** packet size ≥ `HEADER_SIZE` before decode (`network_manager.gd:436`, `:917`);
   invalid `type` rejected; BATCH envelopes bounds-checked (`:458-474`). No auth at transport
   layer (that's the `CONNECT_AUTH` message).
-- **Can fail:** one lost TCP segment freezes **all** state (head-of-line blocking); `send() != OK`
-  is logged but not handled as backpressure; no buffer caps tuned for scale.
+- **Can fail:** one lost TCP segment freezes **all** state (head-of-line blocking) — the motivation for
+  the deferred ENet swap behind the seam; `send() != OK` is logged but not handled as backpressure; no
+  buffer caps tuned for scale.
 - **Tested:** load-test bots open real WS connections (`load_testing/`); no automated test today
   injects packet loss to exercise head-of-line behaviour.
 
 ## See also
 
 - [`../adr/0001-websocket-tcp-transport.md`](../adr/0001-websocket-tcp-transport.md) — why TCP now, datagram later
+- [`../adr/0003-enet-udp-transport.md`](../adr/0003-enet-udp-transport.md) — the ENet-over-UDP target + the transport seam that lands first
 - [`wire-protocol.md`](wire-protocol.md) — header, quantization, delta masks, BATCH format
 - [`server-tick-broadcast.md`](server-tick-broadcast.md) — what produces the bytes this carries
 - [`latency-budget.md`](latency-budget.md) — where end-of-Tick queuing and RTT land in the budget

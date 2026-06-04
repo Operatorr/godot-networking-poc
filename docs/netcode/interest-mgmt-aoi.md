@@ -1,13 +1,15 @@
 # Interest management (AoI) & LOD
 
-**Status:** Partial (verified 2026-06-03 against code) — AoI, hysteresis, 3-tier LOD, and a
-byte-budget scheduler are built and wired, but the AoI radius culls almost nothing on the current
-map and the per-client scan is O(players × entities) with no shared spatial broad-phase.
+**Status:** Implemented (verified 2026-06-04 against code) — AoI radius (tuned down to 700/800),
+hysteresis, 3-tier LOD, a byte-budget scheduler, **and a shared per-tick spatial-grid broad-phase**
+(#9) are all built and wired. The two former Partial gaps — a near-useless cull radius (#10) and an
+O(players × entities) scan (#9) — are resolved; the remaining caveat is that none of it has yet been
+*measured* at the 500–1000-player target.
 
 > This is a **scale** concern, not a perceived-latency one. AoI exists so a Snapshot to one player
-> doesn't carry every entity on the Arena. Today it filters by a generous radius and sorts what's
-> left by priority under a byte budget — correct in shape, but tuned so loosely that under the
-> 500–1000-player target it does little useful culling and costs O(N²) to compute.
+> doesn't carry every entity on the Arena. It now narrows each viewer's candidate set with a shared
+> spatial grid, filters by a meaningfully-tight radius (700 enter / 800 exit), and sorts the
+> survivors by priority under a byte budget.
 
 ## What AoI is here
 
@@ -15,59 +17,77 @@ For each authenticated player, the server filters the global entity list down to
 entities** near that player's **Local player**, then sends only those in that player's Snapshot.
 Entities outside the radius are culled from that Snapshot and explicitly despawned on the client.
 
-Three mechanisms stack, all per-client, every Snapshot tick:
+Four mechanisms stack, all per-client, every Snapshot tick:
 
+0. **Shared spatial-grid broad-phase (#9)** — one `SpatialGrid` is built per Tick from final entity
+   positions and queried per peer to get an O(nearby) candidate band, instead of walking every entity.
 1. **AoI radius filter with hysteresis** — enter/exit radii so entities near the boundary don't flicker.
 2. **3-tier LOD** — near / mid / far classification feeding a distance penalty.
 3. **Byte-budget scheduler** — priority-sorts the survivors and defers the lowest-priority ones
    past a per-Snapshot byte cap (see [`server-tick-broadcast.md`](server-tick-broadcast.md)).
 
 The whole pipeline lives in `server_broadcast_service.gd::broadcast_state_updates`
-(`server_broadcast_service.gd:58`), called once per Snapshot tick (20 Hz live, see below).
+(`server_broadcast_service.gd:112`), called once per Snapshot tick.
 
 ## Configuration (live values)
 
 Config is loaded by `ServerConfig` and wired into the broadcast service at startup
-(`server_main.gd:143-147`). Defaults live in `server_config.gd:15-22`; the runtime JSON at
-`data/config/server_config.json` overrides a subset.
+(`server_main.gd:153-154`). Defaults live in `server_config.gd:19-27`; the runtime JSON at
+`data/config/server_config.json` sets the same values explicitly.
 
-| Knob | Default (`server_config.gd`) | JSON override | Effect |
+| Knob | Default (`server_config.gd`) | JSON | Effect |
 |---|---|---|---|
-| `aoi_radius` | 1000.0 (`:15`) | 1000.0 | Enter radius — new entity appears within this distance |
-| `aoi_exit_radius` | 1100.0 (`:19`) | — (default) | Exit radius — visible entity drops only past this |
-| `lod_near_radius` | 400.0 (`:22`) | — (default) | ≤400u → LOD_NEAR (penalty 0) |
-| `lod_mid_radius` | 700.0 (`:23`) | — (default) | ≤700u → LOD_MID (penalty 4); else LOD_FAR (penalty 8) |
-| `max_snapshot_bytes` | 1200 (`:33`) | — (default) | Per-peer per-Snapshot byte budget; 0 disables deferral |
-| `snapshot_rate_hz` | 0 → falls back to tick_rate=30 (`:88-93`) | **20** | **Live Snapshot rate is 20 Hz** (the JSON wins) |
+| `aoi_radius` | **700.0** (`:19`) | **700.0** | Enter radius — new entity appears within this distance |
+| `aoi_exit_radius` | **800.0** (`:23`) | **800.0** | Exit radius — visible entity drops only past this |
+| `lod_near_radius` | 400.0 (`:26`) | — (default) | ≤400u → LOD_NEAR (penalty 0) |
+| `lod_mid_radius` | 700.0 (`:27`) | — (default) | ≤700u → LOD_MID (penalty 4); else LOD_FAR (penalty 8) |
+| `max_snapshot_bytes` | 1200 (`:37`) | — (default) | Per-peer per-Snapshot byte budget; 0 disables deferral |
+| `snapshot_rate_hz` | 0 → falls back to tick_rate=30 (`:102-107`) | **30** | Live Snapshot rate is **30 Hz** (#3 raised it from 20) |
 
-> **Discrepancy to flag:** the code default for `snapshot_rate_hz` is 0 (→ 30 Hz tick rate), but
-> `data/config/server_config.json:9` sets it to **20**, and the JSON wins at runtime. So AoI runs
-> at **20 Hz (50 ms)**, not the 30 Hz Tick rate. Same drift noted in
-> [`server-tick-broadcast.md`](server-tick-broadcast.md). Radii are squared once at startup
-> (`server_main.gd:145-146`) so the hot path never calls `sqrt`.
+> **Gameplay-safety note:** the 700 enter radius is deliberately kept **≥ `MONSTER_DETECTION_RANGE`
+> (650, `game_constants.gd:347`)** — a monster that can aggro a player is always inside that player's
+> AoI, so AoI culling can never hide an entity that is actively engaging the viewer. Radii are squared
+> once when assigned (`server_main.gd:153-154`) so the hot path never calls `sqrt`.
+
+## Shared spatial-grid broad-phase (#9)
+
+Before any per-peer filtering, `build_aoi_grid` (`server_broadcast_service.gd:79-107`) runs **once
+per Tick**: it collects every authoritative entity (`to_entity_data` / `collect_state_updates`) into
+one list and inserts each into a fresh `SpatialGrid` (`spatial_grid.gd`, `class_name SpatialGrid`)
+with cell size = `aoi_exit_radius / 4` (the roadmap's `aoi_radius/4` hint, sized off the larger exit
+radius). `ServerMain` primes this at the top of the Snapshot tick (`server_main.gd:269`); the
+broadcast loop falls back to building it inline if unprimed (`:128-129`).
+
+Each peer then queries the grid for its candidate band —
+`_tick_grid.query_radius(state.position, aoi_exit_radius)` (`server_broadcast_service.gd:161`) —
+instead of walking the global entity list. The query uses the **larger exit radius** so
+hysteresis-retained entities up to `aoi_exit_radius` are never missed; the exact distance +
+hysteresis test still runs in `_filter_entities_by_aoi` on that narrowed set. This replaces the old
+O(players × entities) scan with O(players × nearby) — the dominant broadcast cost at scale. The same
+grid is built once and shared by all peers; projectile and monster *collision* grids are separate and
+unchanged.
 
 ## Radius filter + hysteresis
 
-`_filter_entities_by_aoi` (`server_broadcast_service.gd:176-208`) walks the global entity list for
-each player. Per entity:
+`_filter_entities_by_aoi` (`server_broadcast_service.gd:235-280`) iterates only the **grid candidate
+band** for each player (no longer the global list). Per candidate:
 
-- The Local player itself is **never culled** (`:192-196`) — self always rides along.
+- The Local player itself is **never culled** (`:272`) — self always rides along.
 - A `distance_squared_to` is compared against `exit_radius_sq` if the entity was already visible to
-  this client last tick, else `enter_radius_sq` (`:200-201`). That asymmetry is the hysteresis: an
-  entity must close to within 1000u to appear, then stays until it exceeds 1100u.
+  this client last tick, else `enter_radius_sq` (`:261`). That asymmetry is the hysteresis: an
+  entity must close to within **700u** to appear, then stays until it exceeds **800u**.
 - Per-client visibility is remembered in `client_visible_entities[peer_id]`
-  (`:106`, `:133`); entities that were visible last tick but aren't now become explicit despawn
-  deltas (`DELTA_MASK_REMOVED`, `:128-132`) so the client doesn't strand a ghost.
+  (`:38`, `:153`, `:185`); entities that were visible last tick but aren't now become explicit despawn
+  deltas (`DELTA_MASK_REMOVED`, `:180-184`) so the client doesn't strand a ghost.
 
 The filter returns `{entities, lods}` with a parallel `PackedByteArray` of LOD tiers — deliberately
-**not** a `Dictionary.duplicate()` per entity, to avoid per-entity allocation at scale
-(`:175`, `:184-185`, `:208`).
+**not** a `Dictionary.duplicate()` per entity, to avoid per-entity allocation at scale.
 
 ## 3-tier LOD
 
-`_classify_lod` (`server_broadcast_service.gd:212-217`) buckets each visible entity by squared
+`_classify_lod` (`server_broadcast_service.gd:282`) buckets each visible entity by squared
 distance: `≤ lod_near_radius_sq` → NEAR, `≤ lod_mid_radius_sq` → MID, else FAR
-(tiers `LOD_NEAR/MID/FAR = 0/1/2`, `:11-13`). The tier is **not** a separate send-rate throttle; it
+(tiers `LOD_NEAR/MID/FAR = 0/1/2`). The tier is **not** a separate send-rate throttle; it
 feeds the scheduler as a **distance penalty** subtracted from priority
 (`DISTANCE_PENALTY_BY_LOD = [0, 4, 8]`, `snapshot_scheduler.gd:26`,`:137-140`). Far entities thus
 sort lower and are the first deferred when the byte budget bites — they update at a *fraction* of the
@@ -97,43 +117,51 @@ priority = importance(type)            # player 10, projectile 8, monster 4
 - **Baselines skip the scheduler entirely.** A forced full-state Snapshot (every 100 ticks) is built
   by `_create_full_state_packet` with **no byte budget** (`server_broadcast_service.gd:138-139`,
   `:382-413`) — see "What can fail" below.
-- Scheduler diagnostics (`deferred`, `max_queue_age`, `hit_budget`) are aggregated into
-  `last_tick_diagnostics` (`:162-168`) for ServerMetrics, but are **not yet surfaced** on the
-  SERVER_METRICS broadcast (Phase 2 gap).
+- Scheduler diagnostics (`entities_deferred_per_tick`, `max_queue_age_ticks`, `peers_at_budget_pct`,
+  `peers_evaluated`, plus `snapshot_count_overflow`) are aggregated into `last_tick_diagnostics`
+  (`:62-67`, `:221-226`) and **now surfaced** on the SERVER_METRICS broadcast and HUD (#15 — see
+  [`performance-budgets.md`](performance-budgets.md)).
 
-## Why this is Partial — known gaps
+## Remaining caveats (no longer Partial-blocking)
 
-| Gap | Evidence | Consequence |
+The two structural gaps that made this doc Partial — a near-useless cull radius and an
+O(players × entities) scan — are **resolved** (#10 radius 700/800; #9 shared spatial grid). What
+remains is tuning-under-measurement, not missing mechanism:
+
+| Caveat | Evidence | Consequence |
 |---|---|---|
-| **Radius culls ~nothing on this map.** Arena is 2000×2000 (`game_constants.gd:63-66`); a radius-1000 circle covers ~78% of it. | `server_config.gd:15`; `game_constants.gd:63-66` | When players cluster (the common case in a bullet-hell), almost every entity is inside everyone's AoI — the filter pays O(N²) cost to cull near-zero entities. |
-| **O(players × entities) scan, no shared broad-phase.** Each player re-walks the *entire* global entity list every Snapshot. | `server_broadcast_service.gd:97-118`,`:189-208` | O(players²) overall (entities scale with players). This is the dominant broadcast cost at 500–1000 players. |
-| **The 64-unit projectile grid is not reused for AoI.** A spatial hash exists but only for projectile collision. | `projectile_manager.gd:20`,`:127-149` | AoI can't answer "entities near X" in O(nearby); it brute-forces. The broad-phase that would fix the row above already exists, unused here. |
-| **Far entities starve under budget pressure.** FAR penalty (−8) plus a tight 1200-byte budget defers far entities indefinitely while clustered near entities saturate the budget. | `snapshot_scheduler.gd:26`,`:98-104`; `server_broadcast_service.gd:42` | Acceptable by design (anti-starvation eventually re-sends), but with a near-useless radius the budget — not AoI — becomes the real interest-management mechanism, which was not the intent. |
-| **Baselines have no byte budget.** Forced full-state every 100 ticks emits *all* visible entities ignoring `max_snapshot_bytes`. | `server_broadcast_service.gd:138-139`,`:382-413` | A baseline tick for a clustered player can blow far past 1200 bytes and past the u8 `entity_count` cap (255), risking silent truncation. See [`server-tick-broadcast.md`](server-tick-broadcast.md). |
+| **Not yet measured at target load.** The 700/800 radii and the shared grid are correct in shape but unproven at 500–1000 players. | `server_config.gd:19,23`; `spatial_grid.gd` | The scheduler diagnostics (#15) are now wired precisely so this can be observed under load before further tuning. |
+| **Far entities can still starve under budget pressure.** FAR penalty (−8) plus a tight 1200-byte budget defers far entities while clustered near entities saturate the budget. | `snapshot_scheduler.gd:26`; `server_broadcast_service.gd:42` | Acceptable by design (anti-starvation eventually re-sends); now that the radius actually bounds the candidate set, the budget is a backstop rather than the primary cull. |
+| **Baselines still have no byte budget.** Forced full-state every 100 ticks emits *all* visible entities ignoring `max_snapshot_bytes`. | `server_broadcast_service.gd:480` (`_create_full_state_packet`) | A baseline tick for a clustered player can still exceed 1200 bytes. The u8 `entity_count` truncation risk is **gone** (count is now u16, #11) — overflow can now only happen at the far-larger `MAX_PACKET_SIZE` byte ceiling, which `snapshot_count_overflow` warns on. See [`server-tick-broadcast.md`](server-tick-broadcast.md). |
 
-## Planned
+## Done (was Planned)
 
-- **Shared spatial broad-phase for AoI** — reuse/generalize the projectile grid
-  (`projectile_manager.gd:127-149`) so the per-player filter is O(nearby) instead of O(all). Removes
-  the O(N²) scan that dominates broadcast cost.
-- **Tune the AoI radius** down (and/or scale the Arena up) so the radius actually culls when players
-  cluster — today radius 1000 on a 2000×2000 map makes AoI nearly a no-op.
-- **Surface scheduler diagnostics** (`last_tick_diagnostics`, `server_broadcast_service.gd:49-54`)
-  on the SERVER_METRICS broadcast so deferral / queue-age are observable under load (Phase 2).
-- **Per-client rate budget** (Phase 2) — cap bytes/sec per peer, not just bytes/Snapshot.
+- ✅ **Shared spatial broad-phase for AoI (#9)** — `spatial_grid.gd` (`SpatialGrid`) built once per Tick
+  (`build_aoi_grid`) and queried per peer (`query_radius`); the per-player filter is now O(nearby).
+- ✅ **Tune the AoI radius down (#10)** — enter 1000→700, exit 1100→800 (kept ≥ `MONSTER_DETECTION_RANGE`
+  650); `regression_assertions.py` defaults updated in lockstep.
+- ✅ **Surface scheduler diagnostics (#15)** — `last_tick_diagnostics` now flows to ServerMetrics, the
+  SERVER_METRICS packet, and the HUD.
+- ✅ **Per-client rate budget (#13)** — `CONNECT_AUTH` advertises a bytes/sec budget; the server derives a
+  per-peer `max_snapshot_bytes` from it. See [`server-tick-broadcast.md`](server-tick-broadcast.md).
+
+## Still planned
+
+- **Measure at target load** — validate the 700/800 radii + grid against 500–1000 players using the
+  now-surfaced scheduler diagnostics; add an AoI-clustering load scenario (none in the harness today).
 
 ## The eight questions
 
 - **Client:** receives the AoI-filtered Snapshot and despawns entities that left its AoI; does no AoI itself.
-- **Server:** computes AoI, hysteresis, LOD, and budget per player every Snapshot tick (`server_broadcast_service.gd:58`).
+- **Server:** builds the shared grid once and computes AoI, hysteresis, LOD, and budget per player every Snapshot tick (`server_broadcast_service.gd:79`, `:112`).
 - **Predicted:** nothing — AoI is server-side Snapshot filtering, orthogonal to prediction.
 - **Replicated:** only entities inside a player's AoI are replicated to that player; exits are despawned.
-- **Persisted:** nothing — AoI/visibility state is in-memory per peer (`client_visible_entities`, `snapshot_schedulers`), cleared on disconnect (`:368-371`).
-- **Validated:** the Local player is never culled (`:192-196`); pinned despawns can't be budget-dropped (`snapshot_scheduler.gd:99`).
-- **Can fail:** clustered players → radius culls ~nothing + O(N²) scan; baseline ticks ignore the byte budget and the u8 entity cap → silent truncation.
-- **Tested:** exercised indirectly by the Python bot swarm (`load_testing/`, `baseline`/`target`/`stress`); no dedicated AoI/scheduler unit test today.
+- **Persisted:** nothing — AoI/visibility state is in-memory per peer (`client_visible_entities`, `snapshot_schedulers`), cleared on disconnect (`:466`).
+- **Validated:** the Local player is never culled (`:272`); pinned despawns can't be budget-dropped (`snapshot_scheduler.gd:99`); the 700 enter radius stays ≥ `MONSTER_DETECTION_RANGE` so an aggro'd monster is never AoI-hidden.
+- **Can fail:** unproven at 500–1000 players (now observable via the surfaced scheduler diagnostics); baseline ticks still ignore the byte budget, though the u8 entity-count truncation is gone (count is u16, #11).
+- **Tested:** exercised by the Python bot swarm (`load_testing/`, `baseline`/`target`/`stress`) with `regression_assertions.py` asserting the 700/800 cull; no dedicated AoI/scheduler unit test today.
 
 ## See also
 
 - [`server-tick-broadcast.md`](server-tick-broadcast.md) — the Snapshot tick, batching, baseline cadence, and the byte/entity caps AoI feeds into
-- [`performance-budgets.md`](performance-budgets.md) — the 500–1000-player targets this O(N²) scan must meet
+- [`performance-budgets.md`](performance-budgets.md) — the 500–1000-player targets the now-O(nearby) AoI scan must meet

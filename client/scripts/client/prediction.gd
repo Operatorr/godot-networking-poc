@@ -14,6 +14,11 @@ signal prediction_mismatch(predicted_pos: Vector2, server_pos: Vector2)
 signal reconciliation_complete(replayed_inputs: int)
 ## Emitted when the local player's visual position changes.
 signal visual_position_updated(visual_position: Vector2, is_discontinuous: bool)
+## Cosmetic-only: emitted on the SHOOT rising-edge (and while held, gated to the
+## server auto-fire cadence) so the client can draw an immediate muzzle flash +
+## tracer without waiting for the PROJECTILE_FIRED round-trip. This does NOT spawn
+## a Projectile and does NOT touch predicted_position or the input buffer.
+signal shoot_predicted(muzzle_position: Vector2, aim_direction: Vector2)
 #endregion
 
 
@@ -74,6 +79,10 @@ const INPUT_SEND_INTERVAL: float = GameConstants.SERVER_TICK_INTERVAL
 
 ## Current frame's accumulated input flags
 var current_input_flags: int = 0
+
+## Last time (seconds) the cosmetic shoot feedback fired, used to gate held-fire
+## to the server's SHOOT_COOLDOWN auto-fire cadence. -INF so the first shot fires.
+var _last_predicted_shot_time: float = -INF
 
 ## Whether prediction and input sending are enabled for the local player.
 var prediction_enabled: bool = true
@@ -161,6 +170,12 @@ func _physics_process(delta: float) -> void:
 	current_input_flags = _capture_input_flags()
 	if projectile_sync_debug_logging:
 		_log_shoot_edge(previous_input_flags, current_input_flags)
+
+	# Step 1b: Emit cosmetic-only shoot feedback (muzzle flash + tracer). Fires on
+	# the SHOOT rising-edge and, while held, at most once per SHOOT_COOLDOWN so it
+	# mirrors the server's auto-fire cadence. Does not move the player or spawn a
+	# real projectile — server stays authoritative for damage.
+	_maybe_emit_shoot_predicted(previous_input_flags, current_input_flags)
 
 	# Step 2: Apply local prediction immediately
 	_apply_local_prediction(current_input_flags, delta)
@@ -255,6 +270,36 @@ func _log_shoot_edge(previous_flags: int, new_flags: int) -> void:
 		render_tick,
 		monster_text
 	])
+
+
+## Cosmetic-only shoot feedback gate. Emits shoot_predicted on the SHOOT
+## rising-edge, and while SHOOT stays held re-emits at most once per
+## SHOOT_COOLDOWN to mirror the server's auto-fire cadence (server_main
+## _process_shoot_inputs). Computes the muzzle origin exactly like the server
+## (server_main._try_spawn_projectile) so the flash/tracer line up with the real
+## projectile. Purely visual — never writes predicted_position or the buffer.
+func _maybe_emit_shoot_predicted(previous_flags: int, new_flags: int) -> void:
+	if player_node == null:
+		return
+
+	var is_shooting := (new_flags & PacketTypes.INPUT_FLAG_SHOOT) != 0
+	if not is_shooting:
+		return
+
+	var was_shooting := (previous_flags & PacketTypes.INPUT_FLAG_SHOOT) != 0
+	var now := Time.get_ticks_msec() / 1000.0
+	var rising_edge := not was_shooting
+	var cooldown_elapsed := (now - _last_predicted_shot_time) >= GameConstants.SHOOT_COOLDOWN
+	if not rising_edge and not cooldown_elapsed:
+		return
+
+	_last_predicted_shot_time = now
+
+	var aim_direction := Vector2.from_angle(_get_aim_angle())
+	var muzzle := predicted_position + aim_direction * (
+		GameConstants.PLAYER_HITBOX_RADIUS + GameConstants.PROJECTILE_RADIUS + 2.0
+	)
+	shoot_predicted.emit(muzzle, aim_direction)
 
 
 func _get_client_render_tick() -> int:

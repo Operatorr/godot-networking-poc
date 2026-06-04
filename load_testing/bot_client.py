@@ -43,6 +43,11 @@ class MessageType(IntEnum):
     RESPAWN_REQUEST = 9
     SERVER_METRICS = 10
     BATCH = 11
+    # Client -> Server: ack a received full-state Baseline (#14). Bots do not send
+    # this today; the server's 100-tick cadence floor covers non-acking clients, so
+    # a bot that never acks still receives baselines (no regression). Mirrored here
+    # only to keep this enum in lockstep with packet_types.gd.
+    BASELINE_ACK = 12
 
 
 class EntityType(IntEnum):
@@ -495,10 +500,15 @@ def build_connect_auth(
     character_name: str,
     region: int = 0,
     player_color: tuple[int, int, int] | None = None,
+    bandwidth_budget_bps: int = 0,
 ) -> bytes:
     """Build CONNECT_AUTH packet.
-    Format: [string token][string char_id][string char_name][u8 region][optional rgb]
+    Format: [string token][string char_id][string char_name][u8 region]
+            [optional rgb][optional u32 bandwidth_budget_bps]
     Strings are: [u16 length][utf8 bytes]
+    The trailing u32 budget (#13) is server-clamped to [min,max]; 0 means "let the
+    server decide". The server reads it length-gated AFTER the color triple, so we
+    only append it when a color is present (otherwise it would misalign).
     """
     payload = bytearray()
     for s in (token, character_id, character_name):
@@ -508,6 +518,7 @@ def build_connect_auth(
     payload += struct.pack("<B", region)
     if player_color is not None:
         payload += bytes(max(0, min(255, int(c))) for c in player_color[:3])
+        payload += struct.pack("<I", max(0, int(bandwidth_budget_bps)))
     return build_header(MessageType.CONNECT_AUTH, bytes(payload))
 
 
@@ -579,17 +590,20 @@ def parse_heartbeat(payload: bytes) -> int:
 def parse_state_update_header(payload: bytes) -> dict:
     """Parse STATE_UPDATE header (not full entity data - just enough for metrics).
     Returns dict with server_tick, state_flags, entity_count."""
-    if len(payload) < 6:
+    # 5-byte common header [u32 server_tick][u8 state_flags]; full-state then reads
+    # a u16 entity_count at offset 5 (needs 7 bytes total). The delta path enforces
+    # its own >=11 guard below before reading the count at offset 9.
+    if len(payload) < 7:
         return {}
     server_tick, state_flags = struct.unpack_from("<IB", payload, 0)
     is_delta = bool(state_flags & STATE_FLAG_IS_DELTA)
-    # Delta packets have a 4-byte baseline_tick before entity_count
+    # Delta packets have a 4-byte baseline_tick before the u16 entity_count
     if is_delta:
-        if len(payload) < 10:
+        if len(payload) < 11:
             return {"server_tick": server_tick, "state_flags": state_flags, "is_delta": True, "entity_count": 0}
-        entity_count = struct.unpack_from("<B", payload, 9)[0]
+        entity_count = struct.unpack_from("<H", payload, 9)[0]
     else:
-        entity_count = struct.unpack_from("<B", payload, 5)[0]
+        entity_count = struct.unpack_from("<H", payload, 5)[0]
     return {
         "server_tick": server_tick,
         "state_flags": state_flags,
@@ -695,7 +709,8 @@ def parse_state_update(payload: bytes, last_states: dict[int, EntitySnapshot] | 
     """Parse full/delta STATE_UPDATE payload and update an entity snapshot map."""
     if last_states is None:
         last_states = {}
-    if len(payload) < 6:
+    # tick(4) + flags(1) + u16 count(2) = 7 byte minimum for a full-state header
+    if len(payload) < 7:
         return {}
 
     offset = 0
@@ -705,12 +720,13 @@ def parse_state_update(payload: bytes, last_states: dict[int, EntitySnapshot] | 
     is_delta = bool(state_flags & STATE_FLAG_IS_DELTA)
     baseline_tick = 0
     if is_delta:
-        if len(payload) < offset + 5:
+        # baseline_tick(4) + u16 count(2) = 6 bytes still required at this offset
+        if len(payload) < offset + 6:
             return {"server_tick": server_tick, "state_flags": state_flags, "is_delta": True, "entities": []}
         baseline_tick = struct.unpack_from("<I", payload, offset)[0]
         offset += 4
 
-    entity_count, offset = _read_u8(payload, offset)
+    entity_count, offset = _read_u16(payload, offset)
     parsed: list[EntitySnapshot] = []
     removed: list[int] = []
 
@@ -845,13 +861,15 @@ def parse_server_metrics(payload: bytes) -> dict:
     """Parse SERVER_METRICS payload.
     Format: [u32 tick][u16 avg_tick*100][u16 max_tick*100][u16 players][u16 entities]
             [u32 bytes_sent][u32 bytes_recv][u32 avg_bw_per_client]
-    Total: 24 bytes
+            [u16 sched_deferred][u16 sched_qage][u8 sched_budget_pct]
+            [u16 sched_peers][u16 sched_overflow]
+    Total: 33 bytes (legacy 24-byte payloads still decode the leading 8 fields).
     """
     if len(payload) < 24:
         return {}
     tick, avg_tick_100, max_tick_100, players, entities, bytes_sent, bytes_recv, avg_bw = \
         struct.unpack_from("<IHHHHIII", payload, 0)
-    return {
+    result = {
         "tick_count": tick,
         "avg_tick_time_ms": avg_tick_100 / 100.0,
         "max_tick_time_ms": max_tick_100 / 100.0,
@@ -861,6 +879,17 @@ def parse_server_metrics(payload: bytes) -> dict:
         "total_bytes_received": bytes_recv,
         "avg_bandwidth_per_client": avg_bw,
     }
+    # Scheduler diagnostics (§8.2). Appended in lockstep with the GDScript
+    # encode (network_manager.gd SERVER_METRICS case).
+    if len(payload) >= 33:
+        deferred, qage, budget_pct, peers, overflow = \
+            struct.unpack_from("<HHBHH", payload, 24)
+        result["sched_entities_deferred"] = deferred
+        result["sched_max_queue_age_ticks"] = qage
+        result["sched_peers_at_budget_pct"] = budget_pct
+        result["sched_peers_evaluated"] = peers
+        result["sched_snapshot_overflow"] = overflow
+    return result
 
 
 # --- Metrics ---
@@ -1027,6 +1056,7 @@ class OmegaRealmBot:
         token: str = "",
         behavior: str = BEHAVIOR_DEFAULT,
         difficulty: float = 1.0,
+        bandwidth_budget_bps: int = 0,
     ):
         self.bot_id = bot_id
         self.server_url = server_url
@@ -1035,6 +1065,8 @@ class OmegaRealmBot:
         self.token = token
         self.behavior = behavior
         self.difficulty = _clamp_difficulty(difficulty)
+        # Advertised CONNECT_AUTH egress budget (#13). 0 = let the server decide.
+        self.bandwidth_budget_bps = max(0, int(bandwidth_budget_bps))
         self.ws = None
         self.metrics = BotMetrics()
         self._running = False
@@ -1097,7 +1129,8 @@ class OmegaRealmBot:
 
             # Send CONNECT_AUTH
             auth_packet = build_connect_auth(
-                self.token, self.character_id, self.character_name, 0, self.player_color
+                self.token, self.character_id, self.character_name, 0,
+                self.player_color, self.bandwidth_budget_bps
             )
             await self.ws.send(auth_packet)
             self.metrics.packets_sent += 1

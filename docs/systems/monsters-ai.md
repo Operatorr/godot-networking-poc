@@ -2,12 +2,19 @@
 
 **Status:** Implemented (verified 2026-06-03 against code)
 
-The POC has exactly **one monster type** with a small **server-authoritative** AI: a
-four-state machine that selects a target, chases, kites-and-shoots, or flees, all run on the
+The POC has exactly **one monster type — the Toxic Slime** — with a small **server-authoritative**
+AI: a four-state machine that selects a target, chases, kites-and-shoots, or flees, all run on the
 [Tick](../CONTEXT.md). Monsters are [Remote entities](../CONTEXT.md) on every client — there is
 **no client-side monster AI**; clients only interpolate and animate server state
 (`monster.gd:1-3`). This is deliberately minimal: enough living [Remote entities](../CONTEXT.md)
 to add packet/entity load for the netcode stress-test, not an interesting combat AI.
+
+> **Data-driven now.** Stats and AI tuning are no longer hardcoded constants — they come from a
+> **`MonsterDefinition`** parsed from `data/monsters/toxic_slime.json`, built by a **factory**, and
+> read by the AI each Tick. The `GameConstants.MONSTER_*` values are the **fallback defaults** and
+> the Toxic Slime sheet reproduces them exactly (behaviour-preserving). How monsters are defined,
+> registered, and spawned — and the roadmap for more — lives in
+> [`monster-architecture.md`](monster-architecture.md). This page documents the runtime AI itself.
 
 ## Where it runs in the Tick
 
@@ -29,9 +36,15 @@ and broadcast a compact fire [Game event](../CONTEXT.md) (`server_main.gd:487-48
 ## Identity & lifecycle
 
 - Entity IDs: monsters allocate from the reserved range **30000–39999**
-  (`game_constants.gd:259-260`, `monster_manager.gd:57-68`), wrapping when exhausted. Distinct
+  (`game_constants.gd:259-260`, `monster_manager.gd`), wrapping when exhausted. Distinct
   from players (1–999) and projectiles (10000–29999).
-- Health **50** (`game_constants.gd:288`), hitbox radius **16** (`game_constants.gd:291`).
+- Built by `MonsterFactory.create` from the archetype's `MonsterDefinition`; `MonsterManager`
+  allocates the id and tracks the `MonsterState`, which now carries `type_id` + `definition`
+  (`monster_factory.gd`, `monster_manager.gd` `spawn_monster`, `monster_state.gd`
+  `create_from_definition`).
+- Health **50**, hitbox radius **16** — for the Toxic Slime these come from
+  `data/monsters/toxic_slime.json` (`stats.max_health` / `stats.hitbox_radius`), defaulting to
+  `GameConstants` (`game_constants.gd:288,291`) if absent.
 - Death: `take_damage` zeroes HP → `is_alive=false`, clears MOVING/ATTACKING flags, sets
   `DEATH` animation (`monster_state.gd:77-94`). The dead monster stays in the manager for one
   more Tick so clients get a final death-animation [Snapshot](../CONTEXT.md) before the despawn
@@ -78,10 +91,13 @@ free at MMO scale.
 ### Difficulty scaling
 
 A single `difficulty` ∈ [0,1] (config `monster_ai_difficulty`, default **0.85**,
-`server_config.gd:35`, wired `server_main.gd:134`) `lerp`s several ranges: retarget interval,
+`server_config.gd:35`, wired in `server_main.gd`) `lerp`s several ranges: retarget interval,
 detection / lose-interest / attack / flee / preferred distances, steering randomness, strafe
-intensity, and aim error (`monster_ai.gd:154-179`, `:338`, `:443-446`). Higher difficulty =
-faster retarget, longer reach, stickier targeting, tighter aim.
+intensity, and aim error (`monster_ai.gd` `_get_*` helpers, `_apply_steering`,
+`_predictive_aim_direction`). Higher difficulty = faster retarget, longer reach, stickier
+targeting, tighter aim. The **base** values being lerped are now per-monster:
+`difficulty` scales the `MonsterDefinition` fields (`monster.definition.detection_range`, etc.),
+not global constants — so a different archetype tunes its own ranges via its JSON.
 
 ## Movement (`MONSTER_SPEED` 120)
 
@@ -163,6 +179,7 @@ this Tick.
 
 ## See also
 
+- [`monster-architecture.md`](monster-architecture.md) — the factory, data-driven definitions, schema, and the roadmap for adding monsters
 - [`../CONTEXT.md`](../CONTEXT.md) — glossary (Tick, Remote entity, Snapshot, Game event, Lag compensation)
 - [`../netcode/server-tick-broadcast.md`](../netcode/server-tick-broadcast.md) — the Tick loop monsters run inside
 - [`../netcode/interest-mgmt-aoi.md`](../netcode/interest-mgmt-aoi.md) — how monsters are culled per player

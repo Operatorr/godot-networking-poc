@@ -194,6 +194,20 @@ static func create_projectile_trail() -> CPUParticles2D:
 	return particles
 
 
+## Create a short-lived shot tracer line from -> to. One Line2D node, auto-freed
+## quickly so held fire stays cheap. Points are in the world space of the entity
+## container (the line draws in local space; we leave global_position at origin).
+static func create_tracer(from: Vector2, to: Vector2, color: Color = Color(0.27, 0.53, 1.0)) -> Line2D:
+	var line := Line2D.new()
+	line.points = PackedVector2Array([from, to])
+	line.width = 2.0
+	line.default_color = color
+	line.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	line.end_cap_mode = Line2D.LINE_CAP_ROUND
+	_auto_free(line, 0.08)
+	return line
+
+
 ## Create fade curve for scale
 static func _create_fade_curve() -> Curve:
 	var curve := Curve.new()

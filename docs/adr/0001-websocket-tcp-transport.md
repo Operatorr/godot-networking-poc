@@ -2,6 +2,11 @@
 
 **Status:** Implemented (verified 2026-06-03 against code) — accepted for the POC; a transport change is **Planned** but deferred.
 
+> **Superseded-in-part by [ADR 0003](0003-enet-udp-transport.md)** (2026-06-04): the datagram-transport
+> target is now **ENet-over-UDP**, not WebRTC/WebTransport — the *browser-reach* premise below is void
+> (the game is native-only). This ADR's substrate decision is superseded; its head-of-line-blocking
+> analysis remains the motivation. The wire protocol and the authoritative fixed-tick model stand.
+
 ## Decision
 
 Carry **all** client↔server traffic — Snapshots, Game events, input, heartbeats — over a single

@@ -176,6 +176,13 @@ func _process_state_update(data: Dictionary) -> void:
 		_full_state_request_time = 0
 		_full_state_retry_count = 0
 		needs_full_state_sync = false
+		# Ack the Baseline so the server can clear its resend timer (#14). The forced
+		# Baseline is sent as a FULL-STATE packet and carries NO baseline_tick on the
+		# wire, so we ack server_tick (the tick we tagged the Baseline with), NOT
+		# data.baseline_tick. Fires once per received Baseline. INERT on today's
+		# WebSocket/TCP transport (baselines are never dropped); forward-looking
+		# scaffold for the UDP transport (#12). send_to_server no-ops if disconnected.
+		NetworkManager.send_to_server(NetworkManager.MessageType.BASELINE_ACK, {"baseline_tick": server_tick})
 		if debug_logging:
 			print("[Interpolation] Received baseline packet at tick %d" % server_tick)
 	elif is_delta:

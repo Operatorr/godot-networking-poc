@@ -29,14 +29,14 @@ ALIVE_VISIBLE = ENTITY_FLAG_ALIVE | ENTITY_FLAG_VISIBLE
 
 
 def _full_state_payload(tick: int, entities: list[tuple[int, int, float, float, int, int]]) -> bytes:
-    payload = bytearray(struct.pack("<IBB", tick, 0, len(entities)))
+    payload = bytearray(struct.pack("<IBH", tick, 0, len(entities)))
     for entity_id, entity_type, x, y, anim, flags in entities:
         payload += struct.pack("<HBhhBB", entity_id, entity_type, int(x * 10), int(y * 10), anim, flags)
     return bytes(payload)
 
 
 def _delta_payload(tick: int, baseline: int, entries: list[bytes]) -> bytes:
-    return struct.pack("<IBIB", tick, 1, baseline, len(entries)) + b"".join(entries)
+    return struct.pack("<IBIH", tick, 1, baseline, len(entries)) + b"".join(entries)
 
 
 def _player_info_payload(entity_id: int, name: str, x: float = 0.0, y: float = 0.0) -> bytes:
