@@ -503,11 +503,13 @@ func _create_full_state_packet(entities: Array[Dictionary], cache, tick_count: i
 
 	cache.reset_baseline(tick_count)
 
-	# A u16 entity_count can declare at most STATE_MAX_ENTITIES; anything above
-	# that is silently truncated by the writer, so flag it for diagnostics (#15).
-	if entity_data.size() > PacketTypes.STATE_MAX_ENTITIES:
+	# A full-state baseline is bounded by MAX_PACKET_SIZE (the [u16 length] frame),
+	# NOT by the u16 entity_count field — the writer truncates anything past the
+	# byte-safe cap, so flag the limit that actually binds (#15). Baselines bypass
+	# the per-peer snapshot byte budget, so this is the only overflow path.
+	if entity_data.size() > StateUpdatePacket.STATE_MAX_FULL_ENTITIES:
 		last_tick_diagnostics.snapshot_count_overflow += 1
-		push_warning("[BroadcastService] Snapshot entity count %d exceeds wire cap %d; overflow truncated" % [entity_data.size(), PacketTypes.STATE_MAX_ENTITIES])
+		push_warning("[BroadcastService] Full-state entity count %d exceeds per-frame cap %d (MAX_PACKET_SIZE); overflow truncated" % [entity_data.size(), StateUpdatePacket.STATE_MAX_FULL_ENTITIES])
 
 	return {
 		"tick": tick_count,

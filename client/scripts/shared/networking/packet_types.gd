@@ -9,7 +9,10 @@ const HEADER_SIZE := 3
 ## Maximum packet size (64KB)
 const MAX_PACKET_SIZE := 65535
 
-## Maximum entities a single STATE_UPDATE can declare (u16 entity_count cap)
+## Numeric ceiling of the u16 entity_count wire field. NOTE: this is the field's
+## value range, NOT the real per-packet limit — a STATE_UPDATE is bounded by
+## MAX_PACKET_SIZE bytes (the [u16 length] frame). For full state that byte limit
+## works out far lower; see StateUpdatePacket.STATE_MAX_FULL_ENTITIES.
 const STATE_MAX_ENTITIES := 65535
 
 ## Packet types as per ARCHITECTURE.md

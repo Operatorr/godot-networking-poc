@@ -141,15 +141,21 @@ on a **u8** field, so any Snapshot with >255 entities was **silently truncated**
 periodic, **unbudgeted** Baseline (which emits every AoI entity at full 9/10 bytes) was the most
 likely place to brush it.
 
-`entity_count` is now a **u16**, capped at `STATE_MAX_ENTITIES = 65535`
-(`packet_types.gd:13`); both writers use `mini(entities.size(), STATE_MAX_ENTITIES)`
-(`state_update_packet.gd:195,210`) and both readers `read_u16` (`:254,268`). The old hard 255 cliff
-is **gone**. The real ceiling is now the **`MAX_PACKET_SIZE` / byte budget** (`u16` payload length,
-65535 B), not the count field — a packet runs out of *bytes* long before it runs out of *count*.
-The broadcast service still increments a `snapshot_count_overflow` diagnostic and `push_warning`s if
-a Snapshot would even exceed the (now far-larger) wire cap (`server_broadcast_service.gd:509-510`),
-surfaced via `SERVER_METRICS`. This was a wire change with **no `PROTOCOL_VERSION` byte added** (see
-"wire-v3" below — the remaining size optimizations are still unbuilt).
+`entity_count` is now a **u16**. The wire field's numeric ceiling is
+`STATE_MAX_ENTITIES = 65535` (`packet_types.gd:13`), but that is **not** the real
+per-packet limit: a Snapshot is bounded by `MAX_PACKET_SIZE` (the `u16` payload-length
+frame, 65535 B). So the **full-state** writer caps emission at the byte-derived
+`STATE_MAX_FULL_ENTITIES = (MAX_PACKET_SIZE − FULL_STATE_HEADER_BYTES) / ENTITY_SIZE = 7280`
+(`state_update_packet.gd:38-46,210`) — the most entities that fit one Baseline in a frame
+(7280×9 + 10 = 65530 ≤ 65535) — while the **delta** writer keeps the `STATE_MAX_ENTITIES`
+field cap (`:225`) because delta packets are byte-bounded by the per-peer `SnapshotScheduler`
+budget (`max_snapshot_bytes`, ~1200 B) long before the count matters. Both readers
+`read_u16` (`:268,283`). The old hard 255 cliff is **gone**, and a packet now runs out of
+*bytes* (not *count*) first. The broadcast service increments a `snapshot_count_overflow`
+diagnostic and `push_warning`s if a Baseline would exceed the full-state frame cap
+(`server_broadcast_service.gd:506-512`), surfaced via `SERVER_METRICS`. This was a wire change
+with **no `PROTOCOL_VERSION` byte added** (see "wire-v3" below — the remaining size
+optimizations are still unbuilt).
 
 ## PLAYER_INPUT — client intent (16-byte payload)
 
@@ -296,7 +302,7 @@ strategy of its own.
 - **Replicated:** all world state, as quantized full-state or delta entities in `STATE_UPDATE`, diffed against a Baseline every 100 Ticks.
 - **Persisted:** nothing — the wire layer is in-memory framing only; the Go API persists accounts/characters/leaderboard out of band.
 - **Validated:** `PacketReader._check_bounds` guards every read against buffer underflow (`packet_reader.gd:29-33`); `is_valid_type` range-checks the type byte; the u16 length bounds the frame.
-- **Can fail:** a Snapshot can still overflow the **byte budget** (`MAX_PACKET_SIZE`/`u16` payload length) — far harder to hit than the old u8 255 cap, and now signalled by `snapshot_count_overflow`; a dropped Baseline is repaired by the `BASELINE_ACK` resend path (inert on TCP, live on the planned ENet transport); position outside ±3276.7 → clamped (irrelevant inside the 2000² Arena).
+- **Can fail:** a Baseline above the full-state frame cap (`STATE_MAX_FULL_ENTITIES = 7280`) is **truncated to fit** `MAX_PACKET_SIZE` rather than overflowing the `u16` length frame — far harder to hit than the old u8 255 cap (unreachable at the 100-player POC), and signalled by `snapshot_count_overflow`; a dropped Baseline is repaired by the `BASELINE_ACK` resend path (inert on TCP, live on the planned ENet transport); position outside ±3276.7 → clamped (irrelevant inside the 2000² Arena).
 - **Tested:** round-trip unit tests on each `*_packet.gd` (`write()` → `from_buffer()`); the Python bot decoder tracks the u16 `entity_count`, the appended `SERVER_METRICS` `sched_*` fields, and the trailing `CONNECT_AUTH` budget in lockstep; the `BASELINE_ACK` resend path has **no** loss-injection test today (it is inert on TCP).
 
 ## See also

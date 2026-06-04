@@ -33,6 +33,18 @@ const ENTITY_SIZE := 9
 ## Minimum delta entity size (entity_id + delta_mask)
 const DELTA_ENTITY_MIN_SIZE := 3
 
+## Bytes of framing + header before the first full-state entity:
+## wire header [u8 type][u16 length] (PacketTypes.HEADER_SIZE) + tick(4) + flags(1) + count(2).
+const FULL_STATE_HEADER_BYTES := PacketTypes.HEADER_SIZE + 4 + 1 + 2
+
+## Largest number of full-state entities that fit in ONE packet. The wire frame
+## carries its payload length in a u16, so a packet can never exceed
+## MAX_PACKET_SIZE bytes regardless of the u16 entity_count field. Full-state
+## baselines bypass the per-peer snapshot byte budget, so this — NOT
+## PacketTypes.STATE_MAX_ENTITIES — is the real cap that keeps a baseline from
+## overflowing the [u16 length] frame. Works out to 7280 at the current sizes.
+const STATE_MAX_FULL_ENTITIES := (PacketTypes.MAX_PACKET_SIZE - FULL_STATE_HEADER_BYTES) / ENTITY_SIZE
+
 ## Server tick number when this update was generated
 var server_tick: int = 0
 ## Packet-level state flags (TASK-021)
@@ -192,7 +204,10 @@ func write_payload(writer: PacketWriter) -> void:
 ## Write entities in full state format
 func _write_full_entities(writer: PacketWriter) -> void:
 	# Single emitted-count source so the header and loop body can never diverge.
-	var emitted := mini(entities.size(), PacketTypes.STATE_MAX_ENTITIES)
+	# Cap at the byte-safe per-frame limit (not the u16 field max): a baseline must
+	# never declare more entities than fit in MAX_PACKET_SIZE, or the [u16 length]
+	# wire header would wrap and silently corrupt the frame.
+	var emitted := mini(entities.size(), STATE_MAX_FULL_ENTITIES)
 	writer.write_u16(emitted)
 
 	for i in range(emitted):
