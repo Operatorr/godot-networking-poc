@@ -46,6 +46,10 @@ var leaderboard_timer: float = 0.0
 const LEADERBOARD_BROADCAST_INTERVAL := 5.0
 const REGION_STATUS_HEARTBEAT_INTERVAL := 2.0
 
+## Floor for the per-peer snapshot byte cap (#13). Even a marginal/hostile budget
+## must leave room for pinned removals + a few deltas so entities never strand.
+const MIN_SNAPSHOT_FLOOR := 256
+
 ## Tick loop state
 var tick_timer: float = 0.0
 var tick_count: int = 0
@@ -126,8 +130,14 @@ func _initialize_server() -> void:
 	projectile_manager = ProjectileManager.new()
 	projectile_manager.debug_logging = config.debug_logging
 
+	# Data-driven monster catalogue: spawning flows through MonsterFactory so new
+	# archetypes are added as JSON, not code. See docs/systems/monster-architecture.md.
+	var monster_database := MonsterDatabase.get_shared()
+	monster_database.debug_logging = config.debug_logging
 	monster_manager = MonsterManager.new()
 	monster_manager.debug_logging = config.debug_logging
+	monster_manager.set_factory(MonsterFactory.new(monster_database))
+	print("[ServerMain] Monster catalogue: %s" % ", ".join(PackedStringArray(monster_database.get_all_ids())))
 	monster_spawner = MonsterSpawner.new(monster_manager, player_manager, monster_spawn_rate)
 	monster_spawner.debug_logging = config.debug_logging
 
@@ -189,7 +199,7 @@ func _process(delta: float) -> void:
 		if nm:
 			network_stats = nm.get_stats()
 			network_stats["peer_bytes_sent"] = nm.peer_bytes_sent
-		server_metrics.update_metrics(player_manager.get_player_count(), entity_count, tick_count, network_stats)
+		server_metrics.update_metrics(player_manager.get_player_count(), entity_count, tick_count, network_stats, broadcast_service.last_tick_diagnostics)
 		# Broadcast server metrics to all connected clients
 		_broadcast_server_metrics(nm)
 
@@ -236,9 +246,12 @@ func _process_server_tick() -> void:
 	# 3. Run AI/monster logic
 	_update_monster_ai()
 
-	# 4. Snapshot monster positions before collision/damage mutates state. Player
-	# projectile hit tests rewind to this short history.
+	# 4. Snapshot monster and player positions before collision/damage mutates
+	# state. Player projectile hit tests rewind to this short history (monsters for
+	# PvE, players for PvP). Recorded here so the snapshot reflects end-of-tick
+	# positions after inputs/AI moved everyone but before collision resolution.
 	monster_manager.record_position_snapshot(tick_count)
+	player_manager.record_position_snapshot(tick_count)
 
 	# 5. Process collisions (delegated to CollisionHandler)
 	collision_handler.process_collisions(
@@ -247,6 +260,13 @@ func _process_server_tick() -> void:
 
 	# 6. Broadcast state updates only on snapshot ticks (§1.1).
 	if snapshot_due:
+		# Build the shared current-tick spatial grid (#9) once from the now-final
+		# entity positions, then feed it to the per-peer AoI scan. Built here (vs a
+		# separate tick step) so it reflects the same post-collision state the
+		# broadcast would otherwise re-collect, and only on snapshot ticks to avoid
+		# wasted builds at the higher tick rate. Monster lag-comp collisions still
+		# use their own per-rewind-tick history grids (see ProjectileManager).
+		broadcast_service.build_aoi_grid(player_manager, projectile_manager, monster_manager)
 		broadcast_service.broadcast_state_updates(
 			player_manager, projectile_manager, monster_manager, nm, tick_count
 		)
@@ -283,13 +303,22 @@ func _process_client_inputs() -> void:
 ## Spawn projectiles for immediate shoot edges and sustained held auto-fire.
 func _process_shoot_inputs() -> void:
 	for state: PlayerState in player_manager.get_all_players():
+		# Fire at most ONE shot per player per tick. SHOOT_COOLDOWN (0.3s) makes more
+		# than one legitimate shot per 33ms tick impossible, so collapsing duplicate
+		# same-tick rising edges AND the held auto-fire into a single fire here removes
+		# the "shots come out as pairs" bug (two firing surfaces firing the same tick).
+		var fired_this_tick := false
 		while true:
 			var shot := state.pop_pending_shot()
 			if shot.is_empty():
 				break
-			_try_spawn_projectile(state, shot)
+			if not fired_this_tick:
+				fired_this_tick = true
+				_try_spawn_projectile(state, shot)
+			# else: duplicate rising-edge drained in the same tick — coalesced/dropped.
 
-		if state.is_shoot_held() and state.can_shoot():
+		# Held auto-fire only if no rising-edge press already fired this tick.
+		if not fired_this_tick and state.is_shoot_held() and state.can_shoot():
 			_try_spawn_projectile(state, state.get_held_shot_input())
 
 
@@ -348,6 +377,13 @@ func _try_spawn_projectile(player: PlayerState, input: Dictionary) -> void:
 	var fire_origin: Vector2 = fire_origin_data.get("position", player.position)
 	var compensation_data: Dictionary = _get_pve_projectile_compensation(input)
 	var rewind_ticks: int = compensation_data.get("rewind_ticks", GameConstants.REMOTE_ENTITY_RENDER_DELAY_TICKS)
+	# Reuse the already-derived render-tick/RTT rewind, but re-clamp to the stricter
+	# PvP cap so a peeker who has broken line of sight cannot be retro-hit.
+	var pvp_rewind_ticks: int = clampi(
+		compensation_data.get("rewind_ticks", 0),
+		0,
+		GameConstants.MAX_PVP_PROJECTILE_COMPENSATION_TICKS
+	)
 
 	# Spawn position slightly in front of player to avoid self-collision
 	var spawn_offset := aim_direction * (GameConstants.PLAYER_HITBOX_RADIUS + GameConstants.PROJECTILE_RADIUS + 2.0)
@@ -362,7 +398,8 @@ func _try_spawn_projectile(player: PlayerState, input: Dictionary) -> void:
 		rewind_ticks,
 		compensation_data.get("client_render_tick", 0),
 		compensation_data.get("client_rtt_ms", 0),
-		compensation_data.get("source", "none")
+		compensation_data.get("source", "none"),
+		pvp_rewind_ticks
 	)
 
 	if projectile != null:
@@ -623,6 +660,11 @@ func _on_client_message(peer_id: int, message_type: int, data: Dictionary) -> vo
 			)
 		NetworkManager.MessageType.RESPAWN_REQUEST:
 			_handle_respawn_request(peer_id)
+		NetworkManager.MessageType.BASELINE_ACK:
+			# Client confirmed receipt of a full-state Baseline (#14). On TCP this is
+			# informational; under #12 UDP transport it lets the broadcast loop resend
+			# a lost Baseline before the 100-tick cadence floor.
+			broadcast_service.handle_baseline_ack(peer_id, int(data.get("baseline_tick", 0)))
 		_:
 			if config.debug_logging:
 				print("[ServerMain] Unhandled message type %d from peer %d" % [message_type, peer_id])
@@ -637,11 +679,35 @@ func _handle_auth_request(peer_id: int, data: Dictionary) -> void:
 	var character_name = data.get("character_name", "Player_%d" % peer_id)
 	var player_color: Color = data.get("player_color", Color(0.27, 0.53, 1.0))
 
+	# Resolve the client-advertised egress budget (#13). 0 (or an old client that
+	# omits the field) falls back to the configured default; then clamp into the
+	# server's [min, max] bounds so a marginal/hostile advert can't starve or
+	# inflate the stream.
+	var advertised := int(data.get("bandwidth_budget_bps", 0))
+	var effective_budget: int = advertised if advertised > 0 else config.default_client_bandwidth_bps
+	effective_budget = clampi(effective_budget, config.min_client_bandwidth_bps, config.max_client_bandwidth_bps)
+
 	# Authenticate player via PlayerManager
 	# TODO: Validate character_id with API server
-	var authenticated := player_manager.authenticate_player(peer_id, character_id, character_name, player_color)
+	var authenticated := player_manager.authenticate_player(peer_id, character_id, character_name, player_color, effective_budget)
 	if not authenticated:
 		return
+
+	# Derive the per-peer snapshot byte cap from the effective budget and the
+	# effective snapshot rate (the same value that seeds snapshot_interval at boot).
+	# Clamped UP by the global max_snapshot_bytes (never raise above today's
+	# behavior) and DOWN by MIN_SNAPSHOT_FLOOR (so pinned removals always fit).
+	var rate := config.snapshot_rate_hz
+	var per_peer_bytes := int(effective_budget / float(maxi(1, rate)))
+	per_peer_bytes = clampi(per_peer_bytes, MIN_SNAPSHOT_FLOOR, config.max_snapshot_bytes)
+	broadcast_service.set_peer_byte_budget(peer_id, per_peer_bytes)
+	var state_resolved = player_manager.get_player(peer_id)
+	if state_resolved:
+		state_resolved.max_snapshot_bytes = per_peer_bytes
+	if config.debug_logging:
+		print("[ServerMain] Peer %d budget=%d B/s -> per-snapshot cap=%d bytes (rate=%d Hz)" % [
+			peer_id, effective_budget, per_peer_bytes, rate
+		])
 
 	# Broadcast PLAYER_INFO to all clients for the newly authenticated player
 	var nm = _get_network_manager()

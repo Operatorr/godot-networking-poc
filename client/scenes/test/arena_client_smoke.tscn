@@ -1,0 +1,50 @@
+[gd_scene load_steps=2 format=3]
+
+[sub_resource type="GDScript" id="GDScript_arena_client_smoke"]
+script/source = "## ArenaClientSmoke - Headless smoke test for client arena setup
+## Exercises ArenaBase._setup_client() and one render frame without needing API/server auth.
+extends Node2D
+
+const ArenaScene := preload(\"res://scenes/shared/arena/arena_base.tscn\")
+
+
+func _ready() -> void:
+	print(\"[ArenaClientSmoke] Starting\")
+
+	var arena := ArenaScene.instantiate()
+	add_child(arena)
+	await get_tree().process_frame
+
+	# The arena scene treats DisplayServer=headless as server mode. Force the
+	# client setup path here while keeping this behavior isolated to the test.
+	arena.is_server = false
+	arena.set_process(true)
+	arena._setup_client()
+	await get_tree().process_frame
+	arena._process(0.016)
+
+	if arena.camera == null:
+		push_error(\"[ArenaClientSmoke] Camera was not created\")
+		get_tree().quit(1)
+		return
+	if arena.local_player == null:
+		push_error(\"[ArenaClientSmoke] Local player was not spawned\")
+		get_tree().quit(1)
+		return
+	if arena.prediction_controller == null:
+		push_error(\"[ArenaClientSmoke] PredictionController was not created\")
+		get_tree().quit(1)
+		return
+
+	var camera_position: Vector2 = arena.camera.position
+	if not camera_position.is_finite():
+		push_error(\"[ArenaClientSmoke] Camera follow position is not finite: %s\" % camera_position)
+		get_tree().quit(1)
+		return
+
+	print(\"[ArenaClientSmoke] Completed camera_position=%s\" % camera_position)
+	get_tree().quit(0)
+"
+
+[node name="ArenaClientSmoke" type="Node2D"]
+script = SubResource("GDScript_arena_client_smoke")

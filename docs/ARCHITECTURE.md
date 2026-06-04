@@ -6,6 +6,18 @@
 
 ---
 
+> **📍 This is the top-level architecture map. For the netcode deep-dive — and the live
+> performance investigation — start at [`../AGENTS.md`](../AGENTS.md) → [`index.md`](index.md) →
+> [`netcode/`](netcode/).**
+>
+> Some numbers in this file have drifted from the code (e.g. the success table below lists a
+> "≥20 Hz" tick gate; the server actually ticks at **30 Hz** and emits snapshots at **20 Hz**
+> live). Targets vs measured reality are reconciled in
+> [`netcode/performance-budgets.md`](netcode/performance-budgets.md). Glossary:
+> [`CONTEXT.md`](CONTEXT.md). When this file and the code disagree, the code wins.
+
+---
+
 ## Table of Contents
 
 1. [POC Goals & Success Criteria](#poc-goals--success-criteria)

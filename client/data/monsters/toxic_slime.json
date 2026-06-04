@@ -1,0 +1,71 @@
+{
+	"id": "toxic_slime",
+	"display_name": "Toxic Slime",
+	"archetype": "ranged_grunt",
+	"faction": "hostile_fauna",
+	"tier": 1,
+	"ai_profile": "ranged_kiter",
+
+	"stats": {
+		"max_health": 50,
+		"move_speed": 120.0,
+		"hitbox_radius": 16.0
+	},
+
+	"perception": {
+		"detection_range": 650.0,
+		"lose_interest_range": 900.0,
+		"retarget_interval": 1.0,
+		"leash_range": 0.0
+	},
+
+	"combat": {
+		"attack_range": 200.0,
+		"flee_distance": 100.0,
+		"preferred_distance": 150.0,
+		"shoot_cooldown": 0.75,
+		"attack_duration": 0.5,
+		"projectile_speed": 300.0,
+		"projectile_damage": 10
+	},
+
+	"movement": {
+		"steering_randomness": 0.15,
+		"avoidance_distance": 50.0
+	},
+
+	"appearance": {
+		"core_color": "#5fbf3f",
+		"glow_color": "#aaff33",
+		"shell_color": "#16240c"
+	},
+
+	"abilities": [
+		{
+			"id": "toxic_spit",
+			"type": "ranged_projectile",
+			"damage": 10,
+			"cooldown": 0.75,
+			"projectile_speed": 300.0,
+			"telegraph": "attack_animation"
+		}
+	],
+
+	"loot": {
+		"xp": 10,
+		"table": "none",
+		"rare_drops": []
+	},
+
+	"spawn": {
+		"weight": 1.0,
+		"biomes": ["arena"],
+		"min_tier": 1
+	},
+
+	"networking": {
+		"server_authoritative": true,
+		"replicated": ["position", "animation", "flags"],
+		"client_predicted": false
+	}
+}

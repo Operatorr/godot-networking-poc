@@ -63,7 +63,7 @@ func _update_monster(monster: MonsterState, delta: float) -> bool:
 
 	# Re-evaluate target periodically, and immediately for idle monsters
 	# so newly spawned enemies do not wait before entering the fight.
-	if monster.target_id == 0 or monster.retarget_timer >= _get_retarget_interval():
+	if monster.target_id == 0 or monster.retarget_timer >= _get_retarget_interval(monster.definition):
 		monster.retarget_timer = 0.0
 		_select_target(monster)
 
@@ -116,8 +116,8 @@ func _select_target(monster: MonsterState) -> void:
 		return
 
 	var dist_sq := monster.position.distance_squared_to(best_player.position)
-	var detection_range := _get_detection_range()
-	var lose_interest_distance := _get_lose_interest_distance()
+	var detection_range := _get_detection_range(monster.definition)
+	var lose_interest_distance := _get_lose_interest_distance(monster.definition)
 	if dist_sq <= detection_range * detection_range:
 		monster.target_id = best_player.entity_id
 	elif dist_sq > lose_interest_distance * lose_interest_distance:
@@ -131,12 +131,13 @@ func _score_target(monster: MonsterState, player: PlayerState) -> float:
 	if player == null or not player.is_alive:
 		return -INF
 
+	var def := monster.definition
 	var distance := monster.position.distance_to(player.position)
-	if distance > _get_lose_interest_distance():
+	if distance > _get_lose_interest_distance(def):
 		return -INF
 
-	var distance_score := clampf(1.0 - distance / _get_detection_range(), 0.0, 1.0) * 45.0
-	var close_threat := clampf(1.0 - distance / maxf(1.0, _get_attack_range()), 0.0, 1.0) * 25.0
+	var distance_score := clampf(1.0 - distance / _get_detection_range(def), 0.0, 1.0) * 45.0
+	var close_threat := clampf(1.0 - distance / maxf(1.0, _get_attack_range(def)), 0.0, 1.0) * 25.0
 	var movement_threat := clampf(player.velocity.length() / GameConstants.PLAYER_SPRINT_SPEED, 0.0, 1.0) * 10.0
 	var shooting_threat := 18.0 if player.is_shoot_held() else 0.0
 	var weakened_bonus := clampf(1.0 - float(player.health) / maxf(1.0, float(player.max_health)), 0.0, 1.0) * 8.0
@@ -151,32 +152,36 @@ func _get_target(monster: MonsterState) -> PlayerState:
 	return _player_manager.get_player_by_entity_id(monster.target_id)
 
 
-func _get_retarget_interval() -> float:
-	return lerpf(GameConstants.MONSTER_RETARGET_INTERVAL * 1.35, 0.28, difficulty)
+# These tuning helpers read each monster's data-driven definition (its base
+# ranges) and apply the global `difficulty` lerp on top. With a definition whose
+# values match the GameConstants defaults, behaviour is identical to before.
+
+func _get_retarget_interval(def: MonsterDefinition) -> float:
+	return lerpf(def.retarget_interval * 1.35, 0.28, difficulty)
 
 
-func _get_detection_range() -> float:
-	return lerpf(GameConstants.MONSTER_DETECTION_RANGE * 0.8, GameConstants.MONSTER_LOSE_INTEREST_DISTANCE, difficulty)
+func _get_detection_range(def: MonsterDefinition) -> float:
+	return lerpf(def.detection_range * 0.8, def.lose_interest_range, difficulty)
 
 
-func _get_lose_interest_distance() -> float:
-	return lerpf(GameConstants.MONSTER_LOSE_INTEREST_DISTANCE * 0.85, GameConstants.MONSTER_LOSE_INTEREST_DISTANCE * 1.25, difficulty)
+func _get_lose_interest_distance(def: MonsterDefinition) -> float:
+	return lerpf(def.lose_interest_range * 0.85, def.lose_interest_range * 1.25, difficulty)
 
 
-func _get_attack_range() -> float:
+func _get_attack_range(def: MonsterDefinition) -> float:
 	return lerpf(
-		GameConstants.MONSTER_ATTACK_RANGE,
+		def.attack_range,
 		minf(GameConstants.PROJECTILE_MAX_DISTANCE * 0.72, 540.0),
 		difficulty
 	)
 
 
-func _get_flee_distance() -> float:
-	return lerpf(GameConstants.MONSTER_FLEE_DISTANCE * 0.75, GameConstants.MONSTER_FLEE_DISTANCE * 1.75, difficulty)
+func _get_flee_distance(def: MonsterDefinition) -> float:
+	return lerpf(def.flee_distance * 0.75, def.flee_distance * 1.75, difficulty)
 
 
-func _get_preferred_distance() -> float:
-	return lerpf(GameConstants.MONSTER_PREFERRED_DISTANCE, 340.0, difficulty)
+func _get_preferred_distance(def: MonsterDefinition) -> float:
+	return lerpf(def.preferred_distance, 340.0, difficulty)
 
 
 # =============================================================================
@@ -207,12 +212,12 @@ func _process_chase_state(monster: MonsterState, delta: float) -> void:
 	var distance := to_target.length()
 
 	# Check if player is too close (flee behavior)
-	if distance < _get_flee_distance():
+	if distance < _get_flee_distance(monster.definition):
 		_transition_to_state(monster, AIState.FLEE)
 		return
 
 	# Check if in attack range
-	if distance <= _get_attack_range():
+	if distance <= _get_attack_range(monster.definition):
 		_transition_to_state(monster, AIState.ATTACK)
 		return
 
@@ -239,12 +244,12 @@ func _process_attack_state(monster: MonsterState, delta: float) -> bool:
 	var distance := to_target.length()
 
 	# Check if player rushed too close (flee)
-	if distance < _get_flee_distance() * (0.75 + difficulty * 0.25):
+	if distance < _get_flee_distance(monster.definition) * (0.75 + difficulty * 0.25):
 		_transition_to_state(monster, AIState.FLEE)
 		return false
 
 	# Check if target moved out of range (with hysteresis to prevent oscillation)
-	if distance > _get_attack_range() * 1.2:
+	if distance > _get_attack_range(monster.definition) * 1.2:
 		_transition_to_state(monster, AIState.CHASE)
 		return false
 
@@ -258,12 +263,12 @@ func _process_attack_state(monster: MonsterState, delta: float) -> bool:
 		spawned = _spawn_monster_projectile(monster, _predictive_aim_direction(monster, target))
 		if spawned:
 			monster.start_shoot_cooldown()
-			monster.attack_timer = GameConstants.MONSTER_ATTACK_DURATION
+			monster.attack_timer = monster.definition.attack_duration
 
 	# After attack duration, consider resuming chase
 	if monster.attack_timer <= 0.0 and monster.shoot_cooldown <= 0.0:
 		# Stay in attack if still in range, otherwise chase
-		if distance > _get_attack_range():
+		if distance > _get_attack_range(monster.definition):
 			_transition_to_state(monster, AIState.CHASE)
 
 	return spawned
@@ -281,8 +286,8 @@ func _process_flee_state(monster: MonsterState, delta: float) -> void:
 	var distance := to_target.length()
 
 	# If reached preferred distance, switch to attack or chase
-	if distance >= _get_preferred_distance():
-		if distance <= _get_attack_range():
+	if distance >= _get_preferred_distance(monster.definition):
+		if distance <= _get_attack_range(monster.definition):
 			_transition_to_state(monster, AIState.ATTACK)
 		else:
 			_transition_to_state(monster, AIState.CHASE)
@@ -335,11 +340,11 @@ func _apply_steering(monster: MonsterState, desired_direction: Vector2) -> Vecto
 		return Vector2.ZERO
 
 	# Add random steering offset for natural movement
-	var randomness := GameConstants.MONSTER_STEERING_RANDOMNESS * lerpf(1.25, 0.35, difficulty)
+	var randomness := monster.definition.steering_randomness * lerpf(1.25, 0.35, difficulty)
 	var steered := desired_direction + monster.steering_offset * randomness
 
 	# Simple obstacle avoidance - check map boundaries
-	var future_pos := monster.position + steered * GameConstants.MONSTER_AVOIDANCE_DISTANCE
+	var future_pos := monster.position + steered * monster.definition.avoidance_distance
 	if not GameConstants.is_within_bounds(future_pos):
 		# Reflect direction away from boundary
 		if future_pos.x < GameConstants.MAP_MIN.x or future_pos.x > GameConstants.MAP_MAX.x:
@@ -347,7 +352,7 @@ func _apply_steering(monster: MonsterState, desired_direction: Vector2) -> Vecto
 		if future_pos.y < GameConstants.MAP_MIN.y or future_pos.y > GameConstants.MAP_MAX.y:
 			steered.y *= -1
 
-	if GameConstants.circle_intersects_obstacle(future_pos, GameConstants.MONSTER_HITBOX_RADIUS):
+	if GameConstants.circle_intersects_obstacle(future_pos, monster.definition.hitbox_radius):
 		steered = _find_clear_steering_direction(monster, steered.normalized())
 
 	return steered.normalized()
@@ -357,11 +362,12 @@ func _apply_steering(monster: MonsterState, desired_direction: Vector2) -> Vecto
 func _find_clear_steering_direction(monster: MonsterState, desired_direction: Vector2) -> Vector2:
 	var best_direction := -desired_direction
 	var best_clearance := -1.0
+	var avoidance_distance := monster.definition.avoidance_distance
 	for offset in [PI / 4.0, -PI / 4.0, PI / 2.0, -PI / 2.0, PI]:
 		var candidate := desired_direction.rotated(offset).normalized()
-		var probe := monster.position + candidate * GameConstants.MONSTER_AVOIDANCE_DISTANCE
-		var clearance := 0.0 if GameConstants.circle_intersects_obstacle(probe, GameConstants.MONSTER_HITBOX_RADIUS) else 1.0
-		clearance += clampf(probe.distance_to(monster.position) / GameConstants.MONSTER_AVOIDANCE_DISTANCE, 0.0, 1.0)
+		var probe := monster.position + candidate * avoidance_distance
+		var clearance := 0.0 if GameConstants.circle_intersects_obstacle(probe, monster.definition.hitbox_radius) else 1.0
+		clearance += clampf(probe.distance_to(monster.position) / avoidance_distance, 0.0, 1.0)
 		if clearance > best_clearance:
 			best_clearance = clearance
 			best_direction = candidate
@@ -383,14 +389,14 @@ func _move_monster(monster: MonsterState, delta: float) -> void:
 		monster.entity_flags &= ~PacketTypes.ENTITY_FLAG_MOVING
 		return
 
-	var velocity := monster.move_direction * GameConstants.MONSTER_SPEED
+	var velocity := monster.move_direction * monster.definition.move_speed
 	var new_position := monster.position + velocity * delta
 
 	# Resolve against map boundaries and arena obstacles
 	monster.position = GameConstants.move_with_obstacle_collision(
 		monster.position,
 		new_position,
-		GameConstants.MONSTER_HITBOX_RADIUS
+		monster.definition.hitbox_radius
 	)
 
 	# Update entity flags
@@ -410,7 +416,7 @@ func _combat_move_direction(monster: MonsterState, target: PlayerState, distance
 	var toward := to_target.normalized()
 	var away := -toward
 	var strafe := Vector2(-toward.y, toward.x) * _get_strafe_sign(monster)
-	var preferred := _get_preferred_distance()
+	var preferred := _get_preferred_distance(monster.definition)
 	var radial := Vector2.ZERO
 
 	if distance < preferred * 0.82:
@@ -432,7 +438,7 @@ func _predictive_aim_direction(monster: MonsterState, target: PlayerState) -> Ve
 		monster.position,
 		target.position,
 		target.velocity,
-		GameConstants.MONSTER_PROJECTILE_SPEED
+		monster.definition.projectile_speed
 	)
 	var direction := predicted - monster.position
 	if direction.is_zero_approx():
@@ -482,7 +488,7 @@ func _spawn_monster_projectile(monster: MonsterState, direction: Vector2) -> boo
 		return false
 
 	# Spawn position slightly in front of monster to avoid self-collision
-	var spawn_offset := direction * (GameConstants.MONSTER_HITBOX_RADIUS + GameConstants.PROJECTILE_RADIUS + 2.0)
+	var spawn_offset := direction * (monster.definition.hitbox_radius + GameConstants.PROJECTILE_RADIUS + 2.0)
 	var spawn_position := monster.position + spawn_offset
 
 	var projectile := _projectile_manager.spawn_projectile(
@@ -492,8 +498,8 @@ func _spawn_monster_projectile(monster: MonsterState, direction: Vector2) -> boo
 	)
 
 	if projectile != null:
-		# Override speed for monster projectiles (slower than player projectiles)
-		projectile.speed = GameConstants.MONSTER_PROJECTILE_SPEED
+		# Override speed for monster projectiles (from the monster's definition)
+		projectile.speed = monster.definition.projectile_speed
 
 		if debug_logging:
 			print("[MonsterAI] Monster %d fired projectile toward %s" % [

@@ -304,6 +304,18 @@ GAME_SERVER_HOST=localhost
 GAME_SERVER_PORT=8081
 ```
 
+Seed/update that local login user in PostgreSQL:
+
+```bash
+./scripts/seed_test_user.sh
+```
+
+If the user already has a character and you want to test character creation again:
+
+```bash
+./scripts/seed_test_user.sh --reset-character
+```
+
 ### Test Scenes
 
 | Scene | Purpose |

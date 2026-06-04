@@ -8,7 +8,17 @@ extends RefCounted
 # NETWORK SIMULATION
 # =============================================================================
 
-## Authoritative server simulation rate.
+## Authoritative server simulation rate. THE single client-side authority for
+## input/prediction/interpolation cadence. game_manager.gd applies this to
+## Engine.physics_ticks_per_second at startup so the client _physics_process
+## clock follows it (project.godot physics_ticks_per_second is only a fallback).
+##
+## To run an HONEST 30-vs-60 Hz trial you must move BOTH knobs together:
+##   1. set this constant to 60.0 (drives the client clock + INPUT_SEND_INTERVAL)
+##   2. set server_config.json tick_rate to 60 (drives the server sim; JSON wins
+##      at runtime over server_config.gd's GameConstants-derived default)
+## and optionally server_config.json snapshot_rate_hz (0 = follow tick = 60).
+## Revert = set all back to 30. See docs/netcode/perf-notes/tick-rate-30-vs-60.md.
 const SERVER_TICK_RATE := 30.0
 
 ## Authoritative server simulation interval in seconds.
@@ -17,11 +27,22 @@ const SERVER_TICK_INTERVAL := 1.0 / SERVER_TICK_RATE
 ## Remote entities are rendered this many authoritative ticks behind the newest
 ## snapshot. Server-side lag compensation rewinds monsters by the same amount
 ## for player projectile collision checks.
+## TICK-DERIVED: wall-clock meaning halves at 60 Hz (66.7 ms @30 -> 33.3 ms @60).
+## Adaptive (interp seeds from SERVER_TICK_INTERVAL) so this is mostly fine, but
+## the remote-smoothness margin shrinks at 60 Hz. See perf-notes/tick-rate-30-vs-60.md.
 const REMOTE_ENTITY_RENDER_DELAY_TICKS := 2
 
 ## PvE-only projectile lag compensation cap. PvP should use a lower cap and
 ## stricter validation when player-vs-player projectile compensation is added.
+## TICK-DERIVED: server_main computes max_compensation_seconds = TICKS / tick_rate,
+## so the rewind window auto-scales from 200 ms @30 to 100 ms @60 (tighter — PvE
+## hits get slightly harder to land at 60 Hz). See perf-notes/tick-rate-30-vs-60.md.
 const MAX_PVE_PROJECTILE_COMPENSATION_TICKS := 6
+
+## PvP-only cap — stricter than PvE so you cannot "shoot around corners" a peeker
+## who has already broken line of sight. ~133 ms at 30 Hz.
+## TICK-DERIVED: like the PvE cap, auto-scales to ~66.7 ms at 60 Hz.
+const MAX_PVP_PROJECTILE_COMPENSATION_TICKS := 4
 
 
 # =============================================================================

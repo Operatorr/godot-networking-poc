@@ -118,10 +118,7 @@ func _process(delta: float) -> void:
 				GameConstants.MONSTER_MAX_COUNT
 			)
 
-	# Camera follows local player
 	if camera and local_player and is_instance_valid(local_player):
-		camera.position = local_player.position
-
 		# Camera zoom on sprint
 		var target_zoom := CAMERA_ZOOM_DEFAULT
 		if Input.is_action_pressed("sprint") and local_player.movement_state == Player.MovementState.WALKING:
@@ -136,6 +133,25 @@ func _process(delta: float) -> void:
 
 	# Invulnerability shield visual
 	_update_invuln_shield()
+
+
+func _snap_camera_to(target_position: Vector2) -> void:
+	if camera == null:
+		return
+
+	camera.position = target_position
+	camera.reset_smoothing()
+	camera.reset_physics_interpolation()
+
+
+func _on_local_player_visual_position_updated(target_position: Vector2, is_discontinuous: bool) -> void:
+	if camera == null:
+		return
+
+	if is_discontinuous:
+		_snap_camera_to(target_position)
+	else:
+		camera.position = target_position
 
 
 ## Set up client-side systems
@@ -155,9 +171,17 @@ func _setup_client() -> void:
 	camera = Camera2D.new()
 	camera.name = "ArenaCamera"
 	camera.zoom = Vector2(1.5, 1.5)
-	camera.position_smoothing_enabled = true
-	camera.position_smoothing_speed = 10.0
+	# The camera follows an already-interpolated target path. Camera2D position
+	# smoothing is forced to physics mode when physics interpolation is enabled,
+	# which adds warning noise and extra follow lag here.
+	camera.position_smoothing_enabled = false
+	# Match the callback Godot requires under physics interpolation before the
+	# camera enters the tree, avoiding the engine-side override warning.
+	camera.process_callback = Camera2D.CAMERA2D_PROCESS_PHYSICS
 	add_child(camera)
+	# Camera position is written on physics ticks by PredictionController, so let
+	# Godot interpolate Camera2D between those physics states on render frames.
+	camera.set_physics_interpolation_mode(Node.PHYSICS_INTERPOLATION_MODE_ON)
 
 	# Create ScreenEffects
 	screen_effects = ScreenEffects.new()
@@ -218,6 +242,9 @@ func _spawn_local_player(entity_container: Node2D) -> void:
 	entity_container.add_child(local_player)
 	local_player.set_input_enabled(false)
 	local_player.set_local_projectile_spawning_enabled(false)
+	# PredictionController is the sole mover for the networked local player; stop
+	# Player.gd from also running move_and_slide (kills the double-movement jitter).
+	local_player.prediction_owns_movement = true
 
 	# Connect local player signals for audio
 	local_player.shot_fired.connect(_on_local_player_shot)
@@ -227,6 +254,8 @@ func _spawn_local_player(entity_container: Node2D) -> void:
 	prediction_controller.name = "PredictionController"
 	prediction_controller.interpolation_controller = interpolation_controller
 	prediction_controller.projectile_sync_debug_logging = projectile_sync_debug_logging
+	prediction_controller.visual_position_updated.connect(_on_local_player_visual_position_updated)
+	prediction_controller.shoot_predicted.connect(_on_local_shoot_predicted)
 	local_player.add_child(prediction_controller)
 
 	# Set up prediction in pending mode. Entity ID and spawn position come from server state.
@@ -234,7 +263,7 @@ func _spawn_local_player(entity_container: Node2D) -> void:
 
 	# Camera starts at player position
 	if camera:
-		camera.position = local_player.position
+		_snap_camera_to(local_player.position)
 
 	print("[ArenaBase] Local player spawned pending authoritative server state")
 
@@ -373,7 +402,7 @@ func _handle_player_info(data: Dictionary) -> void:
 				local_player.visible = true
 				local_player.set_input_enabled(true)
 			if camera:
-				camera.position = server_position
+				_snap_camera_to(server_position)
 			print("[ArenaBase] Local player authority synced from PLAYER_INFO at %s" % server_position)
 
 		# Clean up any accidentally spawned remote player for our entity
@@ -417,7 +446,7 @@ func _handle_state_update_for_local_player(data: Dictionary) -> void:
 				local_player.visible = true
 				local_player.set_input_enabled(true)
 				if camera:
-					camera.position = server_position
+					_snap_camera_to(server_position)
 				print("[ArenaBase] Local player authority synced at %s" % server_position)
 			# Only sync alive/invulnerable state when this packet actually carries
 			# the flags field. Position-only deltas decode with flags=0, which would
@@ -496,6 +525,8 @@ func _handle_respawn_event(data: Dictionary) -> void:
 		if prediction_controller:
 			prediction_controller.force_sync(respawn_pos)
 			prediction_controller.set_prediction_enabled(true)
+		if camera:
+			_snap_camera_to(respawn_pos)
 
 		# Hide death screen
 		if death_screen:
@@ -634,24 +665,13 @@ func _log_local_projectile_fired_event(data: Dictionary) -> void:
 	])
 
 
-func _play_local_projectile_fired_feedback(data: Dictionary) -> void:
-	var event_data: Dictionary = data.get("event_data", {})
-	var spawn_pos: Vector2 = event_data.get("position", Vector2.ZERO)
-	var direction := Vector2.RIGHT
-
-	if local_player and is_instance_valid(local_player):
-		var from_player := spawn_pos - local_player.global_position
-		if from_player.length_squared() > 0.01:
-			direction = from_player.normalized()
-		else:
-			direction = local_player.last_aim_direction
-
-	var audio := _get_audio_manager()
-	if audio:
-		audio.play_player_shoot()
-
-	var flash := ParticleEffects.create_muzzle_flash(spawn_pos, direction)
-	_add_effect_to_arena(flash)
+## Server PROJECTILE_FIRED arrival for the LOCAL player. Cosmetics (muzzle flash,
+## tracer, audio) are now driven instantly off the predicted shoot edge
+## (_on_local_shoot_predicted), so this path intentionally does NOT redraw a flash
+## or replay audio — that would double-fire one trigger pull. Projectile-source
+## registration and logging happen in _handle_projectile_fired_event.
+func _play_local_projectile_fired_feedback(_data: Dictionary) -> void:
+	pass
 
 
 ## Handle PvP kill event (for kill feed)
@@ -720,7 +740,10 @@ func _handle_kill_event(data: Dictionary) -> void:
 			GameManager.update_stat("deaths", 1)
 		if kill_feed:
 			var victim_name := EntityNameCache.get_entity_name(victim_id)
-			kill_feed.add_kill("Monster", victim_name)
+			# Display name comes from the monster catalogue (data-driven). The wire
+			# carries no per-monster archetype yet, so this is the default type.
+			var monster_name := MonsterDatabase.get_shared().get_default_definition().display_name
+			kill_feed.add_kill(monster_name, victim_name)
 
 
 ## Handle leaderboard update
@@ -732,6 +755,24 @@ func _handle_leaderboard_update(data: Dictionary) -> void:
 	# Update server status player count from leaderboard entry count
 	if server_status:
 		server_status.update_player_count(entries.size(), SERVER_STATUS_MAX_PLAYERS)
+
+
+## Immediate cosmetic feedback for the local player's predicted shoot edge.
+## Cosmetic only — draws a muzzle flash + tracer and plays audio the instant the
+## trigger is pulled, without waiting for the server PROJECTILE_FIRED round-trip.
+## Does NOT spawn a Projectile and does NOT touch prediction state.
+func _on_local_shoot_predicted(muzzle: Vector2, dir: Vector2) -> void:
+	var audio := _get_audio_manager()
+	if audio:
+		audio.play_player_shoot()
+
+	var flash := ParticleEffects.create_muzzle_flash(muzzle, dir)
+	_add_effect_to_arena(flash)
+
+	var tracer_color: Color = GameManager.player_data.get("player_color", Color(0.27, 0.53, 1.0))
+	var tracer_end := muzzle + dir * GameConstants.PROJECTILE_MAX_DISTANCE * 0.4
+	var tracer := ParticleEffects.create_tracer(muzzle, tracer_end, tracer_color)
+	_add_effect_to_arena(tracer)
 
 
 ## Handle local player shooting (for audio + effects)

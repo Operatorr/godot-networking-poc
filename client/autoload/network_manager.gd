@@ -24,7 +24,8 @@ enum MessageType {
 	REQUEST_FULL_STATE = 8, ## Client -> Server: Request full state sync (TASK-021)
 	RESPAWN_REQUEST = 9,   ## Client -> Server: Request respawn after death
 	SERVER_METRICS = 10,   ## Server -> Client: Server performance metrics (1/sec)
-	BATCH = 11             ## Server -> Client: Multiple packets in one frame (TASK-066)
+	BATCH = 11,            ## Server -> Client: Multiple packets in one frame (TASK-066)
+	BASELINE_ACK = 12      ## Client -> Server: ack a received Baseline tick (#14, kept in lockstep with PacketTypes.Type)
 }
 
 ## Signals - Client mode
@@ -39,16 +40,24 @@ signal server_client_connected(peer_id: int)
 signal server_client_disconnected(peer_id: int)
 signal server_client_message(peer_id: int, message_type: int, data: Dictionary)
 
+## Transport seam (roadmap #12). The concrete socket layer (WebSocketPeer /
+## TCPServer / TLSOptions) lives entirely below this; NetworkManager keeps all
+## protocol/encode/decode/batch/heartbeat/clock/reconnect logic and stats above
+## it. Preloaded so `class_name Transport`/`WebSocketTransport` resolve reliably
+## during headless startup (AGENTS.md preload rule).
+const Transport := preload("res://autoload/transport/transport.gd")
+const WebSocketTransport := preload("res://autoload/transport/websocket_transport.gd")
+
 ## Runtime mode detection
 var is_server: bool = false
 
-## WebSocket client
-var ws_client: WebSocketPeer = null
+## Active transport. Instantiated in _ready() as a WebSocketTransport with the
+## role matching is_server; addressed by opaque int peer_id.
+var _transport: Transport = null
 
-## WebSocket server (for server mode)
-var ws_server: TCPServer = null
-var connected_peers: Dictionary = {}  # peer_id -> WebSocketPeer
-var peer_connection_announced: Dictionary = {}  # peer_id -> true after WebSocket is open and ServerMain was notified
+## peer_id -> true after the link is open and ServerMain was notified. Announce
+## bookkeeping stays above the seam.
+var peer_connection_announced: Dictionary = {}
 
 ## Server-side heartbeat tracking (per peer)
 var peer_last_heartbeat: Dictionary = {}  # peer_id -> float (timestamp)
@@ -68,6 +77,11 @@ const BATCH_MAX_PACKETS := 255
 ## BATCH payload is [u8 count][inner packets...], and the packet header stores
 ## payload length as u16. Leave one byte for the count field.
 const BATCH_MAX_INNER_BYTES := PacketTypes.MAX_PACKET_SIZE - 1
+
+## Default egress budget the client advertises to the server in CONNECT_AUTH
+## (bytes/sec, ~960 kbit/s). No auto-measure this pass; the server clamps this
+## to [min, max] and derives a per-peer snapshot byte cap from it.
+const DEFAULT_CLIENT_BUDGET := 120000
 
 ## Connection state
 var current_state: ConnectionState = ConnectionState.DISCONNECTED
@@ -127,6 +141,9 @@ func _ready() -> void:
 
 	print("[NetworkManager] Initializing in %s mode..." % ("SERVER" if is_server else "CLIENT"))
 
+	_transport = WebSocketTransport.new()
+	_transport.role = (Transport.Role.SERVER if is_server else Transport.Role.CLIENT)
+
 	if is_server:
 		_initialize_server()
 	else:
@@ -141,8 +158,7 @@ func _initialize_server() -> void:
 	server_port = config.port
 
 	print("[NetworkManager] Starting WebSocket server on port %d..." % server_port)
-	ws_server = TCPServer.new()
-	var error = ws_server.listen(server_port)
+	var error = _transport.server_listen(server_port)
 	if error != OK:
 		push_error("[NetworkManager] Failed to start server: %d" % error)
 		return
@@ -172,43 +188,32 @@ func _process(delta: float) -> void:
 
 ## Process server mode
 func _process_server(_delta: float) -> void:
-	if ws_server == null:
+	if _transport == null:
 		return
 
-	# Accept new connections
-	if ws_server.is_connection_available():
-		var peer = ws_server.take_connection()
-		var ws_peer = WebSocketPeer.new()
-		ws_peer.accept_stream(peer)
-		var peer_id = randi()  # Generate unique peer ID
-		connected_peers[peer_id] = ws_peer
-		print("[NetworkManager] Server: New client connecting (ID: %d)" % peer_id)
-
-	# Poll all connected peers
-	for peer_id in connected_peers.keys():
-		var ws_peer: WebSocketPeer = connected_peers[peer_id]
-		ws_peer.poll()
-
-		var state = ws_peer.get_ready_state()
-		if state == WebSocketPeer.STATE_OPEN:
-			if not peer_connection_announced.has(peer_id):
-				peer_connection_announced[peer_id] = true
-				peer_last_heartbeat[peer_id] = Time.get_ticks_msec() / 1000.0
-				print("[NetworkManager] Server: New client connected (ID: %d)" % peer_id)
-				server_client_connected.emit(peer_id)
-
-			# Receive messages from this peer
-			while ws_peer.get_available_packet_count() > 0:
-				_handle_server_incoming_packet(peer_id, ws_peer)
-		elif state == WebSocketPeer.STATE_CLOSED:
-			var was_announced := peer_connection_announced.has(peer_id)
-			print("[NetworkManager] Server: Client %d disconnected" % peer_id)
-			connected_peers.erase(peer_id)
-			peer_connection_announced.erase(peer_id)
-			peer_last_heartbeat.erase(peer_id)
-			peer_bytes_sent.erase(peer_id)
-			if was_announced:
-				server_client_disconnected.emit(peer_id)
+	# Accept new connections + poll all peers below the seam; consume the
+	# normalized events here, preserving per-peer FIFO order.
+	_transport.server_poll()
+	for ev in _transport.server_take_events():
+		match ev.get("kind", ""):
+			"connected":
+				var peer_id: int = ev["peer_id"]
+				if not peer_connection_announced.has(peer_id):
+					peer_connection_announced[peer_id] = true
+					peer_last_heartbeat[peer_id] = Time.get_ticks_msec() / 1000.0
+					print("[NetworkManager] Server: New client connected (ID: %d)" % peer_id)
+					server_client_connected.emit(peer_id)
+			"packet":
+				_handle_server_incoming_packet(ev["peer_id"], ev["bytes"])
+			"closed":
+				var peer_id: int = ev["peer_id"]
+				var was_announced := peer_connection_announced.has(peer_id)
+				print("[NetworkManager] Server: Client %d disconnected" % peer_id)
+				peer_connection_announced.erase(peer_id)
+				peer_last_heartbeat.erase(peer_id)
+				peer_bytes_sent.erase(peer_id)
+				if was_announced:
+					server_client_disconnected.emit(peer_id)
 
 	# Check for heartbeat timeouts
 	var current_time = Time.get_ticks_msec() / 1000.0
@@ -228,18 +233,18 @@ func _process_client(delta: float) -> void:
 
 ## Process when connected
 func _process_connected(delta: float) -> void:
-	if ws_client == null:
+	if _transport == null:
 		return
 
-	# Poll WebSocket
-	ws_client.poll()
-	var state = ws_client.get_ready_state()
+	# Poll the transport
+	_transport.client_poll()
+	var state = _transport.client_state()
 
 	# Handle state changes
-	if state == WebSocketPeer.STATE_OPEN:
-		# Receive messages
-		while ws_client.get_available_packet_count() > 0:
-			_handle_incoming_packet()
+	if state == Transport.LinkState.OPEN:
+		# Receive messages (FIFO order preserved by the seam drain).
+		for buf in _transport.client_take_packets():
+			_handle_incoming_packet(buf)
 
 		# Send heartbeat
 		heartbeat_timer += delta
@@ -254,14 +259,13 @@ func _process_connected(delta: float) -> void:
 			heartbeat_timeout.emit()
 			disconnect_from_server("Heartbeat timeout")
 
-	elif state == WebSocketPeer.STATE_CLOSING:
+	elif state == Transport.LinkState.CLOSING:
 		print("[NetworkManager] Connection closing...")
 
-	elif state == WebSocketPeer.STATE_CLOSED:
-		var code = ws_client.get_close_code()
-		var reason = ws_client.get_close_reason()
-		print("[NetworkManager] Connection closed - Code: %d, Reason: %s" % [code, reason])
-		_on_connection_closed(reason)
+	elif state == Transport.LinkState.CLOSED:
+		var close_info := _transport.client_close_info()
+		print("[NetworkManager] Connection closed - Code: %d, Reason: %s" % [close_info.get("code", 0), close_info.get("reason", "")])
+		_on_connection_closed(close_info.get("reason", ""))
 
 ## Process when reconnecting
 func _process_reconnecting(delta: float) -> void:
@@ -291,11 +295,8 @@ func connect_to_server(url: String, token: String = "", is_reconnect: bool = fal
 
 	print("[NetworkManager] Connecting to %s..." % url)
 
-	# Create WebSocket client
-	ws_client = WebSocketPeer.new()
-
-	# Connect to server
-	var error = ws_client.connect_to_url(url, TLSOptions.client())
+	# Create + connect the client transport
+	var error = _transport.client_connect(url)
 
 	if error != OK:
 		print("[NetworkManager] Failed to initiate connection: %d" % error)
@@ -303,23 +304,20 @@ func connect_to_server(url: String, token: String = "", is_reconnect: bool = fal
 	else:
 		await _wait_for_connection(attempt_id, is_reconnect)
 
-## Poll until the WebSocket opens, closes, or times out.
+## Poll until the link opens, closes, or times out.
 func _wait_for_connection(attempt_id: int, is_reconnect: bool) -> void:
-	if ws_client == null:
-		return
-
 	var elapsed := 0.0
 	while elapsed < connection_timeout_seconds:
-		if attempt_id != _connection_attempt_id or ws_client == null:
+		if attempt_id != _connection_attempt_id:
 			return
 
-		ws_client.poll()
-		var state = ws_client.get_ready_state()
+		_transport.client_poll()
+		var state = _transport.client_state()
 
-		if state == WebSocketPeer.STATE_OPEN:
+		if state == Transport.LinkState.OPEN:
 			_complete_connection()
 			return
-		elif state == WebSocketPeer.STATE_CLOSED:
+		elif state == Transport.LinkState.CLOSED:
 			_fail_connection_attempt(_format_connection_error(server_url), is_reconnect)
 			return
 
@@ -349,9 +347,8 @@ func _complete_connection() -> void:
 func _fail_connection_attempt(error_message: String, is_reconnect: bool) -> void:
 	print("[NetworkManager] Connection failed or still pending")
 	current_state = ConnectionState.ERROR
-	if ws_client != null:
-		ws_client.close()
-		ws_client = null
+	_transport.client_close(1000, "")
+	_transport.client_reset()
 
 	if is_reconnect or _had_successful_connection:
 		_schedule_reconnect()
@@ -393,7 +390,8 @@ func send_auth_handshake() -> void:
 		"character_id": character_id,
 		"character_name": character_name,
 		"region": region,
-		"player_color": player_color
+		"player_color": player_color,
+		"bandwidth_budget_bps": _get_client_bandwidth_budget()
 	}
 	if send_message(MessageType.CONNECT_AUTH, auth_data):
 		_auth_handshake_sent = true
@@ -401,9 +399,24 @@ func send_auth_handshake() -> void:
 	else:
 		print("[NetworkManager] Authentication handshake send failed; retry remains allowed")
 
+
+## Resolve the egress budget (bytes/sec) the client advertises in CONNECT_AUTH.
+## Sourced from GameManager.player_data (no auto-measure this pass); 0 there means
+## "let the server decide" and we forward the configured default instead. Returning
+## a non-zero value keeps the wire field meaningful; the server still clamps it.
+func _get_client_bandwidth_budget() -> int:
+	var budget := DEFAULT_CLIENT_BUDGET
+	var game_mgr = get_tree().root.get_node_or_null("GameManager")
+	if game_mgr:
+		budget = int(game_mgr.player_data.get("bandwidth_budget_bps", DEFAULT_CLIENT_BUDGET))
+	if budget <= 0:
+		budget = DEFAULT_CLIENT_BUDGET
+	return budget
+
+
 ## Disconnect from server
 func disconnect_from_server(reason: String = "User disconnect") -> void:
-	if ws_client == null or current_state == ConnectionState.DISCONNECTED:
+	if _transport.client_state() == Transport.LinkState.CLOSED or current_state == ConnectionState.DISCONNECTED:
 		return
 
 	print("[NetworkManager] Disconnecting: %s" % reason)
@@ -411,18 +424,15 @@ func disconnect_from_server(reason: String = "User disconnect") -> void:
 	# Send disconnect message
 	send_message(MessageType.DISCONNECT, {"reason": _get_disconnect_reason_code(reason)})
 
-	# Close WebSocket
-	ws_client.close(1000, reason)
+	# Close the link
+	_transport.client_close(1000, reason)
 	current_state = ConnectionState.DISCONNECTED
 
 	disconnected_from_server.emit(reason)
 
-## Handle incoming packet (client receiving from server)
-func _handle_incoming_packet() -> void:
-	if ws_client == null:
-		return
-
-	var packet = ws_client.get_packet()
+## Handle incoming packet (client receiving from server). The raw buffer is
+## drained from the transport seam and passed in by _process_connected.
+func _handle_incoming_packet(packet: PackedByteArray) -> void:
 	stats.packets_received += 1
 	stats.bytes_received += packet.size()
 
@@ -473,9 +483,9 @@ func _dispatch_batch_buffer(packet: PackedByteArray) -> void:
 		_dispatch_received_buffer(packet.slice(pos, pos + inner_size))
 		pos += inner_size
 
-## Handle incoming packet from client (server receiving)
-func _handle_server_incoming_packet(peer_id: int, ws_peer: WebSocketPeer) -> void:
-	var packet = ws_peer.get_packet()
+## Handle incoming packet from client (server receiving). The raw buffer is
+## drained from the transport seam and passed in by _process_server.
+func _handle_server_incoming_packet(peer_id: int, packet: PackedByteArray) -> void:
 	stats.packets_received += 1
 	stats.bytes_received += packet.size()
 
@@ -502,7 +512,7 @@ func _handle_server_incoming_packet(peer_id: int, ws_peer: WebSocketPeer) -> voi
 			return
 		MessageType.DISCONNECT:
 			print("[NetworkManager] Server: Disconnect request from peer %d" % peer_id)
-			ws_peer.close(1000, "Client disconnect")
+			_transport.server_close_peer(peer_id, 1000, "Client disconnect")
 			return
 
 	# Emit signal for ServerMain to handle game-related messages
@@ -512,11 +522,7 @@ func _handle_server_incoming_packet(peer_id: int, ws_peer: WebSocketPeer) -> voi
 ## open (see begin_batch / flush_batches), the encoded packet is queued and
 ## emitted as part of a single BATCH WebSocket frame at flush time (TASK-066).
 func send_to_client(peer_id: int, message_type: MessageType, data: Dictionary = {}) -> void:
-	if not connected_peers.has(peer_id):
-		return
-
-	var ws_peer: WebSocketPeer = connected_peers[peer_id]
-	if ws_peer.get_ready_state() != WebSocketPeer.STATE_OPEN:
+	if not _transport.server_peer_open(peer_id):
 		return
 
 	var packet = _encode_packet(message_type, data)
@@ -533,7 +539,7 @@ func send_to_client(peer_id: int, message_type: MessageType, data: Dictionary = 
 
 ## Send message from server to all connected clients
 func broadcast_to_clients(message_type: MessageType, data: Dictionary = {}) -> void:
-	for peer_id in connected_peers.keys():
+	for peer_id in _transport.server_peer_ids():
 		send_to_client(peer_id, message_type, data)
 
 
@@ -635,12 +641,9 @@ func _record_bytes_for_type(message_type: int, byte_count: int) -> void:
 
 
 func _send_raw_to_peer(peer_id: int, packet: PackedByteArray) -> bool:
-	var ws_peer: WebSocketPeer = connected_peers.get(peer_id)
-	if ws_peer == null or ws_peer.get_ready_state() != WebSocketPeer.STATE_OPEN:
-		return false
-
-	var error = ws_peer.send(packet)
-	if error == OK:
+	# Raw write goes through the seam; stats/peer_bytes_sent accounting stays here
+	# (fix #13 per-client budget + shipped per-channel metrics depend on it).
+	if _transport.server_send(peer_id, packet):
 		stats.packets_sent += 1
 		stats.bytes_sent += packet.size()
 		if not peer_bytes_sent.has(peer_id):
@@ -648,30 +651,27 @@ func _send_raw_to_peer(peer_id: int, packet: PackedByteArray) -> bool:
 		peer_bytes_sent[peer_id] += packet.size()
 		return true
 
-	print("[NetworkManager] Server: Failed to send packet to peer %d: %d" % [peer_id, error])
+	print("[NetworkManager] Server: Failed to send packet to peer %d" % peer_id)
 	return false
 
 
 ## Disconnect a client from server
 func disconnect_client(peer_id: int, reason: String = "Server disconnect") -> void:
-	if not connected_peers.has(peer_id):
+	if not _transport.server_peer_ids().has(peer_id):
 		return
 
-	var ws_peer: WebSocketPeer = connected_peers[peer_id]
-	ws_peer.close(1000, reason)
+	_transport.server_close_peer(peer_id, 1000, reason)
 
 
 ## Disconnect a peer due to heartbeat timeout (internal)
 func _disconnect_peer_timeout(peer_id: int) -> void:
-	if not connected_peers.has(peer_id):
+	if not _transport.server_peer_ids().has(peer_id):
 		peer_last_heartbeat.erase(peer_id)  # Clean up stale entry
 		peer_connection_announced.erase(peer_id)
 		return
 
-	var ws_peer: WebSocketPeer = connected_peers[peer_id]
 	var was_announced := peer_connection_announced.has(peer_id)
-	ws_peer.close(1000, "Heartbeat timeout")
-	connected_peers.erase(peer_id)
+	_transport.server_close_peer(peer_id, 1000, "Heartbeat timeout")
 	peer_connection_announced.erase(peer_id)
 	peer_last_heartbeat.erase(peer_id)
 	peer_bytes_sent.erase(peer_id)
@@ -681,20 +681,20 @@ func _disconnect_peer_timeout(peer_id: int) -> void:
 
 ## Get all connected peer IDs (server mode)
 func get_connected_peer_ids() -> Array:
-	return connected_peers.keys()
+	return _transport.server_peer_ids()
 
 ## Send message to server. Returns true once the packet has been accepted by
 ## the WebSocket layer so callers can keep retryable state in sync.
 func send_message(message_type: MessageType, data: Dictionary = {}) -> bool:
-	if ws_client == null or current_state != ConnectionState.CONNECTED:
+	if current_state != ConnectionState.CONNECTED:
 		print("[NetworkManager] Cannot send message - not connected")
 		return false
-	if ws_client.get_ready_state() != WebSocketPeer.STATE_OPEN:
+	if _transport.client_state() != Transport.LinkState.OPEN:
 		print("[NetworkManager] Cannot send message - socket is not open")
 		return false
 
 	var packet = _encode_packet(message_type, data)
-	var error = ws_client.send(packet)
+	var error = _transport.client_send(packet)
 
 	if error == OK:
 		stats.packets_sent += 1
@@ -843,6 +843,9 @@ func _encode_packet(message_type: MessageType, data: Dictionary) -> PackedByteAr
 			writer.write_string(data.get("character_name", ""))
 			writer.write_u8(AuthPacket.region_from_string(data.get("region", "Asia")))
 			_write_color_rgb(writer, data.get("player_color", Color(0.27, 0.53, 1.0)))
+			# Trailing client-advertised egress budget (bytes/sec). MUST stay
+			# byte-identical to AuthPacket.write_payload — this is the live path.
+			writer.write_u32(maxi(0, int(data.get("bandwidth_budget_bps", 0))))
 
 		MessageType.DISCONNECT:
 			writer.write_u8(_get_disconnect_reason_code(data.get("reason", PacketTypes.DisconnectReason.USER_QUIT)))
@@ -867,6 +870,21 @@ func _encode_packet(message_type: MessageType, data: Dictionary) -> PackedByteAr
 			writer.write_u32(data.get("total_bytes_sent", 0))
 			writer.write_u32(data.get("total_bytes_received", 0))
 			writer.write_u32(int(data.get("avg_bandwidth_per_client", 0.0)))
+			# Scheduler diagnostics (§8.2). Fixed-length append — must stay in
+			# lockstep with the decode case below. mini()/clampi() guard the stream
+			# against u16/u8 overflow at the 1000-player target.
+			writer.write_u16(mini(int(data.get("sched_entities_deferred", 0)), 65535))
+			writer.write_u16(mini(int(data.get("sched_max_queue_age_ticks", 0)), 65535))
+			writer.write_u8(clampi(int(data.get("sched_peers_at_budget_pct", 0)), 0, 255))
+			writer.write_u16(mini(int(data.get("sched_peers_evaluated", 0)), 65535))
+			writer.write_u16(mini(int(data.get("sched_snapshot_overflow", 0)), 65535))
+
+		MessageType.BASELINE_ACK:
+			# Client -> Server: confirm receipt of a full-state Baseline (#14).
+			# Payload: [u32 baseline_tick] — the server_tick the client tagged the
+			# Baseline with. INERT on today's WebSocket/TCP transport (TCP never
+			# drops a baseline); forward-looking scaffold for the UDP transport (#12).
+			writer.write_u32(data.get("baseline_tick", 0))
 
 	writer.finalize_header()
 	return writer.get_buffer()
@@ -987,8 +1005,18 @@ func _decode_packet(packet: PackedByteArray) -> Dictionary:
 				"entity_count": reader.read_u16(),
 				"total_bytes_sent": reader.read_u32(),
 				"total_bytes_received": reader.read_u32(),
-				"avg_bandwidth_per_client": reader.read_u32()
+				"avg_bandwidth_per_client": reader.read_u32(),
+				# Scheduler diagnostics (§8.2) — same order as the encode case above.
+				"sched_entities_deferred": reader.read_u16(),
+				"sched_max_queue_age_ticks": reader.read_u16(),
+				"sched_peers_at_budget_pct": reader.read_u8(),
+				"sched_peers_evaluated": reader.read_u16(),
+				"sched_snapshot_overflow": reader.read_u16()
 			}
+
+		PacketTypes.Type.BASELINE_ACK:
+			# Client -> Server: ack of a received full-state Baseline (#14).
+			result.data = { "baseline_tick": reader.read_u32() }
 
 	return result
 
@@ -1031,8 +1059,7 @@ func _attempt_reconnect() -> void:
 ## Check if connected to server
 func is_server_connected() -> bool:
 	return current_state == ConnectionState.CONNECTED \
-		and ws_client != null \
-		and ws_client.get_ready_state() == WebSocketPeer.STATE_OPEN
+		and _transport.client_state() == Transport.LinkState.OPEN
 
 ## Get network statistics. Includes the per-channel byte breakdown when in
 ## server mode (§8.1) so dashboards / tests can detect when one packet type

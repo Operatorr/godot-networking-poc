@@ -4,8 +4,25 @@
 class_name PlayerManager
 extends RefCounted
 
+
+class PlayerPositionSnapshot extends RefCounted:
+	var entity_id: int = 0
+	var position: Vector2 = Vector2.ZERO
+
+	static func create(p_entity_id: int, p_position: Vector2) -> PlayerPositionSnapshot:
+		var snapshot := PlayerPositionSnapshot.new()
+		snapshot.entity_id = p_entity_id
+		snapshot.position = p_position
+		return snapshot
+
+
 ## All connected players: peer_id -> PlayerState
 var players: Dictionary = {}
+
+## Recent per-tick player positions used for PvP projectile lag compensation.
+var _position_history: Dictionary = {}  # server_tick -> Array[PlayerPositionSnapshot]
+var _position_history_ticks: Array[int] = []
+const POSITION_HISTORY_TICKS := 8
 
 ## Entity ID counter for unique player entity IDs
 var _next_entity_id: int = 1
@@ -148,7 +165,8 @@ func authenticate_player(
 	peer_id: int,
 	character_id: String,
 	character_name: String,
-	player_color: Color = Color(0.27, 0.53, 1.0)
+	player_color: Color = Color(0.27, 0.53, 1.0),
+	budget_bps: int = 0
 ) -> bool:
 	var state = get_player(peer_id)
 	if state == null:
@@ -160,6 +178,7 @@ func authenticate_player(
 	state.character_id = character_id
 	state.character_name = character_name
 	state.player_color = player_color
+	state.bandwidth_budget_bps = budget_bps
 
 	if debug_logging:
 		print("[PlayerManager] Player authenticated: peer=%d, char=%s, name=%s" % [peer_id, character_id, character_name])
@@ -233,6 +252,41 @@ func get_alive_players() -> Array[PlayerState]:
 	return result
 
 
+## Record alive player positions for this authoritative tick.
+func record_position_snapshot(server_tick: int) -> void:
+	var snapshot: Array[PlayerPositionSnapshot] = []
+	for state: PlayerState in players.values():
+		if state.authenticated and state.is_alive:
+			snapshot.append(PlayerPositionSnapshot.create(state.entity_id, state.position))
+
+	_position_history[server_tick] = snapshot
+	_position_history_ticks.append(server_tick)
+
+	while _position_history_ticks.size() > POSITION_HISTORY_TICKS:
+		var old_tick: int = _position_history_ticks.pop_front()
+		_position_history.erase(old_tick)
+
+
+## Get alive player positions from a recent tick, falling back gracefully if the
+## requested tick is outside the short history window.
+func get_alive_player_snapshot(server_tick: int) -> Array:
+	if _position_history.has(server_tick):
+		return _position_history[server_tick]
+
+	var best_tick := -1
+	for tick: int in _position_history_ticks:
+		if tick <= server_tick and tick > best_tick:
+			best_tick = tick
+
+	if best_tick >= 0:
+		return _position_history[best_tick]
+
+	if not _position_history_ticks.is_empty():
+		return _position_history[_position_history_ticks[0]]
+
+	return get_alive_players()
+
+
 ## Check if a peer is connected
 func has_player(peer_id: int) -> bool:
 	return players.has(peer_id)
@@ -241,5 +295,7 @@ func has_player(peer_id: int) -> bool:
 ## Clear all players (for shutdown)
 func clear_all() -> void:
 	players.clear()
+	_position_history.clear()
+	_position_history_ticks.clear()
 	if debug_logging:
 		print("[PlayerManager] All players cleared")

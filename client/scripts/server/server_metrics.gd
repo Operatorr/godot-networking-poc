@@ -19,7 +19,16 @@ var metrics: Dictionary = {
 	## Per-channel byte breakdown sampled from NetworkManager.bytes_sent_by_type
 	## (§8.1). Map of MessageType -> bytes since server start; consumers diff
 	## against a previous snapshot to derive bytes/sec per channel.
-	"bytes_sent_by_type": {}
+	"bytes_sent_by_type": {},
+	## Snapshot scheduler diagnostics (§8.2). Copied from
+	## ServerBroadcastService.last_tick_diagnostics each metrics tick; surfaced
+	## on the SERVER_METRICS wire so the HUD can show priority-budget starvation.
+	## sched_snapshot_overflow pre-wires #11's per-tick overflow counter.
+	"sched_entities_deferred": 0,
+	"sched_max_queue_age_ticks": 0,
+	"sched_peers_at_budget_pct": 0,
+	"sched_peers_evaluated": 0,
+	"sched_snapshot_overflow": 0
 }
 
 var _tick_times: Array[float] = []
@@ -45,7 +54,7 @@ func record_tick_time(time_ms: float) -> void:
 
 
 ## Update performance metrics
-func update_metrics(player_count: int, entity_count: int, tick_count: int, network_stats: Dictionary = {}) -> void:
+func update_metrics(player_count: int, entity_count: int, tick_count: int, network_stats: Dictionary = {}, scheduler_diagnostics: Dictionary = {}) -> void:
 	var now := Time.get_ticks_msec() / 1000.0
 	var elapsed := now - _prev_metrics_time
 
@@ -58,6 +67,15 @@ func update_metrics(player_count: int, entity_count: int, tick_count: int, netwo
 	# left to consumers so we don't lose the absolute counter on a sample miss.
 	if network_stats.has("bytes_sent_by_type"):
 		metrics.bytes_sent_by_type = network_stats.bytes_sent_by_type
+
+	# Scheduler diagnostics (§8.2): freshest broadcast-tick snapshot. Keys come
+	# from ServerBroadcastService.last_tick_diagnostics; sched_snapshot_overflow
+	# defaults to 0 until #11 lands its overflow counter into that dict.
+	metrics.sched_entities_deferred = int(scheduler_diagnostics.get("entities_deferred_per_tick", 0))
+	metrics.sched_max_queue_age_ticks = int(scheduler_diagnostics.get("max_queue_age_ticks", 0))
+	metrics.sched_peers_at_budget_pct = int(scheduler_diagnostics.get("peers_at_budget_pct", 0))
+	metrics.sched_peers_evaluated = int(scheduler_diagnostics.get("peers_evaluated", 0))
+	metrics.sched_snapshot_overflow = int(scheduler_diagnostics.get("snapshot_count_overflow", 0))
 
 	# Calculate average bandwidth per client as a rate (bytes/sec)
 	var peer_bytes: Dictionary = network_stats.get("peer_bytes_sent", {})
@@ -95,12 +113,15 @@ func update_metrics(player_count: int, entity_count: int, tick_count: int, netwo
 
 ## Print current server metrics
 func print_metrics(tick_count: int) -> void:
-	print("[ServerMetrics] Tick: %d | Players: %d | Entities: %d | Avg: %.2fms | Max: %.2fms" % [
+	print("[ServerMetrics] Tick: %d | Players: %d | Entities: %d | Avg: %.2fms | Max: %.2fms | Deferred: %d | QAge: %d | AtBudget: %d%%" % [
 		tick_count,
 		metrics.player_count,
 		metrics.entity_count,
 		metrics.avg_tick_time_ms,
-		metrics.max_tick_time_ms
+		metrics.max_tick_time_ms,
+		metrics.sched_entities_deferred,
+		metrics.sched_max_queue_age_ticks,
+		metrics.sched_peers_at_budget_pct
 	])
 
 
@@ -124,5 +145,10 @@ func clear() -> void:
 		"total_bytes_received": 0,
 		"avg_bandwidth_per_client": 0.0,
 		"last_metrics_time": _prev_metrics_time,
-		"bytes_sent_by_type": {}
+		"bytes_sent_by_type": {},
+		"sched_entities_deferred": 0,
+		"sched_max_queue_age_ticks": 0,
+		"sched_peers_at_budget_pct": 0,
+		"sched_peers_evaluated": 0,
+		"sched_snapshot_overflow": 0
 	}

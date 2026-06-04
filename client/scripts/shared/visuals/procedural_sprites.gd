@@ -16,10 +16,11 @@ const REMOTE_CORE := Color(0.6, 0.27, 0.8)         # #9944cc
 const REMOTE_GLOW := Color(0.8, 0.6, 1.0)          # Pale purple glow
 const REMOTE_SHELL := Color(0.15, 0.06, 0.18)
 
-# Monster - Arterial red with wrong bioluminescent green
-const MONSTER_CORE := Color(0.8, 0.13, 0.13)       # #cc2222
-const MONSTER_GLOW := Color(0.27, 1.0, 0.27)       # #44ff44 bioluminescent
-const MONSTER_SHELL := Color(0.18, 0.04, 0.04)
+# Monster (Toxic Slime) - Sickly bioluminescent green ooze.
+# Exact float forms of the hex so they match data/monsters/toxic_slime.json.
+const MONSTER_CORE := Color(0.372549, 0.749020, 0.247059)   # #5fbf3f toxic green
+const MONSTER_GLOW := Color(0.666667, 1.0, 0.2)             # #aaff33 acid bioluminescence
+const MONSTER_SHELL := Color(0.086275, 0.141176, 0.047059)  # #16240c dark swamp shell
 
 # Projectile - Astral energy
 const PROJ_CENTER := Color(1.0, 1.0, 1.0)          # White hot
@@ -59,9 +60,15 @@ static func create_remote_player_frames_for_color(player_color: Color) -> Sprite
 	return create_player_frames_for_color(player_color)
 
 
-## Create SpriteFrames for monster
+## Create SpriteFrames for the default monster (Toxic Slime palette)
 static func create_monster_frames() -> SpriteFrames:
 	return _create_entity_frames(MONSTER_CORE, MONSTER_GLOW, MONSTER_SHELL, false, true)
+
+
+## Create SpriteFrames for a monster from explicit archetype colors.
+## Data-driven entry point: colors come from a MonsterDefinition's appearance.
+static func create_monster_frames_from_colors(core: Color, glow: Color, shell: Color) -> SpriteFrames:
+	return _create_entity_frames(core, glow, shell, false, true)
 
 
 ## Create projectile texture

@@ -27,6 +27,10 @@ var character_name: String = ""
 var region: int = Region.ASIA
 ## Selected player color. Optional on the wire for compatibility with old clients.
 var player_color: Color = Color(0.27, 0.53, 1.0)
+## Client-advertised egress budget in bytes/sec. 0 means "let the server decide"
+## (falls back to ServerConfig.default_client_bandwidth_bps). Optional + trailing
+## on the wire so an old client that omits it still decodes (length-gated read).
+var bandwidth_budget_bps: int = 0
 
 
 func _init() -> void:
@@ -39,7 +43,8 @@ static func create(
 	char_id: String,
 	char_name: String,
 	reg: int = Region.ASIA,
-	color: Color = Color(0.27, 0.53, 1.0)
+	color: Color = Color(0.27, 0.53, 1.0),
+	budget_bps: int = 0
 ) -> AuthPacket:
 	var packet = AuthPacket.new()
 	packet.token = auth_token
@@ -47,6 +52,7 @@ static func create(
 	packet.character_name = char_name
 	packet.region = reg
 	packet.player_color = color
+	packet.bandwidth_budget_bps = budget_bps
 	return packet
 
 
@@ -56,7 +62,7 @@ func write() -> PackedByteArray:
 	var token_bytes = token.to_utf8_buffer().size()
 	var char_bytes = character_id.to_utf8_buffer().size()
 	var name_bytes = character_name.to_utf8_buffer().size()
-	var size = 3 + 2 + token_bytes + 2 + char_bytes + 2 + name_bytes + 1 + 3 + 4  # header + strings + region + color + safety
+	var size = 3 + 2 + token_bytes + 2 + char_bytes + 2 + name_bytes + 1 + 3 + 4 + 4  # header + strings + region + color + budget + safety
 
 	var writer = PacketWriter.new(size)
 	writer.write_header(PacketTypes.Type.CONNECT_AUTH)
@@ -73,6 +79,10 @@ func write_payload(writer: PacketWriter) -> void:
 	writer.write_string(character_name)
 	writer.write_u8(region)
 	_write_color_rgb(writer, player_color)
+	# Trailing client-advertised egress budget (bytes/sec). u32 because a realistic
+	# budget (~60k–200k B/s) exceeds u16's 65535. Append-only at the end so old
+	# clients that omit it still decode via the length-gated read below.
+	writer.write_u32(maxi(0, bandwidth_budget_bps))
 
 
 ## Read packet from reader (assumes header already read)
@@ -84,6 +94,9 @@ static func read(reader: PacketReader) -> AuthPacket:
 	packet.region = reader.read_u8()
 	if reader.remaining() >= 3:
 		packet.player_color = _read_color_rgb(reader)
+	# Length-gated: old clients omit the trailing budget; server then defaults.
+	if reader.remaining() >= 4:
+		packet.bandwidth_budget_bps = reader.read_u32()
 	return packet
 
 
@@ -122,7 +135,8 @@ func to_dict() -> Dictionary:
 		"character_name": character_name,
 		"region": region,
 		"region_name": get_region_name(),
-		"player_color": player_color
+		"player_color": player_color,
+		"bandwidth_budget_bps": bandwidth_budget_bps
 	}
 
 

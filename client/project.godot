@@ -102,6 +102,7 @@ pause_menu={
 common/physics_ticks_per_second=30
 2d/default_gravity=0
 2d/default_gravity_vector=Vector2(0, 0)
+common/physics_interpolation=true
 
 [rendering]
 

@@ -54,8 +54,21 @@ var is_server: bool = false
 ## Used by PredictionController for reconciliation
 var local_player_entity_id: int = -1
 
+## Guards the one-time physics-tick alignment below so it never re-applies.
+var _physics_tick_rate_applied: bool = false
+
 ## Called when the node enters the scene tree
 func _ready() -> void:
+	# Make GameConstants.SERVER_TICK_RATE the single authority for the client
+	# clock: align Engine.physics_ticks_per_second (drives _physics_process for
+	# prediction/interpolation) with the sim cadence ONCE at startup, before the
+	# arena loads. project.godot physics_ticks_per_second=30 is only the fallback.
+	# Runs in both client+server mode (harmless on the server, which ticks via a
+	# manual accumulator on config.tick_rate, not _physics_process).
+	if not _physics_tick_rate_applied:
+		_physics_tick_rate_applied = true
+		Engine.physics_ticks_per_second = int(GameConstants.SERVER_TICK_RATE)
+
 	# Detect if running as dedicated server
 	is_server = (OS.has_feature("dedicated_server") or DisplayServer.get_name() == "headless") and not _is_test_scene()
 

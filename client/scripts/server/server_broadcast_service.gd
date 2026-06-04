@@ -44,17 +44,71 @@ var max_snapshot_bytes: int = 1200
 ## Per-peer SnapshotScheduler instances. Created lazily alongside delta caches.
 var snapshot_schedulers: Dictionary = {}  # peer_id -> SnapshotScheduler
 
+## Per-peer resolved snapshot byte cap (#13), set at auth from the client's
+## advertised bandwidth budget. Unset peers fall back to the service-global
+## `max_snapshot_bytes` via `_budget_for_peer` (NEVER 0 — see snapshot_scheduler.gd
+## where max_bytes<=0 disables the budget instead of tightening it).
+var peer_snapshot_bytes: Dictionary = {}  # peer_id -> int
+
+## Shared current-tick AoI broad-phase (#9). Rebuilt once per tick by
+## `build_aoi_grid` from final entity positions, then queried per peer so the
+## AoI scan touches O(entities-in-band) instead of O(all entities). Holds the
+## same entity-data list broadcast assembles, so it is built only once.
+var _tick_entities: Array[Dictionary] = []
+var _tick_grid: SpatialGrid = null
+
 ## Diagnostics published from the most recent broadcast tick. ServerMain reads
 ## these into ServerMetrics for the SERVER_METRICS broadcast (§8.2).
 var last_tick_diagnostics: Dictionary = {
 	"entities_deferred_per_tick": 0,
 	"max_queue_age_ticks": 0,
 	"peers_at_budget_pct": 0,
-	"peers_evaluated": 0
+	"peers_evaluated": 0,
+	"snapshot_count_overflow": 0
 }
 
 
-## Broadcast state updates to all connected clients (delta-compressed, AoI-filtered)
+## Build the shared current-tick entity list + spatial broad-phase grid once per
+## tick (#9). Called from ServerMain after all positions are final and before
+## broadcast. Stashes both on `_tick_entities` / `_tick_grid` so the per-peer AoI
+## scan queries the grid instead of re-walking every entity. Cell size is
+## aoi_exit_radius/4 so the grid stays cheap (few large cells); queries use the
+## exit radius so hysteresis-retained entities are never missed. Returns the
+## grid for convenience. Skips work when there are no players (broadcast
+## early-returns in that case anyway).
+func build_aoi_grid(
+	player_manager: PlayerManager,
+	projectile_manager: ProjectileManager,
+	monster_manager: MonsterManager
+) -> SpatialGrid:
+	var entities: Array[Dictionary] = []
+
+	for state: PlayerState in player_manager.get_authenticated_players():
+		entities.append(state.to_entity_data())
+
+	var projectile_updates = projectile_manager.collect_state_updates()
+	for proj_data in projectile_updates:
+		entities.append(proj_data)
+
+	var monster_updates = monster_manager.collect_state_updates()
+	for monster_data in monster_updates:
+		entities.append(monster_data)
+
+	_tick_entities = entities
+
+	# Cell size = aoi_exit_radius/4 (the roadmap's aoi_radius/4 hint, sized off the
+	# larger exit radius). Fall back to a sane default when AoI is disabled.
+	var effective_exit: float = aoi_exit_radius if aoi_exit_radius > aoi_radius else aoi_radius
+	var cell: float = effective_exit / 4.0 if effective_exit > 0.0 else 256.0
+	_tick_grid = SpatialGrid.new(cell)
+	for entity in entities:
+		_tick_grid.insert(entity, entity.get("position", Vector2.ZERO))
+
+	return _tick_grid
+
+
+## Broadcast state updates to all connected clients (delta-compressed, AoI-filtered).
+## Consumes the shared entity list + grid built this tick by `build_aoi_grid`.
 func broadcast_state_updates(
 	player_manager: PlayerManager,
 	projectile_manager: ProjectileManager,
@@ -68,19 +122,12 @@ func broadcast_state_updates(
 	if network_manager == null:
 		return
 
-	# Collect all entity states
-	var all_entities: Array[Dictionary] = []
-
-	for state: PlayerState in player_manager.get_authenticated_players():
-		all_entities.append(state.to_entity_data())
-
-	var projectile_updates = projectile_manager.collect_state_updates()
-	for proj_data in projectile_updates:
-		all_entities.append(proj_data)
-
-	var monster_updates = monster_manager.collect_state_updates()
-	for monster_data in monster_updates:
-		all_entities.append(monster_data)
+	# Shared entity list + broad-phase grid assembled this tick (#9). Fall back to
+	# building inline if ServerMain hasn't primed them (defensive — keeps this
+	# callable standalone).
+	if _tick_grid == null:
+		build_aoi_grid(player_manager, projectile_manager, monster_manager)
+	var all_entities: Array[Dictionary] = _tick_entities
 
 	# Send delta-compressed updates to each client
 	var aoi_enabled := aoi_radius > 0.0
@@ -107,10 +154,15 @@ func broadcast_state_updates(
 		var visible_entities: Array[Dictionary]
 		var visible_lods: PackedByteArray = PackedByteArray()
 		if aoi_enabled:
+			# Narrow to the grid's exit-radius candidate band (#9) instead of
+			# walking every entity. Query the EXIT radius (the larger one) so
+			# hysteresis-retained entities up to aoi_exit_radius are never missed;
+			# the exact distance + hysteresis check stays in the filter below.
+			var candidates: Array = _tick_grid.query_radius(state.position, aoi_exit_radius if aoi_exit_radius > aoi_radius else aoi_radius)
 			# `tag_lod` is always true under AoI: the scheduler uses LOD tiers
 			# as the distance penalty in priority calculation (§1.2).
 			var aoi_result: Dictionary = _filter_entities_by_aoi(
-				all_entities, state, aoi_enter_radius_sq, aoi_exit_sq, prev_visible, true
+				candidates, state, aoi_enter_radius_sq, aoi_exit_sq, prev_visible, true
 			)
 			visible_entities = aoi_result.entities
 			visible_lods = aoi_result.lods
@@ -132,7 +184,10 @@ func broadcast_state_updates(
 					removed_entity_ids.append(int(eid))
 		client_visible_entities[peer_id] = current_visible_ids
 
-		var needs_baseline: bool = cache.needs_full_state_for_interval(tick_count)
+		# Force a full-state Baseline on the 100-tick cadence FLOOR (never drop this —
+		# non-acking clients/bots rely on it) OR proactively when a prior Baseline went
+		# un-acked past the timeout (#14, inert on TCP, meaningful under #12 UDP).
+		var needs_baseline: bool = cache.needs_full_state_for_interval(tick_count) or cache.needs_baseline_resend(tick_count)
 
 		var packet_data: Dictionary
 		if needs_baseline and removed_entity_ids.is_empty():
@@ -140,6 +195,9 @@ func broadcast_state_updates(
 		else:
 			var scheduler := get_or_create_scheduler(peer_id)
 			var sched_stats: Dictionary = {}
+			# Per-peer byte cap (#13). Falls back to the service-global default for
+			# peers with no advertised budget (never 0 — that would disable the cap).
+			var peer_max := _budget_for_peer(peer_id)
 			packet_data = _create_delta_packet(
 				visible_entities,
 				cache,
@@ -147,7 +205,8 @@ func broadcast_state_updates(
 				removed_entity_ids,
 				visible_lods,
 				scheduler,
-				sched_stats
+				sched_stats,
+				peer_max
 			)
 			tick_peers_evaluated += 1
 			tick_total_deferred += int(sched_stats.get("deferred", 0))
@@ -174,7 +233,7 @@ func broadcast_state_updates(
 ## appear. Returns `{entities, lods}` where `lods[i]` is the LOD tier for
 ## `entities[i]`, avoiding a per-entity Dictionary.duplicate() in the hot path.
 func _filter_entities_by_aoi(
-	all_entities: Array[Dictionary],
+	candidates: Array,
 	player: PlayerState,
 	enter_radius_sq: float,
 	exit_radius_sq: float,
@@ -185,14 +244,16 @@ func _filter_entities_by_aoi(
 	var lods: PackedByteArray = PackedByteArray()
 	var player_pos := player.position
 	var player_eid: int = player.entity_id
+	var self_seen := false
 
-	for entity in all_entities:
+	for entity in candidates:
 		var eid: int = entity.get("id", -1)
 		# Always include self - the local player must never be culled.
 		if eid == player_eid:
 			entities.append(entity)
 			if tag_lod:
 				lods.append(LOD_NEAR)
+			self_seen = true
 			continue
 
 		var entity_pos: Vector2 = entity.get("position", Vector2.ZERO)
@@ -204,6 +265,15 @@ func _filter_entities_by_aoi(
 		entities.append(entity)
 		if tag_lod:
 			lods.append(_classify_lod(dist_sq))
+
+	# Self-inclusion safety net (#9): the grid query is centred on the player, so
+	# self is normally in `candidates` — but on a cell-edge with radius rounding
+	# it could be excluded. Re-append from the authoritative player state so the
+	# local player is never culled from its own snapshot.
+	if not self_seen:
+		entities.append(player.to_entity_data())
+		if tag_lod:
+			lods.append(LOD_NEAR)
 
 	return {"entities": entities, "lods": lods}
 
@@ -222,6 +292,20 @@ func get_or_create_scheduler(peer_id: int) -> SnapshotSchedulerClass:
 	if not snapshot_schedulers.has(peer_id):
 		snapshot_schedulers[peer_id] = SnapshotSchedulerClass.new()
 	return snapshot_schedulers[peer_id]
+
+
+## Register the resolved per-peer snapshot byte cap (#13). Set at auth from the
+## client's advertised bandwidth budget; ServerMain owns the snapshot rate.
+func set_peer_byte_budget(peer_id: int, bytes: int) -> void:
+	peer_snapshot_bytes[peer_id] = maxi(0, bytes)
+
+
+## Resolve the snapshot byte cap for a peer (#13). Falls back to the service-global
+## `max_snapshot_bytes` for unset peers (legacy / no-advert path). MUST NOT return 0
+## for an unset peer: the scheduler treats max_bytes<=0 as "no budget, admit all",
+## which would DISABLE the cap instead of applying the global default.
+func _budget_for_peer(peer_id: int) -> int:
+	return peer_snapshot_bytes.get(peer_id, max_snapshot_bytes)
 
 
 ## Handle client request for full state sync
@@ -356,6 +440,18 @@ func send_all_player_info_to_client(peer_id: int, player_manager: PlayerManager,
 		)
 
 
+## Record a client's Baseline acknowledgement (#14). On TCP this is informational
+## (baselines are never dropped); under #12 UDP transport it lets the broadcast loop
+## resend a lost Baseline before the 100-tick cadence floor.
+func handle_baseline_ack(peer_id: int, acked_baseline_tick: int) -> void:
+	var cache = delta_caches.get(peer_id, null)
+	if cache == null:
+		return
+	cache.mark_baseline_acked(acked_baseline_tick)
+	if debug_logging:
+		print("[BroadcastService] peer %d acked baseline tick %d" % [peer_id, acked_baseline_tick])
+
+
 ## Get or create delta cache for a client
 func get_or_create_delta_cache(peer_id: int):
 	if not delta_caches.has(peer_id):
@@ -369,6 +465,7 @@ func remove_delta_cache(peer_id: int) -> void:
 	delta_caches.erase(peer_id)
 	client_visible_entities.erase(peer_id)
 	snapshot_schedulers.erase(peer_id)
+	peer_snapshot_bytes.erase(peer_id)
 
 
 ## Clear all delta caches
@@ -376,6 +473,7 @@ func clear_all_caches() -> void:
 	delta_caches.clear()
 	client_visible_entities.clear()
 	snapshot_schedulers.clear()
+	peer_snapshot_bytes.clear()
 
 
 ## Create a full state (baseline) packet
@@ -405,6 +503,14 @@ func _create_full_state_packet(entities: Array[Dictionary], cache, tick_count: i
 
 	cache.reset_baseline(tick_count)
 
+	# A full-state baseline is bounded by MAX_PACKET_SIZE (the [u16 length] frame),
+	# NOT by the u16 entity_count field — the writer truncates anything past the
+	# byte-safe cap, so flag the limit that actually binds (#15). Baselines bypass
+	# the per-peer snapshot byte budget, so this is the only overflow path.
+	if entity_data.size() > StateUpdatePacket.STATE_MAX_FULL_ENTITIES:
+		last_tick_diagnostics.snapshot_count_overflow += 1
+		push_warning("[BroadcastService] Full-state entity count %d exceeds per-frame cap %d (MAX_PACKET_SIZE); overflow truncated" % [entity_data.size(), StateUpdatePacket.STATE_MAX_FULL_ENTITIES])
+
 	return {
 		"tick": tick_count,
 		"state_flags": PacketTypes.STATE_FLAG_BASELINE,
@@ -424,7 +530,8 @@ func _create_delta_packet(
 	removed_entity_ids: Array[int],
 	lod_tiers: PackedByteArray,
 	scheduler: SnapshotSchedulerClass,
-	out_stats: Dictionary
+	out_stats: Dictionary,
+	peer_max_bytes: int
 ) -> Dictionary:
 	scheduler.reset()
 
@@ -523,7 +630,7 @@ func _create_delta_packet(
 			true
 		)
 
-	var result: SnapshotSchedulerClass.Result = scheduler.schedule(max_snapshot_bytes)
+	var result: SnapshotSchedulerClass.Result = scheduler.schedule(peer_max_bytes)
 
 	var entity_data: Array[Dictionary] = []
 	for idx in result.selected_indices:
