@@ -60,6 +60,9 @@ for the map; this page is the **catalogue** with verification status. Terms are 
 | [`adr/0001-websocket-tcp-transport.md`](adr/0001-websocket-tcp-transport.md) | Accepted | Why WebSocket-over-TCP (and the HOL trade-off). |
 | [`adr/0002-authoritative-server-fixed-tick.md`](adr/0002-authoritative-server-fixed-tick.md) | Accepted | Why a single authoritative server at a fixed 30 Hz tick. |
 | [`adr/0003-enet-udp-transport.md`](adr/0003-enet-udp-transport.md) | Accepted | ENet-over-UDP datagram target (supersedes 0001's substrate); the transport seam lands first. |
+| [`adr/0004-schema-driven-wire-protocol.md`](adr/0004-schema-driven-wire-protocol.md) | Accepted | Redesigned wire protocol as a shared Rust crate (no codegen); **amends 0003**'s "wire format unchanged". |
+| [`adr/0005-permadeath-persistence-model.md`](adr/0005-permadeath-persistence-model.md) | Accepted | Permadeath persistence — death is the server-authoritative transactional save; item integrity via the Go API. |
+| [`rust-port/migration-spec.md`](rust-port/migration-spec.md) | Active | **The Rust game-server port** — full decision log D1–D14 (transport, protocol, sim parity, persistence, deploy, cutover). |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Reference | Top-level system architecture & POC success criteria. |
 | [`specification.md`](specification.md) | Reference | Game design spec / GDD (the minimal bullet-hell design). |
 | [`INFRASTRUCTURE.md`](INFRASTRUCTURE.md) | Reference | Deployment / infra (Docker, DigitalOcean). |

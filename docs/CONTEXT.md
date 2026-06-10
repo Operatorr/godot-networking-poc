@@ -103,3 +103,48 @@ _Avoid_: message, notification.
 The server rewinding entity positions to the Tick the shooter actually saw, so a well-aimed shot
 hits despite latency.
 _Avoid_: hit rewind, favor-the-shooter (that's the policy, not the mechanism).
+
+## Progression & persistence (Vision — but the Rust port builds the service boundary now)
+
+These describe the future Realm-of-the-Mad-God-like MMO the POC de-risks. POC gameplay is HP-only, but
+the Rust server port designs its Go-API persistence boundary around these terms, so they are canonical.
+See the [Rust port migration spec](rust-port/migration-spec.md) D10 and
+[ADR 0005](adr/0005-permadeath-persistence-model.md).
+
+**Account-scoped state**:
+Durable state that belongs to the *account* and survives character death — the vault, fame, unlocked
+classes, currency. Lives behind the Go API; never enters the combat sim.
+_Avoid_: account data, profile (too vague), save file.
+
+**Character-scoped state**:
+Durable state that belongs to one *character* and persists across logout/login while it lives — level,
+the potion-raised stats, carried inventory. Hydrated into the sim on join; **destroyed on death**.
+_Avoid_: player state (ambiguous with the live entity), character save.
+
+**Session-ephemeral state**:
+State that exists only for one play session and is never persisted — current HP/MP, position, active
+cooldowns. Born in the sim, reset on every entry.
+_Avoid_: runtime state, temporary state.
+
+**Permadeath**:
+The rule that a character's death is permanent: the character and its carried inventory
+(Character-scoped state) are destroyed, while the Account-scoped state survives.
+_Avoid_: death (which is also the in-Tick HP→0 event; permadeath is the persistence consequence).
+
+**Vault**:
+The account-owned, cross-character item store. Account-scoped; mutated only at a vault chest in the
+nexus, through the Go API, never inside the combat sim.
+_Avoid_: bank, stash, storage.
+
+**Fame**:
+The account-scoped progression score credited when a character dies. Survives permadeath.
+_Avoid_: score (reserve for the in-session leaderboard), XP (that's Character-scoped).
+
+**Nexus**:
+The safe hub Instance where players manage Account-scoped state (vault, classes) — no combat.
+_Avoid_: lobby, town, hub (use Nexus).
+
+**Instance**:
+One running copy of a Realm or dungeon that players portal between. Stateless-on-entry; transitions
+between Instances double as persistence checkpoints.
+_Avoid_: room, session, shard (a shard hosts many Instances), level.
