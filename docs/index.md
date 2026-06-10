@@ -43,8 +43,10 @@ for the map; this page is the **catalogue** with verification status. Terms are 
 | Doc | Status | Topic |
 |---|---|---|
 | [`systems/players-movement.md`](systems/players-movement.md) | Partial | Player entity, movement, validation (+ double-movement bug home). |
+| [`systems/players-movement-state-machine.md`](systems/players-movement-state-machine.md) | Implemented | 7-state server-authoritative movement SM: dash, sprint, knockback, stun, stamina, mana. |
 | [`systems/combat-hits.md`](systems/combat-hits.md) | Implemented | Shooting, projectiles, lag-compensated swept PvP + PvE hits, cosmetic shoot feedback. |
 | [`systems/monsters-ai.md`](systems/monsters-ai.md) | Implemented | The Toxic Slime and its server-side AI state machine. |
+| [`systems/bot-ai.md`](systems/bot-ai.md) | Implemented | Load-testing bot swarm AI: behaviors, tactical states, sprint/stamina + dash. |
 | [`systems/monster-architecture.md`](systems/monster-architecture.md) | Implemented · roadmap Planned | Monster factory, data-driven definitions, schema, and the add-a-monster pipeline. |
 | [`systems/audio.md`](systems/audio.md) | Implemented | AudioManager + procedurally-generated sound (no audio assets). |
 | [`systems/ui-hud.md`](systems/ui-hud.md) | Implemented | HUD components, menus, effects, scene flow. |

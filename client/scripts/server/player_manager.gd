@@ -140,7 +140,9 @@ func process_all_inputs(delta: float, server_tick: int) -> Array[Dictionary]:
 				"position": validation.server_position,
 				"success": not validation.correction_needed,
 				"cheat_detected": validation.cheat_detected,
-				"deviation": validation.deviation
+				"deviation": validation.deviation,
+				"stamina": roundi(state.movement_sm.stamina),
+				"mana": roundi(state.movement_sm.mana)
 			})
 
 	return move_results

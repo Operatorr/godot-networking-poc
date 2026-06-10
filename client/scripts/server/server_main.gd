@@ -335,12 +335,15 @@ func _send_move_confirmations(move_results: Array[Dictionary]) -> void:
 		var success: bool = result.success
 		var cheat_detected: bool = result.cheat_detected
 
-		# Create correction packet using ActionConfirmPacket
+		# Create correction packet using ActionConfirmPacket. Stamina/mana ride along
+		# as an owner-only authoritative resource sync for the predicted HUD bars.
 		var confirm_packet = ActionConfirmPacket.create_move_confirm(
 			sequence,
 			position,
 			tick_count,
-			success
+			success,
+			result.get("stamina", 100),
+			result.get("mana", 100)
 		)
 
 		# Send correction to the specific client
@@ -798,7 +801,7 @@ func _handle_local_hit_report(peer_id: int, data: Dictionary) -> void:
 
 	# Apply through the shared path, then despawn the bullet for everyone.
 	collision_handler.apply_player_hit(
-		proj.owner_id, player.entity_id, player_manager, _get_network_manager(), broadcast_service
+		proj.owner_id, player.entity_id, player_manager, _get_network_manager(), broadcast_service, proj.position
 	)
 	projectile_manager.remove_projectile(projectile_id, "player_hit")
 

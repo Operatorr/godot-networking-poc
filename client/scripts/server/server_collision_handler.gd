@@ -33,7 +33,7 @@ func _check_player_collisions(
 	var player_hits = projectile_manager.check_collisions_with_players(player_manager)
 
 	for hit in player_hits:
-		apply_player_hit(hit.owner_id, hit.target_id, player_manager, network_manager, broadcast_service)
+		apply_player_hit(hit.owner_id, hit.target_id, player_manager, network_manager, broadcast_service, hit.get("position", Vector2.INF))
 
 
 ## Apply a confirmed projectile hit on a player: damage, DAMAGE broadcast, and any
@@ -44,7 +44,8 @@ func apply_player_hit(
 	target_id: int,
 	player_manager: PlayerManager,
 	network_manager: Node,
-	broadcast_service: ServerBroadcastService
+	broadcast_service: ServerBroadcastService,
+	impact_position: Vector2 = Vector2.INF
 ) -> void:
 	var target := player_manager.get_player_by_entity_id(target_id)
 	if target == null or not target.authenticated:
@@ -60,6 +61,15 @@ func apply_player_hit(
 	var damage_applied := previous_health - target.health
 	if damage_applied <= 0:
 		return
+
+	# Knock the survivor back away from the impact point (authoritative; the
+	# client predicts an identical KNOCKED_BACK via its movement state machine).
+	if not killed and impact_position.is_finite():
+		var knock_dir := (target.position - impact_position)
+		if knock_dir.length() > 0.01:
+			target.movement_sm.apply_knockback(
+				knock_dir, GameConstants.PLAYER_KNOCKBACK_BASE_FORCE
+			)
 
 	# Broadcast DAMAGE event to all clients
 	if network_manager:

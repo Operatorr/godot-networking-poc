@@ -49,11 +49,11 @@ never bites in normal play.
 
 | #  | Type                | Dir   | Payload                              | Schema                       |
 | -- | ------------------- | ----- | ------------------------------------ | ---------------------------- |
-| 1  | `PLAYER_INPUT`      | C→S   | 16 B fixed                           | `player_input_packet.gd`     |
+| 1  | `PLAYER_INPUT`      | C→S   | 17 B fixed                           | `player_input_packet.gd`     |
 | 2  | `STATE_UPDATE`      | S→C   | variable (Snapshot)                  | `state_update_packet.gd`     |
 | 3  | `GAME_EVENT`        | S→C   | variable, per event type             | `game_event_packet.gd`       |
 | 4  | `HEARTBEAT`         | C↔S   | 4 B (`[u32 timestamp_ms]`)           | `heartbeat_packet.gd`        |
-| 5  | `ACTION_CONFIRM`    | S→C   | 9 B                                  | `action_confirm_packet.gd`   |
+| 5  | `ACTION_CONFIRM`    | S→C   | 11 B                                 | `action_confirm_packet.gd`   |
 | 6  | `CONNECT_AUTH`      | C→S   | variable (strings + budget)          | `auth_packet.gd`             |
 | 7  | `DISCONNECT`        | C→S   | 5 B                                  | `disconnect_packet.gd`       |
 | 8  | `REQUEST_FULL_STATE`| C→S   | empty (header only)                  | —                            |
@@ -81,7 +81,7 @@ per entity (9 B):
   [u8 entity_type]          1  (1=PLAYER 2=MONSTER 3=PROJECTILE)
   [s16 pos_x][s16 pos_y]    4  0.1-unit
   [u8 animation_state]      1
-  [u8 flags]                1  (ENTITY_FLAG_* bitfield)
+  [u8 flags]                1  (ENTITY_FLAG_* bitfield; bits 6/7 = DASHING/KNOCKED_BACK)
 ```
 
 `state_update_packet.gd:5-14`, write `:193-204`, read `:253-263`, `ENTITY_SIZE := 9` (`:32`).
@@ -157,15 +157,15 @@ diagnostic and `push_warning`s if a Baseline would exceed the full-state frame c
 with **no `PROTOCOL_VERSION` byte added** (see "wire-v3" below — the remaining size
 optimizations are still unbuilt).
 
-## PLAYER_INPUT — client intent (16-byte payload)
+## PLAYER_INPUT — client intent (17-byte payload)
 
-`player_input_packet.gd:1-11`, write `:79-86`, read `:90-99`. Fixed 16 bytes:
+`player_input_packet.gd:1-11`, write `:79-86`, read `:90-99`. Fixed 17 bytes:
 
 | Field               | Type    | Bytes | Notes                                            |
 | ------------------- | ------- | ----- | ------------------------------------------------ |
 | position            | 2×s16   | 4     | client's predicted position (for validation)     |
 | velocity            | 2×s16   | 4     | quantized velocity                               |
-| input_flags         | u8      | 1     | WASD + shoot/ability/sprint/interact bitfield    |
+| input_flags         | u16     | 2     | WASD + shoot/ability/sprint/interact + dash (bit 8) bitfield |
 | aim_angle           | s16     | 2     | radians ×100                                     |
 | sequence_number     | u8      | 1     | **wraps at 256** — Reconciliation key            |
 | client_render_tick  | u16     | 2     | server tick remote entities were rendered at     |
@@ -220,10 +220,13 @@ without it still parse.
 
 ## Smaller fixed packets
 
-**ACTION_CONFIRM** (S→C, 9 B payload) — `action_confirm_packet.gd:79-84`:
-`[u8 sequence_number][u8 action_type][s16 x][s16 y][u8 result_code][u16 server_tick]`. Echoes a
-client input `sequence_number` with the server's authoritative position and a result code
-(`ResultCode` enum `:22-29`) for Reconciliation.
+**ACTION_CONFIRM** (S→C, 11 B payload) — `action_confirm_packet.gd:79-86`:
+`[u8 sequence_number][u8 action_type][s16 x][s16 y][u8 result_code][u16 server_tick][u8 stamina][u8 mana]`.
+Echoes a client input `sequence_number` with the server's authoritative position and a result code
+(`ResultCode` enum `:22-29`) for Reconciliation. The trailing `stamina`/`mana` bytes (0–100) are an
+owner-only authoritative resource sync for the predicted movement state machine and HUD bars — sent
+~30 Hz per player (every fresh input). See
+[`../systems/players-movement-state-machine.md`](../systems/players-movement-state-machine.md).
 
 **HEARTBEAT** (C↔S, 4 B payload) — `heartbeat_packet.gd:30-31`: `[u32 timestamp_ms]`. Sent 1 Hz;
 the server's reply carries `server_ms`, which the client uses for clock-offset estimation (EMA,

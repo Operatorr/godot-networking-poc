@@ -30,7 +30,7 @@ owns everything the online `arena_base.gd` gets from the prediction/network laye
 | Boundary walls | `StaticBody2D` on environment layer 8, built from `arena_rect`. |
 | Local player | `player.tscn` at the room center; `prediction_owns_movement = false`, input + local projectile spawning **on**, `collision_mask \|= 8`. |
 | Camera | `Camera2D.make_current()`, follows the player on the physics tick; default + sprint zoom come from `GameConstants.CAMERA_ZOOM_*` (shared with the arena — one source of truth); snaps + `reset_physics_interpolation()` on teleports. |
-| HUD | HP bar + pause menu (its **Leave Arena** → `_leave()` → main menu). |
+| HUD | HP / Stamina / Mana bar group (shared `BottomBars` layout, identical to the networked arena) + pause menu (its **Leave Arena** → `_leave()` → main menu). Stamina/mana are polled from the player's `movement_sm` each frame (no server here). |
 | Shoot feedback | connects `Player.shot_fired` → `AudioManager.play_player_shoot()` + muzzle flash. |
 | Damage routing | one connection to the player's projectile pool; on hit, `body.take_damage()` if `body` is in group `enemies`. |
 | Leaving | `exit_to_menu` (T) **or** Esc→pause→Leave both call `_leave()`. |
@@ -46,9 +46,12 @@ extra UI); they should not override `_ready()`.
 | Enemies | 4 `TargetDummy` (N/E/S/W), stationary, **respawn** | "Spawn Toxic Slime" button → `OfflineMonster`, **no respawn** |
 | Extras | "Dummies defeated" counter | debug keys 1–7, death overlay, kill-feed/minimap/leaderboard |
 
-- **Local player** (Practice & Sandbox): `Player` moving itself via `move_and_slide`, sprint via
-  `GameConstants.get_movement_speed(Input.is_action_pressed("sprint"))` (`player.gd`). Shooting uses
-  the local `ProjectilePool` (mask 10 = Monsters + Environment).
+- **Local player** (Practice & Sandbox): `Player` moving itself via `move_and_slide`, but the velocity
+  now comes from the **same `MovementStateMachine`** the networked player predicts — so dash, sprint,
+  knockback, stun, and stamina/mana all work offline from the one shared player script
+  (`Player._handle_movement` drives `movement_sm` when `prediction_owns_movement = false`). See
+  [`players-movement-state-machine.md`](players-movement-state-machine.md). Shooting uses the local
+  `ProjectilePool` (mask 10 = Monsters + Environment).
 - **Target dummy** (`target_dummy.gd`, def `target_dummy.json`): stationary, `xp: 0`,
   `ai_profile: "stationary_dummy"`, respawns on a timer. In group `enemies`.
 - **OfflineMonster** (`offline_monster.gd`, scene `offline_monster.tscn`): a self-contained

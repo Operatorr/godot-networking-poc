@@ -87,6 +87,7 @@ INPUT_FLAG_SHOOT = 1 << 4
 INPUT_FLAG_ABILITY = 1 << 5
 INPUT_FLAG_SPRINT = 1 << 6
 INPUT_FLAG_INTERACT = 1 << 7
+INPUT_FLAG_DASH = 1 << 8  # bit 8 -> input_flags is a u16 on the wire
 
 # State update flags
 STATE_FLAG_IS_DELTA = 1 << 0
@@ -115,8 +116,17 @@ HEADER_SIZE = 3  # [u8 type][u16 payload_length]
 # decisions while still using only network-visible state.
 SERVER_TICK_RATE = 30.0
 PLAYER_SPEED = 200.0
+# Mirror of client/scripts/shared/game_constants.gd — keep these in sync so bot
+# dead-reckoning matches the server-authoritative movement state machine.
 PLAYER_SPRINT_MULTIPLIER = 1.6
 PLAYER_SPRINT_SPEED = PLAYER_SPEED * PLAYER_SPRINT_MULTIPLIER
+PLAYER_STAMINA_MAX = 100.0
+PLAYER_MANA_MAX = 100.0
+PLAYER_DASH_COOLDOWN = 5.5  # seconds, START-relative
+# Bots stop requesting sprint below this stamina so they visibly respect the meter
+# instead of spamming sprint (which the server gates anyway). > the server's hard
+# floor (5.0) so bots keep a usable reserve.
+BOT_SPRINT_STAMINA_FLOOR = 25.0
 MAP_MIN_X = -1000.0
 MAP_MIN_Y = -1000.0
 MAP_MAX_X = 1000.0
@@ -543,8 +553,8 @@ def build_player_input(
     client_render_tick: int = 0,
     client_rtt_ms: int = 0,
 ) -> bytes:
-    """Build PLAYER_INPUT packet (16 bytes payload).
-    Format: [s16 pos_x][s16 pos_y][s16 vel_x][s16 vel_y][u8 flags][s16 aim][u8 seq][u16 render_tick][u16 rtt_ms]
+    """Build PLAYER_INPUT packet (17 bytes payload).
+    Format: [s16 pos_x][s16 pos_y][s16 vel_x][s16 vel_y][u16 flags][s16 aim][u8 seq][u16 render_tick][u16 rtt_ms]
     """
     qpx = max(-32768, min(32767, int(pos_x * POSITION_SCALE)))
     qpy = max(-32768, min(32767, int(pos_y * POSITION_SCALE)))
@@ -552,9 +562,9 @@ def build_player_input(
     qvy = max(-32768, min(32767, int(vel_y * VELOCITY_SCALE)))
     qaim = max(-32768, min(32767, int(aim_angle * ANGLE_SCALE)))
     payload = struct.pack(
-        "<hhhhBhBHH",
+        "<hhhhHhBHH",
         qpx, qpy, qvx, qvy,
-        input_flags & 0xFF,
+        input_flags & 0xFFFF,
         qaim,
         sequence & 0xFF,
         client_render_tick & 0xFFFF,
@@ -1107,6 +1117,11 @@ class OmegaRealmBot:
         self._entity_id: int | None = None
         self._entities: dict[int, EntitySnapshot] = {}
         self._dead_since: float | None = None
+        # Authoritative resources synced from ACTION_CONFIRM (owner-only). Lets the
+        # bot respect its stamina meter and dash cooldown like a real player.
+        self._stamina = PLAYER_STAMINA_MAX
+        self._mana = PLAYER_MANA_MAX
+        self._dash_cooldown_until = 0.0
         # Client-side monster-hit reporting (so bots take monster damage like real
         # players). Report each projectile at most once; rate-limit to match the
         # server's per-peer cap (LOCAL_HIT_REPORT_MAX_PER_SECOND = 20).
@@ -1401,7 +1416,19 @@ class OmegaRealmBot:
 
         decision = self._get_strategy_decision(now, self_snapshot)
         self._aim_angle = decision.aim_angle
-        self._set_velocity_from_direction(decision.move_x, decision.move_y, sprint=decision.sprint)
+
+        # Sprint only while we have stamina to spend — adhere to the meter instead of
+        # spamming sprint. The server gates it too, but matching here keeps the bot's
+        # dead-reckoning consistent with the authoritative position.
+        sprint = decision.sprint and self._stamina > BOT_SPRINT_STAMINA_FLOOR
+        self._set_velocity_from_direction(decision.move_x, decision.move_y, sprint=sprint)
+
+        # Dash: edge-triggered, respects the local cooldown estimate (the server
+        # enforces the real 5.5 s cooldown). Dash while actually moving.
+        dash_flag = 0
+        if self._should_dash(now, decision):
+            dash_flag = INPUT_FLAG_DASH
+            self._dash_cooldown_until = now + PLAYER_DASH_COOLDOWN
 
         dt = BOT_INPUT_INTERVAL
         self._pos_x, self._pos_y = move_with_obstacle_collision(
@@ -1412,7 +1439,20 @@ class OmegaRealmBot:
             PLAYER_HITBOX_RADIUS,
         )
         shoot_flag = INPUT_FLAG_SHOOT if decision.shoot else 0
-        await self._send_input_packet(shoot_flag)
+        await self._send_input_packet(shoot_flag | dash_flag)
+
+    def _should_dash(self, now: float, decision: "TacticalDecision") -> bool:
+        """Decide whether to fire a dash this tick. Gated by a local cooldown and a
+        difficulty-scaled chance; only dashes while moving so it has a direction."""
+        if now < self._dash_cooldown_until:
+            return False
+        if decision.move_x == 0.0 and decision.move_y == 0.0:
+            return False
+        # Higher difficulty dashes more aggressively; evading dashes more often.
+        chance = 0.02 + 0.08 * self.difficulty
+        if self._strategy_state in (STRATEGY_STATE_EVADE, STRATEGY_STATE_FLANK):
+            chance *= 2.0
+        return random.random() < chance
 
     def select_target(self, now: float | None = None) -> EntitySnapshot | None:
         """Select the best visible combat target using score, threat, and stickiness."""
@@ -2266,7 +2306,11 @@ class OmegaRealmBot:
             self._handle_game_event(event)
 
         elif msg_type == MessageType.ACTION_CONFIRM:
-            pass  # Bot doesn't need to process confirmations
+            # Owner-only authoritative resource sync rides the last 2 payload bytes
+            # ([...][u8 stamina][u8 mana]); track them to manage sprint/dash.
+            if len(payload) >= 11:
+                self._stamina = float(payload[9])
+                self._mana = float(payload[10])
 
         elif msg_type == MessageType.SERVER_METRICS:
             sm = parse_server_metrics(payload)

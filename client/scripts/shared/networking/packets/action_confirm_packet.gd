@@ -7,6 +7,8 @@
 ##   [s16 corrected_x][s16 corrected_y]   4 bytes - server's authoritative position
 ##   [u8 result_code]                     1 byte  - success/failure code
 ##   [u16 server_tick]                    2 bytes - server tick when processed
+##   [u8 stamina]                         1 byte  - authoritative stamina (0-100)
+##   [u8 mana]                            1 byte  - authoritative mana (0-100)
 class_name ActionConfirmPacket
 extends RefCounted
 
@@ -38,6 +40,10 @@ var corrected_position: Vector2 = Vector2.ZERO
 var result_code: int = ResultCode.SUCCESS
 ## Server tick when this action was processed
 var server_tick: int = 0
+## Authoritative stamina at the confirmed tick (0-100), owner-only resource sync.
+var stamina: int = 100
+## Authoritative mana at the confirmed tick (0-100), owner-only resource sync.
+var mana: int = 100
 
 
 func _init() -> void:
@@ -45,13 +51,16 @@ func _init() -> void:
 
 
 ## Create move confirmation
-static func create_move_confirm(seq: int, position: Vector2, tick: int, success: bool = true) -> ActionConfirmPacket:
+static func create_move_confirm(seq: int, position: Vector2, tick: int, success: bool = true,
+		stamina_value: int = 100, mana_value: int = 100) -> ActionConfirmPacket:
 	var packet = ActionConfirmPacket.new()
 	packet.sequence_number = seq
 	packet.action_type = ActionType.MOVE
 	packet.corrected_position = position
 	packet.result_code = ResultCode.SUCCESS if success else ResultCode.FAILED_INVALID_POSITION
 	packet.server_tick = tick
+	packet.stamina = clampi(stamina_value, 0, 255)
+	packet.mana = clampi(mana_value, 0, 255)
 	return packet
 
 
@@ -68,7 +77,7 @@ static func create_shoot_confirm(seq: int, position: Vector2, tick: int, result:
 
 ## Write packet to buffer (includes header)
 func write() -> PackedByteArray:
-	var writer = PacketWriter.new(16)  # 3 header + 9 payload + safety
+	var writer = PacketWriter.new(18)  # 3 header + 11 payload + safety
 	writer.write_header(PacketTypes.Type.ACTION_CONFIRM)
 	write_payload(writer)
 	writer.finalize_header()
@@ -82,6 +91,8 @@ func write_payload(writer: PacketWriter) -> void:
 	writer.write_vector2_compressed(corrected_position)
 	writer.write_u8(result_code)
 	writer.write_u16(server_tick)
+	writer.write_u8(clampi(stamina, 0, 255))
+	writer.write_u8(clampi(mana, 0, 255))
 
 
 ## Read packet from reader (assumes header already read)
@@ -92,6 +103,8 @@ static func read(reader: PacketReader) -> ActionConfirmPacket:
 	packet.corrected_position = reader.read_vector2_compressed()
 	packet.result_code = reader.read_u8()
 	packet.server_tick = reader.read_u16()
+	packet.stamina = reader.read_u8()
+	packet.mana = reader.read_u8()
 	return packet
 
 
@@ -138,5 +151,7 @@ func to_dict() -> Dictionary:
 		"corrected_position": corrected_position,
 		"result_code": result_code,
 		"result_name": get_result_name(),
-		"server_tick": server_tick
+		"server_tick": server_tick,
+		"stamina": stamina,
+		"mana": mana
 	}

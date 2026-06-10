@@ -842,6 +842,8 @@ func _encode_packet(message_type: MessageType, data: Dictionary) -> PackedByteAr
 			writer.write_vector2_compressed(data.get("corrected_position", data.get("position", Vector2.ZERO)))
 			writer.write_u8(data.get("result_code", data.get("result", 0)))
 			writer.write_u16(data.get("server_tick", data.get("tick", 0)))
+			writer.write_u8(clampi(data.get("stamina", 100), 0, 255))
+			writer.write_u8(clampi(data.get("mana", 100), 0, 255))
 
 		MessageType.CONNECT_AUTH:
 			writer.write_string(data.get("token", ""))

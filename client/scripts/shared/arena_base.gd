@@ -14,7 +14,6 @@ const TILEMAP_Z_INDEX := -10
 
 ## HUD script paths (loaded at runtime to avoid server-mode issues)
 const DEATH_SCREEN_PATH := "res://scripts/client/hud/death_screen.gd"
-const HP_BAR_PATH := "res://scripts/client/hud/hp_bar.gd"
 const KILL_FEED_PATH := "res://scripts/client/hud/kill_feed.gd"
 const MINIMAP_PATH := "res://scripts/client/hud/minimap.gd"
 const LEADERBOARD_PATH := "res://scripts/client/hud/leaderboard.gd"
@@ -55,6 +54,8 @@ var screen_effects: ScreenEffects = null
 ## HUD components (null in server mode)
 var death_screen: Control = null
 var hp_bar: Control = null
+var stamina_bar: Control = null
+var mana_bar: Control = null
 var kill_feed: Control = null
 var minimap: Control = null
 var leaderboard: Control = null
@@ -284,9 +285,12 @@ func _setup_hud() -> void:
 		push_error("[ArenaBase] HUDLayer not found!")
 		return
 
-	# HP Bar (bottom center)
-	hp_bar = _create_hud_component(HP_BAR_PATH, "HPBar")
-	hud_layer.add_child(hp_bar)
+	# HP / Stamina / Mana bar group (bottom-center). Shared layout via BottomBars so
+	# the networked arena and the offline modes can't drift apart.
+	var bars := BottomBars.create(hud_layer)
+	hp_bar = bars["hp"]
+	stamina_bar = bars["stamina"]
+	mana_bar = bars["mana"]
 
 	# Kill Feed (top right, below minimap)
 	kill_feed = _create_hud_component(KILL_FEED_PATH, "KillFeed")
@@ -933,11 +937,37 @@ func _connect_local_hp_bar() -> void:
 	if not local_player.hp_component.hp_changed.is_connected(_on_local_hp_changed):
 		local_player.hp_component.hp_changed.connect(_on_local_hp_changed)
 	_update_hp_bar()
+	_connect_local_resource_bars()
 
 
 func _on_local_hp_changed(current_hp: int, max_hp: int) -> void:
 	if hp_bar:
 		hp_bar.update_hp(current_hp, max_hp)
+
+
+## Wire the Stamina/Mana bars to the local player's predicted movement state machine.
+func _connect_local_resource_bars() -> void:
+	if local_player == null or not is_instance_valid(local_player):
+		return
+	var sm: MovementStateMachine = local_player.movement_sm
+	if sm == null:
+		return
+	if stamina_bar != null and not sm.stamina_changed.is_connected(_on_local_stamina_changed):
+		sm.stamina_changed.connect(_on_local_stamina_changed)
+		stamina_bar.update_value(sm.stamina, GameConstants.PLAYER_STAMINA_MAX)
+	if mana_bar != null and not sm.mana_changed.is_connected(_on_local_mana_changed):
+		sm.mana_changed.connect(_on_local_mana_changed)
+		mana_bar.update_value(sm.mana, GameConstants.PLAYER_MANA_MAX)
+
+
+func _on_local_stamina_changed(current: float, maximum: float) -> void:
+	if stamina_bar:
+		stamina_bar.update_value(current, maximum)
+
+
+func _on_local_mana_changed(current: float, maximum: float) -> void:
+	if mana_bar:
+		mana_bar.update_value(current, maximum)
 
 
 ## Handle disconnect from server

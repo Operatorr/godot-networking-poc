@@ -60,6 +60,83 @@ const PLAYER_SPRINT_SPEED := PLAYER_SPEED * PLAYER_SPRINT_MULTIPLIER
 
 
 # =============================================================================
+# DASH
+# =============================================================================
+# Server-authoritative burst movement triggered instantly on the dash input.
+# Both client (predicted) and server drive the shared MovementStateMachine with
+# these values, so they MUST stay identical on both sides.
+
+## Dash speed = base * this multiplier (3.6x => 720 u/s).
+const PLAYER_DASH_MULTIPLIER := 3.6
+
+## Calculated dash speed for reference: 720 units/sec.
+const PLAYER_DASH_SPEED := PLAYER_SPEED * PLAYER_DASH_MULTIPLIER
+
+## How long a single dash lasts (seconds).
+const PLAYER_DASH_DURATION := 0.4
+
+## Cooldown before the next dash is allowed (seconds). START-relative: the clock
+## begins when the dash begins, so the usable gap is COOLDOWN - DURATION (~5.1 s).
+const PLAYER_DASH_COOLDOWN := 5.5
+
+
+# =============================================================================
+# KNOCKBACK
+# =============================================================================
+
+## Exponential decay rate for knockback velocity (higher = snappier recovery).
+## velocity *= exp(-rate * delta) each tick; ~9.0 settles in roughly half a second.
+const PLAYER_KNOCKBACK_DECAY := 9.0
+
+## Below this speed (u/s) knockback is considered finished and the SM exits to IDLE.
+const PLAYER_KNOCKBACK_END_SPEED := 12.0
+
+## Default knockback magnitude applied as direction * force * multiplier when a
+## caller does not specify its own force.
+const PLAYER_KNOCKBACK_BASE_FORCE := 450.0
+
+
+# =============================================================================
+# STAMINA (sprint resource)
+# =============================================================================
+
+## Maximum stamina pool.
+const PLAYER_STAMINA_MAX := 100.0
+
+## Stamina drained per second while SPRINTING.
+const PLAYER_STAMINA_DRAIN_PER_SEC := 35.0
+
+## Stamina regenerated per second while NOT sprinting.
+const PLAYER_STAMINA_REGEN_PER_SEC := 20.0
+
+## Sprint cannot start below this stamina (prevents one-frame flicker sprints).
+const PLAYER_STAMINA_SPRINT_MIN := 5.0
+
+
+# =============================================================================
+# MANA (ability resource)
+# =============================================================================
+
+## Maximum mana pool.
+const PLAYER_MANA_MAX := 100.0
+
+## Mana regenerated per second.
+const PLAYER_MANA_REGEN_PER_SEC := 10.0
+
+## Mana consumed by a single ability use (gates the ability input).
+const PLAYER_MANA_ABILITY_COST := 25.0
+
+
+# =============================================================================
+# STATUS-EFFECT SPEED MODIFIERS (placeholder bounds for a future manager)
+# =============================================================================
+
+## Clamp the aggregate Haste/Slow speed multiplier so stacks stay sane.
+const PLAYER_SPEED_MULT_MIN := 0.25
+const PLAYER_SPEED_MULT_MAX := 2.5
+
+
+# =============================================================================
 # CAMERA
 # =============================================================================
 # Single source of truth for gameplay camera zoom. Used by the online arena and

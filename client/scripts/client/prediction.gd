@@ -80,6 +80,11 @@ const INPUT_SEND_INTERVAL: float = GameConstants.SERVER_TICK_INTERVAL
 ## Current frame's accumulated input flags
 var current_input_flags: int = 0
 
+## Dash is edge-triggered. We latch the rising edge of the dash action and keep
+## the INPUT_FLAG_DASH bit set until the next input is sent to the server, so a
+## tap between 30 Hz sends is never dropped. Cleared in _send_input_to_server.
+var _dash_latched: bool = false
+
 ## Last time (seconds) the cosmetic shoot feedback fired, used to gate held-fire
 ## to the server's SHOOT_COOLDOWN auto-fire cadence. -INF so the first shot fires.
 var _last_predicted_shot_time: float = -INF
@@ -218,6 +223,12 @@ func _capture_input_flags() -> int:
 	if Input.is_action_pressed("interact"):
 		flags |= PacketTypes.INPUT_FLAG_INTERACT
 
+	# Dash: latch the rising edge until the next send so the tap is never dropped.
+	if Input.is_action_just_pressed("dash"):
+		_dash_latched = true
+	if _dash_latched:
+		flags |= PacketTypes.INPUT_FLAG_DASH
+
 	return flags
 
 
@@ -313,12 +324,27 @@ func _get_client_render_tick() -> int:
 func _apply_local_prediction(input_flags: int, delta: float) -> void:
 	var position_before := predicted_position
 
-	# Calculate movement from input flags
+	# Drive the shared movement state machine (dash/sprint/knockback/stun/ability +
+	# stamina/mana). The server runs an identical instance authoritatively; the
+	# reconcile path corrects position if they diverge. Fall back to the stateless
+	# walk/sprint model if the player exposes no SM (e.g. non-Player nodes in tests).
 	var direction := _get_direction_from_flags(input_flags)
-	var speed := _get_speed_from_flags(input_flags)
+	var sm := _get_movement_sm()
+	if sm != null:
+		var aim_dir := Vector2.from_angle(_get_aim_angle())
+		predicted_velocity = sm.tick(
+			delta,
+			direction,
+			(input_flags & PacketTypes.INPUT_FLAG_SPRINT) != 0,
+			(input_flags & PacketTypes.INPUT_FLAG_DASH) != 0,
+			(input_flags & PacketTypes.INPUT_FLAG_ABILITY) != 0,
+			(input_flags & PacketTypes.INPUT_FLAG_SHOOT) != 0,
+			aim_dir
+		)
+	else:
+		predicted_velocity = direction * _get_speed_from_flags(input_flags)
 
-	# Update velocity and position
-	predicted_velocity = direction * speed
+	# Integrate against obstacles, then recover the realized velocity.
 	predicted_position = GameConstants.move_with_obstacle_collision(
 		predicted_position,
 		predicted_position + predicted_velocity * delta,
@@ -329,6 +355,14 @@ func _apply_local_prediction(input_flags: int, delta: float) -> void:
 
 	# Update visual position (unless correcting)
 	_update_player_visual()
+
+
+## The local player's predicted movement state machine, or null if the controlled
+## node does not expose one.
+func _get_movement_sm() -> MovementStateMachine:
+	if player_node != null and "movement_sm" in player_node:
+		return player_node.movement_sm
+	return null
 
 
 func _get_direction_from_flags(flags: int) -> Vector2:
@@ -346,10 +380,18 @@ func _get_direction_from_flags(flags: int) -> Vector2:
 	return direction.normalized()
 
 
+## Ground (walk/sprint) speed used by reconciliation replay. Routed through the SM
+## so sprint stamina-gating and Haste/Slow modifiers stay consistent with live
+## prediction. Replay intentionally uses ground speed even mid-dash/knockback: those
+## transient states are brief and rarely span a correction; any residual is fixed by
+## the next snapshot. See docs/systems/players-movement-state-machine.md.
 func _get_speed_from_flags(flags: int) -> float:
-	if flags & PacketTypes.INPUT_FLAG_SPRINT:
-		return GameConstants.PLAYER_SPRINT_SPEED
-	return GameConstants.PLAYER_SPEED
+	var sprint := (flags & PacketTypes.INPUT_FLAG_SPRINT) != 0
+	var sm := _get_movement_sm()
+	if sm != null:
+		sprint = sprint and sm.stamina > GameConstants.PLAYER_STAMINA_SPRINT_MIN
+		return sm.get_ground_speed(sprint)
+	return GameConstants.PLAYER_SPRINT_SPEED if sprint else GameConstants.PLAYER_SPEED
 #endregion
 
 
@@ -453,7 +495,8 @@ func _send_input_to_server() -> void:
 			"shoot": bool(current_input_flags & PacketTypes.INPUT_FLAG_SHOOT),
 			"ability": bool(current_input_flags & PacketTypes.INPUT_FLAG_ABILITY),
 			"sprint": bool(current_input_flags & PacketTypes.INPUT_FLAG_SPRINT),
-			"interact": bool(current_input_flags & PacketTypes.INPUT_FLAG_INTERACT)
+			"interact": bool(current_input_flags & PacketTypes.INPUT_FLAG_INTERACT),
+			"dash": bool(current_input_flags & PacketTypes.INPUT_FLAG_DASH)
 		},
 		"aim_angle": aim_angle,
 		"sequence": seq,
@@ -462,6 +505,10 @@ func _send_input_to_server() -> void:
 	}
 
 	NetworkManager.send_player_input(input_data)
+
+	# The dash edge has now been sent to the server; release the latch so the bit
+	# is set in exactly one input packet.
+	_dash_latched = false
 
 	if debug_logging:
 		print("[Prediction] Sent input: seq=%d, pos=%s, flags=%d, render_tick=%d, rtt_ms=%d" % [
@@ -494,6 +541,11 @@ func _handle_action_confirm(data: Dictionary) -> void:
 	# Only handle MOVE action type
 	if action_type != ActionConfirmPacket.ActionType.MOVE:
 		return
+
+	# Apply the authoritative stamina/mana that rode along with this confirmation.
+	var sm := _get_movement_sm()
+	if sm != null and data.has("stamina"):
+		sm.set_resources(float(data.get("stamina", sm.stamina)), float(data.get("mana", sm.mana)))
 
 	# Update tracking
 	last_ack_sequence = sequence

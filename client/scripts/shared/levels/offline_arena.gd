@@ -15,7 +15,6 @@ class_name OfflineArena
 extends Node2D
 
 const PLAYER_SCENE_PATH := "res://scenes/shared/player/player.tscn"
-const HP_BAR_PATH := "res://scripts/client/hud/hp_bar.gd"
 const PAUSE_MENU_PATH := "res://scripts/client/hud/pause_menu.gd"
 
 const ENVIRONMENT_COLLISION_LAYER := 8
@@ -36,6 +35,8 @@ var local_player: Player = null
 var camera: Camera2D = null
 var hud_layer: CanvasLayer = null
 var hp_bar: Control = null
+var stamina_bar: Control = null
+var mana_bar: Control = null
 var pause_menu: Control = null
 
 var _cached_audio_manager: Node = null
@@ -79,8 +80,15 @@ func _process(delta: float) -> void:
 			target_zoom = GameConstants.CAMERA_ZOOM_SPRINT
 		camera.zoom = camera.zoom.lerp(target_zoom, clampf(delta * GameConstants.CAMERA_ZOOM_SPEED, 0.0, 1.0))
 
-	if hp_bar and local_player and is_instance_valid(local_player) and local_player.hp_component:
-		hp_bar.update_hp(local_player.hp_component.current_hp, local_player.hp_component.max_hp)
+	if local_player and is_instance_valid(local_player):
+		if hp_bar and local_player.hp_component:
+			hp_bar.update_hp(local_player.hp_component.current_hp, local_player.hp_component.max_hp)
+		# Offline has no server/ACTION_CONFIRM, so poll the player's own SM each frame.
+		if local_player.movement_sm:
+			if stamina_bar:
+				stamina_bar.update_value(local_player.movement_sm.stamina, GameConstants.PLAYER_STAMINA_MAX)
+			if mana_bar:
+				mana_bar.update_value(local_player.movement_sm.mana, GameConstants.PLAYER_MANA_MAX)
 
 	_process_extra(delta)
 
@@ -206,8 +214,11 @@ func _setup_hud() -> void:
 	hud_layer.name = "HUDLayer"
 	add_child(hud_layer)
 
-	hp_bar = _create_hud_component(HP_BAR_PATH, "HPBar")
-	hud_layer.add_child(hp_bar)
+	# HP / Stamina / Mana bar group — shared layout with the networked arena.
+	var bars := BottomBars.create(hud_layer)
+	hp_bar = bars["hp"]
+	stamina_bar = bars["stamina"]
+	mana_bar = bars["mana"]
 	if local_player and local_player.hp_component:
 		hp_bar.update_hp(local_player.hp_component.current_hp, local_player.hp_component.max_hp)
 
