@@ -71,67 +71,110 @@ A proof-of-concept multiplayer game built with **Godot 4.6** and **Go**, designe
 - **Godot 4.6** - [Download](https://godotengine.org/download)
 - **Go 1.21+** - [Download](https://go.dev/dl/)
 - **PostgreSQL 15+** - Running locally or via Docker
-- **Redis** (optional) - For caching features
+- **Redis** - Required (sessions, leaderboard cache, region status; API exits if unreachable)
 - **Docker & Docker Compose** (optional) - For containerized deployment
 
 ---
 
 ## Quick Start
 
-### 1. Clone and Setup
+### 1. Clone the Repository
 
 ```bash
 git clone <repository-url>
 cd godot-networking-poc
 ```
 
-### 2. Database Setup
+### 2. Provision the Databases
 
-Create the database and user:
+The API requires **two** running services — bring them up however you like (local install,
+Docker, or managed):
 
-```bash
-# Connect to PostgreSQL
-psql -U postgres
+- **PostgreSQL** (accounts, characters, leaderboard persistence) — **required**.
+- **Redis** (sessions, leaderboard cache, region status) — **required**. The API exits on
+  startup if it cannot connect to Redis (`api/cmd/server/main.go`).
 
-# Create database and user
-CREATE USER omega WITH PASSWORD 'omega_password';
-CREATE DATABASE omega_db OWNER omega;
-GRANT ALL PRIVILEGES ON DATABASE omega_db TO omega;
-\q
-```
+You only need to have the servers reachable; the schema is migrated automatically on first
+API start. There is no manual `CREATE USER` / `CREATE DATABASE` step — point the API at an
+existing empty database instead.
 
-### 3. Configure API Server
+### 3. Configure the API Server
+
+Copy the API environment template and fill in your **PostgreSQL** and **Redis** connection
+details:
 
 ```bash
 cd api
 cp .env.example .env
-# Edit .env with your database credentials
 ```
 
-### 4. Start Services
+Edit `api/.env` and set, at minimum:
+
+```ini
+# PostgreSQL
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=omega
+DB_PASSWORD=omega_password
+DB_NAME=omega_db
+
+# Redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_DB=0
+```
+
+### 4. Seed the Test User
+
+First create the test credentials file and set the username/password the seeder will create:
 
 ```bash
 # From project root
+cp .env.test.example .env.test
+```
+
+Edit `.env.test` and set the login the seeder should provision:
+
+```ini
+TEST_USERNAME=testuser
+TEST_PASSWORD=testpassword123
+```
+
+Then run the seeder, which reads `.env.test` and creates/updates that login in PostgreSQL:
+
+```bash
+./scripts/seed_test_user.sh
+```
+
+> To re-test character creation for an existing user, re-run with `--reset-character`.
+
+### 5. Start the Services
+
+```bash
+# From project root — starts the Go API and the Godot headless game server
 ./scripts/start_services.sh
 ```
 
-Or manually:
+Stop them when you are done:
 
 ```bash
-# Terminal 1: Start Go API
-cd api
-go run cmd/server/main.go
-
-# Terminal 2: Start Godot Game Server
-cd client
-godot --headless
-
-# Terminal 3: Run Godot Client
-cd client
-godot project.godot
+./scripts/stop_services.sh
 ```
 
-### 5. Access the Game
+> PostgreSQL and Redis are **not** managed by these scripts — start them yourself first.
+
+### 6. (Optional) Run Gameplay Bots
+
+Spawn external WebSocket bots that authenticate and play like real clients to put load on the
+server (1–10 bots):
+
+```bash
+./scripts/start_bots.sh --bots 2     # spawn 2 bots (use any value 1–10)
+./scripts/stop_bots.sh               # stop all running bots
+```
+
+### 7. Access the Game
 
 - Open Godot and run the project, or
 - Use the exported client binary

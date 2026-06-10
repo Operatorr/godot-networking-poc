@@ -13,6 +13,8 @@ const SCENE_MAIN_MENU = "res://scenes/client/menus/main_menu.tscn"
 const SCENE_CHARACTER_CREATION = "res://scenes/client/menus/character_creation.tscn"
 const SCENE_LOADING = "res://scenes/client/menus/loading_screen.tscn"
 const SCENE_ARENA = "res://scenes/shared/arena/arena_base.tscn"
+const SCENE_PRACTICE = "res://scenes/shared/levels/practice.tscn"
+const SCENE_OFFLINE_SANDBOX = "res://scenes/test/sandbox.tscn"
 const SCENE_GAME_UI = "res://scenes/client/components/game_ui.tscn"
 const SCENE_SERVER_MAIN = "res://scenes/server/server_main.tscn"
 
@@ -24,6 +26,8 @@ enum SceneName {
 	CHARACTER_CREATION,
 	LOADING,
 	ARENA,
+	PRACTICE,
+	OFFLINE_SANDBOX,
 	GAME_UI,
 	SERVER_MAIN
 }
@@ -75,8 +79,8 @@ func _ready() -> void:
 	await get_tree().process_frame
 
 	# Skip routing for test scenes (run via F6 or headless CLI)
-	if current_scene_name.begins_with("res://scenes/test/"):
-		print("[SceneManager] Test scene detected, skipping route")
+	if _is_standalone_scene(current_scene_name):
+		print("[SceneManager] Standalone scene detected, skipping route")
 		return
 
 	# If server, load server scene
@@ -313,6 +317,10 @@ func _get_scene_path(scene_name: SceneName) -> String:
 			return SCENE_LOADING
 		SceneName.ARENA:
 			return SCENE_ARENA
+		SceneName.PRACTICE:
+			return SCENE_PRACTICE
+		SceneName.OFFLINE_SANDBOX:
+			return SCENE_OFFLINE_SANDBOX
 		SceneName.GAME_UI:
 			return SCENE_GAME_UI
 		SceneName.SERVER_MAIN:
@@ -335,7 +343,7 @@ func _update_game_state_for_scene(scene_name: SceneName) -> void:
 			game_mgr.change_state(game_mgr.GameState.MAIN_MENU)
 		SceneName.LOADING:
 			game_mgr.change_state(game_mgr.GameState.LOADING)
-		SceneName.ARENA:
+		SceneName.ARENA, SceneName.PRACTICE, SceneName.OFFLINE_SANDBOX:
 			game_mgr.change_state(game_mgr.GameState.IN_ARENA)
 
 ## Cleanup scene before transition
@@ -375,6 +383,14 @@ func goto_character_creation() -> void:
 ## Go to arena (with loading screen)
 func goto_arena() -> void:
 	change_scene(SceneName.ARENA, true)
+
+## Go to offline practice level
+func goto_practice() -> void:
+	change_scene(SceneName.PRACTICE, false)
+
+## Go to offline sandbox test scene
+func goto_offline_sandbox() -> void:
+	change_scene(SceneName.OFFLINE_SANDBOX, false)
 
 ## Reload current scene
 func reload_current_scene() -> void:
@@ -430,6 +446,12 @@ func preload_scene(scene_name: SceneName) -> void:
 func clear_cache() -> void:
 	scene_cache.clear()
 	print("[SceneManager] Scene cache cleared")
+
+
+func _is_standalone_scene(scene_path: String) -> bool:
+	return scene_path.begins_with("res://scenes/test/") \
+		or scene_path == SCENE_PRACTICE \
+		or scene_path == SCENE_OFFLINE_SANDBOX
 
 
 ## Set up the fade overlay CanvasLayer

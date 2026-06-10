@@ -15,8 +15,8 @@ signal reconciliation_complete(replayed_inputs: int)
 ## Emitted when the local player's visual position changes.
 signal visual_position_updated(visual_position: Vector2, is_discontinuous: bool)
 ## Cosmetic-only: emitted on the SHOOT rising-edge (and while held, gated to the
-## server auto-fire cadence) so the client can draw an immediate muzzle flash +
-## tracer without waiting for the PROJECTILE_FIRED round-trip. This does NOT spawn
+## server auto-fire cadence) so the client can draw an immediate muzzle flash
+## without waiting for the PROJECTILE_FIRED round-trip. This does NOT spawn
 ## a Projectile and does NOT touch predicted_position or the input buffer.
 signal shoot_predicted(muzzle_position: Vector2, aim_direction: Vector2)
 #endregion
@@ -79,6 +79,11 @@ const INPUT_SEND_INTERVAL: float = GameConstants.SERVER_TICK_INTERVAL
 
 ## Current frame's accumulated input flags
 var current_input_flags: int = 0
+
+## Dash is edge-triggered. We latch the rising edge of the dash action and keep
+## the INPUT_FLAG_DASH bit set until the next input is sent to the server, so a
+## tap between 30 Hz sends is never dropped. Cleared in _send_input_to_server.
+var _dash_latched: bool = false
 
 ## Last time (seconds) the cosmetic shoot feedback fired, used to gate held-fire
 ## to the server's SHOOT_COOLDOWN auto-fire cadence. -INF so the first shot fires.
@@ -171,7 +176,7 @@ func _physics_process(delta: float) -> void:
 	if projectile_sync_debug_logging:
 		_log_shoot_edge(previous_input_flags, current_input_flags)
 
-	# Step 1b: Emit cosmetic-only shoot feedback (muzzle flash + tracer). Fires on
+	# Step 1b: Emit cosmetic-only shoot feedback (muzzle flash). Fires on
 	# the SHOOT rising-edge and, while held, at most once per SHOOT_COOLDOWN so it
 	# mirrors the server's auto-fire cadence. Does not move the player or spawn a
 	# real projectile — server stays authoritative for damage.
@@ -217,6 +222,12 @@ func _capture_input_flags() -> int:
 		flags |= PacketTypes.INPUT_FLAG_SPRINT
 	if Input.is_action_pressed("interact"):
 		flags |= PacketTypes.INPUT_FLAG_INTERACT
+
+	# Dash: latch the rising edge until the next send so the tap is never dropped.
+	if Input.is_action_just_pressed("dash"):
+		_dash_latched = true
+	if _dash_latched:
+		flags |= PacketTypes.INPUT_FLAG_DASH
 
 	return flags
 
@@ -276,7 +287,7 @@ func _log_shoot_edge(previous_flags: int, new_flags: int) -> void:
 ## rising-edge, and while SHOOT stays held re-emits at most once per
 ## SHOOT_COOLDOWN to mirror the server's auto-fire cadence (server_main
 ## _process_shoot_inputs). Computes the muzzle origin exactly like the server
-## (server_main._try_spawn_projectile) so the flash/tracer line up with the real
+## (server_main._try_spawn_projectile) so the flash lines up with the real
 ## projectile. Purely visual — never writes predicted_position or the buffer.
 func _maybe_emit_shoot_predicted(previous_flags: int, new_flags: int) -> void:
 	if player_node == null:
@@ -313,12 +324,27 @@ func _get_client_render_tick() -> int:
 func _apply_local_prediction(input_flags: int, delta: float) -> void:
 	var position_before := predicted_position
 
-	# Calculate movement from input flags
+	# Drive the shared movement state machine (dash/sprint/knockback/stun/ability +
+	# stamina/mana). The server runs an identical instance authoritatively; the
+	# reconcile path corrects position if they diverge. Fall back to the stateless
+	# walk/sprint model if the player exposes no SM (e.g. non-Player nodes in tests).
 	var direction := _get_direction_from_flags(input_flags)
-	var speed := _get_speed_from_flags(input_flags)
+	var sm := _get_movement_sm()
+	if sm != null:
+		var aim_dir := Vector2.from_angle(_get_aim_angle())
+		predicted_velocity = sm.tick(
+			delta,
+			direction,
+			(input_flags & PacketTypes.INPUT_FLAG_SPRINT) != 0,
+			(input_flags & PacketTypes.INPUT_FLAG_DASH) != 0,
+			(input_flags & PacketTypes.INPUT_FLAG_ABILITY) != 0,
+			(input_flags & PacketTypes.INPUT_FLAG_SHOOT) != 0,
+			aim_dir
+		)
+	else:
+		predicted_velocity = direction * _get_speed_from_flags(input_flags)
 
-	# Update velocity and position
-	predicted_velocity = direction * speed
+	# Integrate against obstacles, then recover the realized velocity.
 	predicted_position = GameConstants.move_with_obstacle_collision(
 		predicted_position,
 		predicted_position + predicted_velocity * delta,
@@ -329,6 +355,14 @@ func _apply_local_prediction(input_flags: int, delta: float) -> void:
 
 	# Update visual position (unless correcting)
 	_update_player_visual()
+
+
+## The local player's predicted movement state machine, or null if the controlled
+## node does not expose one.
+func _get_movement_sm() -> MovementStateMachine:
+	if player_node != null and "movement_sm" in player_node:
+		return player_node.movement_sm
+	return null
 
 
 func _get_direction_from_flags(flags: int) -> Vector2:
@@ -346,10 +380,18 @@ func _get_direction_from_flags(flags: int) -> Vector2:
 	return direction.normalized()
 
 
+## Ground (walk/sprint) speed used by reconciliation replay. Routed through the SM
+## so sprint stamina-gating and Haste/Slow modifiers stay consistent with live
+## prediction. Replay intentionally uses ground speed even mid-dash/knockback: those
+## transient states are brief and rarely span a correction; any residual is fixed by
+## the next snapshot. See docs/systems/players-movement-state-machine.md.
 func _get_speed_from_flags(flags: int) -> float:
-	if flags & PacketTypes.INPUT_FLAG_SPRINT:
-		return GameConstants.PLAYER_SPRINT_SPEED
-	return GameConstants.PLAYER_SPEED
+	var sprint := (flags & PacketTypes.INPUT_FLAG_SPRINT) != 0
+	var sm := _get_movement_sm()
+	if sm != null:
+		sprint = sprint and sm.stamina > GameConstants.PLAYER_STAMINA_SPRINT_MIN
+		return sm.get_ground_speed(sprint)
+	return GameConstants.PLAYER_SPRINT_SPEED if sprint else GameConstants.PLAYER_SPEED
 #endregion
 
 
@@ -453,7 +495,8 @@ func _send_input_to_server() -> void:
 			"shoot": bool(current_input_flags & PacketTypes.INPUT_FLAG_SHOOT),
 			"ability": bool(current_input_flags & PacketTypes.INPUT_FLAG_ABILITY),
 			"sprint": bool(current_input_flags & PacketTypes.INPUT_FLAG_SPRINT),
-			"interact": bool(current_input_flags & PacketTypes.INPUT_FLAG_INTERACT)
+			"interact": bool(current_input_flags & PacketTypes.INPUT_FLAG_INTERACT),
+			"dash": bool(current_input_flags & PacketTypes.INPUT_FLAG_DASH)
 		},
 		"aim_angle": aim_angle,
 		"sequence": seq,
@@ -462,6 +505,10 @@ func _send_input_to_server() -> void:
 	}
 
 	NetworkManager.send_player_input(input_data)
+
+	# The dash edge has now been sent to the server; release the latch so the bit
+	# is set in exactly one input packet.
+	_dash_latched = false
 
 	if debug_logging:
 		print("[Prediction] Sent input: seq=%d, pos=%s, flags=%d, render_tick=%d, rtt_ms=%d" % [
@@ -494,6 +541,11 @@ func _handle_action_confirm(data: Dictionary) -> void:
 	# Only handle MOVE action type
 	if action_type != ActionConfirmPacket.ActionType.MOVE:
 		return
+
+	# Apply the authoritative stamina/mana that rode along with this confirmation.
+	var sm := _get_movement_sm()
+	if sm != null and data.has("stamina"):
+		sm.set_resources(float(data.get("stamina", sm.stamina)), float(data.get("mana", sm.mana)))
 
 	# Update tracking
 	last_ack_sequence = sequence
@@ -731,6 +783,17 @@ func get_debug_info() -> Dictionary:
 ## Check if prediction is active
 func is_active() -> bool:
 	return prediction_enabled and player_node != null and local_entity_id >= 0 and has_authoritative_position
+
+
+## World-space position at which the local player is currently rendered. While a
+## smooth correction is in flight this trails predicted_position — the correction
+## target moves each frame while player_node.position only lerps toward it — so
+## callers that must match exactly what the player sees on screen (e.g.
+## LocalHitDetector) should test against this, not predicted_position.
+func get_rendered_position() -> Vector2:
+	if player_node != null:
+		return player_node.position
+	return predicted_position
 
 
 ## Enable or disable local prediction and outbound input.

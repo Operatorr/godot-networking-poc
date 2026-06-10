@@ -39,13 +39,14 @@ each physics tick. Animation/flags are **not** interpolated — they snap to the
 Snapshot, pulled per-frame in `update_entity_visuals` (`client_entity_manager.gd:362-364`,
 `remote_player.gd:54`).
 
-## Render delay (fixed)
+## Render delay (adaptive)
 
 | Property | Value | Source |
 |---|---|---|
-| Render delay | `2` ticks = **66.7 ms** @30 Hz | `game_constants.gd:20`, `interpolation_controller.gd:11` |
-| `render_tick` | `max(0, server_tick − 2)` | `interpolation_controller.gd:186` |
-| Adaptive? | **No** — constant 2 ticks regardless of jitter/RTT | — |
+| Render delay | **adaptive 1–3 ticks** (≈33–100 ms @30 Hz); seed `2` | `interpolation_controller.gd:206-226`, `MIN/MAX` `:16-17` |
+| `render_tick` | `max(0, server_tick − round(render_delay_ticks_smooth))` | `interpolation_controller.gd:226` |
+| Adaptive? | **Yes** — sized to measured *jitter* (`1 interval + 2× jitter`), clamped 1–3 ticks, asymmetric fast-grow/slow-shrink | `:206-218` |
+| Driven by | inter-arrival **jitter**, not raw ping (a stable 90 ms link buffers no more than a stable 10 ms one) | `:209-212` |
 
 `current_server_tick` advances only when a newer Snapshot arrives, and `render_tick`
 is recomputed from it (`:175-187`). The controller draws Remote entities at
@@ -118,11 +119,11 @@ snaps the node instead of interpolating across (`:361-373`, `game_constants.gd:5
    30 Hz). Until the EMA settles, `tick_progress` is mis-scaled and motion micro-stutters.
    All "20Hz"/"250ms"/"150ms"/"100ms" comments in these two files are stale.
 
-2. **Fixed, non-adaptive Render delay.** 66.7 ms is a constant
-   (`game_constants.gd:20`). It does not widen under jitter or shrink on a clean LAN,
-   so it is simultaneously *too small* under bursty loss (causes extrapolation/freeze)
-   and *too large* on localhost (needless latency — see
-   [`latency-budget.md`](latency-budget.md)).
+2. **Render delay — RESOLVED, now adaptive.** Previously a fixed 66.7 ms (2 ticks). It is now
+   sized to measured inter-arrival jitter and clamped to 1–3 ticks, with asymmetric adaptation
+   (grow fast on a jitter spike, shrink slowly when clean) — `interpolation_controller.gd:206-226`.
+   On a clean LAN/localhost it collapses toward ~33 ms (1 tick); under jitter it widens to avoid
+   extrapolation/freeze. See [`latency-budget.md`](latency-budget.md).
 
 3. **Interpolates newest-two, not straddle-by-time.** `get_interpolation_data` brackets
    by **integer `render_tick`** (`entity_state_buffer.gd:167-177`), and `render_tick`
@@ -137,7 +138,7 @@ snaps the node instead of interpolating across (`:361-373`, `game_constants.gd:5
 | Fix | What | Status |
 |---|---|---|
 | Seed from `SERVER_TICK_INTERVAL` | Replace hard-coded `0.05`/`50.0` with `GameConstants.SERVER_TICK_INTERVAL` (or the live Snapshot interval) so cold-start is correct | Planned |
-| Adaptive Render delay | Size delay from measured jitter + RTT instead of a constant 2 ticks | Planned |
+| Adaptive Render delay | Size delay from measured jitter, clamp 1–3 ticks, asymmetric grow/shrink (`interpolation_controller.gd:206-226`) | **Done** |
 | Larger buffer (8–10) | Raise `BUFFER_SIZE` 5→8–10 to absorb bursts at 30 Hz tick / 20 Hz send | Planned |
 | Time-based straddle search | Drive a continuous `client_time − delay` render clock and straddle by timestamp, not integer tick | Planned |
 

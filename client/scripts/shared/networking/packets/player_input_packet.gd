@@ -1,14 +1,14 @@
-## PlayerInputPacket - Client input packet (~16 bytes payload)
+## PlayerInputPacket - Client input packet (~17 bytes payload)
 ## Sent from client to server at the authoritative tick cadence
 ## Format:
 ##   [s16 position_x][s16 position_y]     4 bytes - quantized position
 ##   [s16 velocity_x][s16 velocity_y]     4 bytes - quantized velocity
-##   [u8 input_flags]                     1 byte  - WASD + actions
+##   [u16 input_flags]                    2 bytes - WASD + actions + dash (bit 8)
 ##   [s16 aim_angle]                      2 bytes - quantized aim direction
 ##   [u8 sequence_number]                 1 byte  - for server reconciliation
 ##   [u16 client_render_tick]             2 bytes - tick remote entities were rendered at
 ##   [u16 client_rtt_ms]                  2 bytes - latest client-measured round-trip time
-## Total: 16 bytes payload
+## Total: 17 bytes payload
 class_name PlayerInputPacket
 extends RefCounted
 
@@ -68,7 +68,7 @@ static func from_input_dict(input: Dictionary) -> PlayerInputPacket:
 
 ## Write packet to buffer (includes header)
 func write() -> PackedByteArray:
-	var writer = PacketWriter.new(20)  # 3 header + 16 payload + 1 safety
+	var writer = PacketWriter.new(21)  # 3 header + 17 payload + 1 safety
 	writer.write_header(PacketTypes.Type.PLAYER_INPUT)
 	write_payload(writer)
 	writer.finalize_header()
@@ -79,7 +79,7 @@ func write() -> PackedByteArray:
 func write_payload(writer: PacketWriter) -> void:
 	writer.write_vector2_compressed(position)
 	writer.write_velocity_compressed(velocity)
-	writer.write_u8(input_flags)
+	writer.write_u16(input_flags)
 	writer.write_angle_compressed(aim_angle)
 	writer.write_u8(sequence_number)
 	writer.write_u16(client_render_tick)
@@ -91,7 +91,7 @@ static func read(reader: PacketReader) -> PlayerInputPacket:
 	var packet = PlayerInputPacket.new()
 	packet.position = reader.read_vector2_compressed()
 	packet.velocity = reader.read_velocity_compressed()
-	packet.input_flags = reader.read_u8()
+	packet.input_flags = reader.read_u16()
 	packet.aim_angle = reader.read_angle_compressed()
 	packet.sequence_number = reader.read_u8()
 	packet.client_render_tick = reader.read_u16()
@@ -137,6 +137,11 @@ func is_using_ability() -> bool:
 ## Check if player is sprinting
 func is_sprinting() -> bool:
 	return is_input_pressed(PacketTypes.INPUT_FLAG_SPRINT)
+
+
+## Check if player requested a dash this input
+func is_dashing() -> bool:
+	return is_input_pressed(PacketTypes.INPUT_FLAG_DASH)
 
 
 ## Get aim direction as Vector2

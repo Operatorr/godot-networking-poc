@@ -47,7 +47,9 @@ client mode only. Each widget is `extends Control` and builds its own sub-tree i
 
 | Widget | Script | Shows / does | Anchor |
 | --- | --- | --- | --- |
-| HP bar | `hud/hp_bar.gd` | current/max HP, colour-graded green→yellow→red, damage flash 0.3 s (`:16,57-79`). | bottom-centre |
+| HP bar | `hud/hp_bar.gd` | current/max HP, colour-graded green→yellow→red, damage flash 0.3 s; width/offset configurable so it sits in the left slot. | bottom-centre, **left slot** |
+| Mana bar | `hud/stat_bar.gd` | current/max mana (blue), driven by `movement_sm.mana_changed`. | bottom-centre, **right slot** |
+| Stamina bar | `hud/stat_bar.gd` | sprint stamina (thin, spans HP+Mana width), driven by `movement_sm.stamina_changed`. | bottom-centre, **above HP/Mana** |
 | Minimap | `hud/minimap.gd` | `_draw()` of arena, obstacles, self (green), players (red), monsters (orange) within 500 u (`:6-13,68-88`); reads `interpolation_controller.entity_last_states`. | top-right |
 | Kill feed | `hud/kill_feed.gd` | last 3 "X eliminated Y" lines, each fades after 3 s (`:6-7,52`). | top-right, under minimap |
 | Leaderboard | `hud/leaderboard.gd` | top 3 by PvP kills, **Tab** expands to top 10 (`:6-7,79-83`); highlights Local player + flash on kill (`:162-185`). | top-left |

@@ -60,23 +60,26 @@ func _physics_process(delta: float) -> void:
 ## @param max_dist: Maximum travel distance
 ## @param pool: Owning pool reference
 func activate(pos: Vector2, dir: Vector2, max_dist: float, pool: Node) -> void:
-	global_position = pos
 	direction = dir.normalized()
 	max_distance = max_dist
 	distance_traveled = 0.0
 	owner_pool = pool
 	is_active = true
 
-	# Set rotation to match direction
-	rotation = direction.angle()
-
-	# Enable processing and visibility
+	# Re-enable processing/collision FIRST. A projectile recycled from far away (it
+	# travelled to max range before reuse, common in the large Sandbox arena) was
+	# process-disabled; resetting interpolation while still disabled left a one-frame
+	# streak from the old spot. Enabling, then positioning, then resetting last makes
+	# the reset apply to a live node — no ghost.
 	process_mode = Node.PROCESS_MODE_INHERIT
 	visible = true
-
-	# Enable collision detection
 	monitoring = true
 	monitorable = true
+
+	rotation = direction.angle()
+	global_position = pos
+	# Teleport to the new spawn without interpolating from the recycled position.
+	reset_physics_interpolation()
 
 
 ## Tint projectile visuals to match a player. Monster projectiles use reset color.
@@ -99,25 +102,35 @@ func deactivate() -> void:
 	if not is_active:
 		return
 
+	# is_active flips immediately so a second body_entered this frame is ignored,
+	# and visible hides it now so the pool can find it for reuse. The physics-server
+	# toggles (monitoring/monitorable/process_mode) are deferred: deactivate() is
+	# normally called from inside a body_entered callback, where Godot forbids
+	# changing them directly.
 	is_active = false
 	var pool := owner_pool
 	owner_pool = null
 
-	# Disable processing and visibility
-	process_mode = Node.PROCESS_MODE_DISABLED
 	visible = false
-
-	# Disable collision detection
-	monitoring = false
-	monitorable = false
-
-	# Reset state
 	direction = Vector2.ZERO
 	distance_traveled = 0.0
+
+	call_deferred("_apply_deactivation")
 
 	# Return to pool
 	if pool and pool.has_method("return_projectile"):
 		pool.return_projectile(self)
+
+
+## Disable collision/processing at idle time. Guarded so that if the projectile
+## was recycled (re-activated) before this deferred call runs, we don't clobber
+## the freshly-enabled monitoring/process_mode of the now-live projectile.
+func _apply_deactivation() -> void:
+	if is_active:
+		return
+	process_mode = Node.PROCESS_MODE_DISABLED
+	monitoring = false
+	monitorable = false
 
 
 func _on_body_entered(body: Node2D) -> void:

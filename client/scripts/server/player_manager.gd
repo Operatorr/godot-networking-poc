@@ -140,7 +140,9 @@ func process_all_inputs(delta: float, server_tick: int) -> Array[Dictionary]:
 				"position": validation.server_position,
 				"success": not validation.correction_needed,
 				"cheat_detected": validation.cheat_detected,
-				"deviation": validation.deviation
+				"deviation": validation.deviation,
+				"stamina": roundi(state.movement_sm.stamina),
+				"mana": roundi(state.movement_sm.mana)
 			})
 
 	return move_results
@@ -285,6 +287,22 @@ func get_alive_player_snapshot(server_tick: int) -> Array:
 		return _position_history[_position_history_ticks[0]]
 
 	return get_alive_players()
+
+
+## Recent authoritative positions for a player entity across the history window
+## (oldest first), including the live position. Used to validate client-reported
+## monster-projectile hits against where the player actually was.
+func get_recent_positions(entity_id: int) -> Array:
+	var positions: Array = []
+	for tick: int in _position_history_ticks:
+		for snap in _position_history[tick]:
+			if snap.entity_id == entity_id:
+				positions.append(snap.position)
+				break
+	var live := get_player_by_entity_id(entity_id)
+	if live != null:
+		positions.append(live.position)
+	return positions
 
 
 ## Check if a peer is connected

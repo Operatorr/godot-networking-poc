@@ -20,7 +20,10 @@ func process_collisions(
 	_check_monster_collisions(projectile_manager, player_manager, monster_manager, network_manager)
 
 
-## Check projectile-vs-player collisions, apply damage, broadcast events
+## Check projectile-vs-player collisions, apply damage, broadcast events.
+## Only player-fired (PvP) projectiles reach here — monster-fired hits on players
+## are client-detected and applied via apply_player_hit from
+## ServerMain._handle_local_hit_report. See docs/systems/combat-hits.md.
 func _check_player_collisions(
 	projectile_manager: ProjectileManager,
 	player_manager: PlayerManager,
@@ -30,38 +33,61 @@ func _check_player_collisions(
 	var player_hits = projectile_manager.check_collisions_with_players(player_manager)
 
 	for hit in player_hits:
-		var target := player_manager.get_player_by_entity_id(hit.target_id)
-		if target == null or not target.authenticated:
-			continue
+		apply_player_hit(hit.owner_id, hit.target_id, player_manager, network_manager, broadcast_service, hit.get("position", Vector2.INF))
 
-		# Determine damage based on projectile owner
-		var damage: int = GameConstants.PLAYER_PROJECTILE_DAMAGE
-		if hit.owner_id >= GameConstants.MONSTER_ENTITY_ID_START:
-			damage = GameConstants.MONSTER_PROJECTILE_DAMAGE
 
-		var previous_health := target.health
-		var killed := target.take_damage(damage, hit.owner_id)
-		var damage_applied := previous_health - target.health
-		if damage_applied <= 0:
-			continue
+## Apply a confirmed projectile hit on a player: damage, DAMAGE broadcast, and any
+## kill broadcast. Shared by the server-authoritative PvP collision path and the
+## client-reported monster-hit path (ServerMain._handle_local_hit_report).
+func apply_player_hit(
+	owner_id: int,
+	target_id: int,
+	player_manager: PlayerManager,
+	network_manager: Node,
+	broadcast_service: ServerBroadcastService,
+	impact_position: Vector2 = Vector2.INF
+) -> void:
+	var target := player_manager.get_player_by_entity_id(target_id)
+	if target == null or not target.authenticated:
+		return
 
-		# Broadcast DAMAGE event to all clients
-		if network_manager:
-			var damage_packet = GameEventPacket.create_damage(
-				hit.owner_id, hit.target_id, damage_applied
+	# Determine damage based on projectile owner
+	var damage: int = GameConstants.PLAYER_PROJECTILE_DAMAGE
+	if owner_id >= GameConstants.MONSTER_ENTITY_ID_START:
+		damage = GameConstants.MONSTER_PROJECTILE_DAMAGE
+
+	var previous_health := target.health
+	var killed := target.take_damage(damage, owner_id)
+	var damage_applied := previous_health - target.health
+	if damage_applied <= 0:
+		return
+
+	# Knock the survivor back away from the impact point (authoritative; the
+	# client predicts an identical KNOCKED_BACK via its movement state machine).
+	if not killed and impact_position.is_finite():
+		var knock_dir := (target.position - impact_position)
+		if knock_dir.length() > 0.01:
+			target.movement_sm.apply_knockback(
+				knock_dir, GameConstants.PLAYER_KNOCKBACK_BASE_FORCE
 			)
-			network_manager.broadcast_to_clients(
-				NetworkManager.MessageType.GAME_EVENT,
-				damage_packet.to_dict()
-			)
 
-		if killed and network_manager:
-			_broadcast_player_kill(hit.owner_id, hit.target_id, player_manager, network_manager, broadcast_service)
+	# Broadcast DAMAGE event to all clients
+	if network_manager:
+		var damage_packet = GameEventPacket.create_damage(
+			owner_id, target_id, damage_applied
+		)
+		network_manager.broadcast_to_clients(
+			NetworkManager.MessageType.GAME_EVENT,
+			damage_packet.to_dict()
+		)
 
-		if debug_logging:
-			print("[CollisionHandler] Player %d took %d damage from entity %d (killed=%s)" % [
-				hit.target_id, damage_applied, hit.owner_id, killed
-			])
+	if killed and network_manager:
+		_broadcast_player_kill(owner_id, target_id, player_manager, network_manager, broadcast_service)
+
+	if debug_logging:
+		print("[CollisionHandler] Player %d took %d damage from entity %d (killed=%s)" % [
+			target_id, damage_applied, owner_id, killed
+		])
 
 
 ## Check projectile-vs-monster collisions, apply damage, broadcast events

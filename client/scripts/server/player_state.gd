@@ -28,6 +28,10 @@ var last_heartbeat: float = 0.0
 var position: Vector2 = Vector2.ZERO
 var velocity: Vector2 = Vector2.ZERO
 var aim_angle: float = 0.0
+## Authoritative 7-state movement model (dash/sprint/knockback/stun/ability +
+## stamina & mana). Driven once per tick in step(); the client predicts an
+## identical instance. See movement_state_machine.gd.
+var movement_sm: MovementStateMachine = MovementStateMachine.new()
 
 # Input - persistent flags applied every server tick until next ingest_input or stale timeout
 var input_flags: int = 0
@@ -44,6 +48,10 @@ var last_input_received_tick: int = 0
 ## Queued shoot edges (rising-edge SHOOT presses). Drained by ServerMain for
 ## immediate fire attempts; held auto-fire is derived from input_flags each tick.
 var pending_shots: Array[Dictionary] = []
+## Latched dash request. The DASH bit can appear in a single input that may be
+## overwritten if several inputs drain in one tick, so we OR it here on ingest and
+## consume it once in step(). Mirrors the pending_shots rising-edge handling.
+var _pending_dash: bool = false
 var input_queue: Array[Dictionary] = []
 
 # Combat
@@ -162,6 +170,10 @@ func ingest_input(input: Dictionary, server_tick: int) -> void:
 			"client_rtt_ms": client_rtt_ms
 		})
 
+	# Latch any dash request so a same-tick overwrite can't drop it.
+	if new_flags & PacketTypes.INPUT_FLAG_DASH:
+		_pending_dash = true
+
 	# Update persistent flags
 	input_flags = new_flags
 	last_input_sequence = new_sequence
@@ -212,6 +224,7 @@ func step(delta: float, server_tick: int) -> Dictionary:
 	if life_state == PlayerLifeState.DEAD:
 		velocity = Vector2.ZERO
 		input_flags = 0
+		_pending_dash = false
 		_update_entity_flags()
 		return {
 			"valid": true,
@@ -230,10 +243,20 @@ func step(delta: float, server_tick: int) -> Dictionary:
 	if life_state == PlayerLifeState.INVULNERABLE and has_active_input():
 		end_invulnerability()
 
-	# Compute server-authoritative movement from persistent flags
-	var move_direction := _calculate_movement_direction(input_flags)
-	var move_speed := _calculate_movement_speed(input_flags)
-	velocity = move_direction * move_speed
+	# Compute server-authoritative movement from the shared movement state machine.
+	# The SM owns dash/sprint/knockback/stun/ability velocity plus stamina & mana;
+	# the client predicts an identical instance and reconciles position.
+	var dash_held := bool(input_flags & PacketTypes.INPUT_FLAG_DASH) or _pending_dash
+	_pending_dash = false
+	velocity = movement_sm.tick(
+		delta,
+		_calculate_movement_direction(input_flags),
+		bool(input_flags & PacketTypes.INPUT_FLAG_SPRINT),
+		dash_held,
+		bool(input_flags & PacketTypes.INPUT_FLAG_ABILITY),
+		bool(input_flags & PacketTypes.INPUT_FLAG_SHOOT),
+		get_aim_direction()
+	)
 
 	var previous_position := position
 	var server_position := GameConstants.move_with_obstacle_collision(
@@ -280,12 +303,6 @@ func _calculate_movement_direction(flags: int) -> Vector2:
 		direction.x += 1
 
 	return direction.normalized()
-
-
-## Calculate movement speed based on sprint flag
-func _calculate_movement_speed(flags: int) -> float:
-	var is_sprinting := bool(flags & PacketTypes.INPUT_FLAG_SPRINT)
-	return GameConstants.get_movement_speed(is_sprinting)
 
 
 ## Validate client position against server-calculated position
@@ -350,6 +367,15 @@ func _update_entity_flags() -> void:
 	if life_state == PlayerLifeState.INVULNERABLE:
 		entity_flags |= PacketTypes.ENTITY_FLAG_INVULNERABLE
 
+	# Replicate the movement state so remote clients can render dash/knockback/stun.
+	match movement_sm.state:
+		MovementStateMachine.State.DASHING:
+			entity_flags |= PacketTypes.ENTITY_FLAG_DASHING
+		MovementStateMachine.State.KNOCKED_BACK:
+			entity_flags |= PacketTypes.ENTITY_FLAG_KNOCKED_BACK
+		MovementStateMachine.State.STUNNED:
+			entity_flags |= PacketTypes.ENTITY_FLAG_STUNNED
+
 	# Always visible for now (interest management in TASK-064)
 	entity_flags |= PacketTypes.ENTITY_FLAG_VISIBLE
 
@@ -362,11 +388,13 @@ func reset_for_respawn(spawn_position: Vector2) -> void:
 	is_alive = true
 	life_state = PlayerLifeState.INVULNERABLE
 	invulnerability_timer = GameConstants.INVULNERABILITY_DURATION
+	movement_sm.reset()
 	respawn_timer = 0.0
 	shoot_cooldown = 0.0
 	input_flags = 0
 	input_queue.clear()
 	pending_shots.clear()
+	_pending_dash = false
 	has_client_position = false
 	last_input_received_tick = 0
 	last_killer_id = -1
@@ -403,9 +431,11 @@ func _mark_dead(killer_id: int) -> void:
 	life_state = PlayerLifeState.DEAD
 	health = 0
 	velocity = Vector2.ZERO
+	movement_sm.reset()
 	input_flags = 0
 	input_queue.clear()
 	pending_shots.clear()
+	_pending_dash = false
 	shoot_cooldown = 0.0
 	respawn_timer = GameConstants.RESPAWN_DELAY
 	deaths += 1

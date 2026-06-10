@@ -41,6 +41,16 @@ signal shot_fired(position: Vector2, direction: Vector2)
 ## Current movement state
 var movement_state: MovementState = MovementState.IDLE
 
+## Predicted 7-state movement model for the local networked player (dash/sprint/
+## knockback/stun/ability + stamina/mana). The PredictionController consults this
+## each tick; the server runs an identical authoritative instance. Created in
+## _ready(); unused for non-local players and offline movement. See
+## movement_state_machine.gd and docs/systems/players-movement-state-machine.md.
+var movement_sm: MovementStateMachine = null
+
+## Last HP we observed, so the hp_changed hook can tell damage from healing.
+var _last_known_hp: int = 100
+
 ## Current action state
 var action_state: ActionState = ActionState.NONE
 
@@ -50,6 +60,9 @@ var last_aim_direction: Vector2 = Vector2.RIGHT
 ## Whether input processing is enabled
 var _input_enabled: bool = true
 var player_color: Color = Color(0.27, 0.53, 1.0)
+
+## When true, take_damage() ignores incoming damage (debug/sandbox tool).
+var invulnerable: bool = false
 
 ## Footstep timing
 var _footstep_timer: float = 0.0
@@ -79,9 +92,14 @@ func _ready() -> void:
 		animated_sprite.sprite_frames = ProceduralSprites.create_player_frames_for_color(player_color)
 		animated_sprite.modulate = Color.WHITE  # Override the placeholder blue tint
 
+	# Predicted movement state machine for the local networked player.
+	movement_sm = MovementStateMachine.new()
+
 	# Connect HP component signals
 	if hp_component:
 		hp_component.died.connect(_on_hp_component_died)
+		hp_component.hp_changed.connect(_on_hp_changed)
+		_last_known_hp = hp_component.current_hp
 
 	# Connect animation finished signal
 	if animated_sprite:
@@ -98,19 +116,19 @@ func _physics_process(delta: float) -> void:
 	if action_state == ActionState.DEAD:
 		return
 
-	# Hit state blocks movement briefly
-	if action_state == ActionState.HIT:
-		velocity = Vector2.ZERO
-		if not prediction_owns_movement:
-			move_and_slide()
-		return
+	# Note: the HIT action state is purely cosmetic (a brief flash animation) and
+	# does NOT block movement. _update_animation() still prioritizes the "hit"
+	# animation, and _on_animation_finished() clears HIT back to NONE. Blocking
+	# movement here used to lock the player offline (online it was masked because
+	# the PredictionController owns movement); a bullet-hell must stay responsive.
 
 	# Handle input if enabled. _handle_movement still runs under prediction
 	# ownership so movement_state (and thus animation) stays correct; only the
-	# position integration below is skipped.
+	# position integration below is skipped. Aim first so an offline dash with no
+	# WASD held fires toward the current cursor.
 	if _input_enabled:
-		_handle_movement()
 		_handle_aiming()
+		_handle_movement(delta)
 		_handle_shooting()
 
 	# Apply movement — but NOT when the PredictionController owns this player's
@@ -125,16 +143,34 @@ func _physics_process(delta: float) -> void:
 	_update_animation()
 
 
-## Handle WASD movement input
-func _handle_movement() -> void:
+## Handle WASD movement input.
+## Online (prediction_owns_movement): the PredictionController owns velocity AND the
+## movement state machine, so this only keeps the animation movement_state in sync.
+## Offline (practice/sandbox): the SAME `movement_sm` is the authoritative mover here,
+## so dash/sprint/knockback/stun + stamina/mana all work with one shared player script.
+func _handle_movement(delta: float) -> void:
 	var input_dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 
-	if input_dir != Vector2.ZERO:
-		velocity = input_dir * speed
-		_set_movement_state(MovementState.WALKING)
+	if prediction_owns_movement:
+		_set_movement_state(MovementState.WALKING if input_dir != Vector2.ZERO else MovementState.IDLE)
+		return
+
+	if movement_sm != null:
+		# is_action_just_pressed gives the dash a clean one-frame rising edge; the SM
+		# detects the edge internally. _physics_process runs at the 30 Hz sim rate.
+		velocity = movement_sm.tick(
+			delta,
+			input_dir,
+			Input.is_action_pressed("sprint"),
+			Input.is_action_just_pressed("dash"),
+			Input.is_action_pressed("ability"),
+			Input.is_action_pressed("shoot"),
+			last_aim_direction
+		)
 	else:
-		velocity = Vector2.ZERO
-		_set_movement_state(MovementState.IDLE)
+		velocity = input_dir * GameConstants.get_movement_speed(Input.is_action_pressed("sprint"))
+
+	_set_movement_state(MovementState.WALKING if velocity != Vector2.ZERO else MovementState.IDLE)
 
 
 ## Handle mouse aiming
@@ -250,6 +286,14 @@ func _on_animation_finished() -> void:
 		action_state = ActionState.NONE
 
 
+## Taking damage ends a sprint (spec). Uses the authoritative HP signal (server-owned
+## HP), and only reacts to decreases so heals / upward reconciliation don't cancel sprint.
+func _on_hp_changed(new_hp: int, _max_hp: int) -> void:
+	if new_hp < _last_known_hp and movement_sm != null:
+		movement_sm.end_sprint()
+	_last_known_hp = new_hp
+
+
 func _on_hp_component_died() -> void:
 	action_state = ActionState.DEAD
 	movement_state = MovementState.IDLE
@@ -265,6 +309,9 @@ func _on_hp_component_died() -> void:
 ## @param amount: Damage points to subtract from HP
 ## @return: Remaining HP after damage
 func take_damage(amount: int) -> int:
+	if invulnerable:
+		return hp_component.current_hp if hp_component else 0
+
 	if hp_component:
 		hp_component.take_damage(amount)
 
@@ -297,6 +344,10 @@ func reset() -> void:
 	_input_enabled = true
 	velocity = Vector2.ZERO
 	last_aim_direction = Vector2.RIGHT
+	if movement_sm != null:
+		movement_sm.reset()
+	if hp_component != null:
+		_last_known_hp = hp_component.current_hp
 
 	if projectile_pool:
 		projectile_pool.deactivate_all()

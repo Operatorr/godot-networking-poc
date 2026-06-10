@@ -29,8 +29,9 @@ for the map; this page is the **catalogue** with verification status. Terms are 
 | Doc | Status | Topic |
 |---|---|---|
 | [`netcode/overview.md`](netcode/overview.md) | Implemented | Authority model, the three loops, the packet map. |
+| [`netcode/hit-authority-model.md`](netcode/hit-authority-model.md) | Partial | **Two netcodes:** client-authoritative PvE/monster hits (RotMG) vs server-authoritative PvP — the per-owner authority split and its anti-cheat intent. |
 | [`netcode/client-prediction.md`](netcode/client-prediction.md) | Partial | Local-player prediction & reconciliation (+ double-movement bug). |
-| [`netcode/interpolation.md`](netcode/interpolation.md) | Partial | Remote-entity interpolation & the fixed 66.7 ms Render delay. |
+| [`netcode/interpolation.md`](netcode/interpolation.md) | Partial | Remote-entity interpolation & the **adaptive** (jitter-driven, 1–3 tick) Render delay. |
 | [`netcode/server-tick-broadcast.md`](netcode/server-tick-broadcast.md) | Implemented | 30 Hz tick + 30 Hz snapshot, shared-grid AoI, delta, bandwidth-budget scheduler, baseline acks. |
 | [`netcode/transport-websocket.md`](netcode/transport-websocket.md) | Implemented | WebSocket-over-TCP + transport seam; head-of-line blocking (ENet swap deferred). |
 | [`netcode/interest-mgmt-aoi.md`](netcode/interest-mgmt-aoi.md) | Implemented | AoI 700/800 + shared spatial grid, LOD, byte-budget deferral, surfaced diagnostics. |
@@ -42,12 +43,15 @@ for the map; this page is the **catalogue** with verification status. Terms are 
 | Doc | Status | Topic |
 |---|---|---|
 | [`systems/players-movement.md`](systems/players-movement.md) | Partial | Player entity, movement, validation (+ double-movement bug home). |
+| [`systems/players-movement-state-machine.md`](systems/players-movement-state-machine.md) | Implemented | 7-state server-authoritative movement SM: dash, sprint, knockback, stun, stamina, mana. |
 | [`systems/combat-hits.md`](systems/combat-hits.md) | Implemented | Shooting, projectiles, lag-compensated swept PvP + PvE hits, cosmetic shoot feedback. |
 | [`systems/monsters-ai.md`](systems/monsters-ai.md) | Implemented | The Toxic Slime and its server-side AI state machine. |
+| [`systems/bot-ai.md`](systems/bot-ai.md) | Implemented | Load-testing bot swarm AI: behaviors, tactical states, sprint/stamina + dash. |
 | [`systems/monster-architecture.md`](systems/monster-architecture.md) | Implemented · roadmap Planned | Monster factory, data-driven definitions, schema, and the add-a-monster pipeline. |
 | [`systems/audio.md`](systems/audio.md) | Implemented | AudioManager + procedurally-generated sound (no audio assets). |
 | [`systems/ui-hud.md`](systems/ui-hud.md) | Implemented | HUD components, menus, effects, scene flow. |
 | [`systems/state-machines.md`](systems/state-machines.md) | Implemented | Player-life, movement, scene, connection, and AI state machines. |
+| [`systems/offline-modes.md`](systems/offline-modes.md) | Implemented | Practice & Offline Sandbox — client-authoritative test scenes (no server) on a shared `OfflineArena`. |
 
 ## Decisions & background
 

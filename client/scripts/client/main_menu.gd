@@ -18,6 +18,8 @@ const REGION_REFRESH_INTERVAL := 5.0
 @onready var character_name_label: Label = $CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer/CharacterInfo/CharacterNameLabel
 @onready var region_dropdown: OptionButton = $CenterContainer/VBoxContainer/RegionDropdown
 @onready var enter_world_button: Button = $CenterContainer/VBoxContainer/EnterWorldButton
+@onready var practice_button: Button = $BottomLeftActions/PracticeButton
+@onready var offline_sandbox_button: Button = $BottomLeftActions/OfflineSandboxButton
 @onready var logout_button: Button = $CenterContainer/VBoxContainer/LogoutButton
 @onready var exit_button: Button = $CenterContainer/VBoxContainer/ExitButton
 @onready var status_label: Label = $CenterContainer/VBoxContainer/StatusLabel
@@ -42,6 +44,8 @@ func _ready() -> void:
 
 	# Connect UI signals
 	enter_world_button.pressed.connect(_on_enter_world_pressed)
+	practice_button.pressed.connect(_on_practice_pressed)
+	offline_sandbox_button.pressed.connect(_on_offline_sandbox_pressed)
 	logout_button.pressed.connect(_on_logout_pressed)
 	exit_button.pressed.connect(_on_exit_pressed)
 	region_dropdown.item_selected.connect(_on_region_selected)
@@ -138,7 +142,7 @@ func _apply_dark_theme() -> void:
 	if status_label:
 		status_label.add_theme_color_override("font_color", Color.WHITE)
 
-	MenuButtonHelper.apply_to_buttons([enter_world_button, logout_button, exit_button])
+	MenuButtonHelper.apply_to_buttons([enter_world_button, practice_button, offline_sandbox_button, logout_button, exit_button])
 
 
 ## Update character display panel
@@ -316,6 +320,26 @@ func _on_enter_world_pressed() -> void:
 	NetworkManager.connect_to_server(region.websocket_url, AuthManager.get_token())
 
 
+## Handle Practice button press
+func _on_practice_pressed() -> void:
+	if _is_connecting:
+		return
+
+	preferences.save()
+	_update_status("Loading practice...")
+	SceneManager.goto_practice()
+
+
+## Handle Offline Sandbox button press
+func _on_offline_sandbox_pressed() -> void:
+	if _is_connecting:
+		return
+
+	preferences.save()
+	_update_status("Loading sandbox...")
+	SceneManager.goto_offline_sandbox()
+
+
 ## Handle successful server connection
 func _on_connected_to_server() -> void:
 	print("[MainMenu] Connected to server")
@@ -387,7 +411,13 @@ func _update_status(text: String) -> void:
 
 ## Setup button audio for hover and click sounds
 func _setup_button_audio() -> void:
-	var buttons: Array[Button] = [enter_world_button, logout_button, exit_button]
+	var buttons: Array[Button] = [
+		enter_world_button,
+		practice_button,
+		offline_sandbox_button,
+		logout_button,
+		exit_button
+	]
 	for button in buttons:
 		button.mouse_entered.connect(func(): AudioManager.play_button_hover())
 		button.pressed.connect(func(): AudioManager.play_button_click())

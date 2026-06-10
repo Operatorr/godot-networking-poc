@@ -28,7 +28,8 @@ enum Type {
 	RESPAWN_REQUEST = 9,   ## Client -> Server: Request respawn after death
 	SERVER_METRICS = 10,   ## Server -> Client: Server performance metrics (1/sec)
 	BATCH = 11,            ## Server -> Client: Multiple packets in a single WS frame (TASK-066)
-	BASELINE_ACK = 12      ## Client -> Server: acknowledge a received full-state Baseline (#14, forward-looking for UDP transport #12)
+	BASELINE_ACK = 12,     ## Client -> Server: acknowledge a received full-state Baseline (#14, forward-looking for UDP transport #12)
+	LOCAL_HIT_REPORT = 13  ## Client -> Server: "a monster projectile hit me" (client-detected, server-validated). [u16 projectile_id]
 }
 
 ## Entity types for state updates
@@ -49,8 +50,9 @@ enum AnimationState {
 	SPAWN = 6
 }
 
-## Input flags bitfield (fits in u8)
-## Each bit represents an input action
+## Input flags bitfield (fits in u16 — bits 0-7 were the original u8 set; bit 8+
+## was added for the movement state machine and required widening the wire field).
+## Each bit represents an input action.
 const INPUT_FLAG_MOVE_UP := 1 << 0      ## W key
 const INPUT_FLAG_MOVE_DOWN := 1 << 1    ## S key
 const INPUT_FLAG_MOVE_LEFT := 1 << 2    ## A key
@@ -59,6 +61,7 @@ const INPUT_FLAG_SHOOT := 1 << 4        ## Left mouse button
 const INPUT_FLAG_ABILITY := 1 << 5      ## Right mouse button / ability key
 const INPUT_FLAG_SPRINT := 1 << 6       ## Shift key
 const INPUT_FLAG_INTERACT := 1 << 7     ## E key
+const INPUT_FLAG_DASH := 1 << 8         ## Spacebar — edge-triggered dash request
 
 ## Entity flags bitfield (fits in u8)
 const ENTITY_FLAG_ALIVE := 1 << 0
@@ -67,6 +70,8 @@ const ENTITY_FLAG_ATTACKING := 1 << 2
 const ENTITY_FLAG_INVULNERABLE := 1 << 3
 const ENTITY_FLAG_STUNNED := 1 << 4
 const ENTITY_FLAG_VISIBLE := 1 << 5
+const ENTITY_FLAG_DASHING := 1 << 6       ## Movement SM is in the DASHING state
+const ENTITY_FLAG_KNOCKED_BACK := 1 << 7  ## Movement SM is in the KNOCKED_BACK state
 
 ## Delta compression mask bits (TASK-021)
 ## Used in STATE_UPDATE packets to indicate which fields changed
@@ -134,7 +139,7 @@ static func get_type_name(packet_type: int) -> String:
 
 ## Helper: Check if packet type is valid
 static func is_valid_type(packet_type: int) -> bool:
-	return packet_type >= Type.PLAYER_INPUT and packet_type <= Type.BASELINE_ACK
+	return packet_type >= Type.PLAYER_INPUT and packet_type <= Type.LOCAL_HIT_REPORT
 
 
 ## Helper: Encode input flags from dictionary
@@ -148,6 +153,7 @@ static func encode_input_flags(input: Dictionary) -> int:
 	if input.get("ability", false): flags |= INPUT_FLAG_ABILITY
 	if input.get("sprint", false): flags |= INPUT_FLAG_SPRINT
 	if input.get("interact", false): flags |= INPUT_FLAG_INTERACT
+	if input.get("dash", false): flags |= INPUT_FLAG_DASH
 	return flags
 
 
@@ -161,7 +167,8 @@ static func decode_input_flags(flags: int) -> Dictionary:
 		"shoot": (flags & INPUT_FLAG_SHOOT) != 0,
 		"ability": (flags & INPUT_FLAG_ABILITY) != 0,
 		"sprint": (flags & INPUT_FLAG_SPRINT) != 0,
-		"interact": (flags & INPUT_FLAG_INTERACT) != 0
+		"interact": (flags & INPUT_FLAG_INTERACT) != 0,
+		"dash": (flags & INPUT_FLAG_DASH) != 0
 	}
 
 
@@ -174,6 +181,8 @@ static func encode_entity_flags(entity: Dictionary) -> int:
 	if entity.get("invulnerable", false): flags |= ENTITY_FLAG_INVULNERABLE
 	if entity.get("stunned", false): flags |= ENTITY_FLAG_STUNNED
 	if entity.get("visible", true): flags |= ENTITY_FLAG_VISIBLE
+	if entity.get("dashing", false): flags |= ENTITY_FLAG_DASHING
+	if entity.get("knocked_back", false): flags |= ENTITY_FLAG_KNOCKED_BACK
 	return flags
 
 
@@ -185,5 +194,7 @@ static func decode_entity_flags(flags: int) -> Dictionary:
 		"attacking": (flags & ENTITY_FLAG_ATTACKING) != 0,
 		"invulnerable": (flags & ENTITY_FLAG_INVULNERABLE) != 0,
 		"stunned": (flags & ENTITY_FLAG_STUNNED) != 0,
-		"visible": (flags & ENTITY_FLAG_VISIBLE) != 0
+		"visible": (flags & ENTITY_FLAG_VISIBLE) != 0,
+		"dashing": (flags & ENTITY_FLAG_DASHING) != 0,
+		"knocked_back": (flags & ENTITY_FLAG_KNOCKED_BACK) != 0
 	}

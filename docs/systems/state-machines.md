@@ -2,7 +2,7 @@
 
 **Status:** Implemented (verified 2026-06-03 against code).
 
-The POC runs five distinct finite state machines, split across server and client. None
+The POC runs six distinct finite state machines, split across server and client. None
 share a base class — each is a hand-rolled `enum` plus a `match` (or `if`) transition block.
 This doc enumerates the states, the transitions, where each lives, and which side owns it,
 so you can reason about every authoritative or UI state change in one place.
@@ -14,6 +14,7 @@ so you can reason about every authoritative or UI state change in one place.
 | Game / scene state | `GameState` INITIALIZING / MAIN_MENU / LOADING / IN_ARENA / PAUSED / EXITING | Both (different routes) | `game_manager.gd:6`, `scene_manager.gd:20` |
 | Connection lifecycle | `ConnectionState` DISCONNECTED / CONNECTING / CONNECTED / RECONNECTING / ERROR | Client | `network_manager.gd:7` |
 | Monster AI | `AIState` IDLE / CHASE / ATTACK / FLEE | Server | `monster_ai.gd:9` |
+| Local-player movement | `MovementStateMachine.State` IDLE / WALKING / SPRINTING / DASHING / KNOCKED_BACK / STUNNED / ABILITY_MOVEMENT | Server (authoritative) + Client (predicted) | `movement_state_machine.gd` |
 
 ---
 
@@ -169,14 +170,42 @@ Only ATTACK can fire a projectile (gated by cooldown, returns the fired flag up 
 
 ---
 
+## 6. Local-player movement — `MovementStateMachine` (server + predicted)
+
+`enum State { IDLE, WALKING, SPRINTING, DASHING, KNOCKED_BACK, STUNNED, ABILITY_MOVEMENT }`
+(`movement_state_machine.gd`). Unlike the other five machines this one is **shared**: the server
+owns the authoritative instance on `PlayerState` and drives it once per tick in `step()`; the client
+runs an identical instance in `PredictionController` for responsiveness. Centralized
+`_transition_to(new)` early-returns on same-state, runs a `match` enter block, and emits paired
+enter/exit signals — the codebase convention (cf. `monster_ai._transition_to_state`).
+
+| From | To | Trigger | Guard |
+|---|---|---|---|
+| IDLE/WALKING/SPRINTING | (each other) | move dir / sprint held / stamina | sprint needs stamina > MIN |
+| IDLE/WALKING/SPRINTING | DASHING | dash edge | cooldown ready, not stunned/knocked/ability, dir≠0 |
+| DASHING | IDLE | dash duration (0.4 s) elapses | — |
+| any (except STUNNED/ABILITY) | KNOCKED_BACK | `apply_knockback()` | dir≠0, force>0 |
+| KNOCKED_BACK | IDLE | velocity decays below END_SPEED | interruptible only by STUNNED/ABILITY |
+| any | STUNNED | `apply_stun/root/daze()` | duration>0; cancels an in-progress dash |
+| STUNNED | IDLE | stun timer elapses | only the timer may release it |
+| (most) | ABILITY_MOVEMENT | `start_ability_movement()` | not STUNNED |
+| ABILITY_MOVEMENT | IDLE | `end_ability_movement()` | — |
+
+Full detail (numbers, signals, the reconciliation caveat, status-effect placeholders) lives in
+[`players-movement-state-machine.md`](players-movement-state-machine.md).
+
+---
+
 ## The eight questions
 
 - **Client:** runs `ConnectionState`, `GameState` routing (`SceneManager`), and renders the
   replicated `AnimationState` / invuln flag — no authoritative state.
 - **Server:** owns `PlayerLifeState`, `AIState`, the movement-derived `AnimationState`, and its
   own `GameState` (boots to IN_ARENA).
-- **Predicted:** none of these — state-machine transitions are authoritative; the client predicts
-  only Local-player *position*, never life/animation/AI state.
+- **Predicted:** the client predicts Local-player *position* AND the new `MovementStateMachine`
+  (dash/sprint/knockback/stun + stamina/mana) by running an identical instance; all other machines
+  (life/animation/AI) are authoritative-only and never predicted. Movement-SM divergence is corrected
+  by the existing position reconciliation plus the ACTION_CONFIRM stamina/mana sync.
 - **Replicated:** life (as flags) and animation per-entity in each Snapshot; AI state only via its
   resulting animation + movement.
 - **Persisted:** none — all five are in-memory; only account/character/stats persist (Go API).

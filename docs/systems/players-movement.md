@@ -12,8 +12,10 @@ and validation are all implemented — but the **Local player is moved by two in
 ## What a player is
 
 One `CharacterBody2D`, `MOTION_MODE_FLOATING` (top-down, no gravity), on collision **layer 1 /
-mask 6** (`player.tscn:58-59`; mask 6 = Walls + Monsters). HP is the **only** stat — there is no
-mana/stamina/armor; sprint is a speed multiplier, not a resource. There are two visual classes:
+mask 6** (`player.tscn:58-59`; mask 6 = Walls + Monsters). The Local player now carries a
+**7-state movement state machine** (`MovementStateMachine`) with two resources — **stamina** (gates
+sprint) and **mana** (gates the ability) — alongside HP; dash and knockback are first-class states.
+See [`players-movement-state-machine.md`](players-movement-state-machine.md). There are two visual classes:
 
 | Class | Script | Moved by | Collision | Input |
 |---|---|---|---|---|
@@ -44,14 +46,22 @@ Collision against the **map bounds and arena obstacles** is analytic, not physic
 slides axis-separated. The same function is used by the server, by prediction, and by reconciliation
 replay — so all three integrate identically.
 
-### Movement state machine (animation only)
+### Two movement state machines — animation vs. motion
 
-`Player.MovementState` is a two-state machine — `IDLE` / `WALKING` (`player.gd:7-10`) — plus an
-orthogonal `ActionState` (NONE / ATTACKING / HIT / DEAD, `player.gd:13-18`) that drives animation
-priority (`player.gd:189-215`). It exists to pick the sprite animation; **it is not the netcode
-movement source**. For the Local player the authoritative motion is `PredictionController`'s
-`predicted_position`, not `MovementState`. For a Remote entity the animation state arrives over the
-wire and is applied in `remote_player._update_animation()` (`remote_player.gd:63`).
+There are now **two** distinct movement state machines, and they must not be confused:
+
+- `Player.MovementState` — a two-state **animation-only** machine (`IDLE` / `WALKING`,
+  `player.gd:7-10`) plus an orthogonal `ActionState` (NONE / ATTACKING / HIT / DEAD,
+  `player.gd:13-18`) that drives sprite-animation priority. It is **not** the netcode movement source.
+- `MovementStateMachine` — the **authoritative motion** machine (IDLE / WALKING / SPRINTING /
+  DASHING / KNOCKED_BACK / STUNNED / ABILITY_MOVEMENT, `movement_state_machine.gd`). The server owns
+  one per `PlayerState` and the client predicts an identical instance; it produces the velocity that
+  `PredictionController._apply_local_prediction` and `PlayerState.step` integrate. This is the
+  authoritative motion source for the Local player — see
+  [`players-movement-state-machine.md`](players-movement-state-machine.md).
+
+For a Remote entity the animation state (and the new DASHING / KNOCKED_BACK / STUNNED entity flags)
+arrive over the wire and are applied in `remote_player._update_animation()` (`remote_player.gd:63`).
 
 ## HP (the only stat)
 

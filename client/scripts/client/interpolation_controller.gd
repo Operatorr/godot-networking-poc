@@ -215,7 +215,12 @@ func _process_state_update(data: Dictionary) -> void:
 					float(MIN_RENDER_DELAY_TICKS),
 					float(MAX_RENDER_DELAY_TICKS)
 				)
-				render_delay_ticks_smooth = lerpf(render_delay_ticks_smooth, target_ticks, 0.05)
+				# Asymmetric: add buffer FAST when jitter rises (absorb a spike within
+				# a frame or two so it never stutters), shed it SLOWLY when the link
+				# calms (so a clean LAN/localhost link collapses toward MIN ~33 ms
+				# without flapping back into stutter).
+				var adapt_rate := 0.5 if target_ticks > render_delay_ticks_smooth else 0.05
+				render_delay_ticks_smooth = lerpf(render_delay_ticks_smooth, target_ticks, adapt_rate)
 
 		current_server_tick = server_tick
 		render_tick = maxi(0, server_tick - roundi(render_delay_ticks_smooth))

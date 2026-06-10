@@ -26,10 +26,10 @@ from bot_client import OmegaRealmBot
 # --- Default knobs (mirror server_config.gd DEFAULTS) -------------------------
 # These can be overridden by callers when the server is configured non-default.
 
-DEFAULT_AOI_RADIUS = 700.0
-DEFAULT_AOI_EXIT_RADIUS = 800.0
+DEFAULT_AOI_RADIUS = 1000.0
+DEFAULT_AOI_EXIT_RADIUS = 1100.0
 DEFAULT_LOD_NEAR_RADIUS = 400.0
-DEFAULT_LOD_MID_RADIUS = 700.0
+DEFAULT_LOD_MID_RADIUS = 1000.0
 DEFAULT_LOD_MID_INTERVAL = 2
 DEFAULT_LOD_FAR_INTERVAL = 4
 

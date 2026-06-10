@@ -1,10 +1,12 @@
 # Combat — projectiles, hits, shooting
 
-**Status:** Implemented (verified 2026-06-04 against code) — the combat loop works end-to-end, and the
-former PvP gaps are resolved: **PvP hit detection is now lag-compensated + swept** (rewind, cap 4
-ticks, mirroring PvE), and the client draws **cosmetic muzzle/tracer feedback** on shoot input
-(damage stays server-confirmed). One server-side gap remains under watch: the **paired-shots**
-firing-path hazard (one trigger can fire twice) — see below.
+**Status:** Implemented — the combat loop works end-to-end. **PvP** hit detection is
+lag-compensated + swept (rewind, cap 4 ticks, mirroring PvE), and the client draws **cosmetic
+muzzle flash feedback** on shoot input (damage stays server-confirmed). **Monster → player** hits are
+now **client-detected + server-validated** (since 2026-06-10): the victim's own client tests incoming
+monster bullets against its *predicted* position and reports them, fixing the direction-dependent
+phantom-hit / pass-through feel that pure server-authoritative detection produced under prediction.
+The former PvP gaps and the **paired-shots** firing hazard are resolved (see below).
 
 > One shooting ability, HP only, one monster type — gameplay is deliberately minimal so the
 > netcode is the thing under test. This doc is the canonical home for the shoot/hit bugs.
@@ -57,7 +59,7 @@ never spawns one; it only sends intent.
    `ClientEntityManager._spawn_projectile` instantiates the pooled visual
    (`client_entity_manager.gd:107-113`, `:265`). It is a [Remote entity](../CONTEXT.md) — interpolated
    at the [Render delay](../CONTEXT.md), never predicted. The shooter, however, already saw a
-   **cosmetic muzzle flash + tracer** the instant they pressed fire (step 1) — so click-to-feedback no
+   **cosmetic muzzle flash** the instant they pressed fire (step 1) — so click-to-feedback no
    longer waits a full round-trip, even though the real bullet still does.
 
 ## Hit detection — both PvE and PvP are now lag-compensated + swept
@@ -81,7 +83,9 @@ test the projectile's swept travel segment, differing only in the rewind **cap**
 
 ### PvP (projectile → player): swept + rewound, stricter cap (#7)
 
-`check_collisions_with_players` (`projectile_manager.gd:273`) now mirrors the PvE path:
+`check_collisions_with_players` (`projectile_manager.gd:273`) handles **player-fired projectiles
+only** — monster-owned projectiles are skipped here (`proj.owner_id >= MONSTER_ENTITY_ID_START`) and
+resolved client-side instead (next subsection). For player-fired bullets it mirrors the PvE path:
 
 - **Rewind.** Each projectile computes `get_lag_compensated_player_tick()`
   (`projectile_state.gd:158-161`) from a **separate** `pvp_collision_rewind_ticks`, and the player
@@ -99,16 +103,56 @@ test the projectile's swept travel segment, differing only in the rewind **cap**
 that stepped over a player in one Tick, and the rewind means the server checks where the shooter
 *saw* the victim, not where they are *now* (within the 4-Tick cap).
 
-On a hit, `ServerCollisionHandler` applies damage and broadcasts a `DAMAGE` (and, if lethal,
-`KILL` / PvP-`KILL`) [Game event](../CONTEXT.md) — `server_collision_handler.gd:32-59` (player),
-`:76-112` (monster). Damage/kill events fire every Tick, not gated by the snapshot rate.
+### Monster → player: client-detected + server-validated (2026-06-10)
 
-## Client shoot feedback — cosmetic muzzle/tracer on input (#7)
+Pure server-authoritative detection tested the bullet's *true* position against the player's *true*
+position. But the client renders itself **predicted-ahead** of its authoritative position and renders
+bullets **interpolated-behind** theirs, so the felt result was direction-dependent: **phantom hits
+while fleeing** (true-you is behind the rendered you, nearer the bullet) and **pass-throughs while
+chasing** (true-you hasn't caught the bullet the screen shows you touching). The offset is a vector
+along the player's movement of size ≈ `player_speed × (prediction_lead + render_delay + transit)` —
+zero at rest, which is why standing still always felt correct.
+
+To make dodging match what the player sees, the victim's **own client** now decides these hits:
+
+- **Client detects** (`local_hit_detector.gd`, driven from `arena_base._process` after visuals).
+  Each frame it swept-tests every live **monster-owned** projectile's rendered travel segment against
+  its **rendered** position (`prediction.get_rendered_position()` — where the player is actually drawn,
+  **not** `predicted_position`), hit window `8 + 16 = 24`, using the shared
+  `GameConstants.closest_point_on_segment`. The rendered position matters because a smooth
+  reconciliation lerps the on-screen player toward `predicted_position` over several frames, so the
+  prediction is briefly ahead of the screen; judging the hit there would report hits the player never
+  saw. On a hit it hides the bullet locally (instant feel) and sends a `LOCAL_HIT_REPORT`
+  [Game event](../CONTEXT.md) (`[u16 projectile_id]`). It learns ownership from the `PROJECTILE_FIRED`
+  event, which now carries the real projectile id for monster shots (`monster_ai`/`server_main`
+  propagate `last_fired_projectile_id`). The local hide is provisional: each report is tracked as
+  *pending*, and if the server has not despawned the bullet within `REPORT_RESOLVE_TIMEOUT_MS` (500 ms)
+  the detector un-hides it and re-arms detection — otherwise a rejected (or lost) report would leave the
+  bullet permanently invisible and intangible on that client. The geometry/authority predicates live in
+  the shared, unit-tested `HitAuthority` helper.
+- **Server validates + applies** (`server_main._handle_local_hit_report`). The report is honoured
+  only if: the projectile exists and is alive, it is monster-owned, the reporting player is alive, the
+  per-peer rate limit holds (`LOCAL_HIT_REPORT_MAX_PER_SECOND = 20`), and the bullet's recent swept
+  path passes within a generous radius (`24 + LOCAL_HIT_VALIDATION_MARGIN`, 64 u slack) of the
+  player's **authoritative** position history (`player_manager.get_recent_positions`). It then applies
+  damage through the shared `apply_player_hit` path and despawns the bullet for everyone (idempotent —
+  a despawned bullet can't be re-reported). Governing rule preserved: the client *requests*, the
+  server *decides*.
+- **Trust trade-off (accepted):** a hacked client that never reports is effectively immune to monster
+  bullets. Bounded by the validation + rate-limit; an optional lenient server backstop is noted in the
+  exec plan but left off. PvP and PvE stay fully server-authoritative.
+
+On a hit (any path), damage + a `DAMAGE` (and, if lethal, `KILL` / PvP-`KILL`)
+[Game event](../CONTEXT.md) are applied via `ServerCollisionHandler.apply_player_hit`
+(`server_collision_handler.gd`) for players and `_check_monster_collisions` for monsters. Damage/kill
+events fire every Tick, not gated by the snapshot rate.
+
+## Client shoot feedback — cosmetic muzzle flash on input (#7)
 
 The client now draws **immediate cosmetic feedback** when the player presses fire, decoupled from the
 server round-trip. `PredictionController._maybe_emit_shoot_predicted` fires the `shoot_predicted`
 signal on the SHOOT **rising edge** (`prediction.gd:281-302`); `arena_base._on_local_shoot_predicted`
-(`arena_base.gd:764`) plays the shoot sound and spawns a muzzle flash + tracer particle effect. This
+(`arena_base.gd:764`) plays the shoot sound and spawns a muzzle flash particle effect. This
 is **cosmetic only** — `Player.gd`'s local projectile spawning stays disabled
 (`arena_base.gd:244`, `set_local_projectile_spawning_enabled(false)`), so the **authoritative**
 projectile still spawns only server-side and damage stays server-confirmed. The shooter no longer
@@ -116,7 +160,7 @@ stares at nothing for a full round-trip; the real bullet arrives in a later `STA
 (`client_entity_manager.gd:107-113`). See [`../netcode/latency-budget.md`](../netcode/latency-budget.md).
 
 > The historical "client doubling" theory is **refuted**: the client cannot spawn a local
-> *authoritative* projectile at all (`arena_base.gd:244`) — the muzzle/tracer it now draws is a
+> *authoritative* projectile at all (`arena_base.gd:244`) — the muzzle flash it now draws is a
 > particle effect, not an entity. Any double-fire is server-side — see below.
 
 ## Resolved: paired shots (one trigger → two projectiles)
@@ -135,23 +179,24 @@ same reason — the per-Tick latch caps it at one regardless of how many edges `
 ## What's missing vs. a finished combat system
 
 - PvP [Lag compensation](../CONTEXT.md) + swept path. — ✅ *Done (#7)*
-- Client-side cosmetic shoot feedback (muzzle/tracer). — ✅ *Done (#7)*
+- Client-side cosmetic shoot feedback (muzzle flash). — ✅ *Done (#7)*
 - Single-path, fire-once-per-Tick firing (paired-shots fix). — ✅ *Done*
 - Only one ability, one projectile type, one monster type — intentional for the POC, **not** a gap.
 
 ## The eight questions
 
-- **Client:** captures SHOOT + aim, sends in the input stream (30 Hz), draws a cosmetic muzzle/tracer on the shoot rising edge, and draws server projectiles as interpolated Remote entities — no local *authoritative* spawn.
-- **Server:** owns all projectiles — spawn, cooldown, integration, lag-compensated swept hit detection, damage/kill Game events.
-- **Predicted:** nothing in combat is *predicted* in the netcode sense — the client's muzzle/tracer is cosmetic only and the authoritative projectile + damage stay server-confirmed.
-- **Replicated:** projectiles via `STATE_UPDATE` Snapshots; `PROJECTILE_FIRED` / `DAMAGE` / `KILL` via Game events.
+- **Client:** captures SHOOT + aim, sends in the input stream (30 Hz), draws a cosmetic muzzle flash on the shoot rising edge, draws server projectiles as interpolated Remote entities (no local *authoritative* spawn), and **detects incoming monster bullets vs. its rendered self and reports them** (`LOCAL_HIT_REPORT`).
+- **Server:** owns all projectiles — spawn, cooldown, integration, lag-compensated swept PvP/PvE hit detection, validation of client monster-hit reports, damage/kill Game events.
+- **Predicted:** projectile spawn/damage are never predicted (muzzle flash is cosmetic). The one thing the client now decides is **whether an incoming monster bullet hit *it*** — server-validated, not blindly trusted.
+- **Replicated:** projectiles via `STATE_UPDATE` Snapshots; `PROJECTILE_FIRED` (now carrying the projectile id for monster shots) / `DAMAGE` / `KILL` via Game events; `LOCAL_HIT_REPORT` client→server.
 - **Persisted:** nothing — kills increment in-memory counters; only the Go API persists leaderboard totals.
-- **Validated:** fire origin is RTT-bounded; cooldown gates rate; PvE rewind capped at 6 ticks, PvP rewind capped stricter at 4 ticks (`server_main.gd:382-386`); damage is server-confirmed.
-- **Can fail:** PvP rewind without a cap would let you "shoot around corners" — the 4-Tick cap is the guard; a missed lag-comp tick falls back to the nearest history snapshot (`player_manager.gd:272-285`); cosmetic muzzle can fire even if the server later rejects the shot (cooldown) — by design, it draws no damage.
-- **Tested:** server-side projectile/hit diagnostics logging; no automated combat regression test today (the PvP rewind has no loss/lead test).
+- **Validated:** fire origin is RTT-bounded; cooldown gates rate; PvE rewind capped at 6 ticks, PvP rewind capped stricter at 4 ticks (`server_main.gd:382-386`); **monster-hit reports are plausibility-checked against authoritative position history + per-peer rate-limited** (`_handle_local_hit_report`); damage is server-confirmed.
+- **Can fail:** PvP rewind without a cap would let you "shoot around corners" — the 4-Tick cap is the guard; a missed lag-comp tick falls back to the nearest history snapshot (`player_manager.gd:272-285`); cosmetic muzzle can fire even if the server later rejects the shot (cooldown) — by design, it draws no damage; **a client that never sends `LOCAL_HIT_REPORT` is immune to monster bullets** (accepted trust trade-off, bounded by validation + rate-limit).
+- **Tested:** the hit-authority predicates (split, client swept detection, flight reconstruction, server plausibility) have an automated headless regression — `client/scripts/test/hit_authority_test.gd` via `./scripts/run_tests.sh` — against the real `HitAuthority` helper. Server-side projectile/hit diagnostics logging remains; end-to-end PvP rewind under loss/lead still has no automated test.
 
 ## See also
 
+- [`../netcode/hit-authority-model.md`](../netcode/hit-authority-model.md) — **who decides a hit**: the client-authoritative-PvE vs server-authoritative-PvP split and its anti-cheat intent
 - [`../netcode/latency-budget.md`](../netcode/latency-budget.md) — the click-to-bullet round-trip and why shots feel late
 - [`monsters-ai.md`](monsters-ai.md) — monster firing, AI, and the PvE side of hit detection
 - [`../netcode/interpolation.md`](../netcode/interpolation.md) — how projectiles are drawn at the render delay

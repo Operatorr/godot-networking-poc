@@ -14,7 +14,6 @@ const TILEMAP_Z_INDEX := -10
 
 ## HUD script paths (loaded at runtime to avoid server-mode issues)
 const DEATH_SCREEN_PATH := "res://scripts/client/hud/death_screen.gd"
-const HP_BAR_PATH := "res://scripts/client/hud/hp_bar.gd"
 const KILL_FEED_PATH := "res://scripts/client/hud/kill_feed.gd"
 const MINIMAP_PATH := "res://scripts/client/hud/minimap.gd"
 const LEADERBOARD_PATH := "res://scripts/client/hud/leaderboard.gd"
@@ -46,6 +45,7 @@ var local_player: Player = null
 var prediction_controller: PredictionController = null
 var interpolation_controller: InterpolationController = null
 var client_entity_manager: ClientEntityManager = null
+var local_hit_detector: LocalHitDetector = null
 var camera: Camera2D = null
 
 ## Screen effects (null in server mode)
@@ -54,6 +54,8 @@ var screen_effects: ScreenEffects = null
 ## HUD components (null in server mode)
 var death_screen: Control = null
 var hp_bar: Control = null
+var stamina_bar: Control = null
+var mana_bar: Control = null
 var kill_feed: Control = null
 var minimap: Control = null
 var leaderboard: Control = null
@@ -78,10 +80,8 @@ var _local_player_authority_synced: bool = false
 ## Low-volume projectile sync diagnostics from client config.
 var projectile_sync_debug_logging: bool = false
 
-## Camera zoom settings
-const CAMERA_ZOOM_DEFAULT := Vector2(1.5, 1.5)
-const CAMERA_ZOOM_SPRINT := Vector2(1.35, 1.35)
-const CAMERA_ZOOM_SPEED := 3.0
+## Camera zoom settings live in GameConstants (single source of truth) so the
+## arena and the offline modes share one look. See GameConstants.CAMERA_ZOOM_*.
 const SERVER_STATUS_MAX_PLAYERS := 100
 
 ## Kill streak tracking
@@ -118,12 +118,17 @@ func _process(delta: float) -> void:
 				GameConstants.MONSTER_MAX_COUNT
 			)
 
+	# Client-side incoming monster-projectile hit detection runs after visuals so
+	# it tests against the positions actually on screen this frame.
+	if local_hit_detector:
+		local_hit_detector.update()
+
 	if camera and local_player and is_instance_valid(local_player):
 		# Camera zoom on sprint
-		var target_zoom := CAMERA_ZOOM_DEFAULT
+		var target_zoom := GameConstants.CAMERA_ZOOM_DEFAULT
 		if Input.is_action_pressed("sprint") and local_player.movement_state == Player.MovementState.WALKING:
-			target_zoom = CAMERA_ZOOM_SPRINT
-		camera.zoom = camera.zoom.lerp(target_zoom, clampf(delta * CAMERA_ZOOM_SPEED, 0.0, 1.0))
+			target_zoom = GameConstants.CAMERA_ZOOM_SPRINT
+		camera.zoom = camera.zoom.lerp(target_zoom, clampf(delta * GameConstants.CAMERA_ZOOM_SPEED, 0.0, 1.0))
 
 	# Kill streak timer decay
 	if _kill_streak_timer > 0.0:
@@ -170,7 +175,7 @@ func _setup_client() -> void:
 	# Create Camera2D for the client
 	camera = Camera2D.new()
 	camera.name = "ArenaCamera"
-	camera.zoom = Vector2(1.5, 1.5)
+	camera.zoom = GameConstants.CAMERA_ZOOM_DEFAULT
 	# The camera follows an already-interpolated target path. Camera2D position
 	# smoothing is forced to physics mode when physics interpolation is enabled,
 	# which adds warning noise and extra follow lag here.
@@ -261,6 +266,11 @@ func _spawn_local_player(entity_container: Node2D) -> void:
 	# Set up prediction in pending mode. Entity ID and spawn position come from server state.
 	prediction_controller.setup(local_player, local_player.position)
 
+	# Client-side detection of incoming monster projectiles (predicted self vs.
+	# rendered bullet). The server validates each report before applying damage.
+	local_hit_detector = LocalHitDetector.new()
+	local_hit_detector.setup(prediction_controller, client_entity_manager, local_player)
+
 	# Camera starts at player position
 	if camera:
 		_snap_camera_to(local_player.position)
@@ -275,9 +285,12 @@ func _setup_hud() -> void:
 		push_error("[ArenaBase] HUDLayer not found!")
 		return
 
-	# HP Bar (bottom center)
-	hp_bar = _create_hud_component(HP_BAR_PATH, "HPBar")
-	hud_layer.add_child(hp_bar)
+	# HP / Stamina / Mana bar group (bottom-center). Shared layout via BottomBars so
+	# the networked arena and the offline modes can't drift apart.
+	var bars := BottomBars.create(hud_layer)
+	hp_bar = bars["hp"]
+	stamina_bar = bars["stamina"]
+	mana_bar = bars["mana"]
 
 	# Kill Feed (top right, below minimap)
 	kill_feed = _create_hud_component(KILL_FEED_PATH, "KillFeed")
@@ -525,6 +538,8 @@ func _handle_respawn_event(data: Dictionary) -> void:
 		if prediction_controller:
 			prediction_controller.force_sync(respawn_pos)
 			prediction_controller.set_prediction_enabled(true)
+		if local_hit_detector:
+			local_hit_detector.reset()
 		if camera:
 			_snap_camera_to(respawn_pos)
 
@@ -666,7 +681,7 @@ func _log_local_projectile_fired_event(data: Dictionary) -> void:
 
 
 ## Server PROJECTILE_FIRED arrival for the LOCAL player. Cosmetics (muzzle flash,
-## tracer, audio) are now driven instantly off the predicted shoot edge
+## audio) are now driven instantly off the predicted shoot edge
 ## (_on_local_shoot_predicted), so this path intentionally does NOT redraw a flash
 ## or replay audio — that would double-fire one trigger pull. Projectile-source
 ## registration and logging happen in _handle_projectile_fired_event.
@@ -758,7 +773,7 @@ func _handle_leaderboard_update(data: Dictionary) -> void:
 
 
 ## Immediate cosmetic feedback for the local player's predicted shoot edge.
-## Cosmetic only — draws a muzzle flash + tracer and plays audio the instant the
+## Cosmetic only — draws a muzzle flash and plays audio the instant the
 ## trigger is pulled, without waiting for the server PROJECTILE_FIRED round-trip.
 ## Does NOT spawn a Projectile and does NOT touch prediction state.
 func _on_local_shoot_predicted(muzzle: Vector2, dir: Vector2) -> void:
@@ -768,11 +783,6 @@ func _on_local_shoot_predicted(muzzle: Vector2, dir: Vector2) -> void:
 
 	var flash := ParticleEffects.create_muzzle_flash(muzzle, dir)
 	_add_effect_to_arena(flash)
-
-	var tracer_color: Color = GameManager.player_data.get("player_color", Color(0.27, 0.53, 1.0))
-	var tracer_end := muzzle + dir * GameConstants.PROJECTILE_MAX_DISTANCE * 0.4
-	var tracer := ParticleEffects.create_tracer(muzzle, tracer_end, tracer_color)
-	_add_effect_to_arena(tracer)
 
 
 ## Handle local player shooting (for audio + effects)
@@ -927,11 +937,37 @@ func _connect_local_hp_bar() -> void:
 	if not local_player.hp_component.hp_changed.is_connected(_on_local_hp_changed):
 		local_player.hp_component.hp_changed.connect(_on_local_hp_changed)
 	_update_hp_bar()
+	_connect_local_resource_bars()
 
 
 func _on_local_hp_changed(current_hp: int, max_hp: int) -> void:
 	if hp_bar:
 		hp_bar.update_hp(current_hp, max_hp)
+
+
+## Wire the Stamina/Mana bars to the local player's predicted movement state machine.
+func _connect_local_resource_bars() -> void:
+	if local_player == null or not is_instance_valid(local_player):
+		return
+	var sm: MovementStateMachine = local_player.movement_sm
+	if sm == null:
+		return
+	if stamina_bar != null and not sm.stamina_changed.is_connected(_on_local_stamina_changed):
+		sm.stamina_changed.connect(_on_local_stamina_changed)
+		stamina_bar.update_value(sm.stamina, GameConstants.PLAYER_STAMINA_MAX)
+	if mana_bar != null and not sm.mana_changed.is_connected(_on_local_mana_changed):
+		sm.mana_changed.connect(_on_local_mana_changed)
+		mana_bar.update_value(sm.mana, GameConstants.PLAYER_MANA_MAX)
+
+
+func _on_local_stamina_changed(current: float, maximum: float) -> void:
+	if stamina_bar:
+		stamina_bar.update_value(current, maximum)
+
+
+func _on_local_mana_changed(current: float, maximum: float) -> void:
+	if mana_bar:
+		mana_bar.update_value(current, maximum)
 
 
 ## Handle disconnect from server

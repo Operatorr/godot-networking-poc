@@ -60,6 +60,99 @@ const PLAYER_SPRINT_SPEED := PLAYER_SPEED * PLAYER_SPRINT_MULTIPLIER
 
 
 # =============================================================================
+# DASH
+# =============================================================================
+# Server-authoritative burst movement triggered instantly on the dash input.
+# Both client (predicted) and server drive the shared MovementStateMachine with
+# these values, so they MUST stay identical on both sides.
+
+## Dash speed = base * this multiplier (3.6x => 720 u/s).
+const PLAYER_DASH_MULTIPLIER := 3.6
+
+## Calculated dash speed for reference: 720 units/sec.
+const PLAYER_DASH_SPEED := PLAYER_SPEED * PLAYER_DASH_MULTIPLIER
+
+## How long a single dash lasts (seconds).
+const PLAYER_DASH_DURATION := 0.4
+
+## Cooldown before the next dash is allowed (seconds). START-relative: the clock
+## begins when the dash begins, so the usable gap is COOLDOWN - DURATION (~5.1 s).
+const PLAYER_DASH_COOLDOWN := 5.5
+
+
+# =============================================================================
+# KNOCKBACK
+# =============================================================================
+
+## Exponential decay rate for knockback velocity (higher = snappier recovery).
+## velocity *= exp(-rate * delta) each tick; ~9.0 settles in roughly half a second.
+const PLAYER_KNOCKBACK_DECAY := 9.0
+
+## Below this speed (u/s) knockback is considered finished and the SM exits to IDLE.
+const PLAYER_KNOCKBACK_END_SPEED := 12.0
+
+## Default knockback magnitude applied as direction * force * multiplier when a
+## caller does not specify its own force.
+const PLAYER_KNOCKBACK_BASE_FORCE := 450.0
+
+
+# =============================================================================
+# STAMINA (sprint resource)
+# =============================================================================
+
+## Maximum stamina pool.
+const PLAYER_STAMINA_MAX := 100.0
+
+## Stamina drained per second while SPRINTING.
+const PLAYER_STAMINA_DRAIN_PER_SEC := 35.0
+
+## Stamina regenerated per second while NOT sprinting.
+const PLAYER_STAMINA_REGEN_PER_SEC := 20.0
+
+## Sprint cannot start below this stamina (prevents one-frame flicker sprints).
+const PLAYER_STAMINA_SPRINT_MIN := 5.0
+
+
+# =============================================================================
+# MANA (ability resource)
+# =============================================================================
+
+## Maximum mana pool.
+const PLAYER_MANA_MAX := 100.0
+
+## Mana regenerated per second.
+const PLAYER_MANA_REGEN_PER_SEC := 10.0
+
+## Mana consumed by a single ability use (gates the ability input).
+const PLAYER_MANA_ABILITY_COST := 25.0
+
+
+# =============================================================================
+# STATUS-EFFECT SPEED MODIFIERS (placeholder bounds for a future manager)
+# =============================================================================
+
+## Clamp the aggregate Haste/Slow speed multiplier so stacks stay sane.
+const PLAYER_SPEED_MULT_MIN := 0.25
+const PLAYER_SPEED_MULT_MAX := 2.5
+
+
+# =============================================================================
+# CAMERA
+# =============================================================================
+# Single source of truth for gameplay camera zoom. Used by the online arena and
+# the offline modes alike so all gameplay scenes look identical.
+
+## Default gameplay camera zoom.
+const CAMERA_ZOOM_DEFAULT := Vector2(1.5, 1.5)
+
+## Zoom while sprinting (slightly zoomed out for a wider view).
+const CAMERA_ZOOM_SPRINT := Vector2(1.35, 1.35)
+
+## Lerp rate (per second) used to ease between default and sprint zoom.
+const CAMERA_ZOOM_SPEED := 3.0
+
+
+# =============================================================================
 # MOVEMENT VALIDATION THRESHOLDS
 # =============================================================================
 
@@ -248,6 +341,19 @@ const PROJECTILE_ENTITY_ID_END := 29999
 
 ## Player hitbox radius for projectile collision (units)
 const PLAYER_HITBOX_RADIUS := 16.0
+
+## PvP defender compensation (Option 2 — server-authoritative, no client trust).
+## Server PvP hit detection rewinds the defender to the SHOOTER's view (favour
+## shooter), which is why a fleeing defender can feel "hit after I dodged". This
+## factor pulls the *tested* defender position from the shooter-rewound position
+## back toward the defender's CURRENT authoritative position:
+##   0.0 = pure favour-shooter (original behaviour)
+##   1.0 = test at the defender's live position (favour defender; shooters must lead)
+## It trades a little shooter precision for defender dodge-feel and stays fully
+## server-authoritative. High-ping defenders are pulled further (their rewind was
+## larger), so the effect already scales with the defender's latency. Tune with
+## 2-client, mixed-ping play-tests. See docs/netcode/hit-authority-model.md.
+const PVP_DEFENDER_FAVOR := 0.25
 
 
 # =============================================================================
@@ -451,6 +557,19 @@ static func _movement_hits_obstacle(from: Vector2, to: Vector2, radius: float) -
 			return true
 
 	return false
+
+
+## Closest point on segment [seg_start, seg_end] to a point, clamped to the
+## segment bounds. Shared by server swept-collision and the client-side incoming
+## projectile hit detector so both sides use byte-identical math.
+static func closest_point_on_segment(point: Vector2, seg_start: Vector2, seg_end: Vector2) -> Vector2:
+	var segment := seg_end - seg_start
+	var length_sq := segment.length_squared()
+	if length_sq <= 0.0001:
+		return seg_start
+
+	var t := clampf((point - seg_start).dot(segment) / length_sq, 0.0, 1.0)
+	return seg_start + segment * t
 
 
 ## Check if a line segment intersects any obstacle (for projectile collision)

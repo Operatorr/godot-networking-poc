@@ -48,6 +48,11 @@ class MessageType(IntEnum):
     # a bot that never acks still receives baselines (no regression). Mirrored here
     # only to keep this enum in lockstep with packet_types.gd.
     BASELINE_ACK = 12
+    # Client -> Server: "a monster projectile hit me" (client-detected, server-validated).
+    # Monster->player hits are client-authoritative under the RotMG-style PvE netcode, so a
+    # client that never reports takes no monster damage. Bots send this so they behave like
+    # real players. See docs/netcode/hit-authority-model.md.
+    LOCAL_HIT_REPORT = 13
 
 
 class EntityType(IntEnum):
@@ -68,6 +73,9 @@ class GameEventType(IntEnum):
     PLAYER_INFO = 9
     KILL_PVP = 10
     LEADERBOARD_UPDATE = 11
+    # Entity fired a projectile. source_id = owner entity id, target_id = projectile id.
+    # Bots track this to learn projectile ownership (see OmegaRealmBot._handle_game_event).
+    PROJECTILE_FIRED = 12
 
 
 # Input flag bits
@@ -79,6 +87,7 @@ INPUT_FLAG_SHOOT = 1 << 4
 INPUT_FLAG_ABILITY = 1 << 5
 INPUT_FLAG_SPRINT = 1 << 6
 INPUT_FLAG_INTERACT = 1 << 7
+INPUT_FLAG_DASH = 1 << 8  # bit 8 -> input_flags is a u16 on the wire
 
 # State update flags
 STATE_FLAG_IS_DELTA = 1 << 0
@@ -107,8 +116,17 @@ HEADER_SIZE = 3  # [u8 type][u16 payload_length]
 # decisions while still using only network-visible state.
 SERVER_TICK_RATE = 30.0
 PLAYER_SPEED = 200.0
+# Mirror of client/scripts/shared/game_constants.gd — keep these in sync so bot
+# dead-reckoning matches the server-authoritative movement state machine.
 PLAYER_SPRINT_MULTIPLIER = 1.6
 PLAYER_SPRINT_SPEED = PLAYER_SPEED * PLAYER_SPRINT_MULTIPLIER
+PLAYER_STAMINA_MAX = 100.0
+PLAYER_MANA_MAX = 100.0
+PLAYER_DASH_COOLDOWN = 5.5  # seconds, START-relative
+# Bots stop requesting sprint below this stamina so they visibly respect the meter
+# instead of spamming sprint (which the server gates anyway). > the server's hard
+# floor (5.0) so bots keep a usable reserve.
+BOT_SPRINT_STAMINA_FLOOR = 25.0
 MAP_MIN_X = -1000.0
 MAP_MIN_Y = -1000.0
 MAP_MAX_X = 1000.0
@@ -116,6 +134,10 @@ MAP_MAX_Y = 1000.0
 PROJECTILE_SPEED = 400.0
 PROJECTILE_MAX_DISTANCE = 800.0
 PROJECTILE_RADIUS = 8.0
+# Entity-id range boundary (invariant: players 1–999, projectiles 10000–29999,
+# monsters 30000–39999). A projectile is monster-owned iff its PROJECTILE_FIRED
+# source_id >= this. Mirrors game_constants.gd MONSTER_ENTITY_ID_START.
+MONSTER_ENTITY_ID_START = 30000
 PLAYER_HITBOX_RADIUS = 16.0
 MONSTER_HITBOX_RADIUS = 16.0
 MONSTER_PROJECTILE_SPEED = 300.0
@@ -531,8 +553,8 @@ def build_player_input(
     client_render_tick: int = 0,
     client_rtt_ms: int = 0,
 ) -> bytes:
-    """Build PLAYER_INPUT packet (16 bytes payload).
-    Format: [s16 pos_x][s16 pos_y][s16 vel_x][s16 vel_y][u8 flags][s16 aim][u8 seq][u16 render_tick][u16 rtt_ms]
+    """Build PLAYER_INPUT packet (17 bytes payload).
+    Format: [s16 pos_x][s16 pos_y][s16 vel_x][s16 vel_y][u16 flags][s16 aim][u8 seq][u16 render_tick][u16 rtt_ms]
     """
     qpx = max(-32768, min(32767, int(pos_x * POSITION_SCALE)))
     qpy = max(-32768, min(32767, int(pos_y * POSITION_SCALE)))
@@ -540,9 +562,9 @@ def build_player_input(
     qvy = max(-32768, min(32767, int(vel_y * VELOCITY_SCALE)))
     qaim = max(-32768, min(32767, int(aim_angle * ANGLE_SCALE)))
     payload = struct.pack(
-        "<hhhhBhBHH",
+        "<hhhhHhBHH",
         qpx, qpy, qvx, qvy,
-        input_flags & 0xFF,
+        input_flags & 0xFFFF,
         qaim,
         sequence & 0xFF,
         client_render_tick & 0xFFFF,
@@ -567,6 +589,12 @@ def build_respawn_request() -> bytes:
     """Build RESPAWN_REQUEST packet. [u32 timestamp_ms]"""
     payload = struct.pack("<I", int(time.time() * 1000) & 0xFFFFFFFF)
     return build_header(MessageType.RESPAWN_REQUEST, payload)
+
+
+def build_local_hit_report(projectile_id: int) -> bytes:
+    """Build LOCAL_HIT_REPORT packet. [u16 projectile_id]"""
+    payload = struct.pack("<H", projectile_id & 0xFFFF)
+    return build_header(MessageType.LOCAL_HIT_REPORT, payload)
 
 
 # --- Packet Parser (little-endian) ---
@@ -1089,6 +1117,21 @@ class OmegaRealmBot:
         self._entity_id: int | None = None
         self._entities: dict[int, EntitySnapshot] = {}
         self._dead_since: float | None = None
+        # Authoritative resources synced from ACTION_CONFIRM (owner-only). Lets the
+        # bot respect its stamina meter and dash cooldown like a real player.
+        self._stamina = PLAYER_STAMINA_MAX
+        self._mana = PLAYER_MANA_MAX
+        self._dash_cooldown_until = 0.0
+        # Client-side monster-hit reporting (so bots take monster damage like real
+        # players). Report each projectile at most once; rate-limit to match the
+        # server's per-peer cap (LOCAL_HIT_REPORT_MAX_PER_SECOND = 20).
+        self._reported_projectile_ids: set[int] = set()
+        self._hit_report_window_start = 0.0
+        self._hit_report_count = 0
+        # projectile_id -> owner entity id, learned from PROJECTILE_FIRED. Lets us
+        # report only monster-owned bullets (PvE hits the server can honour) instead
+        # of spending hit-report quota on player-fired bullets it will reject.
+        self._projectile_sources: dict[int, int] = {}
         self._last_respawn_sent = 0.0
         self._target_id: int | None = None
         self._last_decision_time = 0.0
@@ -1198,6 +1241,11 @@ class OmegaRealmBot:
                 else:
                     await self._send_random_input()
                 self._last_input_sent = now
+
+            # Detect incoming projectiles and report hits so bots take monster damage
+            # like real players (runs at the 50Hz poll rate; cheap distance check).
+            if self.behavior != BEHAVIOR_IDLE:
+                await self._detect_and_report_hits()
 
             await asyncio.sleep(0.02)  # 50Hz poll rate for timing accuracy
 
@@ -1368,7 +1416,19 @@ class OmegaRealmBot:
 
         decision = self._get_strategy_decision(now, self_snapshot)
         self._aim_angle = decision.aim_angle
-        self._set_velocity_from_direction(decision.move_x, decision.move_y, sprint=decision.sprint)
+
+        # Sprint only while we have stamina to spend — adhere to the meter instead of
+        # spamming sprint. The server gates it too, but matching here keeps the bot's
+        # dead-reckoning consistent with the authoritative position.
+        sprint = decision.sprint and self._stamina > BOT_SPRINT_STAMINA_FLOOR
+        self._set_velocity_from_direction(decision.move_x, decision.move_y, sprint=sprint)
+
+        # Dash: edge-triggered, respects the local cooldown estimate (the server
+        # enforces the real 5.5 s cooldown). Dash while actually moving.
+        dash_flag = 0
+        if self._should_dash(now, decision):
+            dash_flag = INPUT_FLAG_DASH
+            self._dash_cooldown_until = now + PLAYER_DASH_COOLDOWN
 
         dt = BOT_INPUT_INTERVAL
         self._pos_x, self._pos_y = move_with_obstacle_collision(
@@ -1379,7 +1439,20 @@ class OmegaRealmBot:
             PLAYER_HITBOX_RADIUS,
         )
         shoot_flag = INPUT_FLAG_SHOOT if decision.shoot else 0
-        await self._send_input_packet(shoot_flag)
+        await self._send_input_packet(shoot_flag | dash_flag)
+
+    def _should_dash(self, now: float, decision: "TacticalDecision") -> bool:
+        """Decide whether to fire a dash this tick. Gated by a local cooldown and a
+        difficulty-scaled chance; only dashes while moving so it has a direction."""
+        if now < self._dash_cooldown_until:
+            return False
+        if decision.move_x == 0.0 and decision.move_y == 0.0:
+            return False
+        # Higher difficulty dashes more aggressively; evading dashes more often.
+        chance = 0.02 + 0.08 * self.difficulty
+        if self._strategy_state in (STRATEGY_STATE_EVADE, STRATEGY_STATE_FLANK):
+            chance *= 2.0
+        return random.random() < chance
 
     def select_target(self, now: float | None = None) -> EntitySnapshot | None:
         """Select the best visible combat target using score, threat, and stickiness."""
@@ -2109,6 +2182,63 @@ class OmegaRealmBot:
         except ConnectionClosed:
             self._running = False
 
+    def _allow_hit_report(self) -> bool:
+        """Per-bot 1-second sliding-window cap, mirroring the server's
+        LOCAL_HIT_REPORT_MAX_PER_SECOND = 20 so we never spam reports."""
+        now = time.monotonic()
+        if now - self._hit_report_window_start >= 1.0:
+            self._hit_report_window_start = now
+            self._hit_report_count = 0
+        self._hit_report_count += 1
+        return self._hit_report_count <= 20
+
+    async def _send_local_hit_report(self, projectile_id: int):
+        if self.ws is None:
+            return
+        try:
+            pkt = build_local_hit_report(projectile_id)
+            await self.ws.send(pkt)
+            self.metrics.packets_sent += 1
+            self.metrics.bytes_sent += len(pkt)
+        except ConnectionClosed:
+            self._running = False
+
+    async def _detect_and_report_hits(self):
+        """Client-side detection of incoming projectiles, mirroring the real client's
+        LocalHitDetector: when a monster-owned projectile overlaps our position, report
+        it so the server can apply monster damage. Only monster-owned bullets are PvE
+        hits the server will honour, so we filter on ownership (learned from
+        PROJECTILE_FIRED) before consuming hit-report quota — reporting player-fired
+        bullets would still spend our local and the server's per-second quota on reports
+        that can only be rejected, starving legitimate monster hits in combat/clustered
+        runs. See docs/netcode/hit-authority-model.md."""
+        if self.ws is None or self._entity_id is None or self._dead_since is not None:
+            return
+
+        hit_radius = PROJECTILE_RADIUS + PLAYER_HITBOX_RADIUS
+        hit_radius_sq = hit_radius * hit_radius
+        seen_projectiles: set[int] = set()
+
+        for projectile in self._entities.values():
+            if projectile.entity_type != EntityType.PROJECTILE or not projectile.visible:
+                continue
+            # Skip non-monster bullets: an unknown owner means we never saw the spawn
+            # (can't claim a PvE hit), and a player owner would be rejected server-side.
+            owner_id = self._projectile_sources.get(projectile.entity_id)
+            if owner_id is None or owner_id < MONSTER_ENTITY_ID_START:
+                continue
+            seen_projectiles.add(projectile.entity_id)
+            if projectile.entity_id in self._reported_projectile_ids:
+                continue
+            dx = projectile.x - self._pos_x
+            dy = projectile.y - self._pos_y
+            if dx * dx + dy * dy < hit_radius_sq and self._allow_hit_report():
+                await self._send_local_hit_report(projectile.entity_id)
+                self._reported_projectile_ids.add(projectile.entity_id)
+
+        # Drop tracking for monster bullets that have despawned so the set stays bounded.
+        self._reported_projectile_ids &= seen_projectiles
+
     def _handle_message(self, data: bytes):
         """Parse incoming binary packet(s) and update metrics."""
         offset = 0
@@ -2157,6 +2287,12 @@ class OmegaRealmBot:
                 self._latest_server_tick = header["server_tick"]
                 self.metrics.server_ticks_seen.append(self._latest_server_tick)
             parsed = parse_state_update(payload, self._entities)
+            if parsed:
+                # Drop ownership entries for despawned projectiles so the map stays
+                # bounded (mirrors the real client erasing _projectile_sources on
+                # entity removal). Only delta packets carry explicit removals.
+                for removed_id in parsed.get("removed", ()):
+                    self._projectile_sources.pop(removed_id, None)
             if parsed and self._entity_id is not None:
                 self_snapshot = self._entities.get(self._entity_id)
                 if self_snapshot is not None:
@@ -2170,7 +2306,11 @@ class OmegaRealmBot:
             self._handle_game_event(event)
 
         elif msg_type == MessageType.ACTION_CONFIRM:
-            pass  # Bot doesn't need to process confirmations
+            # Owner-only authoritative resource sync rides the last 2 payload bytes
+            # ([...][u8 stamina][u8 mana]); track them to manage sprint/dash.
+            if len(payload) >= 11:
+                self._stamina = float(payload[9])
+                self._mana = float(payload[10])
 
         elif msg_type == MessageType.SERVER_METRICS:
             sm = parse_server_metrics(payload)
@@ -2239,10 +2379,17 @@ class OmegaRealmBot:
             return
 
         event_type = event.get("event_type")
+        source_id = event.get("source_id", 0)
         target_id = event.get("target_id", 0)
         event_data = event.get("event_data", {})
 
-        if event_type == GameEventType.PLAYER_INFO:
+        if event_type == GameEventType.PROJECTILE_FIRED:
+            # source_id = owner entity id, target_id = projectile id. Record ownership
+            # so _detect_and_report_hits reports only monster-owned bullets. Erased
+            # when the projectile is removed (see _handle_single_message STATE_UPDATE).
+            if target_id > 0:
+                self._projectile_sources[target_id] = source_id
+        elif event_type == GameEventType.PLAYER_INFO:
             if event_data.get("character_name") == self.character_name:
                 self._entity_id = target_id
                 pos = event_data.get("position")
