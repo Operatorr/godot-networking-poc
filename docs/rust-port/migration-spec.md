@@ -93,6 +93,64 @@ a lost one, so reliability is wasteful.
 (mitigated by keeping snapshots on the unreliable channel); pure-Rust ENet crates are less mainstream
 than tokio/quinn (pin the version, golden-test the handshake against Godot early).
 
+### D3 — Wire protocol: redesign via a single schema, codegen both sides
+
+**Decision.** Don't carry the hand-tuned-but-hand-written protocol forward. Define the wire format
+**once in a schema** and **generate both** the Rust codec and the GDScript codec from it. Use the
+clean-slate opening to bitpack tighter (sub-byte flags, varints, quantization and delta-mask layout
+declared in the schema). Toolchain is a sub-decision → **[Codec toolchain]**, D4.
+
+**Alternatives weighed.**
+- *Preserve current semantics, adapt to ENet:* smallest client rewrite, bandwidth profile already
+  proven — but keeps two hand-written codecs (now in *different languages*), exactly the drift risk
+  D1 introduced. Rejected.
+- *Simple format v1, optimize later:* fastest to first-playable but blows the <2 KB/s/player budget
+  and re-does the protocol twice; can't load-test at scale until v2. Rejected.
+
+**What this buys / costs.**
+- ✅ **Single source of truth for the wire format** — serialization drift between client and server
+  becomes impossible by construction (the codecs are generated from one file).
+- ✅ Headroom to beat the current bandwidth via real bitpacking.
+- ⚠️ **Does NOT solve sim-math parity** (movement/collision determinism) — that stays open under
+  [Shared-sim parity].
+- ⚠️ Every bandwidth budget in `performance-budgets.md` must be **re-measured**; old numbers are
+  invalidated by the new layout.
+- ⚠️ A codegen toolchain becomes a build dependency for both the Rust server and the Godot client.
+
+**Carried forward from the old protocol (semantics, not bytes):** entity-type tags, 0.1-unit position
+quantization (or tighter), delta encoding against a periodic full-state **baseline**, baseline acks,
+and the AoI per-peer byte-budget scheduler. **Dropped:** `HEARTBEAT`, `BATCH` (ENet subsumes — see D2).
+
+> **ADR candidate:** "Schema-driven wire protocol with codegen for client + server." Draft once D4
+> pins the toolchain (it's hard to reverse, non-obvious, and a real trade-off vs. hand-written codecs).
+
+### D4 — Codec toolchain: custom IDL + own generator
+
+**Decision.** A **custom schema** (small DSL/`.toml`-style file) describes every packet, its fields,
+quantization, and delta-mask layout. A **generator written in Rust** emits two artifacts: the server's
+Rust codec module and the client's GDScript codec script. No runtime serialization dependency on
+either side; full control over sub-byte bitpacking and quantization.
+
+**Alternatives weighed.**
+- *Off-the-shelf IDL (Protobuf / FlatBuffers / Cap'n Proto):* mature tooling and free versioning, but
+  **GDScript codegen is weak or absent** and none sub-byte bitpack — we'd fight the tool to hit the
+  bandwidth budget. Rejected.
+- *Rust-authoritative + hand-written GDScript mirror (bitcode/postcard):* no generator to build, but
+  reintroduces a hand-written GDScript codec — the drift risk D3 set out to kill. Rejected.
+
+**Conventions (defaults, not separately grilled — reversible/standard):**
+- Schema + generator live in a top-level **`protocol/`** cargo workspace member (`protogen` binary).
+- Generated artifacts are **committed**: `gen/protocol.rs` (server) and
+  `client/scripts/shared/networking/gen/protocol.gd` (client) — so the Godot client builds with no
+  Rust toolchain.
+- Server crate regenerates via `build.rs`; CI runs `cargo run -p protogen` then fails on a non-empty
+  `git diff` (generated code must be in sync with the schema).
+- The schema file carries a **protocol version** byte sent in the handshake; client and server refuse
+  mismatched versions.
+
+This resolves the **[Wire protocol]** and **[Codec toolchain]** open questions. ADR drafted:
+[`../adr/0004-schema-driven-wire-protocol.md`](../adr/0004-schema-driven-wire-protocol.md).
+
 ---
 
 ## Open questions (resolved as grilling proceeds)

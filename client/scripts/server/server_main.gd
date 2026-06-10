@@ -791,7 +791,7 @@ func _handle_local_hit_report(peer_id: int, data: Dictionary) -> void:
 
 	# Only monster-fired projectiles are client-authoritative for the victim's
 	# dodge; player-fired (PvP) projectiles stay server-authoritative.
-	if proj.owner_id < GameConstants.MONSTER_ENTITY_ID_START:
+	if not HitAuthority.is_client_authoritative(proj.owner_id):
 		return
 
 	if not _local_hit_is_plausible(proj, player.entity_id):
@@ -831,13 +831,9 @@ func _local_hit_is_plausible(proj: ProjectileState, entity_id: int) -> bool:
 	var threshold := GameConstants.PROJECTILE_RADIUS + GameConstants.PLAYER_HITBOX_RADIUS + LOCAL_HIT_VALIDATION_MARGIN
 	# Straight-line flight start (distance_traveled is exact for a still-alive
 	# bullet that has not been clamped by an obstacle).
-	var flight_start := proj.position - proj.direction * proj.distance_traveled
+	var flight_start := HitAuthority.flight_origin(proj.position, proj.direction, proj.distance_traveled)
 	var positions := player_manager.get_recent_positions(entity_id)
-	for pos: Vector2 in positions:
-		var closest := GameConstants.closest_point_on_segment(pos, flight_start, proj.position)
-		if pos.distance_to(closest) < threshold:
-			return true
-	return false
+	return HitAuthority.is_hit_plausible(flight_start, proj.position, positions, threshold)
 
 
 ## Respawn a player and broadcast the authoritative respawn event.

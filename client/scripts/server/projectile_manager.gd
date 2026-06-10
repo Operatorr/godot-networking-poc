@@ -281,7 +281,7 @@ func check_collisions_with_players(player_manager: PlayerManager) -> Array[Dicti
 		# victim's own rendered view is authoritative for dodging. Only
 		# player-vs-player projectiles run this server-authoritative swept
 		# lag-comp path. See docs/systems/combat-hits.md.
-		if proj.owner_id >= GameConstants.MONSTER_ENTITY_ID_START:
+		if HitAuthority.is_client_authoritative(proj.owner_id):
 			continue
 
 		var collision_tick := proj.get_lag_compensated_player_tick()

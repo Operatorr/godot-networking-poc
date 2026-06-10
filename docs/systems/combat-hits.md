@@ -125,7 +125,11 @@ To make dodging match what the player sees, the victim's **own client** now deci
   saw. On a hit it hides the bullet locally (instant feel) and sends a `LOCAL_HIT_REPORT`
   [Game event](../CONTEXT.md) (`[u16 projectile_id]`). It learns ownership from the `PROJECTILE_FIRED`
   event, which now carries the real projectile id for monster shots (`monster_ai`/`server_main`
-  propagate `last_fired_projectile_id`).
+  propagate `last_fired_projectile_id`). The local hide is provisional: each report is tracked as
+  *pending*, and if the server has not despawned the bullet within `REPORT_RESOLVE_TIMEOUT_MS` (500 ms)
+  the detector un-hides it and re-arms detection — otherwise a rejected (or lost) report would leave the
+  bullet permanently invisible and intangible on that client. The geometry/authority predicates live in
+  the shared, unit-tested `HitAuthority` helper.
 - **Server validates + applies** (`server_main._handle_local_hit_report`). The report is honoured
   only if: the projectile exists and is alive, it is monster-owned, the reporting player is alive, the
   per-peer rate limit holds (`LOCAL_HIT_REPORT_MAX_PER_SECOND = 20`), and the bullet's recent swept
@@ -188,7 +192,7 @@ same reason — the per-Tick latch caps it at one regardless of how many edges `
 - **Persisted:** nothing — kills increment in-memory counters; only the Go API persists leaderboard totals.
 - **Validated:** fire origin is RTT-bounded; cooldown gates rate; PvE rewind capped at 6 ticks, PvP rewind capped stricter at 4 ticks (`server_main.gd:382-386`); **monster-hit reports are plausibility-checked against authoritative position history + per-peer rate-limited** (`_handle_local_hit_report`); damage is server-confirmed.
 - **Can fail:** PvP rewind without a cap would let you "shoot around corners" — the 4-Tick cap is the guard; a missed lag-comp tick falls back to the nearest history snapshot (`player_manager.gd:272-285`); cosmetic muzzle can fire even if the server later rejects the shot (cooldown) — by design, it draws no damage; **a client that never sends `LOCAL_HIT_REPORT` is immune to monster bullets** (accepted trust trade-off, bounded by validation + rate-limit).
-- **Tested:** server-side projectile/hit diagnostics logging; no automated combat regression test today (PvP rewind and the client-hit-report validation have no loss/lead test).
+- **Tested:** the hit-authority predicates (split, client swept detection, flight reconstruction, server plausibility) have an automated headless regression — `client/scripts/test/hit_authority_test.gd` via `./scripts/run_tests.sh` — against the real `HitAuthority` helper. Server-side projectile/hit diagnostics logging remains; end-to-end PvP rewind under loss/lead still has no automated test.
 
 ## See also
 

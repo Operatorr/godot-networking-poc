@@ -518,7 +518,7 @@ func get_monster_projectile_snapshots() -> Array:
 	var result: Array = []
 	for projectile_id: int in _active_projectiles.keys():
 		var source_id: int = _projectile_sources.get(projectile_id, -1)
-		if source_id < GameConstants.MONSTER_ENTITY_ID_START:
+		if not HitAuthority.is_client_authoritative(source_id):
 			continue
 		var projectile: Projectile = _active_projectiles[projectile_id]
 		if not is_instance_valid(projectile) or not projectile.visible:
@@ -534,6 +534,22 @@ func hide_projectile_locally(projectile_id: int) -> void:
 	var projectile: Projectile = _active_projectiles.get(projectile_id, null)
 	if is_instance_valid(projectile):
 		projectile.visible = false
+
+
+## Re-show a projectile that was hidden by a hit report the server did NOT honour
+## (rejected as implausible, or the report was lost). Without this the bullet would
+## stay invisible and undetectable for the rest of its life. See LocalHitDetector.
+func show_projectile_locally(projectile_id: int) -> void:
+	var projectile: Projectile = _active_projectiles.get(projectile_id, null)
+	if is_instance_valid(projectile):
+		projectile.visible = true
+
+
+## Is a projectile still live on the client? After a hit report, a still-active
+## projectile means the server did not despawn it (report rejected/lost); a gone
+## projectile means the server confirmed the hit and removed it for everyone.
+func is_projectile_active(projectile_id: int) -> bool:
+	return is_instance_valid(_active_projectiles.get(projectile_id, null))
 
 
 func _apply_projectile_color(projectile_id: int) -> void:

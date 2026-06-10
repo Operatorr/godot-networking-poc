@@ -212,6 +212,10 @@ A future agent should be able to grep these and confirm the implementation still
 6. The client hit test **must** use the **rendered** local-player position
    (`prediction.get_rendered_position()`), not `predicted_position`. The two diverge during a smooth
    correction; testing against the prediction would judge the hit in a frame the player never saw.
+7. A reported bullet that the server does **not** despawn within `REPORT_RESOLVE_TIMEOUT_MS` **must**
+   be un-hidden and made detectable again (`LocalHitDetector._resolve_pending_reports`). A locally
+   hidden bullet that is never restored is both an invisible projectile and a free dodge of a hit the
+   server rejected.
 
 ## Known mismatches / open items (2026-06-10)
 
@@ -237,6 +241,20 @@ A future agent should be able to grep these and confirm the implementation still
   per-peer quota on player-fired bullets the server can only reject — in combat/clustered runs enough
   player bullets near a bot starved its legitimate monster hits in the same second, so bots stopped
   taking PvE damage and the load-test stopped matching real-client behaviour.
+- **Rejected/lost reports no longer strand the bullet (fixed, 2026-06-11).** On report the client
+  hides the bullet immediately so the impact feels instant. Previously, if the server then *rejected*
+  the report (implausible) or it was lost, the bullet stayed alive server-side but invisible and
+  excluded from detection on that client for the rest of its life — a one-bullet free pass plus a
+  vanished projectile. `LocalHitDetector` now tracks each report as *pending* with a timestamp; after
+  `REPORT_RESOLVE_TIMEOUT_MS` (500 ms, comfortably > render-delay + RTT) it checks whether the bullet
+  is still live: if so the server did not honour the report, so the bullet is un-hidden and its
+  per-bullet tracking cleared so it can be detected again; if it is already gone, the hit was confirmed
+  and nothing is restored.
+- **Authority predicates centralized (2026-06-11).** The monster-vs-player split, client swept test,
+  flight reconstruction, and server plausibility math were duplicated across `LocalHitDetector`,
+  `ServerMain`, `ProjectileManager`, and `ClientEntityManager`. They now live in one pure helper,
+  `HitAuthority` (`client/scripts/shared/hit_authority.gd`), so the rules can only drift in one place
+  and are unit-testable in isolation. Invariants 1–4 below are checks against that helper's callers.
 - **PvP defender dodge-feel.** Inherent to server authority; tracked here so nobody "fixes" it by
   making PvP client-authoritative.
 
@@ -257,7 +275,11 @@ A future agent should be able to grep these and confirm the implementation still
   rewind caps + server-authoritative movement; all damage is server-applied.
 - **Can fail:** a non-reporting client is immune to monster bullets (accepted); a missing monster
   projectile id silently disables PvE-on-player; PvP defender dodge-feel is offset by design.
-- **Tested:** debug tracing on both ends today; no automated regression for either authority path.
+- **Tested:** the load-bearing predicates (authority split, client swept detection, flight
+  reconstruction, server plausibility) are factored into the pure `HitAuthority` helper
+  (`client/scripts/shared/hit_authority.gd`) and covered by an automated headless regression,
+  `client/scripts/test/hit_authority_test.gd` (run via `./scripts/run_tests.sh`). End-to-end
+  client↔server behaviour is still verified by play-test + debug tracing.
 
 ## See also
 
