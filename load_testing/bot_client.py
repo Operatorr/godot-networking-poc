@@ -48,6 +48,11 @@ class MessageType(IntEnum):
     # a bot that never acks still receives baselines (no regression). Mirrored here
     # only to keep this enum in lockstep with packet_types.gd.
     BASELINE_ACK = 12
+    # Client -> Server: "a monster projectile hit me" (client-detected, server-validated).
+    # Monster->player hits are client-authoritative under the RotMG-style PvE netcode, so a
+    # client that never reports takes no monster damage. Bots send this so they behave like
+    # real players. See docs/netcode/hit-authority-model.md.
+    LOCAL_HIT_REPORT = 13
 
 
 class EntityType(IntEnum):
@@ -567,6 +572,12 @@ def build_respawn_request() -> bytes:
     """Build RESPAWN_REQUEST packet. [u32 timestamp_ms]"""
     payload = struct.pack("<I", int(time.time() * 1000) & 0xFFFFFFFF)
     return build_header(MessageType.RESPAWN_REQUEST, payload)
+
+
+def build_local_hit_report(projectile_id: int) -> bytes:
+    """Build LOCAL_HIT_REPORT packet. [u16 projectile_id]"""
+    payload = struct.pack("<H", projectile_id & 0xFFFF)
+    return build_header(MessageType.LOCAL_HIT_REPORT, payload)
 
 
 # --- Packet Parser (little-endian) ---
@@ -1089,6 +1100,12 @@ class OmegaRealmBot:
         self._entity_id: int | None = None
         self._entities: dict[int, EntitySnapshot] = {}
         self._dead_since: float | None = None
+        # Client-side monster-hit reporting (so bots take monster damage like real
+        # players). Report each projectile at most once; rate-limit to match the
+        # server's per-peer cap (LOCAL_HIT_REPORT_MAX_PER_SECOND = 20).
+        self._reported_projectile_ids: set[int] = set()
+        self._hit_report_window_start = 0.0
+        self._hit_report_count = 0
         self._last_respawn_sent = 0.0
         self._target_id: int | None = None
         self._last_decision_time = 0.0
@@ -1198,6 +1215,11 @@ class OmegaRealmBot:
                 else:
                     await self._send_random_input()
                 self._last_input_sent = now
+
+            # Detect incoming projectiles and report hits so bots take monster damage
+            # like real players (runs at the 50Hz poll rate; cheap distance check).
+            if self.behavior != BEHAVIOR_IDLE:
+                await self._detect_and_report_hits()
 
             await asyncio.sleep(0.02)  # 50Hz poll rate for timing accuracy
 
@@ -2108,6 +2130,56 @@ class OmegaRealmBot:
             logger.debug(f"Bot {self.bot_id}: Respawn requested")
         except ConnectionClosed:
             self._running = False
+
+    def _allow_hit_report(self) -> bool:
+        """Per-bot 1-second sliding-window cap, mirroring the server's
+        LOCAL_HIT_REPORT_MAX_PER_SECOND = 20 so we never spam reports."""
+        now = time.monotonic()
+        if now - self._hit_report_window_start >= 1.0:
+            self._hit_report_window_start = now
+            self._hit_report_count = 0
+        self._hit_report_count += 1
+        return self._hit_report_count <= 20
+
+    async def _send_local_hit_report(self, projectile_id: int):
+        if self.ws is None:
+            return
+        try:
+            pkt = build_local_hit_report(projectile_id)
+            await self.ws.send(pkt)
+            self.metrics.packets_sent += 1
+            self.metrics.bytes_sent += len(pkt)
+        except ConnectionClosed:
+            self._running = False
+
+    async def _detect_and_report_hits(self):
+        """Client-side detection of incoming projectiles, mirroring the real client's
+        LocalHitDetector: when a projectile overlaps our predicted position, report it
+        so the server can apply monster damage. We report any nearby projectile and let
+        the server validate ownership (only monster-owned hits are honoured) and
+        plausibility — bots don't track projectile ownership, and the server rejects the
+        rest cheaply. See docs/netcode/hit-authority-model.md."""
+        if self.ws is None or self._entity_id is None or self._dead_since is not None:
+            return
+
+        hit_radius = PROJECTILE_RADIUS + PLAYER_HITBOX_RADIUS
+        hit_radius_sq = hit_radius * hit_radius
+        seen_projectiles: set[int] = set()
+
+        for projectile in self._entities.values():
+            if projectile.entity_type != EntityType.PROJECTILE or not projectile.visible:
+                continue
+            seen_projectiles.add(projectile.entity_id)
+            if projectile.entity_id in self._reported_projectile_ids:
+                continue
+            dx = projectile.x - self._pos_x
+            dy = projectile.y - self._pos_y
+            if dx * dx + dy * dy < hit_radius_sq and self._allow_hit_report():
+                await self._send_local_hit_report(projectile.entity_id)
+                self._reported_projectile_ids.add(projectile.entity_id)
+
+        # Drop tracking for projectiles that have despawned so the set stays bounded.
+        self._reported_projectile_ids &= seen_projectiles
 
     def _handle_message(self, data: bytes):
         """Parse incoming binary packet(s) and update metrics."""

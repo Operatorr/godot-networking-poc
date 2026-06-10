@@ -43,13 +43,18 @@ func _init(player_manager: PlayerManager, projectile_manager: ProjectileManager,
 # =============================================================================
 
 ## Update AI for all monsters.
-## Returns entity IDs for monsters that spawned projectiles this tick.
-func update_all(monsters: Array[MonsterState], delta: float) -> Array[int]:
-	var fired_entity_ids: Array[int] = []
+## Returns one entry per projectile fired this tick:
+##   { "source_id": <monster entity id>, "projectile_id": <projectile entity id> }
+## The projectile id lets the fire broadcast carry real ownership to clients.
+func update_all(monsters: Array[MonsterState], delta: float) -> Array[Dictionary]:
+	var fire_events: Array[Dictionary] = []
 	for monster in monsters:
 		if _update_monster(monster, delta):
-			fired_entity_ids.append(monster.entity_id)
-	return fired_entity_ids
+			fire_events.append({
+				"source_id": monster.entity_id,
+				"projectile_id": monster.last_fired_projectile_id
+			})
+	return fire_events
 
 
 ## Update AI for a single monster
@@ -500,6 +505,11 @@ func _spawn_monster_projectile(monster: MonsterState, direction: Vector2) -> boo
 	if projectile != null:
 		# Override speed for monster projectiles (from the monster's definition)
 		projectile.speed = monster.definition.projectile_speed
+
+		# Remember the real projectile id so the fire broadcast can carry it and
+		# clients can attribute the projectile to this monster (client-side hit
+		# detection filters on monster ownership).
+		monster.last_fired_projectile_id = projectile.entity_id
 
 		if debug_logging:
 			print("[MonsterAI] Monster %d fired projectile toward %s" % [

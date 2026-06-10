@@ -25,7 +25,8 @@ enum MessageType {
 	RESPAWN_REQUEST = 9,   ## Client -> Server: Request respawn after death
 	SERVER_METRICS = 10,   ## Server -> Client: Server performance metrics (1/sec)
 	BATCH = 11,            ## Server -> Client: Multiple packets in one frame (TASK-066)
-	BASELINE_ACK = 12      ## Client -> Server: ack a received Baseline tick (#14, kept in lockstep with PacketTypes.Type)
+	BASELINE_ACK = 12,     ## Client -> Server: ack a received Baseline tick (#14, kept in lockstep with PacketTypes.Type)
+	LOCAL_HIT_REPORT = 13  ## Client -> Server: client-detected monster-projectile hit on self (server-validated)
 }
 
 ## Signals - Client mode
@@ -886,6 +887,12 @@ func _encode_packet(message_type: MessageType, data: Dictionary) -> PackedByteAr
 			# drops a baseline); forward-looking scaffold for the UDP transport (#12).
 			writer.write_u32(data.get("baseline_tick", 0))
 
+		MessageType.LOCAL_HIT_REPORT:
+			# Client -> Server: the victim's client detected a monster projectile
+			# hitting it (predicted self vs. rendered bullet). The server validates
+			# plausibility before applying damage. Payload: [u16 projectile_id].
+			writer.write_u16(data.get("projectile_id", 0))
+
 	writer.finalize_header()
 	return writer.get_buffer()
 
@@ -1017,6 +1024,10 @@ func _decode_packet(packet: PackedByteArray) -> Dictionary:
 		PacketTypes.Type.BASELINE_ACK:
 			# Client -> Server: ack of a received full-state Baseline (#14).
 			result.data = { "baseline_tick": reader.read_u32() }
+
+		PacketTypes.Type.LOCAL_HIT_REPORT:
+			# Client -> Server: client-detected monster-projectile hit on self.
+			result.data = { "projectile_id": reader.read_u16() }
 
 	return result
 

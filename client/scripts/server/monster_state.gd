@@ -49,6 +49,11 @@ var target_id: int = 0
 ## Time remaining on shoot cooldown
 var shoot_cooldown: float = 0.0
 
+## Entity ID of the projectile this monster fired on the most recent shooting tick.
+## Used to propagate the real projectile id into the PROJECTILE_FIRED broadcast so
+## clients learn monster ownership (and can client-detect incoming hits). 0 = none.
+var last_fired_projectile_id: int = 0
+
 ## Time spent in current attack state
 var attack_timer: float = 0.0
 

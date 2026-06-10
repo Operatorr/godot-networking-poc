@@ -510,6 +510,32 @@ func register_projectile_source(projectile_id: int, source_entity_id: int) -> vo
 	_apply_projectile_color(projectile_id)
 
 
+## Snapshots of live monster-fired projectiles for client-side incoming-hit
+## detection: [{ "id": int, "position": Vector2 }]. Only projectiles whose source
+## is known to be a monster and that are currently visible are returned, so a
+## locally-consumed (hidden) bullet is naturally excluded. Used by LocalHitDetector.
+func get_monster_projectile_snapshots() -> Array:
+	var result: Array = []
+	for projectile_id: int in _active_projectiles.keys():
+		var source_id: int = _projectile_sources.get(projectile_id, -1)
+		if source_id < GameConstants.MONSTER_ENTITY_ID_START:
+			continue
+		var projectile: Projectile = _active_projectiles[projectile_id]
+		if not is_instance_valid(projectile) or not projectile.visible:
+			continue
+		result.append({ "id": projectile_id, "position": projectile.global_position })
+	return result
+
+
+## Hide a projectile immediately after the local player reports being hit by it,
+## so the dodge/impact feels instant. The authoritative despawn follows when the
+## server validates the report and removes the projectile for everyone.
+func hide_projectile_locally(projectile_id: int) -> void:
+	var projectile: Projectile = _active_projectiles.get(projectile_id, null)
+	if is_instance_valid(projectile):
+		projectile.visible = false
+
+
 func _apply_projectile_color(projectile_id: int) -> void:
 	if not _active_projectiles.has(projectile_id):
 		return

@@ -15,8 +15,8 @@ signal reconciliation_complete(replayed_inputs: int)
 ## Emitted when the local player's visual position changes.
 signal visual_position_updated(visual_position: Vector2, is_discontinuous: bool)
 ## Cosmetic-only: emitted on the SHOOT rising-edge (and while held, gated to the
-## server auto-fire cadence) so the client can draw an immediate muzzle flash +
-## tracer without waiting for the PROJECTILE_FIRED round-trip. This does NOT spawn
+## server auto-fire cadence) so the client can draw an immediate muzzle flash
+## without waiting for the PROJECTILE_FIRED round-trip. This does NOT spawn
 ## a Projectile and does NOT touch predicted_position or the input buffer.
 signal shoot_predicted(muzzle_position: Vector2, aim_direction: Vector2)
 #endregion
@@ -171,7 +171,7 @@ func _physics_process(delta: float) -> void:
 	if projectile_sync_debug_logging:
 		_log_shoot_edge(previous_input_flags, current_input_flags)
 
-	# Step 1b: Emit cosmetic-only shoot feedback (muzzle flash + tracer). Fires on
+	# Step 1b: Emit cosmetic-only shoot feedback (muzzle flash). Fires on
 	# the SHOOT rising-edge and, while held, at most once per SHOOT_COOLDOWN so it
 	# mirrors the server's auto-fire cadence. Does not move the player or spawn a
 	# real projectile — server stays authoritative for damage.
@@ -276,7 +276,7 @@ func _log_shoot_edge(previous_flags: int, new_flags: int) -> void:
 ## rising-edge, and while SHOOT stays held re-emits at most once per
 ## SHOOT_COOLDOWN to mirror the server's auto-fire cadence (server_main
 ## _process_shoot_inputs). Computes the muzzle origin exactly like the server
-## (server_main._try_spawn_projectile) so the flash/tracer line up with the real
+## (server_main._try_spawn_projectile) so the flash lines up with the real
 ## projectile. Purely visual — never writes predicted_position or the buffer.
 func _maybe_emit_shoot_predicted(previous_flags: int, new_flags: int) -> void:
 	if player_node == null:

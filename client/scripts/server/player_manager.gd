@@ -287,6 +287,22 @@ func get_alive_player_snapshot(server_tick: int) -> Array:
 	return get_alive_players()
 
 
+## Recent authoritative positions for a player entity across the history window
+## (oldest first), including the live position. Used to validate client-reported
+## monster-projectile hits against where the player actually was.
+func get_recent_positions(entity_id: int) -> Array:
+	var positions: Array = []
+	for tick: int in _position_history_ticks:
+		for snap in _position_history[tick]:
+			if snap.entity_id == entity_id:
+				positions.append(snap.position)
+				break
+	var live := get_player_by_entity_id(entity_id)
+	if live != null:
+		positions.append(live.position)
+	return positions
+
+
 ## Check if a peer is connected
 func has_player(peer_id: int) -> bool:
 	return players.has(peer_id)

@@ -46,6 +46,7 @@ var local_player: Player = null
 var prediction_controller: PredictionController = null
 var interpolation_controller: InterpolationController = null
 var client_entity_manager: ClientEntityManager = null
+var local_hit_detector: LocalHitDetector = null
 var camera: Camera2D = null
 
 ## Screen effects (null in server mode)
@@ -117,6 +118,11 @@ func _process(delta: float) -> void:
 				client_entity_manager.monster_entities.size(),
 				GameConstants.MONSTER_MAX_COUNT
 			)
+
+	# Client-side incoming monster-projectile hit detection runs after visuals so
+	# it tests against the positions actually on screen this frame.
+	if local_hit_detector:
+		local_hit_detector.update()
 
 	if camera and local_player and is_instance_valid(local_player):
 		# Camera zoom on sprint
@@ -260,6 +266,11 @@ func _spawn_local_player(entity_container: Node2D) -> void:
 
 	# Set up prediction in pending mode. Entity ID and spawn position come from server state.
 	prediction_controller.setup(local_player, local_player.position)
+
+	# Client-side detection of incoming monster projectiles (predicted self vs.
+	# rendered bullet). The server validates each report before applying damage.
+	local_hit_detector = LocalHitDetector.new()
+	local_hit_detector.setup(prediction_controller, client_entity_manager, local_player)
 
 	# Camera starts at player position
 	if camera:
@@ -525,6 +536,8 @@ func _handle_respawn_event(data: Dictionary) -> void:
 		if prediction_controller:
 			prediction_controller.force_sync(respawn_pos)
 			prediction_controller.set_prediction_enabled(true)
+		if local_hit_detector:
+			local_hit_detector.reset()
 		if camera:
 			_snap_camera_to(respawn_pos)
 
@@ -666,7 +679,7 @@ func _log_local_projectile_fired_event(data: Dictionary) -> void:
 
 
 ## Server PROJECTILE_FIRED arrival for the LOCAL player. Cosmetics (muzzle flash,
-## tracer, audio) are now driven instantly off the predicted shoot edge
+## audio) are now driven instantly off the predicted shoot edge
 ## (_on_local_shoot_predicted), so this path intentionally does NOT redraw a flash
 ## or replay audio — that would double-fire one trigger pull. Projectile-source
 ## registration and logging happen in _handle_projectile_fired_event.
@@ -758,7 +771,7 @@ func _handle_leaderboard_update(data: Dictionary) -> void:
 
 
 ## Immediate cosmetic feedback for the local player's predicted shoot edge.
-## Cosmetic only — draws a muzzle flash + tracer and plays audio the instant the
+## Cosmetic only — draws a muzzle flash and plays audio the instant the
 ## trigger is pulled, without waiting for the server PROJECTILE_FIRED round-trip.
 ## Does NOT spawn a Projectile and does NOT touch prediction state.
 func _on_local_shoot_predicted(muzzle: Vector2, dir: Vector2) -> void:
@@ -768,11 +781,6 @@ func _on_local_shoot_predicted(muzzle: Vector2, dir: Vector2) -> void:
 
 	var flash := ParticleEffects.create_muzzle_flash(muzzle, dir)
 	_add_effect_to_arena(flash)
-
-	var tracer_color: Color = GameManager.player_data.get("player_color", Color(0.27, 0.53, 1.0))
-	var tracer_end := muzzle + dir * GameConstants.PROJECTILE_MAX_DISTANCE * 0.4
-	var tracer := ParticleEffects.create_tracer(muzzle, tracer_end, tracer_color)
-	_add_effect_to_arena(tracer)
 
 
 ## Handle local player shooting (for audio + effects)

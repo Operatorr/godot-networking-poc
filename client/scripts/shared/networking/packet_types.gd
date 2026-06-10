@@ -28,7 +28,8 @@ enum Type {
 	RESPAWN_REQUEST = 9,   ## Client -> Server: Request respawn after death
 	SERVER_METRICS = 10,   ## Server -> Client: Server performance metrics (1/sec)
 	BATCH = 11,            ## Server -> Client: Multiple packets in a single WS frame (TASK-066)
-	BASELINE_ACK = 12      ## Client -> Server: acknowledge a received full-state Baseline (#14, forward-looking for UDP transport #12)
+	BASELINE_ACK = 12,     ## Client -> Server: acknowledge a received full-state Baseline (#14, forward-looking for UDP transport #12)
+	LOCAL_HIT_REPORT = 13  ## Client -> Server: "a monster projectile hit me" (client-detected, server-validated). [u16 projectile_id]
 }
 
 ## Entity types for state updates
@@ -134,7 +135,7 @@ static func get_type_name(packet_type: int) -> String:
 
 ## Helper: Check if packet type is valid
 static func is_valid_type(packet_type: int) -> bool:
-	return packet_type >= Type.PLAYER_INPUT and packet_type <= Type.BASELINE_ACK
+	return packet_type >= Type.PLAYER_INPUT and packet_type <= Type.LOCAL_HIT_REPORT
 
 
 ## Helper: Encode input flags from dictionary

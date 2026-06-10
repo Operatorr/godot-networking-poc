@@ -519,10 +519,15 @@ func _update_monster_ai() -> void:
 	var alive_monsters := monster_manager.get_alive_monsters()
 
 	# Update all monster AI - handles movement, targeting, and shooting
-	var monster_fire_events: Array[int] = monster_ai.update_all(alive_monsters, tick_interval)
+	var monster_fire_events: Array[Dictionary] = monster_ai.update_all(alive_monsters, tick_interval)
 
-	for monster_entity_id: int in monster_fire_events:
-		_broadcast_projectile_fired(monster_entity_id)
+	for fire_event: Dictionary in monster_fire_events:
+		# Carry the real projectile id so clients can attribute the bullet to its
+		# monster owner and run client-side incoming-hit detection.
+		_broadcast_projectile_fired(
+			int(fire_event.get("source_id", 0)),
+			int(fire_event.get("projectile_id", 0))
+		)
 
 	if config.debug_logging and monster_fire_events.size() > 0:
 		print("[ServerMain] Monsters spawned %d projectiles this tick" % monster_fire_events.size())
@@ -633,6 +638,7 @@ func _on_client_disconnected(peer_id: int) -> void:
 		broadcast_service.broadcast_leaderboard(player_manager, _get_network_manager())
 
 	player_manager.remove_player(peer_id)
+	_local_hit_report_window.erase(peer_id)
 
 	# Remove delta cache for this client (TASK-021)
 	broadcast_service.remove_delta_cache(peer_id)
@@ -660,6 +666,8 @@ func _on_client_message(peer_id: int, message_type: int, data: Dictionary) -> vo
 			)
 		NetworkManager.MessageType.RESPAWN_REQUEST:
 			_handle_respawn_request(peer_id)
+		NetworkManager.MessageType.LOCAL_HIT_REPORT:
+			_handle_local_hit_report(peer_id, data)
 		NetworkManager.MessageType.BASELINE_ACK:
 			# Client confirmed receipt of a full-state Baseline (#14). On TCP this is
 			# informational; under #12 UDP transport it lets the broadcast loop resend
@@ -743,6 +751,90 @@ func _handle_respawn_request(peer_id: int) -> void:
 		return
 
 	_respawn_player_and_broadcast(peer_id)
+
+
+## Max client hit reports honoured per peer per second (anti-spam bound).
+const LOCAL_HIT_REPORT_MAX_PER_SECOND := 20
+
+## Slack (units) added to the real hit radius when validating a client report
+## against the player's authoritative position history. Absorbs the legitimate
+## prediction + interpolation offset; this is an anti-grief bound, not a
+## pixel-accurate re-check of the client's collision.
+const LOCAL_HIT_VALIDATION_MARGIN := 64.0
+
+## Per-peer sliding-window counter for hit-report rate limiting.
+var _local_hit_report_window: Dictionary = {}  # peer_id -> { start_ms, count }
+
+
+## Handle a client-reported monster-projectile hit on the reporting player.
+## Monster-fired bullets vs. the local player are detected client-side (predicted
+## self vs. rendered bullet) so dodging matches what the player sees; the server
+## validates plausibility here before applying damage. See docs/systems/combat-hits.md.
+func _handle_local_hit_report(peer_id: int, data: Dictionary) -> void:
+	var projectile_id := int(data.get("projectile_id", 0))
+	if projectile_id <= 0:
+		return
+
+	var player := player_manager.get_player(peer_id)
+	if player == null or not player.authenticated or not player.is_alive:
+		return
+
+	if not _allow_local_hit_report(peer_id):
+		return
+
+	var proj: ProjectileState = projectile_manager.projectiles.get(projectile_id, null)
+	if proj == null or not proj.alive:
+		return
+
+	# Only monster-fired projectiles are client-authoritative for the victim's
+	# dodge; player-fired (PvP) projectiles stay server-authoritative.
+	if proj.owner_id < GameConstants.MONSTER_ENTITY_ID_START:
+		return
+
+	if not _local_hit_is_plausible(proj, player.entity_id):
+		if config.debug_logging:
+			print("[ServerMain] Rejected implausible local hit report: peer=%d projectile=%d" % [peer_id, projectile_id])
+		return
+
+	# Apply through the shared path, then despawn the bullet for everyone.
+	collision_handler.apply_player_hit(
+		proj.owner_id, player.entity_id, player_manager, _get_network_manager(), broadcast_service
+	)
+	projectile_manager.remove_projectile(projectile_id, "player_hit")
+
+
+## Sliding 1-second window rate limiter for client hit reports.
+func _allow_local_hit_report(peer_id: int) -> bool:
+	var now := Time.get_ticks_msec()
+	var entry: Dictionary = _local_hit_report_window.get(peer_id, {})
+	var start_ms: int = entry.get("start_ms", 0)
+	var count: int = entry.get("count", 0)
+	if now - start_ms >= 1000:
+		start_ms = now
+		count = 0
+	count += 1
+	_local_hit_report_window[peer_id] = { "start_ms": start_ms, "count": count }
+	return count <= LOCAL_HIT_REPORT_MAX_PER_SECOND
+
+
+## A reported hit is plausible if the bullet's traveled path passes within a
+## generous radius of the reporting player's authoritative position anywhere in
+## the recorded history window. We test the bullet's FULL straight-line flight
+## (reconstructed spawn -> current position), not just the last tick: the client
+## reports the hit ~render-delay + RTT after the bullet's authoritative position
+## passed the player, so by the time we process the report the live bullet is
+## downrange of the contact point. Rejects fabricated "hit me from across the map".
+func _local_hit_is_plausible(proj: ProjectileState, entity_id: int) -> bool:
+	var threshold := GameConstants.PROJECTILE_RADIUS + GameConstants.PLAYER_HITBOX_RADIUS + LOCAL_HIT_VALIDATION_MARGIN
+	# Straight-line flight start (distance_traveled is exact for a still-alive
+	# bullet that has not been clamped by an obstacle).
+	var flight_start := proj.position - proj.direction * proj.distance_traveled
+	var positions := player_manager.get_recent_positions(entity_id)
+	for pos: Vector2 in positions:
+		var closest := GameConstants.closest_point_on_segment(pos, flight_start, proj.position)
+		if pos.distance_to(closest) < threshold:
+			return true
+	return false
 
 
 ## Respawn a player and broadcast the authoritative respawn event.

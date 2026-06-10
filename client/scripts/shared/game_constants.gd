@@ -249,6 +249,19 @@ const PROJECTILE_ENTITY_ID_END := 29999
 ## Player hitbox radius for projectile collision (units)
 const PLAYER_HITBOX_RADIUS := 16.0
 
+## PvP defender compensation (Option 2 — server-authoritative, no client trust).
+## Server PvP hit detection rewinds the defender to the SHOOTER's view (favour
+## shooter), which is why a fleeing defender can feel "hit after I dodged". This
+## factor pulls the *tested* defender position from the shooter-rewound position
+## back toward the defender's CURRENT authoritative position:
+##   0.0 = pure favour-shooter (original behaviour)
+##   1.0 = test at the defender's live position (favour defender; shooters must lead)
+## It trades a little shooter precision for defender dodge-feel and stays fully
+## server-authoritative. High-ping defenders are pulled further (their rewind was
+## larger), so the effect already scales with the defender's latency. Tune with
+## 2-client, mixed-ping play-tests. See docs/netcode/hit-authority-model.md.
+const PVP_DEFENDER_FAVOR := 0.25
+
 
 # =============================================================================
 # COMBAT CONSTANTS
@@ -451,6 +464,19 @@ static func _movement_hits_obstacle(from: Vector2, to: Vector2, radius: float) -
 			return true
 
 	return false
+
+
+## Closest point on segment [seg_start, seg_end] to a point, clamped to the
+## segment bounds. Shared by server swept-collision and the client-side incoming
+## projectile hit detector so both sides use byte-identical math.
+static func closest_point_on_segment(point: Vector2, seg_start: Vector2, seg_end: Vector2) -> Vector2:
+	var segment := seg_end - seg_start
+	var length_sq := segment.length_squared()
+	if length_sq <= 0.0001:
+		return seg_start
+
+	var t := clampf((point - seg_start).dot(segment) / length_sq, 0.0, 1.0)
+	return seg_start + segment * t
 
 
 ## Check if a line segment intersects any obstacle (for projectile collision)

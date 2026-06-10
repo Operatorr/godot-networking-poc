@@ -153,13 +153,7 @@ func _query_nearby(grid: Dictionary, pos: Vector2) -> Array:
 
 
 func _closest_point_on_segment(point: Vector2, segment_start: Vector2, segment_end: Vector2) -> Vector2:
-	var segment := segment_end - segment_start
-	var length_sq := segment.length_squared()
-	if length_sq <= 0.0001:
-		return segment_start
-
-	var t := clampf((point - segment_start).dot(segment) / length_sq, 0.0, 1.0)
-	return segment_start + segment * t
+	return GameConstants.closest_point_on_segment(point, segment_start, segment_end)
 
 
 func _distance_to_projectile_path(proj: ProjectileState, point: Vector2) -> float:
@@ -282,6 +276,14 @@ func check_collisions_with_players(player_manager: PlayerManager) -> Array[Dicti
 		if not proj.alive:
 			continue
 
+		# Monster-fired projectiles vs players are resolved client-side
+		# (client-detected + server-validated via LOCAL_HIT_REPORT) so the
+		# victim's own rendered view is authoritative for dodging. Only
+		# player-vs-player projectiles run this server-authoritative swept
+		# lag-comp path. See docs/systems/combat-hits.md.
+		if proj.owner_id >= GameConstants.MONSTER_ENTITY_ID_START:
+			continue
+
 		var collision_tick := proj.get_lag_compensated_player_tick()
 
 		# Only check players in nearby cells of the rewound roster.
@@ -298,9 +300,19 @@ func check_collisions_with_players(player_manager: PlayerManager) -> Array[Dicti
 			if proj.owner_id == player.entity_id:
 				continue
 
-			# Check swept projectile path against the lag-compensated player position.
-			var hit_position: Vector2 = _closest_point_on_segment(player.position, proj.previous_position, proj.position)
-			var dist: float = player.position.distance_to(hit_position)
+			# Option 2 (server-authoritative defender compensation): pull the tested
+			# position from the shooter-rewound position toward the defender's CURRENT
+			# authoritative position, softening "hit after I dodged" for the defender
+			# without trusting the client. PVP_DEFENDER_FAVOR=0 keeps pure favour-shooter.
+			var test_position: Vector2 = player.position
+			if GameConstants.PVP_DEFENDER_FAVOR > 0.0:
+				var live_defender: PlayerState = player_manager.get_player_by_entity_id(player.entity_id)
+				if live_defender != null:
+					test_position = player.position.lerp(live_defender.position, GameConstants.PVP_DEFENDER_FAVOR)
+
+			# Check swept projectile path against the (compensated) player position.
+			var hit_position: Vector2 = _closest_point_on_segment(test_position, proj.previous_position, proj.position)
+			var dist: float = test_position.distance_to(hit_position)
 			var collision_dist := GameConstants.PROJECTILE_RADIUS + GameConstants.PLAYER_HITBOX_RADIUS
 
 			if dist < collision_dist:

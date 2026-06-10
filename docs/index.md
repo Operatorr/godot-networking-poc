@@ -29,8 +29,9 @@ for the map; this page is the **catalogue** with verification status. Terms are 
 | Doc | Status | Topic |
 |---|---|---|
 | [`netcode/overview.md`](netcode/overview.md) | Implemented | Authority model, the three loops, the packet map. |
+| [`netcode/hit-authority-model.md`](netcode/hit-authority-model.md) | Partial | **Two netcodes:** client-authoritative PvE/monster hits (RotMG) vs server-authoritative PvP — the per-owner authority split and its anti-cheat intent. |
 | [`netcode/client-prediction.md`](netcode/client-prediction.md) | Partial | Local-player prediction & reconciliation (+ double-movement bug). |
-| [`netcode/interpolation.md`](netcode/interpolation.md) | Partial | Remote-entity interpolation & the fixed 66.7 ms Render delay. |
+| [`netcode/interpolation.md`](netcode/interpolation.md) | Partial | Remote-entity interpolation & the **adaptive** (jitter-driven, 1–3 tick) Render delay. |
 | [`netcode/server-tick-broadcast.md`](netcode/server-tick-broadcast.md) | Implemented | 30 Hz tick + 30 Hz snapshot, shared-grid AoI, delta, bandwidth-budget scheduler, baseline acks. |
 | [`netcode/transport-websocket.md`](netcode/transport-websocket.md) | Implemented | WebSocket-over-TCP + transport seam; head-of-line blocking (ENet swap deferred). |
 | [`netcode/interest-mgmt-aoi.md`](netcode/interest-mgmt-aoi.md) | Implemented | AoI 700/800 + shared spatial grid, LOD, byte-budget deferral, surfaced diagnostics. |
