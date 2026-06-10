@@ -16,15 +16,15 @@ const DEFAULTS := {
 	"debug_logging": true,
 	"heartbeat_timeout_seconds": 5.0,
 	"api_server_url": "http://localhost:8080",
-	"aoi_radius": 700.0,
+	"aoi_radius": 1000.0,
 	## AoI hysteresis: once an entity is visible it stays visible until the
 	## viewer is more than aoi_exit_radius away. Avoids edge flicker where an
 	## entity oscillating across the AoI boundary causes spawn/despawn churn.
-	"aoi_exit_radius": 800.0,
+	"aoi_exit_radius": 1100.0,
 	## LOD radii (squared distance bands within AoI). Position-only deltas for
 	## entities in the MID/FAR bands feed the scheduler's distance penalty (§1.2).
 	"lod_near_radius": 400.0,
-	"lod_mid_radius": 700.0,
+	"lod_mid_radius": 1000.0,
 	## Per-tick packet batching - merge multiple packets into one WebSocket frame.
 	"packet_batching_enabled": true,
 	## Snapshot rate (Hz). Decoupled from tick_rate so physics can run faster
