@@ -733,6 +733,17 @@ func is_active() -> bool:
 	return prediction_enabled and player_node != null and local_entity_id >= 0 and has_authoritative_position
 
 
+## World-space position at which the local player is currently rendered. While a
+## smooth correction is in flight this trails predicted_position — the correction
+## target moves each frame while player_node.position only lerps toward it — so
+## callers that must match exactly what the player sees on screen (e.g.
+## LocalHitDetector) should test against this, not predicted_position.
+func get_rendered_position() -> Vector2:
+	if player_node != null:
+		return player_node.position
+	return predicted_position
+
+
 ## Enable or disable local prediction and outbound input.
 func set_prediction_enabled(enabled: bool) -> void:
 	if prediction_enabled == enabled:

@@ -8,9 +8,10 @@
 ## hasn't caught the bullet the screen shows you touching).
 ##
 ## To make "what you see is what you get" true for dodging, the victim's own
-## client tests incoming MONSTER bullets against its predicted position — exactly
-## what is on screen — and reports a hit. The server validates plausibility before
-## applying damage (see ServerMain._handle_local_hit_report).
+## client tests incoming MONSTER bullets against the position it actually renders
+## the player at — exactly what is on screen, which trails predicted_position while
+## a correction smooths — and reports a hit. The server validates plausibility
+## before applying damage (see ServerMain._handle_local_hit_report).
 ##
 ## Scope: monster-owned projectiles vs. the LOCAL player only. Player-vs-player and
 ## player-vs-monster hits stay server-authoritative. See docs/systems/combat-hits.md.
@@ -56,7 +57,10 @@ func update() -> void:
 	if _entity_manager == null:
 		return
 
-	var self_pos: Vector2 = _prediction.predicted_position
+	# Test against where the player is actually rendered, not predicted_position:
+	# during a smooth correction the rendered position trails the prediction, so a
+	# hit must use what the player saw on screen to stay "what you see is what you get".
+	var self_pos: Vector2 = _prediction.get_rendered_position()
 	var hit_radius := GameConstants.PROJECTILE_RADIUS + GameConstants.PLAYER_HITBOX_RADIUS
 	var snapshots: Array = _entity_manager.get_monster_projectile_snapshots()
 
@@ -73,7 +77,7 @@ func update() -> void:
 		var prev_pos: Vector2 = _last_positions.get(projectile_id, cur_pos)
 		_last_positions[projectile_id] = cur_pos
 
-		# Swept test of the bullet's render-frame travel against the predicted self.
+		# Swept test of the bullet's render-frame travel against the rendered self.
 		var closest := GameConstants.closest_point_on_segment(self_pos, prev_pos, cur_pos)
 		if self_pos.distance_to(closest) < hit_radius:
 			_report_hit(projectile_id)

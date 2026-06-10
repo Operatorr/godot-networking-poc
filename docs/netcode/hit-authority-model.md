@@ -62,7 +62,8 @@ Owner id ranges are the project invariant: players 1–999, projectiles 10000–
 
 ## PvE / monster → player: client-authoritative + server-validated
 
-**Intent:** the bullet hits you **iff your client saw it hit your predicted self.** The server's only
+**Intent:** the bullet hits you **iff your client saw it hit your rendered self** — the position
+actually drawn on screen, which is *not* always `predicted_position` (see step 2). The server's only
 job is to reject implausible reports (anti-grief / anti-spam) and apply the damage; it must **not**
 re-decide the hit on authoritative positions (that would reintroduce the phantom/pass-through feel).
 
@@ -78,8 +79,14 @@ re-decide the hit on authoritative positions (that would reintroduce the phantom
 2. **Client detects.** `LocalHitDetector` (`local_hit_detector.gd`), driven each render frame from
    `arena_base._process` **after** `update_entity_visuals()`. For every visible **monster-owned**
    projectile (`client_entity_manager.get_monster_projectile_snapshots`) it swept-tests the bullet's
-   render-frame travel against `prediction.predicted_position` with hit window `PROJECTILE_RADIUS +
-   PLAYER_HITBOX_RADIUS = 24`, using the shared `GameConstants.closest_point_on_segment`.
+   render-frame travel against `prediction.get_rendered_position()` — the position the player is
+   **actually drawn at** — with hit window `PROJECTILE_RADIUS + PLAYER_HITBOX_RADIUS = 24`, using the
+   shared `GameConstants.closest_point_on_segment`. It uses the *rendered* position, **not**
+   `predicted_position`, because during a smooth reconciliation `PredictionController` lerps
+   `player_node.position` toward `predicted_position` (the correction target) over several frames — so
+   `predicted_position` is ahead of what the player sees. Testing against it would report hits the
+   player never saw (or miss bullets overlapping the visibly-smoothed player) under correction spikes,
+   reintroducing the "not what I saw" problem this whole path exists to prevent.
 3. **Client reports.** On a hit it marks the bullet reported (once per bullet), hides it locally for
    instant feel (`client_entity_manager.hide_projectile_locally`), and sends `LOCAL_HIT_REPORT`
    (`[u16 projectile_id]`). HP is **not** touched locally — it stays authoritative.
@@ -202,6 +209,9 @@ A future agent should be able to grep these and confirm the implementation still
    re-check.
 5. PvP/PvE-on-monster hit detection **must** remain entirely server-side and lag-compensated; never
    route them through `LOCAL_HIT_REPORT`.
+6. The client hit test **must** use the **rendered** local-player position
+   (`prediction.get_rendered_position()`), not `predicted_position`. The two diverge during a smooth
+   correction; testing against the prediction would judge the hit in a frame the player never saw.
 
 ## Known mismatches / open items (2026-06-10)
 
@@ -215,21 +225,31 @@ A future agent should be able to grep these and confirm the implementation still
   **full** flight (not just the last Tick), since by report-processing time the live bullet is
   downrange of the contact point. **Confirmed working in play-test (2026-06-10); debug flags removed.**
 - **Load-test bots report hits (done, 2026-06-10).** The Python swarm (`load_testing/bot_client.py`)
-  now mirrors `LocalHitDetector`: each tick it tests visible projectiles against its predicted
-  position and sends `LOCAL_HIT_REPORT` (deduped per projectile, rate-limited to 20/s like the
-  server). Bots don't track projectile ownership, so they report any nearby projectile and let the
-  server filter to monster-owned + plausible — so bots now take monster damage like real players.
+  now mirrors `LocalHitDetector`: each tick it tests visible projectiles against its position and
+  sends `LOCAL_HIT_REPORT` (deduped per projectile, rate-limited to 20/s like the server), so bots
+  take monster damage like real players.
+- **Bots filter to monster-owned bullets before spending quota (done, 2026-06-10).** Bots now track
+  projectile ownership exactly like the real client: a `projectile_id → owner` map populated from
+  `PROJECTILE_FIRED` (`source_id` = owner, `target_id` = projectile id), pruned on entity removal.
+  `_detect_and_report_hits` skips any projectile whose owner is unknown or `< MONSTER_ENTITY_ID_START`
+  **before** the distance check and the rate-limit call. *Why it mattered:* the earlier "report any
+  nearby projectile, let the server filter" approach spent both the bot's local quota and the server's
+  per-peer quota on player-fired bullets the server can only reject — in combat/clustered runs enough
+  player bullets near a bot starved its legitimate monster hits in the same second, so bots stopped
+  taking PvE damage and the load-test stopped matching real-client behaviour.
 - **PvP defender dodge-feel.** Inherent to server authority; tracked here so nobody "fixes" it by
   making PvP client-authoritative.
 
 ## The eight questions
 
-- **Client:** detects incoming **monster** bullets vs. its predicted self and reports them
-  (`LOCAL_HIT_REPORT`); draws all projectiles as interpolated Remote entities; never decides PvP hits.
+- **Client:** detects incoming **monster** bullets vs. its **rendered** self (`get_rendered_position()`,
+  what's actually on screen) and reports them (`LOCAL_HIT_REPORT`); draws all projectiles as
+  interpolated Remote entities; never decides PvP hits.
 - **Server:** owns all projectiles; decides **PvP** and **player→monster** hits (lag-compensated,
   swept); **validates** monster→player reports and applies damage; broadcasts DAMAGE/KILL.
 - **Predicted:** only the local player's movement and the cosmetic muzzle flash. The client's monster-hit
-  decision is *authoritative-pending-validation*, not prediction.
+  decision is *authoritative-pending-validation*, not prediction, and is judged at the **rendered**
+  position (which trails the prediction during a correction), not the predicted one.
 - **Replicated:** projectiles via Snapshots; `PROJECTILE_FIRED` (now with projectile id) / DAMAGE /
   KILL via Game events; `LOCAL_HIT_REPORT` client→server.
 - **Persisted:** nothing — gameplay state is in-memory; only the Go API persists leaderboard totals.

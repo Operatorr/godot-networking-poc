@@ -117,11 +117,15 @@ To make dodging match what the player sees, the victim's **own client** now deci
 
 - **Client detects** (`local_hit_detector.gd`, driven from `arena_base._process` after visuals).
   Each frame it swept-tests every live **monster-owned** projectile's rendered travel segment against
-  its **predicted** position (`prediction.predicted_position`), hit window `8 + 16 = 24`, using the
-  shared `GameConstants.closest_point_on_segment`. On a hit it hides the bullet locally (instant
-  feel) and sends a `LOCAL_HIT_REPORT` [Game event](../CONTEXT.md) (`[u16 projectile_id]`). It learns
-  ownership from the `PROJECTILE_FIRED` event, which now carries the real projectile id for monster
-  shots (`monster_ai`/`server_main` propagate `last_fired_projectile_id`).
+  its **rendered** position (`prediction.get_rendered_position()` — where the player is actually drawn,
+  **not** `predicted_position`), hit window `8 + 16 = 24`, using the shared
+  `GameConstants.closest_point_on_segment`. The rendered position matters because a smooth
+  reconciliation lerps the on-screen player toward `predicted_position` over several frames, so the
+  prediction is briefly ahead of the screen; judging the hit there would report hits the player never
+  saw. On a hit it hides the bullet locally (instant feel) and sends a `LOCAL_HIT_REPORT`
+  [Game event](../CONTEXT.md) (`[u16 projectile_id]`). It learns ownership from the `PROJECTILE_FIRED`
+  event, which now carries the real projectile id for monster shots (`monster_ai`/`server_main`
+  propagate `last_fired_projectile_id`).
 - **Server validates + applies** (`server_main._handle_local_hit_report`). The report is honoured
   only if: the projectile exists and is alive, it is monster-owned, the reporting player is alive, the
   per-peer rate limit holds (`LOCAL_HIT_REPORT_MAX_PER_SECOND = 20`), and the bullet's recent swept
@@ -177,7 +181,7 @@ same reason — the per-Tick latch caps it at one regardless of how many edges `
 
 ## The eight questions
 
-- **Client:** captures SHOOT + aim, sends in the input stream (30 Hz), draws a cosmetic muzzle flash on the shoot rising edge, draws server projectiles as interpolated Remote entities (no local *authoritative* spawn), and **detects incoming monster bullets vs. its predicted self and reports them** (`LOCAL_HIT_REPORT`).
+- **Client:** captures SHOOT + aim, sends in the input stream (30 Hz), draws a cosmetic muzzle flash on the shoot rising edge, draws server projectiles as interpolated Remote entities (no local *authoritative* spawn), and **detects incoming monster bullets vs. its rendered self and reports them** (`LOCAL_HIT_REPORT`).
 - **Server:** owns all projectiles — spawn, cooldown, integration, lag-compensated swept PvP/PvE hit detection, validation of client monster-hit reports, damage/kill Game events.
 - **Predicted:** projectile spawn/damage are never predicted (muzzle flash is cosmetic). The one thing the client now decides is **whether an incoming monster bullet hit *it*** — server-validated, not blindly trusted.
 - **Replicated:** projectiles via `STATE_UPDATE` Snapshots; `PROJECTILE_FIRED` (now carrying the projectile id for monster shots) / `DAMAGE` / `KILL` via Game events; `LOCAL_HIT_REPORT` client→server.

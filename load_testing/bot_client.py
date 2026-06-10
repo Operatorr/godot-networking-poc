@@ -73,6 +73,9 @@ class GameEventType(IntEnum):
     PLAYER_INFO = 9
     KILL_PVP = 10
     LEADERBOARD_UPDATE = 11
+    # Entity fired a projectile. source_id = owner entity id, target_id = projectile id.
+    # Bots track this to learn projectile ownership (see OmegaRealmBot._handle_game_event).
+    PROJECTILE_FIRED = 12
 
 
 # Input flag bits
@@ -121,6 +124,10 @@ MAP_MAX_Y = 1000.0
 PROJECTILE_SPEED = 400.0
 PROJECTILE_MAX_DISTANCE = 800.0
 PROJECTILE_RADIUS = 8.0
+# Entity-id range boundary (invariant: players 1–999, projectiles 10000–29999,
+# monsters 30000–39999). A projectile is monster-owned iff its PROJECTILE_FIRED
+# source_id >= this. Mirrors game_constants.gd MONSTER_ENTITY_ID_START.
+MONSTER_ENTITY_ID_START = 30000
 PLAYER_HITBOX_RADIUS = 16.0
 MONSTER_HITBOX_RADIUS = 16.0
 MONSTER_PROJECTILE_SPEED = 300.0
@@ -1106,6 +1113,10 @@ class OmegaRealmBot:
         self._reported_projectile_ids: set[int] = set()
         self._hit_report_window_start = 0.0
         self._hit_report_count = 0
+        # projectile_id -> owner entity id, learned from PROJECTILE_FIRED. Lets us
+        # report only monster-owned bullets (PvE hits the server can honour) instead
+        # of spending hit-report quota on player-fired bullets it will reject.
+        self._projectile_sources: dict[int, int] = {}
         self._last_respawn_sent = 0.0
         self._target_id: int | None = None
         self._last_decision_time = 0.0
@@ -2154,11 +2165,13 @@ class OmegaRealmBot:
 
     async def _detect_and_report_hits(self):
         """Client-side detection of incoming projectiles, mirroring the real client's
-        LocalHitDetector: when a projectile overlaps our predicted position, report it
-        so the server can apply monster damage. We report any nearby projectile and let
-        the server validate ownership (only monster-owned hits are honoured) and
-        plausibility — bots don't track projectile ownership, and the server rejects the
-        rest cheaply. See docs/netcode/hit-authority-model.md."""
+        LocalHitDetector: when a monster-owned projectile overlaps our position, report
+        it so the server can apply monster damage. Only monster-owned bullets are PvE
+        hits the server will honour, so we filter on ownership (learned from
+        PROJECTILE_FIRED) before consuming hit-report quota — reporting player-fired
+        bullets would still spend our local and the server's per-second quota on reports
+        that can only be rejected, starving legitimate monster hits in combat/clustered
+        runs. See docs/netcode/hit-authority-model.md."""
         if self.ws is None or self._entity_id is None or self._dead_since is not None:
             return
 
@@ -2169,6 +2182,11 @@ class OmegaRealmBot:
         for projectile in self._entities.values():
             if projectile.entity_type != EntityType.PROJECTILE or not projectile.visible:
                 continue
+            # Skip non-monster bullets: an unknown owner means we never saw the spawn
+            # (can't claim a PvE hit), and a player owner would be rejected server-side.
+            owner_id = self._projectile_sources.get(projectile.entity_id)
+            if owner_id is None or owner_id < MONSTER_ENTITY_ID_START:
+                continue
             seen_projectiles.add(projectile.entity_id)
             if projectile.entity_id in self._reported_projectile_ids:
                 continue
@@ -2178,7 +2196,7 @@ class OmegaRealmBot:
                 await self._send_local_hit_report(projectile.entity_id)
                 self._reported_projectile_ids.add(projectile.entity_id)
 
-        # Drop tracking for projectiles that have despawned so the set stays bounded.
+        # Drop tracking for monster bullets that have despawned so the set stays bounded.
         self._reported_projectile_ids &= seen_projectiles
 
     def _handle_message(self, data: bytes):
@@ -2229,6 +2247,12 @@ class OmegaRealmBot:
                 self._latest_server_tick = header["server_tick"]
                 self.metrics.server_ticks_seen.append(self._latest_server_tick)
             parsed = parse_state_update(payload, self._entities)
+            if parsed:
+                # Drop ownership entries for despawned projectiles so the map stays
+                # bounded (mirrors the real client erasing _projectile_sources on
+                # entity removal). Only delta packets carry explicit removals.
+                for removed_id in parsed.get("removed", ()):
+                    self._projectile_sources.pop(removed_id, None)
             if parsed and self._entity_id is not None:
                 self_snapshot = self._entities.get(self._entity_id)
                 if self_snapshot is not None:
@@ -2311,10 +2335,17 @@ class OmegaRealmBot:
             return
 
         event_type = event.get("event_type")
+        source_id = event.get("source_id", 0)
         target_id = event.get("target_id", 0)
         event_data = event.get("event_data", {})
 
-        if event_type == GameEventType.PLAYER_INFO:
+        if event_type == GameEventType.PROJECTILE_FIRED:
+            # source_id = owner entity id, target_id = projectile id. Record ownership
+            # so _detect_and_report_hits reports only monster-owned bullets. Erased
+            # when the projectile is removed (see _handle_single_message STATE_UPDATE).
+            if target_id > 0:
+                self._projectile_sources[target_id] = source_id
+        elif event_type == GameEventType.PLAYER_INFO:
             if event_data.get("character_name") == self.character_name:
                 self._entity_id = target_id
                 pos = event_data.get("position")
