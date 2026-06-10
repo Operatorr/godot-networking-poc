@@ -79,10 +79,8 @@ var _local_player_authority_synced: bool = false
 ## Low-volume projectile sync diagnostics from client config.
 var projectile_sync_debug_logging: bool = false
 
-## Camera zoom settings
-const CAMERA_ZOOM_DEFAULT := Vector2(1.5, 1.5)
-const CAMERA_ZOOM_SPRINT := Vector2(1.35, 1.35)
-const CAMERA_ZOOM_SPEED := 3.0
+## Camera zoom settings live in GameConstants (single source of truth) so the
+## arena and the offline modes share one look. See GameConstants.CAMERA_ZOOM_*.
 const SERVER_STATUS_MAX_PLAYERS := 100
 
 ## Kill streak tracking
@@ -126,10 +124,10 @@ func _process(delta: float) -> void:
 
 	if camera and local_player and is_instance_valid(local_player):
 		# Camera zoom on sprint
-		var target_zoom := CAMERA_ZOOM_DEFAULT
+		var target_zoom := GameConstants.CAMERA_ZOOM_DEFAULT
 		if Input.is_action_pressed("sprint") and local_player.movement_state == Player.MovementState.WALKING:
-			target_zoom = CAMERA_ZOOM_SPRINT
-		camera.zoom = camera.zoom.lerp(target_zoom, clampf(delta * CAMERA_ZOOM_SPEED, 0.0, 1.0))
+			target_zoom = GameConstants.CAMERA_ZOOM_SPRINT
+		camera.zoom = camera.zoom.lerp(target_zoom, clampf(delta * GameConstants.CAMERA_ZOOM_SPEED, 0.0, 1.0))
 
 	# Kill streak timer decay
 	if _kill_streak_timer > 0.0:
@@ -176,7 +174,7 @@ func _setup_client() -> void:
 	# Create Camera2D for the client
 	camera = Camera2D.new()
 	camera.name = "ArenaCamera"
-	camera.zoom = Vector2(1.5, 1.5)
+	camera.zoom = GameConstants.CAMERA_ZOOM_DEFAULT
 	# The camera follows an already-interpolated target path. Camera2D position
 	# smoothing is forced to physics mode when physics interpolation is enabled,
 	# which adds warning noise and extra follow lag here.

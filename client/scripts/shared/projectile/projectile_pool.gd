@@ -8,6 +8,13 @@ const POOL_SIZE: int = 16
 
 ## Path to projectile scene
 const PROJECTILE_SCENE_PATH := "res://scenes/shared/projectile/projectile.tscn"
+const LOCAL_PROJECTILE_COLLISION_MASK := 10  # Monsters + Environment (player bullets).
+const MONSTER_PROJECTILE_COLLISION_MASK := 9  # Players + Environment (monster bullets).
+
+## Collision mask applied to every projectile in this pool. Defaults to the
+## player-bullet mask; offline monster pools set this to MONSTER_PROJECTILE_COLLISION_MASK
+## so their bullets hit the player (and walls) but not other monsters.
+var projectile_collision_mask: int = LOCAL_PROJECTILE_COLLISION_MASK
 
 ## All projectile instances
 var pool: Array[Projectile] = []
@@ -34,6 +41,7 @@ func _ready() -> void:
 		projectile.visible = false
 		projectile.monitoring = false
 		projectile.monitorable = false
+		projectile.collision_mask = projectile_collision_mask
 		add_child(projectile)
 		pool.append(projectile)
 
@@ -65,6 +73,7 @@ func spawn(pos: Vector2, dir: Vector2, max_dist: float) -> Projectile:
 	# Activate and track
 	while active_projectiles.has(projectile):
 		active_projectiles.erase(projectile)
+	projectile.collision_mask = projectile_collision_mask
 	projectile.activate(pos, dir, max_dist, self)
 	active_projectiles.append(projectile)
 

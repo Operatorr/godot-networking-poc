@@ -63,6 +63,10 @@ func _update_monster(monster: MonsterState, delta: float) -> bool:
 	if not monster.is_alive:
 		return false
 
+	if monster.definition != null and monster.definition.ai_profile == "stationary_dummy":
+		_process_stationary_dummy(monster, delta)
+		return false
+
 	# Update timers
 	monster.update_timers(delta)
 
@@ -92,6 +96,16 @@ func _update_monster(monster: MonsterState, delta: float) -> bool:
 	_update_animation(monster)
 
 	return spawned_projectile
+
+
+func _process_stationary_dummy(monster: MonsterState, delta: float) -> void:
+	monster.update_timers(delta)
+	monster.target_id = 0
+	monster.move_direction = Vector2.ZERO
+	monster.ai_state = AIState.IDLE
+	monster.entity_flags &= ~PacketTypes.ENTITY_FLAG_MOVING
+	monster.entity_flags &= ~PacketTypes.ENTITY_FLAG_ATTACKING
+	monster.animation_state = PacketTypes.AnimationState.IDLE
 
 
 # =============================================================================

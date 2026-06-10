@@ -51,6 +51,9 @@ var last_aim_direction: Vector2 = Vector2.RIGHT
 var _input_enabled: bool = true
 var player_color: Color = Color(0.27, 0.53, 1.0)
 
+## When true, take_damage() ignores incoming damage (debug/sandbox tool).
+var invulnerable: bool = false
+
 ## Footstep timing
 var _footstep_timer: float = 0.0
 const FOOTSTEP_WALK_INTERVAL := 0.3
@@ -98,12 +101,11 @@ func _physics_process(delta: float) -> void:
 	if action_state == ActionState.DEAD:
 		return
 
-	# Hit state blocks movement briefly
-	if action_state == ActionState.HIT:
-		velocity = Vector2.ZERO
-		if not prediction_owns_movement:
-			move_and_slide()
-		return
+	# Note: the HIT action state is purely cosmetic (a brief flash animation) and
+	# does NOT block movement. _update_animation() still prioritizes the "hit"
+	# animation, and _on_animation_finished() clears HIT back to NONE. Blocking
+	# movement here used to lock the player offline (online it was masked because
+	# the PredictionController owns movement); a bullet-hell must stay responsive.
 
 	# Handle input if enabled. _handle_movement still runs under prediction
 	# ownership so movement_state (and thus animation) stays correct; only the
@@ -130,7 +132,11 @@ func _handle_movement() -> void:
 	var input_dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 
 	if input_dir != Vector2.ZERO:
-		velocity = input_dir * speed
+		# Sprint-aware speed. Online the PredictionController owns movement and
+		# computes its own speed, so this only takes effect when Player.gd is the
+		# mover (offline practice/sandbox). Reuses the shared speed helper.
+		var move_speed := GameConstants.get_movement_speed(Input.is_action_pressed("sprint"))
+		velocity = input_dir * move_speed
 		_set_movement_state(MovementState.WALKING)
 	else:
 		velocity = Vector2.ZERO
@@ -265,6 +271,9 @@ func _on_hp_component_died() -> void:
 ## @param amount: Damage points to subtract from HP
 ## @return: Remaining HP after damage
 func take_damage(amount: int) -> int:
+	if invulnerable:
+		return hp_component.current_hp if hp_component else 0
+
 	if hp_component:
 		hp_component.take_damage(amount)
 

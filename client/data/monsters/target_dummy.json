@@ -1,0 +1,62 @@
+{
+	"id": "target_dummy",
+	"display_name": "Target Dummy",
+	"archetype": "practice_dummy",
+	"faction": "training_construct",
+	"tier": 0,
+	"ai_profile": "stationary_dummy",
+
+	"stats": {
+		"max_health": 100,
+		"move_speed": 0.0,
+		"hitbox_radius": 18.0
+	},
+
+	"perception": {
+		"detection_range": 0.0,
+		"lose_interest_range": 0.0,
+		"retarget_interval": 999.0,
+		"leash_range": 0.0
+	},
+
+	"combat": {
+		"attack_range": 0.0,
+		"flee_distance": 0.0,
+		"preferred_distance": 0.0,
+		"shoot_cooldown": 999.0,
+		"attack_duration": 0.0,
+		"projectile_speed": 0.0,
+		"projectile_damage": 0
+	},
+
+	"movement": {
+		"steering_randomness": 0.0,
+		"avoidance_distance": 0.0
+	},
+
+	"appearance": {
+		"core_color": "#c18b3f",
+		"glow_color": "#ffd16a",
+		"shell_color": "#4d2511"
+	},
+
+	"abilities": [],
+
+	"loot": {
+		"xp": 0,
+		"table": "none",
+		"rare_drops": []
+	},
+
+	"spawn": {
+		"weight": 0.0,
+		"biomes": ["practice"],
+		"min_tier": 0
+	},
+
+	"networking": {
+		"server_authoritative": true,
+		"replicated": ["position", "animation", "flags"],
+		"client_predicted": false
+	}
+}

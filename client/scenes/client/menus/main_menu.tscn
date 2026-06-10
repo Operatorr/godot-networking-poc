@@ -137,4 +137,28 @@ layout_mode = 2
 size_flags_horizontal = 4
 text = "Exit Game"
 
+[node name="BottomLeftActions" type="VBoxContainer" parent="."]
+custom_minimum_size = Vector2(320, 156)
+layout_mode = 1
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 40.0
+offset_top = -196.0
+offset_right = 360.0
+offset_bottom = -40.0
+grow_vertical = 0
+theme_override_constants/separation = 12
+
+[node name="PracticeButton" type="Button" parent="BottomLeftActions"]
+custom_minimum_size = Vector2(320, 72)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "Practice"
+
+[node name="OfflineSandboxButton" type="Button" parent="BottomLeftActions"]
+custom_minimum_size = Vector2(320, 72)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "Offline Sandbox"
+
 [node name="ErrorDialog" parent="." instance=ExtResource("2_error_dialog")]

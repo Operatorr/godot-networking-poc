@@ -178,7 +178,12 @@ func _is_test_scene() -> bool:
 		if root.get_child_count() > 0:
 			current_scene = root.get_child(root.get_child_count() - 1)
 
-	return current_scene != null and current_scene.scene_file_path.begins_with("res://scenes/test/")
+	if current_scene == null:
+		return false
+
+	var scene_path := current_scene.scene_file_path
+	return scene_path.begins_with("res://scenes/test/") \
+		or scene_path == "res://scenes/shared/levels/practice.tscn"
 
 ## Process loop - handles WebSocket polling and heartbeat
 func _process(delta: float) -> void:

@@ -49,6 +49,7 @@ for the map; this page is the **catalogue** with verification status. Terms are 
 | [`systems/audio.md`](systems/audio.md) | Implemented | AudioManager + procedurally-generated sound (no audio assets). |
 | [`systems/ui-hud.md`](systems/ui-hud.md) | Implemented | HUD components, menus, effects, scene flow. |
 | [`systems/state-machines.md`](systems/state-machines.md) | Implemented | Player-life, movement, scene, connection, and AI state machines. |
+| [`systems/offline-modes.md`](systems/offline-modes.md) | Implemented | Practice & Offline Sandbox — client-authoritative test scenes (no server) on a shared `OfflineArena`. |
 
 ## Decisions & background
 

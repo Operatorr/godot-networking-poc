@@ -1,0 +1,6 @@
+[mcp_servers.godot]
+command = "node"
+args = ["/Users/opera/dev/godot-mcp/build/index.js"]
+
+[mcp_servers.godot.env]
+DEBUG = "true"

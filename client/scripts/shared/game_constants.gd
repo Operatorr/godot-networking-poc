@@ -60,6 +60,22 @@ const PLAYER_SPRINT_SPEED := PLAYER_SPEED * PLAYER_SPRINT_MULTIPLIER
 
 
 # =============================================================================
+# CAMERA
+# =============================================================================
+# Single source of truth for gameplay camera zoom. Used by the online arena and
+# the offline modes alike so all gameplay scenes look identical.
+
+## Default gameplay camera zoom.
+const CAMERA_ZOOM_DEFAULT := Vector2(1.5, 1.5)
+
+## Zoom while sprinting (slightly zoomed out for a wider view).
+const CAMERA_ZOOM_SPRINT := Vector2(1.35, 1.35)
+
+## Lerp rate (per second) used to ease between default and sprint zoom.
+const CAMERA_ZOOM_SPEED := 3.0
+
+
+# =============================================================================
 # MOVEMENT VALIDATION THRESHOLDS
 # =============================================================================
 
