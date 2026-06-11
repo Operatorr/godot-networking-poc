@@ -1,6 +1,9 @@
 # Render smoothness — "looks like 30 fps at 100 fps"
 
-**Status:** Verified against code (2026-06-03). Root cause **confirmed**, fix **not yet applied**.
+**Status:** Fix applied (2026-06-03: `physics_interpolation=true` + resets + camera). **Updated
+2026-06-12:** second-order judder on snapshot-driven entities (own projectiles especially) fixed —
+remote-entity interpolation moved from `_physics_process` to a continuous `_process` timeline; see
+"Remote entities: render-frame interpolation" below.
 
 > This is a **smoothness** problem, separate from the **latency** problem in
 > [`latency-budget.md`](latency-budget.md). They are commonly felt together ("everything is
@@ -85,6 +88,24 @@ the last two physics states automatically — smooth motion at any FPS, with nea
 
 > Recommended: built-in physics interpolation (decisive) **plus** consider 60 Hz later for input
 > responsiveness — but interpolation alone resolves the "looks like 30 fps" complaint.
+
+## Remote entities: render-frame interpolation (2026-06-12)
+
+Built-in physics interpolation fixed the local player but left a **beat-frequency judder** on
+snapshot-driven entities, most visible on your own projectiles while running in the shoot
+direction (your body is predicted and glassy; the projectile's stepping is judged against it).
+Cause: `InterpolationController` committed positions once per 30 Hz physics tick, and its
+sub-tick accumulator reset on snapshot **arrival** — snapshots and physics ticks are two
+unsynchronized 30 Hz clocks, so per-tick position advances were uneven (0/1/2 snapshot-intervals
+per tick) and the engine's physics interpolation faithfully reproduced the unevenness.
+
+Fix (in `interpolation_controller.gd`): interpolation now runs in **`_process` every render
+frame** along a continuous fractional-tick `render_timeline` that advances by wall-clock time and
+is gently pulled toward `current_server_tick + time-since-arrival − adaptive render delay`
+(snap when drift exceeds 3 ticks, exponential pull otherwise). Registered nodes (remote players,
+monsters, projectiles) get `physics_interpolation_mode = OFF` — the controller owns their
+rendered motion directly; the local player keeps the engine's interpolation. The FPS counter was
+never wrong (`Engine.get_frames_per_second()`); the *positions being drawn* only changed 30×/sec.
 
 ## Verification
 

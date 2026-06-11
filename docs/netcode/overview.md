@@ -139,7 +139,7 @@ The deep docs own the mechanisms; this overview only points at them.
 - **Persisted:** nothing in the sim — gameplay state is in-memory; the Go API persists account/character/leaderboard/region only.
 - **Validated:** server re-simulates every input and corrects via `ACTION_CONFIRM`; positions, hits, and kills are server-decided, never client-claimed.
 - **Can fail:** the 20 Hz JSON Snapshot rate diverging from the 30 Hz default; stale 20 Hz client constants; TCP head-of-line blocking stalling all state on one lost segment.
-- **Tested:** offline `sandbox.tscn` and full-stack `auto_join_arena.tscn` scenes plus the Python bot swarm; no automated test asserts the loop rates today.
+- **Tested:** offline `sandbox.tscn` and the full-stack `net_smoke.tscn` smoke scene plus the Rust `omega-load-test` bot swarm (`./scripts/run_load_test.sh`); no automated test asserts the loop rates today.
 
 ## See also
 

@@ -95,6 +95,22 @@ const PLAYER_KNOCKBACK_END_SPEED := 12.0
 ## caller does not specify its own force.
 const PLAYER_KNOCKBACK_BASE_FORCE := 450.0
 
+## Per-projectile knockback impulse (u/s), carried on each projectile spawn so
+## future weapons/abilities/items can vary it. The apply_knockback multiplier is
+## the buff/debuff hook on top. Mirrors rust/sim_core/src/constants.rs.
+const PLAYER_PROJECTILE_KNOCKBACK_FORCE := PLAYER_KNOCKBACK_BASE_FORCE
+const MONSTER_PROJECTILE_KNOCKBACK_FORCE := PLAYER_KNOCKBACK_BASE_FORCE
+
+
+# =============================================================================
+# DAZE
+# =============================================================================
+
+## Hit while SPRINTING => dazed for this long: sprint and dash are locked out,
+## walking stays allowed (reduced control, not a stun). Server-authoritative;
+## replicated via ENTITY_FLAG_DAZED. Mirrors rust/sim_core/src/constants.rs.
+const PLAYER_DAZE_DURATION := 1.5
+
 
 # =============================================================================
 # STAMINA (sprint resource)

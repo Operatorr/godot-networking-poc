@@ -1,8 +1,8 @@
 # Omega Realm - Architecture & Design Principles
 
-**Date:** November 2024
+**Date:** November 2024 (pre-Rust-port; see banner)
 **Version:** 1.0
-**Target Technology Stack:** Go API, PostgreSQL, Redis, Godot Headless Servers
+**Technology Stack (current):** Godot 4.6 client, Rust `omega-server` (ENet/UDP), Go API, PostgreSQL, Redis
 
 ---
 
@@ -10,11 +10,20 @@
 > performance investigation — start at [`../AGENTS.md`](../AGENTS.md) → [`index.md`](index.md) →
 > [`netcode/`](netcode/).**
 >
-> Some numbers in this file have drifted from the code (e.g. the success table below lists a
-> "≥20 Hz" tick gate; the server actually ticks at **30 Hz** and emits snapshots at **20 Hz**
-> live). Targets vs measured reality are reconciled in
-> [`netcode/performance-budgets.md`](netcode/performance-budgets.md). Glossary:
-> [`CONTEXT.md`](CONTEXT.md). When this file and the code disagree, the code wins.
+> **⚠️ This document predates the Rust server port.** The authoritative server is now the
+> Rust `omega-server` binary over **ENet/UDP** — the Godot headless server and the
+> WebSocket transport described below are **retired**. In particular, the "WebSocket
+> Architecture & Requirements" and "Godot Server Limitations" sections are historical
+> context only; the current design is governed by
+> [`rust-port/migration-spec.md`](rust-port/migration-spec.md) (D1–D14),
+> [`rust-port/contract.md`](rust-port/contract.md), and
+> [ADR 0003](adr/0003-enet-udp-transport.md). The POC goals, success criteria, sharding
+> strategy, and optimization principles in this file still stand.
+>
+> Some numbers in this file have also drifted from the code (e.g. the success table below
+> lists a "≥20 Hz" tick gate; the server ticks at **30 Hz**). Targets vs measured reality
+> are reconciled in [`netcode/performance-budgets.md`](netcode/performance-budgets.md).
+> Glossary: [`CONTEXT.md`](CONTEXT.md). When this file and the code disagree, the code wins.
 
 ---
 
@@ -40,7 +49,7 @@
 
 This project is a **Proof-of-Concept** designed to stress-test low-level networking for MMO-scale multiplayer games. The simplified bullet-hell gameplay intentionally isolates networking performance, allowing us to validate scalability without the complexity of a full MMO.
 
-**Primary Goal:** Prove that a single Godot headless server can handle **500-1000 concurrent players** while maintaining playable performance.
+**Primary Goal:** Prove that a single authoritative server (the Rust `omega-server`) can handle **500-1000 concurrent players** while maintaining playable performance.
 
 **End Vision:** Use learnings from this POC to build a production MMO with maximum player density per server, minimizing infrastructure costs while delivering responsive gameplay.
 
@@ -112,12 +121,12 @@ omega-networking/
 ├── deployment/                     # Docker & deployment configs
 │   ├── docker-compose.yml          # Orchestrates all services
 │   ├── api.Dockerfile              # Go API container
-│   ├── server.Dockerfile           # Godot headless server container
+│   ├── server.Dockerfile           # Rust game server container
 │   └── .env.example                # Environment variable template
 │
 ├── scripts/                        # Build automation
 │   ├── build_client.sh             # Export client for Win/Mac/Linux
-│   ├── build_server.sh             # Export headless server
+│   ├── build_server.sh             # Build Rust omega-server (release)
 │   └── build_api.sh                # Build Go API
 │
 ├── docs/                           # Documentation

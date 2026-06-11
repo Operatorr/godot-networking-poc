@@ -73,17 +73,19 @@ services:
       - omega-network
     restart: unless-stopped
 
-  # Godot Game Server (Headless)
+  # Rust Game Server (ENet/UDP) — one container = one Instance (migration-spec D13)
   game-server:
     build:
-      context: ../client
-      dockerfile: ../deployment/server.Dockerfile
+      context: ..
+      dockerfile: deployment/server.Dockerfile
     container_name: omega-game-server
     environment:
-      SERVER_PORT: ${GAME_SERVER_PORT:-8081}
-      API_URL: http://api:${API_PORT:-8080}
+      # Dev default; production sets OMEGA_ALLOW_UNSIGNED_TICKETS=false + OMEGA_TICKET_PUBKEY.
+      OMEGA_ALLOW_UNSIGNED_TICKETS: ${OMEGA_ALLOW_UNSIGNED_TICKETS:-true}
+      OMEGA_TICKET_PUBKEY: ${OMEGA_TICKET_PUBKEY:-}
     ports:
-      - "${GAME_SERVER_PORT:-8081}:${GAME_SERVER_PORT:-8081}"
+      - "${GAME_SERVER_PORT:-8081}:8081/udp"
+      - "${GAME_METRICS_PORT:-9100}:9100"
     depends_on:
       api:
         condition: service_healthy

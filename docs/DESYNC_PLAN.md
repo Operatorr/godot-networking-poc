@@ -100,13 +100,13 @@ Once the local entity_id is reliably known (Fix B), force-sync position on first
 
 1. **Unit-level**: log `current_input_flags` per player tick on the server; verify movement direction matches across a 1 s capture.
 2. **Local end-to-end**:
-   - `./scripts/start_services.sh` (api+server), launch client, log in as Opera.
+   - `./scripts/dev_local.sh` (api+server), launch client, log in as Opera.
    - Walk in a circle for 30 s. Server log must show **zero** `CHEAT DETECTED` lines, and `[ServerMain] Position correction` lines must show `deviation < 30` even at sprint.
    - There must be exactly one player visual; the local Player node and the server's authoritative entity coincide. Toggle the in-game debug overlay (if present) — server position should track the local sprite to within a few pixels.
 3. **Death/respawn**: stand still, let monsters kill you. After respawn, the camera must teleport to the server-chosen spawn; the kill feed should still read "Monster killed Opera"; the client must regain control immediately and CHEAT DETECTED must remain at zero post-respawn.
 4. **AoI sanity**: with player walking around the arena, monsters should pop in and out of view per the 500 u radius around the *local* player (not a stale server position).
 5. **Reconnect**: kill the WebSocket via OS firewall briefly. After auto-reconnect, PLAYER_INFO is re-issued (Fix B reconnect hook) and entity_id stays consistent — no second ghost spawned.
-6. **Bot stress**: run `python load_testing/bot_swarm.py --scenario baseline --server ws://127.0.0.1:8081`. Server log should show no CHEAT spam.
+6. **Bot stress**: run `./scripts/run_load_test.sh --scenario baseline` (Rust `omega-load-test` bot swarm). Server log should show no CHEAT spam.
 
 ## Out of Scope
 

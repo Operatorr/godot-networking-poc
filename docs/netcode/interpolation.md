@@ -27,17 +27,22 @@ STATE_UPDATE ─► InterpolationController._process_state_update  (per Snapshot
                   ├─ new id?  → entity_spawned ─► ClientEntityManager  (:344 → cem:107)
                   └─ known id → EntityStateBuffer.add_snapshot  (:376 → esb:103)
 
-_physics_process (30 Hz) ─► _interpolate_all_entities(tick_progress)   (:111, :135)
-                  └─ per entity: _calculate_interpolated_position       (:451, :459)
-                        └─ buffer.get_interpolation_data(render_tick)   (:461 → esb:159)
-                        └─ node.position = blended                      (:454)
+_process (every render frame) ─► _interpolate_all_entities(frac)
+                  ├─ render_timeline += delta / estimated_tick_interval (continuous fractional ticks,
+                  │    pulled toward current_server_tick + since-arrival − adaptive delay)
+                  └─ per entity: _calculate_interpolated_position
+                        └─ buffer.get_interpolation_data(render_tick)
+                        └─ node.position = blended
 ```
 
 `ClientEntityManager` owns the visual node and registers it back into the controller
 (`client_entity_manager.gd:157`); thereafter the controller writes `node.position`
-each physics tick. Animation/flags are **not** interpolated — they snap to the latest
-Snapshot, pulled per-frame in `update_entity_visuals` (`client_entity_manager.gd:362-364`,
-`remote_player.gd:54`).
+**every render frame** (2026-06-12 — previously once per 30 Hz physics tick, which beat against
+the unsynchronized 30 Hz snapshot arrival clock and juddered; see
+[`smoothness-render.md`](smoothness-render.md)). Registered nodes run
+`physics_interpolation_mode = OFF` — the controller owns their rendered motion directly.
+Animation/flags are **not** interpolated — they snap to the latest Snapshot, pulled per-frame in
+`update_entity_visuals` (`client_entity_manager.gd:362-364`, `remote_player.gd:54`).
 
 ## Render delay (adaptive)
 
@@ -68,19 +73,17 @@ Per entity, a `RefCounted` ring buffer (`entity_state_buffer.gd`):
 (`entity_state_buffer.gd:188-194`). With Render delay = 2 and a 5-slot buffer, two
 slots cover the delay and ~3 give jitter headroom.
 
-## Sub-tick blend (smoother than 30 Hz commits)
+## Continuous render timeline (2026-06-12)
 
-Snapshots are integer-tick, but `_physics_process` runs at 30 Hz between them, so the
-controller adds a sub-tick pass (`interpolation_controller.gd:128-135, :488-505`):
-
-1. `tick_accumulator += delta`; `tick_progress = clamp(accumulator / estimated_tick_interval, 0, 1)` (`:128-132`).
-2. Compute the blended position at `render_tick` **and** at `render_tick + 1`, then
-   `lerp(current, next, tick_progress)` (`:492-505`).
-
-This is *intra-buffer* smoothing only — it does not change the Render delay or the
-draw latency. Note the **two different `tick_progress` semantics** below are a known
-correctness smell (one is "how far into a server tick", the other lerps between two
-*render* ticks).
+Snapshots are integer-tick; rendering happens at arbitrary wall-clock times. The controller keeps
+`render_timeline` (fractional server ticks): it advances by `delta / estimated_tick_interval`
+every render frame and is pulled toward the snapshot-derived target
+(`current_server_tick + time-since-arrival/interval − render_delay_ticks_smooth`) — snap when
+drift exceeds `RENDER_TIMELINE_SNAP_TICKS = 3`, exponential pull (`RENDER_TIMELINE_PULL_RATE =
+4/s`) otherwise. Each frame: `render_tick = floor(render_timeline)`, `frac = render_timeline −
+render_tick`; position = `lerp(pos(render_tick), pos(render_tick + 1), frac)`, where each
+`pos(t)` is the buffer's bracketing lerp — exactly piecewise-linear interpolation along the
+snapshot polyline, advancing with wall-clock time instead of stepping on snapshot arrival.
 
 ## Underrun: extrapolate 2 ticks, then freeze
 
@@ -125,13 +128,10 @@ snaps the node instead of interpolating across (`:361-373`, `game_constants.gd:5
    On a clean LAN/localhost it collapses toward ~33 ms (1 tick); under jitter it widens to avoid
    extrapolation/freeze. See [`latency-budget.md`](latency-budget.md).
 
-3. **Interpolates newest-two, not straddle-by-time.** `get_interpolation_data` brackets
-   by **integer `render_tick`** (`entity_state_buffer.gd:167-177`), and `render_tick`
-   only steps when a Snapshot arrives. It does **not** straddle a continuous
-   `client_time − Render delay` clock. With uneven Snapshot spacing (the live case:
-   30 Hz tick, 20 Hz send, plus per-tick BATCH coalescing on the server), the blend
-   factor jumps in discrete steps instead of advancing smoothly with wall-clock time —
-   visible as janky pacing under variable spacing.
+3. **Interpolates newest-two, not straddle-by-time — RESOLVED (2026-06-12).** The controller now
+   drives a continuous `render_timeline` clock in `_process` (see "Continuous render timeline")
+   instead of stepping `render_tick` on Snapshot arrival, eliminating the discrete blend-factor
+   jumps and the 30 Hz-vs-30 Hz beat judder this item described.
 
 ## Planned fixes
 
@@ -140,7 +140,7 @@ snaps the node instead of interpolating across (`:361-373`, `game_constants.gd:5
 | Seed from `SERVER_TICK_INTERVAL` | Replace hard-coded `0.05`/`50.0` with `GameConstants.SERVER_TICK_INTERVAL` (or the live Snapshot interval) so cold-start is correct | Planned |
 | Adaptive Render delay | Size delay from measured jitter, clamp 1–3 ticks, asymmetric grow/shrink (`interpolation_controller.gd:206-226`) | **Done** |
 | Larger buffer (8–10) | Raise `BUFFER_SIZE` 5→8–10 to absorb bursts at 30 Hz tick / 20 Hz send | Planned |
-| Time-based straddle search | Drive a continuous `client_time − delay` render clock and straddle by timestamp, not integer tick | Planned |
+| Time-based straddle search | Drive a continuous `client_time − delay` render clock and straddle by timestamp, not integer tick | **Done** (2026-06-12, `render_timeline` in `_process`) |
 
 These are tracked in
 [`../exec-plans/active/netcode-perf-fixes.md`](../exec-plans/active/netcode-perf-fixes.md).

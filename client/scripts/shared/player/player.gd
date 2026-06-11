@@ -51,6 +51,12 @@ var movement_sm: MovementStateMachine = null
 ## Last HP we observed, so the hp_changed hook can tell damage from healing.
 var _last_known_hp: int = 100
 
+## Circling-stars visual shown while dazed. Online it follows the server's
+## DAZED entity flag (mirrored into movement_sm by the PredictionController);
+## offline movement_sm dazes itself on a sprinting hit. Both paths surface
+## here through the SM's daze_started/daze_ended signals.
+var _daze_indicator: DazeIndicator = null
+
 ## Current action state
 var action_state: ActionState = ActionState.NONE
 
@@ -94,6 +100,11 @@ func _ready() -> void:
 
 	# Predicted movement state machine for the local networked player.
 	movement_sm = MovementStateMachine.new()
+	movement_sm.daze_started.connect(func(_duration: float) -> void: set_dazed(true))
+	movement_sm.daze_ended.connect(func() -> void: set_dazed(false))
+
+	_daze_indicator = DazeIndicator.new()
+	add_child(_daze_indicator)
 
 	# Connect HP component signals
 	if hp_component:
@@ -286,12 +297,24 @@ func _on_animation_finished() -> void:
 		action_state = ActionState.NONE
 
 
-## Taking damage ends a sprint (spec). Uses the authoritative HP signal (server-owned
+## Taking damage ends a sprint (spec), and a hit WHILE sprinting dazes (sprint/dash
+## locked out for PLAYER_DAZE_DURATION). Uses the authoritative HP signal (server-owned
 ## HP), and only reacts to decreases so heals / upward reconciliation don't cancel sprint.
+## Online the SM is a mirror and never enters SPRINTING (the Rust sim predicts; the
+## server applies the authoritative daze) — this path is the OFFLINE parity rule.
 func _on_hp_changed(new_hp: int, _max_hp: int) -> void:
 	if new_hp < _last_known_hp and movement_sm != null:
+		if movement_sm.state == MovementStateMachine.State.SPRINTING:
+			movement_sm.apply_daze(GameConstants.PLAYER_DAZE_DURATION)
 		movement_sm.end_sprint()
 	_last_known_hp = new_hp
+
+
+## Show/hide the daze stars. Called via the SM daze signals and directly by the
+## PredictionController when the server's DAZED flag edges.
+func set_dazed(active: bool) -> void:
+	if _daze_indicator != null:
+		_daze_indicator.set_active(active)
 
 
 func _on_hp_component_died() -> void:
@@ -345,7 +368,8 @@ func reset() -> void:
 	velocity = Vector2.ZERO
 	last_aim_direction = Vector2.RIGHT
 	if movement_sm != null:
-		movement_sm.reset()
+		movement_sm.reset()  # silent reset — clear the indicator explicitly
+	set_dazed(false)
 	if hp_component != null:
 		_last_known_hp = hp_component.current_hp
 

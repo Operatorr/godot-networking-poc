@@ -1,0 +1,13 @@
+[package]
+name = "client_ext"
+version.workspace = true
+edition.workspace = true
+description = "Omega Realm client GDExtension — sim_core prediction + protocol codec for GDScript (migration-spec D6)"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+protocol.workspace = true
+sim_core.workspace = true
+godot.workspace = true

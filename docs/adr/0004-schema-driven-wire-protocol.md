@@ -1,6 +1,8 @@
 # ADR 0004 — Redesigned wire protocol as a shared Rust crate (no codegen)
 
-**Status:** Accepted (design) — 2026-06-11. Records [Rust port](../rust-port/migration-spec.md)
+**Status:** Implemented — 2026-06-11 (`rust/protocol`, exposed to GDScript through the
+`client_ext` GDExtension; [rust-port/contract.md](../rust-port/contract.md) is the wire spec
+as built). Records [Rust port](../rust-port/migration-spec.md)
 decisions **D3** (redesign the wire format) and **D7** (implement it as a shared Rust `protocol`
 crate). **Amends [ADR 0003](0003-enet-udp-transport.md):** ADR 0003 assumed the Rust port would
 reimplement *only the transport seam* and keep the existing `PacketWriter`/`PacketReader` wire format

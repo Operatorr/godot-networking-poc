@@ -1,38 +1,31 @@
-# Godot Headless Server Dockerfile
-# Requires the server to be exported first:
-#   godot --export-release "Linux Headless Server" exports/server/linux/omega-server.x86_64
+# Rust game server (omega-server) — one process = one Instance (migration-spec D13).
+# Build context is the REPO ROOT (see docker-compose.yml): the image builds the rust/
+# workspace and carries a compose-specific config (api url points at the api service).
 
-FROM ubuntu:22.04
+FROM rust:1-slim AS builder
 
-# Install minimal runtime dependencies + curl for health checks
+WORKDIR /build
+COPY rust/ .
+RUN cargo build --release -p omega-server
+
+FROM debian:bookworm-slim
+
+# curl for the health check; ca-certificates for the API heartbeat client.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libx11-6 \
-    libgl1 \
-    libxcursor1 \
-    libxinerama1 \
-    libxrandr2 \
-    libxi6 \
+    ca-certificates \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy exported server binary
-COPY exports/server/linux/omega-server.x86_64 ./omega-server
+COPY --from=builder /build/target/release/omega-server ./omega-server
+COPY deployment/server_config.docker.json ./server_config.json
 
-# Copy server config (can be overridden via volume mount)
-COPY data/config/server_config.json ./server_config.json
+# Game traffic is ENet over UDP; 9100 is the Prometheus exporter.
+EXPOSE 8081/udp
+EXPOSE 9100
 
-# Make executable
-RUN chmod +x omega-server
-
-# Game server port (matches ServerConfig default)
-EXPOSE 8081
-
-# Health check: verify process is running
-# The game server uses raw TCP/WebSocket, so we check the process
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD pgrep -f omega-server || exit 1
+    CMD curl -fsS http://localhost:9100/metrics > /dev/null || exit 1
 
-# Run headless server
-CMD ["./omega-server", "--headless"]
+CMD ["./omega-server", "--config", "server_config.json"]

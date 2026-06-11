@@ -1,0 +1,18 @@
+[package]
+name = "omega-load-test"
+version.workspace = true
+edition.workspace = true
+description = "ENet bot-swarm load-testing harness — links the protocol crate directly, so codec drift with the server is impossible by construction"
+
+[[bin]]
+name = "omega-load-test"
+path = "src/main.rs"
+
+[dependencies]
+protocol.workspace = true
+sim_core.workspace = true
+rusty_enet.workspace = true
+ctrlc.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

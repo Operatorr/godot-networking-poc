@@ -1,6 +1,14 @@
 ## InterpolationController - Client-side state interpolation for remote entities
 ## Smooths remote players', monsters', and projectiles' movements between server updates
 ## Renders entities slightly behind real-time and interpolates between known server states
+##
+## Positions are written EVERY RENDER FRAME (_process) along a continuous render
+## timeline, not once per 30 Hz physics tick: snapshots and physics ticks are two
+## unsynchronized 30 Hz clocks, and stepping positions at physics rate produced a
+## beat-frequency judder that Godot's physics_interpolation faithfully reproduced
+## (most visible on projectiles moving relative to the smoothly-predicted local
+## player). Registered nodes get physics_interpolation_mode OFF — this controller
+## owns their rendered motion directly.
 class_name InterpolationController
 extends Node
 
@@ -71,11 +79,20 @@ var missing_update_count: Dictionary = {}
 ## Current server tick (updated from state updates)
 var current_server_tick: int = 0
 
-## Render tick (current_server_tick - RENDER_DELAY_TICKS)
+## Render tick — the integer part of render_timeline (derived each frame).
 var render_tick: int = 0
 
-## Accumulated time since last tick for sub-tick interpolation
-var tick_accumulator: float = 0.0
+## Continuous render position in fractional server ticks. Advances by wall-clock
+## time each render frame and is gently pulled toward the snapshot-derived target
+## (current_server_tick + time-since-arrival - adaptive delay), so motion stays
+## rate-locked to the clock instead of stepping on snapshot arrival.
+var render_timeline: float = 0.0
+
+## Snap the timeline instead of easing when it drifts further than this (ticks).
+const RENDER_TIMELINE_SNAP_TICKS := 3.0
+
+## Per-second pull rate of the timeline toward its target (drift correction).
+const RENDER_TIMELINE_PULL_RATE := 4.0
 
 ## Estimated tick interval in seconds (calibrated from received packets).
 ## Seeded from the real server tick rate so timing is correct before calibration
@@ -123,7 +140,7 @@ func _ready() -> void:
 		print("[Interpolation] Controller initialized")
 
 
-func _physics_process(delta: float) -> void:
+func _process(delta: float) -> void:
 	# Only process if we have entities and are receiving updates
 	if entity_buffers.is_empty():
 		return
@@ -139,12 +156,29 @@ func _physics_process(delta: float) -> void:
 				print("[Interpolation] Full state request timed out after %dms" % elapsed)
 			_request_full_state_sync()
 
-	# Accumulate time for sub-tick interpolation
-	tick_accumulator += delta
+	if current_server_tick <= 0 or last_update_time_ms <= 0:
+		return
 
-	# Calculate how far we are into the current tick (0.0 to 1.0)
-	var tick_progress := tick_accumulator / estimated_tick_interval
-	tick_progress = clampf(tick_progress, 0.0, 1.0)
+	# Advance the continuous render timeline by wall-clock time.
+	render_timeline += delta / estimated_tick_interval
+
+	# Target render position: newest snapshot tick, advanced by the time that has
+	# passed since it arrived (capped so a stall doesn't drag us into deep
+	# extrapolation), minus the adaptive render delay.
+	var since_update := float(Time.get_ticks_msec() - last_update_time_ms) / 1000.0
+	since_update = minf(since_update, float(MAX_EXTRAPOLATION_TICKS) * estimated_tick_interval)
+	var target := float(current_server_tick) \
+		+ since_update / estimated_tick_interval \
+		- render_delay_ticks_smooth
+
+	var drift := target - render_timeline
+	if absf(drift) > RENDER_TIMELINE_SNAP_TICKS:
+		render_timeline = target
+	else:
+		render_timeline += drift * minf(1.0, delta * RENDER_TIMELINE_PULL_RATE)
+
+	render_tick = maxi(0, int(floor(render_timeline)))
+	var tick_progress := clampf(render_timeline - floor(render_timeline), 0.0, 1.0)
 
 	# Apply interpolation to all remote entities
 	_interpolate_all_entities(tick_progress)
@@ -223,8 +257,11 @@ func _process_state_update(data: Dictionary) -> void:
 				render_delay_ticks_smooth = lerpf(render_delay_ticks_smooth, target_ticks, adapt_rate)
 
 		current_server_tick = server_tick
-		render_tick = maxi(0, server_tick - roundi(render_delay_ticks_smooth))
-		tick_accumulator = 0.0
+		# render_tick / render_timeline advance continuously in _process; only
+		# seed render_tick here so pre-first-frame readers (input stamping) see
+		# a sane value.
+		if render_timeline <= 0.0:
+			render_tick = maxi(0, server_tick - roundi(render_delay_ticks_smooth))
 		last_update_time_ms = Time.get_ticks_msec()
 
 	# Track which entities are in this update
@@ -406,14 +443,13 @@ func _handle_entity_update(
 		buffer.clear()
 		entity_teleported.emit(entity_id, last_position, position)
 
-		# Immediately update visual node if registered
+		# Immediately update visual node if registered. No interpolation reset
+		# needed: registered nodes run physics_interpolation_mode OFF — this
+		# controller writes their rendered position directly each frame.
 		if entity_nodes.has(entity_id):
 			var node: Node2D = entity_nodes[entity_id]
 			if is_instance_valid(node):
 				node.position = position
-				# Discontinuous jump: reset interpolation so physics_interpolation
-				# doesn't visually lerp the node across the teleport.
-				node.reset_physics_interpolation()
 
 	# Add new snapshot to buffer
 	buffer.add_snapshot(server_tick, position, animation_state, flags, entity_type)
@@ -560,11 +596,15 @@ func register_entity_node(entity_id: int, node: Node2D) -> void:
 
 	entity_nodes[entity_id] = node
 
+	# This controller writes the node's rendered position every render frame on a
+	# continuous timeline; Godot's physics interpolation would fight those writes
+	# (it re-interpolates from stale physics-tick transforms), so turn it off for
+	# interpolated entities. The local player keeps the engine's interpolation.
+	node.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+
 	# Set initial position from buffer
 	var buffer: EntityStateBuffer = entity_buffers[entity_id]
 	node.position = buffer.get_latest_position()
-	# Fresh placement is a discontinuity — don't lerp from the node's old transform.
-	node.reset_physics_interpolation()
 
 	if debug_logging:
 		print("[Interpolation] Node registered for entity %d" % entity_id)
@@ -668,6 +708,8 @@ func clear_all_entities() -> void:
 	entity_last_states.clear()  # TASK-021
 	current_server_tick = 0
 	render_tick = 0
+	render_timeline = 0.0
+	last_update_time_ms = 0
 	last_baseline_tick = 0  # TASK-021
 	needs_full_state_sync = false  # TASK-021
 	_full_state_request_time = 0

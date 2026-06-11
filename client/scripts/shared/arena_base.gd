@@ -354,10 +354,27 @@ func _unhandled_input(event: InputEvent) -> void:
 ## Handle server messages for arena-level events
 func _on_server_message(message_type: int, data: Dictionary) -> void:
 	match message_type:
+		NetworkManager.MessageType.AUTH_RESULT:
+			_handle_auth_result(data)
 		NetworkManager.MessageType.GAME_EVENT:
 			_handle_game_event(data)
 		NetworkManager.MessageType.STATE_UPDATE:
 			_handle_state_update_for_local_player(data)
+
+
+## D9: the authoritative entity-id source. Wires the PredictionController directly so input
+## flow never depends on the PLAYER_INFO name-match heuristic (which a duplicate character
+## name could clobber).
+func _handle_auth_result(data: Dictionary) -> void:
+	if data.get("result", -1) != 0:
+		return
+	var entity_id: int = data.get("entity_id", -1)
+	if entity_id <= 0:
+		return
+	GameManager.set_local_player_entity_id(entity_id)
+	if prediction_controller:
+		prediction_controller.set_local_entity_id(entity_id)
+		print("[ArenaBase] Local player entity ID set from AUTH_RESULT: %d" % entity_id)
 
 
 ## Handle game events
@@ -391,10 +408,15 @@ func _handle_player_info(data: Dictionary) -> void:
 	if entity_id > 0:
 		EntityNameCache.set_entity_color(entity_id, player_color)
 
-	# Check if this is our own player info
-	var our_char_name: String = GameManager.player_data.get("character_name", "")
-	if char_name == our_char_name and entity_id > 0:
-		# This is us! Set our entity ID
+	# Check if this is our own player info. AUTH_RESULT is the authoritative id source;
+	# the name match only seeds the id when it is still unknown (legacy fallback), so a
+	# duplicate character name can never clobber a known id.
+	var known_id: int = GameManager.get_local_player_entity_id()
+	var is_us: bool = entity_id > 0 and (
+		entity_id == known_id
+		or (known_id <= 0 and char_name == GameManager.player_data.get("character_name", ""))
+	)
+	if is_us:
 		GameManager.set_local_player_entity_id(entity_id)
 
 		if prediction_controller:
@@ -536,6 +558,9 @@ func _handle_respawn_event(data: Dictionary) -> void:
 		_local_player_authority_synced = true
 
 		if prediction_controller:
+			# The server resets its movement state machine on respawn; mirror it in the
+			# shared Rust sim so dash cooldown / stamina start fresh on both sides.
+			prediction_controller.reset_sim()
 			prediction_controller.force_sync(respawn_pos)
 			prediction_controller.set_prediction_enabled(true)
 		if local_hit_detector:

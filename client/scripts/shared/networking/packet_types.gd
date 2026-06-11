@@ -63,7 +63,8 @@ const INPUT_FLAG_SPRINT := 1 << 6       ## Shift key
 const INPUT_FLAG_INTERACT := 1 << 7     ## E key
 const INPUT_FLAG_DASH := 1 << 8         ## Spacebar — edge-triggered dash request
 
-## Entity flags bitfield (fits in u8)
+## Entity flags bitfield (u16 on the wire since protocol v2 — bits 0-7 are the
+## original u8 set; bit 8+ is the status-effect extension).
 const ENTITY_FLAG_ALIVE := 1 << 0
 const ENTITY_FLAG_MOVING := 1 << 1
 const ENTITY_FLAG_ATTACKING := 1 << 2
@@ -72,6 +73,7 @@ const ENTITY_FLAG_STUNNED := 1 << 4
 const ENTITY_FLAG_VISIBLE := 1 << 5
 const ENTITY_FLAG_DASHING := 1 << 6       ## Movement SM is in the DASHING state
 const ENTITY_FLAG_KNOCKED_BACK := 1 << 7  ## Movement SM is in the KNOCKED_BACK state
+const ENTITY_FLAG_DAZED := 1 << 8         ## Daze timer active (sprint/dash locked out)
 
 ## Delta compression mask bits (TASK-021)
 ## Used in STATE_UPDATE packets to indicate which fields changed

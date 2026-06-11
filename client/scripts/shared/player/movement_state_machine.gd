@@ -43,6 +43,8 @@ signal knockback_started(direction: Vector2, force: float)
 signal knockback_ended()
 signal stun_started(duration: float)
 signal stun_ended()
+signal daze_started(duration: float)
+signal daze_ended()
 signal stamina_changed(current: float, maximum: float)
 signal mana_changed(current: float, maximum: float)
 #endregion
@@ -59,6 +61,7 @@ var mana: float = GameConstants.PLAYER_MANA_MAX
 var _dash_time_left: float = 0.0
 var _dash_cooldown_left: float = 0.0   ## START-relative (begins when the dash begins)
 var _stun_time_left: float = 0.0
+var _daze_time_left: float = 0.0       ## Daze is a timer, not a state: coexists with KNOCKED_BACK
 
 # SM-owned velocities for the transient states.
 var _dash_velocity: Vector2 = Vector2.ZERO
@@ -123,7 +126,9 @@ func _tick_grounded(move_dir: Vector2, sprint_held: bool) -> Vector2:
 		_transition_to(State.IDLE)
 		return Vector2.ZERO
 
-	var want_sprint := sprint_held and stamina > GameConstants.PLAYER_STAMINA_SPRINT_MIN
+	var want_sprint := sprint_held \
+		and stamina > GameConstants.PLAYER_STAMINA_SPRINT_MIN \
+		and not is_dazed()
 	if want_sprint:
 		_transition_to(State.SPRINTING)
 	else:
@@ -151,6 +156,10 @@ func _tick_knockback(delta: float) -> Vector2:
 func _update_timers(delta: float) -> void:
 	_dash_time_left = maxf(0.0, _dash_time_left - delta)
 	_dash_cooldown_left = maxf(0.0, _dash_cooldown_left - delta)
+	if _daze_time_left > 0.0:
+		_daze_time_left = maxf(0.0, _daze_time_left - delta)
+		if _daze_time_left <= 0.0:
+			daze_ended.emit()
 	if state == State.STUNNED:
 		_stun_time_left = maxf(0.0, _stun_time_left - delta)
 		if _stun_time_left <= 0.0:
@@ -226,6 +235,8 @@ func _transition_to(to_state: State) -> void:
 ## Direction is the move direction, or the aim direction when standing still.
 func try_dash(move_dir: Vector2, aim_dir: Vector2) -> bool:
 	if _dash_cooldown_left > 0.0:
+		return false
+	if is_dazed():
 		return false
 	if state in [State.STUNNED, State.KNOCKED_BACK, State.ABILITY_MOVEMENT]:
 		return false
@@ -320,10 +331,26 @@ func apply_root(duration: float) -> void:
 	apply_stun(duration)
 
 
-## Daze: should reduce control rather than fully block. Treated as Stun for now.
-## TODO(StatusEffectManager): partial-control daze instead of full block.
+## Daze reduces control instead of blocking it: sprint and dash are refused while
+## the timer runs; walking (and knockback/ability velocities) proceed normally.
+## Not a state — it coexists with KNOCKED_BACK (the usual companion on a hit).
+## Re-application extends, never shortens. Mirrors rust/sim_core MovementSm.
 func apply_daze(duration: float) -> void:
-	apply_stun(duration)
+	if duration <= 0.0:
+		return
+	var was_dazed := is_dazed()
+	_daze_time_left = maxf(_daze_time_left, duration)
+	end_sprint()
+	if not was_dazed:
+		daze_started.emit(duration)
+
+
+## Authoritative release (server -> client via the DAZED entity flag clearing).
+func clear_daze() -> void:
+	if not is_dazed():
+		return
+	_daze_time_left = 0.0
+	daze_ended.emit()
 #endregion
 
 
@@ -367,6 +394,14 @@ func get_stun_remaining() -> float:
 	return _stun_time_left
 
 
+func is_dazed() -> bool:
+	return _daze_time_left > 0.0
+
+
+func get_daze_remaining() -> float:
+	return _daze_time_left
+
+
 func get_stamina() -> float:
 	return stamina
 
@@ -395,6 +430,7 @@ func reset() -> void:
 	_dash_time_left = 0.0
 	_dash_cooldown_left = 0.0
 	_stun_time_left = 0.0
+	_daze_time_left = 0.0
 	_dash_velocity = Vector2.ZERO
 	_knockback_velocity = Vector2.ZERO
 	_ability_velocity = Vector2.ZERO
@@ -409,6 +445,7 @@ func get_debug_info() -> Dictionary:
 		"dash_cooldown": _dash_cooldown_left,
 		"dash_time_left": _dash_time_left,
 		"stun_remaining": _stun_time_left,
+		"daze_remaining": _daze_time_left,
 		"stamina": stamina,
 		"mana": mana,
 		"speed_multiplier": _speed_multiplier,

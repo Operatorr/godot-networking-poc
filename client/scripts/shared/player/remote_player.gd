@@ -20,9 +20,14 @@ var player_color: Color = Color(0.27, 0.53, 1.0)
 var current_animation_state: int = PacketTypes.AnimationState.IDLE
 var current_flags: int = 0
 
+## Circling-stars visual driven by the replicated DAZED entity flag.
+var _daze_indicator: DazeIndicator = null
+
 
 func _ready() -> void:
 	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
+	_daze_indicator = DazeIndicator.new()
+	add_child(_daze_indicator)
 	# Apply procedural sprites (remote player variant)
 	if animated_sprite:
 		animated_sprite.sprite_frames = ProceduralSprites.create_remote_player_frames_for_color(player_color)
@@ -85,7 +90,7 @@ func _update_animation(anim_state: int) -> void:
 		animated_sprite.play(anim_name)
 
 
-## Update flags (alive, invulnerable, etc.)
+## Update flags (alive, invulnerable, dazed, etc.)
 func _update_flags(flags: int) -> void:
 	var is_alive := (flags & PacketTypes.ENTITY_FLAG_ALIVE) != 0
 	var is_invulnerable := (flags & PacketTypes.ENTITY_FLAG_INVULNERABLE) != 0
@@ -93,6 +98,9 @@ func _update_flags(flags: int) -> void:
 	visible = (flags & PacketTypes.ENTITY_FLAG_VISIBLE) != 0
 	if collision_shape:
 		collision_shape.disabled = not is_alive
+
+	if _daze_indicator:
+		_daze_indicator.set_active(is_alive and (flags & PacketTypes.ENTITY_FLAG_DAZED) != 0)
 
 	# Visual feedback for invulnerability (flashing)
 	if animated_sprite:

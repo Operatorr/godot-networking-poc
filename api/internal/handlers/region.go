@@ -3,12 +3,9 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/omega-realm/api/internal/middleware"
@@ -20,10 +17,7 @@ type RegionHandler struct {
 	redis *redisClient.Client
 }
 
-const regionProbeTimeout = 500 * time.Millisecond
 const regionRuntimeStatusTTL = 5 * time.Second
-
-var dialTCP = net.DialTimeout
 
 func NewRegionHandler(redis *redisClient.Client) *RegionHandler {
 	return &RegionHandler{redis: redis}
@@ -62,24 +56,8 @@ func (h *RegionHandler) GetRegions(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	regions := models.GetAllRegions()
-	runtimeRegions := h.applyRuntimeStatuses(context.Background(), regions)
-
-	// Probe game servers and only return regions that are currently reachable.
-	regions = h.getOnlineRegions(regions)
-
-	// Populate active player counts from Redis for online regions.
-	ctx := context.Background()
-	for _, region := range regions {
-		if runtimeRegions[region.ID] {
-			continue
-		}
-		count, err := h.redis.GetActiveUsersByRegion(ctx, region.ID)
-		if err != nil {
-			// If Redis fails, default to 0 active players
-			count = 0
-		}
-		region.ActivePlayers = count
-	}
+	heartbeatApplied := h.applyRuntimeStatuses(r.Context(), regions)
+	regions = onlineRegions(regions, heartbeatApplied)
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]any{
@@ -221,11 +199,11 @@ func (h *RegionHandler) SelectRegion(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to get region details"})
 		return
 	}
-	runtimeRegions := h.applyRuntimeStatuses(context.Background(), []*models.Region{region})
-	h.updateRegionAvailability(region)
+	ctx := r.Context()
+	heartbeatApplied := h.applyRuntimeStatuses(ctx, []*models.Region{region})
 
 	// Check if region is available
-	if region.Status != models.RegionStatusOnline {
+	if !heartbeatApplied[region.ID] || region.Status != models.RegionStatusOnline {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		json.NewEncoder(w).Encode(ErrorResponse{
 			Error: "Selected region is currently unavailable",
@@ -233,30 +211,13 @@ func (h *RegionHandler) SelectRegion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get active player count
-	ctx := context.Background()
-	if runtimeRegions[region.ID] {
-		if region.ActivePlayers >= int64(region.MaxPlayers) {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			json.NewEncoder(w).Encode(ErrorResponse{
-				Error: "Selected region is currently full. Please try another region.",
-			})
-			return
-		}
-	} else {
-		activeCount, err := h.redis.GetActiveUsersByRegion(ctx, req.RegionID)
-		if err == nil {
-			region.ActivePlayers = activeCount
-
-			// Check if region is full
-			if activeCount >= int64(region.MaxPlayers) {
-				w.WriteHeader(http.StatusServiceUnavailable)
-				json.NewEncoder(w).Encode(ErrorResponse{
-					Error: "Selected region is currently full. Please try another region.",
-				})
-				return
-			}
-		}
+	// Check if region is full
+	if region.ActivePlayers >= int64(region.MaxPlayers) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(ErrorResponse{
+			Error: "Selected region is currently full. Please try another region.",
+		})
+		return
 	}
 
 	// Extract token from Authorization header
@@ -285,25 +246,18 @@ func (h *RegionHandler) SelectRegion(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *RegionHandler) getOnlineRegions(regions []*models.Region) []*models.Region {
-	var wg sync.WaitGroup
+// onlineRegions keeps the regions whose game server has a fresh heartbeat (runtime status
+// applied from Redis) and reports itself online. Game servers speak ENet/UDP (ADR 0003),
+// so there is no TCP endpoint to probe — the 2 s heartbeat against the 5 s runtime-status
+// TTL is the liveness signal.
+func onlineRegions(regions []*models.Region, heartbeatApplied map[string]bool) []*models.Region {
+	online := make([]*models.Region, 0, len(regions))
 	for _, region := range regions {
-		wg.Add(1)
-		go func(region *models.Region) {
-			defer wg.Done()
-			h.updateRegionAvailability(region)
-		}(region)
-	}
-	wg.Wait()
-
-	onlineRegions := make([]*models.Region, 0, len(regions))
-	for _, region := range regions {
-		if region.Status == models.RegionStatusOnline {
-			onlineRegions = append(onlineRegions, region)
+		if heartbeatApplied[region.ID] && region.Status == models.RegionStatusOnline {
+			online = append(online, region)
 		}
 	}
-
-	return onlineRegions
+	return online
 }
 
 func (h *RegionHandler) applyRuntimeStatuses(ctx context.Context, regions []*models.Region) map[string]bool {
@@ -329,44 +283,3 @@ func (h *RegionHandler) applyRuntimeStatuses(ctx context.Context, regions []*mod
 	return applied
 }
 
-func (h *RegionHandler) updateRegionAvailability(region *models.Region) {
-	if isWebSocketServerOnline(region.WebSocketURL, regionProbeTimeout) {
-		region.Status = models.RegionStatusOnline
-		return
-	}
-	region.Status = models.RegionStatusOffline
-}
-
-func isWebSocketServerOnline(webSocketURL string, timeout time.Duration) bool {
-	parsedURL, err := url.Parse(webSocketURL)
-	if err != nil {
-		return false
-	}
-	if parsedURL.Scheme != "ws" && parsedURL.Scheme != "wss" {
-		return false
-	}
-
-	hostName := parsedURL.Hostname()
-	if hostName == "" {
-		return false
-	}
-	port := parsedURL.Port()
-	if port == "" {
-		switch parsedURL.Scheme {
-		case "ws":
-			port = "80"
-		case "wss":
-			port = "443"
-		default:
-			return false
-		}
-	}
-
-	host := net.JoinHostPort(hostName, port)
-	conn, err := dialTCP("tcp", host, timeout)
-	if err != nil {
-		return false
-	}
-	_ = conn.Close()
-	return true
-}

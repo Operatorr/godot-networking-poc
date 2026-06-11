@@ -1,29 +1,40 @@
 # AGENTS.md — Omega Realm networking POC
 
 A top-down 2D bullet-hell multiplayer shooter built to **stress-test low-level netcode for MMO
-scale** (target: 500–1000 concurrent players on one Godot 4.6 headless server). Gameplay is
-intentionally minimal — one shooting ability, HP only, one monster type — so the **network** is
-the thing under test, not game complexity.
+scale** (target: 500–1000 concurrent players on one server Instance). Gameplay is intentionally
+minimal — one shooting ability, HP only, one monster type — so the **network** is the thing
+under test, not game complexity.
 
-> **Active focus:** diagnosing and fixing perceived input lag / "sluggish on localhost" and
-> building netcode that survives 100 ms+ ping and scales. **Start at
-> [`docs/netcode/latency-budget.md`](docs/netcode/latency-budget.md).**
+> **Active focus:** the **Rust server port** (ENet/UDP, bit-packed wire protocol, shared
+> client/server sim). The authoritative server is now the Rust `omega-server` binary; the
+> GDScript server is retired. **Start at
+> [`docs/rust-port/migration-spec.md`](docs/rust-port/migration-spec.md)** (decisions D1–D14),
+> then [`docs/rust-port/contract.md`](docs/rust-port/contract.md) (the wire/API contract as built).
 
 This file is a **map, not a manual.** Deep knowledge lives in `docs/` — the system of record.
 Don't re-derive what's already written there; read it, then go deep where needed.
 
 ## Repository layout
 
-- `client/` — single Godot 4.6 project; exports **both** the client and the headless server
-  (mode detected at runtime). This is where ~all gameplay and netcode lives.
-  - `autoload/` — singletons: `network_manager` (dual WS client/server), `game_manager`,
-    `scene_manager`, `auth_manager`, `audio_manager`, `entity_name_cache`.
-  - `scripts/server/` — authoritative sim: tick loop, players, monsters, projectiles, broadcast.
-  - `scripts/client/` — prediction, interpolation, HUD, menus.
-  - `scripts/shared/` — protocol, packets, game constants, entity scenes.
+- `rust/` — Cargo workspace; **the authoritative server lives here** (migration-spec D1).
+  - `protocol/` — the bit-packed wire format (shared, no codegen — ADR 0004).
+  - `sim_core/` — movement/collision/hit sim shared by server AND client prediction (D5):
+    zero divergence by construction.
+  - `server/` — the `omega-server` binary: single-threaded 30 Hz tick over `rusty_enet`
+    (pinned `=0.4.0`), Ed25519 session tickets (dev mode: unsigned), Prometheus on `:9100`.
+  - `client_ext/` — GDExtension exposing `ProtocolCodec`, `PredictionSim`, `SimHit` to GDScript.
+  - `load_test/` — the `omega-load-test` bot swarm (replaced the Python `load_testing/`
+    harness): ENet bots that link `protocol` + `sim_core` directly. See its README.
+- `client/` — Godot 4.6 project; exports the **client only** now. The legacy GDScript server
+  scripts remain under `scripts/server/` as the parity ground truth for the port; they no longer
+  run (NetworkManager refuses server mode).
+  - `autoload/` — singletons: `network_manager` (ENet client), `transport/` (the transport seam),
+    `game_manager`, `scene_manager`, `auth_manager`, `audio_manager`, `entity_name_cache`.
+  - `scripts/client/` — prediction (drives the Rust `PredictionSim`), interpolation, HUD, menus.
+  - `scripts/shared/` — packet enums, game constants, entity scenes, arenas.
+  - `bin/` — built GDExtension libraries (`omega_client_ext.gdextension`).
 - `api/` — Go backend: JWT auth, characters, leaderboard, regions. PostgreSQL + Redis.
-- `deployment/` — Docker Compose + per-service Dockerfiles.
-- `load_testing/` — Python bot swarm (`baseline` / `target` / `stress` scenarios).
+- `deployment/` — Docker Compose + per-service Dockerfiles (game server builds from `rust/`).
 - `scripts/` — build/deploy/run automation.
 - `docs/` — **system of record** (map below).
 
@@ -32,17 +43,19 @@ Don't re-derive what's already written there; read it, then go deep where needed
 - [`docs/CONTEXT.md`](docs/CONTEXT.md) — glossary. **Use these exact terms** (Tick ≠ Frame ≠ Snapshot).
 - [`docs/index.md`](docs/index.md) — full doc catalogue with verification status.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — top-level system architecture + POC success criteria.
-- **[`docs/netcode/`](docs/netcode/) — the core of this project:**
-  - `latency-budget.md` — **start here.** Every millisecond of perceived delay, accounted, with `file:line`.
-  - `smoothness-render.md` — the "30 fps at 100 fps" root cause and fix.
-  - `overview.md` — authority model, the loops, the packet map.
-  - `client-prediction.md` · `interpolation.md` · `server-tick-broadcast.md`
-  - `transport-websocket.md` · `interest-mgmt-aoi.md` · `wire-protocol.md`
-  - `performance-budgets.md` — targets vs measured numbers.
+- **[`docs/rust-port/`](docs/rust-port/) — the current core:**
+  - `migration-spec.md` — the D1–D14 decision log governing the port.
+  - `contract.md` — workspace/crate APIs, channel plan, wire format, numerics policy, as built.
+  - `extraction/` — the behavioral port-notes extracted from the GDScript (file:line cited);
+    the parity reference the Rust code was written and reviewed against.
+- [`docs/netcode/`](docs/netcode/) — the pre-port netcode analyses (latency budget, prediction,
+  interpolation, AoI, broadcast). Concepts still apply; WebSocket-era file:line cites describe
+  the retired GDScript server — cross-check against `rust/` before relying on them.
 - [`docs/systems/`](docs/systems/) — gameplay systems, **status-tagged**: players/movement,
   combat/hits, monsters/AI, audio, UI/HUD, state machines.
-- [`docs/exec-plans/active/netcode-perf-fixes.md`](docs/exec-plans/active/netcode-perf-fixes.md) — the prioritized fix roadmap.
-- [`docs/adr/`](docs/adr/) — load-bearing decisions (why WebSocket/TCP, why fixed-tick authority).
+- [`docs/adr/`](docs/adr/) — load-bearing decisions: 0002 fixed-tick authority (stands),
+  0003 ENet/UDP transport (implemented), 0004 shared Rust protocol crate (implemented),
+  0005 permadeath persistence.
 
 ## How every system is documented
 
@@ -54,12 +67,14 @@ checkable and nothing important is skipped:
 
 ## Working rules
 
-- **Context7** for Godot 4.6 and Go docs before writing code. Language: **GDScript**.
+- **Context7** for Godot 4.6, Rust-crate, and Go docs before writing code. Languages:
+  **Rust** (server, protocol, sim) and **GDScript** (client glue/UI).
 - **godot-mcp** to drive the engine when needed.
+- Sim semantics in `rust/sim_core` mirror Godot exactly (Vector2 f32 ops, f64 scalars,
+  truncate-toward-zero quantization) — see contract.md §numerics before touching math.
 - Prefer `class_name` references. If a script must be preloaded because Godot can't resolve a
   global class during headless startup, name the const exactly like the class:
   `const Projectile := preload(".../projectile.gd")`. No parallel `FooScript` aliases.
-- Detect run target at runtime: `OS.has_feature("dedicated_server") or DisplayServer.get_name() == "headless"`.
 - Governing rule for all gameplay: **the client requests, the server decides.**
 - **Do not** add Claude as a git co-author.
 
@@ -67,25 +82,36 @@ checkable and nothing important is skipped:
 
 ```bash
 # Build
-./scripts/build_client.sh        # client export (win/mac/linux)
-./scripts/build_server.sh        # headless server export
+./scripts/build_client.sh        # Godot client export (win/mac/linux)
+./scripts/build_client_ext.sh    # Rust GDExtension -> client/bin/ (run after rust/ changes)
+./scripts/build_server.sh        # Rust omega-server (release)
 ./scripts/build_api.sh           # Go API
 
-# Run a local stack
-./scripts/deploy.sh up            # docker compose: api + server + db + redis
-./scripts/run_server.sh           # headless game server only
+# Rust workspace checks (must stay green)
+cd rust && cargo test --workspace && cargo clippy --workspace --all-targets && cargo fmt --check
 
-# Load test (against a running server)
-cd load_testing && python bot_swarm.py --scenario target --server ws://<host>:8081
+# Run a local stack
+./scripts/dev_local.sh            # Go API + Rust server, no Docker (Postgres/Redis already running, e.g. DBngin)
+./scripts/deploy.sh up            # docker compose: api + rust server + db + redis (own postgres/redis!)
+./scripts/run_server.sh           # Rust game server only (dev mode: unsigned tickets, udp/8081)
+
+# End-to-end smoke (needs a running server on 127.0.0.1:8081)
+cd client && godot --path . res://scenes/test/net_smoke.tscn   # exits 0 on PASS
+
+# Load test (needs a running server; scenarios + flags in rust/load_test/README.md)
+./scripts/run_load_test.sh --scenario baseline
 ```
 
 ## Invariants (hold today; enforce in review)
 
 - Entity id ranges: **players 1–999, projectiles 10000–29999, monsters 30000–39999**.
 - Arena bounds: `(-1000,-1000)..(1000,1000)`; boundary walls at ±1005.
-- Wire header: `[u8 type][u16 length]`; positions quantized to 0.1 unit.
+- Wire format: `[u8 type][payload]` over ENet (no length field — datagram boundaries);
+  positions quantized to 0.1 unit (truncate toward zero). 3 channels: ch0 snapshots/confirms
+  (unreliable sequenced), ch1 reliable (+ baselines), ch2 input. Unreliable payloads < 1200 B.
 - All gameplay state is server-authoritative and in-memory; the Go API owns only
   account/character/leaderboard persistence.
+- The D11 hit backstop stays **lenient**: true 24 u overlap only, grace ≥ 15 ticks.
 
 ## Known invariant violations — fixed on branch `perf/p0-p1-netcode-fixes`
 

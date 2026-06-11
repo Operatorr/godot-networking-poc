@@ -1,6 +1,12 @@
-## NetworkManager - WebSocket connection handling singleton
-## Manages persistent WebSocket connections to game server
-## Implements client-side networking as per ARCHITECTURE.md
+## NetworkManager - client networking singleton over ENet/UDP (migration-spec D2).
+##
+## The wire codec lives in the Rust GDExtension (ProtocolCodec — D6/D7): this script owns
+## connection lifecycle, channel routing, dispatch, clock sync, and reconnect, and hands raw
+## bytes across the extension boundary. There is no GDScript codec.
+##
+## The GDScript server role is RETIRED (D1): the authoritative server is the Rust
+## `omega-server` binary (rust/server). The server-mode API surface below is kept as inert
+## stubs so legacy scripts fail soft with a pointer to the Rust binary.
 extends Node
 
 ## Connection states
@@ -12,21 +18,25 @@ enum ConnectionState {
 	ERROR
 }
 
-## Network message types (as per ARCHITECTURE.md)
+## Network message types. Wire bytes are owned by the Rust protocol crate; these ids are the
+## GDScript-facing dispatch values (ProtocolCodec.decode_server_packet returns them).
+## HEARTBEAT and BATCH died with the ENet transport (D2): ENet provides keepalive/RTT natively
+## and coalesces packets itself; the clock-sync payload now rides every Snapshot.
 enum MessageType {
-	PLAYER_INPUT = 1,      ## Client -> Server: Movement, actions
-	STATE_UPDATE = 2,      ## Server -> Client: Entity positions, animations
-	GAME_EVENT = 3,        ## Server -> Client: Damage, kills, status effects
-	HEARTBEAT = 4,         ## Bidirectional: Keep-alive (1/sec, 4B)
-	ACTION_CONFIRM = 5,    ## Server -> Client: Confirm attack
-	CONNECT_AUTH = 6,      ## Client -> Server: Authentication handshake
-	DISCONNECT = 7,        ## Client -> Server: Clean disconnect
-	REQUEST_FULL_STATE = 8, ## Client -> Server: Request full state sync (TASK-021)
-	RESPAWN_REQUEST = 9,   ## Client -> Server: Request respawn after death
-	SERVER_METRICS = 10,   ## Server -> Client: Server performance metrics (1/sec)
-	BATCH = 11,            ## Server -> Client: Multiple packets in one frame (TASK-066)
-	BASELINE_ACK = 12,     ## Client -> Server: ack a received Baseline tick (#14, kept in lockstep with PacketTypes.Type)
-	LOCAL_HIT_REPORT = 13  ## Client -> Server: client-detected monster-projectile hit on self (server-validated)
+	PLAYER_INPUT = 1,      ## Client -> Server: Movement, actions (ch2, unreliable sequenced)
+	STATE_UPDATE = 2,      ## Server -> Client: Snapshots (ch0, unreliable sequenced)
+	GAME_EVENT = 3,        ## Server -> Client: Damage, kills, player info (ch1, reliable)
+	HEARTBEAT = 4,         ## RETIRED (D2) - kept so stale references fail soft
+	ACTION_CONFIRM = 5,    ## Server -> Client: per-input ack (ch0)
+	CONNECT_AUTH = 6,      ## Client -> Server: auth handshake (ch1, reliable)
+	DISCONNECT = 7,        ## Handled natively by ENet disconnect (reason in event data)
+	REQUEST_FULL_STATE = 8, ## Client -> Server (ch1, reliable)
+	RESPAWN_REQUEST = 9,   ## Client -> Server (ch1, reliable)
+	SERVER_METRICS = 10,   ## Server -> Client (ch1, reliable, 1/sec)
+	BATCH = 11,            ## RETIRED (D2)
+	BASELINE_ACK = 12,     ## Client -> Server (ch1, reliable)
+	LOCAL_HIT_REPORT = 13, ## Client -> Server (ch1, reliable - a lost hit report is lost damage)
+	AUTH_RESULT = 14       ## Server -> Client: explicit auth answer (D9); carries entity_id
 }
 
 ## Signals - Client mode
@@ -34,91 +44,55 @@ signal connected_to_server()
 signal disconnected_from_server(reason: String)
 signal connection_error(error: String)
 signal server_message_received(message_type: MessageType, data: Dictionary)
-signal heartbeat_timeout()
+signal heartbeat_timeout()  ## RETIRED - never emitted (ENet owns liveness); kept for listeners
 
-## Signals - Server mode (for ServerMain to connect to)
+## Signals - legacy server mode (never emitted; the Rust server replaced this role)
 signal server_client_connected(peer_id: int)
 signal server_client_disconnected(peer_id: int)
 signal server_client_message(peer_id: int, message_type: int, data: Dictionary)
 
-## Transport seam (roadmap #12). The concrete socket layer (WebSocketPeer /
-## TCPServer / TLSOptions) lives entirely below this; NetworkManager keeps all
-## protocol/encode/decode/batch/heartbeat/clock/reconnect logic and stats above
-## it. Preloaded so `class_name Transport`/`WebSocketTransport` resolve reliably
-## during headless startup (AGENTS.md preload rule).
 const Transport := preload("res://autoload/transport/transport.gd")
-const WebSocketTransport := preload("res://autoload/transport/websocket_transport.gd")
+const ENetTransport := preload("res://autoload/transport/enet_transport.gd")
 
-## Runtime mode detection
+## Runtime mode detection (server mode = misconfiguration since the Rust port)
 var is_server: bool = false
 
-## Active transport. Instantiated in _ready() as a WebSocketTransport with the
-## role matching is_server; addressed by opaque int peer_id.
-var _transport: Transport = null
+var _transport: ENetTransport = null
 
-## peer_id -> true after the link is open and ServerMain was notified. Announce
-## bookkeeping stays above the seam.
-var peer_connection_announced: Dictionary = {}
+## The Rust wire codec (D6/D7).
+var _codec: ProtocolCodec = ProtocolCodec.new()
 
-## Server-side heartbeat tracking (per peer)
-var peer_last_heartbeat: Dictionary = {}  # peer_id -> float (timestamp)
-var server_heartbeat_timeout: float = 5.0  # Same as client timeout
-
-## Per-client bandwidth tracking (server mode)
-var peer_bytes_sent: Dictionary = {}  # peer_id -> int (total bytes sent)
-
-## Per-tick packet batching state (server mode, TASK-066). When a batch window
-## is open, send_to_client appends encoded packets here instead of writing to
-## the WebSocket immediately. flush_batches() then concatenates each peer's
-## queue into BATCH packets capped by the on-wire count and payload fields.
-var _batching_active: bool = false
-var _pending_batches: Dictionary = {}  # peer_id -> Array[PackedByteArray]
-## Hard cap on packets per BATCH frame (u8 count field on the wire).
-const BATCH_MAX_PACKETS := 255
-## BATCH payload is [u8 count][inner packets...], and the packet header stores
-## payload length as u16. Leave one byte for the count field.
-const BATCH_MAX_INNER_BYTES := PacketTypes.MAX_PACKET_SIZE - 1
-
-## Default egress budget the client advertises to the server in CONNECT_AUTH
-## (bytes/sec, ~960 kbit/s). No auto-measure this pass; the server clamps this
-## to [min, max] and derives a per-peer snapshot byte cap from it.
+## Default egress budget the client advertises in CONNECT_AUTH (bytes/sec).
 const DEFAULT_CLIENT_BUDGET := 120000
 
 ## Connection state
 var current_state: ConnectionState = ConnectionState.DISCONNECTED
 var server_url: String = ""
 var auth_token: String = ""
-var server_port: int = 8080
-## Idempotency for send_auth_handshake — true while a handshake is in flight or
-## has been acknowledged for the current WebSocket session. Cleared on every
-## fresh connection so reconnects can re-authenticate.
+## Session ticket blob from the Go API (D9). Empty = dev-mode unsigned join (the server must
+## run with --allow-unsigned-tickets). Populated by the M3 ticket-issuance flow.
+var session_ticket: PackedByteArray = PackedByteArray()
 var _auth_handshake_sent: bool = false
 
 ## Reconnection parameters (exponential backoff)
 var reconnect_attempts: int = 0
 var max_reconnect_attempts: int = 5
-var base_reconnect_delay: float = 1.0  ## Start with 1 second
-var max_reconnect_delay: float = 32.0  ## Cap at 32 seconds
+var base_reconnect_delay: float = 1.0
+var max_reconnect_delay: float = 32.0
 var reconnect_timer: float = 0.0
 var connection_timeout_seconds: float = 5.0
 var _connection_attempt_id: int = 0
 var _had_successful_connection: bool = false
 
-## Heartbeat system (1/sec as per spec)
-var heartbeat_interval: float = 1.0
-var heartbeat_timer: float = 0.0
-var last_heartbeat_received: float = 0.0
-var heartbeat_timeout_seconds: float = 5.0
 const UINT32_WRAP: int = 4294967296
 const MAX_REASONABLE_PING_MS: int = 10000
 
-## Estimated offset between local Time.get_ticks_msec() and the server's
-## wall clock, in milliseconds (§5.4). Computed as
-## `server_ms - (local_ms - rtt/2)` and low-pass-filtered to ride out jitter.
-## A value of `0` means no sample has been received yet.
+## Estimated offset between local Time.get_ticks_msec() and the server's monotonic clock, in
+## ms. Fed by the server_ms stamp every Snapshot carries (the relocated HEARTBEAT payload, D2)
+## plus ENet-native RTT. `samples == 0` means no sync yet.
 var server_clock_offset_ms: float = 0.0
 var server_clock_offset_samples: int = 0
-const SERVER_CLOCK_FILTER_ALPHA := 0.2  ## EMA weight for new samples.
+const SERVER_CLOCK_FILTER_ALPHA := 0.2
 
 ## Network statistics
 var stats: Dictionary = {
@@ -130,45 +104,20 @@ var stats: Dictionary = {
 	"last_ping_time": 0.0
 }
 
-## Per-channel egress breakdown (server mode, §8.1 of
-## NETWORK_PERFORMANCE_UPGRADES.md). Keyed by MessageType. BATCH frames are
-## tallied separately so envelope overhead is visible in dashboards.
-var bytes_sent_by_type: Dictionary = {}
 
-## Called when the node enters the scene tree
 func _ready() -> void:
-	# Detect if running as dedicated server
 	is_server = (OS.has_feature("dedicated_server") or DisplayServer.get_name() == "headless") and not _is_test_scene()
-
-	print("[NetworkManager] Initializing in %s mode..." % ("SERVER" if is_server else "CLIENT"))
-
-	_transport = WebSocketTransport.new()
-	_transport.role = (Transport.Role.SERVER if is_server else Transport.Role.CLIENT)
-
 	if is_server:
-		_initialize_server()
-	else:
-		_initialize_client()
-
-	set_process(true)
-
-## Initialize as server
-func _initialize_server() -> void:
-	# Load port from server config if available
-	var config = ServerConfig.new()
-	server_port = config.port
-
-	print("[NetworkManager] Starting WebSocket server on port %d..." % server_port)
-	var error = _transport.server_listen(server_port)
-	if error != OK:
-		push_error("[NetworkManager] Failed to start server: %d" % error)
+		push_error(
+			"[NetworkManager] The GDScript server is retired (migration-spec D1). "
+			+ "Run the Rust server instead: rust/ -> cargo run -p omega-server"
+		)
 		return
-	current_state = ConnectionState.CONNECTED
-	print("[NetworkManager] Server started successfully on port %d" % server_port)
 
-## Initialize as client
-func _initialize_client() -> void:
-	print("[NetworkManager] Client initialized, ready to connect")
+	print("[NetworkManager] Initializing in CLIENT mode (ENet transport)...")
+	_transport = ENetTransport.new()
+	_transport.role = Transport.Role.CLIENT
+	set_process(true)
 
 
 func _is_test_scene() -> bool:
@@ -185,101 +134,42 @@ func _is_test_scene() -> bool:
 	return scene_path.begins_with("res://scenes/test/") \
 		or scene_path == "res://scenes/shared/levels/practice.tscn"
 
-## Process loop - handles WebSocket polling and heartbeat
+
 func _process(delta: float) -> void:
-	if is_server:
-		_process_server(delta)
-	else:
-		_process_client(delta)
-
-## Process server mode
-func _process_server(_delta: float) -> void:
-	if _transport == null:
+	if is_server or _transport == null:
 		return
-
-	# Accept new connections + poll all peers below the seam; consume the
-	# normalized events here, preserving per-peer FIFO order.
-	_transport.server_poll()
-	for ev in _transport.server_take_events():
-		match ev.get("kind", ""):
-			"connected":
-				var peer_id: int = ev["peer_id"]
-				if not peer_connection_announced.has(peer_id):
-					peer_connection_announced[peer_id] = true
-					peer_last_heartbeat[peer_id] = Time.get_ticks_msec() / 1000.0
-					print("[NetworkManager] Server: New client connected (ID: %d)" % peer_id)
-					server_client_connected.emit(peer_id)
-			"packet":
-				_handle_server_incoming_packet(ev["peer_id"], ev["bytes"])
-			"closed":
-				var peer_id: int = ev["peer_id"]
-				var was_announced := peer_connection_announced.has(peer_id)
-				print("[NetworkManager] Server: Client %d disconnected" % peer_id)
-				peer_connection_announced.erase(peer_id)
-				peer_last_heartbeat.erase(peer_id)
-				peer_bytes_sent.erase(peer_id)
-				if was_announced:
-					server_client_disconnected.emit(peer_id)
-
-	# Check for heartbeat timeouts
-	var current_time = Time.get_ticks_msec() / 1000.0
-	for peer_id in peer_last_heartbeat.keys():
-		var time_since_heartbeat = current_time - peer_last_heartbeat[peer_id]
-		if time_since_heartbeat > server_heartbeat_timeout:
-			print("[NetworkManager] Server: Peer %d timed out (no heartbeat for %.1fs)" % [peer_id, time_since_heartbeat])
-			_disconnect_peer_timeout(peer_id)
-
-## Process client mode
-func _process_client(delta: float) -> void:
 	match current_state:
 		ConnectionState.CONNECTED:
 			_process_connected(delta)
 		ConnectionState.RECONNECTING:
 			_process_reconnecting(delta)
 
-## Process when connected
-func _process_connected(delta: float) -> void:
-	if _transport == null:
-		return
 
-	# Poll the transport
+func _process_connected(_delta: float) -> void:
 	_transport.client_poll()
 	var state = _transport.client_state()
 
-	# Handle state changes
 	if state == Transport.LinkState.OPEN:
-		# Receive messages (FIFO order preserved by the seam drain).
-		for buf in _transport.client_take_packets():
-			_handle_incoming_packet(buf)
-
-		# Send heartbeat
-		heartbeat_timer += delta
-		if heartbeat_timer >= heartbeat_interval:
-			heartbeat_timer = 0.0
-			send_heartbeat()
-
-		# Check for heartbeat timeout
-		var time_since_heartbeat = Time.get_ticks_msec() / 1000.0 - last_heartbeat_received
-		if time_since_heartbeat > heartbeat_timeout_seconds:
-			print("[NetworkManager] Heartbeat timeout - server not responding")
-			heartbeat_timeout.emit()
-			disconnect_from_server("Heartbeat timeout")
-
+		for entry in _transport.client_take_channel_packets():
+			_handle_incoming_packet(entry["bytes"])
+		# RTT comes from ENet natively (replaces the HEARTBEAT echo path).
+		stats.ping_ms = _transport.client_rtt_ms()
 	elif state == Transport.LinkState.CLOSING:
-		print("[NetworkManager] Connection closing...")
-
+		pass
 	elif state == Transport.LinkState.CLOSED:
 		var close_info := _transport.client_close_info()
 		print("[NetworkManager] Connection closed - Code: %d, Reason: %s" % [close_info.get("code", 0), close_info.get("reason", "")])
 		_on_connection_closed(close_info.get("reason", ""))
 
-## Process when reconnecting
+
 func _process_reconnecting(delta: float) -> void:
 	reconnect_timer -= delta
 	if reconnect_timer <= 0.0:
 		_attempt_reconnect()
 
-## Connect to game server
+
+## Connect to the game server. Accepts "host:port" with any scheme prefix (the Go API region
+## payload historically carries ws:// URLs; only host/port are used over ENet).
 func connect_to_server(url: String, token: String = "", is_reconnect: bool = false) -> void:
 	if current_state == ConnectionState.CONNECTED:
 		print("[NetworkManager] Already connected to server")
@@ -299,9 +189,8 @@ func connect_to_server(url: String, token: String = "", is_reconnect: bool = fal
 	_connection_attempt_id += 1
 	var attempt_id := _connection_attempt_id
 
-	print("[NetworkManager] Connecting to %s..." % url)
+	print("[NetworkManager] Connecting to %s (ENet)..." % url)
 
-	# Create + connect the client transport
 	var error = _transport.client_connect(url)
 
 	if error != OK:
@@ -310,7 +199,7 @@ func connect_to_server(url: String, token: String = "", is_reconnect: bool = fal
 	else:
 		await _wait_for_connection(attempt_id, is_reconnect)
 
-## Poll until the link opens, closes, or times out.
+
 func _wait_for_connection(attempt_id: int, is_reconnect: bool) -> void:
 	var elapsed := 0.0
 	while elapsed < connection_timeout_seconds:
@@ -339,12 +228,10 @@ func _complete_connection() -> void:
 	current_state = ConnectionState.CONNECTED
 	reconnect_attempts = 0
 	_had_successful_connection = true
-	last_heartbeat_received = Time.get_ticks_msec() / 1000.0
+	server_clock_offset_samples = 0
 
 	# Auth handshake is intentionally NOT sent here — the arena scene drives it
 	# from _setup_client once its server_message_received listener is bound.
-	# Reset the idempotency flag so the arena (or reconnect handler) can issue
-	# a fresh auth for this session.
 	_auth_handshake_sent = false
 
 	connected_to_server.emit()
@@ -353,7 +240,6 @@ func _complete_connection() -> void:
 func _fail_connection_attempt(error_message: String, is_reconnect: bool) -> void:
 	print("[NetworkManager] Connection failed or still pending")
 	current_state = ConnectionState.ERROR
-	_transport.client_close(1000, "")
 	_transport.client_reset()
 
 	if is_reconnect or _had_successful_connection:
@@ -365,10 +251,11 @@ func _fail_connection_attempt(error_message: String, is_reconnect: bool) -> void
 func _format_connection_error(url: String) -> String:
 	return "Cannot reach the game server at %s. Make sure the game server is running, then try again." % url
 
-## Send authentication handshake. Idempotent within a connection session: a
-## second call without a fresh _complete_connection (i.e. without disconnect/
-## reconnect) is a no-op so the arena and reconnect hooks can both call it
-## defensively.
+
+## Send the authentication handshake (D9). The JWT itself never crosses ENet — in production
+## the Go API exchanges it for a short-lived Ed25519 session ticket over HTTPS and that ticket
+## is presented here; in dev mode the ticket is empty and the server (running with
+## --allow-unsigned-tickets) trusts the join. Idempotent per connection session.
 func send_auth_handshake() -> void:
 	if _auth_handshake_sent:
 		return
@@ -379,37 +266,29 @@ func send_auth_handshake() -> void:
 		print("[NetworkManager] send_auth_handshake skipped: not connected (state=%d)" % current_state)
 		return
 
-	var character_id = ""
 	var character_name = ""
-	var region = "Asia"
 	var player_color := Color(0.27, 0.53, 1.0)
 
 	var game_mgr = get_tree().root.get_node_or_null("GameManager")
 	if game_mgr:
-		character_id = game_mgr.player_data.get("character_id", "")
 		character_name = game_mgr.player_data.get("character_name", "")
-		region = game_mgr.player_data.get("selected_region", "Asia")
 		player_color = game_mgr.player_data.get("player_color", player_color)
 
-	var auth_data = {
-		"token": auth_token,
-		"character_id": character_id,
-		"character_name": character_name,
-		"region": region,
-		"player_color": player_color,
-		"bandwidth_budget_bps": _get_client_bandwidth_budget()
-	}
-	if send_message(MessageType.CONNECT_AUTH, auth_data):
+	var bytes := _codec.encode_connect_auth(
+		character_name, player_color, _get_client_bandwidth_budget(), session_ticket
+	)
+	if bytes.is_empty():
+		# The codec refuses malformed tickets rather than downgrading to an unsigned join.
+		push_error("[NetworkManager] Session ticket is malformed; aborting handshake")
+		connection_error.emit("Session ticket is invalid - please log in again")
+		return
+	if _send_bytes(ProtocolCodec.channel_reliable(), bytes, true):
 		_auth_handshake_sent = true
 		print("[NetworkManager] Authentication handshake sent")
 	else:
 		print("[NetworkManager] Authentication handshake send failed; retry remains allowed")
 
 
-## Resolve the egress budget (bytes/sec) the client advertises in CONNECT_AUTH.
-## Sourced from GameManager.player_data (no auto-measure this pass); 0 there means
-## "let the server decide" and we forward the configured default instead. Returning
-## a non-zero value keeps the wire field meaningful; the server still clamps it.
 func _get_client_bandwidth_budget() -> int:
 	var budget := DEFAULT_CLIENT_BUDGET
 	var game_mgr = get_tree().root.get_node_or_null("GameManager")
@@ -420,625 +299,172 @@ func _get_client_bandwidth_budget() -> int:
 	return budget
 
 
-## Disconnect from server
+## Disconnect from server. The reason rides ENet's native disconnect data (no packet).
 func disconnect_from_server(reason: String = "User disconnect") -> void:
 	if _transport.client_state() == Transport.LinkState.CLOSED or current_state == ConnectionState.DISCONNECTED:
 		return
 
 	print("[NetworkManager] Disconnecting: %s" % reason)
-
-	# Send disconnect message
-	send_message(MessageType.DISCONNECT, {"reason": _get_disconnect_reason_code(reason)})
-
-	# Close the link
-	_transport.client_close(1000, reason)
+	_transport.client_close(0, reason)
 	current_state = ConnectionState.DISCONNECTED
 
 	disconnected_from_server.emit(reason)
 
-## Handle incoming packet (client receiving from server). The raw buffer is
-## drained from the transport seam and passed in by _process_connected.
+
 func _handle_incoming_packet(packet: PackedByteArray) -> void:
 	stats.packets_received += 1
 	stats.bytes_received += packet.size()
 
-	_dispatch_received_buffer(packet)
-
-
-## Dispatch a single inbound buffer, transparently unwrapping BATCH envelopes
-## (TASK-066). Inner packets are dispatched in order so listeners observe the
-## same sequence the server queued during its tick.
-func _dispatch_received_buffer(packet: PackedByteArray) -> void:
-	if packet.size() < PacketTypes.HEADER_SIZE:
-		print("[NetworkManager] Received undersized packet (%d bytes)" % packet.size())
+	var message: Dictionary = _codec.decode_server_packet(packet)
+	if message.is_empty():
+		print("[NetworkManager] Failed to decode packet (%d bytes)" % packet.size())
 		return
 
-	var packet_type: int = packet.decode_u8(0)
-	if packet_type == MessageType.BATCH:
-		_dispatch_batch_buffer(packet)
-		return
+	var message_type: int = message.get("type", 0)
 
-	var message = _decode_packet(packet)
-	if message == null or message.is_empty():
-		print("[NetworkManager] Failed to decode packet")
-		return
+	# Every Snapshot carries the server's monotonic ms clock (the relocated HEARTBEAT
+	# clock-sync payload, D2). Update the offset filter before fan-out.
+	if message_type == MessageType.STATE_UPDATE:
+		_update_clock_from_server_ms(int(message.get("server_ms", 0)))
 
-	var message_type: MessageType = message.get("type", MessageType.HEARTBEAT)
-	if message_type == MessageType.HEARTBEAT:
-		last_heartbeat_received = Time.get_ticks_msec() / 1000.0
-		_handle_heartbeat_response(message)
+	if message_type == MessageType.AUTH_RESULT:
+		_handle_auth_result(message)
+
+	server_message_received.emit(message_type, message)
+
+
+## D9: the explicit auth answer. Success carries our entity id — instant Authority sync
+## (the PLAYER_INFO name-match heuristic stays as a fallback for older flows).
+func _handle_auth_result(data: Dictionary) -> void:
+	var result: int = data.get("result", -1)
+	if result == 0:
+		var entity_id: int = data.get("entity_id", -1)
+		print("[NetworkManager] Auth accepted - entity id %d" % entity_id)
+		var game_mgr = get_tree().root.get_node_or_null("GameManager")
+		if game_mgr and entity_id > 0 and game_mgr.has_method("set_local_player_entity_id"):
+			game_mgr.set_local_player_entity_id(entity_id)
 	else:
-		server_message_received.emit(message_type, message.get("data", {}))
+		push_error("[NetworkManager] Auth rejected by server (code %d)" % result)
+		connection_error.emit("Authentication rejected (code %d)" % result)
 
 
-func _dispatch_batch_buffer(packet: PackedByteArray) -> void:
-	# [u8 BATCH][u16 payload_len][u8 count][N inner_packets...]
-	if packet.size() < PacketTypes.HEADER_SIZE + 1:
-		return
-	var count: int = packet.decode_u8(PacketTypes.HEADER_SIZE)
-	var pos: int = PacketTypes.HEADER_SIZE + 1
-	for i in count:
-		if pos + PacketTypes.HEADER_SIZE > packet.size():
-			print("[NetworkManager] BATCH truncated at packet %d/%d" % [i, count])
-			return
-		var inner_len: int = packet.decode_u16(pos + 1)
-		var inner_size: int = PacketTypes.HEADER_SIZE + inner_len
-		if pos + inner_size > packet.size():
-			print("[NetworkManager] BATCH inner packet %d overflows envelope" % i)
-			return
-		_dispatch_received_buffer(packet.slice(pos, pos + inner_size))
-		pos += inner_size
-
-## Handle incoming packet from client (server receiving). The raw buffer is
-## drained from the transport seam and passed in by _process_server.
-func _handle_server_incoming_packet(peer_id: int, packet: PackedByteArray) -> void:
-	stats.packets_received += 1
-	stats.bytes_received += packet.size()
-
-	# Decode packet
-	var message = _decode_packet(packet)
-
-	if message == null:
-		print("[NetworkManager] Server: Failed to decode packet from peer %d" % peer_id)
-		return
-
-	var message_type: MessageType = message.get("type", MessageType.HEARTBEAT)
-	var data: Dictionary = message.get("data", {})
-
-	# Handle NetworkManager-level messages (heartbeat, disconnect)
-	match message_type:
-		MessageType.HEARTBEAT:
-			# Update last heartbeat time and respond immediately
-			peer_last_heartbeat[peer_id] = Time.get_ticks_msec() / 1000.0
-			# §5.4: stamp the reply with our wall clock so the client can sync.
-			send_to_client(peer_id, MessageType.HEARTBEAT, {
-				"timestamp": data.get("timestamp", Time.get_ticks_msec()),
-				"server_ms": Time.get_ticks_msec() & 0xFFFFFFFF
-			})
-			return
-		MessageType.DISCONNECT:
-			print("[NetworkManager] Server: Disconnect request from peer %d" % peer_id)
-			_transport.server_close_peer(peer_id, 1000, "Client disconnect")
-			return
-
-	# Emit signal for ServerMain to handle game-related messages
-	server_client_message.emit(peer_id, message_type, data)
-
-## Send message from server to specific client. While a tick batch window is
-## open (see begin_batch / flush_batches), the encoded packet is queued and
-## emitted as part of a single BATCH WebSocket frame at flush time (TASK-066).
-func send_to_client(peer_id: int, message_type: MessageType, data: Dictionary = {}) -> void:
-	if not _transport.server_peer_open(peer_id):
-		return
-
-	var packet = _encode_packet(message_type, data)
-	# Account against the channel before transport (§8.1). The batch envelope
-	# adds a small wrapper at flush time which is tallied separately.
-	_record_bytes_for_type(message_type, packet.size())
-
-	if _batching_active:
-		_enqueue_for_batch(peer_id, packet)
-		return
-
-	_send_raw_to_peer(peer_id, packet)
-
-
-## Send message from server to all connected clients
-func broadcast_to_clients(message_type: MessageType, data: Dictionary = {}) -> void:
-	for peer_id in _transport.server_peer_ids():
-		send_to_client(peer_id, message_type, data)
-
-
-## Begin a per-tick batching window (TASK-066). Subsequent send_to_client and
-## broadcast_to_clients calls are buffered per-peer until flush_batches() is
-## called. Safe to call when batching is already active (no-op).
-func begin_batch() -> void:
-	if _batching_active:
-		return
-	_batching_active = true
-	_pending_batches.clear()
-
-
-## Flush queued packets accumulated since begin_batch(). Each peer's queue is
-## emitted as one or more WebSocket frames: one-packet chunks are sent directly
-## with no envelope overhead, while multi-packet chunks are wrapped in BATCH
-## frames sized to fit the u8 count and u16 payload length fields.
-func flush_batches() -> void:
-	if not _batching_active:
-		return
-	_batching_active = false
-
-	for peer_id in _pending_batches.keys():
-		var queue: Array = _pending_batches[peer_id]
-		if queue.is_empty():
-			continue
-
-		var chunk: Array = []
-		var chunk_inner_bytes := 0
-		for packet_variant in queue:
-			var packet := packet_variant as PackedByteArray
-			var packet_bytes := packet.size()
-
-			if not chunk.is_empty() and (
-				chunk.size() >= BATCH_MAX_PACKETS
-				or chunk_inner_bytes + packet_bytes > BATCH_MAX_INNER_BYTES
-			):
-				_send_batch_chunk_to_peer(peer_id, chunk)
-				chunk = []
-				chunk_inner_bytes = 0
-
-			if packet_bytes > BATCH_MAX_INNER_BYTES:
-				# This packet cannot fit inside any BATCH envelope because the
-				# u8 count byte would push the payload length past u16. Send it
-				# directly; its own header was finalized when encoded.
-				_send_raw_to_peer(peer_id, packet)
-				continue
-
-			chunk.append(packet)
-			chunk_inner_bytes += packet_bytes
-
-		if not chunk.is_empty():
-			_send_batch_chunk_to_peer(peer_id, chunk)
-
-	_pending_batches.clear()
-
-
-## Discard any pending batched packets without sending them. Used during
-## shutdown so we never write to a half-torn-down peer.
-func clear_batches() -> void:
-	_batching_active = false
-	_pending_batches.clear()
-
-
-func _enqueue_for_batch(peer_id: int, packet: PackedByteArray) -> void:
-	if not _pending_batches.has(peer_id):
-		_pending_batches[peer_id] = []
-	(_pending_batches[peer_id] as Array).append(packet)
-
-
-func _send_batch_chunk_to_peer(peer_id: int, chunk: Array) -> void:
-	if chunk.size() == 1:
-		_send_raw_to_peer(peer_id, chunk[0])
-		return
-	_send_raw_to_peer(peer_id, _build_batch_packet(chunk))
-
-
-## Wrap N inner packets in a BATCH envelope: [u8 BATCH][u16 payload_len][u8 N][packets...]
-func _build_batch_packet(inner_packets: Array) -> PackedByteArray:
-	var writer = PacketWriter.new()
-	writer.write_header(MessageType.BATCH)
-	writer.write_u8(inner_packets.size())
-	var inner_bytes := 0
-	for inner in inner_packets:
-		writer.write_bytes(inner)
-		inner_bytes += (inner as PackedByteArray).size()
-	writer.finalize_header()
-	var envelope := writer.get_buffer()
-	# Inner packets are already tallied against their respective channels at
-	# send_to_client(). Only the envelope overhead is attributed to BATCH.
-	_record_bytes_for_type(MessageType.BATCH, envelope.size() - inner_bytes)
-	return envelope
-
-
-func _record_bytes_for_type(message_type: int, byte_count: int) -> void:
-	if byte_count <= 0:
-		return
-	bytes_sent_by_type[message_type] = int(bytes_sent_by_type.get(message_type, 0)) + byte_count
-
-
-func _send_raw_to_peer(peer_id: int, packet: PackedByteArray) -> bool:
-	# Raw write goes through the seam; stats/peer_bytes_sent accounting stays here
-	# (fix #13 per-client budget + shipped per-channel metrics depend on it).
-	if _transport.server_send(peer_id, packet):
-		stats.packets_sent += 1
-		stats.bytes_sent += packet.size()
-		if not peer_bytes_sent.has(peer_id):
-			peer_bytes_sent[peer_id] = 0
-		peer_bytes_sent[peer_id] += packet.size()
-		return true
-
-	print("[NetworkManager] Server: Failed to send packet to peer %d" % peer_id)
-	return false
-
-
-## Disconnect a client from server
-func disconnect_client(peer_id: int, reason: String = "Server disconnect") -> void:
-	if not _transport.server_peer_ids().has(peer_id):
-		return
-
-	_transport.server_close_peer(peer_id, 1000, reason)
-
-
-## Disconnect a peer due to heartbeat timeout (internal)
-func _disconnect_peer_timeout(peer_id: int) -> void:
-	if not _transport.server_peer_ids().has(peer_id):
-		peer_last_heartbeat.erase(peer_id)  # Clean up stale entry
-		peer_connection_announced.erase(peer_id)
-		return
-
-	var was_announced := peer_connection_announced.has(peer_id)
-	_transport.server_close_peer(peer_id, 1000, "Heartbeat timeout")
-	peer_connection_announced.erase(peer_id)
-	peer_last_heartbeat.erase(peer_id)
-	peer_bytes_sent.erase(peer_id)
-	if was_announced:
-		server_client_disconnected.emit(peer_id)
-
-
-## Get all connected peer IDs (server mode)
-func get_connected_peer_ids() -> Array:
-	return _transport.server_peer_ids()
-
-## Send message to server. Returns true once the packet has been accepted by
-## the WebSocket layer so callers can keep retryable state in sync.
-func send_message(message_type: MessageType, data: Dictionary = {}) -> bool:
-	if current_state != ConnectionState.CONNECTED:
-		print("[NetworkManager] Cannot send message - not connected")
-		return false
-	if _transport.client_state() != Transport.LinkState.OPEN:
-		print("[NetworkManager] Cannot send message - socket is not open")
-		return false
-
-	var packet = _encode_packet(message_type, data)
-	var error = _transport.client_send(packet)
-
-	if error == OK:
-		stats.packets_sent += 1
-		stats.bytes_sent += packet.size()
-		return true
-	else:
-		print("[NetworkManager] Failed to send packet: %d" % error)
-		return false
-
-## Send message to server (alias for send_message for code clarity)
-func send_to_server(message_type: MessageType, data: Dictionary = {}) -> bool:
-	return send_message(message_type, data)
-
-## Send player input at the client prediction cadence.
-func send_player_input(input_data: Dictionary) -> void:
-	send_message(MessageType.PLAYER_INPUT, input_data)
-
-## Send heartbeat (1/sec, 4B payload as per spec)
-func send_heartbeat() -> void:
-	# Binary heartbeat: only timestamp (4 bytes)
-	send_message(MessageType.HEARTBEAT, {"timestamp": Time.get_ticks_msec()})
-	stats.last_ping_time = Time.get_ticks_msec() / 1000.0
-
-## Handle heartbeat response. Updates RTT and the server-clock offset (§5.4).
-func _handle_heartbeat_response(message: Dictionary) -> void:
-	var data = message.get("data", {})
-	if not data.has("timestamp"):
-		return
-
-	var sent_timestamp: int = int(data.get("timestamp", 0))
-	var ping_ms := _elapsed_msec_since_u32(sent_timestamp)
-	if ping_ms <= MAX_REASONABLE_PING_MS:
-		stats.ping_ms = ping_ms
-	else:
-		return  # Bogus sample; don't pollute the clock estimate either.
-
-	var server_ms: int = int(data.get("server_ms", 0))
+## Clock sync (relocated from HEARTBEAT, D2): same EMA filter, half-RTT estimate from
+## ENet-native RTT. `server_ms == 0` would be the unstamped sentinel; the Rust server always
+## stamps, but tolerate it for the first tick (server_ms wraps u32 and is never 0 for long).
+func _update_clock_from_server_ms(server_ms: int) -> void:
 	if server_ms == 0:
-		return  # Older server / not stamped this reply.
-
-	# Estimate when on the local clock the server stamped the reply: roughly
-	# half an RTT before we received it.
+		return
+	var ping_ms := _transport.client_rtt_ms()
+	if ping_ms > MAX_REASONABLE_PING_MS:
+		return
 	var arrival_local_ms: int = Time.get_ticks_msec() & 0xFFFFFFFF
 	var server_send_local_ms: int = arrival_local_ms - int(ping_ms / 2.0)
 	var sample := float(server_ms - server_send_local_ms)
 
+	# Both clocks are u32-masked and wrap ~49.7 days; a wrap on either side throws the raw
+	# difference off by ±2^32 — fold it back so the EMA never ingests a poisoned sample.
+	if sample > UINT32_WRAP / 2.0:
+		sample -= UINT32_WRAP
+	elif sample < -UINT32_WRAP / 2.0:
+		sample += UINT32_WRAP
+
 	if server_clock_offset_samples == 0:
+		server_clock_offset_ms = sample
+	elif absf(sample - server_clock_offset_ms) > UINT32_WRAP / 4.0:
+		# The filtered offset itself sits near a wrap boundary; re-seed instead of
+		# letting one boundary-straddling sample drag the EMA across 2^32.
 		server_clock_offset_ms = sample
 	else:
 		server_clock_offset_ms = lerpf(server_clock_offset_ms, sample, SERVER_CLOCK_FILTER_ALPHA)
 	server_clock_offset_samples += 1
 
 
-## Server time in milliseconds estimated from the local clock plus the
-## low-pass-filtered offset (§5.4). Returns 0 until at least one heartbeat
-## reply has carried `server_ms`, so callers can detect "no sync yet."
+## Server time in ms estimated from the local clock plus the filtered offset.
+## Returns 0 until at least one stamped Snapshot arrived ("no sync yet" sentinel).
 func get_server_time_ms() -> int:
 	if server_clock_offset_samples == 0:
 		return 0
 	return int(round(float(Time.get_ticks_msec() & 0xFFFFFFFF) + server_clock_offset_ms))
 
 
-func _elapsed_msec_since_u32(timestamp_ms: int) -> int:
-	var now_u32: int = Time.get_ticks_msec() & 0xFFFFFFFF
-	var elapsed := now_u32 - (timestamp_ms & 0xFFFFFFFF)
-	if elapsed < 0:
-		elapsed += UINT32_WRAP
-	return elapsed
+## Send a message to the server. Routes to the D2 channel for the type and encodes through
+## the Rust codec. Returns true once ENet accepted the packet.
+func send_message(message_type: MessageType, data: Dictionary = {}) -> bool:
+	if current_state != ConnectionState.CONNECTED:
+		print("[NetworkManager] Cannot send message - not connected")
+		return false
+	if _transport.client_state() != Transport.LinkState.OPEN:
+		print("[NetworkManager] Cannot send message - link is not open")
+		return false
 
-
-func _get_disconnect_reason_code(reason: Variant) -> int:
-	if reason is int:
-		return reason
-
-	var reason_text := str(reason).to_lower()
-	if reason_text.contains("timeout"):
-		return PacketTypes.DisconnectReason.TIMEOUT
-	if reason_text.contains("kick"):
-		return PacketTypes.DisconnectReason.KICKED
-	if reason_text.contains("server shutdown"):
-		return PacketTypes.DisconnectReason.SERVER_SHUTDOWN
-	if reason_text.contains("invalid auth"):
-		return PacketTypes.DisconnectReason.INVALID_AUTH
-	if reason_text.contains("duplicate"):
-		return PacketTypes.DisconnectReason.DUPLICATE_SESSION
-	return PacketTypes.DisconnectReason.USER_QUIT
-
-
-## Encode packet to binary format using PacketWriter
-## Binary protocol as per ARCHITECTURE.md Section 4.3
-func _encode_packet(message_type: MessageType, data: Dictionary) -> PackedByteArray:
-	var writer = PacketWriter.new()
-	writer.write_header(message_type)
+	var bytes: PackedByteArray
+	var channel: int = ProtocolCodec.channel_reliable()
+	var reliable := true
 
 	match message_type:
-		MessageType.HEARTBEAT:
-			# Wire format (8 bytes, both directions, §5.4 of
-			# NETWORK_PERFORMANCE_UPGRADES.md):
-			#   [u32 timestamp]  - echoed client send time for RTT
-			#   [u32 server_ms]  - server wall clock; set by server, 0 on client
-			writer.write_u32(data.get("timestamp", Time.get_ticks_msec()))
-			writer.write_u32(data.get("server_ms", 0))
-
 		MessageType.PLAYER_INPUT:
-			var input_packet = PlayerInputPacket.from_input_dict(data)
-			input_packet.write_payload(writer)
-
-		MessageType.STATE_UPDATE:
-			# Server constructs StateUpdatePacket with delta support (TASK-021)
-			var state_flags: int = data.get("state_flags", 0)
-			var is_delta := (state_flags & PacketTypes.STATE_FLAG_IS_DELTA) != 0
-
-			var state_packet: StateUpdatePacket
-			if is_delta:
-				state_packet = StateUpdatePacket.create_delta(
-					data.get("tick", 0),
-					data.get("baseline_tick", 0)
-				)
-			else:
-				state_packet = StateUpdatePacket.create(data.get("tick", 0))
-				state_packet.state_flags = state_flags
-				state_packet.baseline_tick = data.get("baseline_tick", 0)
-
-			for entity_data in data.get("entities", []):
-				state_packet.add_entity_dict(entity_data)
-
-			state_packet.write_payload(writer)
-
-		MessageType.GAME_EVENT:
-			writer.write_u8(data.get("event_type", 0))
-			writer.write_u16(data.get("source_id", 0))
-			writer.write_u16(data.get("target_id", 0))
-			# Event-specific data written based on type
-			_write_game_event_data(writer, data)
-
-		MessageType.ACTION_CONFIRM:
-			writer.write_u8(data.get("sequence_number", data.get("sequence", 0)))
-			writer.write_u8(data.get("action_type", 0))
-			writer.write_vector2_compressed(data.get("corrected_position", data.get("position", Vector2.ZERO)))
-			writer.write_u8(data.get("result_code", data.get("result", 0)))
-			writer.write_u16(data.get("server_tick", data.get("tick", 0)))
-			writer.write_u8(clampi(data.get("stamina", 100), 0, 255))
-			writer.write_u8(clampi(data.get("mana", 100), 0, 255))
-
-		MessageType.CONNECT_AUTH:
-			writer.write_string(data.get("token", ""))
-			writer.write_string(data.get("character_id", ""))
-			writer.write_string(data.get("character_name", ""))
-			writer.write_u8(AuthPacket.region_from_string(data.get("region", "Asia")))
-			_write_color_rgb(writer, data.get("player_color", Color(0.27, 0.53, 1.0)))
-			# Trailing client-advertised egress budget (bytes/sec). MUST stay
-			# byte-identical to AuthPacket.write_payload — this is the live path.
-			writer.write_u32(maxi(0, int(data.get("bandwidth_budget_bps", 0))))
-
-		MessageType.DISCONNECT:
-			writer.write_u8(_get_disconnect_reason_code(data.get("reason", PacketTypes.DisconnectReason.USER_QUIT)))
-			writer.write_u32(Time.get_ticks_msec())
-
-		MessageType.REQUEST_FULL_STATE:
-			# TASK-021: Client requesting full state sync
-			# Minimal payload - just timestamp for tracking
-			writer.write_u32(Time.get_ticks_msec())
-
-		MessageType.RESPAWN_REQUEST:
-			# Empty payload - server infers from peer_id
-			writer.write_u32(Time.get_ticks_msec())
-
-		MessageType.SERVER_METRICS:
-			# Server performance metrics broadcast
-			writer.write_u32(data.get("tick_count", 0))
-			writer.write_u16(int(data.get("avg_tick_time_ms", 0.0) * 100))  # Fixed-point *100
-			writer.write_u16(int(data.get("max_tick_time_ms", 0.0) * 100))  # Fixed-point *100
-			writer.write_u16(data.get("player_count", 0))
-			writer.write_u16(data.get("entity_count", 0))
-			writer.write_u32(data.get("total_bytes_sent", 0))
-			writer.write_u32(data.get("total_bytes_received", 0))
-			writer.write_u32(int(data.get("avg_bandwidth_per_client", 0.0)))
-			# Scheduler diagnostics (§8.2). Fixed-length append — must stay in
-			# lockstep with the decode case below. mini()/clampi() guard the stream
-			# against u16/u8 overflow at the 1000-player target.
-			writer.write_u16(mini(int(data.get("sched_entities_deferred", 0)), 65535))
-			writer.write_u16(mini(int(data.get("sched_max_queue_age_ticks", 0)), 65535))
-			writer.write_u8(clampi(int(data.get("sched_peers_at_budget_pct", 0)), 0, 255))
-			writer.write_u16(mini(int(data.get("sched_peers_evaluated", 0)), 65535))
-			writer.write_u16(mini(int(data.get("sched_snapshot_overflow", 0)), 65535))
-
+			var input_flags: int = data.get("input_flags", PacketTypes.encode_input_flags(data.get("keys", {})))
+			bytes = _codec.encode_input(
+				data.get("position", Vector2.ZERO),
+				data.get("velocity", Vector2.ZERO),
+				input_flags,
+				data.get("aim_angle", 0.0),
+				data.get("sequence", 0),
+				data.get("client_render_tick", 0),
+				data.get("client_rtt_ms", 0)
+			)
+			channel = ProtocolCodec.channel_input()
+			reliable = false
 		MessageType.BASELINE_ACK:
-			# Client -> Server: confirm receipt of a full-state Baseline (#14).
-			# Payload: [u32 baseline_tick] — the server_tick the client tagged the
-			# Baseline with. INERT on today's WebSocket/TCP transport (TCP never
-			# drops a baseline); forward-looking scaffold for the UDP transport (#12).
-			writer.write_u32(data.get("baseline_tick", 0))
-
+			bytes = _codec.encode_baseline_ack(data.get("baseline_tick", 0))
+		MessageType.REQUEST_FULL_STATE:
+			bytes = _codec.encode_request_full_state()
+		MessageType.RESPAWN_REQUEST:
+			bytes = _codec.encode_respawn_request()
 		MessageType.LOCAL_HIT_REPORT:
-			# Client -> Server: the victim's client detected a monster projectile
-			# hitting it (predicted self vs. rendered bullet). The server validates
-			# plausibility before applying damage. Payload: [u16 projectile_id].
-			writer.write_u16(data.get("projectile_id", 0))
+			bytes = _codec.encode_local_hit_report(data.get("projectile_id", 0))
+		MessageType.CONNECT_AUTH:
+			# Use send_auth_handshake(); kept for compatibility with direct callers.
+			bytes = _codec.encode_connect_auth(
+				data.get("character_name", ""),
+				data.get("player_color", Color(0.27, 0.53, 1.0)),
+				int(data.get("bandwidth_budget_bps", DEFAULT_CLIENT_BUDGET)),
+				session_ticket
+			)
+		MessageType.DISCONNECT:
+			# Native ENet disconnect carries the reason; no packet exists.
+			disconnect_from_server(str(data.get("reason", "User disconnect")))
+			return true
+		_:
+			push_error("[NetworkManager] send_message: type %d is not client-sendable" % message_type)
+			return false
 
-	writer.finalize_header()
-	return writer.get_buffer()
-
-
-## Helper: Write game event specific data
-func _write_game_event_data(writer: PacketWriter, data: Dictionary) -> void:
-	var event_type = data.get("event_type", 0)
-	var event_data: Dictionary = data.get("event_data", {})
-	match event_type:
-		PacketTypes.GameEventType.DAMAGE:
-			writer.write_u16(event_data.get("amount", data.get("amount", 0)))
-			writer.write_u8(event_data.get("damage_type", data.get("damage_type", 0)))
-		PacketTypes.GameEventType.KILL, \
-		PacketTypes.GameEventType.KILL_PVP:
-			pass  # No extra data.
-		PacketTypes.GameEventType.PROJECTILE_FIRED:
-			writer.write_vector2_compressed(event_data.get("position", data.get("position", Vector2.ZERO)))
-			writer.write_u16(event_data.get("server_tick", data.get("server_tick", 0)))
-		PacketTypes.GameEventType.RESPAWN:
-			writer.write_vector2_compressed(event_data.get("position", data.get("position", Vector2.ZERO)))
-		PacketTypes.GameEventType.EFFECT_APPLY:
-			writer.write_u8(event_data.get("effect_id", data.get("effect_id", 0)))
-			writer.write_u16(event_data.get("duration_ms", data.get("duration_ms", 0)))
-		PacketTypes.GameEventType.EFFECT_REMOVE:
-			writer.write_u8(event_data.get("effect_id", data.get("effect_id", 0)))
-		PacketTypes.GameEventType.PLAYER_INFO:
-			writer.write_string(event_data.get("character_name", ""))
-			writer.write_vector2_compressed(event_data.get("position", Vector2.ZERO))
-			_write_color_rgb(writer, event_data.get("player_color", Color(0.27, 0.53, 1.0)))
-		PacketTypes.GameEventType.LEADERBOARD_UPDATE:
-			var entries: Array = event_data.get("entries", [])
-			writer.write_u8(entries.size())
-			for entry in entries:
-				writer.write_u16(entry.get("entity_id", 0))
-				writer.write_u16(entry.get("pvp_kills", 0))
+	return _send_bytes(channel, bytes, reliable)
 
 
-func _write_color_rgb(writer: PacketWriter, color: Color) -> void:
-	writer.write_u8(clampi(roundi(color.r * 255.0), 0, 255))
-	writer.write_u8(clampi(roundi(color.g * 255.0), 0, 255))
-	writer.write_u8(clampi(roundi(color.b * 255.0), 0, 255))
+func _send_bytes(channel: int, bytes: PackedByteArray, reliable: bool) -> bool:
+	if bytes.is_empty():
+		# The codec returns empty bytes when it refuses to encode; never send a 0-byte packet.
+		return false
+	var error = _transport.client_send_channel(channel, bytes, reliable)
+	if error == OK:
+		stats.packets_sent += 1
+		stats.bytes_sent += bytes.size()
+		return true
+	print("[NetworkManager] Failed to send packet: %d" % error)
+	return false
 
 
-## Decode packet from binary format using PacketReader
-## Binary protocol as per ARCHITECTURE.md Section 4.3
-func _decode_packet(packet: PackedByteArray) -> Dictionary:
-	if packet.size() < PacketTypes.HEADER_SIZE:
-		push_error("[NetworkManager] Packet too small: %d bytes" % packet.size())
-		return {}
+## Send message to server (alias for send_message for code clarity)
+func send_to_server(message_type: MessageType, data: Dictionary = {}) -> bool:
+	return send_message(message_type, data)
 
-	var reader = PacketReader.new(packet)
-	var header = reader.read_header()
-	var packet_type = header.type
 
-	if not PacketTypes.is_valid_type(packet_type):
-		push_error("[NetworkManager] Invalid packet type: %d" % packet_type)
-		return {}
+## Send player input at the client prediction cadence (ch2, unreliable sequenced).
+func send_player_input(input_data: Dictionary) -> void:
+	send_message(MessageType.PLAYER_INPUT, input_data)
 
-	var result = {
-		"type": packet_type,
-		"data": {}
-	}
 
-	match packet_type:
-		PacketTypes.Type.HEARTBEAT:
-			# §5.4: heartbeat now carries both echoed client timestamp and the
-			# server's wall clock so the client can maintain a low-pass-filtered
-			# clock offset for interpolation alignment.
-			result.data = {
-				"timestamp": reader.read_u32(),
-				"server_ms": reader.read_u32()
-			}
-
-		PacketTypes.Type.PLAYER_INPUT:
-			var input_packet = PlayerInputPacket.read(reader)
-			result.data = input_packet.to_dict()
-
-		PacketTypes.Type.STATE_UPDATE:
-			# TASK-021: Read state update with delta support
-			# Note: Delta reconstruction happens in InterpolationController
-			var state_packet = StateUpdatePacket.read(reader)
-			result.data = state_packet.to_dict()
-
-		PacketTypes.Type.GAME_EVENT:
-			var event_packet = GameEventPacket.read(reader)
-			result.data = event_packet.to_dict()
-
-		PacketTypes.Type.ACTION_CONFIRM:
-			var confirm_packet = ActionConfirmPacket.read(reader)
-			result.data = confirm_packet.to_dict()
-
-		PacketTypes.Type.CONNECT_AUTH:
-			var auth_packet = AuthPacket.read(reader)
-			result.data = auth_packet.to_dict()
-
-		PacketTypes.Type.DISCONNECT:
-			var disconnect_packet = DisconnectPacket.read(reader)
-			result.data = disconnect_packet.to_dict()
-
-		PacketTypes.Type.REQUEST_FULL_STATE:
-			# TASK-021: Client requesting full state sync
-			result.data = {
-				"timestamp": reader.read_u32()
-			}
-
-		PacketTypes.Type.RESPAWN_REQUEST:
-			result.data = {
-				"timestamp": reader.read_u32()
-			}
-
-		PacketTypes.Type.SERVER_METRICS:
-			result.data = {
-				"tick_count": reader.read_u32(),
-				"avg_tick_time_ms": reader.read_u16() / 100.0,
-				"max_tick_time_ms": reader.read_u16() / 100.0,
-				"player_count": reader.read_u16(),
-				"entity_count": reader.read_u16(),
-				"total_bytes_sent": reader.read_u32(),
-				"total_bytes_received": reader.read_u32(),
-				"avg_bandwidth_per_client": reader.read_u32(),
-				# Scheduler diagnostics (§8.2) — same order as the encode case above.
-				"sched_entities_deferred": reader.read_u16(),
-				"sched_max_queue_age_ticks": reader.read_u16(),
-				"sched_peers_at_budget_pct": reader.read_u8(),
-				"sched_peers_evaluated": reader.read_u16(),
-				"sched_snapshot_overflow": reader.read_u16()
-			}
-
-		PacketTypes.Type.BASELINE_ACK:
-			# Client -> Server: ack of a received full-state Baseline (#14).
-			result.data = { "baseline_tick": reader.read_u32() }
-
-		PacketTypes.Type.LOCAL_HIT_REPORT:
-			# Client -> Server: client-detected monster-projectile hit on self.
-			result.data = { "projectile_id": reader.read_u16() }
-
-	return result
-
-## Handle connection closed
 func _on_connection_closed(reason: String) -> void:
 	current_state = ConnectionState.DISCONNECTED
 	_auth_handshake_sent = false
@@ -1046,10 +472,8 @@ func _on_connection_closed(reason: String) -> void:
 	if _had_successful_connection:
 		_schedule_reconnect()
 
-## Schedule reconnection with exponential backoff
-## Auto-reconnects whenever the client had an active server connection
+
 func _schedule_reconnect() -> void:
-	# Only reconnect if we have a server URL (i.e., we were connected or connecting)
 	if server_url.is_empty():
 		print("[NetworkManager] Skipping auto-reconnect (no server URL)")
 		current_state = ConnectionState.DISCONNECTED
@@ -1061,7 +485,6 @@ func _schedule_reconnect() -> void:
 		connection_error.emit("Failed to reconnect after %d attempts" % reconnect_attempts)
 		return
 
-	# Calculate exponential backoff delay
 	var delay = min(base_reconnect_delay * pow(2, reconnect_attempts), max_reconnect_delay)
 	reconnect_timer = delay
 	reconnect_attempts += 1
@@ -1069,26 +492,23 @@ func _schedule_reconnect() -> void:
 	print("[NetworkManager] Scheduling reconnect attempt %d in %.1f seconds..." % [reconnect_attempts, delay])
 	current_state = ConnectionState.RECONNECTING
 
-## Attempt to reconnect
+
 func _attempt_reconnect() -> void:
 	print("[NetworkManager] Attempting to reconnect...")
 	connect_to_server(server_url, auth_token, true)
 
+
 ## Check if connected to server
 func is_server_connected() -> bool:
 	return current_state == ConnectionState.CONNECTED \
+		and _transport != null \
 		and _transport.client_state() == Transport.LinkState.OPEN
 
-## Get network statistics. Includes the per-channel byte breakdown when in
-## server mode (§8.1) so dashboards / tests can detect when one packet type
-## starts dominating egress.
-func get_stats() -> Dictionary:
-	var snapshot: Dictionary = stats.duplicate()
-	if not bytes_sent_by_type.is_empty():
-		snapshot["bytes_sent_by_type"] = bytes_sent_by_type.duplicate()
-	return snapshot
 
-## Reset statistics
+func get_stats() -> Dictionary:
+	return stats.duplicate()
+
+
 func reset_stats() -> void:
 	stats = {
 		"packets_sent": 0,
@@ -1099,3 +519,38 @@ func reset_stats() -> void:
 		"last_ping_time": 0.0
 	}
 	print("[NetworkManager] Statistics reset")
+
+
+# ── Retired server-mode API (the Rust server owns this role now) ─────────────
+# Inert stubs so legacy scripts (server_main.gd and friends) fail soft instead of crashing.
+
+## server_main.gd reads this per metrics second; an empty dictionary keeps it inert.
+var peer_bytes_sent: Dictionary = {}
+
+
+func begin_batch() -> void:
+	pass
+
+
+func flush_batches() -> void:
+	pass
+
+
+func clear_batches() -> void:
+	pass
+
+
+func send_to_client(_peer_id: int, _message_type: int, _data: Dictionary = {}) -> void:
+	push_error("[NetworkManager] send_to_client: the GDScript server is retired - use omega-server")
+
+
+func broadcast_to_clients(_message_type: int, _data: Dictionary = {}) -> void:
+	push_error("[NetworkManager] broadcast_to_clients: the GDScript server is retired - use omega-server")
+
+
+func disconnect_client(_peer_id: int, _reason: String = "") -> void:
+	pass
+
+
+func get_connected_peer_ids() -> Array:
+	return []

@@ -1,26 +1,14 @@
-#!/bin/bash
-# Build script for Godot headless server
+#!/usr/bin/env bash
+# Build the Rust game server (omega-server). The old Godot headless-server export is retired
+# (migration-spec D1) — the client project now exports the CLIENT only.
+set -euo pipefail
+cd "$(dirname "$0")/../rust"
 
-set -e
+echo "Building omega-server (release)..."
+cargo build --release -p omega-server
 
-echo "Building Omega Realm Server..."
-
-# Navigate to client directory (server exports from same project)
-cd "$(dirname "$0")/../client"
-
-# Check if Godot is available
-if ! command -v godot &> /dev/null; then
-    echo "Error: Godot not found in PATH"
-    echo "Please install Godot 4.6 or add it to your PATH"
-    exit 1
-fi
-
-# Export headless server
-echo "Exporting Linux headless server..."
-godot --headless --export-release "Linux Headless Server" "../exports/server/linux/omega-server.x86_64"
-
-echo "Server build complete!"
-echo "Export located in: ../exports/server/linux/"
+echo "Server build complete: rust/target/release/omega-server"
 echo ""
-echo "To run the server locally:"
-echo "  ../exports/server/linux/omega-server.x86_64 --headless"
+echo "Run it locally:"
+echo "  ./scripts/run_server.sh    # dev mode (unsigned tickets accepted)"
+echo "Args: --config <file> | --require-tickets | --allow-unsigned-tickets"

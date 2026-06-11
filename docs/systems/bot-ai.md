@@ -1,8 +1,13 @@
 # Bot AI (load-testing swarm)
 
-**Status:** Implemented (verified 2026-06-11 against code).
+**Status:** Retired (2026-06-11). The Python swarm this doc describes was removed with the
+WebSocket protocol; the live harness is the Rust `omega-load-test` crate
+([`rust/load_test/`](../../rust/load_test/README.md)), which ports the load behaviors
+verbatim and the strategy AI in **simplified** form (no A* hunt/flank planner). This doc
+remains as the spec of the full tactical AI for anyone completing that port; the cited
+sources live in git history before the Rust port.
 
-The **bots** are the Python load-testing swarm in [`load_testing/bot_client.py`](../../load_testing/bot_client.py),
+The **bots** are the Python load-testing swarm in `load_testing/bot_client.py` (removed; see git history),
 driven by `bot_swarm.py`. Each bot is a headless WebSocket client that authenticates and plays
 like a real player, so to everyone else in the arena a bot **is** a remote player. This is how we
 push 500–1000 concurrent clients at one headless server. This is distinct from the in-game

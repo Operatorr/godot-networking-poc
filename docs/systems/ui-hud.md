@@ -34,7 +34,7 @@ login_screen ──login ok──▶ has character? ──no──▶ character_
 
 | File | Role |
 | --- | --- |
-| `ui/error_dialog.gd` | Reusable `PopupPanel` with title/message + optional Retry; used by login, character creation, main menu. |
+| `ui/error_dialog.gd` | Reusable `PopupPanel` with title/message + optional Retry; used by login, character creation, main menu. `popup_window = false` so it survives click-outside/focus loss; it closes only via its buttons. |
 | `ui/menu_button_helper.gd` | Applies the shared `StyleBoxTexture` button art + sizing to a button list. |
 | `ui/menu_font_helper.gd` | Recursively applies `CormorantUnicase-Bold` to every `Control` in a tree (`:7-25`). |
 | `region_info.gd` | Region DTO (`from_dict`, `is_available`, `get_display_text`) backing the dropdown. |

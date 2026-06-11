@@ -518,7 +518,8 @@ func get_monster_projectile_snapshots() -> Array:
 	var result: Array = []
 	for projectile_id: int in _active_projectiles.keys():
 		var source_id: int = _projectile_sources.get(projectile_id, -1)
-		if not HitAuthority.is_client_authoritative(source_id):
+		# Shared Rust sim_core predicate (D11); unknown source (-1) is never client-auth.
+		if not SimHit.is_client_authoritative(source_id):
 			continue
 		var projectile: Projectile = _active_projectiles[projectile_id]
 		if not is_instance_valid(projectile) or not projectile.visible:

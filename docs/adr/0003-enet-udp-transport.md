@@ -1,11 +1,18 @@
 # ADR 0003 — ENet-over-UDP datagram transport (supersedes 0001's substrate)
 
-**Status:** Accepted (design) — 2026-06-04. The **transport seam** is implemented
-(`client/autoload/transport/`); the ENet implementation behind it is a **deferred, human-approved
-follow-up**. Supersedes [ADR 0001](0001-websocket-tcp-transport.md) on the transport substrate
-**only** — the wire protocol (`PacketWriter`/`PacketReader`, the `[u8 type][u16 length]` header,
-quantization, delta masks, BATCH coalescing) and the authoritative fixed-tick model
-([ADR 0002](0002-authoritative-server-fixed-tick.md)) stand unchanged.
+**Status:** Implemented — 2026-06-11 (Rust port). The client side is
+`client/autoload/transport/enet_transport.gd` (3 raw channels over `ENetConnection`); the server
+side is the Rust `omega-server` binary (`rust/server`, `rusty_enet`). Supersedes
+[ADR 0001](0001-websocket-tcp-transport.md) on the transport substrate. One consequence below
+was later amended: the port redesigned the **wire format too** — see
+[ADR 0004](0004-schema-driven-wire-protocol.md); the channel plan grew to three (snapshots /
+reliable / input) per migration-spec D2. The authoritative fixed-tick model
+([ADR 0002](0002-authoritative-server-fixed-tick.md)) stands unchanged.
+
+**Address-family note:** `omega-server` binds IPv4-only, so `enet_transport.gd` resolves bare
+hostnames to IPv4 itself (`IP.resolve_hostname(host, IP.TYPE_IPV4)`) before connecting — ENet
+takes the first resolver answer, and on macOS `localhost` resolves to `::1` first, which would
+hang the connect until timeout.
 
 ## Decision
 

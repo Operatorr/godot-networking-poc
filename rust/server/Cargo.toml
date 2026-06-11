@@ -1,0 +1,23 @@
+[package]
+name = "omega-server"
+version.workspace = true
+edition.workspace = true
+description = "Omega Realm authoritative game server — one process per Instance (migration-spec D8/D13)"
+
+[[bin]]
+name = "omega-server"
+path = "src/main.rs"
+
+[dependencies]
+protocol.workspace = true
+sim_core.workspace = true
+rusty_enet.workspace = true
+ed25519-dalek.workspace = true
+ctrlc.workspace = true
+ureq.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+metrics.workspace = true
+metrics-exporter-prometheus.workspace = true

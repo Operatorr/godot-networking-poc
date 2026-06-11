@@ -15,7 +15,16 @@ for the map; this page is the **catalogue** with verification status. Terms are 
 | **Reference** | Numbers/decisions/background, not a system. |
 | **Active** | A live exec-plan being worked. |
 
-## Start here (the performance investigation)
+## The Rust server port (current core — start here)
+
+| Doc | Status | What it answers |
+|---|---|---|
+| [`rust-port/README.md`](rust-port/README.md) | Implemented | **Port status** — what was built, how it was verified, deliberate deviations. |
+| [`rust-port/migration-spec.md`](rust-port/migration-spec.md) | Implemented | The full decision log D1–D14 (transport, protocol, sim parity, persistence, deploy, cutover). |
+| [`rust-port/contract.md`](rust-port/contract.md) | Implemented | Crate APIs, ENet channel plan, the bit-packed wire format, numerics policy — as built. |
+| [`rust-port/extraction/`](rust-port/extraction/) | Reference | Behavioral port-notes extracted from the GDScript (`file:line` cited) — the parity ground truth. |
+
+## The performance investigation (pre-port; concepts stand, GDScript cites are historical)
 
 | Doc | Status | What it answers |
 |---|---|---|
@@ -33,7 +42,7 @@ for the map; this page is the **catalogue** with verification status. Terms are 
 | [`netcode/client-prediction.md`](netcode/client-prediction.md) | Partial | Local-player prediction & reconciliation (+ double-movement bug). |
 | [`netcode/interpolation.md`](netcode/interpolation.md) | Partial | Remote-entity interpolation & the **adaptive** (jitter-driven, 1–3 tick) Render delay. |
 | [`netcode/server-tick-broadcast.md`](netcode/server-tick-broadcast.md) | Implemented | 30 Hz tick + 30 Hz snapshot, shared-grid AoI, delta, bandwidth-budget scheduler, baseline acks. |
-| [`netcode/transport-websocket.md`](netcode/transport-websocket.md) | Implemented | WebSocket-over-TCP + transport seam; head-of-line blocking (ENet swap deferred). |
+| [`netcode/transport-websocket.md`](netcode/transport-websocket.md) | Superseded | WebSocket-over-TCP + transport seam; head-of-line blocking. Retired with the Rust port — live transport is ENet/UDP (ADR 0003, `rust-port/contract.md`). |
 | [`netcode/interest-mgmt-aoi.md`](netcode/interest-mgmt-aoi.md) | Implemented | AoI 700/800 + shared spatial grid, LOD, byte-budget deferral, surfaced diagnostics. |
 | [`netcode/wire-protocol.md`](netcode/wire-protocol.md) | Implemented | Binary packet formats, quantization, u16 entity_count, `BASELINE_ACK`, auth budget. |
 | [`netcode/performance-budgets.md`](netcode/performance-budgets.md) | Reference | Targets vs measured, with the gap and the doc-drift. |
@@ -46,7 +55,7 @@ for the map; this page is the **catalogue** with verification status. Terms are 
 | [`systems/players-movement-state-machine.md`](systems/players-movement-state-machine.md) | Implemented | 7-state server-authoritative movement SM: dash, sprint, knockback, stun, stamina, mana. |
 | [`systems/combat-hits.md`](systems/combat-hits.md) | Implemented | Shooting, projectiles, lag-compensated swept PvP + PvE hits, cosmetic shoot feedback. |
 | [`systems/monsters-ai.md`](systems/monsters-ai.md) | Implemented | The Toxic Slime and its server-side AI state machine. |
-| [`systems/bot-ai.md`](systems/bot-ai.md) | Implemented | Load-testing bot swarm AI: behaviors, tactical states, sprint/stamina + dash. |
+| [`systems/bot-ai.md`](systems/bot-ai.md) | Retired | Python bot-swarm tactical AI (removed); live harness is `rust/load_test/` (simplified strategy port). |
 | [`systems/monster-architecture.md`](systems/monster-architecture.md) | Implemented · roadmap Planned | Monster factory, data-driven definitions, schema, and the add-a-monster pipeline. |
 | [`systems/audio.md`](systems/audio.md) | Implemented | AudioManager + procedurally-generated sound (no audio assets). |
 | [`systems/ui-hud.md`](systems/ui-hud.md) | Implemented | HUD components, menus, effects, scene flow. |
@@ -59,10 +68,9 @@ for the map; this page is the **catalogue** with verification status. Terms are 
 |---|---|---|
 | [`adr/0001-websocket-tcp-transport.md`](adr/0001-websocket-tcp-transport.md) | Accepted | Why WebSocket-over-TCP (and the HOL trade-off). |
 | [`adr/0002-authoritative-server-fixed-tick.md`](adr/0002-authoritative-server-fixed-tick.md) | Accepted | Why a single authoritative server at a fixed 30 Hz tick. |
-| [`adr/0003-enet-udp-transport.md`](adr/0003-enet-udp-transport.md) | Accepted | ENet-over-UDP datagram target (supersedes 0001's substrate); the transport seam lands first. |
-| [`adr/0004-schema-driven-wire-protocol.md`](adr/0004-schema-driven-wire-protocol.md) | Accepted | Redesigned wire protocol as a shared Rust crate (no codegen); **amends 0003**'s "wire format unchanged". |
+| [`adr/0003-enet-udp-transport.md`](adr/0003-enet-udp-transport.md) | Implemented | ENet-over-UDP datagram transport (supersedes 0001's substrate) — shipped with the Rust port. |
+| [`adr/0004-schema-driven-wire-protocol.md`](adr/0004-schema-driven-wire-protocol.md) | Implemented | Redesigned wire protocol as a shared Rust crate (no codegen); **amends 0003**'s "wire format unchanged". |
 | [`adr/0005-permadeath-persistence-model.md`](adr/0005-permadeath-persistence-model.md) | Accepted | Permadeath persistence — death is the server-authoritative transactional save; item integrity via the Go API. |
-| [`rust-port/migration-spec.md`](rust-port/migration-spec.md) | Active | **The Rust game-server port** — full decision log D1–D14 (transport, protocol, sim parity, persistence, deploy, cutover). |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Reference | Top-level system architecture & POC success criteria. |
 | [`specification.md`](specification.md) | Reference | Game design spec / GDD (the minimal bullet-hell design). |
 | [`INFRASTRUCTURE.md`](INFRASTRUCTURE.md) | Reference | Deployment / infra (Docker, DigitalOcean). |

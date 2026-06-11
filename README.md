@@ -1,8 +1,15 @@
 # Omega Realm - Multiplayer Networking POC
 
-A proof-of-concept multiplayer game built with **Godot 4.6** and **Go**, designed to stress-test networking architecture for MMO-scale games.
+A proof-of-concept multiplayer game built with **Godot 4.6** (client), **Rust** (authoritative
+game server), and **Go** (backend API), designed to stress-test networking architecture for
+MMO-scale games.
 
-**Goal:** Validate that a single Godot headless server can handle **500-1000 concurrent players** while maintaining playable performance.
+**Goal:** Validate that a single authoritative server can handle **500-1000 concurrent
+players** while maintaining playable performance.
+
+> Deep documentation lives in [`docs/`](docs/index.md) — start with
+> [`docs/rust-port/migration-spec.md`](docs/rust-port/migration-spec.md) and
+> [`docs/rust-port/contract.md`](docs/rust-port/contract.md) for the current core.
 
 ---
 
@@ -12,7 +19,7 @@ A proof-of-concept multiplayer game built with **Godot 4.6** and **Go**, designe
 - [Tech Stack](#tech-stack)
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
-- [Service Management](#service-management)
+- [Local Dev Stack](#local-dev-stack)
 - [Project Structure](#project-structure)
 - [Development Workflow](#development-workflow)
 - [Testing](#testing)
@@ -27,18 +34,18 @@ A proof-of-concept multiplayer game built with **Godot 4.6** and **Go**, designe
 ```
 ┌─────────────────┐         HTTP REST API        ┌─────────────────┐
 │  Game Client    │ ←──────────────────────────→ │   Go API        │
-│  (Godot 4.6)    │   (Auth, Characters,         │  (Port 8080)    │
-│                 │    Leaderboards)             │                 │
+│  (Godot 4.6 +   │   (Auth, Characters,         │  (Port 8080)    │
+│  Rust GDExt)    │    Leaderboards)             │                 │
 └────────┬────────┘                              └────────┬────────┘
          │                                                │
-         │ WebSocket (Port 8081)                         │ PostgreSQL
-         │ (Game state, movement, combat)                │ + Redis
-         │                                               │
-         ▼                                               ▼
+         │ ENet/UDP (Port 8081)                           │ PostgreSQL
+         │ (Inputs, snapshots, combat)                    │ + Redis
+         │                                                │
+         ▼                                                ▼
 ┌─────────────────┐                              ┌─────────────────┐
-│  Game Server    │ ←────── HTTP (Stats) ──────→ │   Database      │
-│  (Godot 4.6     │                              │   PostgreSQL    │
-│   Headless)     │                              │   Redis Cache   │
+│  Game Server    │ ←── HTTP (region beat) ────→ │   Database      │
+│  (Rust          │                              │   PostgreSQL    │
+│   omega-server) │                              │   Redis Cache   │
 └─────────────────┘                              └─────────────────┘
 ```
 
@@ -46,10 +53,15 @@ A proof-of-concept multiplayer game built with **Godot 4.6** and **Go**, designe
 
 | Component | Port | Responsibility |
 |-----------|------|----------------|
-| **Go API Server** | 8080 | Authentication, user accounts, character data, leaderboards, persistence |
-| **Godot Game Server** | 8081 | Real-time game state, physics, combat, monster AI, authoritative gameplay |
-| **PostgreSQL** | 5432 | Persistent data storage (accounts, characters, game data) |
-| **Redis** | 6379 | Session caching, leaderboards, real-time data |
+| **Go API Server** | 8080 (TCP) | Authentication, user accounts, character data, leaderboards, persistence |
+| **Rust Game Server** | 8081 (UDP) | Real-time game state, movement, combat, monster AI, authoritative gameplay; Prometheus metrics on 9100 |
+| **PostgreSQL** | 5432 | Persistent data storage (accounts, characters, leaderboard) |
+| **Redis** | 6379 | Session caching, leaderboards, region status |
+
+All gameplay state is server-authoritative and in-memory; only the Go API touches the
+databases. The client and server share the bit-packed wire protocol (`rust/protocol`) and the
+movement/collision simulation (`rust/sim_core`), which the client consumes through a
+GDExtension (`rust/client_ext`) — prediction and authority run the same code by construction.
 
 ---
 
@@ -57,8 +69,10 @@ A proof-of-concept multiplayer game built with **Godot 4.6** and **Go**, designe
 
 | Layer | Technology | Version |
 |-------|------------|---------|
-| Game Engine | Godot | 4.6 |
-| Scripting | GDScript | - |
+| Game Engine (client) | Godot | 4.6 |
+| Client scripting | GDScript | - |
+| Game server / protocol / sim | Rust | stable |
+| Transport | ENet over UDP (`rusty_enet`) | =0.4.0 |
 | API Backend | Go | 1.21+ |
 | Database | PostgreSQL | 15+ |
 | Cache | Redis | 7+ |
@@ -69,8 +83,9 @@ A proof-of-concept multiplayer game built with **Godot 4.6** and **Go**, designe
 ## Prerequisites
 
 - **Godot 4.6** - [Download](https://godotengine.org/download)
+- **Rust** (stable toolchain) - [Install](https://rustup.rs)
 - **Go 1.21+** - [Download](https://go.dev/dl/)
-- **PostgreSQL 15+** - Running locally or via Docker
+- **PostgreSQL 15+** - Running locally (e.g. DBngin) or via Docker
 - **Redis** - Required (sessions, leaderboard cache, region status; API exits if unreachable)
 - **Docker & Docker Compose** (optional) - For containerized deployment
 
@@ -82,13 +97,13 @@ A proof-of-concept multiplayer game built with **Godot 4.6** and **Go**, designe
 
 ```bash
 git clone <repository-url>
-cd godot-networking-poc
+cd omgea-networking
 ```
 
 ### 2. Provision the Databases
 
-The API requires **two** running services — bring them up however you like (local install,
-Docker, or managed):
+The API requires **two** running services — bring them up however you like (DBngin, local
+install, Docker, or managed):
 
 - **PostgreSQL** (accounts, characters, leaderboard persistence) — **required**.
 - **Redis** (sessions, leaderboard cache, region status) — **required**. The API exits on
@@ -141,7 +156,8 @@ TEST_USERNAME=testuser
 TEST_PASSWORD=testpassword123
 ```
 
-Then run the seeder, which reads `.env.test` and creates/updates that login in PostgreSQL:
+Then run the seeder, which reads the credentials from `.env.test` and the database
+connection from `api/.env`, and creates/updates that login in PostgreSQL:
 
 ```bash
 ./scripts/seed_test_user.sh
@@ -149,128 +165,98 @@ Then run the seeder, which reads `.env.test` and creates/updates that login in P
 
 > To re-test character creation for an existing user, re-run with `--reset-character`.
 
-### 5. Start the Services
+### 5. Start the Local Dev Stack
 
 ```bash
-# From project root — starts the Go API and the Godot headless game server
-./scripts/start_services.sh
+# From project root — starts the Go API (background) and the Rust game server (foreground)
+./scripts/dev_local.sh
 ```
 
-Stop them when you are done:
+Press **Ctrl+C** to stop both. PostgreSQL and Redis are **not** managed by this script —
+start them yourself first (step 2).
 
-```bash
-./scripts/stop_services.sh
-```
+### 6. Access the Game
 
-> PostgreSQL and Redis are **not** managed by these scripts — start them yourself first.
-
-### 6. (Optional) Run Gameplay Bots
-
-Spawn external WebSocket bots that authenticate and play like real clients to put load on the
-server (1–10 bots):
-
-```bash
-./scripts/start_bots.sh --bots 2     # spawn 2 bots (use any value 1–10)
-./scripts/stop_bots.sh               # stop all running bots
-```
-
-### 7. Access the Game
-
-- Open Godot and run the project, or
+- Open Godot and run the project (`client/`), or
 - Use the exported client binary
 
 ---
 
-## Service Management
+## Local Dev Stack
 
-Helper scripts are provided to manage the Go API and Godot game servers:
+`./scripts/dev_local.sh` is the day-to-day way to run the backend locally. It:
 
-### Start Services
-
-```bash
-./scripts/start_services.sh           # Start both servers
-./scripts/start_services.sh --api-only    # Start only Go API
-./scripts/start_services.sh --game-only   # Start only Godot server
-```
-
-### Stop Services
+- checks that `go` and `cargo` are installed and that PostgreSQL and Redis (as configured in
+  `api/.env`) are reachable, and fails fast with a clear message if not;
+- builds and starts the **Go API** in the background (log: `logs/api_server.log`, PID:
+  `.pids/api_server.pid`) and waits for `http://localhost:8080/health`;
+- builds and runs the **Rust game server** in the foreground (udp/8081 game, :9100 metrics)
+  in dev mode (unsigned session tickets accepted);
+- stops the API again when the game server exits or you hit Ctrl+C.
 
 ```bash
-./scripts/stop_services.sh            # Stop both servers
-./scripts/stop_services.sh --api-only     # Stop only Go API
-./scripts/stop_services.sh --game-only    # Stop only Godot server
+./scripts/dev_local.sh                          # API on :8080, game on udp/8081
+API_PORT=9090 ./scripts/dev_local.sh            # override API port
+./scripts/dev_local.sh -- --require-tickets     # pass args through to omega-server
+tail -f logs/api_server.log                     # follow API logs
 ```
 
-### Check Status
+Other run options:
 
 ```bash
-./scripts/status_services.sh
+./scripts/run_server.sh        # Rust game server only (no API)
+./scripts/deploy.sh up         # Full Docker stack: api + game server + postgres + redis
 ```
 
-### View Logs
-
-```bash
-tail -f logs/api_server.log    # Go API logs
-tail -f logs/game_server.log   # Godot server logs
-```
-
-> **Note:** PostgreSQL must be started manually. The scripts do not manage the database.
+> **Note:** the Docker stack starts its **own** PostgreSQL and Redis containers on the
+> default ports — don't combine it with DBngin databases already bound to 5432/6379.
 
 ---
 
 ## Project Structure
 
 ```
-godot-networking-poc/
-├── client/                          # Godot 4.6 Project (Client + Server)
-│   ├── project.godot               # Project configuration
-│   ├── autoload/                   # Singleton scripts
-│   │   ├── game_manager.gd         # Game state management
-│   │   ├── network_manager.gd      # WebSocket client/server
-│   │   ├── auth_manager.gd         # JWT authentication
-│   │   ├── audio_manager.gd        # Sound effects and music
-│   │   └── scene_manager.gd        # Scene transitions
-│   ├── scenes/
-│   │   ├── client/                 # Client-only scenes (menus, UI)
-│   │   ├── server/                 # Server-only scenes
-│   │   ├── shared/                 # Shared entities (player, projectiles)
-│   │   └── test/                   # Test scenes
-│   ├── scripts/
-│   │   ├── client/                 # Client-only logic
-│   │   ├── server/                 # Server-only logic (validation, AI)
-│   │   └── shared/                 # Shared game logic, protocol
-│   └── assets/                     # Graphics, audio (stripped in server)
+omgea-networking/
+├── rust/                            # Cargo workspace — the authoritative server lives here
+│   ├── protocol/                   # Bit-packed wire format (shared, ADR 0004)
+│   ├── sim_core/                   # Movement/collision/hit sim (server + client prediction)
+│   ├── server/                     # omega-server binary (30 Hz tick, ENet/UDP, metrics)
+│   ├── client_ext/                 # GDExtension: ProtocolCodec, PredictionSim, SimHit
+│   └── load_test/                  # omega-load-test ENet bot swarm
 │
-├── api/                            # Go Backend API
+├── client/                          # Godot 4.6 project (exports the CLIENT only)
+│   ├── autoload/                   # Singletons (network_manager, transport/, game_manager…)
+│   ├── scenes/                     # client/, shared/, test/ scenes
+│   ├── scripts/
+│   │   ├── client/                 # Prediction, interpolation, HUD, menus
+│   │   ├── shared/                 # Packet enums, constants, entities, arenas
+│   │   └── server/                 # RETIRED GDScript server — kept as parity ground truth
+│   └── bin/                        # Built GDExtension libraries
+│
+├── api/                            # Go backend API
 │   ├── cmd/server/main.go         # Entry point
-│   ├── internal/
-│   │   ├── auth/                   # JWT authentication
-│   │   ├── database/               # PostgreSQL connection
-│   │   ├── handlers/               # HTTP route handlers
-│   │   └── models/                 # Data models
-│   ├── go.mod                      # Go module
+│   ├── internal/                   # auth/, database/, handlers/, models/
 │   └── .env.example                # Environment template
 │
 ├── deployment/                     # Docker configs
 │   ├── docker-compose.yml          # Service orchestration
 │   ├── api.Dockerfile              # Go API container
-│   ├── server.Dockerfile           # Godot headless container
-│   └── .env.example                # Environment template
+│   ├── server.Dockerfile           # Rust game server container
+│   └── server_config.docker.json   # Game server config for the compose stack
 │
 ├── scripts/                        # Utility scripts
-│   ├── start_services.sh           # Start servers
-│   ├── stop_services.sh            # Stop servers
-│   ├── status_services.sh          # Check server status
+│   ├── dev_local.sh                # Local dev stack: Go API + Rust server (no Docker)
+│   ├── run_server.sh               # Rust game server only
+│   ├── run_load_test.sh            # ENet bot swarm load test
+│   ├── run_tests.sh                # Headless GDScript regression tests
 │   ├── build_client.sh             # Export game client
-│   ├── build_server.sh             # Export headless server
-│   └── build_api.sh                # Build Go API
+│   ├── build_client_ext.sh         # Build Rust GDExtension -> client/bin/
+│   ├── build_server.sh             # Build Rust omega-server (release)
+│   ├── build_api.sh                # Build Go API
+│   ├── seed_test_user.sh           # Seed the local test login
+│   └── deploy.sh                   # Docker compose up/down
 │
-├── docs/                           # Documentation
-│   └── ARCHITECTURE.md             # Detailed architecture guide
-│
-├── specs/                          # Feature specifications
-│   └── 002-player-character/       # Player system spec and tasks
-│
+├── docs/                           # System of record — see docs/index.md
 └── .env.test.example               # Test credentials template
 ```
 
@@ -280,52 +266,80 @@ godot-networking-poc/
 
 ### Running in Development Mode
 
-**Client Mode (GUI):**
+**Client (GUI):**
 ```bash
 cd client
 godot project.godot
 ```
 
-**Server Mode (Headless):**
+**Game server:**
 ```bash
-cd client
-godot --headless
+./scripts/run_server.sh        # or ./scripts/dev_local.sh for server + API
 ```
 
-The project automatically detects which mode to run based on:
-- `OS.has_feature("dedicated_server")` - Export preset flag
-- `DisplayServer.get_name() == "headless"` - Runtime detection
+The GDScript server mode is retired — `NetworkManager` refuses to start as a server; the
+Rust `omega-server` binary is the only authority.
 
 ### Adding New Features
 
-1. **Shared Logic** (both client & server need it):
-   - Add to `client/scripts/shared/`
-   - Example: Player movement, combat calculations
+1. **Simulation / protocol** (authority and prediction):
+   - Add to `rust/sim_core` / `rust/protocol`, expose to GDScript via `rust/client_ext`
+   - Rebuild the extension: `./scripts/build_client_ext.sh`
 
 2. **Client-Only** (UI, input, graphics):
    - Add to `client/scripts/client/`
    - Example: Menus, HUD, visual effects
 
 3. **Server-Only** (validation, AI, authority):
-   - Add to `client/scripts/server/`
+   - Add to `rust/server`
    - Example: Anti-cheat, monster behavior
+
+Governing rule for all gameplay: **the client requests, the server decides.**
 
 ### Building for Production
 
 ```bash
 # Build all components
-./scripts/build_client.sh    # Export client for Win/Mac/Linux
-./scripts/build_server.sh    # Export headless server
-./scripts/build_api.sh       # Build Go API binary
+./scripts/build_client.sh        # Export client for Win/Mac/Linux
+./scripts/build_client_ext.sh    # Rust GDExtension -> client/bin/
+./scripts/build_server.sh        # Rust omega-server (release)
+./scripts/build_api.sh           # Build Go API binary
 
 # Or use Docker
-cd deployment
-docker-compose up --build
+./scripts/deploy.sh up
 ```
 
 ---
 
 ## Testing
+
+### Rust workspace (must stay green)
+
+```bash
+cd rust && cargo test --workspace && cargo clippy --workspace --all-targets && cargo fmt --check
+```
+
+### GDScript regression tests
+
+```bash
+./scripts/run_tests.sh
+```
+
+### End-to-end smoke
+
+Needs a running game server on `127.0.0.1:8081` (e.g. `./scripts/run_server.sh`):
+
+```bash
+cd client && godot --path . res://scenes/test/net_smoke.tscn   # exits 0 on PASS
+```
+
+### Load test
+
+Needs a running game server; scenarios and flags in `rust/load_test/README.md`:
+
+```bash
+./scripts/run_load_test.sh --scenario baseline
+```
 
 ### Test Configuration
 
@@ -335,28 +349,12 @@ Create a test configuration file:
 cp .env.test.example .env.test
 ```
 
-Edit `.env.test` with your test credentials:
-
-```ini
-TEST_USERNAME=testuser
-TEST_PASSWORD=testpassword123
-TEST_CHARACTER_NAME=
-TEST_REALM=Asia
-API_SERVER_URL=http://localhost:8080
-GAME_SERVER_HOST=localhost
-GAME_SERVER_PORT=8081
-```
-
-Seed/update that local login user in PostgreSQL:
+Edit `.env.test` with your test credentials, then seed/update that local login user in
+PostgreSQL:
 
 ```bash
 ./scripts/seed_test_user.sh
-```
-
-If the user already has a character and you want to test character creation again:
-
-```bash
-./scripts/seed_test_user.sh --reset-character
+./scripts/seed_test_user.sh --reset-character   # to re-test character creation
 ```
 
 ### Test Scenes
@@ -365,26 +363,9 @@ If the user already has a character and you want to test character creation agai
 |-------|---------|
 | `client/scenes/test/player_test.tscn` | Simple player testing (no login required) |
 | `client/scenes/test/login_character_test.tscn` | Headless integration test: login and verify character data is loaded |
-| `client/scenes/test/auto_join_arena.tscn` | End-to-end test: login, connect, join networked arena |
-
-### Running Tests
-
-**Simple Player Test:**
-```bash
-cd client
-godot --path . scenes/test/player_test.tscn
-```
-
-**Full Integration Test:**
-1. Start all services (API, Database, optionally Game Server)
-2. Configure `.env.test` with valid credentials
-3. Run the auto-login test scene
-
-**Login Character Test:**
-```bash
-cd client
-godot --headless --path . scenes/test/login_character_test.tscn
-```
+| `client/scenes/test/net_smoke.tscn` | End-to-end ENet smoke test against a running server |
+| `client/scenes/test/arena_client_smoke.tscn` | Arena client smoke scene |
+| `client/scenes/test/sandbox.tscn` | Offline sandbox |
 
 ---
 
@@ -397,6 +378,7 @@ godot --headless --path . scenes/test/login_character_test.tscn
 | **S** | Move down |
 | **D** | Move right |
 | **W+D** | Move diagonally (normalized speed) |
+| **Shift** | Dash |
 | **Mouse** | Aim (character rotates toward cursor) |
 | **Left Click** | Shoot projectile |
 | **F3** | Toggle debug overlay |
@@ -415,6 +397,16 @@ Shows real-time information:
 ---
 
 ## Configuration
+
+### Environment Files
+
+One file per concern — don't mix them:
+
+| File | Purpose | Template |
+|------|---------|----------|
+| `api/.env` | Local API runtime config: port, PostgreSQL, Redis, JWT. Read by the Go API and by `./scripts/dev_local.sh` / `./scripts/seed_test_user.sh`. | `api/.env.example` |
+| `.env.test` | Test login **only**: the seeded user's credentials plus the endpoints the smoke/login test scenes connect to. No DB/Redis config here. | `.env.test.example` |
+| `deployment/.env.production` | Docker deployment config for `./scripts/deploy.sh` (compose stack with its own postgres/redis). | `deployment/.env.production.example` |
 
 ### API Server (.env)
 
@@ -465,33 +457,26 @@ The client loads settings from `client/data/config/client_config.json`:
 
 **Override at runtime:** Place a `client_config.json` in the user data directory (`user://client_config.json`) to override the embedded config without modifying the exported build.
 
-### Godot Server Configuration
+### Game Server Configuration
 
-The headless server loads settings from `client/data/config/server_config.json`:
-
-```json
-{
-  "port": 8081,
-  "tick_rate": 30,
-  "max_players": 100,
-  "region": "asia",
-  "debug_logging": true,
-  "heartbeat_timeout_seconds": 5.0,
-  "api_server_url": "http://localhost:8080"
-}
-```
+`omega-server` loads `server_config.json` from its working directory, falling back to
+`client/data/config/server_config.json`, or takes an explicit `--config <file>`
+(`deployment/server_config.docker.json` is the compose-stack config). Env overrides apply on
+top — see `rust/server/src/config.rs` for the full key list. The most relevant keys:
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| `port` | WebSocket port for game connections | `8081` |
-| `tick_rate` | Server physics tick rate (Hz) | `30` |
+| `port` | UDP game port (ENet) | `8081` |
+| `tick_rate` | Server simulation tick rate (Hz) | `30` |
 | `max_players` | Maximum concurrent players | `100` |
-| `region` | Server region identifier | `asia` |
-| `debug_logging` | Enable verbose logging | `true` |
-| `heartbeat_timeout_seconds` | Client timeout threshold | `5.0` |
-| `api_server_url` | URL of the Go API server | `http://localhost:8080` |
+| `region` | Server region identifier | `local` |
+| `api_server_url` | URL of the Go API server (region heartbeat) | `http://localhost:8080` |
+| `metrics_port` | Prometheus exporter port (0 disables) | `9100` |
+| `allow_unsigned_tickets` | Dev mode: accept unsigned session tickets | `true` |
+| `aoi_radius` / `aoi_exit_radius` | Area-of-interest enter/exit radii | `1000` / `1100` |
+| `max_snapshot_bytes` | Unreliable snapshot budget per packet | `1200` |
 
-**Override at runtime:** Place a `server_config.json` in the user data directory (`user://server_config.json`) to override the embedded config. Useful for Docker volume mounts.
+Production runs `--require-tickets` with `OMEGA_TICKET_PUBKEY` set (Ed25519).
 
 ### Godot Project Settings
 
@@ -534,15 +519,21 @@ Then reopen the project in Godot.
 
 ### Game Server Won't Start
 
-1. Check if port 8081 is in use:
+1. Check if the UDP game port or the metrics port is already in use:
    ```bash
-   lsof -i :8081
+   lsof -nP -iUDP:8081
+   lsof -nP -iTCP:9100 -sTCP:LISTEN
    ```
 
-2. Kill existing process:
-   ```bash
-   ./scripts/stop_services.sh --game-only
-   ```
+2. Kill the existing `omega-server` process shown by `lsof`, then restart.
+
+### Verify the Stack Is Up
+
+```bash
+curl http://localhost:8080/health      # Go API
+curl http://localhost:9100/metrics     # Rust server Prometheus metrics
+lsof -nP -iUDP:8081                    # Rust server game socket
+```
 
 ### Login Redirects to Login Screen
 
@@ -551,7 +542,7 @@ This is expected behavior when:
 - Token has expired
 - User is not authenticated
 
-Use the auto-login test scene with valid credentials in `.env.test`.
+Use valid credentials from `.env.test` (seeded via `./scripts/seed_test_user.sh`).
 
 ---
 
@@ -570,8 +561,10 @@ Use the auto-login test scene with valid credentials in `.env.test`.
 
 ## Documentation
 
+- [Documentation index](docs/index.md) - Full catalogue with verification status
 - [Architecture Guide](docs/ARCHITECTURE.md) - Detailed system architecture
-- [Feature Specs](specs/) - Feature specifications and tasks
+- [Rust port](docs/rust-port/) - Migration spec (D1-D14), wire/API contract, extraction notes
+- [ADRs](docs/adr/) - Load-bearing decisions
 
 ---
 
@@ -598,4 +591,4 @@ For more details, see the [LICENSE.md](LICENSE.md) file.
 - #4DA6A8 secondary accent / submenu / info
 - #A84D6E danger / quit / destructive option
 
-**Last Updated:** December 2025
+**Last Updated:** June 2026

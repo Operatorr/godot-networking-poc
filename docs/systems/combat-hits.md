@@ -147,6 +147,17 @@ On a hit (any path), damage + a `DAMAGE` (and, if lethal, `KILL` / PvP-`KILL`)
 (`server_collision_handler.gd`) for players and `_check_monster_collisions` for monsters. Damage/kill
 events fire every Tick, not gated by the snapshot rate.
 
+On a **surviving** player hit (Rust `combat::apply_player_hit`, 2026-06-12):
+
+- **Knockback** pushes along the projectile's **travel direction** (fallback: away from the impact
+  point when no direction is known) with the projectile's per-spawn `knockback_force`
+  (`PLAYER/MONSTER_PROJECTILE_KNOCKBACK_FORCE`, both 450 u/s today — per-projectile so future
+  weapons/items/abilities can vary it; the `apply_knockback` multiplier is the buff/debuff hook).
+- A target hit **while SPRINTING** is **dazed** for `PLAYER_DAZE_DURATION` (1.5 s): sprint and dash
+  locked out, walking allowed. Replicated via `ENTITY_FLAG_DAZED`; the client shows circling stars
+  above the player. Applies to every player, including bots. See
+  [`players-movement-state-machine.md`](players-movement-state-machine.md).
+
 ## Client shoot feedback — cosmetic muzzle flash on input (#7)
 
 The client now draws **immediate cosmetic feedback** when the player presses fire, decoupled from the

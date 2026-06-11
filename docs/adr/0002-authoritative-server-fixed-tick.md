@@ -66,8 +66,8 @@ falls back to the Tick rate, *but* the live config sets it to **20 Hz**
 - **Validated:** every action — bounds, cooldowns, hits — on the server; clients send intent only.
 - **Can fail:** raising the Tick rate trades density for responsiveness; one Arena means an O(N²)
   broadcast ceiling; sharding is not built.
-- **Tested:** the Python bot swarm drives 50–1000 intent-only clients against one server
-  (`load_testing/`); metrics are sampled once per second in `server_main.gd:184-194`.
+- **Tested:** the `omega-load-test` bot swarm (`rust/load_test/`) drives 50–200+ intent-only
+  ENet clients against one server; the server reports 1 Hz `SERVER_METRICS` it aggregates.
 
 ## See also
 

@@ -1,0 +1,7 @@
+[package]
+name = "protocol"
+version.workspace = true
+edition.workspace = true
+description = "Omega Realm wire protocol — packet structs + hand-rolled bit codec (migration-spec D7)"
+
+[dependencies]
