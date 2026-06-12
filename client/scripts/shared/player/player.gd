@@ -67,6 +67,24 @@ var last_aim_direction: Vector2 = Vector2.RIGHT
 var _input_enabled: bool = true
 var player_color: Color = Color(0.27, 0.53, 1.0)
 
+## True when class spritesheets (SheetLibrary) drive the visuals; false falls
+## back to the legacy procedural frames (assets missing, e.g. fresh checkout).
+var _uses_sheets: bool = false
+
+## 8-way facing row (SheetLibrary.DIR_ORDER index) derived from aim each frame.
+var _facing_row: int = 0
+
+## Facing row latched when a one-shot action (attack/hit/death) starts, so the
+## animation doesn't restart when the aim crosses an octant mid-swing.
+var _action_row: int = 0
+
+## Speed observed from actual position deltas. Works no matter who integrates
+## the position (offline move_and_slide vs PredictionController) and drives the
+## idle/run/sprint/dash locomotion animation choice.
+var _observed_speed: float = 0.0
+var _last_observed_pos: Vector2 = Vector2.ZERO
+var _has_observed_pos: bool = false
+
 ## When true, take_damage() ignores incoming damage (debug/sandbox tool).
 var invulnerable: bool = false
 
@@ -92,10 +110,15 @@ func _ready() -> void:
 	# Set motion mode for top-down game (no gravity)
 	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
 
-	# Apply procedural sprites
+	# Class spritesheet when the generated art is present, else procedural fallback
 	if animated_sprite:
 		player_color = _get_configured_player_color()
-		animated_sprite.sprite_frames = ProceduralSprites.create_player_frames_for_color(player_color)
+		var sheet_frames := SheetLibrary.class_frames(_get_configured_player_class())
+		if sheet_frames != null:
+			animated_sprite.sprite_frames = sheet_frames
+			_uses_sheets = true
+		else:
+			animated_sprite.sprite_frames = ProceduralSprites.create_player_frames_for_color(player_color)
 		animated_sprite.modulate = Color.WHITE  # Override the placeholder blue tint
 
 	# Predicted movement state machine for the local networked player.
@@ -149,6 +172,19 @@ func _physics_process(delta: float) -> void:
 
 	# Footstep audio
 	_update_footsteps(delta)
+
+	# Track real movement speed from position deltas (integrator-agnostic).
+	if _has_observed_pos and delta > 0.0:
+		_observed_speed = (global_position - _last_observed_pos).length() / delta
+	_last_observed_pos = global_position
+	_has_observed_pos = true
+
+	# Directional sheets: the body rotates toward the aim (rotation drives
+	# shooting), but the artwork must not spin — counter-rotate the sprite and
+	# pick the 8-way row from the aim angle instead.
+	if _uses_sheets and animated_sprite:
+		animated_sprite.global_rotation = 0.0
+		_facing_row = SheetLibrary.row_from_angle(rotation)
 
 	# Update animation
 	_update_animation()
@@ -220,6 +256,10 @@ func _shoot() -> void:
 	var projectile: Projectile = projectile_pool.spawn(spawn_pos, last_aim_direction, projectile_range)
 
 	if projectile:
+		# Offline-spawned projectiles carry the local player's class art.
+		if projectile.has_method("set_projectile_class"):
+			projectile.set_projectile_class(_get_configured_player_class())
+
 		# Start cooldown
 		shoot_cooldown_timer.start()
 
@@ -240,11 +280,16 @@ func _set_movement_state(new_state: MovementState) -> void:
 func _set_action_state(new_state: ActionState) -> void:
 	if action_state != new_state:
 		action_state = new_state
+		_action_row = _facing_row
 
 
 ## Update animation based on current state
 func _update_animation() -> void:
 	if animated_sprite == null:
+		return
+
+	if _uses_sheets:
+		_update_animation_directional()
 		return
 
 	# Action state takes priority
@@ -270,6 +315,41 @@ func _update_animation() -> void:
 		MovementState.WALKING:
 			if animated_sprite.animation != "walk":
 				animated_sprite.play("walk")
+
+
+## Directional (spritesheet) animation: one-shot actions play on the facing row
+## latched when the action started; locomotion picks idle/run/sprint/dash from
+## the observed speed so it is correct under any position integrator.
+func _update_animation_directional() -> void:
+	match action_state:
+		ActionState.DEAD:
+			_play_directional("death", _action_row)
+			return
+		ActionState.HIT:
+			_play_directional("hit", _action_row)
+			return
+		ActionState.ATTACKING:
+			_play_directional("attack", _action_row)
+			return
+	_play_directional(_locomotion_base(), _facing_row)
+
+
+## Locomotion animation from observed speed. Thresholds sit between the tier
+## speeds (200 / 320 / 720 u/s) so interpolation noise doesn't flicker tiers.
+func _locomotion_base() -> String:
+	if _observed_speed < 10.0:
+		return "idle"
+	if _observed_speed >= GameConstants.PLAYER_DASH_SPEED * 0.8:
+		return "dash"
+	if _observed_speed >= (GameConstants.PLAYER_SPEED + GameConstants.PLAYER_SPRINT_SPEED) * 0.5:
+		return "sprint"
+	return "run"
+
+
+func _play_directional(base: String, row: int) -> void:
+	var anim := SheetLibrary.anim_for(base, row)
+	if animated_sprite.animation != anim and animated_sprite.sprite_frames.has_animation(anim):
+		animated_sprite.play(anim)
 
 
 ## Update footstep audio timer
@@ -422,11 +502,13 @@ func set_local_projectile_spawning_enabled(enabled: bool) -> void:
 	local_projectile_spawning_enabled = enabled
 
 
-## Apply the selected player color to procedural frames.
+## Apply the selected player color to procedural frames. With class
+## spritesheets active the artwork is class-styled and color only matters for
+## the legacy procedural fallback.
 func set_player_color(color: Color) -> void:
 	color.a = 1.0
 	player_color = color
-	if animated_sprite:
+	if animated_sprite and not _uses_sheets:
 		var alpha := animated_sprite.modulate.a
 		animated_sprite.sprite_frames = ProceduralSprites.create_player_frames_for_color(player_color)
 		animated_sprite.modulate = Color(1, 1, 1, alpha)
@@ -440,6 +522,18 @@ func _get_configured_player_color() -> Color:
 	if game_mgr == null:
 		return player_color
 	return game_mgr.player_data.get("player_color", player_color)
+
+
+## The local player's class (PacketTypes.PlayerClass). Defaults to Zealot —
+## the same value NetworkManager sends in ConnectAuth.
+func _get_configured_player_class() -> int:
+	var tree := get_tree()
+	if tree == null:
+		return PacketTypes.PlayerClass.ZEALOT
+	var game_mgr = tree.root.get_node_or_null("GameManager")
+	if game_mgr == null:
+		return PacketTypes.PlayerClass.ZEALOT
+	return game_mgr.player_data.get("player_class", PacketTypes.PlayerClass.ZEALOT)
 
 
 ## Get readable state name for debugging

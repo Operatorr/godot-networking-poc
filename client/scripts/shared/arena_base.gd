@@ -101,6 +101,7 @@ func _ready() -> void:
 		# Server doesn't need visuals
 		set_process(false)
 	else:
+		_build_arena_props()
 		queue_redraw()
 		_setup_client()
 
@@ -1062,6 +1063,148 @@ func on_scene_exit() -> void:
 		_local_death_feedback_played = false
 
 	print("[ArenaBase] Scene exit cleanup complete")
+
+
+## ---------------------------------------------------------------------------
+## Arena props (cosmetic only — the server sim knows nothing about them).
+## Statement pieces decorate the authoritative ARENA_OBSTACLES geometry
+## (corner Ls, center cross, mid barriers) so visuals match collision; the
+## rest is set dressing scattered on open floor away from the spawn ring.
+## Pattern mirrors sanctuary.gd: const tables + texture-or-skip fallback.
+## ---------------------------------------------------------------------------
+
+const ARENA_PROP_TEXTURE_DIR := "res://assets/sprites/environment/arena/"
+
+## kind -> {file, flat}. Standing props (flat=false) are bottom-planted on
+## their position; flat props (decals, piles) center on it.
+const ARENA_PROP_SPRITES := {
+	"statue_weeping": {"file": "statue_weeping.png", "flat": false},
+	"pillar_broken": {"file": "pillar_broken.png", "flat": false},
+	"brazier": {"file": "brazier.png", "flat": false},
+	"banner_stand": {"file": "banner_stand.png", "flat": false},
+	"gravestone_cross": {"file": "gravestone_cross.png", "flat": false},
+	"funerary_urn": {"file": "funerary_urn.png", "flat": false},
+	"candelabra": {"file": "candelabra.png", "flat": false},
+	"corrupted_crystal": {"file": "corrupted_crystal.png", "flat": false},
+	"dead_tree": {"file": "dead_tree.png", "flat": false},
+	"spike_barricade": {"file": "spike_barricade.png", "flat": false},
+	"altar": {"file": "altar.png", "flat": false},
+	"bone_pile": {"file": "bone_pile.png", "flat": true},
+	"skull_pile": {"file": "skull_pile.png", "flat": true},
+	"rubble": {"file": "rubble.png", "flat": true},
+	"ritual_circle": {"file": "ritual_circle.png", "flat": true},
+	"blood_stain": {"file": "blood_stain.png", "flat": true},
+}
+
+## Pixels the standing-prop artwork keeps below its visual base (shadows).
+const ARENA_PROP_FOOT := 6.0
+
+const ARENA_PROPS: Array[Dictionary] = [
+	# Weeping statues guard the corner cover walls (inside each L).
+	{"kind": "statue_weeping", "pos": Vector2(-610, -615)},
+	{"kind": "statue_weeping", "pos": Vector2(610, -615)},
+	{"kind": "statue_weeping", "pos": Vector2(-610, 660)},
+	{"kind": "statue_weeping", "pos": Vector2(610, 660)},
+	{"kind": "candelabra", "pos": Vector2(-545, -630)},
+	{"kind": "candelabra", "pos": Vector2(545, -630)},
+	{"kind": "candelabra", "pos": Vector2(-545, 645)},
+	{"kind": "candelabra", "pos": Vector2(545, 645)},
+	# Broken pillars cap the four ends of the center cross.
+	{"kind": "pillar_broken", "pos": Vector2(0, -205)},
+	{"kind": "pillar_broken", "pos": Vector2(0, 205)},
+	{"kind": "pillar_broken", "pos": Vector2(-205, 0)},
+	{"kind": "pillar_broken", "pos": Vector2(205, 0)},
+	# Banners mark the diagonal approaches to the center.
+	{"kind": "banner_stand", "pos": Vector2(-85, -85)},
+	{"kind": "banner_stand", "pos": Vector2(85, -85)},
+	{"kind": "banner_stand", "pos": Vector2(-85, 85)},
+	{"kind": "banner_stand", "pos": Vector2(85, 85)},
+	# Braziers light the mid-field barriers.
+	{"kind": "brazier", "pos": Vector2(-400, -345)},
+	{"kind": "brazier", "pos": Vector2(400, -345)},
+	{"kind": "brazier", "pos": Vector2(-400, 343)},
+	{"kind": "brazier", "pos": Vector2(400, 343)},
+	# Corrupted crystals as mid-edge landmarks.
+	{"kind": "corrupted_crystal", "pos": Vector2(0, -660)},
+	{"kind": "corrupted_crystal", "pos": Vector2(660, 0)},
+	{"kind": "corrupted_crystal", "pos": Vector2(0, 660)},
+	{"kind": "corrupted_crystal", "pos": Vector2(-660, 0)},
+	# Graveyard cluster in the south-west quadrant.
+	{"kind": "gravestone_cross", "pos": Vector2(-520, 380)},
+	{"kind": "gravestone_cross", "pos": Vector2(-455, 425)},
+	{"kind": "gravestone_cross", "pos": Vector2(-390, 372)},
+	{"kind": "gravestone_cross", "pos": Vector2(-545, 462)},
+	{"kind": "gravestone_cross", "pos": Vector2(-430, 487)},
+	{"kind": "funerary_urn", "pos": Vector2(-355, 440)},
+	{"kind": "bone_pile", "pos": Vector2(-500, 428)},
+	{"kind": "skull_pile", "pos": Vector2(-412, 412)},
+	# Dead trees + altar in the north-east quadrant.
+	{"kind": "dead_tree", "pos": Vector2(470, -480)},
+	{"kind": "dead_tree", "pos": Vector2(585, -390)},
+	{"kind": "altar", "pos": Vector2(500, -560)},
+	{"kind": "ritual_circle", "pos": Vector2(500, -480)},
+	{"kind": "funerary_urn", "pos": Vector2(545, -652)},
+	# Spike barricades near the north-west and south-east lanes.
+	{"kind": "spike_barricade", "pos": Vector2(-450, -550)},
+	{"kind": "spike_barricade", "pos": Vector2(450, 550)},
+	# Set dressing scattered on open floor.
+	{"kind": "rubble", "pos": Vector2(-150, -600)},
+	{"kind": "rubble", "pos": Vector2(300, -520)},
+	{"kind": "rubble", "pos": Vector2(620, -120)},
+	{"kind": "rubble", "pos": Vector2(520, 300)},
+	{"kind": "rubble", "pos": Vector2(-620, 140)},
+	{"kind": "rubble", "pos": Vector2(-300, 560)},
+	{"kind": "rubble", "pos": Vector2(150, 640)},
+	{"kind": "rubble", "pos": Vector2(-640, -300)},
+	{"kind": "bone_pile", "pos": Vector2(250, -650)},
+	{"kind": "bone_pile", "pos": Vector2(-250, 230)},
+	{"kind": "bone_pile", "pos": Vector2(640, 250)},
+	{"kind": "bone_pile", "pos": Vector2(-360, -460)},
+	{"kind": "skull_pile", "pos": Vector2(220, 420)},
+	{"kind": "skull_pile", "pos": Vector2(-660, -660)},
+	{"kind": "blood_stain", "pos": Vector2(120, -300)},
+	{"kind": "blood_stain", "pos": Vector2(-200, 80)},
+	{"kind": "blood_stain", "pos": Vector2(380, 120)},
+]
+
+
+## Instance the cosmetic prop sprites. Missing textures are skipped silently
+## (same graceful-fallback rule as sanctuary.gd) so the arena keeps working
+## on checkouts without the generated art.
+func _build_arena_props() -> void:
+	var existing := get_node_or_null("Props")
+	if existing:
+		existing.queue_free()
+	var container := Node2D.new()
+	container.name = "Props"
+	# Same z as entities, but ordered BEFORE EntityContainer in the tree so
+	# props render above the _draw() floor yet under all dynamic entities.
+	# (A negative z_index would put them under the parent's own _draw().)
+	add_child(container)
+	var entity_container := get_node_or_null("EntityContainer")
+	if entity_container:
+		move_child(container, entity_container.get_index())
+
+	for prop: Dictionary in ARENA_PROPS:
+		var kind: String = prop["kind"]
+		var info: Dictionary = ARENA_PROP_SPRITES.get(kind, {})
+		if info.is_empty():
+			continue
+		var path: String = ARENA_PROP_TEXTURE_DIR + String(info["file"])
+		if not ResourceLoader.exists(path, "Texture2D"):
+			continue
+		var texture: Texture2D = load(path)
+		if texture == null:
+			continue
+		var sprite := Sprite2D.new()
+		sprite.texture = texture
+		var pos: Vector2 = prop["pos"]
+		if not bool(info.get("flat", false)):
+			# Plant the artwork's base on the position (sprites are centered).
+			pos.y -= texture.get_height() / 2.0 - ARENA_PROP_FOOT
+		sprite.position = pos
+		container.add_child(sprite)
+	print("[ArenaBase] Built %d arena props" % container.get_child_count())
 
 
 ## Set up the generated TileMapLayer backing the arena floor, walls, and obstacle cells.

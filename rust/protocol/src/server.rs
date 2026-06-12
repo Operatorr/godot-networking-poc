@@ -86,6 +86,8 @@ pub enum GameEventData {
         x: f32,
         y: f32,
         color: (u8, u8, u8),
+        /// Player class (0=Zealot … 6=Mage). Already server-clamped when broadcast.
+        class: u8,
     },
     Leaderboard {
         entries: Vec<(u16, u16)>,
@@ -213,13 +215,20 @@ impl ServerPacket {
                         w.write_u16(*duration_ms);
                     }
                     GameEventData::EffectRemove { effect_id } => w.write_u8(*effect_id),
-                    GameEventData::PlayerInfo { name, x, y, color } => {
+                    GameEventData::PlayerInfo {
+                        name,
+                        x,
+                        y,
+                        color,
+                        class,
+                    } => {
                         w.write_str8(name);
                         w.write_i16(quant_coord(*x));
                         w.write_i16(quant_coord(*y));
                         w.write_u8(color.0);
                         w.write_u8(color.1);
                         w.write_u8(color.2);
+                        w.write_u8(*class);
                     }
                     GameEventData::Leaderboard { entries } => {
                         let n = entries.len().min(10);
@@ -311,6 +320,7 @@ impl ServerPacket {
                         x: dequant_coord(r.read_i16()?),
                         y: dequant_coord(r.read_i16()?),
                         color: (r.read_u8()?, r.read_u8()?, r.read_u8()?),
+                        class: r.read_u8()?,
                     },
                     game_event_type::LEADERBOARD_UPDATE => {
                         let n = r.read_u8()? as usize;
@@ -467,6 +477,7 @@ mod tests {
                     x: 1.0,
                     y: -1.0,
                     color: (69, 135, 255),
+                    class: 4,
                 },
             },
             GameEvent {
@@ -497,10 +508,15 @@ mod tests {
                     assert_eq!(d.target_id, e.target_id);
                     match (&d.data, &e.data) {
                         (
-                            GameEventData::PlayerInfo { name: a, .. },
-                            GameEventData::PlayerInfo { name: b, .. },
+                            GameEventData::PlayerInfo {
+                                name: a, class: ca, ..
+                            },
+                            GameEventData::PlayerInfo {
+                                name: b, class: cb, ..
+                            },
                         ) => {
-                            assert_eq!(a, b)
+                            assert_eq!(a, b);
+                            assert_eq!(ca, cb);
                         }
                         (
                             GameEventData::Leaderboard { entries: a },
@@ -513,6 +529,31 @@ mod tests {
                 }
                 other => panic!("wrong: {other:?}"),
             }
+        }
+    }
+
+    /// The codec is transport-only: an out-of-range class (> 6) round-trips untouched
+    /// (the server clamps before broadcasting, but the wire accepts any u8).
+    #[test]
+    fn player_info_out_of_range_class_accepted_on_wire() {
+        let p = ServerPacket::GameEvent(GameEvent {
+            event_type: game_event_type::PLAYER_INFO,
+            source_id: 0,
+            target_id: 9,
+            data: GameEventData::PlayerInfo {
+                name: "Overflow".into(),
+                x: 0.0,
+                y: 0.0,
+                color: (1, 2, 3),
+                class: 255,
+            },
+        });
+        match rt(p) {
+            ServerPacket::GameEvent(GameEvent {
+                data: GameEventData::PlayerInfo { class, .. },
+                ..
+            }) => assert_eq!(class, 255),
+            other => panic!("wrong: {other:?}"),
         }
     }
 

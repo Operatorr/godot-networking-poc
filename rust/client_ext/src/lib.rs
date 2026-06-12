@@ -126,11 +126,14 @@ impl ProtocolCodec {
     /// A NON-empty but malformed ticket returns an empty PackedByteArray: silently downgrading
     /// corruption to an unsigned join would mask it (and join as the wrong identity on a
     /// dev server) — the caller must abort the handshake instead.
+    /// `player_class`: PacketTypes.PlayerClass value (0=Zealot … 6=Mage); the server clamps
+    /// out-of-range values to 0. (`class` is a GDScript keyword, hence the longer name.)
     #[func]
     fn encode_connect_auth(
         &self,
         character_name: GString,
         player_color: Color,
+        player_class: i64,
         bandwidth_budget_bps: i64,
         ticket: PackedByteArray,
     ) -> PackedByteArray {
@@ -155,6 +158,7 @@ impl ProtocolCodec {
                 quant(player_color.g),
                 quant(player_color.b),
             ),
+            class: player_class.clamp(0, 255) as u8,
             bandwidth_budget_bps: bandwidth_budget_bps.max(0) as u32,
         });
         PackedByteArray::from(pkt.encode().as_slice())
@@ -278,7 +282,13 @@ impl ProtocolCodec {
                     protocol::GameEventData::EffectRemove { effect_id } => {
                         data.set("effect_id", effect_id as i64);
                     }
-                    protocol::GameEventData::PlayerInfo { name, x, y, color } => {
+                    protocol::GameEventData::PlayerInfo {
+                        name,
+                        x,
+                        y,
+                        color,
+                        class,
+                    } => {
                         data.set("character_name", &GString::from(name.as_str()));
                         data.set("position", v2(x, y));
                         data.set(
@@ -289,6 +299,7 @@ impl ProtocolCodec {
                                 color.2 as f32 / 255.0,
                             ),
                         );
+                        data.set("player_class", class as i64);
                     }
                     protocol::GameEventData::Leaderboard { entries } => {
                         let mut arr = VarArray::new();

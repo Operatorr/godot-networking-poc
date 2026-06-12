@@ -51,6 +51,9 @@ pub struct PlayerState {
     pub character_id: u32,
     pub character_name: String,
     pub player_color: (u8, u8, u8),
+    /// Player class (0=Zealot … 6=Mage). Identity metadata from ConnectAuth, clamped on join
+    /// (> 6 → 0); not validated against account data yet.
+    pub player_class: u8,
     pub bandwidth_budget_bps: u32,
     pub max_snapshot_bytes: usize,
     pub authenticated: bool,
@@ -95,6 +98,7 @@ impl PlayerState {
             character_id: 0,
             character_name: String::new(),
             player_color: (69, 135, 255), // Color(0.27, 0.53, 1.0) quantized
+            player_class: 0,              // Zealot
             bandwidth_budget_bps: 0,
             max_snapshot_bytes: 0,
             authenticated: false,

@@ -1,0 +1,61 @@
+{
+  "canvas": [
+    92,
+    92
+  ],
+  "directional": true,
+  "dir_order": [
+    "south",
+    "south-east",
+    "east",
+    "north-east",
+    "north",
+    "north-west",
+    "west",
+    "south-west"
+  ],
+  "anims": {
+    "idle": {
+      "frames": 8,
+      "fps": 8,
+      "loop": true,
+      "png": "idle.png"
+    },
+    "run": {
+      "frames": 8,
+      "fps": 12,
+      "loop": true,
+      "png": "run.png"
+    },
+    "sprint": {
+      "frames": 9,
+      "fps": 14,
+      "loop": true,
+      "png": "sprint.png"
+    },
+    "dash": {
+      "frames": 7,
+      "fps": 16,
+      "loop": true,
+      "png": "dash.png"
+    },
+    "attack": {
+      "frames": 7,
+      "fps": 14,
+      "loop": false,
+      "png": "attack.png"
+    },
+    "hit": {
+      "frames": 6,
+      "fps": 12,
+      "loop": false,
+      "png": "hit.png"
+    },
+    "death": {
+      "frames": 7,
+      "fps": 10,
+      "loop": false,
+      "png": "death.png"
+    }
+  }
+}

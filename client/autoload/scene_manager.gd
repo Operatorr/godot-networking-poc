@@ -13,6 +13,7 @@ const SCENE_MAIN_MENU = "res://scenes/client/menus/main_menu.tscn"
 const SCENE_CHARACTER_CREATION = "res://scenes/client/menus/character_creation.tscn"
 const SCENE_LOADING = "res://scenes/client/menus/loading_screen.tscn"
 const SCENE_ARENA = "res://scenes/shared/arena/arena_base.tscn"
+const SCENE_SANCTUARY = "res://scenes/shared/sanctuary/sanctuary.tscn"
 const SCENE_PRACTICE = "res://scenes/shared/levels/practice.tscn"
 const SCENE_OFFLINE_SANDBOX = "res://scenes/test/sandbox.tscn"
 const SCENE_GAME_UI = "res://scenes/client/components/game_ui.tscn"
@@ -26,6 +27,7 @@ enum SceneName {
 	CHARACTER_CREATION,
 	LOADING,
 	ARENA,
+	SANCTUARY,
 	PRACTICE,
 	OFFLINE_SANDBOX,
 	GAME_UI,
@@ -112,22 +114,28 @@ func _route_to_initial_scene() -> void:
 
 ## Change to a specific scene
 func change_scene(scene_name: SceneName, use_loading_screen: bool = false) -> void:
-	if is_transitioning:
-		print("[SceneManager] Scene transition already in progress")
-		return
-
 	var scene_path = _get_scene_path(scene_name)
 	if scene_path.is_empty():
 		print("[SceneManager] Invalid scene name: %d" % scene_name)
+		return
+
+	# Update GameManager state
+	_update_game_state_for_scene(scene_name)
+
+	await change_scene_to_path(scene_path, use_loading_screen)
+
+
+## Change to an arbitrary scene file. Used by Portal for destinations that have
+## no SceneName (dungeons, sub-worlds); GameManager state is left untouched.
+func change_scene_to_path(scene_path: String, use_loading_screen: bool = false) -> void:
+	if is_transitioning:
+		print("[SceneManager] Scene transition already in progress")
 		return
 
 	print("[SceneManager] Changing scene to: %s" % scene_path)
 
 	is_transitioning = true
 	scene_change_started.emit(current_scene_name, scene_path)
-
-	# Update GameManager state
-	_update_game_state_for_scene(scene_name)
 
 	if use_loading_screen:
 		await _change_scene_with_loading(scene_path)
@@ -317,6 +325,8 @@ func _get_scene_path(scene_name: SceneName) -> String:
 			return SCENE_LOADING
 		SceneName.ARENA:
 			return SCENE_ARENA
+		SceneName.SANCTUARY:
+			return SCENE_SANCTUARY
 		SceneName.PRACTICE:
 			return SCENE_PRACTICE
 		SceneName.OFFLINE_SANDBOX:
@@ -343,7 +353,7 @@ func _update_game_state_for_scene(scene_name: SceneName) -> void:
 			game_mgr.change_state(game_mgr.GameState.MAIN_MENU)
 		SceneName.LOADING:
 			game_mgr.change_state(game_mgr.GameState.LOADING)
-		SceneName.ARENA, SceneName.PRACTICE, SceneName.OFFLINE_SANDBOX:
+		SceneName.ARENA, SceneName.SANCTUARY, SceneName.PRACTICE, SceneName.OFFLINE_SANDBOX:
 			game_mgr.change_state(game_mgr.GameState.IN_ARENA)
 
 ## Cleanup scene before transition
@@ -383,6 +393,11 @@ func goto_character_creation() -> void:
 ## Go to arena (with loading screen)
 func goto_arena() -> void:
 	change_scene(SceneName.ARENA, true)
+
+
+## Go to the Sanctuary town hub (offline; entering the world lands here)
+func goto_sanctuary() -> void:
+	change_scene(SceneName.SANCTUARY, false)
 
 ## Go to offline practice level
 func goto_practice() -> void:

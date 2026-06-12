@@ -1,0 +1,45 @@
+{
+  "_comment": "PixelLab asset manifest for the arena art set (generated 2026-06-13). Characters/objects persist in the PixelLab account by UUID; map_objects auto-delete ~8h after creation and must be re-generated if lost. Direction row order used in assembled sheets: south, south-east, east, north-east, north, north-west, west, south-west.",
+  "style": "Omega Realm grimdark gothic (docs/design/STYLE_GUIDE_SHEET.png), low top-down, 48px characters on ~92px canvas",
+  "characters": {
+    "zealot": "96b88efc-e653-46c4-8350-456a41450803",
+    "void_hunter": "1cae1006-fb6f-46a2-9d54-acaf68d3ed58",
+    "engineer": "ba6a20b3-fe23-403a-ba2b-8f5774122f3b",
+    "plague_seer": "93f7021a-6efc-4acf-ae76-e9f908b0c8ca",
+    "warrior": "b7fbae06-2956-49e0-92f6-109638fbb163",
+    "rogue": "953f1891-6c52-43f0-8127-540181a3122b",
+    "mage": "8f13f188-e1d8-4669-b681-951f1688f9ca"
+  },
+  "objects": {
+    "toxic_slime": "f7c7c1da-334f-4075-8277-daa57fc9990d",
+    "toxic_slime_spares": ["2ecde2c4-e515-41db-b2ad-e9849db82d0d", "bf172b57-1a19-4882-99ec-9682a4fab9b5"],
+    "projectiles": {
+      "zealot": "93ee9c9e-4d16-47b3-95fe-2f6746604f77",
+      "void_hunter": "b6d2d05b-cd57-42a2-9581-fcc13a2edd94",
+      "engineer": "2234b693-1b1b-44e8-b0ec-f7f06f6f389f",
+      "plague_seer": "f2576328-80c2-42c7-aa68-afb2ac63d543",
+      "warrior": "12ae178e-d10a-49ba-a8cf-2e5ff0cf0ffa",
+      "rogue": "a5ed0f2b-fb85-4b73-93ac-ca9686fd325e",
+      "mage": "3ad3b1c0-8084-4718-9308-26906e6da1d6",
+      "slime": "5581df63-41c4-4d24-8ed8-51df5f42a454"
+    },
+    "projectile_review_pack": "e2626c2f-de25-4251-a58c-2e0000e29c77"
+  },
+  "map_objects": {
+    "_comment": "expire ~8h after creation; status: downloaded = already saved to client/assets/sprites/environment/arena/",
+    "brazier": { "id": "0459a54f-0369-4699-8474-752a75dff8a1", "downloaded": true },
+    "pillar_broken": { "id": "8e072204-dde0-4511-a58e-f2e9b17dde04", "downloaded": true },
+    "statue_weeping": { "id": "e49687b5-5ebb-4fba-a36c-da28921ad145", "downloaded": true },
+    "bone_pile": { "id": "573a649e-ccaa-4fec-bd20-6d2f0572e265", "downloaded": true },
+    "gravestone_cross": { "id": "fcd7fb96-12ad-4054-b3c1-522785ad6ece", "downloaded": true },
+    "funerary_urn": { "id": "46aef229-476e-4073-acb7-b1bb582e48fd", "downloaded": true, "_comment": "prompted as a sarcophagus, came out as an urn — kept" },
+    "spike_barricade": { "id": "f30bd052-bcce-412f-a204-7c3e68c6dda3", "downloaded": true },
+    "altar": { "id": "fb0c0fcd-61b1-4b9f-9072-7f82185ed2cf", "downloaded": true },
+    "ritual_circle": { "id": "2a709480-b1ed-4b4b-a7e8-e098ae0227ce", "downloaded": true },
+    "blood_stain": { "id": "f2d679d4-27b4-4e33-8a53-af31ae8af27f", "downloaded": true }
+  },
+  "bot_animations": {
+    "_comment": "idle (fight-stance-idle-8-frames, 8f), run (running-8-frames, 8f), death (falling-back-death, 7f) assembled per class to client/assets/sprites/players/<class>/ as 8-direction sheets + meta.json. Zealot has its own extended set.",
+    "assembled": ["void_hunter", "engineer", "plague_seer", "warrior", "rogue", "mage"]
+  }
+}

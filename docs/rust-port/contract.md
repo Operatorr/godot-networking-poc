@@ -100,7 +100,8 @@ final byte padded with zeros
 Entity flags are **16 bits** since protocol v2 (were 8): bits 0–7 keep the legacy values
 (ALIVE, MOVING, ATTACKING, INVULNERABLE, STUNNED, VISIBLE, DASHING, KNOCKED_BACK); bit 8 =
 DAZED (daze timer active — sprint/dash locked out, walking allowed); bits 9–15 reserved for
-future status effects.
+future status effects. Protocol v3 added the per-player class byte to ConnectAuth and
+PLAYER_INFO (see those sections).
 
 `server_ms` (server monotonic ms, u32-wrapped) is the **relocated HEARTBEAT clock-sync** — every
 snapshot carries it; the client feeds the same EMA filter (first sample direct, then alpha 0.2)
@@ -127,7 +128,13 @@ position is the client's predicted position, server validates against thresholds
 ### ConnectAuth (type 1, ch1)
 
 `[u8 type][u8 protocol_version][u16 ticket_len][ticket bytes][u8 name_len][utf8 name]
-[u8 r][u8 g][u8 b][u32 bandwidth_budget_bps]`
+[u8 r][u8 g][u8 b][u8 class][u32 bandwidth_budget_bps]`
+
+`class` (since protocol v3) is the player class: `0=Zealot, 1=VoidHunter, 2=Engineer,
+3=PlagueSeer, 4=Warrior, 5=Rogue, 6=Mage`. It is **identity metadata chosen by the client** —
+the codec accepts any u8 on the wire; the server clamps on join (values > 6 are treated as 0)
+and does **not** validate it against account data yet. The clamped value is echoed back in
+every PLAYER_INFO broadcast.
 
 Ticket blob: `[u8 ticket_version=1][u32 character_id][u8 region][u64 issued_at_unix_ms]
 [u64 expires_at_unix_ms][64-byte Ed25519 signature]` — signature over the 22 preceding payload
@@ -148,7 +155,8 @@ waiting for the PLAYER_INFO broadcast, which is still sent for names/colors).
 
 `[u8 type][u8 event_type][u16 source_id][u16 target_id][tail]` — event types and tails identical
 to today (extraction §4.15): DAMAGE `[u16 amount][u8 dmg_type]`; KILL/KILL_PVP none; RESPAWN
-`[s16 qx][s16 qy]`; PLAYER_INFO `[u8 len][utf8 name][s16 qx][s16 qy][u8 r][u8 g][u8 b]`;
+`[s16 qx][s16 qy]`; PLAYER_INFO `[u8 len][utf8 name][s16 qx][s16 qy][u8 r][u8 g][u8 b][u8 class]`
+(class since protocol v3 — server-clamped to 0..=6, see ConnectAuth);
 LEADERBOARD_UPDATE `[u8 n]{n × [u16 id][u16 kills]}`; PROJECTILE_FIRED
 `[s16 qx][s16 qy][u16 fire_tick]` with target_id = projectile id (**non-zero for monster shots** —
 D11 invariant).

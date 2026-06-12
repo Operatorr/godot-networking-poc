@@ -64,6 +64,10 @@ pub struct ConnectAuth {
     pub ticket: Option<Ticket>,
     pub character_name: String,
     pub color: (u8, u8, u8),
+    /// Player class (0=Zealot, 1=VoidHunter, 2=Engineer, 3=PlagueSeer, 4=Warrior, 5=Rogue,
+    /// 6=Mage). Identity metadata chosen by the client; the codec accepts any u8 — the
+    /// SERVER clamps (values > 6 are treated as 0).
+    pub class: u8,
     pub bandwidth_budget_bps: u32,
 }
 
@@ -134,6 +138,7 @@ impl ClientPacket {
                 w.write_u8(a.color.0);
                 w.write_u8(a.color.1);
                 w.write_u8(a.color.2);
+                w.write_u8(a.class);
                 w.write_u32(a.bandwidth_budget_bps);
             }
             ClientPacket::PlayerInput(i) => {
@@ -168,12 +173,14 @@ impl ClientPacket {
                 };
                 let character_name = r.read_str8()?;
                 let color = (r.read_u8()?, r.read_u8()?, r.read_u8()?);
+                let class = r.read_u8()?;
                 let bandwidth_budget_bps = r.read_u32()?;
                 ClientPacket::ConnectAuth(ConnectAuth {
                     protocol_version,
                     ticket,
                     character_name,
                     color,
+                    class,
                     bandwidth_budget_bps,
                 })
             }
@@ -233,6 +240,7 @@ mod tests {
             ticket: Some(t.clone()),
             character_name: "Tester".into(),
             color: (69, 135, 255),
+            class: 6,
             bandwidth_budget_bps: 120_000,
         });
         match rt(p) {
@@ -240,6 +248,7 @@ mod tests {
                 assert_eq!(a.ticket, Some(t));
                 assert_eq!(a.character_name, "Tester");
                 assert_eq!(a.color, (69, 135, 255));
+                assert_eq!(a.class, 6);
                 assert_eq!(a.bandwidth_budget_bps, 120_000);
             }
             other => panic!("wrong: {other:?}"),
@@ -253,10 +262,32 @@ mod tests {
             ticket: None,
             character_name: "Dev".into(),
             color: (0, 0, 0),
+            class: 0,
             bandwidth_budget_bps: 0,
         });
         match rt(p) {
-            ClientPacket::ConnectAuth(a) => assert!(a.ticket.is_none()),
+            ClientPacket::ConnectAuth(a) => {
+                assert!(a.ticket.is_none());
+                assert_eq!(a.class, 0);
+            }
+            other => panic!("wrong: {other:?}"),
+        }
+    }
+
+    /// The codec is transport-only: an out-of-range class (> 6) round-trips untouched.
+    /// Clamping is the SERVER's job (values > 6 are treated as 0 there).
+    #[test]
+    fn connect_auth_out_of_range_class_accepted_on_wire() {
+        let p = ClientPacket::ConnectAuth(ConnectAuth {
+            protocol_version: crate::PROTOCOL_VERSION,
+            ticket: None,
+            character_name: "Overflow".into(),
+            color: (1, 2, 3),
+            class: 200,
+            bandwidth_budget_bps: 0,
+        });
+        match rt(p) {
+            ClientPacket::ConnectAuth(a) => assert_eq!(a.class, 200),
             other => panic!("wrong: {other:?}"),
         }
     }

@@ -61,6 +61,9 @@ for the map; this page is the **catalogue** with verification status. Terms are 
 | [`systems/ui-hud.md`](systems/ui-hud.md) | Implemented | HUD components, menus, effects, scene flow. |
 | [`systems/state-machines.md`](systems/state-machines.md) | Implemented | Player-life, movement, scene, connection, and AI state machines. |
 | [`systems/offline-modes.md`](systems/offline-modes.md) | Implemented | Practice & Offline Sandbox — client-authoritative test scenes (no server) on a shared `OfflineArena`. |
+| [`systems/arena-visuals.md`](systems/arena-visuals.md) | Implemented | Generated class/monster/projectile spritesheets (PixelLab), `SheetLibrary` loader, arena props, class identity on the wire (protocol v3), random bot classes. |
+| [`design/sanctuary-layout.md`](design/sanctuary-layout.md) | Implemented | The Sanctuary town hub: enter-world flow, city plan + coordinates, NPC roster, reusable Portal, PixelLab sprite manifest. |
+| [`design/SANCTUARY_STYLEGUIDE.md`](design/SANCTUARY_STYLEGUIDE.md) | Reference | Town/Sanctuary biome art direction: palette, tiles, props, VFX, HUD. |
 
 ## Decisions & background
 

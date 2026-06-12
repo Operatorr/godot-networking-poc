@@ -268,14 +268,17 @@ func send_auth_handshake() -> void:
 
 	var character_name = ""
 	var player_color := Color(0.27, 0.53, 1.0)
+	# Class selection is not wired into the UI yet; every client joins as Zealot.
+	var player_class: int = PacketTypes.PlayerClass.ZEALOT
 
 	var game_mgr = get_tree().root.get_node_or_null("GameManager")
 	if game_mgr:
 		character_name = game_mgr.player_data.get("character_name", "")
 		player_color = game_mgr.player_data.get("player_color", player_color)
+		player_class = int(game_mgr.player_data.get("player_class", player_class))
 
 	var bytes := _codec.encode_connect_auth(
-		character_name, player_color, _get_client_bandwidth_budget(), session_ticket
+		character_name, player_color, player_class, _get_client_bandwidth_budget(), session_ticket
 	)
 	if bytes.is_empty():
 		# The codec refuses malformed tickets rather than downgrading to an unsigned join.
@@ -428,6 +431,7 @@ func send_message(message_type: MessageType, data: Dictionary = {}) -> bool:
 			bytes = _codec.encode_connect_auth(
 				data.get("character_name", ""),
 				data.get("player_color", Color(0.27, 0.53, 1.0)),
+				int(data.get("player_class", PacketTypes.PlayerClass.ZEALOT)),
 				int(data.get("bandwidth_budget_bps", DEFAULT_CLIENT_BUDGET)),
 				session_ticket
 			)

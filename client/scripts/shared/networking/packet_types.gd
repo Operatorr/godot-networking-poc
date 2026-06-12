@@ -39,6 +39,19 @@ enum EntityType {
 	PROJECTILE = 3
 }
 
+## Player classes (u8 on the wire, protocol v3). Identity metadata chosen by the
+## client in CONNECT_AUTH and broadcast in PLAYER_INFO; the server clamps values
+## > 6 to ZEALOT (0) and does not validate against account data yet.
+enum PlayerClass {
+	ZEALOT = 0,
+	VOID_HUNTER = 1,
+	ENGINEER = 2,
+	PLAGUE_SEER = 3,
+	WARRIOR = 4,
+	ROGUE = 5,
+	MAGE = 6
+}
+
 ## Animation states (fits in u8)
 enum AnimationState {
 	IDLE = 0,

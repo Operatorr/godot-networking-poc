@@ -30,7 +30,8 @@ pub use types::*;
 
 /// Bumped on every wire-format change; checked at handshake (ENet connect `data` low byte and
 /// the `ConnectAuth` packet). Client and server refuse mismatched versions (D7).
-pub const PROTOCOL_VERSION: u8 = 2; // v2: entity_flags widened to 16 bits (DAZED in bit 8)
+pub const PROTOCOL_VERSION: u8 = 3; // v3: player class byte in ConnectAuth + PLAYER_INFO
+                                    // (v2: entity_flags widened to 16 bits, DAZED in bit 8)
 
 /// ENet channel plan (migration-spec D2).
 pub const CH_SNAPSHOT: u8 = 0; // unreliable sequenced: Snapshot, ActionConfirm

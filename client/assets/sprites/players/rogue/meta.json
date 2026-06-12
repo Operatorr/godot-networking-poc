@@ -1,0 +1,37 @@
+{
+  "canvas": [
+    96,
+    96
+  ],
+  "directional": true,
+  "dir_order": [
+    "south",
+    "south-east",
+    "east",
+    "north-east",
+    "north",
+    "north-west",
+    "west",
+    "south-west"
+  ],
+  "anims": {
+    "idle": {
+      "frames": 8,
+      "fps": 8,
+      "loop": true,
+      "png": "idle.png"
+    },
+    "run": {
+      "frames": 8,
+      "fps": 12,
+      "loop": true,
+      "png": "run.png"
+    },
+    "death": {
+      "frames": 7,
+      "fps": 10,
+      "loop": false,
+      "png": "death.png"
+    }
+  }
+}

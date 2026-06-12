@@ -1,0 +1,16 @@
+{
+  "canvas": [
+    32,
+    32
+  ],
+  "directional": false,
+  "dir_order": [],
+  "anims": {
+    "fly": {
+      "frames": 5,
+      "fps": 12,
+      "loop": true,
+      "png": "fly.png"
+    }
+  }
+}

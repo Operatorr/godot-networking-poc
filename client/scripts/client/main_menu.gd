@@ -311,13 +311,17 @@ func _on_enter_world_pressed() -> void:
 		_show_error("Region Unavailable", "The selected region is currently unavailable.")
 		return
 
-	# Disable button and start connection
-	_is_connecting = true
-	enter_world_button.disabled = true
-	_update_status("Connecting to %s..." % region.name)
+	# Entering the world lands in the Sanctuary town (offline hub). No server
+	# connection here - the Arena portal in town dials this region's server,
+	# so stash the URL where Portal looks for it.
+	GameManager.player_data["selected_region_url"] = region.websocket_url
+	preferences.save()
 
-	print("[MainMenu] Connecting to region: %s at %s" % [region.name, region.websocket_url])
-	NetworkManager.connect_to_server(region.websocket_url, AuthManager.get_token())
+	enter_world_button.disabled = true
+	_update_status("Entering the Sanctuary...")
+
+	print("[MainMenu] Entering Sanctuary (region for portal: %s at %s)" % [region.name, region.websocket_url])
+	SceneManager.goto_sanctuary()
 
 
 ## Handle Practice button press
@@ -340,16 +344,13 @@ func _on_offline_sandbox_pressed() -> void:
 	SceneManager.goto_offline_sandbox()
 
 
-## Handle successful server connection
+## Handle successful server connection. The menu no longer dials the server
+## itself (the Sanctuary's Arena portal does), so this only updates status.
 func _on_connected_to_server() -> void:
 	print("[MainMenu] Connected to server")
 	_is_connecting = false
 	enter_world_button.disabled = false
 	_update_status("Connected!")
-
-	# Transition to arena after brief delay
-	await get_tree().create_timer(0.5).timeout
-	SceneManager.goto_arena()
 
 
 ## Handle server disconnection

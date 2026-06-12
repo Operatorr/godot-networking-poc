@@ -57,6 +57,8 @@ func setup(container: Node2D, interp_controller: InterpolationController) -> voi
 		interpolation_controller.entity_despawned.connect(_on_entity_despawned)
 	if EntityNameCache and not EntityNameCache.entity_color_updated.is_connected(_on_entity_color_updated):
 		EntityNameCache.entity_color_updated.connect(_on_entity_color_updated)
+	if EntityNameCache and not EntityNameCache.entity_class_updated.is_connected(_on_entity_class_updated):
+		EntityNameCache.entity_class_updated.connect(_on_entity_class_updated)
 
 	# Pre-allocate projectile pool
 	_initialize_projectile_pool()
@@ -562,12 +564,19 @@ func _apply_projectile_color(projectile_id: int) -> void:
 	var projectile: Projectile = _active_projectiles[projectile_id]
 	if is_instance_valid(projectile):
 		projectile.set_projectile_color(_get_player_color(source_id))
+		projectile.set_projectile_class(_get_player_class(source_id))
 
 
 func _get_player_color(entity_id: int) -> Color:
 	if entity_id == GameManager.get_local_player_entity_id():
 		return GameManager.player_data.get("player_color", Color(0.27, 0.53, 1.0))
 	return EntityNameCache.get_entity_color(entity_id)
+
+
+func _get_player_class(entity_id: int) -> int:
+	if entity_id == GameManager.get_local_player_entity_id():
+		return GameManager.player_data.get("player_class", PacketTypes.PlayerClass.ZEALOT)
+	return EntityNameCache.get_entity_class(entity_id)
 
 
 func _on_entity_color_updated(entity_id: int, player_color: Color) -> void:
@@ -579,6 +588,16 @@ func _on_entity_color_updated(entity_id: int, player_color: Color) -> void:
 	for projectile_id: int in _projectile_sources.keys():
 		if int(_projectile_sources[projectile_id]) == entity_id:
 			_apply_projectile_color(projectile_id)
+
+
+## Late PLAYER_INFO class updates propagate like color updates. RemotePlayer does not expose
+## set_player_class yet (sprite selection is wired separately), so the call is guarded — once
+## the visual hook lands, this handler feeds it without further changes here.
+func _on_entity_class_updated(entity_id: int, player_class: int) -> void:
+	if player_entities.has(entity_id):
+		var remote_player: RemotePlayer = player_entities[entity_id]
+		if is_instance_valid(remote_player) and remote_player.has_method("set_player_class"):
+			remote_player.call("set_player_class", player_class)
 
 
 ## Get entity counts for debug

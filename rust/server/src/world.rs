@@ -229,7 +229,7 @@ impl World {
         let per_peer_bytes = ((effective as f64 / rate as f64).trunc() as usize)
             .clamp(MIN_SNAPSHOT_FLOOR, self.config.max_snapshot_bytes);
 
-        let (entity_id, name, color, position) = {
+        let (entity_id, name, color, class, position) = {
             let Some(state) = self.players.get_mut(peer) else {
                 return;
             };
@@ -243,12 +243,16 @@ impl World {
                 .unwrap_or(1_000_000 + state.entity_id as u32);
             state.character_name = auth.character_name.clone();
             state.player_color = auth.color;
+            // Class is client-chosen identity metadata; clamp out-of-range to Zealot (0).
+            // Not validated against account data yet (the client requests, the server decides).
+            state.player_class = if auth.class > 6 { 0 } else { auth.class };
             state.bandwidth_budget_bps = effective;
             state.max_snapshot_bytes = per_peer_bytes;
             (
                 state.entity_id,
                 state.character_name.clone(),
                 state.player_color,
+                state.player_class,
                 state.position,
             )
         };
@@ -270,7 +274,7 @@ impl World {
         // PLAYER_INFO fan-out order (lifecycle §4.4): newcomer to all (incl. self), then every
         // OTHER authenticated player to the newcomer, then leaderboard register + broadcast.
         outbox.broadcast(crate::broadcast::player_info_event(
-            entity_id, &name, position, color,
+            entity_id, &name, position, color, class,
         ));
         let others: Vec<ServerPacket> = self
             .players
@@ -283,6 +287,7 @@ impl World {
                     &p.character_name,
                     p.position,
                     p.player_color,
+                    p.player_class,
                 )
             })
             .collect();
@@ -624,11 +629,16 @@ mod tests {
     }
 
     fn auth_packet(name: &str) -> ClientPacket {
+        auth_packet_with_class(name, 0)
+    }
+
+    fn auth_packet_with_class(name: &str, class: u8) -> ClientPacket {
         ClientPacket::ConnectAuth(protocol::ConnectAuth {
             protocol_version: protocol::PROTOCOL_VERSION,
             ticket: None,
             character_name: name.into(),
             color: (69, 135, 255),
+            class,
             bandwidth_budget_bps: 0,
         })
     }
@@ -673,6 +683,35 @@ mod tests {
         assert!(msgs.iter().any(|(_, p)| matches!(
             p,
             ServerPacket::GameEvent(e) if e.event_type == game_event_type::LEADERBOARD_UPDATE
+        )));
+    }
+
+    /// Join stores the client-chosen class, clamping out-of-range values (> 6) to 0 (Zealot);
+    /// the PLAYER_INFO broadcast carries the clamped value.
+    #[test]
+    fn join_clamps_player_class() {
+        let mut world = test_world();
+
+        world
+            .on_peer_connected(1, protocol::PROTOCOL_VERSION as u32)
+            .unwrap();
+        let mut outbox = Outbox::new();
+        world.on_packet(1, auth_packet_with_class("Mage", 6), 0, 0, &mut outbox);
+        assert_eq!(world.players.get(1).unwrap().player_class, 6);
+
+        world
+            .on_peer_connected(2, protocol::PROTOCOL_VERSION as u32)
+            .unwrap();
+        let mut outbox = Outbox::new();
+        world.on_packet(2, auth_packet_with_class("Hacker", 7), 0, 0, &mut outbox);
+        assert_eq!(world.players.get(2).unwrap().player_class, 0);
+        let entity_id = world.players.get(2).unwrap().entity_id;
+        let msgs = outbox.drain();
+        assert!(msgs.iter().any(|(_, p)| matches!(
+            p,
+            ServerPacket::GameEvent(e) if e.event_type == game_event_type::PLAYER_INFO
+                && e.target_id == entity_id
+                && matches!(e.data, protocol::GameEventData::PlayerInfo { class: 0, .. })
         )));
     }
 
