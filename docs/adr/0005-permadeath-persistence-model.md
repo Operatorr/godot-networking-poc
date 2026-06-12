@@ -9,7 +9,7 @@ account/character/leaderboard persistence."*
 ## Context
 
 The Rust port is the netcode foundation for a **Realm-of-the-Mad-God-like instance-based MMO**:
-permadeath characters and a forever account vault. Permadeath **inverts the usual persistence failure
+permadeath characters and a forever account bank. Permadeath **inverts the usual persistence failure
 mode.** A save-on-leave design fears *losing* progress on a crash; under permadeath the dangerous vector
 is the opposite — a player **dodging a fatal hit by disconnecting** so the death never persists and they
 keep the character and its loot. That inversion, plus a tradeable item economy (where **duplication** is
@@ -22,17 +22,17 @@ built, even though POC gameplay is HP-only.
 
 | Lifetime | Examples | Storage | In the sim? | Survives death? |
 |---|---|---|---|---|
-| Account-scoped durable | vault, fame, classes, currency | Go API / Postgres | No | Yes |
+| Account-scoped durable | bank, glory, classes, currency | Go API / Postgres | No | Yes |
 | Character-scoped durable | level, stats, carried inventory | Go API / Postgres; hydrated on join | Yes (this subset) | **No** |
 | Session-ephemeral | HP/MP, position, cooldowns | in-memory in the sim | born there | reset on entry |
 
 The sim hydrates **only the Character-scoped subset** on join; **Account-scoped state never enters the
-combat sim** (touched only at a vault chest in the nexus, via the API). This is what keeps the service
+combat sim** (touched only at a bank chest in the Sanctuary, via the API). This is what keeps the service
 boundary thin despite a rich item economy.
 
 **2. Death is the first-class save, and it is disconnect-immune.** When HP reaches 0 **in the
 authoritative tick** (D8's collision/damage stage), the server **synchronously and transactionally**:
-deletes the character + everything it carried, credits account fame, and leaves the vault untouched —
+deletes the character + everything it carried, credits account glory, and leaves the bank untouched —
 **before any client action can intervene.** Alive/dead is server-authoritative at the tick it happens.
 This is **not** save-on-leave; a disconnect handler a cheater never lets you reach cannot be the
 mechanism.
@@ -40,7 +40,7 @@ mechanism.
 **3. Item integrity is enforced by exactly one service (the Go API).**
 - **Single active session per account** — prevents two sessions hydrating the same inventory and both
   saving (a dupe). Enforced at ticket issuance / session registration.
-- **Atomic vault↔character transfers** — every item move is a single Postgres transaction behind the
+- **Atomic bank↔character transfers** — every item move is a single Postgres transaction behind the
   Go API; never "remove then add." Rust never races these in a second language.
 
 **4. Instance transitions double as checkpoints.** Persist Character-scoped state through the API on
@@ -50,7 +50,7 @@ portal-dodge).
 
 **5. Writes are idempotent absolute-state** ("character is now level 12, these stats, this inventory"),
 never deltas — so transition saves, periodic checkpoints, and the death-persist are all safe to retry.
-A periodic checkpoint bounds loss on accumulating XP/fame between transitions.
+A periodic checkpoint bounds loss on accumulating XP/glory between transitions.
 
 ## Considered options
 
@@ -58,7 +58,7 @@ A periodic checkpoint bounds loss on accumulating XP/fame between transitions.
 |---|---|
 | **Hydrate-on-join + death-as-save via Go API, three-tier state** (chosen) | **Accepted** — only model that closes the disconnect-to-dodge-death and dupe vectors while keeping the sim thin |
 | Save-on-leave only (clean-exit) | Rejected — a disconnecting cheater never triggers it; permadeath unsaved |
-| Ephemeral sim + results-only to API | Rejected for the target game — no durable progression; cannot host a vault economy (fine only as a throwaway POC stage) |
+| Ephemeral sim + results-only to API | Rejected for the target game — no durable progression; cannot host a bank economy (fine only as a throwaway POC stage) |
 | Rust → Postgres direct | Rejected **hard** — item-transfer transactions racing across two languages is the surest dupe factory; violates the single-owner invariant |
 
 ## Consequences
@@ -71,7 +71,7 @@ A periodic checkpoint bounds loss on accumulating XP/fame between transitions.
   outbox while marking the character dead in-memory immediately (the latter is preferred; the in-memory
   dead flag is the authority, the write is durability).
 - **The Go API grows** a session registry (single-active-session), character hydrate/save endpoints, an
-  atomic item-transfer endpoint, and a fame-credit/character-delete death endpoint.
+  atomic item-transfer endpoint, and a glory-credit/character-delete death endpoint.
 - **Build the seam now, grow the payload later** — stand up hydrate-on-join, death-persist, atomic item
   move, and the session lock early; durable fields start minimal (identity + HP) and widen as classes,
   skill trees, and item types land. The seam is the expensive-to-retrofit part.

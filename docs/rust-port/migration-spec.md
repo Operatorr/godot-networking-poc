@@ -296,16 +296,16 @@ accepting both old+new during overlap. Part 2 (character persistence) follows.
 **Decision.** Durable state lives behind the Go API (Postgres); the Rust sim hydrates only the living
 character's combat-relevant subset on join and treats **death — not logout — as the first-class save.**
 The target is a Realm-of-the-Mad-God-like instance-based MMO (permadeath characters, a forever account
-vault), so the persistence model is built around **permadeath and item integrity** from the start, even
+bank), so the persistence model is built around **permadeath and item integrity** from the start, even
 though POC gameplay stays HP-only. **The boundary stays thin because only the *living character* state
-crosses; account/vault state never enters the combat sim.** Reinforces the AGENTS.md invariant rather
+crosses; account/bank state never enters the combat sim.** Reinforces the AGENTS.md invariant rather
 than bending it; **Option 3 (Rust → Postgres direct) is rejected harder** — see item integrity below.
 
 **Three state lifetimes (canonical — added to [`../CONTEXT.md`](../CONTEXT.md)).**
 
 | Lifetime | Examples | Where it lives | Crosses into the Rust sim? | Survives character death? |
 |---|---|---|---|---|
-| **Account-scoped durable** | vault contents, fame, unlocked classes, currency | Go API / Postgres | **No** — touched only at a vault chest in the nexus, via the API | **Yes** |
+| **Account-scoped durable** | bank contents, glory, unlocked classes, currency | Go API / Postgres | **No** — touched only at a bank chest in the Sanctuary, via the API | **Yes** |
 | **Character-scoped durable** | level, the 8 potion-raised stats, carried inventory | Go API / Postgres; **hydrated** into the sim on join | **Yes** (this subset only) | **No** — destroyed on death |
 | **Session-ephemeral** | current HP/MP, position, active cooldowns | in-memory in the sim only | n/a (born in the sim) | n/a — reset on every entry |
 
@@ -313,7 +313,7 @@ than bending it; **Option 3 (Rust → Postgres direct) is rejected harder** — 
 **disconnect-to-dodge-death** ("pull the cable the frame before a fatal hit so the death never saves").
 Defense: when HP reaches 0 **in the authoritative tick** (D8's collision/damage stage), the server
 **synchronously and transactionally**: (1) deletes the character + everything it carried, (2) credits
-account-level fame, (3) leaves the vault untouched — *before any client action can intervene*. Alive/
+account-level glory, (3) leaves the bank untouched — *before any client action can intervene*. Alive/
 dead is server-authoritative at the tick it happens; nothing the client does next can undo it. This is
 **not** save-on-leave (clean-exit only); a disconnect handler a cheater never lets you reach cannot be
 the mechanism.
@@ -322,22 +322,22 @@ the mechanism.
 - **Concurrent sessions:** two sessions on one account both hydrate the same inventory and both save →
   dupe. The Go API **MUST enforce a single active session per account** (now load-bearing, not
   precautionary — ties to D9's ticket issuance).
-- **Vault↔character transfers:** every item move is a **single atomic swap owned by Postgres behind the
-  Go API** — never "remove from vault, then add to character" (which can half-complete → item in both
+- **Bank↔character transfers:** every item move is a **single atomic swap owned by Postgres behind the
+  Go API** — never "remove from bank, then add to character" (which can half-complete → item in both
   or neither). Letting Rust race these transactions against the API in a second language is the surest
   way to manufacture dupes → **this is the strongest reason Option 3 stays rejected.**
 
 **Instance transitions double as checkpoints.** The world is realms + dungeon instances players portal
 between. Each transition is a natural checkpoint + handoff: persist the character-scoped durable state
 through the API on transition, re-hydrate in the destination, spawn **fresh** session-ephemeral state
-(full HP, portal/nexus spawn). Instances are **stateless-on-entry**; the API is the handoff medium.
+(full HP, portal/Sanctuary spawn). Instances are **stateless-on-entry**; the API is the handoff medium.
 Caution: **death-resolution authority must sit clearly on one side of a transition** — a player
 mid-portal who would have died must not use the transition as another dodge.
 
 **Write discipline (defaults).**
 - Writes are **idempotent absolute-state** ("character is now level 12, these 8 stats, this exact
   inventory"), not deltas → every save (transition, periodic, death) is **safe to retry**.
-- A **periodic checkpoint** bounds loss on accumulating state (XP / fame-in-progress) between transitions.
+- A **periodic checkpoint** bounds loss on accumulating state (XP / glory-in-progress) between transitions.
 - **Build the seam now, grow the payload later:** stand up hydrate-on-join, the death-persist, the
   atomic item move, and the session lock **early**; let durable fields start small (POC: identity +
   HP-only) and widen as classes / skill trees / item types land. The seam is the expensive-to-retrofit
@@ -361,7 +361,7 @@ client (via the GDExtension) and the server share them exactly — the same anti
 movement. The authority *model* is unchanged.
 
 **What changes because of D10 (permadeath).** The doc's *"accepted hole"* — never-report ⇒ immune to
-monster damage — was accepted under POC stakes (respawn, no economy). Under permadeath + a vault
+monster damage — was accepted under POC stakes (respawn, no economy). Under permadeath + a bank
 economy it becomes **risk-free farming of real loot** (the actual RotMG invuln-hack problem). So the
 port **escalates** it from accepted to mitigated:
 - **Enable the lenient server backstop** (today "left off"): if a monster bullet's **authoritative path

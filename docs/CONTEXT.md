@@ -20,6 +20,43 @@ netcode can scale, not to be a finished game.
 The single shared combat map where all play happens. There is exactly one.
 _Avoid_: level, world, zone, map.
 
+## World structure & navigation
+
+**Plane**:
+One of the three top-level world groupings — Mainland, Underworld, and Creator's Realm. Each Plane
+contains multiple Biomes spanning a progression tier range.
+_Avoid_: dimension, realm (reserve for the product name "Omega Realm"), world (that's a playable Instance).
+
+**Biome**:
+The environmental theme of a World — determines monster roster, visual style, and tier. Each Biome
+belongs to exactly one Plane. Canonical Biome IDs are in `docs/systems/MONSTERS.md`.
+_Avoid_: zone, region, area.
+
+**World**:
+A playable Instance of a specific Biome. Players enter via a Portal from the Sanctuary. Worlds may
+spawn Rifts. Multiple World Instances of the same Biome can run concurrently within a Shard.
+_Avoid_: level, map, arena (that's the single POC combat map), realm.
+
+**Shard**:
+A server node that hosts a bounded set of World and Dungeon Instances with a shared player cap. The
+Sanctuary lobby selects a Shard for the player before they enter a World.
+_Avoid_: server, node, cluster, instance (a Shard contains Instances, it is not one).
+
+**Portal**:
+An in-world object a player walks through to transition between Instances — entering Worlds, Dungeons,
+the Arena, or returning to the Sanctuary. Passing through a Portal is a persistence checkpoint.
+_Avoid_: gateway, door, teleporter.
+
+**Rift**:
+A dungeon Portal that spawns dynamically inside a World. Taking a Rift transports the player into a
+themed Dungeon Instance matched to the host Biome.
+_Avoid_: portal (Rift is a specific kind of Portal), dungeon entrance.
+
+**Dungeon**:
+A themed Instance accessed via a Rift. Shorter and more intense than a World; themed to the Biome in
+which its Rift spawned.
+_Avoid_: raid, level, instance (too generic).
+
 ## Time & cadence (these three are distinct — most confusion lives here)
 
 **Tick**:
@@ -112,7 +149,7 @@ See the [Rust port migration spec](rust-port/migration-spec.md) D10 and
 [ADR 0005](adr/0005-permadeath-persistence-model.md).
 
 **Account-scoped state**:
-Durable state that belongs to the *account* and survives character death — the vault, fame, unlocked
+Durable state that belongs to the *account* and survives character death — the bank, glory, unlocked
 classes, currency. Lives behind the Go API; never enters the combat sim.
 _Avoid_: account data, profile (too vague), save file.
 
@@ -131,20 +168,30 @@ The rule that a character's death is permanent: the character and its carried in
 (Character-scoped state) are destroyed, while the Account-scoped state survives.
 _Avoid_: death (which is also the in-Tick HP→0 event; permadeath is the persistence consequence).
 
-**Vault**:
-The account-owned, cross-character item store. Account-scoped; mutated only at a vault chest in the
-nexus, through the Go API, never inside the combat sim.
-_Avoid_: bank, stash, storage.
+**Bank**:
+The account-owned, cross-character item store. Account-scoped; mutated only at a bank chest in the
+Sanctuary, through the Go API, never inside the combat sim.
+_Avoid_: vault, stash, chest, storage.
 
-**Fame**:
+**Glory**:
 The account-scoped progression score credited when a character dies. Survives permadeath.
 _Avoid_: score (reserve for the in-session leaderboard), XP (that's Character-scoped).
 
-**Nexus**:
-The safe hub Instance where players manage Account-scoped state (vault, classes) — no combat.
-_Avoid_: lobby, town, hub (use Nexus).
+**Sanctuary**:
+The safe hub Instance where players manage Account-scoped state — no combat. Contains the Bank,
+Vendors, and Class Trainers. Portals in the Sanctuary lead to Worlds and the Arena; Portals in Worlds
+and Dungeons return to the Sanctuary.
+_Avoid_: lobby, town, hub, nexus (use Sanctuary).
+
+**Vendor**:
+An NPC in the Sanctuary who buys and sells equipment in exchange for currency.
+_Avoid_: merchant, trader, shopkeeper.
+
+**Class Trainer**:
+An NPC in the Sanctuary who teaches a character new spells for its class.
+_Avoid_: trainer, teacher, instructor.
 
 **Instance**:
-One running copy of a Realm or dungeon that players portal between. Stateless-on-entry; transitions
-between Instances double as persistence checkpoints.
-_Avoid_: room, session, shard (a shard hosts many Instances), level.
+One running copy of a World, Dungeon, Arena, or Sanctuary. Stateless-on-entry; transitions between
+Instances through a Portal double as persistence checkpoints.
+_Avoid_: room, session, level.
