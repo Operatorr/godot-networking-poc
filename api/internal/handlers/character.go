@@ -10,6 +10,7 @@ import (
 	"github.com/omega-realm/api/internal/database"
 	"github.com/omega-realm/api/internal/middleware"
 	"github.com/omega-realm/api/internal/models"
+	"github.com/omega-realm/api/internal/progression"
 )
 
 type CharacterHandler struct {
@@ -51,7 +52,7 @@ func (h *CharacterHandler) GetCharacter(w http.ResponseWriter, r *http.Request) 
 	// Query character by user_id
 	var character models.Character
 	query := `
-		SELECT id, user_id, name, class, race, realm, mode, level, created_at
+		SELECT id, user_id, name, class, race, realm, mode, level, experience, created_at
 		FROM characters
 		WHERE user_id = $1
 	`
@@ -64,6 +65,7 @@ func (h *CharacterHandler) GetCharacter(w http.ResponseWriter, r *http.Request) 
 		&character.Realm,
 		&character.Mode,
 		&character.Level,
+		&character.Experience,
 		&character.CreatedAt,
 	)
 
@@ -143,7 +145,7 @@ func (h *CharacterHandler) CreateCharacter(w http.ResponseWriter, r *http.Reques
 	insertQuery := `
 		INSERT INTO characters (user_id, name, class, race, realm, mode, level)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		RETURNING id, user_id, name, class, race, realm, mode, level, created_at
+		RETURNING id, user_id, name, class, race, realm, mode, level, experience, created_at
 	`
 	err = h.db.QueryRow(
 		insertQuery,
@@ -163,6 +165,7 @@ func (h *CharacterHandler) CreateCharacter(w http.ResponseWriter, r *http.Reques
 		&character.Realm,
 		&character.Mode,
 		&character.Level,
+		&character.Experience,
 		&character.CreatedAt,
 	)
 
@@ -191,6 +194,121 @@ func (h *CharacterHandler) CreateCharacter(w http.ResponseWriter, r *http.Reques
 		Message:   "Character created successfully",
 		Character: &character,
 	})
+}
+
+// Character progression (level + experience) is server-authoritative: it is written
+// ONLY by the Rust game server via the X-Server-Token internal endpoints
+// (POST /api/internal/characters/{id}/progress). There is deliberately no
+// JWT/client-writable progression endpoint — that would let a modified client set its
+// own level/XP and then sacrifice it for Glory.
+
+// DeleteCharacter removes the authenticated user's character. Leaderboard and
+// session rows are removed automatically via ON DELETE CASCADE foreign keys.
+func (h *CharacterHandler) DeleteCharacter(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Get user claims from context
+	claims, ok := middleware.GetUserClaims(r)
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Unauthorized"})
+		return
+	}
+
+	result, err := h.db.Exec(`DELETE FROM characters WHERE user_id = $1`, claims.UserID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to delete character"})
+		return
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to delete character"})
+		return
+	}
+	if rows == 0 {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "No character found for this user"})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "Character deleted"})
+}
+
+// SacrificeResponse is the body returned by SacrificeCharacter.
+type SacrificeResponse struct {
+	GloryAwarded int64 `json:"glory_awarded"`
+}
+
+// SacrificeCharacter is the player-initiated church sacrifice: the authenticated
+// user trades their living character for account-wide Glory. Atomic: read the
+// character's level/experience, award floor(lifetime XP / divisor) Glory to the
+// account, then delete the character. 404 if the user has no character.
+//
+// POST /api/character/sacrifice (JWT-protected)
+func (h *CharacterHandler) SacrificeCharacter(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	claims, ok := middleware.GetUserClaims(r)
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Unauthorized"})
+		return
+	}
+
+	tx, err := h.db.Begin()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to start transaction"})
+		return
+	}
+	defer tx.Rollback() //nolint:errcheck // no-op after a successful Commit
+
+	var level, experience int
+	err = tx.QueryRow(
+		`SELECT level, experience FROM characters WHERE user_id = $1 FOR UPDATE`, claims.UserID,
+	).Scan(&level, &experience)
+	if err == sql.ErrNoRows {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "No character found for this user"})
+		return
+	}
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to fetch character"})
+		return
+	}
+
+	glory := progression.GloryFor(level, experience)
+	if _, err := tx.Exec(
+		`UPDATE users SET glory = glory + $1 WHERE id = $2`, glory, claims.UserID,
+	); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to award glory"})
+		return
+	}
+
+	if _, err := tx.Exec(`DELETE FROM characters WHERE user_id = $1`, claims.UserID); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to delete character"})
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to commit transaction"})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(SacrificeResponse{GloryAwarded: glory})
 }
 
 func normalizeCharacterRequest(req *CreateCharacterRequest) {
@@ -223,8 +341,8 @@ func validateCharacterOptions(req CreateCharacterRequest) error {
 	if len(req.Mode) > 20 {
 		return fmt.Errorf("character mode must not exceed 20 characters")
 	}
-	if req.Level < 1 || req.Level > 32767 {
-		return fmt.Errorf("character level must be between 1 and 32767")
+	if req.Level < 1 || req.Level > progression.MaxPlayerLevel {
+		return fmt.Errorf("character level must be between 1 and %d", progression.MaxPlayerLevel)
 	}
 	return nil
 }

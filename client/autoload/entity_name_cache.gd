@@ -7,8 +7,11 @@ extends Node
 var entity_names: Dictionary = {}  # entity_id (int) -> character_name (String)
 ## Entity ID to player color mapping
 var entity_colors: Dictionary = {}  # entity_id (int) -> Color
+## Entity ID to player class mapping (PacketTypes.PlayerClass; server-clamped to 0..6)
+var entity_classes: Dictionary = {}  # entity_id (int) -> player_class (int)
 
 signal entity_color_updated(entity_id: int, player_color: Color)
+signal entity_class_updated(entity_id: int, player_class: int)
 
 ## Runtime mode detection
 var _is_server: bool = false
@@ -46,11 +49,13 @@ func _on_server_message(message_type: int, data: Dictionary) -> void:
 		var event_data: Dictionary = data.get("event_data", {})
 		var character_name: String = event_data.get("character_name", "")
 		var player_color: Color = event_data.get("player_color", Color(0.27, 0.53, 1.0))
+		var player_class: int = int(event_data.get("player_class", PacketTypes.PlayerClass.ZEALOT))
 
 		if entity_id > 0 and not character_name.is_empty():
 			set_entity_name(entity_id, character_name)
 			set_entity_color(entity_id, player_color)
-			print("[EntityNameCache] Cached: entity %d -> '%s' color=%s" % [entity_id, character_name, player_color])
+			set_entity_class(entity_id, player_class)
+			print("[EntityNameCache] Cached: entity %d -> '%s' color=%s class=%d" % [entity_id, character_name, player_color, player_class])
 
 
 ## Add or update entity name
@@ -63,6 +68,12 @@ func set_entity_color(entity_id: int, player_color: Color) -> void:
 	player_color.a = 1.0
 	entity_colors[entity_id] = player_color
 	entity_color_updated.emit(entity_id, player_color)
+
+
+## Add or update entity class (late PLAYER_INFO updates propagate like color updates)
+func set_entity_class(entity_id: int, player_class: int) -> void:
+	entity_classes[entity_id] = player_class
+	entity_class_updated.emit(entity_id, player_class)
 
 
 ## Get entity name with fallback
@@ -79,6 +90,13 @@ func get_entity_color(entity_id: int) -> Color:
 	return Color(0.27, 0.53, 1.0)
 
 
+## Get entity class with fallback (ZEALOT = 0)
+func get_entity_class(entity_id: int) -> int:
+	if entity_classes.has(entity_id):
+		return entity_classes[entity_id]
+	return PacketTypes.PlayerClass.ZEALOT
+
+
 ## Check if an entity name is cached
 func has_entity_name(entity_id: int) -> bool:
 	return entity_names.has(entity_id)
@@ -93,9 +111,11 @@ func get_cached_count() -> int:
 func clear() -> void:
 	entity_names.clear()
 	entity_colors.clear()
+	entity_classes.clear()
 
 
 ## Remove specific entity name
 func remove_entity_name(entity_id: int) -> void:
 	entity_names.erase(entity_id)
 	entity_colors.erase(entity_id)
+	entity_classes.erase(entity_id)

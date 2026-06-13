@@ -16,6 +16,8 @@ extends Node2D
 
 const PLAYER_SCENE_PATH := "res://scenes/shared/player/player.tscn"
 const PAUSE_MENU_PATH := "res://scripts/client/hud/pause_menu.gd"
+## Preloaded so the class resolves during headless startup (per AGENTS.md).
+const ExperienceBar := preload("res://scripts/client/hud/experience_bar.gd")
 
 const ENVIRONMENT_COLLISION_LAYER := 8
 ## Camera jump beyond this (player teleport/respawn) snaps instead of interpolating.
@@ -36,6 +38,7 @@ var camera: Camera2D = null
 var hud_layer: CanvasLayer = null
 var hp_bar: Control = null
 var stamina_bar: Control = null
+var ability_slots: Control = null
 var mana_bar: Control = null
 var pause_menu: Control = null
 
@@ -76,7 +79,7 @@ func _process(delta: float) -> void:
 	# Sprint zoom — identical feel to the arena (GameConstants is the single source).
 	if camera and local_player and is_instance_valid(local_player):
 		var target_zoom := GameConstants.CAMERA_ZOOM_DEFAULT
-		if Input.is_action_pressed("sprint") and local_player.movement_state == Player.MovementState.WALKING:
+		if local_player.is_sprinting():
 			target_zoom = GameConstants.CAMERA_ZOOM_SPRINT
 		camera.zoom = camera.zoom.lerp(target_zoom, clampf(delta * GameConstants.CAMERA_ZOOM_SPEED, 0.0, 1.0))
 
@@ -87,6 +90,8 @@ func _process(delta: float) -> void:
 		if local_player.movement_sm:
 			if stamina_bar:
 				stamina_bar.update_value(local_player.movement_sm.stamina, GameConstants.PLAYER_STAMINA_MAX)
+				if stamina_bar.has_method("set_exhausted"):
+					stamina_bar.set_exhausted(local_player.movement_sm.is_exhausted())
 			if mana_bar:
 				mana_bar.update_value(local_player.movement_sm.mana, GameConstants.PLAYER_MANA_MAX)
 
@@ -218,14 +223,37 @@ func _setup_hud() -> void:
 	var bars := BottomBars.create(hud_layer)
 	hp_bar = bars["hp"]
 	stamina_bar = bars["stamina"]
+	ability_slots = bars["ability_slots"]
 	mana_bar = bars["mana"]
+	if ability_slots and local_player and local_player.movement_sm:
+		ability_slots.bind_movement_state_machine(local_player.movement_sm)
+
+	# Level / XP bar (top-center). Offline hubs grant no XP but still show the level.
+	var xp_bar := ExperienceBar.new()
+	xp_bar.name = "ExperienceBar"
+	hud_layer.add_child(xp_bar)
 	if local_player and local_player.hp_component:
 		hp_bar.update_hp(local_player.hp_component.current_hp, local_player.hp_component.max_hp)
 
 	pause_menu = _create_hud_component(PAUSE_MENU_PATH, "PauseMenu")
 	pause_menu.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	hud_layer.add_child(pause_menu)
+	# Offline hubs (Sanctuary/Practice) have no arena/server to leave — exit to the menu.
+	pause_menu.set_leave_button_text("EXIT TO MENU")
 	pause_menu.leave_arena_requested.connect(_leave)
+	# Disable the local player's input while paused so clicking pause buttons (left
+	# click = the shoot action) doesn't spawn a projectile offline.
+	pause_menu.visibility_changed.connect(_on_pause_menu_visibility_changed)
+
+
+func _on_pause_menu_visibility_changed() -> void:
+	if local_player and is_instance_valid(local_player):
+		var paused := pause_menu != null and pause_menu.visible
+		# Never re-enable input on a dead player when the pause menu closes — death
+		# disables input (Player._on_hp_component_died) and it must stay disabled.
+		if not paused and local_player.action_state == Player.ActionState.DEAD:
+			return
+		local_player.set_input_enabled(not paused)
 
 
 func _create_hud_component(script_path: String, node_name: String) -> Control:

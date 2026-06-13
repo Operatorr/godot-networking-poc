@@ -1,0 +1,34 @@
+{
+  "canvas": [
+    48,
+    48
+  ],
+  "directional": false,
+  "dir_order": [],
+  "anims": {
+    "idle": {
+      "frames": 7,
+      "fps": 8,
+      "loop": true,
+      "png": "idle.png"
+    },
+    "walk": {
+      "frames": 7,
+      "fps": 10,
+      "loop": true,
+      "png": "walk.png"
+    },
+    "attack": {
+      "frames": 7,
+      "fps": 12,
+      "loop": false,
+      "png": "attack.png"
+    },
+    "death": {
+      "frames": 9,
+      "fps": 12,
+      "loop": false,
+      "png": "death.png"
+    }
+  }
+}

@@ -56,5 +56,16 @@ tmp/
 # API environment
 api/.env
 
-# Load testing Python virtual environment
-load_testing/venv/
+# Deploy target config (server IP / SSH user) — local only, never committed
+deployment/deploy.env
+
+# Load test reports (omega-load-test writes report_<timestamp>.json to the CWD)
+report_*.json
+
+# Rust GDExtension build artifacts (rebuilt by scripts/build_client_ext.sh)
+client/bin/macos/*.dylib
+client/bin/linux/*.so
+client/bin/windows/*.dll
+
+# Compiled Go API binary (built by scripts/build_api.sh)
+api/bin/

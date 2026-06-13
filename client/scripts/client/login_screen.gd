@@ -263,15 +263,11 @@ func _on_login_successful(user_data: Dictionary) -> void:
 	_navigate_after_login()
 
 
-## Navigate to appropriate screen after successful login
+## Navigate after successful login. Always lands on the main menu now — the menu shows a
+## "Create Character" button in place of the character card when no character exists.
 func _navigate_after_login() -> void:
-	# Check if user has a character
-	if GameManager.has_character():
-		print("[LoginScreen] User has character, navigating to main menu")
-		SceneManager.goto_main_menu()
-	else:
-		print("[LoginScreen] User has no character, navigating to character creation")
-		SceneManager.goto_character_creation()
+	print("[LoginScreen] Login complete, navigating to main menu")
+	SceneManager.goto_main_menu()
 
 
 ## Handle login failure

@@ -70,10 +70,10 @@ PRIORITY FOR OMEGA REALM:
 │  2 CPU / 4GB RAM / 80GB SSD - $24/month     │
 │                                             │
 │  ┌────────────────────────────────────────┐ │
-│  │ Godot Headless Game Server             │ │
-│  │ ├─ All zones (Forest, Desert, etc.)    │ │
-│  │ ├─ Hub cities                          │ │
-│  │ └─ Single instance (no sharding)       │ │
+│  │ Rust omega-server (systemd)            │ │
+│  │ ├─ omega-arena    (udp/8081)           │ │
+│  │ ├─ omega-sanctuary(udp/8082)           │ │
+│  │ └─ one process = one Instance (D13)    │ │
 │  └────────────────────────────────────────┘ │
 │                                             │
 │  ┌────────────────────────────────────────┐ │
@@ -110,8 +110,9 @@ PRIORITY FOR OMEGA REALM:
 
 ```bash
 # Manual monitoring (no cost)
-# Game Server FPS
-$ ps aux | grep godot
+# Game server status + tick metrics
+$ systemctl status omega-arena omega-sanctuary
+$ curl -s http://localhost:9100/metrics | grep tick   # arena (sanctuary = :9101)
 
 # API health check
 $ curl http://localhost:8080/health
@@ -152,7 +153,7 @@ Graduate when you have:
 ├──────────────────────────────────────────────────────────┤
 │                                                            │
 │  ┌────────────────────────────────────────────────────┐   │
-│  │ Godot Game Server #1 (Zone Server)                │   │
+│  │ Rust omega-server host #1 (instances)             │   │
 │  │ Droplet: 4 CPU / 8GB RAM - $48/month              │   │
 │  │ ├─ Forest + Desert zones                          │   │
 │  │ ├─ Hub City instance (50% of capacity)            │   │
@@ -160,7 +161,7 @@ Graduate when you have:
 │  └────────────────────────────────────────────────────┘   │
 │                                                            │
 │  ┌────────────────────────────────────────────────────┐   │
-│  │ Godot Game Server #2 (Zone Server)                │   │
+│  │ Rust omega-server host #2 (instances)             │   │
 │  │ Droplet: 4 CPU / 8GB RAM - $48/month              │   │
 │  │ ├─ Mountain + Volcanic zones                      │   │
 │  │ ├─ Hub City instance (50% of capacity)            │   │
@@ -493,6 +494,22 @@ For real-time features (arena, leaderboards):
 
 ## Deployment Procedures
 
-### Docker Deployment (Recommended)
+### Native systemd deployment (current)
+
+The single-box stack deploys as native systemd services — no Docker
+([ADR 0007](adr/0007-native-systemd-deployment.md)). Full runbook (provision, deploy,
+operate, rollback) lives in [`deployment/DEPLOYMENT.md`](../deployment/DEPLOYMENT.md):
+
+```bash
+./scripts/deploy.sh provision   # one-time: Go/Rust/Postgres/Redis + systemd units + swap
+./scripts/deploy.sh             # git pull master → rebuild → restart api + arena + sanctuary
+```
+
+For multi-region scale-out (Phase 3) an orchestrator (Kubernetes / Nomad) may reintroduce
+containers on its own merits; that does not change the single-box POC model above.
 
 ### Monitoring with Prometheus
+
+Each game instance exposes a Prometheus exporter on localhost (arena `:9100`,
+sanctuary `:9101`); scrape via an SSH tunnel or a private network — these ports are **not**
+opened in the firewall.

@@ -80,6 +80,9 @@ const INPUT_SEND_INTERVAL: float = GameConstants.SERVER_TICK_INTERVAL
 ## Current frame's accumulated input flags
 var current_input_flags: int = 0
 
+## When true, _capture_input_flags returns 0 (pause menu / modal open). See set_input_suppressed.
+var _input_suppressed: bool = false
+
 ## Dash is edge-triggered. We latch the rising edge of the dash action and keep
 ## the INPUT_FLAG_DASH bit set until the next input is sent to the server, so a
 ## tap between 30 Hz sends is never dropped. Cleared in _send_input_to_server.
@@ -91,6 +94,35 @@ var _last_predicted_shot_time: float = -INF
 
 ## Whether prediction and input sending are enabled for the local player.
 var prediction_enabled: bool = true
+
+## Last seen state of our own DAZED entity flag (edge-detected: snapshot flags
+## are delta-compressed, so they arrive only when they change or on baselines).
+var _own_dazed: bool = false
+
+## The shared Rust simulation core (migration-spec D5): prediction runs LITERALLY the same
+## compiled code as the server's authoritative step, so movement divergence is zero by
+## construction. Owns the movement state machine (dash/sprint/knockback timers, stamina/mana).
+var _sim: PredictionSim = PredictionSim.new()
+
+## Per-class ability tuning pushed into PredictionSim.set_ability_config so the predicted
+## ability cast/charge matches the server. Indexed by PacketTypes.PlayerClass (0..6):
+## [mana_cost, cooldown, charge_speed, charge_max_distance, base_move_speed]. Only the
+## Warrior (4) has charge_speed > 0 (⇒ Warrior charge in the Rust sim). These mirror the
+## values in client/data/classes/<class>.json (ability + stats.move_speed_base) exactly.
+const CLASS_ABILITY_CONFIG := [
+	[35.0, 8.0, 0.0, 0.0, 195.0],     # 0 Zealot
+	[30.0, 5.0, 0.0, 0.0, 205.0],     # 1 Void Hunter
+	[35.0, 8.0, 0.0, 0.0, 195.0],     # 2 Engineer
+	[35.0, 7.0, 0.0, 0.0, 195.0],     # 3 Plague Seer
+	[40.0, 9.0, 720.0, 420.0, 200.0], # 4 Warrior (charge)
+	[30.0, 10.0, 0.0, 0.0, 215.0],    # 5 Rogue
+	[40.0, 6.0, 0.0, 0.0, 195.0],     # 6 Mage
+]
+
+## Last seen state of our own DASHING entity flag, used to slave a Warrior charge end to
+## the server. When the server clears DASHING but PredictionSim still thinks it is charging,
+## we call end_charge() so the predicted charge releases exactly when the server's does.
+var _own_dashing: bool = false
 #endregion
 
 
@@ -151,6 +183,24 @@ func setup(player: Node2D, initial_position: Vector2, entity_id: int = -1) -> vo
 
 	if debug_logging:
 		print("[Prediction] Setup: entity_id=%d, pos=%s" % [entity_id, initial_position])
+
+	# Push the local player's class ability tuning + base move speed into the Rust sim so
+	# predicted ability casts/charge match the server. Reads the class from GameManager.
+	_configure_ability_for_local_class()
+
+
+## Push the local player's class ability config + base move speed into PredictionSim so
+## prediction matches the server. Reads the class id from GameManager.player_data and the
+## tuning from CLASS_ABILITY_CONFIG (mirrors client/data/classes/<class>.json). Safe to call
+## more than once (e.g. on setup and again if the class becomes known later).
+func _configure_ability_for_local_class() -> void:
+	var class_id := int(GameManager.player_data.get("player_class", PacketTypes.PlayerClass.ZEALOT))
+	class_id = clampi(class_id, 0, CLASS_ABILITY_CONFIG.size() - 1)
+	var cfg: Array = CLASS_ABILITY_CONFIG[class_id]
+	if _sim.has_method("set_ability_config"):
+		_sim.set_ability_config(float(cfg[0]), float(cfg[1]), float(cfg[2]), float(cfg[3]))
+	if _sim.has_method("set_base_speed"):
+		_sim.set_base_speed(float(cfg[4]))
 #endregion
 
 
@@ -201,6 +251,10 @@ func _physics_process(delta: float) -> void:
 
 #region Input Capture
 func _capture_input_flags() -> int:
+	# Paused / modal open: ignore all input so UI clicks don't shoot.
+	if _input_suppressed:
+		return 0
+
 	var flags := 0
 
 	# Movement (WASD)
@@ -238,6 +292,15 @@ func _get_aim_angle() -> float:
 	# Calculate angle from player to mouse
 	var mouse_pos := player_node.get_global_mouse_position()
 	return predicted_position.angle_to_point(mouse_pos)
+
+
+## Mouse position in WORLD coordinates — the cursor the server needs for cursor-targeted
+## abilities (Mage/Plague Seer cast point, Rogue blink/Shadowstep target). Falls back to
+## the predicted position when the player node is unavailable.
+func _get_cursor_world() -> Vector2:
+	if player_node == null:
+		return predicted_position
+	return player_node.get_global_mouse_position()
 
 
 func _log_shoot_edge(previous_flags: int, new_flags: int) -> void:
@@ -322,36 +385,34 @@ func _get_client_render_tick() -> int:
 
 #region Local Prediction
 func _apply_local_prediction(input_flags: int, delta: float) -> void:
-	var position_before := predicted_position
-
-	# Drive the shared movement state machine (dash/sprint/knockback/stun/ability +
-	# stamina/mana). The server runs an identical instance authoritatively; the
-	# reconcile path corrects position if they diverge. Fall back to the stateless
-	# walk/sprint model if the player exposes no SM (e.g. non-Player nodes in tests).
+	# Drive the shared Rust sim_core (D5): movement state machine tick + analytic obstacle
+	# mover + realized-velocity recompute, in one extension call — the exact code the server
+	# runs authoritatively. The reconcile path corrects position if real divergence appears
+	# (e.g. an unacked server-side knockback).
 	var direction := _get_direction_from_flags(input_flags)
+	var aim_dir := Vector2.from_angle(_get_aim_angle())
+	var result: Dictionary = _sim.step(
+		delta,
+		predicted_position,
+		direction,
+		(input_flags & PacketTypes.INPUT_FLAG_SPRINT) != 0,
+		(input_flags & PacketTypes.INPUT_FLAG_DASH) != 0,
+		(input_flags & PacketTypes.INPUT_FLAG_ABILITY) != 0,
+		(input_flags & PacketTypes.INPUT_FLAG_SHOOT) != 0,
+		aim_dir
+	)
+	predicted_position = result["position"]
+	predicted_velocity = result["velocity"]
+
+	# Mirror the predicted resources into the GDScript SM so HUD bars (stamina/mana signals)
+	# keep working; the Rust sim owns the actual prediction state.
 	var sm := _get_movement_sm()
 	if sm != null:
-		var aim_dir := Vector2.from_angle(_get_aim_angle())
-		predicted_velocity = sm.tick(
-			delta,
-			direction,
-			(input_flags & PacketTypes.INPUT_FLAG_SPRINT) != 0,
-			(input_flags & PacketTypes.INPUT_FLAG_DASH) != 0,
-			(input_flags & PacketTypes.INPUT_FLAG_ABILITY) != 0,
-			(input_flags & PacketTypes.INPUT_FLAG_SHOOT) != 0,
-			aim_dir
-		)
-	else:
-		predicted_velocity = direction * _get_speed_from_flags(input_flags)
-
-	# Integrate against obstacles, then recover the realized velocity.
-	predicted_position = GameConstants.move_with_obstacle_collision(
-		predicted_position,
-		predicted_position + predicted_velocity * delta,
-		GameConstants.PLAYER_HITBOX_RADIUS
-	)
-	if delta > 0.0:
-		predicted_velocity = (predicted_position - position_before) / delta
+		sm.set_resources(result["stamina"], result["mana"])
+		# Mirror sprint-exhaustion so the stamina bar blinks identically online (the Rust sim
+		# owns the lockout; the SM here only relays the edge to the HUD).
+		if sm.has_method("set_exhausted_state"):
+			sm.set_exhausted_state(bool(result.get("exhausted", false)))
 
 	# Update visual position (unless correcting)
 	_update_player_visual()
@@ -378,20 +439,6 @@ func _get_direction_from_flags(flags: int) -> Vector2:
 		direction.x += 1.0
 
 	return direction.normalized()
-
-
-## Ground (walk/sprint) speed used by reconciliation replay. Routed through the SM
-## so sprint stamina-gating and Haste/Slow modifiers stay consistent with live
-## prediction. Replay intentionally uses ground speed even mid-dash/knockback: those
-## transient states are brief and rarely span a correction; any residual is fixed by
-## the next snapshot. See docs/systems/players-movement-state-machine.md.
-func _get_speed_from_flags(flags: int) -> float:
-	var sprint := (flags & PacketTypes.INPUT_FLAG_SPRINT) != 0
-	var sm := _get_movement_sm()
-	if sm != null:
-		sprint = sprint and sm.stamina > GameConstants.PLAYER_STAMINA_SPRINT_MIN
-		return sm.get_ground_speed(sprint)
-	return GameConstants.PLAYER_SPRINT_SPEED if sprint else GameConstants.PLAYER_SPEED
 #endregion
 
 
@@ -460,24 +507,21 @@ func _send_input_to_server() -> void:
 
 	var seq := _advance_sequence()
 	var aim_angle := _get_aim_angle()
+	var cursor_world := _get_cursor_world()
 	var network_stats := NetworkManager.get_stats()
 	var client_render_tick := _get_client_render_tick()
 	var client_rtt_ms := int(network_stats.get("ping_ms", 0.0))
 
 	# Store one replay snapshot per sent input. The server applies one input over
-	# one authoritative tick, so replay uses the same interval.
-	var replay_velocity := _get_direction_from_flags(current_input_flags) * _get_speed_from_flags(current_input_flags)
-	var replay_end := GameConstants.move_with_obstacle_collision(
-		predicted_position,
-		predicted_position + replay_velocity * INPUT_SEND_INTERVAL,
-		GameConstants.PLAYER_HITBOX_RADIUS
-	)
+	# one authoritative tick, so replay uses the same interval. The stateless ground
+	# model runs through the same Rust mover the server uses.
+	var replay: Dictionary = _sim.replay_step(predicted_position, current_input_flags, INPUT_SEND_INTERVAL)
 	var snapshot := InputSnapshot.create(
 		seq,
 		current_input_flags,
 		predicted_position,
-		replay_end,
-		replay_velocity,
+		replay["position"],
+		replay["velocity"],
 		aim_angle,
 		INPUT_SEND_INTERVAL
 	)
@@ -487,6 +531,7 @@ func _send_input_to_server() -> void:
 	var input_data := {
 		"position": predicted_position,
 		"velocity": predicted_velocity,
+		"input_flags": current_input_flags,
 		"keys": {
 			"up": bool(current_input_flags & PacketTypes.INPUT_FLAG_MOVE_UP),
 			"down": bool(current_input_flags & PacketTypes.INPUT_FLAG_MOVE_DOWN),
@@ -499,6 +544,7 @@ func _send_input_to_server() -> void:
 			"dash": bool(current_input_flags & PacketTypes.INPUT_FLAG_DASH)
 		},
 		"aim_angle": aim_angle,
+		"cursor": cursor_world,
 		"sequence": seq,
 		"client_render_tick": client_render_tick,
 		"client_rtt_ms": client_rtt_ms
@@ -542,10 +588,14 @@ func _handle_action_confirm(data: Dictionary) -> void:
 	if action_type != ActionConfirmPacket.ActionType.MOVE:
 		return
 
-	# Apply the authoritative stamina/mana that rode along with this confirmation.
-	var sm := _get_movement_sm()
-	if sm != null and data.has("stamina"):
-		sm.set_resources(float(data.get("stamina", sm.stamina)), float(data.get("mana", sm.mana)))
+	# Apply the authoritative stamina/mana that rode along with this confirmation —
+	# into the Rust sim (the prediction authority) and mirrored to the GDScript SM
+	# for HUD signals.
+	if data.has("stamina"):
+		_sim.set_resources(float(data.get("stamina", 100)), float(data.get("mana", 100)))
+		var sm := _get_movement_sm()
+		if sm != null:
+			sm.set_resources(_sim.stamina(), _sim.mana())
 
 	# Update tracking
 	last_ack_sequence = sequence
@@ -580,12 +630,56 @@ func _handle_state_update(data: Dictionary) -> void:
 		var entity_id: int = entity_data.get("entity_id", -1)
 		if entity_id == local_entity_id:
 			var delta_mask: int = entity_data.get("delta_mask", PacketTypes.DELTA_MASK_FULL_STATE)
+			var has_flags := not is_delta \
+				or (delta_mask & PacketTypes.DELTA_MASK_FULL_STATE) != 0 \
+				or (delta_mask & PacketTypes.DELTA_MASK_FLAGS) != 0
+			if has_flags:
+				_update_own_flags(int(entity_data.get("flags", 0)))
 			if is_delta \
 				and (delta_mask & PacketTypes.DELTA_MASK_FULL_STATE) == 0 \
 				and (delta_mask & PacketTypes.DELTA_MASK_POSITION) == 0:
 				return
 			_process_own_state_update(entity_data)
 			break
+
+
+## Slave the local daze to the server's authoritative DAZED flag: on the rising
+## edge the Rust sim stops sprinting/dashing with the server (so prediction does
+## not rubber-band through the whole daze), on the falling edge it releases
+## exactly when the server does. The local timer self-expires as a lost-packet
+## backstop. The GDScript SM is mirrored too so its daze signals drive the
+## Player's daze indicator.
+func _update_own_flags(flags: int) -> void:
+	_update_own_charge(flags)
+
+	var dazed := (flags & PacketTypes.ENTITY_FLAG_DAZED) != 0
+	if dazed == _own_dazed:
+		return
+	_own_dazed = dazed
+	if dazed:
+		_sim.apply_daze(GameConstants.PLAYER_DAZE_DURATION)
+	else:
+		_sim.clear_daze()
+	var sm := _get_movement_sm()
+	if sm != null:
+		if dazed:
+			sm.apply_daze(GameConstants.PLAYER_DAZE_DURATION)
+		else:
+			sm.clear_daze()
+
+
+## Slave a Warrior charge end to the server, mirroring the DAZED slaving above. The
+## charge is the DASHING movement state on the wire; when the server clears DASHING but
+## PredictionSim still thinks we are charging, release the predicted charge so it ends
+## exactly when the server's does (no rubber-band through the rest of the charge path).
+func _update_own_charge(flags: int) -> void:
+	var dashing := (flags & PacketTypes.ENTITY_FLAG_DASHING) != 0
+	if dashing == _own_dashing:
+		return
+	_own_dashing = dashing
+	if not dashing and _sim.has_method("is_charging") and _sim.is_charging():
+		if _sim.has_method("end_charge"):
+			_sim.end_charge()
 
 
 func _process_own_state_update(entity_data: Dictionary) -> void:
@@ -681,23 +775,15 @@ func _get_unacknowledged_sequences(ack_sequence: int) -> Array[int]:
 
 
 func _replay_input(snapshot: InputSnapshot) -> void:
-	## Re-simulate this input from current predicted_position
-	var direction := _get_direction_from_flags(snapshot.input_flags)
-	var speed := _get_speed_from_flags(snapshot.input_flags)
-
-	var velocity := direction * speed
-	var position_before := predicted_position
-	predicted_position = GameConstants.move_with_obstacle_collision(
-		predicted_position,
-		predicted_position + velocity * snapshot.delta,
-		GameConstants.PLAYER_HITBOX_RADIUS
-	)
-	if snapshot.delta > 0.0:
-		velocity = (predicted_position - position_before) / snapshot.delta
+	## Re-simulate this input from current predicted_position through the Rust sim's
+	## stateless ground model (deliberately NOT the full state machine: dash/knockback
+	## are brief, rarely span a correction, and any residual heals on the next snapshot).
+	var replay: Dictionary = _sim.replay_step(predicted_position, snapshot.input_flags, snapshot.delta)
+	predicted_position = replay["position"]
 
 	# Update snapshot for potential future replays
 	snapshot.position_after = predicted_position
-	snapshot.velocity = velocity
+	snapshot.velocity = replay["velocity"]
 #endregion
 
 
@@ -796,6 +882,17 @@ func get_rendered_position() -> Vector2:
 	return predicted_position
 
 
+## Suppress all input capture (e.g. while the pause menu is open) so clicking UI
+## buttons doesn't register as shoot/ability and movement keys are ignored. Prediction
+## and networking keep running; only the polled input is forced to zero.
+func set_input_suppressed(suppressed: bool) -> void:
+	if _input_suppressed == suppressed:
+		return
+	_input_suppressed = suppressed
+	if suppressed:
+		current_input_flags = 0
+
+
 ## Enable or disable local prediction and outbound input.
 func set_prediction_enabled(enabled: bool) -> void:
 	if prediction_enabled == enabled:
@@ -817,6 +914,32 @@ func _emit_visual_position_updated(is_discontinuous: bool) -> void:
 ## Set local entity ID once PLAYER_INFO identifies this client.
 func set_local_entity_id(entity_id: int) -> void:
 	local_entity_id = entity_id
+
+
+## Reset the shared Rust sim to a clean alive state. Mirrors the server's movement-SM
+## reset on respawn (dash cooldown cleared, stamina/mana full, daze cleared).
+func reset_sim() -> void:
+	_sim.reset()
+	_own_dazed = false
+	_own_dashing = false
+	# Re-apply the per-class ability tuning the reset may have cleared.
+	_configure_ability_for_local_class()
+
+
+## Adopt an authoritative base move speed (from a server PROGRESS event) into the Rust sim
+## so prediction speed tracks the player's level. No-op if the GDExtension lacks the method.
+func set_base_speed(base_speed: float) -> void:
+	if base_speed > 0.0 and _sim.has_method("set_base_speed"):
+		_sim.set_base_speed(base_speed)
+
+
+## Set the connected instance's world geometry on the shared sim (Arena = ±1000 + obstacles;
+## Sanctuary = ±1856, no obstacles). The sim geometry is a thread-local in the Rust core, so
+## this MUST run on the same (main) thread that calls step(), before the first predicted step.
+## No-op if the GDExtension lacks the method.
+func set_world_geometry(min_bound: Vector2, max_bound: Vector2, obstacles_enabled: bool) -> void:
+	if _sim.has_method("set_world_geometry"):
+		_sim.set_world_geometry(min_bound, max_bound, obstacles_enabled)
 
 
 ## Check if the controller has applied an authoritative spawn/server position.

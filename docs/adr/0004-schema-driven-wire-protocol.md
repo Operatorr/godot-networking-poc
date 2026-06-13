@@ -1,95 +1,99 @@
-# ADR 0004 — Schema-driven wire protocol with codegen for client + server
+# ADR 0004 — Redesigned wire protocol as a shared Rust crate (no codegen)
 
-**Status:** Accepted (design) — 2026-06-11. Part of the [Rust server port](../rust-port/migration-spec.md)
-(decisions D3 + D4). **Amends [ADR 0003](0003-enet-udp-transport.md):** ADR 0003 assumed the Rust port
-would reimplement *only the transport seam* and keep the existing `PacketWriter`/`PacketReader` wire
-format **unchanged** ("never the wire format"). The port is now a **clean-slate rewrite** (migration
-spec D1) that redesigns transport **and** wire format together, so that consequence of ADR 0003 no
-longer holds. ADR 0003's transport choice (ENet-over-UDP via `ENetConnection` raw channels) **stands**;
-only its "wire format rides unchanged" consequence is superseded here.
+**Status:** Implemented — 2026-06-11 (`rust/protocol`, exposed to GDScript through the
+`client_ext` GDExtension; [rust-port/contract.md](../rust-port/contract.md) is the wire spec
+as built). Records [Rust port](../rust-port/migration-spec.md)
+decisions **D3** (redesign the wire format) and **D7** (implement it as a shared Rust `protocol`
+crate). **Amends [ADR 0003](0003-enet-udp-transport.md):** ADR 0003 assumed the Rust port would
+reimplement *only the transport seam* and keep the existing `PacketWriter`/`PacketReader` wire format
+**unchanged**. The port is a **clean-slate rewrite** (migration spec D1) that redesigns transport
+**and** wire format together, so that consequence of ADR 0003 is superseded. ADR 0003's transport
+choice (ENet-over-UDP via `ENetConnection` raw channels) **stands**.
+
+> **History (kept on purpose).** This ADR first proposed a *custom IDL + generator emitting both a
+> Rust and a GDScript codec*. Grilling collapsed that: migration-spec **D5** put a shared Rust
+> `sim_core` on the client as a GDExtension, and **D6** let the client call the **Rust** codec through
+> that same extension — removing the GDScript target. With no second language to emit, the generator's
+> sole justification vanished, so **D7** collapsed it to a plain shared Rust crate. The custom-IDL idea
+> is recorded as a *rejected option* below.
 
 ## Decision
 
-Define the wire protocol **once in a custom schema** and **generate both codecs** from it:
+Redesign the wire format (tighter bitpacking, sub-byte flags, quantization, delta masks) and implement
+it as a single shared Rust crate, **`protocol`**:
 
-- A **custom IDL** (a small `.toml`-style / DSL file under `protocol/`) declares every packet, its
-  fields, field widths, quantization (e.g. `pos: vec2 @quantize(0.1)`), and delta-mask layout.
-- A **generator written in Rust** (`protogen` binary in the `protocol/` cargo workspace member) emits:
-  - `gen/protocol.rs` — the Rust server codec.
-  - `client/scripts/shared/networking/gen/protocol.gd` — the GDScript client codec.
-- Generated files are **committed** (Godot client builds without a Rust toolchain). The server crate
-  regenerates via `build.rs`; CI runs `cargo run -p protogen` and fails on a non-empty `git diff`.
-- The schema carries a **protocol version**; client and server reject mismatched versions at handshake.
-
-This replaces the hand-written `PacketWriter`/`PacketReader` pair with a single source of truth.
+- Packets are Rust structs in `protocol`; encode/decode is **hand-written once** with explicit bit
+  control — position quantized to `i16` at 0.1 units, sub-byte delta masks and entity flags, varints
+  where they pay.
+- **Both** consumers depend on the same crate: the **server** binary, and the **client GDExtension**
+  (which exposes `protocol`'s codec to GDScript — migration spec D6).
+- A `PROTOCOL_VERSION` const lives in the crate and is checked at handshake; mismatched versions are
+  refused. Client and server deploy in lockstep (native-only model, ADR 0003 — no mixed-version
+  rollout to support).
+- **No IDL, no generator, no GDScript codec.**
 
 ## Context
 
-The clean-slate Rust port (migration spec D1) means the authoritative simulation is **reimplemented in
-Rust** while the client stays **GDScript**. The serialization layer therefore spans **two languages**.
-Two hand-written codecs in two languages is the classic drift hazard: any field added on one side and
-forgotten on the other is a silent desync. ADR 0003 avoided this by *freezing* the wire format; once we
-choose to *evolve* the format (to bitpack tighter and reclaim bandwidth), freezing is off the table, so
-we need a different guarantee. A schema with codegen makes serialization drift **impossible by
-construction** — both codecs descend from one file.
+The clean-slate Rust port reimplements the simulation in Rust while the client stays Godot. Naively
+that splits serialization across two languages (GDScript + Rust) — the classic drift hazard ADR 0003
+sidestepped by *freezing* the format. Once we choose to *evolve* the format to reclaim bandwidth,
+freezing is off the table, so we need a different guarantee that the two sides agree.
 
-GDScript is the binding constraint on tooling: mainstream IDLs (Protobuf, FlatBuffers, Cap'n Proto)
-have weak or absent GDScript codegen and cannot sub-byte bitpack, so they cannot hit the project's
-<2 KB/s/player budget without a fight. A custom generator is the only option that emits true GDScript
-**and** the bit-level layout a tuned game protocol wants.
+Migration-spec D5/D6 supply it from an unexpected direction: the client already links a Rust
+GDExtension (for `sim_core`, to guarantee prediction matches the server). Since the client runs Rust,
+it can call the **Rust** codec directly — so **both** sides are Rust, and a single shared crate is the
+single source of truth. No codegen is needed because there is no second language. ADR 0003 fixed
+"native-only, permanently — no web client," so no future non-Rust consumer will ever need a
+language-neutral schema either.
 
 ## Considered options
 
-| Option | GDScript codegen | Sub-byte bitpack | Single source of truth | Tooling cost | Verdict |
-|---|---|---|---|---|---|
-| **Custom IDL + own generator** (chosen) | Yes (we emit it) | Yes | Yes | Build + own the generator | **Accepted** |
-| Preserve current format, hand-port to Rust | n/a | as today | **No** — two hand codecs, two languages | None | Rejected — the drift hazard D1 created |
-| Off-the-shelf IDL (Protobuf / FlatBuffers / Cap'n Proto) | Weak / third-party | No (varints at best) | Yes | Low (mature) | Rejected — weak GDScript, misses bandwidth budget |
-| Rust-authoritative (bitcode/postcard) + hand GDScript mirror | n/a | Yes (Rust side) | **Partial** — GDScript hand-written | Low | Rejected — reintroduces GDScript drift |
+| Option | Single source of truth | Bit-level control | Machinery | Verdict |
+|---|---|---|---|---|
+| **Shared Rust `protocol` crate, hand-rolled bit codec** (chosen) | Yes | Full | None (one crate) | **Accepted** |
+| Shared Rust crate, derive-based codec (bitcode/postcard) | Yes | Partial (quant/delta still custom) | Low | Rejected — wants explicit bit control for the budget |
+| Custom IDL + generator emitting Rust **and** GDScript | Yes | Full | Generator + schema/codec skew in CI | Rejected — its only point was GDScript output, removed by D6 |
+| Preserve current format, hand-port to Rust + keep GDScript codec | **No** — two hand codecs, two languages | as today | None | Rejected — the drift hazard D1 created |
+| Off-the-shelf IDL (Protobuf/FlatBuffers/Cap'n Proto) | Yes | No (varints at best) | Low | Rejected — weak GDScript (moot now) and misses bandwidth budget |
 
 ## Consequences
 
-- **Serialization drift between client and server is eliminated** — the one guarantee D1's two-language
-  split most needs. Note this covers the **wire format only**; **simulation-math parity** (movement/
-  collision determinism for prediction) is a *separate* problem tracked in the migration spec under
-  [Shared-sim parity] — codegen does not solve it.
-- **All bandwidth budgets are invalidated** and must be re-measured against the new layout; the numbers
-  in [`../netcode/performance-budgets.md`](../netcode/performance-budgets.md) no longer describe the
+- **Serialization drift between client and server is impossible by construction** — there is one codec,
+  in one crate, linked by both. This covers the **wire format only**; **simulation-math parity** is
+  handled separately and more fundamentally by the shared `sim_core` crate (migration-spec D5).
+- **All bandwidth budgets are invalidated** and must be re-measured; the numbers in
+  [`../netcode/performance-budgets.md`](../netcode/performance-budgets.md) no longer describe the
   shipped protocol.
-- **A codegen step joins the build** for both the Rust server (`build.rs`) and the Godot client
-  (committed artifact + CI sync check). New build dependency, new failure mode (schema/codec skew),
-  bounded by the CI `git diff` gate.
-- **`HEARTBEAT` and `BATCH` leave the protocol** (ENet subsumes them — see ADR 0003 / migration spec
-  D2); the clock-sync payload that `HEARTBEAT` carried is relocated, not deleted.
-- **Versioning and back-compat are now our problem.** Off-the-shelf IDLs hand you field-level
-  back-compat; the custom generator does not. Mitigation: a protocol-version handshake and, because the
-  native client and server ship together (no browser, no staged rollout of mixed versions), lockstep
-  deploys are acceptable for the POC.
+- **`HEARTBEAT` and `BATCH` leave the protocol** (ENet subsumes them — ADR 0003 / migration-spec D2);
+  the clock-sync payload `HEARTBEAT` carried is relocated, not deleted.
+- **No codegen step and no schema/generated-code skew** to police — the trade is **DIY versioning**
+  (a version const + handshake check) instead of an IDL's free field-level back-compat. Acceptable
+  under lockstep native deploys.
+- **The client gains a native code path for (de)serialization** across the GDScript↔native boundary;
+  revisit if that boundary cost shows up in client profiling.
 
 ## The eight questions
 
-- **Client:** loads the generated `protocol.gd`; encodes `PLAYER_INPUT`, decodes `STATE_UPDATE` /
-  `GAME_EVENT` using generated functions. No hand-written codec.
-- **Server:** the Rust crate compiles the generated `protocol.rs`; same field definitions, opposite
-  direction.
-- **Predicted:** nothing — serialization is pure data transform; prediction is unaffected by this ADR.
-- **Replicated:** the schema *is* the replication format — entity deltas vs. a periodic full-state
-  baseline, quantized positions, packed flags.
-- **Persisted:** nothing — the Go API still owns all persistence; the schema describes only in-flight
-  packets.
-- **Validated:** decode validates field bounds and the protocol-version byte; mismatched versions are
-  rejected at handshake.
-- **Can fail:** schema/generated-code skew (caught by the CI `git diff` gate); a malformed packet fails
-  generated bounds checks and drops the packet/peer rather than panicking.
-- **Tested:** generator has golden-output tests (schema → expected `.rs`/`.gd`); round-trip property
-  tests (encode→decode == identity) run on both sides against shared byte vectors.
+- **Client:** the GDExtension exposes `protocol`'s codec; GDScript hands raw ENet bytes in and gets
+  typed packets out. No GDScript codec.
+- **Server:** the Rust binary links the same `protocol` crate; identical structs, opposite direction.
+- **Predicted:** nothing — serialization is a pure data transform.
+- **Replicated:** the `protocol` structs *are* the replication format — entity deltas vs. a periodic
+  full-state baseline, quantized positions, packed flags.
+- **Persisted:** nothing — the Go API owns persistence; `protocol` describes only in-flight packets.
+- **Validated:** decode checks field bounds and the `PROTOCOL_VERSION` byte; mismatches are rejected
+  at handshake; malformed packets drop the packet/peer, never panic.
+- **Can fail:** a version skew between a stale client and server (caught at handshake); a malformed
+  datagram fails bounds checks in the codec.
+- **Tested:** round-trip property tests (`encode → decode == identity`) in the `protocol` crate; shared
+  byte-vector fixtures asserted by both the server and the client-extension test suites.
 
 ## See also
 
 - [ADR 0003](0003-enet-udp-transport.md) — the ENet transport this rides on; this ADR amends its
   "wire format rides unchanged" consequence.
-- [`../rust-port/migration-spec.md`](../rust-port/migration-spec.md) — decisions D3 (redesign) and
-  D4 (toolchain) that this ADR records.
+- [`../rust-port/migration-spec.md`](../rust-port/migration-spec.md) — decisions D3, D4, D6, D7 behind
+  this ADR, and D5 (the shared `sim_core` that makes a single-language codec possible).
 - [`../netcode/wire-protocol.md`](../netcode/wire-protocol.md) — the hand-written format this replaces.
 - [`../netcode/performance-budgets.md`](../netcode/performance-budgets.md) — bandwidth numbers this
   invalidates and must be re-measured.

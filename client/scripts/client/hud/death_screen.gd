@@ -1,12 +1,21 @@
-## DeathScreen - Death overlay with killer info and manual respawn countdown
-## Shown when local player dies, hidden on respawn
+## DeathScreen - Death overlay with killer info.
+## Softcore: manual respawn countdown ("Press Space to respawn").
+## Hardcore (permadeath): the server has already converted XP→Glory and deleted the
+## character, so instead of a countdown we show "Your Glory will be remembered" and a
+## "Back to Main Menu" button (no respawn).
 extends Control
 
 signal respawn_requested
+signal main_menu_requested
 
+
+## Sulfur-yellow used for the hardcore epitaph (RAL 1016 sulfur yellow).
+const SULFUR_YELLOW := Color(0.906, 0.835, 0.137)
 
 var _killer_label: Label = null
 var _countdown_label: Label = null
+var _glory_label: Label = null
+var _menu_button: Button = null
 var _countdown_timer: float = 0.0
 var _countdown_active: bool = false
 var _respawn_ready: bool = false
@@ -61,10 +70,31 @@ func _build_ui() -> void:
 	_countdown_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(_countdown_label)
 
+	# Hardcore epitaph (hidden for softcore deaths).
+	_glory_label = Label.new()
+	_glory_label.text = "Your Glory will be remembered"
+	_glory_label.add_theme_font_size_override("font_size", 28)
+	_glory_label.add_theme_color_override("font_color", SULFUR_YELLOW)
+	_glory_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_glory_label.visible = false
+	vbox.add_child(_glory_label)
+
 	# Spacer
 	var spacer := Control.new()
 	spacer.custom_minimum_size = Vector2(0, 10)
 	vbox.add_child(spacer)
+
+	# "Back to Main Menu" button (hardcore only; hidden for softcore deaths).
+	_menu_button = Button.new()
+	_menu_button.text = "Back to Main Menu"
+	_menu_button.add_theme_font_size_override("font_size", 22)
+	_menu_button.custom_minimum_size = Vector2(260, 48)
+	_menu_button.visible = false
+	_menu_button.pressed.connect(_on_menu_button_pressed)
+	# Keep the button centered within the (full-width) VBox.
+	var button_holder := CenterContainer.new()
+	button_holder.add_child(_menu_button)
+	vbox.add_child(button_holder)
 
 
 func _process(delta: float) -> void:
@@ -98,15 +128,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		respawn_requested.emit()
 
 
-## Show death screen with killer information
+## Show death screen with killer information (softcore: respawn countdown).
 func show_death(killer_entity_id: int) -> void:
-	if killer_entity_id >= GameConstants.MONSTER_ENTITY_ID_START:
-		_killer_label.text = "Killed by Monster"
-	elif killer_entity_id > 0:
-		var killer_name := EntityNameCache.get_entity_name(killer_entity_id)
-		_killer_label.text = "Killed by %s" % killer_name
-	else:
-		_killer_label.text = ""
+	_set_killer_text(killer_entity_id)
+
+	# Softcore widgets only.
+	_glory_label.visible = false
+	_menu_button.visible = false
+	_countdown_label.visible = true
 
 	# Start countdown
 	_countdown_timer = GameConstants.RESPAWN_DELAY
@@ -117,6 +146,38 @@ func show_death(killer_entity_id: int) -> void:
 	visible = true
 
 
+## Show the hardcore permadeath screen: no respawn — the character is gone and its XP
+## has already been converted to Glory server-side. Offers a single route back to the menu.
+func show_death_hardcore(killer_entity_id: int) -> void:
+	_set_killer_text(killer_entity_id)
+
+	# No countdown / respawn for permadeath.
+	_countdown_active = false
+	_respawn_ready = false
+	_countdown_label.visible = false
+
+	_glory_label.visible = true
+	_menu_button.visible = true
+	_menu_button.grab_focus()
+	visible = true
+
+
+## Resolve the "Killed by ..." line from the killer entity id.
+func _set_killer_text(killer_entity_id: int) -> void:
+	if killer_entity_id >= GameConstants.MONSTER_ENTITY_ID_START:
+		_killer_label.text = "Killed by Monster"
+	elif killer_entity_id > 0:
+		var killer_name := EntityNameCache.get_entity_name(killer_entity_id)
+		_killer_label.text = "Killed by %s" % killer_name
+	else:
+		_killer_label.text = ""
+
+
+func _on_menu_button_pressed() -> void:
+	_menu_button.disabled = true
+	main_menu_requested.emit()
+
+
 ## Hide death screen
 func hide_death() -> void:
 	_countdown_active = false
@@ -125,4 +186,10 @@ func hide_death() -> void:
 	if _countdown_label:
 		_countdown_label.text = ""
 		_countdown_label.modulate.a = 1.0
+		_countdown_label.visible = true
+	if _glory_label:
+		_glory_label.visible = false
+	if _menu_button:
+		_menu_button.visible = false
+		_menu_button.disabled = false
 	visible = false

@@ -102,6 +102,6 @@ layout_mode = 2
 custom_minimum_size = Vector2(520, 72)
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Back to Login"
+text = "Back to Main Menu"
 
 [node name="ErrorDialog" parent="." instance=ExtResource("2_error_dialog")]

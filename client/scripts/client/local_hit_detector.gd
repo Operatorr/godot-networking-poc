@@ -91,7 +91,9 @@ func update() -> void:
 		_last_positions[projectile_id] = cur_pos
 
 		# Swept test of the bullet's render-frame travel against the rendered self.
-		if HitAuthority.swept_hit(self_pos, prev_pos, cur_pos, hit_radius):
+		# SimHit is the shared Rust sim_core predicate (D11) — the same compiled code
+		# the server's plausibility validator uses.
+		if SimHit.swept_hit(self_pos, prev_pos, cur_pos, hit_radius):
 			_report_hit(projectile_id)
 
 	_prune_stale(seen_ids)

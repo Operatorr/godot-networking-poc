@@ -119,8 +119,25 @@ func (db *DB) InitSchema() error {
 		email VARCHAR(255) UNIQUE NOT NULL,
 		password_hash VARCHAR(255) NOT NULL,
 		region VARCHAR(20) DEFAULT 'Asia',
+		glory INTEGER NOT NULL DEFAULT 0,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);
+
+	-- Account-wide Glory currency, added idempotently so already-running databases
+	-- (created before this column existed) pick it up. Existing rows default to 0.
+	ALTER TABLE users ADD COLUMN IF NOT EXISTS glory INTEGER NOT NULL DEFAULT 0;
+
+	-- Glory is server-authoritative and never negative. Enforce it idempotently;
+	-- Postgres has no ADD CONSTRAINT IF NOT EXISTS, so guard on the constraint name.
+	DO $$
+	BEGIN
+		IF NOT EXISTS (
+			SELECT 1 FROM pg_constraint WHERE conname = 'users_glory_non_negative'
+		) THEN
+			ALTER TABLE users
+				ADD CONSTRAINT users_glory_non_negative CHECK (glory >= 0);
+		END IF;
+	END $$;
 
 	-- Characters table (single character per user)
 	CREATE TABLE IF NOT EXISTS characters (
@@ -132,6 +149,7 @@ func (db *DB) InitSchema() error {
 		realm VARCHAR(50) NOT NULL DEFAULT 'Asia (Singapore)',
 		mode VARCHAR(20) NOT NULL DEFAULT 'softcore',
 		level SMALLINT NOT NULL DEFAULT 1,
+		experience INTEGER NOT NULL DEFAULT 0,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);
 
@@ -141,6 +159,22 @@ func (db *DB) InitSchema() error {
 	ALTER TABLE characters ADD COLUMN IF NOT EXISTS realm VARCHAR(50) NOT NULL DEFAULT 'Asia (Singapore)';
 	ALTER TABLE characters ADD COLUMN IF NOT EXISTS mode VARCHAR(20) NOT NULL DEFAULT 'softcore';
 	ALTER TABLE characters ADD COLUMN IF NOT EXISTS level SMALLINT NOT NULL DEFAULT 1;
+	ALTER TABLE characters ADD COLUMN IF NOT EXISTS experience INTEGER NOT NULL DEFAULT 0;
+
+	-- Restrict mode to the two supported permadeath modes. Added idempotently;
+	-- Postgres has no ADD CONSTRAINT IF NOT EXISTS, so guard on the constraint name.
+	-- Pre-normalize any legacy out-of-range rows FIRST so adding the (validating)
+	-- constraint can't scan an offending row and abort InitSchema.
+	DO $$
+	BEGIN
+		IF NOT EXISTS (
+			SELECT 1 FROM pg_constraint WHERE conname = 'character_mode_valid'
+		) THEN
+			UPDATE characters SET mode = 'softcore' WHERE mode NOT IN ('softcore', 'hardcore');
+			ALTER TABLE characters
+				ADD CONSTRAINT character_mode_valid CHECK (mode IN ('softcore', 'hardcore'));
+		END IF;
+	END $$;
 
 	-- Leaderboards table
 	CREATE TABLE IF NOT EXISTS leaderboards (

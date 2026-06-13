@@ -3,16 +3,25 @@
 extends Control
 
 
-var _bar_bg: ColorRect = null
-var _bar_fill: ColorRect = null
+var _bar_track: TextureRect = null
+var _bar_fill = null
+var _bar_frame: TextureRect = null
 var _hp_label: Label = null
 
 var _current_hp: int = 100
 var _max_hp: int = 100
 var _flash_timer: float = 0.0
 
-const BAR_HEIGHT := 24.0
+const BAR_HEIGHT := 36.0
 const DAMAGE_FLASH_SECONDS := 0.3
+const FRAME_TEXTURE := preload("res://assets/ui/hud/player_health_bar_frame.png")
+const TRACK_TEXTURE := preload("res://assets/ui/hud/player_health_bar_track.png")
+const FILL_TEXTURE := preload("res://assets/ui/hud/player_health_bar_fill.png")
+const TexturedProgressFill := preload("res://scripts/client/hud/textured_progress_fill.gd")
+const FILL_LEFT := 40.0
+const FILL_TOP := 9.0
+const FILL_RIGHT := 22.0
+const FILL_BOTTOM := 9.0
 
 # Configurable layout (set by arena_base before add_child so the bar can sit
 # left-of-center, making room for the Mana bar to its right).
@@ -44,26 +53,27 @@ func _build_ui() -> void:
 	offset_right = offset_x + bar_width
 	offset_bottom = offset_y + BAR_HEIGHT
 
-	# Bar background
-	_bar_bg = ColorRect.new()
-	_bar_bg.color = Color(0.15, 0.15, 0.15, 0.9)
-	_bar_bg.position = Vector2.ZERO
-	_bar_bg.size = Vector2(bar_width, BAR_HEIGHT)
-	add_child(_bar_bg)
+	var fill_rect := _get_fill_rect()
 
-	# Bar fill
-	_bar_fill = ColorRect.new()
-	_bar_fill.color = Color(0.2, 0.8, 0.2)
-	_bar_fill.position = Vector2(2, 2)
-	_bar_fill.size = Vector2(bar_width - 4, BAR_HEIGHT - 4)
+	_bar_track = _make_texture_rect(TRACK_TEXTURE, fill_rect.position, fill_rect.size)
+	add_child(_bar_track)
+
+	_bar_fill = TexturedProgressFill.new()
+	_bar_fill.texture = FILL_TEXTURE
+	_bar_fill.position = fill_rect.position
+	_bar_fill.size = fill_rect.size
 	add_child(_bar_fill)
+
+	_bar_frame = _make_texture_rect(FRAME_TEXTURE, Vector2.ZERO, Vector2(bar_width, BAR_HEIGHT))
+	add_child(_bar_frame)
 
 	# HP text
 	_hp_label = Label.new()
 	_hp_label.add_theme_font_size_override("font_size", 14)
 	_hp_label.add_theme_color_override("font_color", Color.WHITE)
 	_hp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_hp_label.position = Vector2(0, 2)
+	_hp_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_hp_label.position = Vector2.ZERO
 	_hp_label.size = Vector2(bar_width, BAR_HEIGHT)
 	add_child(_hp_label)
 
@@ -102,12 +112,35 @@ func _update_display() -> void:
 	_hp_label.text = "%d / %d HP" % [_current_hp, _max_hp]
 
 	var ratio := clampf(float(_current_hp) / float(_max_hp), 0.0, 1.0)
-	_bar_fill.size.x = (bar_width - 4) * ratio
+	_bar_fill.progress = ratio
 
-	# Color gradient: green -> yellow -> red
+	var alpha: float = _bar_fill.modulate.a
+	# Keep the authored blood-red texture, but warm it as HP drops.
 	if ratio > 0.6:
-		_bar_fill.color = Color(0.2, 0.8, 0.2)
+		_bar_fill.modulate = Color(1.0, 1.0, 1.0, alpha)
 	elif ratio > 0.3:
-		_bar_fill.color = Color(0.9, 0.7, 0.1)
+		_bar_fill.modulate = Color(1.15, 0.88, 0.55, alpha)
 	else:
-		_bar_fill.color = Color(0.9, 0.2, 0.1)
+		_bar_fill.modulate = Color(1.25, 0.55, 0.55, alpha)
+
+
+func _get_fill_rect() -> Rect2:
+	return Rect2(
+		Vector2(FILL_LEFT, FILL_TOP),
+		Vector2(bar_width - FILL_LEFT - FILL_RIGHT, BAR_HEIGHT - FILL_TOP - FILL_BOTTOM)
+	)
+
+
+func _make_texture_rect(texture: Texture2D, rect_position: Vector2, rect_size: Vector2) -> TextureRect:
+	var texture_rect := TextureRect.new()
+	texture_rect.texture = texture
+	# IGNORE_SIZE so STRETCH_SCALE actually scales the texture down to `rect_size`. With the
+	# default KEEP_SIZE the control's minimum size is forced up to the texture's native width
+	# (the track sprite is 256 px), so the black track would render wider than the frame.
+	texture_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	texture_rect.stretch_mode = TextureRect.STRETCH_SCALE
+	texture_rect.position = rect_position
+	texture_rect.size = rect_size
+	texture_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	texture_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return texture_rect

@@ -63,6 +63,7 @@ func main() {
 	characterHandler := handlers.NewCharacterHandler(db)
 	leaderboardHandler := handlers.NewLeaderboardHandler(db)
 	regionHandler := handlers.NewRegionHandler(redis)
+	internalHandler := handlers.NewInternalHandler(db)
 
 	// Setup HTTP routes
 	mux := http.NewServeMux()
@@ -84,6 +85,14 @@ func main() {
 	// Character routes (protected with JWT auth)
 	mux.HandleFunc("/api/character/me", middleware.RequireAuth(characterHandler.GetCharacter))
 	mux.HandleFunc("/api/character/create", middleware.RequireAuth(characterHandler.CreateCharacter))
+	mux.HandleFunc("/api/character/sacrifice", middleware.RequireAuth(characterHandler.SacrificeCharacter))
+	mux.HandleFunc("DELETE /api/character", middleware.RequireAuth(characterHandler.DeleteCharacter))
+
+	// Internal server-only routes (guarded by X-Server-Token, NOT JWT). The Rust
+	// authoritative server calls these to read/write progression and settle Glory.
+	mux.HandleFunc("GET /api/internal/characters/{id}", internalHandler.GetCharacter)
+	mux.HandleFunc("POST /api/internal/characters/{id}/progress", internalHandler.UpdateProgress)
+	mux.HandleFunc("POST /api/internal/characters/{id}/death", internalHandler.Death)
 
 	// Leaderboard routes
 	mux.HandleFunc("/api/leaderboard", leaderboardHandler.GetLeaderboard)

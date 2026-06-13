@@ -1,0 +1,111 @@
+[gd_scene load_steps=2 format=3]
+
+[sub_resource type="GDScript" id="GDScript_net_smoke"]
+script/source = "## NetSmoke - End-to-end smoke test for the Rust server + ENet transport + Rust codec.
+## Requires a running omega-server on 127.0.0.1:8081 with allow_unsigned_tickets (the default).
+## Exercises: ENet connect, CONNECT_AUTH -> AUTH_RESULT, Snapshot decode + clock sync,
+## PLAYER_INPUT -> ACTION_CONFIRM. Quits 0 on pass, 1 on fail/timeout.
+extends Node
+
+const SERVER_HOST := \"127.0.0.1:8081\"
+const TIMEOUT_S := 20.0
+
+var _entity_id := -1
+var _snapshots := 0
+var _self_seen := false
+var _confirms := 0
+var _input_seq := 0
+var _last_self_pos := Vector2.ZERO
+var _failed := false
+
+
+func _ready() -> void:
+	print(\"[NetSmoke] Starting against %s\" % SERVER_HOST)
+	GameManager.player_data[\"character_name\"] = \"SmokeTester\"
+	NetworkManager.server_message_received.connect(_on_server_message)
+	NetworkManager.connection_error.connect(_on_connection_error)
+	NetworkManager.connect_to_server(SERVER_HOST, \"smoke-test\")
+
+	var elapsed := 0.0
+	while elapsed < TIMEOUT_S:
+		if _failed:
+			return
+		if NetworkManager.is_server_connected():
+			NetworkManager.send_auth_handshake()  # idempotent per connection
+			if _self_seen:
+				_send_input()
+		if _done():
+			_pass()
+			return
+		await get_tree().create_timer(0.1).timeout
+		elapsed += 0.1
+
+	_fail(\"timeout - auth_ok=%s snapshots=%d self_seen=%s confirms=%d clock=%d\" % [
+		_entity_id > 0, _snapshots, _self_seen, _confirms, NetworkManager.get_server_time_ms()
+	])
+
+
+func _done() -> bool:
+	return _entity_id > 0 \\
+		and _snapshots >= 5 \\
+		and _self_seen \\
+		and _confirms >= 1 \\
+		and NetworkManager.get_server_time_ms() > 0
+
+
+func _send_input() -> void:
+	_input_seq += 1
+	NetworkManager.send_player_input({
+		\"position\": _last_self_pos,
+		\"velocity\": Vector2.ZERO,
+		\"input_flags\": 0,
+		\"aim_angle\": 0.0,
+		\"sequence\": _input_seq,
+		\"client_render_tick\": 0,
+		\"client_rtt_ms\": int(NetworkManager.stats.ping_ms),
+	})
+
+
+func _on_server_message(message_type: int, data: Dictionary) -> void:
+	match message_type:
+		NetworkManager.MessageType.AUTH_RESULT:
+			if data.get(\"result\", -1) == 0:
+				_entity_id = data.get(\"entity_id\", -1)
+				print(\"[NetSmoke] AUTH_RESULT ok - entity_id=%d server_tick=%d tick_rate=%d\" % [
+					_entity_id, data.get(\"server_tick\", -1), data.get(\"tick_rate\", -1)
+				])
+			else:
+				_fail(\"auth rejected (code %d)\" % data.get(\"result\", -1))
+		NetworkManager.MessageType.STATE_UPDATE:
+			_snapshots += 1
+			for entity: Dictionary in data.get(\"entities\", []):
+				if entity.get(\"entity_id\", -1) == _entity_id:
+					_self_seen = true
+					_last_self_pos = entity.get(\"position\", Vector2.ZERO)
+		NetworkManager.MessageType.ACTION_CONFIRM:
+			_confirms += 1
+
+
+func _on_connection_error(error: String) -> void:
+	_fail(\"connection_error: %s\" % error)
+
+
+func _pass() -> void:
+	print(\"[NetSmoke] PASS - entity_id=%d snapshots=%d confirms=%d rtt=%.1fms clock_offset=%.1fms self_pos=%s\" % [
+		_entity_id, _snapshots, _confirms, NetworkManager.stats.ping_ms,
+		NetworkManager.server_clock_offset_ms, _last_self_pos
+	])
+	NetworkManager.disconnect_from_server(\"smoke complete\")
+	get_tree().quit(0)
+
+
+func _fail(reason: String) -> void:
+	if _failed:
+		return
+	_failed = true
+	push_error(\"[NetSmoke] FAIL - %s\" % reason)
+	get_tree().quit(1)
+"
+
+[node name="NetSmoke" type="Node"]
+script = SubResource("GDScript_net_smoke")

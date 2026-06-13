@@ -1,0 +1,48 @@
+{
+	"id": "zealot",
+	"display_name": "Zealot",
+	"role": "frontline_zealot",
+
+	"stats": {
+		"hp_base": 120,
+		"hp_per_level": 8,
+		"move_speed_base": 195.0,
+		"move_speed_per_level": 0.5,
+		"mana_max": 100,
+		"mana_pool": 100,
+		"mana_regen_per_sec": 8.0,
+		"stamina_max": 100,
+		"hitbox_radius": 16
+	},
+
+	"primary": {
+		"damage_base": 22,
+		"damage_per_level": 2,
+		"cooldown": 0.3,
+		"projectile_speed": 400.0
+	},
+
+	"ability": {
+		"id": "spinning_bibles",
+		"name": "Spinning Bibles",
+		"type": "orbiting_orbs",
+		"mana_cost": 35,
+		"cooldown": 8.0,
+		"orbs": 3,
+		"orbit_radius": 80.0,
+		"angular_speed": 3.0,
+		"duration": 5.0,
+		"damage": 15,
+		"rehit_interval": 0.4
+	},
+
+	"appearance": {
+		"sprite_dir": "zealot"
+	},
+
+	"networking": {
+		"server_authoritative": true,
+		"predicted": ["position", "velocity", "primary_attack_aim"],
+		"replicated": ["position", "animation", "flags", "ability_effect"]
+	}
+}

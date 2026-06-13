@@ -92,7 +92,8 @@ func _build_ui() -> void:
 	_settings_button.pressed.connect(_on_settings_pressed)
 	vbox.add_child(_settings_button)
 
-	# Leave Arena button
+	# Leave button. Label is contextual: the networked Arena returns to the Sanctuary,
+	# while offline hubs (Sanctuary/Practice) exit to the main menu — see set_leave_button_text().
 	_leave_button = Button.new()
 	_leave_button.text = "LEAVE ARENA"
 	_leave_button.custom_minimum_size = Vector2(250, 48)
@@ -113,6 +114,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("pause_menu"):
 		toggle()
 		get_viewport().set_input_as_handled()
+
+
+## Override the leave button's label to match where it sends the player.
+func set_leave_button_text(text: String) -> void:
+	if _leave_button:
+		_leave_button.text = text
 
 
 ## Toggle pause menu visibility

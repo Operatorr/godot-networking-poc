@@ -1,129 +1,117 @@
-#!/bin/bash
-# Deploy Omega Realm to a Docker-capable host
-# Usage: ./scripts/deploy.sh [--build] [--down] [--logs]
-
-set -e
+#!/usr/bin/env bash
+#
+# deploy.sh — control the native (Docker-free) Omega Realm server FROM YOUR LAPTOP.
+# SSHes into the VPS and drives the on-server scripts. Git is the deploy channel:
+# the server pulls master and rebuilds.
+#
+# Usage:  ./scripts/deploy.sh [command]
+#
+# Commands:
+#   all        ONE-SHOT: os-update -> deploy -> health. The single command that
+#              updates the OS, pulls master, rebuilds, restarts, and verifies.
+#   deploy     (default) ssh in, run server_update.sh (pull master, build, restart)
+#   provision  one-time bootstrap (installs Go/Rust/Postgres/Redis, units, sudoers)
+#   os-update  apt full-upgrade + cleanup on the server (forwards flags, e.g.
+#              `os-update --reboot`, `os-update --release-upgrade`)
+#   status     systemctl status of api + arena + sanctuary
+#   logs       follow journald logs for all three services (Ctrl+C to stop)
+#   health     curl the API /health and game metrics endpoints
+#   restart    restart all services without rebuilding
+#   ssh        open an interactive shell on the server
+#
+# Target config comes from deployment/deploy.env (git-ignored — your server IP never
+# gets committed). Copy deployment/deploy.env.example -> deployment/deploy.env and set
+# OMEGA_HOST. Shell env (e.g. `OMEGA_HOST=1.2.3.4 ./scripts/deploy.sh`) overrides the file.
+#   OMEGA_HOST (required)  OMEGA_USER=deploy  OMEGA_BRANCH=master  OMEGA_REPO_DIR=/home/<user>/omega-realm
+#
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-DEPLOYMENT_DIR="$PROJECT_ROOT/deployment"
+CONFIG_FILE="${OMEGA_DEPLOY_ENV:-$SCRIPT_DIR/../deployment/deploy.env}"
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+C_B='\033[1;34m'; C_G='\033[1;32m'; C_R='\033[1;31m'; C_N='\033[0m'
+info() { printf "${C_B}==> %s${C_N}\n" "$*"; }
+ok()   { printf "${C_G}%s${C_N}\n" "$*"; }
+die()  { printf "${C_R}error: %s${C_N}\n" "$*" >&2; exit 1; }
 
-# Determine env file
-ENV_FILE="$DEPLOYMENT_DIR/.env.production"
-if [ ! -f "$ENV_FILE" ]; then
-    ENV_FILE="$DEPLOYMENT_DIR/.env.example"
-    echo -e "${YELLOW}[WARN]${NC} No .env.production found, using .env.example defaults"
+# Load deploy.env WITHOUT clobbering anything already set in the shell (env wins).
+if [[ -f "$CONFIG_FILE" ]]; then
+  while IFS='=' read -r key val; do
+    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue   # skip comments / blanks
+    val="${val%$'\r'}"                                     # tolerate CRLF
+    [[ -z "${!key:-}" ]] && export "$key=$val"
+  done < "$CONFIG_FILE"
 fi
 
-usage() {
-    echo "Usage: $0 [command]"
-    echo ""
-    echo "Commands:"
-    echo "  up       Build and start all containers (default)"
-    echo "  down     Stop and remove all containers"
-    echo "  build    Rebuild container images"
-    echo "  logs     Follow container logs"
-    echo "  status   Show container status"
-    echo "  restart  Restart all containers"
-    echo "  health   Check health of all services"
-    echo ""
-    echo "Examples:"
-    echo "  $0              # Build and start everything"
-    echo "  $0 up           # Same as above"
-    echo "  $0 down         # Stop all services"
-    echo "  $0 logs         # Follow all logs"
-    echo "  $0 health       # Check service health"
+HOST="${OMEGA_HOST:-}"
+USER="${OMEGA_USER:-deploy}"
+BRANCH="${OMEGA_BRANCH:-master}"
+REPO_DIR="${OMEGA_REPO_DIR:-/home/${USER}/omega-realm}"
+[[ -n "$HOST" ]] || die "OMEGA_HOST is not set. Create $CONFIG_FILE (cp deployment/deploy.env.example deployment/deploy.env) and set OMEGA_HOST, or run with OMEGA_HOST=<ip> ./scripts/deploy.sh"
+TARGET="${USER}@${HOST}"
+
+# Run a command on the server (TTY allocated so colors/logs stream nicely).
+rexec() { ssh -t "$TARGET" "$@"; }
+
+cmd_deploy() {
+  info "Deploying ${BRANCH} to ${TARGET} (${REPO_DIR})"
+  rexec "cd '${REPO_DIR}' && OMEGA_BRANCH='${BRANCH}' bash deployment/server_update.sh"
+  ok "Done."
 }
 
-compose_cmd() {
-    docker compose -f "$DEPLOYMENT_DIR/docker-compose.yml" --env-file "$ENV_FILE" "$@"
+cmd_provision() {
+  info "One-time provisioning on ${TARGET}"
+  cat <<'NOTE'
+This installs Go, Rust, PostgreSQL, Redis, swap, systemd units, and a sudoers
+rule. It clones the repo if missing. You'll be prompted for deploy's sudo password.
+NOTE
+  rexec "test -d '${REPO_DIR}/.git' || git clone --branch '${BRANCH}' https://github.com/Operatorr/godot-networking-poc.git '${REPO_DIR}'"
+  rexec "cd '${REPO_DIR}' && sudo bash deployment/provision_server.sh"
+  ok "Provisioned. Set secrets in /etc/omega-realm/*.env, then: ./scripts/deploy.sh"
 }
 
-cmd_up() {
-    echo -e "${BLUE}[INFO]${NC} Starting Omega Realm services..."
-    compose_cmd up -d --build
-    echo ""
-    echo -e "${GREEN}[OK]${NC} Services started. Checking health..."
-    sleep 5
-    cmd_status
+SERVICES="omega-api omega-arena omega-sanctuary"
+cmd_os_update() {
+  info "OS maintenance on ${TARGET} (apt full-upgrade${1:+ $*})"
+  echo "(you'll be prompted for deploy's sudo password — apt isn't in the narrow sudoers rule)"
+  rexec "cd '${REPO_DIR}' && sudo bash deployment/update_os.sh $*"
+  ok "OS update done."
 }
 
-cmd_down() {
-    echo -e "${BLUE}[INFO]${NC} Stopping Omega Realm services..."
-    compose_cmd down
-    echo -e "${GREEN}[OK]${NC} Services stopped."
+cmd_all() {
+  info "Full update of ${TARGET}: OS packages -> code (master) -> health"
+  # OS update first (no --reboot here: a mid-run reboot would kill the deploy; if a
+  # reboot is needed update_os.sh says so, and you can `os-update --reboot` after).
+  cmd_os_update
+  cmd_deploy
+  cmd_health
+  ok "Full update complete."
 }
 
-cmd_build() {
-    echo -e "${BLUE}[INFO]${NC} Building container images..."
-    compose_cmd build
-    echo -e "${GREEN}[OK]${NC} Build complete."
-}
-
-cmd_logs() {
-    compose_cmd logs -f
-}
-
-cmd_status() {
-    echo ""
-    echo "=========================================="
-    echo "  Omega Realm - Container Status"
-    echo "=========================================="
-    compose_cmd ps
-}
-
-cmd_restart() {
-    echo -e "${BLUE}[INFO]${NC} Restarting services..."
-    compose_cmd restart
-    echo -e "${GREEN}[OK]${NC} Services restarted."
-}
+cmd_status()  { rexec "sudo systemctl status ${SERVICES} --no-pager"; }
+cmd_logs()    { rexec "sudo journalctl -fu omega-api -u omega-arena -u omega-sanctuary"; }
+cmd_restart() { rexec "for s in ${SERVICES}; do sudo systemctl restart \$s.service; done && echo restarted: ${SERVICES}"; }
+cmd_ssh()     { ssh "$TARGET"; }
 
 cmd_health() {
-    echo ""
-    echo "=========================================="
-    echo "  Omega Realm - Health Check"
-    echo "=========================================="
-    echo ""
-
-    # Check API
-    API_PORT=$(grep -E "^API_PORT=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2 || echo "8080")
-    API_PORT="${API_PORT:-8080}"
-    echo -n "  API Server (port $API_PORT):  "
-    if curl -sf "http://localhost:$API_PORT/health" > /dev/null 2>&1; then
-        echo -e "${GREEN}HEALTHY${NC}"
-    else
-        echo -e "${RED}UNREACHABLE${NC}"
-    fi
-
-    # Check containers
-    echo ""
-    echo "  Container Health:"
-    compose_cmd ps --format "table {{.Name}}\t{{.Status}}" 2>/dev/null || compose_cmd ps
-    echo ""
+  info "Health of ${HOST}"
+  rexec "set -e
+    printf 'api      : '; curl -fsS http://localhost:8080/health && echo
+    printf 'arena    : '; curl -fsS http://localhost:9100/metrics >/dev/null && echo 'metrics OK (8081)' || echo DOWN
+    printf 'sanctuary: '; curl -fsS http://localhost:9101/metrics >/dev/null && echo 'metrics OK (8082)' || echo DOWN"
 }
 
-# Parse command
-COMMAND="${1:-up}"
-
-case "$COMMAND" in
-    up)      cmd_up ;;
-    down)    cmd_down ;;
-    build)   cmd_build ;;
-    logs)    cmd_logs ;;
-    status)  cmd_status ;;
-    restart) cmd_restart ;;
-    health)  cmd_health ;;
-    --help|-h) usage ;;
-    *)
-        echo -e "${RED}[ERROR]${NC} Unknown command: $COMMAND"
-        usage
-        exit 1
-        ;;
+cmd="${1:-deploy}"; shift || true
+case "$cmd" in
+  all)       cmd_all ;;
+  deploy)    cmd_deploy ;;
+  provision) cmd_provision ;;
+  os-update) cmd_os_update "$@" ;;
+  status)    cmd_status ;;
+  logs)      cmd_logs ;;
+  health)    cmd_health ;;
+  restart)   cmd_restart ;;
+  ssh)       cmd_ssh ;;
+  -h|--help) sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *)         die "unknown command: $cmd (try --help)" ;;
 esac

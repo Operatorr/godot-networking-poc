@@ -20,6 +20,9 @@ const LEADERBOARD_PATH := "res://scripts/client/hud/leaderboard.gd"
 const SERVER_STATUS_PATH := "res://scripts/client/hud/server_status.gd"
 const PAUSE_MENU_PATH := "res://scripts/client/hud/pause_menu.gd"
 const CONNECTION_LOST_PATH := "res://scripts/client/hud/connection_lost_overlay.gd"
+## Preloaded so the class resolves during headless startup (per AGENTS.md), named
+## exactly like the class it loads.
+const ExperienceBar := preload("res://scripts/client/hud/experience_bar.gd")
 
 ## Arena dimensions from GameConstants
 var arena_min: Vector2 = GameConstants.MAP_MIN
@@ -40,6 +43,10 @@ const VEIN_BRANCH_COLOR := Color(0.2, 0.06, 0.1, 0.4)  # Subtle branching veins
 ## Runtime mode
 var is_server: bool = false
 
+## When false, _draw() paints nothing — a subclass (e.g. the Sanctuary) supplies its own
+## ground/decor layers and must not have the dark arena grid/border drawn over them.
+var _draws_arena_floor: bool = true
+
 ## Client-only components (null in server mode)
 var local_player: Player = null
 var prediction_controller: PredictionController = null
@@ -55,6 +62,7 @@ var screen_effects: ScreenEffects = null
 var death_screen: Control = null
 var hp_bar: Control = null
 var stamina_bar: Control = null
+var ability_slots: Control = null
 var mana_bar: Control = null
 var kill_feed: Control = null
 var minimap: Control = null
@@ -66,6 +74,10 @@ var connection_lost_overlay: Control = null
 ## Last known killer for death screen
 var _last_killer_id: int = -1
 var _local_death_feedback_played: bool = false
+## Set when the local player suffered a hardcore (permadeath) death. The server converts
+## XP→Glory, deletes the character, then kicks us; this flag both selects the permadeath
+## death screen and suppresses the reconnect overlay for that expected disconnect.
+var _hardcore_death: bool = false
 
 ## Cached AudioManager reference (lazy-initialized)
 var _cached_audio_manager: Node = null
@@ -93,7 +105,7 @@ const KILL_STREAK_WINDOW := 5.0  # Seconds between kills to count as streak
 func _ready() -> void:
 	is_server = OS.has_feature("dedicated_server") or DisplayServer.get_name() == "headless"
 
-	_setup_arena_tilemap()
+	_build_level_environment()
 	_rebuild_spawn_markers()
 	_cache_spawn_points()
 
@@ -103,6 +115,42 @@ func _ready() -> void:
 	else:
 		queue_redraw()
 		_setup_client()
+
+
+## Build the level's static environment (tilemap floor, walls, obstacle cells, and — on the
+## client — cosmetic props). Overridable so a subclass can be a different "level": the
+## Sanctuary replaces this with its own town builders and its own EntityContainer.
+## Runs in BOTH server and client mode, before _setup_client().
+func _build_level_environment() -> void:
+	_setup_arena_tilemap()
+	if not is_server:
+		_build_arena_props()
+
+
+## The world geometry [min, max, obstacles_enabled] of the instance this scene connects to.
+## Pushed into the shared prediction sim in _setup_client() BEFORE the first predicted step so
+## client prediction matches the server. Defaults to the Arena (±1000 with obstacles); the
+## Sanctuary overrides this to its ±1856 walk-through bounds.
+func _world_geometry() -> Array:
+	return [Vector2(-1000.0, -1000.0), Vector2(1000.0, 1000.0), true]
+
+
+## Overridable hook called at the END of _setup_client() (client only), once the camera,
+## interpolation, ClientEntityManager, prediction, and HUD all exist. A subclass (Sanctuary)
+## builds decor/NPCs/portal here when they need the entity container or HUD layer present.
+func _after_client_setup() -> void:
+	pass
+
+
+## Forward a world-geometry change into the prediction sim owned by the PredictionController.
+## Must run on the main thread (prediction's thread) BEFORE the first predicted step — the sim
+## geometry is a thread-local in the shared Rust core. Guarded so it is a no-op before the
+## controller spawns or if the GDExtension lacks the method.
+func set_world_geometry(min_bound: Vector2, max_bound: Vector2, obstacles_enabled: bool) -> void:
+	if prediction_controller == null:
+		return
+	if prediction_controller.has_method("set_world_geometry"):
+		prediction_controller.set_world_geometry(min_bound, max_bound, obstacles_enabled)
 
 
 func _process(delta: float) -> void:
@@ -124,9 +172,10 @@ func _process(delta: float) -> void:
 		local_hit_detector.update()
 
 	if camera and local_player and is_instance_valid(local_player):
-		# Camera zoom on sprint
+		# Camera zoom on sprint — gated on the actual sprint state (not raw input) so the
+		# zoom snaps back the instant the player is exhausted and can no longer sprint.
 		var target_zoom := GameConstants.CAMERA_ZOOM_DEFAULT
-		if Input.is_action_pressed("sprint") and local_player.movement_state == Player.MovementState.WALKING:
+		if local_player.is_sprinting():
 			target_zoom = GameConstants.CAMERA_ZOOM_SPRINT
 		camera.zoom = camera.zoom.lerp(target_zoom, clampf(delta * GameConstants.CAMERA_ZOOM_SPEED, 0.0, 1.0))
 
@@ -212,8 +261,15 @@ func _setup_client() -> void:
 	NetworkManager.disconnected_from_server.connect(_on_disconnected)
 	NetworkManager.connected_to_server.connect(_on_reconnected)
 
-	# Spawn local player
+	# Spawn local player (creates the PredictionController that owns the shared sim).
 	_spawn_local_player(entity_container)
+
+	# Push THIS instance's world geometry into the prediction sim BEFORE the first predicted
+	# step or the handshake — the sim geometry is a thread-local set on the main thread, and
+	# prediction must match the server the moment authority syncs. A client returning from the
+	# Sanctuary resets to the Arena geometry here (the Sanctuary overrides _world_geometry()).
+	var geom := _world_geometry()
+	set_world_geometry(geom[0], geom[1], geom[2])
 
 	# Now that the message listener is wired, drive the auth handshake from the
 	# arena so PLAYER_INFO cannot arrive before _on_server_message is connected.
@@ -228,6 +284,9 @@ func _setup_client() -> void:
 	var audio := _get_audio_manager()
 	if audio:
 		audio.play_music("arena_ambience")
+
+	# Subclass decor/NPCs that need the client/HUD/entity-container to exist.
+	_after_client_setup()
 
 	print("[ArenaBase] Client setup complete")
 
@@ -290,7 +349,13 @@ func _setup_hud() -> void:
 	var bars := BottomBars.create(hud_layer)
 	hp_bar = bars["hp"]
 	stamina_bar = bars["stamina"]
+	ability_slots = bars["ability_slots"]
 	mana_bar = bars["mana"]
+
+	# Level / XP bar (top-center) — fed by EXP_GAIN events via GameManager.
+	var xp_bar := ExperienceBar.new()
+	xp_bar.name = "ExperienceBar"
+	hud_layer.add_child(xp_bar)
 
 	# Kill Feed (top right, below minimap)
 	kill_feed = _create_hud_component(KILL_FEED_PATH, "KillFeed")
@@ -317,12 +382,18 @@ func _setup_hud() -> void:
 	hud_layer.add_child(death_screen)
 	if death_screen.has_signal("respawn_requested"):
 		death_screen.connect("respawn_requested", Callable(self, "_on_respawn_requested"))
+	if death_screen.has_signal("main_menu_requested"):
+		death_screen.connect("main_menu_requested", Callable(self, "_on_main_menu_requested"))
 
 	# Pause Menu (full overlay, hidden by default)
 	pause_menu = _create_hud_component(PAUSE_MENU_PATH, "PauseMenu")
 	pause_menu.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	hud_layer.add_child(pause_menu)
+	pause_menu.set_leave_button_text("RETURN TO SANCTUARY")
 	pause_menu.leave_arena_requested.connect(_on_leave_arena)
+	# While the pause overlay is open, suppress input so clicking its buttons (a left
+	# click = the shoot action) doesn't fire a shot through the PredictionController.
+	pause_menu.visibility_changed.connect(_on_pause_menu_visibility_changed)
 
 	# Connection Lost Overlay (full overlay, hidden by default)
 	connection_lost_overlay = _create_hud_component(CONNECTION_LOST_PATH, "ConnectionLost")
@@ -344,7 +415,8 @@ func _create_hud_component(script_path: String, node_name: String) -> Control:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("exit_to_menu"):
+	# T / tilde return the player from the networked Arena to the Sanctuary hub.
+	if event.is_action_pressed("return_to_sanctuary"):
 		if event is InputEventKey and event.echo:
 			return
 		get_viewport().set_input_as_handled()
@@ -354,10 +426,27 @@ func _unhandled_input(event: InputEvent) -> void:
 ## Handle server messages for arena-level events
 func _on_server_message(message_type: int, data: Dictionary) -> void:
 	match message_type:
+		NetworkManager.MessageType.AUTH_RESULT:
+			_handle_auth_result(data)
 		NetworkManager.MessageType.GAME_EVENT:
 			_handle_game_event(data)
 		NetworkManager.MessageType.STATE_UPDATE:
 			_handle_state_update_for_local_player(data)
+
+
+## D9: the authoritative entity-id source. Wires the PredictionController directly so input
+## flow never depends on the PLAYER_INFO name-match heuristic (which a duplicate character
+## name could clobber).
+func _handle_auth_result(data: Dictionary) -> void:
+	if data.get("result", -1) != 0:
+		return
+	var entity_id: int = data.get("entity_id", -1)
+	if entity_id <= 0:
+		return
+	GameManager.set_local_player_entity_id(entity_id)
+	if prediction_controller:
+		prediction_controller.set_local_entity_id(entity_id)
+		print("[ArenaBase] Local player entity ID set from AUTH_RESULT: %d" % entity_id)
 
 
 ## Handle game events
@@ -379,6 +468,93 @@ func _handle_game_event(data: Dictionary) -> void:
 			_handle_leaderboard_update(data)
 		PacketTypes.GameEventType.PROJECTILE_FIRED:
 			_handle_projectile_fired_event(data)
+		PacketTypes.GameEventType.EXP_GAIN:
+			_handle_exp_gain_event(data)
+		PacketTypes.GameEventType.PROGRESS:
+			_handle_progress_event(data)
+		PacketTypes.GameEventType.PICKUP:
+			_handle_pickup_event(data)
+		PacketTypes.GameEventType.ABILITY_EFFECT:
+			_handle_ability_effect_event(data)
+
+
+## COSMETIC ONLY. EXP_GAIN no longer drives leveling — the server owns level/XP and pushes
+## it via PROGRESS events. For our own player we just spawn a green "+N XP" floater. The
+## server emits one EXP_GAIN per nearby player; we keep only our own.
+func _handle_exp_gain_event(data: Dictionary) -> void:
+	if int(data.get("source_id", 0)) != GameManager.get_local_player_entity_id():
+		return
+	var amount := int(data.get("event_data", {}).get("amount", 0))
+	if amount <= 0:
+		return
+	# Cosmetic hint (HUD may also listen via GameManager.experience_gained).
+	GameManager.grant_experience(amount)
+	if local_player and is_instance_valid(local_player):
+		_spawn_xp_floater(amount, local_player.global_position)
+
+
+## Authoritative progression update for a player. Mirrors level/XP into GameManager for the
+## HUD and, for the LOCAL player, adopts the new base move speed into prediction so the
+## predicted speed tracks the server. The server emits PROGRESS per player; target_id picks
+## whose progression this is.
+func _handle_progress_event(data: Dictionary) -> void:
+	var target_id: int = data.get("target_id", -1)
+	if target_id != GameManager.get_local_player_entity_id():
+		return
+	var event_data: Dictionary = data.get("event_data", {})
+	var level := int(event_data.get("level", 1))
+	var experience := int(event_data.get("experience", 0))
+	var move_speed := int(event_data.get("move_speed", 0))
+	GameManager.set_progression(level, experience, move_speed)
+	if prediction_controller and move_speed > 0:
+		prediction_controller.set_base_speed(float(move_speed))
+
+
+## Health pickup. Spawn a green "+amount" heal floater at the picked-up player's position and,
+## for the local player, mirror the heal into the HUD HP bar (the server stays authoritative —
+## the next state update reconciles the exact value). target_id = the player who picked it up.
+func _handle_pickup_event(data: Dictionary) -> void:
+	var event_data: Dictionary = data.get("event_data", {})
+	if int(event_data.get("pickup_kind", -1)) != 0:  # 0 = healthorb
+		return
+	var amount := int(event_data.get("amount", 0))
+	if amount <= 0:
+		return
+
+	var target_id: int = data.get("target_id", -1)
+	var local_id := GameManager.get_local_player_entity_id()
+	var world_pos := Vector2.ZERO
+
+	if target_id == local_id and local_player and is_instance_valid(local_player):
+		world_pos = local_player.global_position
+		if local_player.hp_component:
+			var healed := mini(
+				local_player.hp_component.current_hp + amount,
+				local_player.hp_component.max_hp
+			)
+			local_player.hp_component.set_hp(healed)
+	elif client_entity_manager and client_entity_manager.player_entities.has(target_id):
+		var remote: RemotePlayer = client_entity_manager.player_entities[target_id]
+		if is_instance_valid(remote):
+			world_pos = remote.global_position
+
+	if world_pos != Vector2.ZERO:
+		_spawn_heal_floater(amount, world_pos)
+
+
+## Transient ability VFX at a world position, sized by radius and styled by effect_id:
+## 0 mageblast (blue/white burst), 1 charge_blast (orange ring), 2 mine_detonation
+## (red explosion), 3 shadowstep (purple blink). Self-frees after ~0.4s.
+func _handle_ability_effect_event(data: Dictionary) -> void:
+	var event_data: Dictionary = data.get("event_data", {})
+	var effect_id := int(event_data.get("effect_id", 0))
+	var position: Vector2 = event_data.get("position", Vector2.ZERO)
+	var radius := float(event_data.get("radius", 60))
+	var vfx := _AbilityEffectVfx.new()
+	vfx.effect_id = effect_id
+	vfx.max_radius = maxf(radius, 8.0)
+	vfx.position = position
+	_add_effect_to_arena(vfx)
 
 
 ## Handle PLAYER_INFO event - detect our own entity ID
@@ -391,10 +567,15 @@ func _handle_player_info(data: Dictionary) -> void:
 	if entity_id > 0:
 		EntityNameCache.set_entity_color(entity_id, player_color)
 
-	# Check if this is our own player info
-	var our_char_name: String = GameManager.player_data.get("character_name", "")
-	if char_name == our_char_name and entity_id > 0:
-		# This is us! Set our entity ID
+	# Check if this is our own player info. AUTH_RESULT is the authoritative id source;
+	# the name match only seeds the id when it is still unknown (legacy fallback), so a
+	# duplicate character name can never clobber a known id.
+	var known_id: int = GameManager.get_local_player_entity_id()
+	var is_us: bool = entity_id > 0 and (
+		entity_id == known_id
+		or (known_id <= 0 and char_name == GameManager.player_data.get("character_name", ""))
+	)
+	if is_us:
 		GameManager.set_local_player_entity_id(entity_id)
 
 		if prediction_controller:
@@ -512,11 +693,15 @@ func _sync_local_player_state(entity_data: Dictionary) -> void:
 				local_player.hp_component.set_hp(0)
 		_play_local_death_feedback()
 
-	# Sync invulnerability visual
+	# Sync invulnerability visual, then Rogue stealth dim. Stealth wins when both are set.
 	var is_invulnerable := (flags & PacketTypes.ENTITY_FLAG_INVULNERABLE) != 0
+	var is_stealthed := (flags & PacketTypes.ENTITY_FLAG_STEALTH) != 0
 	_is_invulnerable = is_invulnerable
 	if local_player.animated_sprite:
-		if is_invulnerable:
+		if is_stealthed:
+			if local_player.animated_sprite.modulate.a != 0.35:
+				local_player.animated_sprite.modulate.a = 0.35
+		elif is_invulnerable:
 			local_player.animated_sprite.modulate.a = 0.5 + 0.5 * sin(Time.get_ticks_msec() / 100.0)
 		elif local_player.animated_sprite.modulate.a != 1.0:
 			local_player.animated_sprite.modulate.a = 1.0
@@ -536,6 +721,9 @@ func _handle_respawn_event(data: Dictionary) -> void:
 		_local_player_authority_synced = true
 
 		if prediction_controller:
+			# The server resets its movement state machine on respawn; mirror it in the
+			# shared Rust sim so dash cooldown / stamina start fresh on both sides.
+			prediction_controller.reset_sim()
 			prediction_controller.force_sync(respawn_pos)
 			prediction_controller.set_prediction_enabled(true)
 		if local_hit_detector:
@@ -623,7 +811,14 @@ func _play_local_death_feedback() -> void:
 	_add_effect_to_arena(gore)
 
 	if death_screen:
-		death_screen.show_death(_last_killer_id)
+		# Hardcore = permadeath: the server has already converted XP→Glory and deleted the
+		# character (and will kick us shortly). Show the "Your Glory will be remembered"
+		# screen with a Back to Main Menu button instead of the respawn countdown.
+		if GameManager.is_hardcore():
+			_hardcore_death = true
+			death_screen.show_death_hardcore(_last_killer_id)
+		else:
+			death_screen.show_death(_last_killer_id)
 
 
 ## Handle authoritative projectile fire event for remote player and monster audio.
@@ -800,6 +995,21 @@ func _on_respawn_requested() -> void:
 	NetworkManager.send_message(NetworkManager.MessageType.RESPAWN_REQUEST, {})
 
 
+## Hardcore "Back to Main Menu" pressed. The character is already gone server-side (XP→Glory
+## converted, row deleted), so clear the local character data and return to the main menu.
+func _on_main_menu_requested() -> void:
+	if _is_leaving_arena:
+		return
+	_is_leaving_arena = true
+
+	var audio := _get_audio_manager()
+	if audio:
+		audio.stop_music()
+	NetworkManager.disconnect_from_server("Hardcore permadeath")
+	GameManager.clear_player_data()
+	SceneManager.goto_main_menu()
+
+
 ## Show a "You eliminated [Name]" notification for the local player
 func _show_kill_notification(victim_name: String, title: String = "") -> void:
 	var hud_layer := get_hud_layer()
@@ -906,6 +1116,25 @@ func _spawn_damage_number(amount: int, world_pos: Vector2, is_dealt: bool) -> vo
 		container.add_child(dmg_num)
 
 
+## Spawn a green "+N XP" floater (cosmetic, from an EXP_GAIN event).
+func _spawn_xp_floater(amount: int, world_pos: Vector2) -> void:
+	_spawn_text_floater("+%d XP" % amount, world_pos, Color(0.45, 1.0, 0.45))
+
+
+## Spawn a green "+N" heal floater (from a PICKUP heal event).
+func _spawn_heal_floater(amount: int, world_pos: Vector2) -> void:
+	_spawn_text_floater("+%d" % amount, world_pos, Color(0.35, 1.0, 0.4))
+
+
+## Shared rising-and-fading text floater (reuses the damage-number motion/style).
+func _spawn_text_floater(text: String, world_pos: Vector2, color: Color) -> void:
+	var floater := _TextFloater.new()
+	floater.setup(text, world_pos, color)
+	var container := get_entity_container()
+	if container:
+		container.add_child(floater)
+
+
 ## Add a visual effect node to the arena entity container
 func _add_effect_to_arena(effect: Node2D) -> void:
 	var container := get_entity_container()
@@ -955,9 +1184,14 @@ func _connect_local_resource_bars() -> void:
 	if stamina_bar != null and not sm.stamina_changed.is_connected(_on_local_stamina_changed):
 		sm.stamina_changed.connect(_on_local_stamina_changed)
 		stamina_bar.update_value(sm.stamina, GameConstants.PLAYER_STAMINA_MAX)
+	if stamina_bar != null and stamina_bar.has_method("set_exhausted") \
+			and not sm.exhausted_changed.is_connected(_on_local_exhausted_changed):
+		sm.exhausted_changed.connect(_on_local_exhausted_changed)
 	if mana_bar != null and not sm.mana_changed.is_connected(_on_local_mana_changed):
 		sm.mana_changed.connect(_on_local_mana_changed)
 		mana_bar.update_value(sm.mana, GameConstants.PLAYER_MANA_MAX)
+	if ability_slots != null:
+		ability_slots.bind_movement_state_machine(sm)
 
 
 func _on_local_stamina_changed(current: float, maximum: float) -> void:
@@ -970,8 +1204,17 @@ func _on_local_mana_changed(current: float, maximum: float) -> void:
 		mana_bar.update_value(current, maximum)
 
 
+func _on_local_exhausted_changed(active: bool) -> void:
+	if stamina_bar and stamina_bar.has_method("set_exhausted"):
+		stamina_bar.set_exhausted(active)
+
+
 ## Handle disconnect from server
 func _on_disconnected(_reason: String) -> void:
+	# A hardcore death ends with the server kicking us (character deleted). That disconnect
+	# is expected — keep the permadeath death screen up and don't offer to reconnect.
+	if _hardcore_death:
+		return
 	if GameManager.current_state == GameManager.GameState.IN_ARENA:
 		if connection_lost_overlay:
 			connection_lost_overlay.show_overlay()
@@ -993,12 +1236,23 @@ func _on_reconnect_failed() -> void:
 	_leave_arena()
 
 
+## Pause overlay opened/closed: gate the local player's input. Online the player's own
+## input is already disabled (prediction owns it), so we suppress the PredictionController.
+func _on_pause_menu_visibility_changed() -> void:
+	if prediction_controller:
+		prediction_controller.set_input_suppressed(pause_menu != null and pause_menu.visible)
+
+
 ## Handle leave arena request from pause menu
 func _on_leave_arena() -> void:
 	_leave_arena()
 
 
-## Leave arena: disconnect and return to main menu
+## Leave the Arena and return to the Sanctuary hub. Both are now networked instances on the
+## same region host (Arena = :8081, Sanctuary = :8082), so this disconnects from the Arena and
+## RECONNECTS to the Sanctuary instance before switching scenes — otherwise the Sanctuary scene
+## would come up with no server link. (The Sanctuary, not the main menu, is the town the player
+## returns to; SceneManager sets the IN_ARENA game state for it.)
 func _leave_arena() -> void:
 	if _is_leaving_arena:
 		return
@@ -1007,9 +1261,23 @@ func _leave_arena() -> void:
 	var audio := _get_audio_manager()
 	if audio:
 		audio.stop_music()
-	GameManager.change_state(GameManager.GameState.MAIN_MENU)
-	NetworkManager.disconnect_from_server("Leave arena")
-	SceneManager.goto_main_menu()
+	GameManager.persist_progression()  # flush any unsaved XP before tearing down
+
+	# Drop the Arena link, then dial the Sanctuary instance (region host on the Sanctuary port).
+	NetworkManager.disconnect_from_server("Return to Sanctuary")
+	await get_tree().process_frame
+
+	var region_url: String = GameManager.player_data.get("selected_region_url", "")
+	if region_url.is_empty():
+		# No region stashed (shouldn't happen from a live Arena) — fall back to the menu.
+		SceneManager.goto_main_menu()
+		return
+
+	var sanctuary_url := NetworkManager.sanctuary_url_for_region(region_url)
+	NetworkManager.connect_to_server(sanctuary_url, AuthManager.get_token())
+	# Switch scenes immediately; the Sanctuary's _setup_client drives the handshake once the
+	# link opens (connect_to_server awaits the link internally and emits connected_to_server).
+	SceneManager.goto_sanctuary()
 
 
 ## Called when exiting the arena scene
@@ -1037,6 +1305,148 @@ func on_scene_exit() -> void:
 		_local_death_feedback_played = false
 
 	print("[ArenaBase] Scene exit cleanup complete")
+
+
+## ---------------------------------------------------------------------------
+## Arena props (cosmetic only — the server sim knows nothing about them).
+## Statement pieces decorate the authoritative ARENA_OBSTACLES geometry
+## (corner Ls, center cross, mid barriers) so visuals match collision; the
+## rest is set dressing scattered on open floor away from the spawn ring.
+## Pattern mirrors sanctuary.gd: const tables + texture-or-skip fallback.
+## ---------------------------------------------------------------------------
+
+const ARENA_PROP_TEXTURE_DIR := "res://assets/sprites/environment/arena/"
+
+## kind -> {file, flat}. Standing props (flat=false) are bottom-planted on
+## their position; flat props (decals, piles) center on it.
+const ARENA_PROP_SPRITES := {
+	"statue_weeping": {"file": "statue_weeping.png", "flat": false},
+	"pillar_broken": {"file": "pillar_broken.png", "flat": false},
+	"brazier": {"file": "brazier.png", "flat": false},
+	"banner_stand": {"file": "banner_stand.png", "flat": false},
+	"gravestone_cross": {"file": "gravestone_cross.png", "flat": false},
+	"funerary_urn": {"file": "funerary_urn.png", "flat": false},
+	"candelabra": {"file": "candelabra.png", "flat": false},
+	"corrupted_crystal": {"file": "corrupted_crystal.png", "flat": false},
+	"dead_tree": {"file": "dead_tree.png", "flat": false},
+	"spike_barricade": {"file": "spike_barricade.png", "flat": false},
+	"altar": {"file": "altar.png", "flat": false},
+	"bone_pile": {"file": "bone_pile.png", "flat": true},
+	"skull_pile": {"file": "skull_pile.png", "flat": true},
+	"rubble": {"file": "rubble.png", "flat": true},
+	"ritual_circle": {"file": "ritual_circle.png", "flat": true},
+	"blood_stain": {"file": "blood_stain.png", "flat": true},
+}
+
+## Pixels the standing-prop artwork keeps below its visual base (shadows).
+const ARENA_PROP_FOOT := 6.0
+
+const ARENA_PROPS: Array[Dictionary] = [
+	# Weeping statues guard the corner cover walls (inside each L).
+	{"kind": "statue_weeping", "pos": Vector2(-610, -615)},
+	{"kind": "statue_weeping", "pos": Vector2(610, -615)},
+	{"kind": "statue_weeping", "pos": Vector2(-610, 660)},
+	{"kind": "statue_weeping", "pos": Vector2(610, 660)},
+	{"kind": "candelabra", "pos": Vector2(-545, -630)},
+	{"kind": "candelabra", "pos": Vector2(545, -630)},
+	{"kind": "candelabra", "pos": Vector2(-545, 645)},
+	{"kind": "candelabra", "pos": Vector2(545, 645)},
+	# Broken pillars cap the four ends of the center cross.
+	{"kind": "pillar_broken", "pos": Vector2(0, -205)},
+	{"kind": "pillar_broken", "pos": Vector2(0, 205)},
+	{"kind": "pillar_broken", "pos": Vector2(-205, 0)},
+	{"kind": "pillar_broken", "pos": Vector2(205, 0)},
+	# Banners mark the diagonal approaches to the center.
+	{"kind": "banner_stand", "pos": Vector2(-85, -85)},
+	{"kind": "banner_stand", "pos": Vector2(85, -85)},
+	{"kind": "banner_stand", "pos": Vector2(-85, 85)},
+	{"kind": "banner_stand", "pos": Vector2(85, 85)},
+	# Braziers light the mid-field barriers.
+	{"kind": "brazier", "pos": Vector2(-400, -345)},
+	{"kind": "brazier", "pos": Vector2(400, -345)},
+	{"kind": "brazier", "pos": Vector2(-400, 343)},
+	{"kind": "brazier", "pos": Vector2(400, 343)},
+	# Corrupted crystals as mid-edge landmarks.
+	{"kind": "corrupted_crystal", "pos": Vector2(0, -660)},
+	{"kind": "corrupted_crystal", "pos": Vector2(660, 0)},
+	{"kind": "corrupted_crystal", "pos": Vector2(0, 660)},
+	{"kind": "corrupted_crystal", "pos": Vector2(-660, 0)},
+	# Graveyard cluster in the south-west quadrant.
+	{"kind": "gravestone_cross", "pos": Vector2(-520, 380)},
+	{"kind": "gravestone_cross", "pos": Vector2(-455, 425)},
+	{"kind": "gravestone_cross", "pos": Vector2(-390, 372)},
+	{"kind": "gravestone_cross", "pos": Vector2(-545, 462)},
+	{"kind": "gravestone_cross", "pos": Vector2(-430, 487)},
+	{"kind": "funerary_urn", "pos": Vector2(-355, 440)},
+	{"kind": "bone_pile", "pos": Vector2(-500, 428)},
+	{"kind": "skull_pile", "pos": Vector2(-412, 412)},
+	# Dead trees + altar in the north-east quadrant.
+	{"kind": "dead_tree", "pos": Vector2(470, -480)},
+	{"kind": "dead_tree", "pos": Vector2(585, -390)},
+	{"kind": "altar", "pos": Vector2(500, -560)},
+	{"kind": "ritual_circle", "pos": Vector2(500, -480)},
+	{"kind": "funerary_urn", "pos": Vector2(545, -652)},
+	# Spike barricades near the north-west and south-east lanes.
+	{"kind": "spike_barricade", "pos": Vector2(-450, -550)},
+	{"kind": "spike_barricade", "pos": Vector2(450, 550)},
+	# Set dressing scattered on open floor.
+	{"kind": "rubble", "pos": Vector2(-150, -600)},
+	{"kind": "rubble", "pos": Vector2(300, -520)},
+	{"kind": "rubble", "pos": Vector2(620, -120)},
+	{"kind": "rubble", "pos": Vector2(520, 300)},
+	{"kind": "rubble", "pos": Vector2(-620, 140)},
+	{"kind": "rubble", "pos": Vector2(-300, 560)},
+	{"kind": "rubble", "pos": Vector2(150, 640)},
+	{"kind": "rubble", "pos": Vector2(-640, -300)},
+	{"kind": "bone_pile", "pos": Vector2(250, -650)},
+	{"kind": "bone_pile", "pos": Vector2(-250, 230)},
+	{"kind": "bone_pile", "pos": Vector2(640, 250)},
+	{"kind": "bone_pile", "pos": Vector2(-360, -460)},
+	{"kind": "skull_pile", "pos": Vector2(220, 420)},
+	{"kind": "skull_pile", "pos": Vector2(-660, -660)},
+	{"kind": "blood_stain", "pos": Vector2(120, -300)},
+	{"kind": "blood_stain", "pos": Vector2(-200, 80)},
+	{"kind": "blood_stain", "pos": Vector2(380, 120)},
+]
+
+
+## Instance the cosmetic prop sprites. Missing textures are skipped silently
+## (same graceful-fallback rule as sanctuary.gd) so the arena keeps working
+## on checkouts without the generated art.
+func _build_arena_props() -> void:
+	var existing := get_node_or_null("Props")
+	if existing:
+		existing.queue_free()
+	var container := Node2D.new()
+	container.name = "Props"
+	# Same z as entities, but ordered BEFORE EntityContainer in the tree so
+	# props render above the _draw() floor yet under all dynamic entities.
+	# (A negative z_index would put them under the parent's own _draw().)
+	add_child(container)
+	var entity_container := get_node_or_null("EntityContainer")
+	if entity_container:
+		move_child(container, entity_container.get_index())
+
+	for prop: Dictionary in ARENA_PROPS:
+		var kind: String = prop["kind"]
+		var info: Dictionary = ARENA_PROP_SPRITES.get(kind, {})
+		if info.is_empty():
+			continue
+		var path: String = ARENA_PROP_TEXTURE_DIR + String(info["file"])
+		if not ResourceLoader.exists(path, "Texture2D"):
+			continue
+		var texture: Texture2D = load(path)
+		if texture == null:
+			continue
+		var sprite := Sprite2D.new()
+		sprite.texture = texture
+		var pos: Vector2 = prop["pos"]
+		if not bool(info.get("flat", false)):
+			# Plant the artwork's base on the position (sprites are centered).
+			pos.y -= texture.get_height() / 2.0 - ARENA_PROP_FOOT
+		sprite.position = pos
+		container.add_child(sprite)
+	print("[ArenaBase] Built %d arena props" % container.get_child_count())
 
 
 ## Set up the generated TileMapLayer backing the arena floor, walls, and obstacle cells.
@@ -1206,6 +1616,10 @@ func get_hud_layer() -> CanvasLayer:
 
 ## Draw arena floor and grid
 func _draw() -> void:
+	# A subclass (Sanctuary) suppresses the dark arena floor and paints its own ground layers.
+	if not _draws_arena_floor:
+		return
+
 	# Draw floor background
 	var arena_rect := Rect2(arena_min, arena_max - arena_min)
 	draw_rect(arena_rect, FLOOR_COLOR, true)
@@ -1273,3 +1687,94 @@ func _draw_obstacles() -> void:
 		if inner.size.x > 0 and inner.size.y > 0:
 			var vein_color := Color(0.25, 0.06, 0.1, 0.3)
 			draw_rect(inner, vein_color, false, 1.0)
+
+
+## Rising-and-fading text floater (XP gains, heal pickups). Same motion as DamageNumber but
+## draws arbitrary text instead of a bare number.
+class _TextFloater extends Node2D:
+	const RISE_DISTANCE := 70.0
+	const DURATION := 0.9
+	const FADE_START := 0.5
+
+	var _text: String = ""
+	var _color: Color = Color.WHITE
+	var _timer: float = 0.0
+	var _start_pos: Vector2 = Vector2.ZERO
+	var _offset_x: float = 0.0
+
+	func setup(text: String, world_pos: Vector2, color: Color) -> void:
+		_text = text
+		_color = color
+		_start_pos = world_pos
+		global_position = world_pos
+		_offset_x = randf_range(-12.0, 12.0)
+
+	func _process(delta: float) -> void:
+		_timer += delta
+		if _timer >= DURATION:
+			queue_free()
+			return
+		var t := _timer / DURATION
+		var rise := RISE_DISTANCE * (1.0 - pow(1.0 - t, 2.0))
+		global_position = _start_pos + Vector2(_offset_x * t, -rise)
+		queue_redraw()
+
+	func _draw() -> void:
+		var t := _timer / DURATION
+		var alpha := 1.0
+		if t > FADE_START:
+			alpha = 1.0 - (t - FADE_START) / (1.0 - FADE_START)
+		var font := ThemeDB.fallback_font
+		var c := _color
+		c.a = alpha
+		draw_string(font, Vector2(1, 1), _text, HORIZONTAL_ALIGNMENT_CENTER, -1, 16, Color(0, 0, 0, alpha * 0.6))
+		draw_string(font, Vector2.ZERO, _text, HORIZONTAL_ALIGNMENT_CENTER, -1, 16, c)
+
+
+## Transient expanding-ring/burst VFX for an ABILITY_EFFECT event. Styled by effect_id and
+## sized by the event radius; self-frees after ~0.4s. Pure cosmetics, no logic.
+class _AbilityEffectVfx extends Node2D:
+	const DURATION := 0.4
+
+	## 0 mageblast, 1 charge_blast, 2 mine_detonation, 3 shadowstep_blink.
+	var effect_id: int = 0
+	var max_radius: float = 60.0
+	var _timer: float = 0.0
+
+	func _process(delta: float) -> void:
+		_timer += delta
+		if _timer >= DURATION:
+			queue_free()
+			return
+		queue_redraw()
+
+	func _draw() -> void:
+		var t: float = clampf(_timer / DURATION, 0.0, 1.0)
+		var alpha := 1.0 - t
+		var radius := max_radius * (0.2 + 0.8 * t)
+		var fill := _fill_color()
+		var ring := _ring_color()
+		fill.a = 0.30 * alpha
+		ring.a = 0.9 * alpha
+		draw_circle(Vector2.ZERO, radius, fill)
+		draw_arc(Vector2.ZERO, radius, 0.0, TAU, 48, ring, 3.0)
+		# A second, brighter inner ring for punch.
+		var inner := ring
+		inner.a = 0.5 * alpha
+		draw_arc(Vector2.ZERO, radius * 0.6, 0.0, TAU, 36, inner, 2.0)
+
+	func _fill_color() -> Color:
+		match effect_id:
+			0: return Color(0.5, 0.7, 1.0)   # mageblast — blue/white
+			1: return Color(1.0, 0.6, 0.2)   # charge_blast — orange
+			2: return Color(1.0, 0.25, 0.15) # mine_detonation — red
+			3: return Color(0.6, 0.3, 0.85)  # shadowstep — purple
+			_: return Color(0.8, 0.8, 0.8)
+
+	func _ring_color() -> Color:
+		match effect_id:
+			0: return Color(0.85, 0.95, 1.0)
+			1: return Color(1.0, 0.8, 0.4)
+			2: return Color(1.0, 0.5, 0.3)
+			3: return Color(0.8, 0.5, 1.0)
+			_: return Color(1.0, 1.0, 1.0)

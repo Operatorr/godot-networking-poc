@@ -1,39 +1,17 @@
-#!/bin/bash
-# Run Godot server locally for development/testing
-# This runs the server from the editor without exporting
+#!/usr/bin/env bash
+# Run ONE Rust game-server instance locally for development/testing.
+# Dev mode accepts unsigned session tickets (config default allow_unsigned_tickets=true);
+# production runs --require-tickets with OMEGA_TICKET_PUBKEY set.
+#
+# The instance's identity is chosen with --mode/--port (forwarded to omega-server):
+#   ./scripts/run_server.sh                                  # Arena (default), udp/8081
+#   ./scripts/run_server.sh --mode arena     --port 8081     # Arena: monsters + PvP, ±1000
+#   ./scripts/run_server.sh --mode sanctuary --port 8082     # Sanctuary: safe town, ±1856 walk-through
+#
+# Usage: ./scripts/run_server.sh [--mode arena|sanctuary] [--port N] [--config <file>] [--require-tickets] [...]
+# Defaults to udp/8081 (Arena) and :9100 (Prometheus). To run BOTH instances at once, use
+# ./scripts/dev_local.sh (which also starts the Go API).
+set -euo pipefail
+cd "$(dirname "$0")/../rust"
 
-set -e
-
-echo "Starting Omega Realm Server (Development Mode)..."
-
-# Navigate to client directory
-cd "$(dirname "$0")/../client"
-
-# Check if Godot is available
-if ! command -v godot &> /dev/null; then
-    echo "Error: Godot not found in PATH"
-    echo "Please install Godot 4.6 or add it to your PATH"
-    exit 1
-fi
-
-# Check for custom config file path
-CONFIG_PATH=""
-if [ -n "$1" ]; then
-    CONFIG_PATH="$1"
-    echo "Using config: $CONFIG_PATH"
-fi
-
-# Run Godot in headless server mode
-# --headless enables headless mode (no display)
-# The project will detect this and run as server via DisplayServer.get_name() == "headless"
-echo "Running server on port 8081 (default)..."
-echo "Press Ctrl+C to stop the server"
-echo ""
-
-if [ -n "$CONFIG_PATH" ]; then
-    # Copy config to user:// location for the server to pick up
-    # Note: user:// path varies by platform, this is a simplified approach
-    godot --headless
-else
-    godot --headless
-fi
+exec cargo run --release -p omega-server -- "$@"

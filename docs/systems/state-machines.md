@@ -102,7 +102,7 @@ Server routing: `_ready` sends it directly to `SERVER_MAIN` (`scene_manager.gd:8
 scene path begins with `res://scenes/test/` (`scene_manager.gd:77-80`). `GameManager` mirrors
 this: its server-mode detection is suppressed for test scenes so a headless test scene still runs
 as a client (`game_manager.gd:60,256-263`). This is why test scenes (`sandbox.tscn`,
-`auto_join_arena.tscn`) build their world inline instead of being routed.
+`net_smoke.tscn`) build their world inline instead of being routed.
 
 Transitions go through `change_scene` (`scene_manager.gd:110`), which guards re-entrancy with
 `is_transitioning`, fades (client only), cleans up the old scene, and on arena exit disconnects
@@ -186,13 +186,15 @@ enter/exit signals — the codebase convention (cf. `monster_ai._transition_to_s
 | DASHING | IDLE | dash duration (0.4 s) elapses | — |
 | any (except STUNNED/ABILITY) | KNOCKED_BACK | `apply_knockback()` | dir≠0, force>0 |
 | KNOCKED_BACK | IDLE | velocity decays below END_SPEED | interruptible only by STUNNED/ABILITY |
-| any | STUNNED | `apply_stun/root/daze()` | duration>0; cancels an in-progress dash |
+| any | STUNNED | `apply_stun/root()` | duration>0; cancels an in-progress dash |
 | STUNNED | IDLE | stun timer elapses | only the timer may release it |
 | (most) | ABILITY_MOVEMENT | `start_ability_movement()` | not STUNNED |
 | ABILITY_MOVEMENT | IDLE | `end_ability_movement()` | — |
 
-Full detail (numbers, signals, the reconciliation caveat, status-effect placeholders) lives in
-[`players-movement-state-machine.md`](players-movement-state-machine.md).
+Daze (`apply_daze()`, hit-while-sprinting) is **not a state** — it is a timer that gates the
+sprint derivation and `try_dash()` while any state runs (typically alongside KNOCKED_BACK);
+replicated via `ENTITY_FLAG_DAZED`. Full detail (numbers, signals, the reconciliation caveat,
+status effects) lives in [`players-movement-state-machine.md`](players-movement-state-machine.md).
 
 ---
 

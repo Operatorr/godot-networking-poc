@@ -1,0 +1,32 @@
+[Unit]
+Description=Omega Realm API (Go) — auth, characters, leaderboard, regions
+Documentation=https://github.com/Operatorr/godot-networking-poc
+# DB + cache must be up first; the API exits on startup if Redis is unreachable.
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target
+Requires=postgresql.service redis-server.service
+# Start-limit directives belong in [Unit]; systemd ignores them under [Service].
+# Survive transient DB blips without tripping the start-limit.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=deploy
+Group=deploy
+WorkingDirectory=/home/deploy/omega-realm/api
+# Secrets + DB/Redis endpoints live here (root:deploy 0640), NOT in the repo.
+EnvironmentFile=/etc/omega-realm/api.env
+ExecStart=/home/deploy/omega-realm/api/bin/server
+Restart=always
+RestartSec=3
+
+# --- light hardening (POC-appropriate; everything lives under /home/deploy) ---
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+[configuration]
+entry_symbol = "gdext_rust_init"
+compatibility_minimum = 4.6
+reloadable = true
+
+[libraries]
+macos.debug = "res://bin/macos/libclient_ext.dylib"
+macos.release = "res://bin/macos/libclient_ext.dylib"
+macos.debug.arm64 = "res://bin/macos/libclient_ext.dylib"
+macos.release.arm64 = "res://bin/macos/libclient_ext.dylib"
+linux.debug.x86_64 = "res://bin/linux/libclient_ext.so"
+linux.release.x86_64 = "res://bin/linux/libclient_ext.so"
+windows.debug.x86_64 = "res://bin/windows/client_ext.dll"
+windows.release.x86_64 = "res://bin/windows/client_ext.dll"

@@ -58,6 +58,11 @@ const PLAYER_SPRINT_MULTIPLIER := 1.6
 ## Calculated sprint speed for reference: 320 units/sec
 const PLAYER_SPRINT_SPEED := PLAYER_SPEED * PLAYER_SPRINT_MULTIPLIER
 
+## How strongly the player-chosen color tints class spritesheets (0 = class art
+## untouched, 1 = full modulate). The swatch keeps class identity while letting
+## players slightly recolor their character. White picks no tint. Kept subtle.
+const CLASS_SPRITE_TINT_STRENGTH := 0.25
+
 
 # =============================================================================
 # DASH
@@ -95,6 +100,22 @@ const PLAYER_KNOCKBACK_END_SPEED := 12.0
 ## caller does not specify its own force.
 const PLAYER_KNOCKBACK_BASE_FORCE := 450.0
 
+## Per-projectile knockback impulse (u/s), carried on each projectile spawn so
+## future weapons/abilities/items can vary it. The apply_knockback multiplier is
+## the buff/debuff hook on top. Mirrors rust/sim_core/src/constants.rs.
+const PLAYER_PROJECTILE_KNOCKBACK_FORCE := PLAYER_KNOCKBACK_BASE_FORCE
+const MONSTER_PROJECTILE_KNOCKBACK_FORCE := PLAYER_KNOCKBACK_BASE_FORCE
+
+
+# =============================================================================
+# DAZE
+# =============================================================================
+
+## Hit while SPRINTING => dazed for this long: sprint and dash are locked out,
+## walking stays allowed (reduced control, not a stun). Server-authoritative;
+## replicated via ENTITY_FLAG_DAZED. Mirrors rust/sim_core/src/constants.rs.
+const PLAYER_DAZE_DURATION := 1.5
+
 
 # =============================================================================
 # STAMINA (sprint resource)
@@ -109,8 +130,15 @@ const PLAYER_STAMINA_DRAIN_PER_SEC := 35.0
 ## Stamina regenerated per second while NOT sprinting.
 const PLAYER_STAMINA_REGEN_PER_SEC := 20.0
 
-## Sprint cannot start below this stamina (prevents one-frame flicker sprints).
+## Legacy minimum-to-sprint threshold. No longer the sprint gate: the exhaustion model
+## lets stamina deplete fully instead (sprint allowed while stamina > 0 and not exhausted —
+## see movement_state_machine.gd want_sprint). Unused in GDScript; retained only to mirror
+## rust/sim_core constants.rs PLAYER_STAMINA_SPRINT_MIN, which is likewise kept for reference.
 const PLAYER_STAMINA_SPRINT_MIN := 5.0
+
+## Sprinting to 0 stamina exhausts the player: sprint is locked out and stamina regen is
+## paused for this long, and the stamina bar blinks. Mirrors rust/sim_core.
+const PLAYER_STAMINA_EXHAUST_DURATION := 3.0
 
 
 # =============================================================================
@@ -120,8 +148,9 @@ const PLAYER_STAMINA_SPRINT_MIN := 5.0
 ## Maximum mana pool.
 const PLAYER_MANA_MAX := 100.0
 
-## Mana regenerated per second.
-const PLAYER_MANA_REGEN_PER_SEC := 10.0
+## Mana regenerated per second. MUST match the Rust sim_core constant (8.0) or
+## ability-cost prediction desyncs from the authoritative server.
+const PLAYER_MANA_REGEN_PER_SEC := 8.0
 
 ## Mana consumed by a single ability use (gates the ability input).
 const PLAYER_MANA_ABILITY_COST := 25.0

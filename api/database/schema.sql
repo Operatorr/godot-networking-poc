@@ -17,14 +17,31 @@ CREATE TABLE IF NOT EXISTS users (
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     region VARCHAR(20) DEFAULT 'Asia' CHECK (region IN ('Asia', 'Europe', 'US-West')),
+    glory INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT username_length CHECK (char_length(username) >= 3 AND char_length(username) <= 50),
-    CONSTRAINT email_format CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$')
+    CONSTRAINT email_format CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'),
+    CONSTRAINT users_glory_non_negative CHECK (glory >= 0)
 );
+
+-- Account-wide Glory currency is added idempotently so already-running databases
+-- (created with CREATE TABLE IF NOT EXISTS before this column existed) pick it up,
+-- along with its never-negative CHECK (Postgres has no ADD CONSTRAINT IF NOT EXISTS).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS glory INTEGER NOT NULL DEFAULT 0;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'users_glory_non_negative'
+    ) THEN
+        ALTER TABLE users
+            ADD CONSTRAINT users_glory_non_negative CHECK (glory >= 0);
+    END IF;
+END $$;
 
 COMMENT ON TABLE users IS 'Player account information and authentication data';
 COMMENT ON COLUMN users.region IS 'Preferred game server region: Asia, Europe, or US-West';
+COMMENT ON COLUMN users.glory IS 'Account-wide Glory currency earned from character death (hardcore) and church sacrifice (softcore); server-authoritative, never negative';
 
 -- Characters table - Single character slot per player
 CREATE TABLE IF NOT EXISTS characters (
@@ -36,10 +53,24 @@ CREATE TABLE IF NOT EXISTS characters (
     realm VARCHAR(50) NOT NULL DEFAULT 'Asia (Singapore)',
     mode VARCHAR(20) NOT NULL DEFAULT 'softcore',
     level SMALLINT NOT NULL DEFAULT 1,
+    experience INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT character_name_length CHECK (char_length(name) >= 3 AND char_length(name) <= 50)
+    CONSTRAINT character_name_length CHECK (char_length(name) >= 3 AND char_length(name) <= 50),
+    CONSTRAINT character_mode_valid CHECK (mode IN ('softcore', 'hardcore'))
 );
+
+-- Add the mode CHECK idempotently for already-running databases. Postgres has no
+-- ADD CONSTRAINT IF NOT EXISTS, so guard on the constraint name.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'character_mode_valid'
+    ) THEN
+        ALTER TABLE characters
+            ADD CONSTRAINT character_mode_valid CHECK (mode IN ('softcore', 'hardcore'));
+    END IF;
+END $$;
 
 COMMENT ON TABLE characters IS 'Player characters - limited to one character per user';
 COMMENT ON COLUMN characters.user_id IS 'UNIQUE constraint enforces single character per user';
@@ -48,6 +79,7 @@ COMMENT ON COLUMN characters.race IS 'Character race, defaulting to Human';
 COMMENT ON COLUMN characters.realm IS 'Character realm, defaulting to Asia (Singapore)';
 COMMENT ON COLUMN characters.mode IS 'Character mode, defaulting to softcore';
 COMMENT ON COLUMN characters.level IS 'Character level, defaulting to 1';
+COMMENT ON COLUMN characters.experience IS 'Accumulated XP toward the next level; progression is server-authoritative';
 
 -- Leaderboards table - PvP and monster kill statistics
 CREATE TABLE IF NOT EXISTS leaderboards (

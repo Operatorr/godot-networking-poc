@@ -4,13 +4,14 @@ extends Control
 
 
 const MINIMAP_SIZE := 180.0
+const MAP_PADDING := 18.0
 const VISION_RADIUS := 500.0
 const BG_COLOR := Color(0.1, 0.1, 0.12, 0.8)
-const BORDER_COLOR := Color(0.4, 0.4, 0.45, 1.0)
 const SELF_COLOR := Color(0.2, 0.9, 0.3)
 const PLAYER_COLOR := Color(0.9, 0.2, 0.2)
 const MONSTER_COLOR := Color(0.9, 0.6, 0.1)
 const OBSTACLE_COLOR := Color(0.25, 0.1, 0.15, 0.8)
+const FRAME_TEXTURE := preload("res://assets/ui/hud/player_minimap_frame.png")
 
 ## References set by arena_base
 var interpolation_controller: Node = null
@@ -18,6 +19,7 @@ var local_player: Node2D = null
 
 var _arena_min: Vector2 = GameConstants.MAP_MIN
 var _arena_max: Vector2 = GameConstants.MAP_MAX
+var _frame: TextureRect = null
 
 
 func _ready() -> void:
@@ -33,23 +35,31 @@ func _ready() -> void:
 	custom_minimum_size = Vector2(MINIMAP_SIZE, MINIMAP_SIZE)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
+	_frame = TextureRect.new()
+	_frame.texture = FRAME_TEXTURE
+	_frame.position = Vector2.ZERO
+	_frame.size = Vector2(MINIMAP_SIZE, MINIMAP_SIZE)
+	_frame.stretch_mode = TextureRect.STRETCH_SCALE
+	_frame.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_frame)
+
 
 func _process(_delta: float) -> void:
 	queue_redraw()
 
 
 func _draw() -> void:
-	# Background
-	draw_rect(Rect2(Vector2.ZERO, Vector2(MINIMAP_SIZE, MINIMAP_SIZE)), BG_COLOR, true)
+	var map_rect := _get_map_rect()
 
-	# Border
-	draw_rect(Rect2(Vector2.ZERO, Vector2(MINIMAP_SIZE, MINIMAP_SIZE)), BORDER_COLOR, false, 2.0)
+	# Background
+	draw_rect(map_rect, BG_COLOR, true)
 
 	# Draw obstacles
 	for obs: Rect2 in GameConstants.ARENA_OBSTACLES:
 		var map_pos := _world_to_minimap(obs.position)
 		var arena_size := _arena_max - _arena_min
-		var map_size := obs.size / arena_size * MINIMAP_SIZE
+		var map_size := obs.size / arena_size * map_rect.size
 		draw_rect(Rect2(map_pos, map_size), OBSTACLE_COLOR, true)
 
 	if local_player == null or not is_instance_valid(local_player):
@@ -91,4 +101,9 @@ func _draw() -> void:
 func _world_to_minimap(world_pos: Vector2) -> Vector2:
 	var arena_size := _arena_max - _arena_min
 	var normalized := (world_pos - _arena_min) / arena_size
-	return normalized * MINIMAP_SIZE
+	return _get_map_rect().position + normalized * _get_map_rect().size
+
+
+func _get_map_rect() -> Rect2:
+	var padding := Vector2(MAP_PADDING, MAP_PADDING)
+	return Rect2(padding, Vector2(MINIMAP_SIZE, MINIMAP_SIZE) - padding * 2.0)

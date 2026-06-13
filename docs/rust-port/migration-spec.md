@@ -151,18 +151,463 @@ either side; full control over sub-byte bitpacking and quantization.
 This resolves the **[Wire protocol]** and **[Codec toolchain]** open questions. ADR drafted:
 [`../adr/0004-schema-driven-wire-protocol.md`](../adr/0004-schema-driven-wire-protocol.md).
 
+### D5 — Sim parity: one shared Rust `sim_core`, loaded on the client as a GDExtension
+
+**Decision.** Write movement/collision/dash/knockback/stamina **once** in a Rust crate (`sim_core`).
+The server links it directly. The Godot client loads the **same compiled crate as a GDExtension** and
+calls it for **prediction**. Client and server therefore run **literally the same code**, so movement
+divergence is zero by construction; the only corrections left are *real* ones (server-only events the
+client hadn't seen, e.g. an unacked knockback). This eliminates D1's largest risk outright.
+
+**Alternatives weighed.**
+- *Tolerance-based (independent Rust port + lean on correction smoothing):* keeps the client pure
+  GDScript and is how most shipped games cope — but maintains movement in **two languages** and risks
+  visible snaps on dash/knockback/slide where divergence is largest. Rejected (the project's whole
+  point is netcode quality; writing the sim twice is the worst of both worlds after a clean-slate).
+- *Fixed-point deterministic rewrite mirrored in both languages:* bit-deterministic by construction
+  and a foundation for future lockstep/replays — but the largest rewrite, and float-free GDScript is
+  painful. Rejected as overkill for a casual bullet-hell POC (revisit if lockstep/replays become a goal).
+
+**Consequences.**
+- ✅ Movement authored **once**; prediction and authority cannot diverge on math.
+- ✅ The offline modes (practice/sandbox, client-authoritative) reuse the **same** `sim_core` — they
+  stop being a separate code path that can drift.
+- ⚠️ The client is **no longer pure GDScript** — it ships a native module per platform (win/mac/linux).
+  The export pipeline already produces per-platform client builds, so this is incremental, but it adds
+  native build/signing steps and slows editor iteration on sim code.
+- ⚠️ The Python load-test bots don't predict, so they're unaffected (they send inputs, never call
+  `sim_core`).
+- 🔁 **Reaches back to D4** — see the [D4 reconsideration] open question below.
+
+> **ADR candidate:** "Shared Rust `sim_core` loaded on the client as a GDExtension." Hard to reverse
+> (client gains a native dependency), non-obvious, and a real trade-off vs. a pure-GDScript client.
+
+### D6 — Client extension scope: sim + codec native; transport stays Godot-native ENet
+
+**Decision.** The client GDExtension exposes **both** `sim_core` **and** the wire **codec** to GDScript.
+The client encodes/decodes packets by calling the **Rust codec** through the extension; there is **no
+GDScript codec**. Transport stays on Godot's **native `ENetConnection`** (honoring ADR 0003): GDScript
+owns the socket, UI, and interpolation glue, handing raw bytes across the boundary to the Rust codec.
+
+**Alternatives weighed.**
+- *Extension = sim only, keep a generated GDScript codec:* smallest native surface and fully
+  GDScript-debuggable networking — but keeps two languages on the wire format and a slower GDScript
+  decode path. Rejected.
+- *Thick core (transport + codec + sim all native), GDScript = render/UI only:* maximal code sharing,
+  thinnest client — but **overrides ADR 0003's native-`ENetConnection` client choice** and pushes the
+  most logic out of Godot. Rejected for now (revisit if the GDScript↔native call boundary for codec
+  becomes a measured cost).
+
+**Consequence — reopens D4.** With **no GDScript target**, the custom-IDL-+-generator rationale (D4)
+collapses: see **[D4 collapse]**. ADR 0004 must be revised to match the outcome.
+
+### D7 — Protocol implementation: shared Rust `protocol` crate, hand-rolled bit codec (supersedes D4's toolchain)
+
+**Decision.** **No custom IDL, no generator.** Packets are Rust structs in a shared **`protocol`**
+crate that **both** the server binary **and** the client GDExtension depend on. Encode/decode is
+hand-written **once** in Rust with full bit-level control: position quantized to `i16` at 0.1 units,
+sub-byte delta masks and flags, varints where they pay. D3's *redesign* still holds; only D4's
+*implementation choice* (IDL + codegen) is dropped — the grilling showed the generator existed solely
+to emit GDScript, which D6 removed.
+
+**Alternatives weighed.**
+- *Derive-based codec (bitcode/postcard) in the shared crate:* almost no hand-written codec and easy
+  versioning, but looser control over exact bit layout (quantization/delta still need custom impls
+  anyway). Rejected — the bandwidth budget wants explicit bit control.
+- *Keep the custom IDL + generator (Rust-only output):* a neutral, readable schema in one place — but
+  it's machinery for a **single** Rust consumer, and ADR 0003 fixed "native-only, no web client," so
+  no second language will ever consume it. Rejected as unjustified complexity.
+
+**Consequences.**
+- ✅ One Rust crate is the single source of truth for the wire format; server and client extension
+  link the same `Encode`/`Decode`.
+- ✅ No codegen step, no schema/generated-code skew to police in CI.
+- ⚠️ Versioning is DIY — a `PROTOCOL_VERSION` const in the crate, checked at handshake; lockstep
+  client/server deploys (acceptable per ADR 0003's native-only model).
+- 🔧 ADR 0004 is **revised** from "custom IDL + codegen" to "redesigned protocol as a shared Rust crate."
+
+This resolves **[D4 collapse]**. The wire-protocol arc settled at: **D3** redesign → **D7** shared Rust
+`protocol` crate.
+
+### D8 — Simulation architecture: hand-rolled, single-threaded tick
+
+**Decision.** Plain typed collections (a slotmap/`Vec` per id-range — players 1–999, monsters
+30000–39999, projectiles 10000–29999, matching today's invariants) inside one `World`. A **single
+synchronous 30 Hz tick loop** on a dedicated thread advances the sim: drain inputs → `sim_core`
+movement → monster AI → record monster position history (lag-comp) → collisions → build snapshots →
+cleanup. No ECS, no parallelism for the POC.
+
+**Rationale.** Rust single-threaded is ~10–50× the current GDScript loop, and the POC's likely binding
+constraint is **bandwidth, not CPU**. Keep the sim simple and deterministic; reserve parallelism as a
+*measured* optimization, not a starting assumption.
+
+**Alternatives weighed.**
+- *ECS, single-threaded systems (bevy_ecs/hecs):* cleaner separation and an easy on-ramp to parallel
+  systems later — but paradigm overhead now, and lag-comp rewind + AoI need careful component design.
+  Rejected for the POC; the typed-arena layout below leaves the door open if profiling demands it.
+- *ECS + parallel systems from day one:* highest throughput and future-proofs 1000+/shard — but
+  cross-thread determinism, ordering, and parallel lag-comp/AoI are real cost, and it optimizes CPU
+  when bandwidth is the cap. Rejected as premature.
+
+**Determined Rust stack (defaults, not separately grilled — standard/forced by earlier decisions):**
+
+| Concern | Choice | Why |
+|---|---|---|
+| Workspace | `protocol` + `sim_core` + `server` (bin) + `client-ext` (cdylib) crates | clean dependency edges; client + server share `protocol` and `sim_core` |
+| Godot binding | **`gdext`** (official godot-rust) | the Godot 4 GDExtension binding for the client `sim_core`+codec |
+| Transport | **`rusty_enet`** | wire-compatible with Godot's native ENet (D2 / ADR 0003) |
+| Concurrency | one synchronous tick thread; Go API I/O offloaded | see [Go API boundary] for the I/O mechanism |
+| Async runtime | **none in the hot loop**; a small runtime/thread only for outbound Go API calls | the tick is synchronous; only infrequent character load/save needs async/off-thread |
+
+This resolves **[Rust stack]** and **[Concurrency]**.
+
+### D9 — Go API boundary, part 1: auth via locally-verified Ed25519 session ticket
+
+**Reality check (this boundary is greenfield, not a port).** Today's Godot server **does not validate
+auth** (`server_main.gd:702`: `# TODO: Validate character_id with API server` — it trusts the client's
+self-reported identity), persists **no** gameplay state (in-memory leaderboard,
+`leaderboard_manager.gd:3`), and makes exactly **one** API call: a region-status heartbeat
+(`server_main.gd:872`). The architecture diagram's "validate token" / "load-save character" arrows
+describe an **intended** boundary that this port will actually build.
+
+**Decision.** Per [ADR 0003](../adr/0003-enet-udp-transport.md): the client fetches a **short-lived
+session ticket** from the Go API over **HTTPS**, then presents it in `CONNECT_AUTH` over ENet. The Rust
+server **verifies the ticket signature locally** — no per-join API round-trip.
+
+- Signature: **Ed25519 (asymmetric)**. The Go API holds the **private** key and signs tickets; the Rust
+  server holds only the **public** key — a compromised game server can verify but **cannot forge**.
+- Ticket payload: `{ character_id, region/shard, issued_at, expiry }`, TTL ≈ 30–60 s (long enough to
+  connect, short enough that expiry *is* the revocation story).
+- Reject on bad signature, expiry, or wrong region; no Redis/DB lookup on the join hot path.
+
+**Alternatives weighed.**
+- *Call Go API `/validate` (or Redis) per join:* instant revocation and central session control, but a
+  round-trip + Go-API dependency on **every** join — an API outage blocks all joins and slows
+  spawn-surges. Rejected for the hot path.
+- *Hybrid (local verify + async revocation check):* fast join *and* revocation, but the most moving
+  parts and a brief admit window for revoked tickets. Rejected for the POC; revisit if a ban/kick
+  feature needs sub-TTL revocation.
+
+**Key management (default).** Keys distributed via env/secret; rotation by publishing a new key id and
+accepting both old+new during overlap. Part 2 (character persistence) follows.
+
+### D10 — Go API boundary, part 2: RotMG-style permadeath persistence (hydrate-on-join, death-as-save)
+
+**Decision.** Durable state lives behind the Go API (Postgres); the Rust sim hydrates only the living
+character's combat-relevant subset on join and treats **death — not logout — as the first-class save.**
+The target is a Realm-of-the-Mad-God-like instance-based MMO (permadeath characters, a forever account
+bank), so the persistence model is built around **permadeath and item integrity** from the start, even
+though POC gameplay stays HP-only. **The boundary stays thin because only the *living character* state
+crosses; account/bank state never enters the combat sim.** Reinforces the AGENTS.md invariant rather
+than bending it; **Option 3 (Rust → Postgres direct) is rejected harder** — see item integrity below.
+
+**Three state lifetimes (canonical — added to [`../CONTEXT.md`](../CONTEXT.md)).**
+
+| Lifetime | Examples | Where it lives | Crosses into the Rust sim? | Survives character death? |
+|---|---|---|---|---|
+| **Account-scoped durable** | bank contents, glory, unlocked classes, currency | Go API / Postgres | **No** — touched only at a bank chest in the Sanctuary, via the API | **Yes** |
+| **Character-scoped durable** | level, the 8 potion-raised stats, carried inventory | Go API / Postgres; **hydrated** into the sim on join | **Yes** (this subset only) | **No** — destroyed on death |
+| **Session-ephemeral** | current HP/MP, position, active cooldowns | in-memory in the sim only | n/a (born in the sim) | n/a — reset on every entry |
+
+**Death is the load-bearing save (disconnect-immune).** The dangerous exploit under permadeath is
+**disconnect-to-dodge-death** ("pull the cable the frame before a fatal hit so the death never saves").
+Defense: when HP reaches 0 **in the authoritative tick** (D8's collision/damage stage), the server
+**synchronously and transactionally**: (1) deletes the character + everything it carried, (2) credits
+account-level glory, (3) leaves the bank untouched — *before any client action can intervene*. Alive/
+dead is server-authoritative at the tick it happens; nothing the client does next can undo it. This is
+**not** save-on-leave (clean-exit only); a disconnect handler a cheater never lets you reach cannot be
+the mechanism.
+
+**Item integrity — the cardinal sin is duplication.** Two vectors, both owned by the Go API:
+- **Concurrent sessions:** two sessions on one account both hydrate the same inventory and both save →
+  dupe. The Go API **MUST enforce a single active session per account** (now load-bearing, not
+  precautionary — ties to D9's ticket issuance).
+- **Bank↔character transfers:** every item move is a **single atomic swap owned by Postgres behind the
+  Go API** — never "remove from bank, then add to character" (which can half-complete → item in both
+  or neither). Letting Rust race these transactions against the API in a second language is the surest
+  way to manufacture dupes → **this is the strongest reason Option 3 stays rejected.**
+
+**Instance transitions double as checkpoints.** The world is realms + dungeon instances players portal
+between. Each transition is a natural checkpoint + handoff: persist the character-scoped durable state
+through the API on transition, re-hydrate in the destination, spawn **fresh** session-ephemeral state
+(full HP, portal/Sanctuary spawn). Instances are **stateless-on-entry**; the API is the handoff medium.
+Caution: **death-resolution authority must sit clearly on one side of a transition** — a player
+mid-portal who would have died must not use the transition as another dodge.
+
+**Write discipline (defaults).**
+- Writes are **idempotent absolute-state** ("character is now level 12, these 8 stats, this exact
+  inventory"), not deltas → every save (transition, periodic, death) is **safe to retry**.
+- A **periodic checkpoint** bounds loss on accumulating state (XP / glory-in-progress) between transitions.
+- **Build the seam now, grow the payload later:** stand up hydrate-on-join, the death-persist, the
+  atomic item move, and the session lock **early**; let durable fields start small (POC: identity +
+  HP-only) and widen as classes / skill trees / item types land. The seam is the expensive-to-retrofit
+  part; the payload rides it for free.
+
+**Scaling escape hatch (post-POC, server-only, same API contract).** If per-transition API round-trips
+bottleneck on high portal frequency, introduce a **per-player session actor** that outlives individual
+instances and owns the live character state, with instances borrowing it. Behind the same API contract,
+so it's a server-internal change, not a boundary change.
+
+This resolves **[Go API boundary]**. ADR drafted:
+[`../adr/0005-permadeath-persistence-model.md`](../adr/0005-permadeath-persistence-model.md).
+
+### D11 — Hit authority: port the two-netcode model as-is; escalate the PvE hole under permadeath
+
+**Decision.** Keep the [two-netcode model](../netcode/hit-authority-model.md) intact — **client-
+authoritative + server-validated PvE** (RotMG dodge-feel) and **server-authoritative, lag-compensated
+PvP / player→monster**. The `HitAuthority` pure predicates (`hit_authority.gd`: authority split, client
+swept test, flight reconstruction, server plausibility) move into the **shared Rust `sim_core`**, so the
+client (via the GDExtension) and the server share them exactly — the same anti-drift guarantee D5 gives
+movement. The authority *model* is unchanged.
+
+**What changes because of D10 (permadeath).** The doc's *"accepted hole"* — never-report ⇒ immune to
+monster damage — was accepted under POC stakes (respawn, no economy). Under permadeath + a bank
+economy it becomes **risk-free farming of real loot** (the actual RotMG invuln-hack problem). So the
+port **escalates** it from accepted to mitigated:
+- **Enable the lenient server backstop** (today "left off"): if a monster bullet's **authoritative path
+  blatantly overlaps** the player and **no `LOCAL_HIT_REPORT` arrives within N ticks**, the server
+  applies the hit. Catches egregious never-reporters.
+- **Open a statistical anti-cheat workstream:** flag accounts taking ≈zero monster damage over time.
+  This catches *subtle* invuln the backstop can't; it's a detection/ban concern, **separate from the
+  authority model.**
+
+**Hard constraint (carried from the doc's invariants).** The backstop must stay **lenient / blatant-
+overlap-only**. A *tight* backstop re-decides hits on authoritative positions and reintroduces the
+phantom-hit / pass-through feel the whole split exists to prevent — invariant #4 in
+[`hit-authority-model.md`](../netcode/hit-authority-model.md). Tune with mixed-ping play-tests.
+
+**Alternatives weighed.**
+- *PvE server-authoritative under permadeath:* closes the hole fully but **reintroduces phantom/pass-
+  through** and throws away the dodge-feel that is the core skill. Rejected.
+- *Port as-is, accept the hole:* simplest and matches shipped RotMG, but leaves the economy exposed
+  until out-of-band detection exists. Rejected — D10 made integrity load-bearing.
+
+**Carried-forward invariants the Rust port must preserve** (from the hit-authority doc): server skips
+`owner_id >= MONSTER_ENTITY_ID_START` in its PvP/PvE-player collision pass; `LOCAL_HIT_REPORT` applies
+only to the **reporting peer's own** entity and rejects player-owned projectiles; monster
+`PROJECTILE_FIRED` carries a **non-zero** projectile id; the client tests against the **rendered**
+position, not the predicted one. These become Rust-side tests.
+
+This resolves **[Hit authority]**.
+
+### D12 — Validation: play-test + load-test primary (no golden-trace/dual-run harness)
+
+**Decision.** Validate the Rust server with **manual play-testing** (correctness/feel) and the existing
+**Python bot swarm** (scale/perf at 500–1000). **No** recorded golden-trace oracle and **no** live
+shadow dual-run harness will be built.
+
+**Two things that come essentially free (use them regardless).**
+- **Prediction-snap rate is a live divergence alarm — for free.** D5's shared `sim_core` means client
+  prediction runs the *same* code as the server, so any sim divergence shows up as a spike in
+  correction snaps, visible to players *and* metrics with zero extra harness. This is the one piece of
+  automated equivalence signal that survives this decision.
+- **A `sim_core` property-test floor is cheap insurance** (movement determinism, hit predicates, codec
+  round-trip). Recommended even though full validation tooling is out of scope — these catch the bugs
+  that are worst to diagnose live under load.
+
+**Alternatives weighed.**
+- *Layered (property + recorded golden traces + bots + snap monitor):* the rigorous option; recovers a
+  *recorded* oracle compatible with clean-slate. Not chosen (harness cost).
+- *Live shadow dual-run vs. a kept Godot server:* strongest oracle but contradicts D1's clean-slate.
+  Not chosen.
+
+**Accepted residual risk.** Behavioral regressions surface in play/load rather than in CI; there is no
+automated correctness gate beyond the free snap-monitor. **Irreversible-timing caveat:** a recorded
+golden-trace oracle can only be minted **while the Godot server still exists** — see [Sequencing]; if
+that option is wanted later it must be exercised *before* the Godot server is retired, or it's gone.
+
+This resolves **[Validation]** (as a deliberate, narrower scope than offered).
+
+### D13 — Deployment: one process per instance, orchestrated by the Go API/matchmaker
+
+**Decision.** The Rust binary **is a single instance** (one D8 tick loop). Run **N** of them; the Go API
+(matchmaker role) **spawns and assigns** players using the **region/shard the session ticket already
+carries** (D9). POC runs a small fixed pool as **native systemd units** (one `omega-server` process per
+instance — e.g. `omega-arena` + `omega-sanctuary`; [ADR 0007](../adr/0007-native-systemd-deployment.md));
+`N=1` reproduces a single arena; production scales the pool under an orchestrator (k8s/Nomad) later.
+**Crash-isolated** — one instance dying never touches others (`Restart=always` brings it back).
+
+**Why this unifies POC and vision.** Because the binary is one instance, the single-arena POC and the
+instance-based MMO are the *same artifact* at different N — no rearchitecting between them.
+
+**Portal handoff ties to D10.** An instance transition (D10's checkpoint) is matchmaker-mediated:
+client requests a portal → Go API persists the character (D10) and issues a **new ticket** for the
+destination instance → client connects there. Cross-instance comms go **through the Go API only**,
+consistent with the persistence boundary (no instance-to-instance direct links).
+
+**Alternatives weighed.**
+- *One process multiplexing many instances:* fewer processes and cheap cross-instance memory, but one
+  crash risks many instances and it reintroduces the threading D8 avoided. Rejected.
+- *Single shared-arena process (as today):* simplest, but ignores the D10 vision and is just this option
+  at `N=1` anyway. Rejected as the *model* (kept as the POC's starting N).
+
+**Observability (defaults).** Structured logging (`tracing` crate); a Prometheus `/metrics` endpoint per
+instance (tick time, players, bandwidth, snapshot bytes, correction-snap rate — the D12 divergence
+signal); keep the client-facing `SERVER_METRICS` packet. Each instance registers liveness with the Go
+API (generalizing today's region-status heartbeat, `server_main.gd:872`).
+
+**Networking/infra notes (carried from ADR 0003).** UDP game port must be reachable per instance
+(open each instance's UDP port in the firewall — `ufw allow 8081/udp` + `8082/udp`, see
+`deployment/harden_vps.sh`); no HTTPS proxy-friendliness as with WebSocket; the Go API
+stays HTTPS for ticket issuance.
+
+This resolves **[Deployment]**.
+
+### D14 — Sequencing: tracer-bullet spine first, then layer features onto it
+
+**Decision.** Prove the **novel cross-language spine end-to-end** before building gameplay. The port has
+*integration* risk (gdext driving client prediction, `rusty_enet`↔Godot-native ENet wire-compat,
+cross-language reconciliation) that a layer-by-layer build would surface only after most code is written.
+A vertical tracer bullet pays that risk down on day one and keeps an always-runnable system to play-test.
+
+**Milestone plan.**
+
+| Milestone | Slice | Proves / delivers | Key decisions exercised |
+|---|---|---|---|
+| **M0 — Spine** | "one moving square": minimal `protocol` crate (input + position snapshot) → `rusty_enet` server with a trivial tick → Godot client on **native ENet** → `sim_core` extension does prediction → reconcile | the entire spine works end-to-end: transport, codec, shared sim, prediction/reconciliation | D2, D5, D6, D7, D8 |
+| **M1 — Movement** | full `sim_core` (obstacle collision, dash, knockback, stamina), AoI + delta snapshots + baselines, multi-player interpolation | movement parity + replication at fidelity | D3, D7, D8, [interest-mgmt] |
+| **M2 — Combat** | shooting, projectiles, the two-netcode hit authority + `HitAuthority` in `sim_core`, monsters + AI, lag comp | gameplay parity with today | D11 |
+| **M3 — Service boundary** | Go API: Ed25519 ticket issuance + local verify; permadeath persistence — hydrate-on-join, **death-as-save**, single-session lock, atomic item transfer (payload minimal first) | the durable boundary + economy integrity | D9, D10 |
+| **M4 — Deploy** | one-process-per-instance, matchmaker spawn/assign, portals/transitions, `tracing` + Prometheus | instances + the MMO-shaped deployment | D13 |
+| **M5 — Scale & cutover** | Python bot swarm to 500–1000, perf tune, run the **cutover gate**, retire the Godot server | the POC success criteria + the big-bang cutover | D1, D12 |
+
+**Cutover gate (the D1 big-bang criteria — all must hold before deleting the Godot server).**
+1. **Feature parity** — movement, combat, monsters, and the two-netcode hits behave equivalently in
+   play-test.
+2. **Persistence safety (D10)** — the three integrity tests pass: disconnect-at-fatal-hit keeps the
+   character dead; concurrent-session shows no dupe; item-transfer crash-injection leaves no item in
+   both/neither place.
+3. **Scale** — 500–1000 bots hold the tick-rate and per-player bandwidth targets
+   ([performance-budgets.md], to be re-measured per D3/ADR 0004).
+4. **Feel** — prediction-snap rate (the free D12 divergence monitor) stays within bound under
+   mixed-ping play-test.
+5. **Record-before-delete (D12 caveat)** — M5 is the **last** point to capture golden-trace fixtures if
+   that oracle is ever wanted; the Godot server is retired only after this step is consciously skipped
+   or done.
+
+This resolves **[Sequencing]**. **All open questions are now resolved.**
+
+### D15 — Progression moves server/API-authoritative; Softcore/Hardcore + the Glory economy (post-D14 addition)
+
+**Decision.** Make **progression server/API-authoritative** (it was client-owned), add **two
+permanence modes** (Softcore / Hardcore), and define the **XP→Glory** exchange — landing together
+because they share one mechanism. The server owns each player's `level`, `experience`, and
+`total_lifetime_XP` in the live sim: it **hydrates** them from the Go API on join (D10's hydrate step;
+`ConnectAuth` now carries `character_id`), applies the level curve, per-level stats (HP / move speed /
+primary damage now scale), and regen in the authoritative tick, and **persists** back through the Go
+API. The client is **display-only**, fed a `PROGRESS` event. **Max level is 50.**
+
+- **Softcore:** death respawns the character and keeps its XP; the character ends only by voluntary
+  **Sacrifice** at the Church.
+- **Hardcore:** death is **Permadeath** (D10) — the character is deleted.
+- **XP→Glory:** when a character ends (Hardcore death or Sacrifice), the server converts its total
+  lifetime XP to account Glory as `floor(total_lifetime_XP / 100)`, in **one atomic Go API
+  transaction** on the same disconnect-immune death/sacrifice path D10 defined.
+
+**Rationale.** Level was cosmetic, so a client-owned curve + `PATCH` write-back ("trusted client
+identity") was acceptable. Once level **scales stats** *and* converts to a tradeable account currency
+(Glory), a client-owned number is a dupe/inflation vector — so progression must be server-decided:
+**"the client requests, the server decides."** Server authority is what makes the **atomic Glory
+conversion + permadeath** safe and cheat-resistant; Softcore gives a forgiving on-ramp without forking
+the persistence design (both modes ride D10's transactional save).
+
+**Alternatives weighed.**
+- *Keep client-owned progression (D10-era):* smallest change, but exposes Glory to client-side
+  inflation and desyncs stats from the server. Rejected — the economy made it load-bearing.
+- *Hardcore-only:* matches RotMG but drops the forgiving on-ramp for no design saving. Rejected.
+- *Convert XP→Glory continuously (per level-up):* muddies the Character/Account-scoped split (a live
+  character would be partly "cashed out"). Rejected — end-of-life conversion keeps the boundary clean.
+
+**Consequences.** Protocol bumps to **v4** (cursor in `PlayerInput`; `character_id` in `ConnectAuth`;
+world-effect entity kind 3, band 40000–49999; `STEALTH` flag bit 9; `ABILITY_EFFECT=14`, `PROGRESS=15`
+events; `PICKUP=6` now `{kind, amount}`) — full layout in [contract.md](contract.md). The Go API grows
+a Glory-credit-on-end endpoint and a `mode` field; the server gains progression ownership and the
+XP→Glory conversion; the client's `PATCH /api/character` write-back is removed. The seven Class
+abilities (this is the ability system's home decision) all resolve damage/spawns server-side; only
+Warrior Charge and Rogue Shadowstep's blink are predicted movement (shared `sim_core`, D5).
+
+ADR drafted: [`../adr/0006-softcore-hardcore-glory-economy.md`](../adr/0006-softcore-hardcore-glory-economy.md)
+(extends [ADR 0005](../adr/0005-permadeath-persistence-model.md)). See
+[`../systems/PROGRESSION.md`](../systems/PROGRESSION.md), [`../systems/abilities.md`](../systems/abilities.md),
+[`../classes/`](../classes/index.md).
+
+## Open questions (live status)
+
+| Tag | Status |
+|---|---|
+| **[Transport]** | ✅ Resolved — D2 (ENet, wire-compatible). |
+| **[Wire protocol]** | ✅ Resolved — D3 (schema redesign). |
+| **[Codec toolchain]** | ✅ Resolved — D4 proposed (custom IDL), **superseded by D7** (shared Rust `protocol` crate). |
+| **[Shared-sim parity]** | ✅ Resolved — D5 (shared `sim_core` via GDExtension). |
+| **[D4 reconsideration]** | ✅ Resolved — D6: extension exposes sim + codec; **no GDScript codec**; transport stays Godot-native ENet (ADR 0003). |
+| **[D4 collapse]** | ✅ Resolved — D7: collapse to a shared Rust `protocol` crate, hand-rolled bit codec. |
+| **[Rust stack]** | ✅ Resolved — D8 (gdext, rusty_enet, `protocol`/`sim_core`/`server`/`client-ext` workspace). |
+| **[Concurrency]** | ✅ Resolved — D8 (single synchronous tick thread; parallelism deferred). |
+| **[Go API boundary]** | ✅ Resolved — D9 (Ed25519 local-verify ticket) + D10 (permadeath persistence, death-as-save). |
+| **[Hit authority]** | ✅ Resolved — D11 (port two-netcode model; escalate the PvE hole under permadeath). |
+| **[Validation]** | ✅ Resolved — D12 (play-test + load-test; free snap-monitor; property-test floor). |
+| **[Deployment]** | ✅ Resolved — D13 (one process per instance, Go API/matchmaker orchestrated). |
+| **[Sequencing]** | ✅ Resolved — D14 (tracer-bullet spine first; cutover gate defined). |
+| **[Progression & economy]** | ✅ Resolved — D15 (server-authoritative progression; Softcore/Hardcore; XP→Glory; protocol v4). |
+
+**All branches resolved (2026-06-11; D15 added 2026-06-13).** The decision log D1–D14 (D1–D5 above
+this status table, D6–D14 below it) settled the port; **D15** was appended later as gameplay (Classes,
+abilities, progression-as-stats, the Glory economy) layered on top of the resolved netcode foundation.
+ADRs 0004, 0005, and 0006 are drafted. What remains is execution per the D14 milestone plan. A one-line
+summary of every decision is in [Migration at a glance](#migration-at-a-glance).
+
 ---
 
-## Open questions (resolved as grilling proceeds)
+## Migration at a glance
 
-- **[Transport]** — D2, in progress.
-- **[Wire protocol]** — keep quantization/delta/baseline semantics or redesign?
-- **[Shared-sim parity]** — how do client (GDScript) and server (Rust) stay byte-identical on movement?
-- **[Rust stack]** — async runtime, ECS vs hand-rolled, netcode crate, serialization.
-- **[Concurrency]** — single-threaded tick vs parallel simulation at 500–1000 players.
-- **[Go API boundary]** — token validation (shared key vs call-out) and character load/save path.
-- **[Hit authority]** — port the two-netcode model (client-auth PvE / server-auth PvP) as-is?
-- **[Validation]** — proving behavioral equivalence without a parity oracle.
-- **[Deployment]** — process/sharding model, docker-compose fit, observability.
-- **[Sequencing]** — milestone order and the cutover gate.
-```
+Every decision, one line. Full reasoning is in the decision log above.
+
+| # | Decision | Choice |
+|---|---|---|
+| **D1** | Cutover strategy | Clean-slate rewrite, new transport from day one (no WebSocket intermediate, no live parity oracle) |
+| **D2** | Transport | ENet protocol, wire-compatible — Godot native `ENetConnection` ↔ Rust `rusty_enet`; 3 channels |
+| **D3** | Wire protocol | Redesign (tighter bitpacking), not a carry-forward |
+| **D4** | Codec toolchain (proposed) | Custom IDL + generator — **superseded by D7** |
+| **D5** | Sim parity | One shared Rust `sim_core`; client loads it as a GDExtension for prediction |
+| **D6** | Client extension scope | Extension = sim + codec; **no GDScript codec**; transport stays Godot-native ENet |
+| **D7** | Protocol implementation | Shared Rust `protocol` crate, hand-rolled bit codec (no IDL, no codegen) |
+| **D8** | Sim architecture | Hand-rolled typed arenas, single synchronous 30 Hz tick thread; `gdext` + `rusty_enet` |
+| **D9** | Auth | Locally-verified **Ed25519** session ticket (Go API signs private, server holds public) |
+| **D10** | Persistence | RotMG **permadeath**: hydrate-on-join, **death-as-save** (disconnect-immune), atomic item transfer, single session |
+| **D11** | Hit authority | Port the two-netcode model as-is; **escalate** the PvE hole under permadeath (backstop + anti-cheat) |
+| **D12** | Validation | Play-test + load-test; free prediction-snap divergence monitor; property-test floor |
+| **D13** | Deployment | One process per instance; Go API/matchmaker spawns + assigns via ticket region/shard |
+| **D14** | Sequencing | Tracer-bullet spine (M0) first, then layer features; defined cutover gate |
+| **D15** | Progression & economy | Server/API-authoritative progression (max level 50, per-level stats), Softcore/Hardcore modes, XP→Glory `floor(total_xp/100)`, Class abilities; **protocol v4** |
+
+**ADRs spawned:** [0004 — redesigned wire protocol as a shared Rust crate](../adr/0004-schema-driven-wire-protocol.md)
+(amends 0003) · [0005 — permadeath persistence](../adr/0005-permadeath-persistence-model.md) ·
+[0006 — Softcore/Hardcore + Glory economy](../adr/0006-softcore-hardcore-glory-economy.md) (extends 0005, D15).
+**Amended:** [ADR 0003](../adr/0003-enet-udp-transport.md) — its "wire format rides unchanged / port reimplements only the seam" consequence is superseded by D1+D3+D7.
+
+## The eight questions
+
+- **Client (Godot):** native `ENetConnection` transport + UI + interpolation glue; loads a Rust
+  GDExtension that runs `sim_core` for **prediction** and the `protocol` **codec** for encode/decode.
+- **Server (Rust):** single-threaded 30 Hz authoritative tick over hand-rolled typed arenas; links the
+  same `sim_core` + `protocol`; one process = one instance.
+- **Predicted:** the Local player only, via the shared `sim_core` (so prediction == authority by
+  construction); the client's monster-hit decision stays authoritative-pending-validation (D11).
+- **Replicated:** entity deltas vs. a periodic baseline over ENet ch0 (unreliable-sequenced); discrete
+  `GAME_EVENT`s over ch1 (reliable) — all via the shared `protocol` crate.
+- **Persisted:** nothing in the sim; the Go API owns Account- and Character-scoped durable state
+  (Postgres). Session-ephemeral state never leaves memory. Death is a transactional API save (D10).
+- **Validated:** Ed25519 ticket verified locally (D9); movement re-simulated server-side; PvP/PvE-on-
+  monster hits lag-compensated and server-decided; monster→player reports plausibility-gated; item
+  integrity (single session, atomic transfer) enforced by the Go API.
+- **Can fail:** divergence between `sim_core` builds (caught by the snap-monitor); a lost ch0 snapshot
+  (superseded, by design); death-write failure (idempotent retry / in-memory dead flag holds); UDP port
+  unreachable (deployment must open it); the accepted-but-now-mitigated PvE never-report hole (D11).
+- **Tested:** `sim_core` + `protocol` property tests; the Python bot swarm at 500–1000; the permadeath
+  integrity tests (disconnect-at-death, no-dupe, atomic-transfer) gate cutover; play-test for feel.
+
+## See also
+
+- [`../adr/0003-enet-udp-transport.md`](../adr/0003-enet-udp-transport.md) · [`0004`](../adr/0004-schema-driven-wire-protocol.md) · [`0005`](../adr/0005-permadeath-persistence-model.md)
+- [`../netcode/overview.md`](../netcode/overview.md) · [`../netcode/hit-authority-model.md`](../netcode/hit-authority-model.md) · [`../CONTEXT.md`](../CONTEXT.md)
+- [`../ARCHITECTURE.md`](../ARCHITECTURE.md) — top-level system architecture this port re-shapes.

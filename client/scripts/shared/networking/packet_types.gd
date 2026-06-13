@@ -3,7 +3,11 @@
 class_name PacketTypes
 extends RefCounted
 
-## Packet header size: [u8 type][u16 payload_length]
+## Legacy WebSocket framing header size: [u8 type][u16 payload_length].
+## RETIRED on the wire — ENet datagrams carry no length field (frame = [u8 type][payload],
+## bounded by datagram edges; see AGENTS.md invariants). Kept only because the parity-reference
+## GDScript packet builders under scripts/server/ and networking/packets/ still compute sizes
+## against it (e.g. StateUpdatePacket.FULL_STATE_HEADER_BYTES). Not used by the live ENet path.
 const HEADER_SIZE := 3
 
 ## Maximum packet size (64KB)
@@ -15,29 +19,77 @@ const MAX_PACKET_SIZE := 65535
 ## works out far lower; see StateUpdatePacket.STATE_MAX_FULL_ENTITIES.
 const STATE_MAX_ENTITIES := 65535
 
-## Packet types as per ARCHITECTURE.md
+## Packet types as per ARCHITECTURE.md.
+## MUST stay in sync (same ids) with NetworkManager.MessageType, the live ENet-facing
+## dispatch enum — the two are parallel and any divergence breaks is_valid_type/dispatch.
+## HEARTBEAT (4) and BATCH (11) are RETIRED on the live ENet path (D2: ENet keepalive/RTT
+## is native, the clock-sync payload rides every Snapshot) but remain here because the
+## parity-reference GDScript packet builders + retired server scripts still reference them.
 enum Type {
 	PLAYER_INPUT = 1,      ## Client -> Server: Movement, actions (~16 bytes)
 	STATE_UPDATE = 2,      ## Server -> Client: Entity positions, animations (variable)
 	GAME_EVENT = 3,        ## Server -> Client: Damage, kills, status effects (50-200 bytes)
-	HEARTBEAT = 4,         ## Bidirectional: Keep-alive (4 bytes)
+	HEARTBEAT = 4,         ## RETIRED (D2) — kept for parity scripts only
 	ACTION_CONFIRM = 5,    ## Server -> Client: Confirm attack (20 bytes)
 	CONNECT_AUTH = 6,      ## Client -> Server: Authentication handshake (variable)
-	DISCONNECT = 7,        ## Client -> Server: Clean disconnect (4 bytes)
+	DISCONNECT = 7,        ## Clean disconnect — handled natively by ENet on the live path
 	REQUEST_FULL_STATE = 8, ## Client -> Server: Request full state sync (TASK-021)
 	RESPAWN_REQUEST = 9,   ## Client -> Server: Request respawn after death
 	SERVER_METRICS = 10,   ## Server -> Client: Server performance metrics (1/sec)
-	BATCH = 11,            ## Server -> Client: Multiple packets in a single WS frame (TASK-066)
-	BASELINE_ACK = 12,     ## Client -> Server: acknowledge a received full-state Baseline (#14, forward-looking for UDP transport #12)
-	LOCAL_HIT_REPORT = 13  ## Client -> Server: "a monster projectile hit me" (client-detected, server-validated). [u16 projectile_id]
+	BATCH = 11,            ## RETIRED (D2) — kept for parity scripts only
+	BASELINE_ACK = 12,     ## Client -> Server: acknowledge a received full-state Baseline
+	LOCAL_HIT_REPORT = 13, ## Client -> Server: "a monster projectile hit me" (client-detected, server-validated). [u16 projectile_id]
+	AUTH_RESULT = 14       ## Server -> Client: explicit auth answer (D9); carries entity_id
 }
 
-## Entity types for state updates
+## Entity types for state updates. Values 4-7 are the world-effect band entities
+## (id range 40000-49999) the GDExtension decoder emits for ability spawns.
 enum EntityType {
 	PLAYER = 1,
 	MONSTER = 2,
-	PROJECTILE = 3
+	PROJECTILE = 3,
+	HEALTHORB = 4,   ## Dropped health pickup (green orb)
+	MINE = 5,        ## Engineer proximity mine
+	DOT_ZONE = 6,    ## Plague Seer damage-over-time zone
+	BIBLE = 7        ## Zealot orbiting bible orb
 }
+
+## Player classes (u8 on the wire, protocol v3). Identity metadata chosen by the
+## client in CONNECT_AUTH and broadcast in PLAYER_INFO; the server clamps values
+## > 6 to ZEALOT (0) and does not validate against account data yet.
+enum PlayerClass {
+	ZEALOT = 0,
+	VOID_HUNTER = 1,
+	ENGINEER = 2,
+	PLAGUE_SEER = 3,
+	WARRIOR = 4,
+	ROGUE = 5,
+	MAGE = 6
+}
+
+## Display/account names for each PlayerClass, indexed by enum value. These are the
+## strings stored on the character row in the Go API; the wire/sprite layer uses the
+## u8 enum, so class_name_to_id()/class_id_to_name() convert between them.
+const CLASS_DISPLAY_NAMES := [
+	"Zealot", "Void Hunter", "Engineer", "Plague Seer", "Warrior", "Rogue", "Mage"
+]
+
+
+## PlayerClass enum value for a display/account name (case-insensitive). Unknown or
+## legacy names fall back to ZEALOT (the wire default the server also clamps to).
+static func class_name_to_id(class_label: String) -> int:
+	var normalized := class_label.strip_edges().to_lower()
+	for i in CLASS_DISPLAY_NAMES.size():
+		if String(CLASS_DISPLAY_NAMES[i]).to_lower() == normalized:
+			return i
+	return PlayerClass.ZEALOT
+
+
+## Display/account name for a PlayerClass enum value (clamped to the valid range).
+static func class_id_to_name(class_id: int) -> String:
+	if class_id < 0 or class_id >= CLASS_DISPLAY_NAMES.size():
+		return String(CLASS_DISPLAY_NAMES[PlayerClass.ZEALOT])
+	return String(CLASS_DISPLAY_NAMES[class_id])
 
 ## Animation states (fits in u8)
 enum AnimationState {
@@ -63,7 +115,8 @@ const INPUT_FLAG_SPRINT := 1 << 6       ## Shift key
 const INPUT_FLAG_INTERACT := 1 << 7     ## E key
 const INPUT_FLAG_DASH := 1 << 8         ## Spacebar — edge-triggered dash request
 
-## Entity flags bitfield (fits in u8)
+## Entity flags bitfield (u16 on the wire since protocol v2 — bits 0-7 are the
+## original u8 set; bit 8+ is the status-effect extension).
 const ENTITY_FLAG_ALIVE := 1 << 0
 const ENTITY_FLAG_MOVING := 1 << 1
 const ENTITY_FLAG_ATTACKING := 1 << 2
@@ -72,6 +125,8 @@ const ENTITY_FLAG_STUNNED := 1 << 4
 const ENTITY_FLAG_VISIBLE := 1 << 5
 const ENTITY_FLAG_DASHING := 1 << 6       ## Movement SM is in the DASHING state
 const ENTITY_FLAG_KNOCKED_BACK := 1 << 7  ## Movement SM is in the KNOCKED_BACK state
+const ENTITY_FLAG_DAZED := 1 << 8         ## Daze timer active (sprint/dash locked out)
+const ENTITY_FLAG_STEALTH := 1 << 9       ## Rogue stealth active (dim the sprite when set)
 
 ## Delta compression mask bits (TASK-021)
 ## Used in STATE_UPDATE packets to indicate which fields changed
@@ -105,7 +160,10 @@ enum GameEventType {
 	PLAYER_INFO = 9,       ## Player identity broadcast (entity_id -> character_name)
 	KILL_PVP = 10,         ## PvP kill event (killer/victim with names)
 	LEADERBOARD_UPDATE = 11, ## Top 10 leaderboard update
-	PROJECTILE_FIRED = 12 ## Entity fired a projectile
+	PROJECTILE_FIRED = 12, ## Entity fired a projectile
+	EXP_GAIN = 13,         ## A player gained experience (COSMETIC "+N XP" floater only — server owns leveling)
+	ABILITY_EFFECT = 14,   ## A class ability fired a transient VFX (effect_id/position/radius)
+	PROGRESS = 15          ## Authoritative level/XP/move-speed update for a player
 }
 
 ## Disconnect reason codes
@@ -134,12 +192,15 @@ static func get_type_name(packet_type: int) -> String:
 		Type.SERVER_METRICS: return "SERVER_METRICS"
 		Type.BATCH: return "BATCH"
 		Type.BASELINE_ACK: return "BASELINE_ACK"
+		Type.LOCAL_HIT_REPORT: return "LOCAL_HIT_REPORT"
+		Type.AUTH_RESULT: return "AUTH_RESULT"
 		_: return "UNKNOWN(%d)" % packet_type
 
 
-## Helper: Check if packet type is valid
+## Helper: Check if packet type is valid. Spans the whole enum range including
+## AUTH_RESULT (the current max) — keep this upper bound in step with the enum.
 static func is_valid_type(packet_type: int) -> bool:
-	return packet_type >= Type.PLAYER_INPUT and packet_type <= Type.LOCAL_HIT_REPORT
+	return packet_type >= Type.PLAYER_INPUT and packet_type <= Type.AUTH_RESULT
 
 
 ## Helper: Encode input flags from dictionary

@@ -43,8 +43,16 @@ signal knockback_started(direction: Vector2, force: float)
 signal knockback_ended()
 signal stun_started(duration: float)
 signal stun_ended()
+signal daze_started(duration: float)
+signal daze_ended()
 signal stamina_changed(current: float, maximum: float)
 signal mana_changed(current: float, maximum: float)
+## Emitted on the rising/falling edge of sprint exhaustion (HUD blinks the stamina bar).
+signal exhausted_changed(active: bool)
+## Emitted on the RMB rising edge when the mana cost was paid. Offline (Sanctuary/practice)
+## the player script reacts with a local per-class ability VFX preview; online the real effect
+## is server-authoritative (this SM's tick() isn't driven for the local player there).
+signal ability_triggered()
 #endregion
 
 
@@ -55,10 +63,16 @@ var state: State = State.IDLE
 var stamina: float = GameConstants.PLAYER_STAMINA_MAX
 var mana: float = GameConstants.PLAYER_MANA_MAX
 
+## RMB ability mana cost. The owner sets this per class (offline parity with the Rust sim's
+## per-class config); defaults to the legacy flat cost.
+var ability_cost: float = GameConstants.PLAYER_MANA_ABILITY_COST
+
 # Timers (seconds), decremented maxf(0.0, x - delta).
 var _dash_time_left: float = 0.0
 var _dash_cooldown_left: float = 0.0   ## START-relative (begins when the dash begins)
 var _stun_time_left: float = 0.0
+var _daze_time_left: float = 0.0       ## Daze is a timer, not a state: coexists with KNOCKED_BACK
+var _exhaust_time_left: float = 0.0    ## Sprint-exhaustion lockout (no sprint, no regen, bar blinks)
 
 # SM-owned velocities for the transient states.
 var _dash_velocity: Vector2 = Vector2.ZERO
@@ -100,7 +114,8 @@ func tick(delta: float, move_dir: Vector2, sprint_held: bool, dash_held: bool,
 	if dash_edge:
 		try_dash(move_dir, aim_dir)
 	if ability_edge:
-		try_use_mana(GameConstants.PLAYER_MANA_ABILITY_COST)
+		if try_use_mana(ability_cost):
+			ability_triggered.emit()
 	if attacking and state == State.SPRINTING:
 		end_sprint()
 
@@ -123,7 +138,10 @@ func _tick_grounded(move_dir: Vector2, sprint_held: bool) -> Vector2:
 		_transition_to(State.IDLE)
 		return Vector2.ZERO
 
-	var want_sprint := sprint_held and stamina > GameConstants.PLAYER_STAMINA_SPRINT_MIN
+	var want_sprint := sprint_held \
+		and stamina > 0.0 \
+		and _exhaust_time_left <= 0.0 \
+		and not is_dazed()
 	if want_sprint:
 		_transition_to(State.SPRINTING)
 	else:
@@ -151,6 +169,10 @@ func _tick_knockback(delta: float) -> Vector2:
 func _update_timers(delta: float) -> void:
 	_dash_time_left = maxf(0.0, _dash_time_left - delta)
 	_dash_cooldown_left = maxf(0.0, _dash_cooldown_left - delta)
+	if _daze_time_left > 0.0:
+		_daze_time_left = maxf(0.0, _daze_time_left - delta)
+		if _daze_time_left <= 0.0:
+			daze_ended.emit()
 	if state == State.STUNNED:
 		_stun_time_left = maxf(0.0, _stun_time_left - delta)
 		if _stun_time_left <= 0.0:
@@ -159,8 +181,17 @@ func _update_timers(delta: float) -> void:
 
 func _update_stamina(delta: float) -> void:
 	var before := stamina
+	if _exhaust_time_left > 0.0:
+		# Exhausted: regen is paused for the lockout (the stamina bar blinks client-side).
+		_exhaust_time_left = maxf(0.0, _exhaust_time_left - delta)
+		if _exhaust_time_left <= 0.0:
+			exhausted_changed.emit(false)
+		return
 	if state == State.SPRINTING:
 		stamina = maxf(0.0, stamina - GameConstants.PLAYER_STAMINA_DRAIN_PER_SEC * delta)
+		if stamina <= 0.0:
+			_exhaust_time_left = GameConstants.PLAYER_STAMINA_EXHAUST_DURATION
+			exhausted_changed.emit(true)
 	else:
 		stamina = minf(GameConstants.PLAYER_STAMINA_MAX,
 			stamina + GameConstants.PLAYER_STAMINA_REGEN_PER_SEC * delta)
@@ -226,6 +257,8 @@ func _transition_to(to_state: State) -> void:
 ## Direction is the move direction, or the aim direction when standing still.
 func try_dash(move_dir: Vector2, aim_dir: Vector2) -> bool:
 	if _dash_cooldown_left > 0.0:
+		return false
+	if is_dazed():
 		return false
 	if state in [State.STUNNED, State.KNOCKED_BACK, State.ABILITY_MOVEMENT]:
 		return false
@@ -320,10 +353,26 @@ func apply_root(duration: float) -> void:
 	apply_stun(duration)
 
 
-## Daze: should reduce control rather than fully block. Treated as Stun for now.
-## TODO(StatusEffectManager): partial-control daze instead of full block.
+## Daze reduces control instead of blocking it: sprint and dash are refused while
+## the timer runs; walking (and knockback/ability velocities) proceed normally.
+## Not a state — it coexists with KNOCKED_BACK (the usual companion on a hit).
+## Re-application extends, never shortens. Mirrors rust/sim_core MovementSm.
 func apply_daze(duration: float) -> void:
-	apply_stun(duration)
+	if duration <= 0.0:
+		return
+	var was_dazed := is_dazed()
+	_daze_time_left = maxf(_daze_time_left, duration)
+	end_sprint()
+	if not was_dazed:
+		daze_started.emit(duration)
+
+
+## Authoritative release (server -> client via the DAZED entity flag clearing).
+func clear_daze() -> void:
+	if not is_dazed():
+		return
+	_daze_time_left = 0.0
+	daze_ended.emit()
 #endregion
 
 
@@ -367,6 +416,31 @@ func get_stun_remaining() -> float:
 	return _stun_time_left
 
 
+func is_dazed() -> bool:
+	return _daze_time_left > 0.0
+
+
+## Sprint-exhaustion lockout active (offline) or mirrored from the server (online).
+func is_exhausted() -> bool:
+	return _exhaust_time_left > 0.0
+
+
+## Online mirror: the Rust prediction sim owns exhaustion; the PredictionController pushes its
+## state here each step so the HUD (connected to exhausted_changed) blinks identically. Emits
+## only on the edge.
+func set_exhausted_state(active: bool) -> void:
+	var was := _exhaust_time_left > 0.0
+	if active == was:
+		return
+	# A small positive timer marks "active" without competing with the offline countdown.
+	_exhaust_time_left = GameConstants.PLAYER_STAMINA_EXHAUST_DURATION if active else 0.0
+	exhausted_changed.emit(active)
+
+
+func get_daze_remaining() -> float:
+	return _daze_time_left
+
+
 func get_stamina() -> float:
 	return stamina
 
@@ -395,6 +469,10 @@ func reset() -> void:
 	_dash_time_left = 0.0
 	_dash_cooldown_left = 0.0
 	_stun_time_left = 0.0
+	_daze_time_left = 0.0
+	if _exhaust_time_left > 0.0:
+		_exhaust_time_left = 0.0
+		exhausted_changed.emit(false)
 	_dash_velocity = Vector2.ZERO
 	_knockback_velocity = Vector2.ZERO
 	_ability_velocity = Vector2.ZERO
@@ -409,6 +487,7 @@ func get_debug_info() -> Dictionary:
 		"dash_cooldown": _dash_cooldown_left,
 		"dash_time_left": _dash_time_left,
 		"stun_remaining": _stun_time_left,
+		"daze_remaining": _daze_time_left,
 		"stamina": stamina,
 		"mana": mana,
 		"speed_multiplier": _speed_multiplier,

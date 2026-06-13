@@ -1,0 +1,27 @@
+[Unit]
+Description=Omega Realm ARENA instance (Rust omega-server, ENet/UDP 8081, metrics 9100)
+Documentation=https://github.com/Operatorr/godot-networking-poc
+After=network-online.target omega-api.service
+Wants=network-online.target omega-api.service
+# Start-limit directives belong in [Unit]; systemd ignores them under [Service].
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=deploy
+Group=deploy
+WorkingDirectory=/home/deploy/omega-realm/rust
+EnvironmentFile=/etc/omega-realm/server.env
+ExecStart=/home/deploy/omega-realm/rust/target/release/omega-server --config /home/deploy/omega-realm/deployment/server_config.arena.json
+Restart=always
+RestartSec=3
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

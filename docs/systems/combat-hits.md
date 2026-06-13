@@ -62,6 +62,13 @@ never spawns one; it only sends intent.
    **cosmetic muzzle flash** the instant they pressed fire (step 1) — so click-to-feedback no
    longer waits a full round-trip, even though the real bullet still does.
 
+> **Projectile facing (Arena).** A networked projectile is process-disabled (the server owns its
+> motion), so it never runs the offline pool's `activate()` rotation set. `ClientEntityManager`
+> now faces it along its **interpolated travel direction** each frame (`_update_projectile_rotations`),
+> seeded on spawn from the replicated direction octant (`projectile_animation_octant` decode).
+> Previously Arena bullets stuck at rotation 0 (facing right) while Sanctuary bullets — spawned
+> locally with `rotation = direction.angle()` — looked correct; both now match.
+
 ## Hit detection — both PvE and PvP are now lag-compensated + swept
 
 The two paths now mirror each other: both rewind the target roster to the Tick the shooter saw and
@@ -146,6 +153,17 @@ On a hit (any path), damage + a `DAMAGE` (and, if lethal, `KILL` / PvP-`KILL`)
 [Game event](../CONTEXT.md) are applied via `ServerCollisionHandler.apply_player_hit`
 (`server_collision_handler.gd`) for players and `_check_monster_collisions` for monsters. Damage/kill
 events fire every Tick, not gated by the snapshot rate.
+
+On a **surviving** player hit (Rust `combat::apply_player_hit`, 2026-06-12):
+
+- **Knockback** pushes along the projectile's **travel direction** (fallback: away from the impact
+  point when no direction is known) with the projectile's per-spawn `knockback_force`
+  (`PLAYER/MONSTER_PROJECTILE_KNOCKBACK_FORCE`, both 450 u/s today — per-projectile so future
+  weapons/items/abilities can vary it; the `apply_knockback` multiplier is the buff/debuff hook).
+- A target hit **while SPRINTING** is **dazed** for `PLAYER_DAZE_DURATION` (1.5 s): sprint and dash
+  locked out, walking allowed. Replicated via `ENTITY_FLAG_DAZED`; the client shows circling stars
+  above the player. Applies to every player, including bots. See
+  [`players-movement-state-machine.md`](players-movement-state-machine.md).
 
 ## Client shoot feedback — cosmetic muzzle flash on input (#7)
 
