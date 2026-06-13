@@ -4,6 +4,7 @@ extends Control
 
 const MenuFontHelper := preload("res://scripts/client/ui/menu_font_helper.gd")
 const MenuButtonHelper := preload("res://scripts/client/ui/menu_button_helper.gd")
+const ConfirmDialogScene := preload("res://scenes/client/menus/components/confirm_dialog.tscn")
 const MENU_BACKGROUND_PATH := "res://assets/ui/backgrounds/menu_background_004.jpg"
 const TITLE_FONT_PATH := "res://assets/fonts/CormorantUnicase-Bold.ttf"
 const TITLE_COLOR := Color(0.12, 0.12, 0.11)
@@ -11,11 +12,20 @@ const TITLE_OUTLINE_COLOR := Color.BLACK
 const TITLE_GLOW_COLOR := Color(0.62, 0.62, 0.58, 0.58)
 const REGION_REFRESH_INTERVAL := 5.0
 
+## Character card run-cycle preview: holder box footprint and the on-screen height every
+## class canvas is scaled to (so classes with different canvases preview alike). The canvas
+## is scaled to ~2x the swatch so the *figure* — which only fills part of its canvas — ends
+## up roughly the size of the 64px colour swatch; the transparent padding overflows invisibly.
+const CHARACTER_PREVIEW_SIZE := 80.0
+const CHARACTER_PREVIEW_SPRITE_PX := 128.0
+
 ## UI Node references
 @onready var menu_background: Control = $MenuBackground
 @onready var character_panel: Control = $CenterContainer/VBoxContainer/CharacterPanel
 @onready var player_color_picker: ColorPickerButton = $CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer/PlayerColorPicker
 @onready var character_name_label: Label = $CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer/CharacterInfo/CharacterNameLabel
+@onready var character_class_label: Label = $CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer/CharacterInfo/CharacterLabel
+@onready var delete_button: Button = $CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer/DeleteButton
 @onready var region_dropdown: OptionButton = $CenterContainer/VBoxContainer/RegionDropdown
 @onready var enter_world_button: Button = $CenterContainer/VBoxContainer/EnterWorldButton
 @onready var practice_button: Button = $BottomLeftActions/PracticeButton
@@ -25,10 +35,24 @@ const REGION_REFRESH_INTERVAL := 5.0
 @onready var status_label: Label = $CenterContainer/VBoxContainer/StatusLabel
 @onready var error_dialog: PopupPanel = $ErrorDialog
 
+## Looping run-cycle preview of the player's character, shown left of the color picker.
+## Built programmatically and slotted as the first item in the character card's HBox.
+var _character_preview_holder: Control = null
+var _character_preview_sprite: AnimatedSprite2D = null
+
+## Shown in place of the character card when no character exists; routes to creation.
+var _create_character_button: Button = null
+
 ## Track connection state
 var _is_connecting: bool = false
 var _region_fetch_in_flight: bool = false
 var _region_refresh_timer: float = 0.0
+var _is_deleting: bool = false
+
+## Reusable confirm dialog for character deletion (created on demand). Untyped because
+## ConfirmDialog has no class_name (loaded via the scene) — methods resolve dynamically.
+var _delete_confirm = null
+var _delete_request: HTTPRequest = null
 
 ## Cached regions data
 var regions: Array[RegionInfo] = []
@@ -50,6 +74,7 @@ func _ready() -> void:
 	exit_button.pressed.connect(_on_exit_pressed)
 	region_dropdown.item_selected.connect(_on_region_selected)
 	player_color_picker.color_changed.connect(_on_player_color_changed)
+	delete_button.pressed.connect(_on_delete_pressed)
 
 	# Connect ErrorDialog signals
 	error_dialog.retry_pressed.connect(_on_error_retry)
@@ -67,6 +92,12 @@ func _ready() -> void:
 	preferences = UserPreferences.load_preferences()
 	GameManager.player_data["player_color"] = preferences.player_color
 	player_color_picker.color = preferences.player_color
+
+	# Build the looping character run-cycle preview (left of the color picker)
+	_build_character_preview()
+
+	# Build the "Create Character" button shown when no character exists
+	_build_create_character_button()
 
 	# Update UI
 	_update_character_display()
@@ -150,20 +181,115 @@ func _update_character_display() -> void:
 	var player_data := GameManager.get_player_data()
 	var char_name: String = player_data.get("character_name", "")
 
-	if char_name.is_empty():
-		character_name_label.text = "No Character"
-		character_panel.visible = false
-	else:
+	var has_character := not char_name.is_empty()
+	if has_character:
 		character_name_label.text = char_name
-		character_panel.visible = true
+	else:
+		character_name_label.text = "No Character"
+	# Show the character card when one exists, otherwise the "Create Character" button.
+	character_panel.visible = has_character
+	if _create_character_button:
+		_create_character_button.visible = not has_character
+
+	# Sublabel shows the character's class instead of the generic "Character".
+	if character_class_label:
+		var class_id: int = int(player_data.get("player_class", PacketTypes.PlayerClass.ZEALOT))
+		character_class_label.text = PacketTypes.class_id_to_name(class_id)
 
 	if player_color_picker:
 		player_color_picker.color = player_data.get("player_color", UserPreferences.DEFAULT_PLAYER_COLOR)
 
+	# Refresh the run-cycle preview to the current class + color.
+	_update_character_preview()
 
-## Toggle Enter World button visibility based on character existence
+
+## Build the looping character run-cycle preview and slot it as the first item in the
+## character card's HBox (left of the color picker). The sprite mirrors the in-game class
+## artwork, faces south (run_0 = downwards), and is tinted by the player color the same way
+## Player.set_player_color does.
+func _build_character_preview() -> void:
+	var hbox: HBoxContainer = $CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer
+
+	_character_preview_holder = Control.new()
+	_character_preview_holder.name = "CharacterPreview"
+	_character_preview_holder.custom_minimum_size = Vector2(CHARACTER_PREVIEW_SIZE, CHARACTER_PREVIEW_SIZE)
+	_character_preview_holder.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_character_preview_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	_character_preview_sprite = AnimatedSprite2D.new()
+	_character_preview_sprite.centered = true
+	_character_preview_holder.add_child(_character_preview_sprite)
+	# Keep the sprite centered whenever the container resizes the holder.
+	_character_preview_holder.resized.connect(_recenter_character_preview)
+
+	hbox.add_child(_character_preview_holder)
+	hbox.move_child(_character_preview_holder, 0)
+	_recenter_character_preview()
+
+
+func _recenter_character_preview() -> void:
+	if _character_preview_sprite and _character_preview_holder:
+		_character_preview_sprite.position = _character_preview_holder.size * 0.5
+
+
+## Point the preview at the current class's south-facing run cycle, looping. Hides the sprite
+## when the class sheet is absent (no procedural fallback in the menu preview).
+func _update_character_preview() -> void:
+	if _character_preview_sprite == null:
+		return
+
+	var class_id: int = int(GameManager.get_player_data().get("player_class", PacketTypes.PlayerClass.ZEALOT))
+	var frames := SheetLibrary.class_frames(class_id)
+	var anim := SheetLibrary.anim_for("run", 0)  # row 0 = south (downwards)
+	if frames == null or not frames.has_animation(anim):
+		_character_preview_sprite.visible = false
+		return
+
+	_character_preview_sprite.visible = true
+	_character_preview_sprite.sprite_frames = frames
+	# Fit the source canvas height to a fixed on-screen size so every class previews alike.
+	var tex := frames.get_frame_texture(anim, 0)
+	var src_h := tex.get_size().y if tex else CHARACTER_PREVIEW_SPRITE_PX
+	if src_h > 0.0:
+		_character_preview_sprite.scale = Vector2.ONE * (CHARACTER_PREVIEW_SPRITE_PX / src_h)
+	_character_preview_sprite.play(anim)
+	_apply_character_preview_tint()
+
+
+## Tint the preview toward the player color exactly like Player.set_player_color does.
+func _apply_character_preview_tint() -> void:
+	if _character_preview_sprite == null:
+		return
+	var color: Color = GameManager.get_player_data().get("player_color", UserPreferences.DEFAULT_PLAYER_COLOR)
+	_character_preview_sprite.modulate = Color.WHITE.lerp(color, GameConstants.CLASS_SPRITE_TINT_STRENGTH)
+
+
+## Build the "Create Character" button, slotted where the character card sits in the VBox.
+## Visible only when no character exists (toggled in _update_character_display).
+func _build_create_character_button() -> void:
+	var vbox: VBoxContainer = $CenterContainer/VBoxContainer
+	_create_character_button = Button.new()
+	_create_character_button.name = "CreateCharacterButton"
+	_create_character_button.text = "Create Character"
+	_create_character_button.custom_minimum_size = Vector2(400, 80)
+	_create_character_button.add_theme_font_size_override("font_size", 20)
+	_create_character_button.pressed.connect(_on_create_character_pressed)
+	_create_character_button.mouse_entered.connect(func(): AudioManager.play_button_hover())
+	_create_character_button.pressed.connect(func(): AudioManager.play_button_click())
+	vbox.add_child(_create_character_button)
+	# Sit it just below the (hidden) character card so it occupies the card's slot.
+	vbox.move_child(_create_character_button, character_panel.get_index() + 1)
+	MenuButtonHelper.apply_to_buttons([_create_character_button])
+
+
+## Route to the character creation screen.
+func _on_create_character_pressed() -> void:
+	SceneManager.goto_character_creation()
+
+
+## Enable Enter World only when a character exists (kept visible but disabled otherwise).
 func _toggle_enter_world_visibility() -> void:
-	enter_world_button.visible = GameManager.has_character()
+	enter_world_button.disabled = not GameManager.has_character()
 
 
 ## Fetch available regions from API
@@ -285,6 +411,86 @@ func _on_player_color_changed(color: Color) -> void:
 	GameManager.player_data["player_color"] = color
 	preferences.player_color = color
 	preferences.save()
+
+	# Live-update the run-cycle preview tint to match the new color.
+	_apply_character_preview_tint()
+
+
+## Ask for confirmation before deleting the character.
+func _on_delete_pressed() -> void:
+	if _is_deleting or not GameManager.has_character():
+		return
+
+	var char_name: String = GameManager.get_player_data().get("character_name", "your character")
+	if _delete_confirm == null:
+		_delete_confirm = ConfirmDialogScene.instantiate()
+		add_child(_delete_confirm)
+		_delete_confirm.confirmed.connect(_on_delete_confirmed)
+	_delete_confirm.show_confirm(
+		"Delete Character",
+		"Permanently delete \"%s\"? This cannot be undone." % char_name,
+		"Delete",
+		"Cancel"
+	)
+
+
+## Confirmed deletion: call the API to remove the character.
+func _on_delete_confirmed() -> void:
+	if _is_deleting:
+		return
+	_is_deleting = true
+	delete_button.disabled = true
+	_update_status("Deleting character...")
+
+	if _delete_request == null:
+		_delete_request = HTTPRequest.new()
+		add_child(_delete_request)
+	if _delete_request.request_completed.is_connected(_on_delete_completed):
+		_delete_request.request_completed.disconnect(_on_delete_completed)
+	_delete_request.request_completed.connect(_on_delete_completed)
+
+	var url := AuthManager.api_base_url + "/api/character"
+	var headers := [AuthManager.get_auth_header()]
+	var error := _delete_request.request(url, headers, HTTPClient.METHOD_DELETE)
+	if error != OK:
+		_on_delete_failed("Network error: failed to send request")
+
+
+## Handle the delete API response.
+func _on_delete_completed(result: int, response_code: int, _headers: PackedStringArray, _body: PackedByteArray) -> void:
+	_delete_request.request_completed.disconnect(_on_delete_completed)
+	_is_deleting = false
+	delete_button.disabled = false
+
+	if result != HTTPRequest.RESULT_SUCCESS:
+		_on_delete_failed("Network error: request failed")
+		return
+
+	if response_code == 200 or response_code == 204:
+		# Character removed: drop local state and route back to creation.
+		GameManager.clear_local_player_entity_id()
+		GameManager.player_data["character_name"] = ""
+		GameManager.player_data["character_id"] = ""
+		GameManager.player_data["player_class"] = PacketTypes.PlayerClass.ZEALOT
+		# Belt-and-suspenders: the DB is authoritative, but reset the local level/XP
+		# display so a deleted character's level can't leak into the next one (the
+		# old XP-carryover bug). reset_progression() emits experience_updated too.
+		GameManager.reset_progression()
+		GameManager.player_data_updated.emit()
+		_update_status("Character deleted")
+		print("[MainMenu] Character deleted; showing Create Character on the menu")
+		# Stay on the menu: swap the card for the Create Character button and gate Enter World.
+		_update_character_display()
+		_toggle_enter_world_visibility()
+	else:
+		_on_delete_failed("Server returned status %d" % response_code)
+
+
+func _on_delete_failed(message: String) -> void:
+	_is_deleting = false
+	delete_button.disabled = false
+	_update_status("Delete failed")
+	_show_error("Delete Failed", message, false)
 
 
 ## Handle Enter World button press

@@ -1,7 +1,7 @@
 {
   "canvas": [
-    92,
-    92
+    128,
+    128
   ],
   "directional": true,
   "dir_order": [
@@ -16,31 +16,31 @@
   ],
   "anims": {
     "idle": {
-      "frames": 8,
+      "frames": 4,
       "fps": 8,
       "loop": true,
       "png": "idle.png"
     },
     "run": {
-      "frames": 8,
-      "fps": 12,
+      "frames": 6,
+      "fps": 14,
       "loop": true,
       "png": "run.png"
     },
     "sprint": {
-      "frames": 9,
-      "fps": 14,
+      "frames": 8,
+      "fps": 12,
       "loop": true,
       "png": "sprint.png"
     },
     "dash": {
-      "frames": 7,
+      "frames": 6,
       "fps": 16,
       "loop": true,
       "png": "dash.png"
     },
     "attack": {
-      "frames": 7,
+      "frames": 6,
       "fps": 14,
       "loop": false,
       "png": "attack.png"

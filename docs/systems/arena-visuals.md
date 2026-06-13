@@ -69,6 +69,14 @@ client/assets/sprites/environment/arena/<prop>.png   (plain single sprites)
 - `meta.json`: `{canvas, directional, dir_order, anims: {<anim>: {frames, fps,
   loop, png}}}` — written by the assembler, single source of truth for frame
   counts and playback speed.
+- **Per-class canvas normalization:** class sheets are not all the same source
+  canvas — the bot classes are 92px, the redesigned **Zealot is 128px**.
+  `SheetLibrary.class_sprite_scale(class_id)` returns
+  `REFERENCE_CANVAS_PX (92) / canvas_height`, applied to the `AnimatedSprite2D`
+  scale in `player.gd`/`remote_player.gd` so every class renders the same
+  in-world size (92px → 1.0, 128px Zealot → ~0.72). It's purely cosmetic — the
+  `CharacterBody2D` collision shape is unscaled. The procedural fallback keeps
+  scale 1.0.
 - Facing math: octant = `round(angle / 45°)` with 0° = +X/east, CW (+Y down);
   `SheetLibrary.OCTANT_TO_ROW` maps octants to rows. Projectile art must point
   **right**; art that ships rotated gets a per-class offset in

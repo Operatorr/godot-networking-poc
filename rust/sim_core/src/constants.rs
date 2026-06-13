@@ -41,10 +41,20 @@ pub const PLAYER_DAZE_DURATION: f64 = 1.5;
 pub const PLAYER_STAMINA_MAX: f64 = 100.0;
 pub const PLAYER_STAMINA_DRAIN_PER_SEC: f64 = 35.0;
 pub const PLAYER_STAMINA_REGEN_PER_SEC: f64 = 20.0;
-/// Sprint requires `stamina > PLAYER_STAMINA_SPRINT_MIN` — strict.
+/// Legacy minimum-to-sprint threshold. The exhaustion model lets stamina deplete fully
+/// instead (sprint allowed while `stamina > 0` and not exhausted), so this is retained only
+/// for the simplified reconciliation replay gate.
 pub const PLAYER_STAMINA_SPRINT_MIN: f64 = 5.0;
+/// Sprinting to 0 stamina EXHAUSTS the player: sprint is locked out and stamina regen is
+/// paused for this long (the HUD blinks the stamina bar during it).
+pub const PLAYER_STAMINA_EXHAUST_DURATION: f64 = 3.0;
 pub const PLAYER_MANA_MAX: f64 = 100.0;
-pub const PLAYER_MANA_REGEN_PER_SEC: f64 = 10.0;
+/// Mana regen, nerfed 20% (was 10.0) to make the new RMB class abilities a real resource cost.
+/// Mirrored in `client/scripts/shared/game_constants.gd` — both run the shared MovementSm, so
+/// they MUST match or mana prediction desyncs.
+pub const PLAYER_MANA_REGEN_PER_SEC: f64 = 8.0;
+/// Default ability mana cost (the SM falls back to this until a class config is applied; the
+/// real per-class costs live in the class data and are pushed in via `set_ability_config`).
 pub const PLAYER_MANA_ABILITY_COST: f64 = 25.0;
 
 // ── Status-effect speed modifier bounds ─────────────────────────────────────
@@ -111,6 +121,11 @@ pub const MONSTER_AVOIDANCE_DISTANCE: f32 = 50.0;
 pub const MONSTER_STEERING_RANDOMNESS: f64 = 0.15;
 pub const MONSTER_RETARGET_INTERVAL: f64 = 1.0;
 pub const MONSTER_LOSE_INTEREST_DISTANCE: f32 = 900.0;
+
+// ── Experience / progression ────────────────────────────────────────────────
+/// Every alive player within this distance of a dying monster shares its full XP
+/// reward (a friend nearby can boost you — no split). See docs/systems/PROGRESSION.md.
+pub const XP_SHARE_RADIUS: f32 = 500.0;
 
 // ── Player entity ids ───────────────────────────────────────────────────────
 pub const PLAYER_ENTITY_ID_MIN: u16 = 1;

@@ -1,0 +1,36 @@
+[gd_scene load_steps=2 format=3]
+
+[sub_resource type="GDScript" id="GDScript_hud_bar_regression"]
+script/source = "extends Node
+
+const HPBar := preload(\"res://scripts/client/hud/hp_bar.gd\")
+
+
+func _ready() -> void:
+	var hp_bar := Control.new()
+	hp_bar.set_script(HPBar)
+	add_child(hp_bar)
+	await get_tree().process_frame
+
+	hp_bar.update_hp(40, 100)
+	await get_tree().process_frame
+
+	var expected_progress := 0.4
+	var actual_progress: float = hp_bar._bar_fill.progress
+	if not is_equal_approx(actual_progress, expected_progress):
+		push_error(\"Expected HP fill progress %.2f, got %.2f\" % [expected_progress, actual_progress])
+		get_tree().quit(1)
+		return
+
+	var fill_rect: Rect2 = hp_bar._get_fill_rect()
+	if hp_bar._bar_fill.size.x > fill_rect.size.x:
+		push_error(\"HP fill width %.2f exceeds trough width %.2f\" % [hp_bar._bar_fill.size.x, fill_rect.size.x])
+		get_tree().quit(1)
+		return
+
+	print(\"[HUDBarRegression] PASS\")
+	get_tree().quit(0)
+"
+
+[node name="HUDBarRegression" type="Node"]
+script = SubResource("GDScript_hud_bar_regression")

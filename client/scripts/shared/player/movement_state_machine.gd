@@ -47,6 +47,12 @@ signal daze_started(duration: float)
 signal daze_ended()
 signal stamina_changed(current: float, maximum: float)
 signal mana_changed(current: float, maximum: float)
+## Emitted on the rising/falling edge of sprint exhaustion (HUD blinks the stamina bar).
+signal exhausted_changed(active: bool)
+## Emitted on the RMB rising edge when the mana cost was paid. Offline (Sanctuary/practice)
+## the player script reacts with a local per-class ability VFX preview; online the real effect
+## is server-authoritative (this SM's tick() isn't driven for the local player there).
+signal ability_triggered()
 #endregion
 
 
@@ -57,11 +63,16 @@ var state: State = State.IDLE
 var stamina: float = GameConstants.PLAYER_STAMINA_MAX
 var mana: float = GameConstants.PLAYER_MANA_MAX
 
+## RMB ability mana cost. The owner sets this per class (offline parity with the Rust sim's
+## per-class config); defaults to the legacy flat cost.
+var ability_cost: float = GameConstants.PLAYER_MANA_ABILITY_COST
+
 # Timers (seconds), decremented maxf(0.0, x - delta).
 var _dash_time_left: float = 0.0
 var _dash_cooldown_left: float = 0.0   ## START-relative (begins when the dash begins)
 var _stun_time_left: float = 0.0
 var _daze_time_left: float = 0.0       ## Daze is a timer, not a state: coexists with KNOCKED_BACK
+var _exhaust_time_left: float = 0.0    ## Sprint-exhaustion lockout (no sprint, no regen, bar blinks)
 
 # SM-owned velocities for the transient states.
 var _dash_velocity: Vector2 = Vector2.ZERO
@@ -103,7 +114,8 @@ func tick(delta: float, move_dir: Vector2, sprint_held: bool, dash_held: bool,
 	if dash_edge:
 		try_dash(move_dir, aim_dir)
 	if ability_edge:
-		try_use_mana(GameConstants.PLAYER_MANA_ABILITY_COST)
+		if try_use_mana(ability_cost):
+			ability_triggered.emit()
 	if attacking and state == State.SPRINTING:
 		end_sprint()
 
@@ -127,7 +139,8 @@ func _tick_grounded(move_dir: Vector2, sprint_held: bool) -> Vector2:
 		return Vector2.ZERO
 
 	var want_sprint := sprint_held \
-		and stamina > GameConstants.PLAYER_STAMINA_SPRINT_MIN \
+		and stamina > 0.0 \
+		and _exhaust_time_left <= 0.0 \
 		and not is_dazed()
 	if want_sprint:
 		_transition_to(State.SPRINTING)
@@ -168,8 +181,17 @@ func _update_timers(delta: float) -> void:
 
 func _update_stamina(delta: float) -> void:
 	var before := stamina
+	if _exhaust_time_left > 0.0:
+		# Exhausted: regen is paused for the lockout (the stamina bar blinks client-side).
+		_exhaust_time_left = maxf(0.0, _exhaust_time_left - delta)
+		if _exhaust_time_left <= 0.0:
+			exhausted_changed.emit(false)
+		return
 	if state == State.SPRINTING:
 		stamina = maxf(0.0, stamina - GameConstants.PLAYER_STAMINA_DRAIN_PER_SEC * delta)
+		if stamina <= 0.0:
+			_exhaust_time_left = GameConstants.PLAYER_STAMINA_EXHAUST_DURATION
+			exhausted_changed.emit(true)
 	else:
 		stamina = minf(GameConstants.PLAYER_STAMINA_MAX,
 			stamina + GameConstants.PLAYER_STAMINA_REGEN_PER_SEC * delta)
@@ -398,6 +420,23 @@ func is_dazed() -> bool:
 	return _daze_time_left > 0.0
 
 
+## Sprint-exhaustion lockout active (offline) or mirrored from the server (online).
+func is_exhausted() -> bool:
+	return _exhaust_time_left > 0.0
+
+
+## Online mirror: the Rust prediction sim owns exhaustion; the PredictionController pushes its
+## state here each step so the HUD (connected to exhausted_changed) blinks identically. Emits
+## only on the edge.
+func set_exhausted_state(active: bool) -> void:
+	var was := _exhaust_time_left > 0.0
+	if active == was:
+		return
+	# A small positive timer marks "active" without competing with the offline countdown.
+	_exhaust_time_left = GameConstants.PLAYER_STAMINA_EXHAUST_DURATION if active else 0.0
+	exhausted_changed.emit(active)
+
+
 func get_daze_remaining() -> float:
 	return _daze_time_left
 
@@ -431,6 +470,9 @@ func reset() -> void:
 	_dash_cooldown_left = 0.0
 	_stun_time_left = 0.0
 	_daze_time_left = 0.0
+	if _exhaust_time_left > 0.0:
+		_exhaust_time_left = 0.0
+		exhausted_changed.emit(false)
 	_dash_velocity = Vector2.ZERO
 	_knockback_velocity = Vector2.ZERO
 	_ability_velocity = Vector2.ZERO

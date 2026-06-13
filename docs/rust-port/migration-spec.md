@@ -485,6 +485,50 @@ A vertical tracer bullet pays that risk down on day one and keeps an always-runn
 
 This resolves **[Sequencing]**. **All open questions are now resolved.**
 
+### D15 — Progression moves server/API-authoritative; Softcore/Hardcore + the Glory economy (post-D14 addition)
+
+**Decision.** Make **progression server/API-authoritative** (it was client-owned), add **two
+permanence modes** (Softcore / Hardcore), and define the **XP→Glory** exchange — landing together
+because they share one mechanism. The server owns each player's `level`, `experience`, and
+`total_lifetime_XP` in the live sim: it **hydrates** them from the Go API on join (D10's hydrate step;
+`ConnectAuth` now carries `character_id`), applies the level curve, per-level stats (HP / move speed /
+primary damage now scale), and regen in the authoritative tick, and **persists** back through the Go
+API. The client is **display-only**, fed a `PROGRESS` event. **Max level is 50.**
+
+- **Softcore:** death respawns the character and keeps its XP; the character ends only by voluntary
+  **Sacrifice** at the Church.
+- **Hardcore:** death is **Permadeath** (D10) — the character is deleted.
+- **XP→Glory:** when a character ends (Hardcore death or Sacrifice), the server converts its total
+  lifetime XP to account Glory as `floor(total_lifetime_XP / 100)`, in **one atomic Go API
+  transaction** on the same disconnect-immune death/sacrifice path D10 defined.
+
+**Rationale.** Level was cosmetic, so a client-owned curve + `PATCH` write-back ("trusted client
+identity") was acceptable. Once level **scales stats** *and* converts to a tradeable account currency
+(Glory), a client-owned number is a dupe/inflation vector — so progression must be server-decided:
+**"the client requests, the server decides."** Server authority is what makes the **atomic Glory
+conversion + permadeath** safe and cheat-resistant; Softcore gives a forgiving on-ramp without forking
+the persistence design (both modes ride D10's transactional save).
+
+**Alternatives weighed.**
+- *Keep client-owned progression (D10-era):* smallest change, but exposes Glory to client-side
+  inflation and desyncs stats from the server. Rejected — the economy made it load-bearing.
+- *Hardcore-only:* matches RotMG but drops the forgiving on-ramp for no design saving. Rejected.
+- *Convert XP→Glory continuously (per level-up):* muddies the Character/Account-scoped split (a live
+  character would be partly "cashed out"). Rejected — end-of-life conversion keeps the boundary clean.
+
+**Consequences.** Protocol bumps to **v4** (cursor in `PlayerInput`; `character_id` in `ConnectAuth`;
+world-effect entity kind 3, band 40000–49999; `STEALTH` flag bit 9; `ABILITY_EFFECT=14`, `PROGRESS=15`
+events; `PICKUP=6` now `{kind, amount}`) — full layout in [contract.md](contract.md). The Go API grows
+a Glory-credit-on-end endpoint and a `mode` field; the server gains progression ownership and the
+XP→Glory conversion; the client's `PATCH /api/character` write-back is removed. The seven Class
+abilities (this is the ability system's home decision) all resolve damage/spawns server-side; only
+Warrior Charge and Rogue Shadowstep's blink are predicted movement (shared `sim_core`, D5).
+
+ADR drafted: [`../adr/0006-softcore-hardcore-glory-economy.md`](../adr/0006-softcore-hardcore-glory-economy.md)
+(extends [ADR 0005](../adr/0005-permadeath-persistence-model.md)). See
+[`../systems/PROGRESSION.md`](../systems/PROGRESSION.md), [`../systems/abilities.md`](../systems/abilities.md),
+[`../classes/`](../classes/index.md).
+
 ## Open questions (live status)
 
 | Tag | Status |
@@ -502,10 +546,13 @@ This resolves **[Sequencing]**. **All open questions are now resolved.**
 | **[Validation]** | ✅ Resolved — D12 (play-test + load-test; free snap-monitor; property-test floor). |
 | **[Deployment]** | ✅ Resolved — D13 (one process per instance, Go API/matchmaker orchestrated). |
 | **[Sequencing]** | ✅ Resolved — D14 (tracer-bullet spine first; cutover gate defined). |
+| **[Progression & economy]** | ✅ Resolved — D15 (server-authoritative progression; Softcore/Hardcore; XP→Glory; protocol v4). |
 
-**All branches resolved (2026-06-11).** The full decision log D1–D14 (D1–D5 above this status table,
-D6–D14 below it) is complete; ADRs 0004 and 0005 are drafted. What remains is execution per the D14
-milestone plan. A one-line summary of every decision is in [Migration at a glance](#migration-at-a-glance).
+**All branches resolved (2026-06-11; D15 added 2026-06-13).** The decision log D1–D14 (D1–D5 above
+this status table, D6–D14 below it) settled the port; **D15** was appended later as gameplay (Classes,
+abilities, progression-as-stats, the Glory economy) layered on top of the resolved netcode foundation.
+ADRs 0004, 0005, and 0006 are drafted. What remains is execution per the D14 milestone plan. A one-line
+summary of every decision is in [Migration at a glance](#migration-at-a-glance).
 
 ---
 
@@ -529,9 +576,11 @@ Every decision, one line. Full reasoning is in the decision log above.
 | **D12** | Validation | Play-test + load-test; free prediction-snap divergence monitor; property-test floor |
 | **D13** | Deployment | One process per instance; Go API/matchmaker spawns + assigns via ticket region/shard |
 | **D14** | Sequencing | Tracer-bullet spine (M0) first, then layer features; defined cutover gate |
+| **D15** | Progression & economy | Server/API-authoritative progression (max level 50, per-level stats), Softcore/Hardcore modes, XP→Glory `floor(total_xp/100)`, Class abilities; **protocol v4** |
 
 **ADRs spawned:** [0004 — redesigned wire protocol as a shared Rust crate](../adr/0004-schema-driven-wire-protocol.md)
-(amends 0003) · [0005 — permadeath persistence](../adr/0005-permadeath-persistence-model.md).
+(amends 0003) · [0005 — permadeath persistence](../adr/0005-permadeath-persistence-model.md) ·
+[0006 — Softcore/Hardcore + Glory economy](../adr/0006-softcore-hardcore-glory-economy.md) (extends 0005, D15).
 **Amended:** [ADR 0003](../adr/0003-enet-udp-transport.md) — its "wire format rides unchanged / port reimplements only the seam" consequence is superseded by D1+D3+D7.
 
 ## The eight questions

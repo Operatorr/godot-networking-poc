@@ -13,6 +13,7 @@ pub mod arena;
 pub mod constants;
 pub mod hit;
 mod movement;
+pub mod progression;
 mod rect;
 mod step;
 mod vec2;

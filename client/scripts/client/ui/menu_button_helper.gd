@@ -13,11 +13,29 @@ const BUTTON_STATE_COLORS := {
 }
 
 
+## Apply the shared button art + sizing to a list of full-size menu buttons.
 static func apply_to_buttons(buttons: Array[Button]) -> void:
+	var styleboxes := _build_styleboxes()
+	if styleboxes.is_empty():
+		return
+	for button in buttons:
+		_style_button(button, styleboxes, true)
+
+
+## Apply the shared button art to a single button. `enforce_min_size` = false keeps the
+## button's own (smaller) size — used by the reusable ThemedButton for compact buttons.
+static func apply_to_button(button: Button, enforce_min_size: bool = true) -> void:
+	var styleboxes := _build_styleboxes()
+	if styleboxes.is_empty():
+		return
+	_style_button(button, styleboxes, enforce_min_size)
+
+
+static func _build_styleboxes() -> Dictionary:
 	var button_texture := load(BUTTON_TEXTURE_PATH) as Texture2D
 	if not button_texture:
 		push_warning("[MenuButtonHelper] Failed to load button texture: %s" % BUTTON_TEXTURE_PATH)
-		return
+		return {}
 
 	var disabled_button_texture := load(BUTTON_DISABLED_TEXTURE_PATH) as Texture2D
 	if not disabled_button_texture:
@@ -28,25 +46,28 @@ static func apply_to_buttons(buttons: Array[Button]) -> void:
 	for state: String in BUTTON_STATE_COLORS:
 		var state_texture := disabled_button_texture if state == "disabled" else button_texture
 		button_styleboxes[state] = _create_button_stylebox(state_texture, BUTTON_STATE_COLORS[state])
+	return button_styleboxes
 
-	for button in buttons:
-		button.flat = false
+
+static func _style_button(button: Button, button_styleboxes: Dictionary, enforce_min_size: bool) -> void:
+	button.flat = false
+	if enforce_min_size:
 		button.custom_minimum_size = Vector2(
 			maxf(button.custom_minimum_size.x, BUTTON_MINIMUM_SIZE.x),
 			maxf(button.custom_minimum_size.y, BUTTON_MINIMUM_SIZE.y)
 		)
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		button.add_theme_font_size_override("font_size", 24)
-		button.add_theme_color_override("font_color", Color(0.88, 0.86, 0.78))
-		button.add_theme_color_override("font_hover_color", Color(1.0, 0.98, 0.9))
-		button.add_theme_color_override("font_pressed_color", Color(0.62, 0.6, 0.54))
-		button.add_theme_color_override("font_disabled_color", Color(0.46, 0.46, 0.43))
+	button.add_theme_font_size_override("font_size", 24 if enforce_min_size else 16)
+	button.add_theme_color_override("font_color", Color(0.88, 0.86, 0.78))
+	button.add_theme_color_override("font_hover_color", Color(1.0, 0.98, 0.9))
+	button.add_theme_color_override("font_pressed_color", Color(0.62, 0.6, 0.54))
+	button.add_theme_color_override("font_disabled_color", Color(0.46, 0.46, 0.43))
 
-		button.add_theme_stylebox_override("normal", button_styleboxes["normal"])
-		button.add_theme_stylebox_override("focus", button_styleboxes["normal"])
-		button.add_theme_stylebox_override("hover", button_styleboxes["hover"])
-		button.add_theme_stylebox_override("pressed", button_styleboxes["pressed"])
-		button.add_theme_stylebox_override("disabled", button_styleboxes["disabled"])
+	button.add_theme_stylebox_override("normal", button_styleboxes["normal"])
+	button.add_theme_stylebox_override("focus", button_styleboxes["normal"])
+	button.add_theme_stylebox_override("hover", button_styleboxes["hover"])
+	button.add_theme_stylebox_override("pressed", button_styleboxes["pressed"])
+	button.add_theme_stylebox_override("disabled", button_styleboxes["disabled"])
 
 
 static func _create_button_stylebox(texture: Texture2D, modulate_color: Color) -> StyleBoxTexture:

@@ -20,6 +20,9 @@ const LEADERBOARD_PATH := "res://scripts/client/hud/leaderboard.gd"
 const SERVER_STATUS_PATH := "res://scripts/client/hud/server_status.gd"
 const PAUSE_MENU_PATH := "res://scripts/client/hud/pause_menu.gd"
 const CONNECTION_LOST_PATH := "res://scripts/client/hud/connection_lost_overlay.gd"
+## Preloaded so the class resolves during headless startup (per AGENTS.md), named
+## exactly like the class it loads.
+const ExperienceBar := preload("res://scripts/client/hud/experience_bar.gd")
 
 ## Arena dimensions from GameConstants
 var arena_min: Vector2 = GameConstants.MAP_MIN
@@ -55,6 +58,7 @@ var screen_effects: ScreenEffects = null
 var death_screen: Control = null
 var hp_bar: Control = null
 var stamina_bar: Control = null
+var ability_slots: Control = null
 var mana_bar: Control = null
 var kill_feed: Control = null
 var minimap: Control = null
@@ -291,7 +295,13 @@ func _setup_hud() -> void:
 	var bars := BottomBars.create(hud_layer)
 	hp_bar = bars["hp"]
 	stamina_bar = bars["stamina"]
+	ability_slots = bars["ability_slots"]
 	mana_bar = bars["mana"]
+
+	# Level / XP bar (top-center) — fed by EXP_GAIN events via GameManager.
+	var xp_bar := ExperienceBar.new()
+	xp_bar.name = "ExperienceBar"
+	hud_layer.add_child(xp_bar)
 
 	# Kill Feed (top right, below minimap)
 	kill_feed = _create_hud_component(KILL_FEED_PATH, "KillFeed")
@@ -323,7 +333,11 @@ func _setup_hud() -> void:
 	pause_menu = _create_hud_component(PAUSE_MENU_PATH, "PauseMenu")
 	pause_menu.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	hud_layer.add_child(pause_menu)
+	pause_menu.set_leave_button_text("RETURN TO SANCTUARY")
 	pause_menu.leave_arena_requested.connect(_on_leave_arena)
+	# While the pause overlay is open, suppress input so clicking its buttons (a left
+	# click = the shoot action) doesn't fire a shot through the PredictionController.
+	pause_menu.visibility_changed.connect(_on_pause_menu_visibility_changed)
 
 	# Connection Lost Overlay (full overlay, hidden by default)
 	connection_lost_overlay = _create_hud_component(CONNECTION_LOST_PATH, "ConnectionLost")
@@ -345,7 +359,8 @@ func _create_hud_component(script_path: String, node_name: String) -> Control:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("exit_to_menu"):
+	# T / tilde return the player from the networked Arena to the Sanctuary hub.
+	if event.is_action_pressed("return_to_sanctuary"):
 		if event is InputEventKey and event.echo:
 			return
 		get_viewport().set_input_as_handled()
@@ -397,6 +412,93 @@ func _handle_game_event(data: Dictionary) -> void:
 			_handle_leaderboard_update(data)
 		PacketTypes.GameEventType.PROJECTILE_FIRED:
 			_handle_projectile_fired_event(data)
+		PacketTypes.GameEventType.EXP_GAIN:
+			_handle_exp_gain_event(data)
+		PacketTypes.GameEventType.PROGRESS:
+			_handle_progress_event(data)
+		PacketTypes.GameEventType.PICKUP:
+			_handle_pickup_event(data)
+		PacketTypes.GameEventType.ABILITY_EFFECT:
+			_handle_ability_effect_event(data)
+
+
+## COSMETIC ONLY. EXP_GAIN no longer drives leveling — the server owns level/XP and pushes
+## it via PROGRESS events. For our own player we just spawn a green "+N XP" floater. The
+## server emits one EXP_GAIN per nearby player; we keep only our own.
+func _handle_exp_gain_event(data: Dictionary) -> void:
+	if int(data.get("source_id", 0)) != GameManager.get_local_player_entity_id():
+		return
+	var amount := int(data.get("event_data", {}).get("amount", 0))
+	if amount <= 0:
+		return
+	# Cosmetic hint (HUD may also listen via GameManager.experience_gained).
+	GameManager.grant_experience(amount)
+	if local_player and is_instance_valid(local_player):
+		_spawn_xp_floater(amount, local_player.global_position)
+
+
+## Authoritative progression update for a player. Mirrors level/XP into GameManager for the
+## HUD and, for the LOCAL player, adopts the new base move speed into prediction so the
+## predicted speed tracks the server. The server emits PROGRESS per player; target_id picks
+## whose progression this is.
+func _handle_progress_event(data: Dictionary) -> void:
+	var target_id: int = data.get("target_id", -1)
+	if target_id != GameManager.get_local_player_entity_id():
+		return
+	var event_data: Dictionary = data.get("event_data", {})
+	var level := int(event_data.get("level", 1))
+	var experience := int(event_data.get("experience", 0))
+	var move_speed := int(event_data.get("move_speed", 0))
+	GameManager.set_progression(level, experience, move_speed)
+	if prediction_controller and move_speed > 0:
+		prediction_controller.set_base_speed(float(move_speed))
+
+
+## Health pickup. Spawn a green "+amount" heal floater at the picked-up player's position and,
+## for the local player, mirror the heal into the HUD HP bar (the server stays authoritative —
+## the next state update reconciles the exact value). target_id = the player who picked it up.
+func _handle_pickup_event(data: Dictionary) -> void:
+	var event_data: Dictionary = data.get("event_data", {})
+	if int(event_data.get("pickup_kind", -1)) != 0:  # 0 = healthorb
+		return
+	var amount := int(event_data.get("amount", 0))
+	if amount <= 0:
+		return
+
+	var target_id: int = data.get("target_id", -1)
+	var local_id := GameManager.get_local_player_entity_id()
+	var world_pos := Vector2.ZERO
+
+	if target_id == local_id and local_player and is_instance_valid(local_player):
+		world_pos = local_player.global_position
+		if local_player.hp_component:
+			var healed := mini(
+				local_player.hp_component.current_hp + amount,
+				local_player.hp_component.max_hp
+			)
+			local_player.hp_component.set_hp(healed)
+	elif client_entity_manager and client_entity_manager.player_entities.has(target_id):
+		var remote: RemotePlayer = client_entity_manager.player_entities[target_id]
+		if is_instance_valid(remote):
+			world_pos = remote.global_position
+
+	if world_pos != Vector2.ZERO:
+		_spawn_heal_floater(amount, world_pos)
+
+
+## Transient ability VFX at a world position, sized by radius and styled by effect_id:
+## 0 mageblast (blue/white burst), 1 charge_blast (orange ring), 2 mine_detonation
+## (red explosion), 3 shadowstep (purple blink). Self-frees after ~0.4s.
+func _handle_ability_effect_event(data: Dictionary) -> void:
+	var event_data: Dictionary = data.get("event_data", {})
+	var effect_id := int(event_data.get("effect_id", 0))
+	var position: Vector2 = event_data.get("position", Vector2.ZERO)
+	var radius := float(event_data.get("radius", 60))
+	var vfx := _AbilityEffectVfx.new()
+	vfx.effect_id = effect_id
+	vfx.max_radius = maxf(radius, 8.0)
+	vfx.position = position
+	_add_effect_to_arena(vfx)
 
 
 ## Handle PLAYER_INFO event - detect our own entity ID
@@ -535,11 +637,15 @@ func _sync_local_player_state(entity_data: Dictionary) -> void:
 				local_player.hp_component.set_hp(0)
 		_play_local_death_feedback()
 
-	# Sync invulnerability visual
+	# Sync invulnerability visual, then Rogue stealth dim. Stealth wins when both are set.
 	var is_invulnerable := (flags & PacketTypes.ENTITY_FLAG_INVULNERABLE) != 0
+	var is_stealthed := (flags & PacketTypes.ENTITY_FLAG_STEALTH) != 0
 	_is_invulnerable = is_invulnerable
 	if local_player.animated_sprite:
-		if is_invulnerable:
+		if is_stealthed:
+			if local_player.animated_sprite.modulate.a != 0.35:
+				local_player.animated_sprite.modulate.a = 0.35
+		elif is_invulnerable:
 			local_player.animated_sprite.modulate.a = 0.5 + 0.5 * sin(Time.get_ticks_msec() / 100.0)
 		elif local_player.animated_sprite.modulate.a != 1.0:
 			local_player.animated_sprite.modulate.a = 1.0
@@ -932,6 +1038,25 @@ func _spawn_damage_number(amount: int, world_pos: Vector2, is_dealt: bool) -> vo
 		container.add_child(dmg_num)
 
 
+## Spawn a green "+N XP" floater (cosmetic, from an EXP_GAIN event).
+func _spawn_xp_floater(amount: int, world_pos: Vector2) -> void:
+	_spawn_text_floater("+%d XP" % amount, world_pos, Color(0.45, 1.0, 0.45))
+
+
+## Spawn a green "+N" heal floater (from a PICKUP heal event).
+func _spawn_heal_floater(amount: int, world_pos: Vector2) -> void:
+	_spawn_text_floater("+%d" % amount, world_pos, Color(0.35, 1.0, 0.4))
+
+
+## Shared rising-and-fading text floater (reuses the damage-number motion/style).
+func _spawn_text_floater(text: String, world_pos: Vector2, color: Color) -> void:
+	var floater := _TextFloater.new()
+	floater.setup(text, world_pos, color)
+	var container := get_entity_container()
+	if container:
+		container.add_child(floater)
+
+
 ## Add a visual effect node to the arena entity container
 func _add_effect_to_arena(effect: Node2D) -> void:
 	var container := get_entity_container()
@@ -981,9 +1106,14 @@ func _connect_local_resource_bars() -> void:
 	if stamina_bar != null and not sm.stamina_changed.is_connected(_on_local_stamina_changed):
 		sm.stamina_changed.connect(_on_local_stamina_changed)
 		stamina_bar.update_value(sm.stamina, GameConstants.PLAYER_STAMINA_MAX)
+	if stamina_bar != null and stamina_bar.has_method("set_exhausted") \
+			and not sm.exhausted_changed.is_connected(_on_local_exhausted_changed):
+		sm.exhausted_changed.connect(_on_local_exhausted_changed)
 	if mana_bar != null and not sm.mana_changed.is_connected(_on_local_mana_changed):
 		sm.mana_changed.connect(_on_local_mana_changed)
 		mana_bar.update_value(sm.mana, GameConstants.PLAYER_MANA_MAX)
+	if ability_slots != null:
+		ability_slots.bind_movement_state_machine(sm)
 
 
 func _on_local_stamina_changed(current: float, maximum: float) -> void:
@@ -994,6 +1124,11 @@ func _on_local_stamina_changed(current: float, maximum: float) -> void:
 func _on_local_mana_changed(current: float, maximum: float) -> void:
 	if mana_bar:
 		mana_bar.update_value(current, maximum)
+
+
+func _on_local_exhausted_changed(active: bool) -> void:
+	if stamina_bar and stamina_bar.has_method("set_exhausted"):
+		stamina_bar.set_exhausted(active)
 
 
 ## Handle disconnect from server
@@ -1019,12 +1154,21 @@ func _on_reconnect_failed() -> void:
 	_leave_arena()
 
 
+## Pause overlay opened/closed: gate the local player's input. Online the player's own
+## input is already disabled (prediction owns it), so we suppress the PredictionController.
+func _on_pause_menu_visibility_changed() -> void:
+	if prediction_controller:
+		prediction_controller.set_input_suppressed(pause_menu != null and pause_menu.visible)
+
+
 ## Handle leave arena request from pause menu
 func _on_leave_arena() -> void:
 	_leave_arena()
 
 
-## Leave arena: disconnect and return to main menu
+## Leave the arena: disconnect from the server and return to the Sanctuary hub.
+## (The Sanctuary — not the main menu — is the town the player returns to; SceneManager
+## sets the IN_ARENA game state for it via _update_game_state_for_scene.)
 func _leave_arena() -> void:
 	if _is_leaving_arena:
 		return
@@ -1033,9 +1177,9 @@ func _leave_arena() -> void:
 	var audio := _get_audio_manager()
 	if audio:
 		audio.stop_music()
-	GameManager.change_state(GameManager.GameState.MAIN_MENU)
-	NetworkManager.disconnect_from_server("Leave arena")
-	SceneManager.goto_main_menu()
+	GameManager.persist_progression()  # flush any unsaved XP before tearing down
+	NetworkManager.disconnect_from_server("Return to Sanctuary")
+	SceneManager.goto_sanctuary()
 
 
 ## Called when exiting the arena scene
@@ -1441,3 +1585,94 @@ func _draw_obstacles() -> void:
 		if inner.size.x > 0 and inner.size.y > 0:
 			var vein_color := Color(0.25, 0.06, 0.1, 0.3)
 			draw_rect(inner, vein_color, false, 1.0)
+
+
+## Rising-and-fading text floater (XP gains, heal pickups). Same motion as DamageNumber but
+## draws arbitrary text instead of a bare number.
+class _TextFloater extends Node2D:
+	const RISE_DISTANCE := 70.0
+	const DURATION := 0.9
+	const FADE_START := 0.5
+
+	var _text: String = ""
+	var _color: Color = Color.WHITE
+	var _timer: float = 0.0
+	var _start_pos: Vector2 = Vector2.ZERO
+	var _offset_x: float = 0.0
+
+	func setup(text: String, world_pos: Vector2, color: Color) -> void:
+		_text = text
+		_color = color
+		_start_pos = world_pos
+		global_position = world_pos
+		_offset_x = randf_range(-12.0, 12.0)
+
+	func _process(delta: float) -> void:
+		_timer += delta
+		if _timer >= DURATION:
+			queue_free()
+			return
+		var t := _timer / DURATION
+		var rise := RISE_DISTANCE * (1.0 - pow(1.0 - t, 2.0))
+		global_position = _start_pos + Vector2(_offset_x * t, -rise)
+		queue_redraw()
+
+	func _draw() -> void:
+		var t := _timer / DURATION
+		var alpha := 1.0
+		if t > FADE_START:
+			alpha = 1.0 - (t - FADE_START) / (1.0 - FADE_START)
+		var font := ThemeDB.fallback_font
+		var c := _color
+		c.a = alpha
+		draw_string(font, Vector2(1, 1), _text, HORIZONTAL_ALIGNMENT_CENTER, -1, 16, Color(0, 0, 0, alpha * 0.6))
+		draw_string(font, Vector2.ZERO, _text, HORIZONTAL_ALIGNMENT_CENTER, -1, 16, c)
+
+
+## Transient expanding-ring/burst VFX for an ABILITY_EFFECT event. Styled by effect_id and
+## sized by the event radius; self-frees after ~0.4s. Pure cosmetics, no logic.
+class _AbilityEffectVfx extends Node2D:
+	const DURATION := 0.4
+
+	## 0 mageblast, 1 charge_blast, 2 mine_detonation, 3 shadowstep_blink.
+	var effect_id: int = 0
+	var max_radius: float = 60.0
+	var _timer: float = 0.0
+
+	func _process(delta: float) -> void:
+		_timer += delta
+		if _timer >= DURATION:
+			queue_free()
+			return
+		queue_redraw()
+
+	func _draw() -> void:
+		var t: float = clampf(_timer / DURATION, 0.0, 1.0)
+		var alpha := 1.0 - t
+		var radius := max_radius * (0.2 + 0.8 * t)
+		var fill := _fill_color()
+		var ring := _ring_color()
+		fill.a = 0.30 * alpha
+		ring.a = 0.9 * alpha
+		draw_circle(Vector2.ZERO, radius, fill)
+		draw_arc(Vector2.ZERO, radius, 0.0, TAU, 48, ring, 3.0)
+		# A second, brighter inner ring for punch.
+		var inner := ring
+		inner.a = 0.5 * alpha
+		draw_arc(Vector2.ZERO, radius * 0.6, 0.0, TAU, 36, inner, 2.0)
+
+	func _fill_color() -> Color:
+		match effect_id:
+			0: return Color(0.5, 0.7, 1.0)   # mageblast — blue/white
+			1: return Color(1.0, 0.6, 0.2)   # charge_blast — orange
+			2: return Color(1.0, 0.25, 0.15) # mine_detonation — red
+			3: return Color(0.6, 0.3, 0.85)  # shadowstep — purple
+			_: return Color(0.8, 0.8, 0.8)
+
+	func _ring_color() -> Color:
+		match effect_id:
+			0: return Color(0.85, 0.95, 1.0)
+			1: return Color(1.0, 0.8, 0.4)
+			2: return Color(1.0, 0.5, 0.3)
+			3: return Color(0.8, 0.5, 1.0)
+			_: return Color(1.0, 1.0, 1.0)

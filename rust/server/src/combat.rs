@@ -10,6 +10,7 @@ use crate::projectile::ProjectileManager;
 use protocol::types::game_event_type;
 use protocol::{GameEvent, GameEventData, ServerPacket};
 use sim_core::constants::*;
+use sim_core::progression;
 use sim_core::{hit, MoveState, Vec2};
 use std::collections::HashMap;
 use tracing::debug;
@@ -162,7 +163,9 @@ fn broadcast_player_kill(
     }
 }
 
-/// Tick step 5 — players pass first, then monsters pass (extraction combat §1).
+/// Tick step 5 — players pass first, then monsters pass (extraction combat §1). Returns the
+/// positions of monsters killed this pass, so the caller can roll healthorb drops (which need the
+/// world RNG + the world-entity manager, not held here).
 #[allow(clippy::too_many_arguments)]
 pub fn process_collisions(
     projectiles: &mut ProjectileManager,
@@ -171,7 +174,7 @@ pub fn process_collisions(
     leaderboard: &mut Leaderboard,
     outbox: &mut Outbox,
     tick: u64,
-) {
+) -> Vec<Vec2> {
     // PvP pass.
     let player_hits = projectiles.check_collisions_with_players(players, tick);
     for h in player_hits {
@@ -190,40 +193,134 @@ pub fn process_collisions(
     }
 
     // PvE pass (player projectiles vs lag-rewound monsters).
+    let mut killed_positions = Vec::new();
     let monster_hits =
         projectiles.check_collisions_with_monsters(|t| monsters.get_alive_snapshot(t));
     for h in monster_hits {
-        let Some(monster) = monsters.get_mut(h.target_id) else {
-            continue; // ghost hit: projectile already consumed, no damage, no event
+        // Per-projectile class+level-scaled damage; 0 ⇒ legacy flat constant.
+        let amount = if h.damage > 0 {
+            h.damage
+        } else {
+            PLAYER_PROJECTILE_DAMAGE
         };
+        if let Some(pos) =
+            apply_monster_damage(h.target_id, amount, h.owner_id, monsters, players, outbox)
+        {
+            killed_positions.push(pos);
+        }
+    }
+    killed_positions
+}
+
+/// Apply `amount` damage to a monster from `owner_id`: broadcasts the applied DAMAGE and, on a
+/// kill, the KILL event + server-authoritative XP, returning the monster's position (for the
+/// caller's healthorb roll). Returns `None` if nothing was applied or the monster is gone. Shared
+/// by the PvE projectile pass and every ability that hits monsters (bibles, mine, dot-zone,
+/// mageblast, multishot, charge blast, shadowstep).
+pub fn apply_monster_damage(
+    monster_id: u16,
+    amount: i32,
+    owner_id: u16,
+    monsters: &mut MonsterManager,
+    players: &mut PlayerManager,
+    outbox: &mut Outbox,
+) -> Option<Vec2> {
+    let (applied, killed, monster_pos, xp_reward) = {
+        let monster = monsters.get_mut(monster_id)?;
         let previous = monster.health;
-        let killed = monster.take_damage(PLAYER_PROJECTILE_DAMAGE);
+        let killed = monster.take_damage(amount);
         let applied = previous - monster.health;
-        if applied <= 0 {
-            continue;
+        (
+            applied,
+            killed,
+            monster.position,
+            monster.definition.xp_reward,
+        )
+    };
+    if applied <= 0 {
+        return None;
+    }
+    outbox.broadcast(ServerPacket::GameEvent(GameEvent {
+        event_type: game_event_type::DAMAGE,
+        source_id: owner_id,
+        target_id: monster_id,
+        data: GameEventData::Damage {
+            amount: applied as u16,
+            damage_type: 0,
+        },
+    }));
+    if killed {
+        if let Some(killer) = players.get_by_entity_id_mut(owner_id) {
+            if killer.authenticated {
+                killer.monster_kills += 1;
+            }
         }
         outbox.broadcast(ServerPacket::GameEvent(GameEvent {
-            event_type: game_event_type::DAMAGE,
-            source_id: h.owner_id,
-            target_id: h.target_id,
-            data: GameEventData::Damage {
-                amount: applied as u16,
-                damage_type: 0,
-            },
+            event_type: game_event_type::KILL,
+            source_id: owner_id,
+            target_id: monster_id,
+            data: GameEventData::None,
         }));
-        if killed {
-            if let Some(killer) = players.get_by_entity_id_mut(h.owner_id) {
-                if killer.authenticated {
-                    killer.monster_kills += 1;
-                }
-            }
-            outbox.broadcast(ServerPacket::GameEvent(GameEvent {
-                event_type: game_event_type::KILL,
-                source_id: h.owner_id,
-                target_id: h.target_id,
-                data: GameEventData::None,
-            }));
+        grant_kill_experience(monster_pos, xp_reward, players, outbox);
+        return Some(monster_pos);
+    }
+    None
+}
+
+/// Server-authoritative XP grant on a monster kill. Every alive, authenticated player within
+/// XP_SHARE_RADIUS gets the full reward (no split). The SERVER owns leveling now: it accumulates
+/// XP, resolves level-ups (recomputing class+level stats), marks progression dirty for the API
+/// write-back, and emits a PROGRESS event (authoritative HUD) plus a cosmetic EXP_GAIN floater.
+fn grant_kill_experience(
+    monster_pos: Vec2,
+    xp_reward: u32,
+    players: &mut PlayerManager,
+    outbox: &mut Outbox,
+) {
+    if xp_reward == 0 {
+        return;
+    }
+    let radius_sq = XP_SHARE_RADIUS * XP_SHARE_RADIUS;
+    let amount = xp_reward.min(u16::MAX as u32) as u16;
+    for player in players.players.iter_mut() {
+        if !player.authenticated || !player.is_alive {
+            continue;
         }
+        if player.position.distance_squared_to(monster_pos) > radius_sq {
+            continue;
+        }
+        // Cosmetic "+N" floater.
+        outbox.broadcast(ServerPacket::GameEvent(GameEvent {
+            event_type: game_event_type::EXP_GAIN,
+            source_id: player.entity_id,
+            target_id: 0,
+            data: GameEventData::ExpGain { amount },
+        }));
+        let (new_level, new_xp) =
+            progression::apply_experience(player.level, player.experience, xp_reward);
+        if new_level != player.level {
+            player.apply_class_and_level(player.player_class, new_level, new_xp);
+        } else {
+            player.experience = new_xp;
+        }
+        player.progression_dirty = true;
+        // Authoritative HUD update to the owner.
+        let move_speed_q = (player.effective_move_speed() / 4.0)
+            .round()
+            .clamp(0.0, 255.0) as u8;
+        outbox.send(
+            player.peer,
+            ServerPacket::GameEvent(GameEvent {
+                event_type: game_event_type::PROGRESS,
+                source_id: player.entity_id,
+                target_id: player.entity_id,
+                data: GameEventData::Progress {
+                    level: player.level,
+                    experience: player.experience,
+                    move_speed_q,
+                },
+            }),
+        );
     }
 }
 

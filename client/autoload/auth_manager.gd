@@ -457,6 +457,15 @@ func _merge_character_data(user_data: Dictionary, character: Dictionary) -> void
 	if not character_name.is_empty():
 		user_data["character_name"] = character_name
 
+	# Class is stored as a display-name string on the account; map it to the wire enum
+	# so sprite selection and the CONNECT_AUTH class byte use the chosen class.
+	if character.has("class"):
+		user_data["player_class"] = PacketTypes.class_name_to_id(_variant_to_string(character.get("class", "")))
+	if character.has("level"):
+		user_data["player_level"] = int(character.get("level", 1))
+	if character.has("experience"):
+		user_data["player_experience"] = int(character.get("experience", 0))
+
 
 func _fetch_character_after_login(user_data: Dictionary) -> void:
 	if jwt_token.is_empty():

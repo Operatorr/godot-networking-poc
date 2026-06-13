@@ -20,7 +20,7 @@ use crate::error::DecodeError;
 use crate::quant::{dequant_coord, quant_coord};
 use crate::types::{
     delta_mask, entity_type_for_id, snapshot_flags, EntityType, MONSTER_ID_START,
-    PROJECTILE_ID_START,
+    PROJECTILE_ID_START, WORLD_EFFECT_ID_END, WORLD_EFFECT_ID_START,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -76,6 +76,7 @@ impl EntityRecord {
             Some(EntityType::Player) => 2 + 10,
             Some(EntityType::Projectile) => 2 + 15,
             Some(EntityType::Monster) => 2 + 14,
+            Some(EntityType::WorldEffect) => 2 + 14,
             None => 0,
         };
         if in_baseline {
@@ -113,11 +114,17 @@ fn write_typed_id(w: &mut BitWriter, id: u16) {
             w.write_bits(2, 2);
             w.write_bits((id - MONSTER_ID_START) as u32, 14);
         }
+        Some(EntityType::WorldEffect) => {
+            w.write_bits(3, 2);
+            w.write_bits((id - WORLD_EFFECT_ID_START) as u32, 14);
+        }
         None => {
-            // Out-of-range ids must never be encoded; the encoder asserts in debug and emits
-            // the reserved kind so a release build produces a decode error, not silent aliasing.
+            // Out-of-range ids must never be encoded; the encoder asserts in debug and emits an
+            // out-of-band world-effect offset so a release build produces a decode error (the
+            // offset exceeds the world-effect band), not silent aliasing.
             debug_assert!(false, "entity id {id} outside the invariant ranges");
             w.write_bits(3, 2);
+            w.write_bits(16383, 14);
         }
     }
 }
@@ -145,7 +152,14 @@ fn read_typed_id(r: &mut BitReader) -> Result<u16, DecodeError> {
             }
             Ok(MONSTER_ID_START + off)
         }
-        _ => Err(DecodeError::BadValue("entity kind")),
+        _ => {
+            // kind 3 = world effect (healthorb/mine/dot-zone/bible).
+            let off = r.read_bits(14)? as u16;
+            if off > WORLD_EFFECT_ID_END - WORLD_EFFECT_ID_START {
+                return Err(DecodeError::BadValue("world effect id"));
+            }
+            Ok(WORLD_EFFECT_ID_START + off)
+        }
     }
 }
 
@@ -324,13 +338,26 @@ mod tests {
                 EntityRecord::full(29999, (123.4, -567.8), 0, 0x21),
                 EntityRecord::full(30000, (50.0, 50.0), 2, 0x23),
                 EntityRecord::full(39999, (-999.9, 999.9), 5, 0x20),
+                // World effects (kind 3): a healthorb (40000) and a bible (47500).
+                EntityRecord::full(40000, (12.3, -45.6), 0, 0x21),
+                EntityRecord::full(47500, (-7.0, 8.0), 0, 0x21),
             ],
         };
         let rt = round_trip(s.clone());
         assert_eq!(rt.server_tick, s.server_tick);
         assert_eq!(rt.server_ms, s.server_ms);
         assert!(rt.is_baseline);
-        assert_eq!(rt.entities.len(), 6);
+        assert_eq!(rt.entities.len(), 8);
+        // World-effect ids round-trip and classify by subtype band.
+        assert_eq!(rt.entities[6].entity_id, 40000);
+        assert_eq!(
+            rt.entities[6].entity_type(),
+            Some(crate::types::EntityType::WorldEffect)
+        );
+        assert_eq!(
+            crate::types::world_effect_subtype_for_id(rt.entities[7].entity_id),
+            Some(crate::types::world_effect::BIBLE)
+        );
         for (a, b) in rt.entities.iter().zip(s.entities.iter()) {
             assert_eq!(a.entity_id, b.entity_id);
             assert_eq!(a.animation, b.animation);

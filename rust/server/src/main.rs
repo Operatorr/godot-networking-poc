@@ -5,6 +5,7 @@
 //! ticks (extraction rust-stack §1); messages are processed in arrival order between ticks,
 //! matching the GDScript's frame-loop handler semantics.
 
+mod ability;
 mod api_client;
 mod auth;
 mod broadcast;
@@ -15,9 +16,11 @@ mod metrics;
 mod monster;
 mod outbox;
 mod player;
+mod progression_client;
 mod projectile;
 mod rng;
 mod world;
+mod world_entity;
 
 use config::ServerConfig;
 use outbox::{Outbox, Target};
@@ -119,6 +122,12 @@ fn main() {
             config.api_server_url.clone(),
         ))
     };
+    // Server→API progression I/O (level/XP hydrate + write-back, Glory/permadeath on death).
+    let progression = if config.api_server_url.is_empty() {
+        None
+    } else {
+        Some(progression_client::spawn(config.api_server_url.clone()))
+    };
 
     let start = Instant::now();
     let now_ms = |s: Instant| s.elapsed().as_millis() as u64;
@@ -133,7 +142,7 @@ fn main() {
     let advertise_url = config.advertise_url.clone();
     let region = config.region.clone();
     let max_players = config.max_players;
-    let mut world = world::World::new(config, verifier, rng::Pcg32::from_entropy());
+    let mut world = world::World::new(config, verifier, rng::Pcg32::from_entropy(), progression);
     let mut outbox = Outbox::new();
     let mut collector = metrics::MetricsCollector::default();
     let mut connected: HashSet<usize> = HashSet::new();
@@ -225,7 +234,8 @@ fn main() {
         let t_ms = now_ms(start);
         if t_ms.saturating_sub(last_metrics_ms) >= 1000 {
             last_metrics_ms = t_ms;
-            let entity_count = world.projectiles.count() + world.monsters.count();
+            let entity_count =
+                world.projectiles.count() + world.monsters.count() + world.world_entities.count();
             let player_count = world.players.player_count();
             let pkt = collector.build_packet(
                 world.tick_count,

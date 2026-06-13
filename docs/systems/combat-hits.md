@@ -62,6 +62,13 @@ never spawns one; it only sends intent.
    **cosmetic muzzle flash** the instant they pressed fire (step 1) — so click-to-feedback no
    longer waits a full round-trip, even though the real bullet still does.
 
+> **Projectile facing (Arena).** A networked projectile is process-disabled (the server owns its
+> motion), so it never runs the offline pool's `activate()` rotation set. `ClientEntityManager`
+> now faces it along its **interpolated travel direction** each frame (`_update_projectile_rotations`),
+> seeded on spawn from the replicated direction octant (`projectile_animation_octant` decode).
+> Previously Arena bullets stuck at rotation 0 (facing right) while Sanctuary bullets — spawned
+> locally with `rotation = direction.angle()` — looked correct; both now match.
+
 ## Hit detection — both PvE and PvP are now lag-compensated + swept
 
 The two paths now mirror each other: both rewind the target roster to the Tick the shooter saw and

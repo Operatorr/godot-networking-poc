@@ -65,6 +65,19 @@ GDExtension (`rust/client_ext`) — prediction and authority run the same code b
 
 ---
 
+## Quick Commands
+
+| Action | Command |
+|--------|---------|
+| Start local stack (API + game server) | `./scripts/dev_local.sh` |
+| Start game server only | `./scripts/run_server.sh` |
+| Stop local stack | `Ctrl+C` in the `dev_local.sh` terminal |
+| Launch bots (gameplay) | `./scripts/run_load_test.sh --bots 2 --scenario strategy` |
+| Launch bots (load scenario) | `./scripts/run_load_test.sh --scenario baseline` |
+| Stop bots | `Ctrl+C` in the load test terminal |
+
+---
+
 ## Tech Stack
 
 | Layer | Technology | Version |
@@ -179,6 +192,22 @@ start them yourself first (step 2).
 
 - Open Godot and run the project (`client/`), or
 - Use the exported client binary
+
+### 7. Launch Bots (optional)
+
+With the server running, start the ENet bot swarm in a separate terminal:
+
+```bash
+# 2 gameplay-like bots (closest to a real client)
+./scripts/run_load_test.sh --bots 2 --scenario strategy
+
+# Override server address (default: 127.0.0.1:8081)
+./scripts/run_load_test.sh --bots 2 --scenario strategy --server 10.0.0.1:8081
+```
+
+Bots authenticate ticket-less (dev mode) and run the same `sim_core` movement integration
+as the real client. For named load scenarios (`baseline`, `stress`, `combat`, etc.) and
+full flags, see `rust/load_test/README.md`.
 
 ---
 

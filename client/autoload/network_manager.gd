@@ -268,17 +268,23 @@ func send_auth_handshake() -> void:
 
 	var character_name = ""
 	var player_color := Color(0.27, 0.53, 1.0)
-	# Class selection is not wired into the UI yet; every client joins as Zealot.
+	# Class is chosen at character creation and stored on the character; Zealot is the
+	# fallback if GameManager has no class yet (e.g. a legacy character).
 	var player_class: int = PacketTypes.PlayerClass.ZEALOT
+	# The character id lets the server hydrate the right character (dev mode). The Go API
+	# stores it as a string id; pass it as an int (0 when unknown/empty).
+	var character_id: int = 0
 
 	var game_mgr = get_tree().root.get_node_or_null("GameManager")
 	if game_mgr:
 		character_name = game_mgr.player_data.get("character_name", "")
 		player_color = game_mgr.player_data.get("player_color", player_color)
 		player_class = int(game_mgr.player_data.get("player_class", player_class))
+		character_id = _character_id_to_int(game_mgr.player_data.get("character_id", ""))
 
 	var bytes := _codec.encode_connect_auth(
-		character_name, player_color, player_class, _get_client_bandwidth_budget(), session_ticket
+		character_name, player_color, player_class, character_id,
+		_get_client_bandwidth_budget(), session_ticket
 	)
 	if bytes.is_empty():
 		# The codec refuses malformed tickets rather than downgrading to an unsigned join.
@@ -290,6 +296,15 @@ func send_auth_handshake() -> void:
 		print("[NetworkManager] Authentication handshake sent")
 	else:
 		print("[NetworkManager] Authentication handshake send failed; retry remains allowed")
+
+
+## Convert the Go API's character id (a string on the account, possibly empty) to the
+## int the wire format expects. Returns 0 when unknown so the server treats it as "no id".
+func _character_id_to_int(raw_id: Variant) -> int:
+	var id_str := str(raw_id).strip_edges()
+	if id_str.is_empty() or not id_str.is_valid_int():
+		return 0
+	return id_str.to_int()
 
 
 func _get_client_bandwidth_budget() -> int:
@@ -412,6 +427,7 @@ func send_message(message_type: MessageType, data: Dictionary = {}) -> bool:
 				data.get("velocity", Vector2.ZERO),
 				input_flags,
 				data.get("aim_angle", 0.0),
+				data.get("cursor", Vector2.ZERO),
 				data.get("sequence", 0),
 				data.get("client_render_tick", 0),
 				data.get("client_rtt_ms", 0)
@@ -432,6 +448,7 @@ func send_message(message_type: MessageType, data: Dictionary = {}) -> bool:
 				data.get("character_name", ""),
 				data.get("player_color", Color(0.27, 0.53, 1.0)),
 				int(data.get("player_class", PacketTypes.PlayerClass.ZEALOT)),
+				_character_id_to_int(data.get("character_id", "")),
 				int(data.get("bandwidth_budget_bps", DEFAULT_CLIENT_BUDGET)),
 				session_ticket
 			)

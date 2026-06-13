@@ -76,7 +76,14 @@ vice versa).
 
 `[2-bit kind][offset]` — kind 0 = player (10-bit offset, id = offset, range 1–999), kind 1 =
 projectile (15-bit offset, id = 10000 + offset), kind 2 = monster (14-bit offset, id = 30000 +
-offset). Kind 3 reserved. Carries what the old `u16 id + u8 type` carried in 12/17/16 bits.
+offset). **Kind 3 (protocol v4) = world effect** (14-bit offset, id = 40000 + offset, range
+40000–49999), used for lingering ability effects and Healthorbs. Carries what the old `u16 id + u8
+type` carried in 12/17/16 bits.
+
+The world-effect band (40000–49999) is partitioned into 2500-id sub-bands by subtype: `0` healthorb
+(40000–42499), `1` mine (42500–44999), `2` dot-zone (45000–47499), `3` bible (47500–49999). These
+ride the normal snapshot/AoI/delta machinery like any entity. See
+[`../systems/abilities.md`](../systems/abilities.md).
 
 ### Snapshot (type 65; deltas ch0, baselines ch1) — the redesigned STATE_UPDATE
 
@@ -99,9 +106,10 @@ final byte padded with zeros
 
 Entity flags are **16 bits** since protocol v2 (were 8): bits 0–7 keep the legacy values
 (ALIVE, MOVING, ATTACKING, INVULNERABLE, STUNNED, VISIBLE, DASHING, KNOCKED_BACK); bit 8 =
-DAZED (daze timer active — sprint/dash locked out, walking allowed); bits 9–15 reserved for
-future status effects. Protocol v3 added the per-player class byte to ConnectAuth and
-PLAYER_INFO (see those sections).
+DAZED (daze timer active — sprint/dash locked out, walking allowed); bit 9 = **STEALTH**
+(protocol v4 — invisible to AI targeting; set by Rogue Shadowstep, see
+[`../systems/abilities.md`](../systems/abilities.md)); bits 10–15 reserved for future status effects.
+Protocol v3 added the per-player class byte to ConnectAuth and PLAYER_INFO (see those sections).
 
 `server_ms` (server monotonic ms, u32-wrapped) is the **relocated HEARTBEAT clock-sync** — every
 snapshot carries it; the client feeds the same EMA filter (first sample direct, then alpha 0.2)
@@ -112,13 +120,17 @@ Delta/baseline cadence, ack/resend (100-tick interval, 30-tick resend, budget cl
 baselines exempt from budget) are ported exactly from
 [extraction/wire-protocol.md](extraction/wire-protocol.md) §4.9–4.14.
 
-### PlayerInput (type 2, ch2) — 18 B
+### PlayerInput (type 2, ch2) — 22 B (was 18 B; protocol v4 adds the cursor)
 
 `[u8 type][u8 seq][u16 input_flags][s16 aim_angle_q][s16 qx][s16 qy][s16 qvx][s16 qvy]
-[u16 client_render_tick][u16 client_rtt_ms]`
+[u16 client_render_tick][u16 client_rtt_ms][s16 cursor_qx][s16 cursor_qy]`
 
 Field semantics identical to today (seq wraps at 256; render_tick = low 16 bits of server tick;
-position is the client's predicted position, server validates against thresholds).
+position is the client's predicted position, server validates against thresholds). **Protocol v4**
+appends the **cursor** as two `s16` (world position, 0.1-unit quantization, +4 B) — the aim point for
+the Class ability (point-target Mageblast/Plague Zone clamp to `max_cast_range`; target-search
+Shadowstep searches near it; movement Charge uses it for direction). One of the `input_flags` bits is
+the RMB **ability-held** flag. See [`../systems/abilities.md`](../systems/abilities.md).
 
 ### ActionConfirm (type 66, ch0) — 12 B
 
@@ -128,13 +140,19 @@ position is the client's predicted position, server validates against thresholds
 ### ConnectAuth (type 1, ch1)
 
 `[u8 type][u8 protocol_version][u16 ticket_len][ticket bytes][u8 name_len][utf8 name]
-[u8 r][u8 g][u8 b][u8 class][u32 bandwidth_budget_bps]`
+[u8 r][u8 g][u8 b][u8 class][u32 character_id][u32 bandwidth_budget_bps]`
 
 `class` (since protocol v3) is the player class: `0=Zealot, 1=VoidHunter, 2=Engineer,
 3=PlagueSeer, 4=Warrior, 5=Rogue, 6=Mage`. It is **identity metadata chosen by the client** —
 the codec accepts any u8 on the wire; the server clamps on join (values > 6 are treated as 0)
 and does **not** validate it against account data yet. The clamped value is echoed back in
 every PLAYER_INFO broadcast.
+
+`character_id` (`u32`, **protocol v4**) tells the server *which* character to **hydrate** level/XP
+for from the Go API (the ADR 0005 hydrate-on-join step; progression is now server-authoritative — see
+[`../systems/PROGRESSION.md`](../systems/PROGRESSION.md) and [ADR 0006](../adr/0006-softcore-hardcore-glory-economy.md)).
+In signed-ticket mode it must match the `character_id` inside the verified ticket; in dev mode
+(`--allow-unsigned-tickets`) the server trusts it like the rest of the self-reported identity.
 
 Ticket blob: `[u8 ticket_version=1][u32 character_id][u8 region][u64 issued_at_unix_ms]
 [u64 expires_at_unix_ms][64-byte Ed25519 signature]` — signature over the 22 preceding payload
@@ -154,12 +172,28 @@ waiting for the PLAYER_INFO broadcast, which is still sent for names/colors).
 ### GameEvent (type 67, ch1)
 
 `[u8 type][u8 event_type][u16 source_id][u16 target_id][tail]` — event types and tails identical
-to today (extraction §4.15): DAMAGE `[u16 amount][u8 dmg_type]`; KILL/KILL_PVP none; RESPAWN
-`[s16 qx][s16 qy]`; PLAYER_INFO `[u8 len][utf8 name][s16 qx][s16 qy][u8 r][u8 g][u8 b][u8 class]`
+to today (extraction §4.15) except where protocol v4 noted: DAMAGE `[u16 amount][u8 dmg_type]`;
+KILL/KILL_PVP none; RESPAWN `[s16 qx][s16 qy]`; PLAYER_INFO
+`[u8 len][utf8 name][s16 qx][s16 qy][u8 r][u8 g][u8 b][u8 class]`
 (class since protocol v3 — server-clamped to 0..=6, see ConnectAuth);
 LEADERBOARD_UPDATE `[u8 n]{n × [u16 id][u16 kills]}`; PROJECTILE_FIRED
 `[s16 qx][s16 qy][u16 fire_tick]` with target_id = projectile id (**non-zero for monster shots** —
-D11 invariant).
+D11 invariant); EXP_GAIN=13 `[u16 amount]` with source_id = the player who earned it (one event
+per nearby player when a monster dies — the HUD "+XP" pop only; progression itself is now
+server-authoritative, see [`../systems/PROGRESSION.md`](../systems/PROGRESSION.md)).
+
+**Protocol v4 additions:**
+- **PICKUP=6** now carries `[u8 kind][u16 amount]` (was empty) — `kind` identifies the picked-up
+  world effect (e.g. Healthorb), `amount` the magnitude (Healthorb heals +5 HP); target_id = the
+  picked-up entity. Server-authoritative pickup.
+- **ABILITY_EFFECT=14** `[u16 effect_id][s16 qx][s16 qy][u16 radius]` with source_id = the casting
+  player — a one-shot VFX/SFX cue for a Class ability (blast/cast/hitscan center + radius). All
+  ability *damage* is decided server-side; this event is the client's render hook. See
+  [`../systems/abilities.md`](../systems/abilities.md).
+- **PROGRESS=15** `[u16 level][u32 experience][s16 move_speed_q]` with source_id = the player — the
+  authoritative level/XP/move-speed push that replaced the old client-owned level number (see
+  [`../systems/PROGRESSION.md`](../systems/PROGRESSION.md) and
+  [ADR 0006](../adr/0006-softcore-hardcore-glory-economy.md)).
 
 ### ServerMetrics (type 68, ch1) — 1 Hz
 
@@ -167,6 +201,28 @@ Same 33-byte field set as today (extraction §4.18), prefixed by the type byte.
 
 ### BaselineAck (3): `[u8 type][u32 baseline_tick]` · RequestFullState (4) / RespawnRequest (5):
 `[u8 type]` · LocalHitReport (6): `[u8 type][u16 projectile_id]`
+
+## Protocol v4 — the Class-ability + server-authoritative-progression bump
+
+`PROTOCOL_VERSION` advances to **4** (v3 added the class byte; v4 adds the ability system and moves
+progression server-side). The full delta versus v3, in one place — each is detailed in its section
+above:
+
+| Change | Where | Delta |
+|---|---|---|
+| Cursor target | `PlayerInput` (type 2) | append `[s16 cursor_qx][s16 cursor_qy]` → **22 B** (was 18); + an RMB ability-held `input_flags` bit |
+| Character id | `ConnectAuth` (type 1) | insert `[u32 character_id]` (hydrate which character — ADR 0005) |
+| World-effect entity kind | typed-id (in Snapshot) | **kind tag 3**, id band **40000–49999**, 2500-id sub-bands: 0 healthorb, 1 mine, 2 dot-zone, 3 bible |
+| `STEALTH` flag | 16-bit entity_flags | **bit 9** (invisible to AI targeting; Rogue Shadowstep) |
+| `ABILITY_EFFECT=14` | `GameEvent` (type 67) | new: `[u16 effect_id][s16 qx][s16 qy][u16 radius]` (ability VFX cue) |
+| `PROGRESS=15` | `GameEvent` (type 67) | new: `[u16 level][u32 experience][s16 move_speed_q]` (authoritative progression push) |
+| `PICKUP=6` payload | `GameEvent` (type 67) | now `[u8 kind][u16 amount]` (was empty) — Healthorb +5 HP etc. |
+
+Lockstep client/server deploy as always (DIY versioning, D7): a v3↔v4 mismatch is refused at the
+handshake (`ConnectAuth` re-check). The new fields are all server-authoritative in effect — abilities,
+progression, and pickups are decided by the server; the client request (ability flag + cursor) stays
+advisory, per "the client requests, the server decides." See
+[`../systems/abilities.md`](../systems/abilities.md) and [`../systems/PROGRESSION.md`](../systems/PROGRESSION.md).
 
 ## sim_core public API (consumed by server + client_ext)
 

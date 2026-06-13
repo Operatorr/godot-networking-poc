@@ -1,13 +1,15 @@
-# Sanctuary — Town Layout & Scene Design
+# Sanctuary — City Layout & Scene Design
 
-Status: **implemented** (scene + layout); sprite pass via PixelLab in progress.
-Style: [`SANCTUARY_STYLEGUIDE.md`](SANCTUARY_STYLEGUIDE.md) + `Style Guide Sheet.png`.
+Status: **redesigned** — a vast walled city you can walk through *and enter the buildings of*
+(Tibia-style), rendered as **code-generated placeholders** in a 3/4 top-down **oblique**
+look (Hammerwatch / Heroes of Hammerwatch). Real art is dropped in later.
+Style: [`SANCTUARY_STYLEGUIDE.md`](SANCTUARY_STYLEGUIDE.md) + `Sanctuary Style Guide Sheet.png`.
 
-The Sanctuary is the player's safe hub. **Entering the world now lands you here, not the
-Arena.** The town is a fully client-local scene (no server connection, like Practice): you
-walk, browse NPCs, then take the **Arena portal**, which dials the selected region's game
-server and only then loads the Arena. This keeps unauthenticated connections from idling
-open while a player shops, and lets the town work offline.
+The Sanctuary is the player's safe hub. **Entering the world lands you here, not the Arena.**
+It is a fully client-local scene (no server connection, like Practice): you walk, explore,
+browse NPCs, then take the **Arena portal**, which dials the selected region's game server and
+only then loads the Arena. This keeps unauthenticated connections from idling open while a
+player explores, and lets the town work offline.
 
 ## Flow
 
@@ -19,132 +21,142 @@ Main Menu ── Enter World ──> Sanctuary (offline hub)
                                Arena (server-authoritative)
 ```
 
-- The main menu still owns region selection; it stashes the chosen region's URL in
+- The main menu owns region selection; it stashes the chosen region's URL in
   `GameManager.player_data["selected_region_url"]` before `SceneManager.goto_sanctuary()`.
-- `Portal` (`scripts/shared/portal.gd`) is the **reusable level/scene-switch script** — it
-  will also serve world entrances and dungeon entry/exit. Destination is an exported enum
-  (`ARENA`, `SANCTUARY`, `MAIN_MENU`, `PRACTICE`, `CUSTOM_SCENE` + scene path);
+- `Portal` (`scripts/shared/portal.gd`) is the reusable level/scene-switch script;
   `requires_connection` makes it dial the server first.
 
-## City planning
+## Rendering model (the oblique placeholder look)
 
-A compact radial-axial plan (classic European town logic) so every district is legible
-from the spawn point:
+The whole city is **data-driven** from `const` tables in
+[`scripts/shared/levels/sanctuary.gd`](../../client/scripts/shared/levels/sanctuary.gd)
+(`OfflineArena` subclass). Tables are "rasterized" onto a tile grid; layers then render it.
 
-- **Center — Fountain Plaza.** The healing fountain is the spawn landmark; the whole town
-  reads from here. Plaza is a 240 u-radius paved circle.
-- **Sacred axis (north).** Cathedral Way runs due north from the fountain and terminates
-  the vista at the **Church of the Dawn** — the tallest silhouette in town, on a raised
-  forecourt. The **Priest** (glory spending / account skill tree) serves at its doors.
-- **Civic northeast.** The **Bank** sits on its own connector street between plaza and
-  market — prominent, near the money.
-- **Commerce east — Market Street.** Widens into a market square: **Potion Vendor** (north
-  side), **Equipment Vendor** (south side), open stalls at the east end.
-- **Guilds west — Guild Row.** Ends in a U-shaped Guild Court enclosed by the **Warriors'
-  Guild** (north), **Mages' Guild** (west), **Rogues' Guild** (south) — class trainers in
-  front of each hall.
-- **Travel south — Portal Way.** Leads to the Portal Dais, a round plinth holding the
-  **Arena portal** (and future world/dungeon portals).
-- Green space fills the quadrants: lawns, trees, flower beds; lantern posts pace the two
-  axes; benches ring the plaza.
+- **Tile grid.** `TILE = 32 px` (matches the 32 px player sprite; hitbox r16). North = −Y.
+- **Oblique walls.** Every wall cell is drawn as a lifted **sunlit top** + a **shadowed south
+  face** (+ base contact shadow). Cells are drawn north→south so southern faces overlap the
+  walls behind them — only outer faces stay visible, the Hammerwatch wall read. Heights:
+  buildings 28 px, rampart 36 px, raised-terrace cliffs 20 px.
+- **Raised terraces + stairs.** The Cathedral and the Portal Dais sit on raised stone
+  terraces (cliff-edge walls) reached by **walkable stair-ramp placeholders**. Single Z-level
+  for now (stairs are walkable, no floor switch) — tagged `future = "elevation/floor-switch"`.
+- **Roofs are intentionally absent** so interiors are visible from above; you walk in through
+  the door gap (Tibia/Hammerwatch ground-floor behaviour).
+- **Layers / z-order.** `Ground` (z −20) → `WallVisuals` (z −8) → `World` props/NPCs/
+  fountain/portal (z −4) → player (z 0). The Sanctuary node's own `_draw` is overridden empty
+  so `OfflineArena`'s dark arena grid never paints over the city.
+- **Collision.** `CityColliders` is one `StaticBody2D` on `ENVIRONMENT_COLLISION_LAYER` (8);
+  wall cells are greedy-merged per row into rectangle colliders — **every wall grid square is
+  solid** (1346 wall cells → 447 colliders). Door/stair gaps carry no collider. Solid props
+  get their own colliders under `PropColliders` / `InteriorProps`.
+
+## City plan
+
+A radial-axial walled city. Two avenues cross at the central **Fountain Plaza**; the
+cathedral terminates the north vista, the portal dais the south; commerce east, guilds west.
 
 ```
-                      N
-        ┌──────────[CHURCH]──────────┐
-        │      ░forecourt░    [BANK] │
-        │ [WAR GUILD]   ║      │     │
-        │┌──────┐       ║      ├──[POTIONS]
-        ││GUILD ╠═══════╬══════╪═[market sq]
-        │└COURT ┘       ║      ├──[EQUIPMENT]
-        │ [ROGUE GUILD] ║   (stalls)│
-        │           (FOUNTAIN)      │
-        │               ║           │
-        │          (PORTAL DAIS)    │
-        └───────────────────────────┘
-                      S
+                         N  (rampart, no gate — Cathedral backs it)
+        ┌──────────────[CATHEDRAL TERRACE + stairs]──────────────┐
+        │  [cottage]            │ Grand Avenue │      [Bank]      │
+        │ [Mages][Warriors]     │              │   [Potion shop] │
+   W ═══╪══ Guild Court ════[FOUNTAIN PLAZA]════ Market Sq ══════╪═══ E
+  gate  │ [Rogues]              │              │  [Equip shop]   │  gate
+        │ [Inn]   [cottage]     │              │ [cottage][cottage]
+        │                [PORTAL DAIS + stairs]                  │
+        └────────────────────────────────────────────────────────┘
+                         S  (rampart, no gate — Dais backs it)
 ```
 
-## Coordinates
+- **Bounds.** Town/boundary rect `(-1856,-1856)..(1856,1856)` (`OfflineArena` hard walls,
+  `wall_thickness` 32). A decorative **rampart** ring (2 tiles thick, tiles ±53..±54 ≈ world
+  ±1696..±1728) encloses the playable interior, with **east + west gates** (4 tiles wide,
+  banners). North/south rampart is solid — the Cathedral and Dais back onto it. A grass moat
+  margin sits between the rampart and the boundary.
+- **Spawn** `(0, 192)` — south rim of the fountain plaza.
 
-World units = pixels (project convention). North = −Y. Town rect: `(-800,-800)..(800,800)`
-with boundary walls (OfflineArena pattern). Spawn: `(0, 128)` — south rim of the fountain.
+### Buildings (footprint rect, door side · all ENTERABLE)
 
-### Paved ground (cobble over grass)
+| Building | Footprint (x, y, w, h) | Door |
+| --- | --- | --- |
+| Church of the Dawn (on Cathedral Terrace) | (−288, −1600, 576, 384) | S |
+| Cathedral Terrace (raised platform) | (−416, −1664, 832, 512) | S (stairs) |
+| Warriors' Guild | (−1280, −672, 384, 352) | S |
+| Mages' Guild | (−1664, −672, 320, 352) | S |
+| Rogues' Guild | (−1280, 320, 384, 352) | N |
+| Bank of the Sanctuary | (512, −960, 384, 384) | S |
+| The Bubbling Flask (potions) | (928, −576, 352, 320) | S |
+| Hammer & Hilt (equipment) | (928, 256, 352, 320) | N |
+| The Resting Lantern (inn) | (−1344, 704, 448, 384) | E |
+| Cottage (north) | (−832, −1024, 256, 224) | S |
+| Cottage (SE a) | (512, 768, 256, 224) | W |
+| Cottage (SE b) | (960, 768, 256, 224) | W |
+| Portal Dais (raised platform) | (−256, 1088, 512, 384) | N (stairs) |
 
-| Area | Geometry |
-| --- | --- |
-| Fountain Plaza | circle r 240 @ (0, 0) |
-| Cathedral/Portal Way (N–S avenue) | rect x −56..56, y −576..656 |
-| Guild Row / Market Street (E–W) | rect x −704..704, y −48..48 |
-| Church forecourt | rect x −160..160, y −576..−400 |
-| Guild Court | rect x −700..−420, y −200..200 |
-| Market square | rect x 320..680, y −160..160 |
-| Bank connector | rect x 264..376, y −256..−16 |
-| Portal Dais | circle r 110 @ (0, 580) |
+Each building is an enclosure of perimeter walls minus a door gap, with an **interior floor**
+(wood/stone), **interior walls**, **furniture placeholders** (counter/shelf/table/bed/altar/
+pews/weapon-rack/bookshelf/chests/barrels/crates), and its NPC standing inside.
 
-### Buildings (center, footprint w×h, door side)
-
-| Building | Center | Size | Door |
-| --- | --- | --- | --- |
-| Church of the Dawn | (0, −688) | 320×224 | S |
-| Bank of the Sanctuary | (320, −320) | 192×160 | S |
-| Warriors' Guild | (−560, −256) | 224×176 | S |
-| Mages' Guild | (−704, 0) | 176×176 | E |
-| Rogues' Guild | (−560, 256) | 224×176 | N |
-| Potion Vendor — "The Bubbling Flask" | (480, −224) | 144×128 | S |
-| Equipment Vendor — "Hammer & Hilt" | (480, 224) | 160×128 | N |
-
-Buildings are solid colliders (environment layer 8) with facade sprites; NPCs stand at
-their entrances. Walk-in interiors are a follow-up.
-
-### NPCs (StaticBody2D, interact prompt, dialog panel)
+### NPCs (kept art, `assets/sprites/npcs/`) — inside their themed building
 
 | NPC | Role | Position |
 | --- | --- | --- |
-| Father Aldric — High Priest | Priest: spend Glory, account skill tree (UI stub) | (0, −540) |
-| Master Brandt | Warrior class trainer | (−560, −144) |
-| Archmagus Elowen | Mage class trainer | (−608, 0) |
-| Shade Vesper | Rogue class trainer | (−560, 144) |
-| Tilda Brewbloom | Potion vendor | (480, −120) |
-| Garrick Forgehand | Equipment vendor | (480, 120) |
-| Goldwin Ledger | Bankmaster | (320, −208) |
+| Father Aldric — High Priest | Priest: spend Glory / account skill tree (stub) | (0, −1312) |
+| Master Brandt | Warrior class trainer | (−1088, −432) |
+| Archmagus Elowen | Mage class trainer | (−1504, −432) |
+| Shade Vesper | Rogue class trainer | (−1088, 432) |
+| Tilda Brewbloom | Potion vendor | (1104, −400) |
+| Garrick Forgehand | Equipment vendor | (1104, 400) |
+| Goldwin Ledger | Bankmaster | (704, −700) |
 
-### Landmarks & props
+### Landmarks, stairs & ground
 
-| Prop | Positions |
+| Element | Geometry |
 | --- | --- |
-| Healing Fountain (collider r 64) | (0, 0) |
-| Arena Portal | (0, 580) |
-| Notice board | (160, −96) |
-| Market stalls | (640, −64), (640, 64) |
-| Benches | (±150, ±150) — 4, plaza ring |
-| Lantern posts | (±88, −480), (±88, −280), (±88, 280), (±88, 460), (±288, ±88) |
-| Trees | (−700,−700), (−340,−420), (−700,560), (−380,480), (600,−420), (700,−560), (640,420), (700,700), (−180,640), (200,680) |
-| Flower beds | plaza ring + forecourt edges (table in `sanctuary.gd`) |
+| Healing Fountain (kept art, collider r64) | (0, 0) |
+| Arena Portal (kept art) | (0, 1280) |
+| Cathedral grand stairs (walkable) | rect (−96, −1184, 192, 96) |
+| Portal dais stairs (walkable) | rect (−96, 1024, 192, 96) |
+| Grand Avenue (N–S cobble) | x −64..64, y −1024..1088 |
+| Market/Guild Street (E–W cobble) | y −64..64, x −1696..1696 |
+| Fountain Plaza (cobble circle) | r304 @ (0, 0) |
+| Market Square (plaza) | (768, −288, 640, 576) |
+| Guild Court / Bank connector / Forecourt / Inn approach | see `ROADS` table |
+| Reflecting pools (decorative water) | SW (−1568, 1216, 256, 192), NE (1280, −1440, 224, 192) |
+| Outdoor props | trees, lantern posts (auto along avenues), benches, market stalls, barrels/crates, signposts, gate banners, notice board, well, flower beds, planters |
+
+## Assets — kept vs removed
+
+- **Kept** (still real sprites): the **Fountain** (`town/fountain_idle_sheet.png`), the
+  **Arena Portal** (`town/portal_idle_sheet.png`), and all **NPC** sprites (`npcs/*.png`).
+- **Removed** (now code-generated placeholders): the 7 building PNGs, the `ground_tiles`
+  Wang tileset + metadata, and the old prop PNGs (tree/lantern/bench/stall/board/flowers).
+
+## Replacing placeholders with real art
+
+Every placeholder element is **findable and tagged**:
+
+- It is in the `"placeholder"` node **group** and carries meta `placeholder=true`,
+  `replace_with=<hint>`, plus geometry meta (`footprint`, `kind`).
+- The scene tree mirrors the tables: `World/Buildings/<Key>` (Marker2D slot + plaque +
+  `<Key>Interior` furniture), `World/Terraces/*`, `World/Stairs/*`, `World/Props/*`,
+  `Ground`, `WallVisuals`, `CityColliders`.
+- Drop in art by replacing a slot's drawn placeholder with a `Sprite2D`/tileset at the same
+  transform. **`CityColliders` is independent of the visuals**, so swapping art never changes
+  where walls block. Stairs are tagged for future client-side multi-floor logic.
 
 ## Scene & script inventory
 
 | File | What |
 | --- | --- |
 | `client/scenes/shared/sanctuary/sanctuary.tscn` | Town scene (root + script; layout is data-driven) |
-| `client/scripts/shared/levels/sanctuary.gd` | OfflineArena subclass; builds ground, buildings, NPCs, props, portal from the tables above |
-| `client/scenes/shared/portal/portal.tscn` + `client/scripts/shared/portal.gd` | Reusable scene-switch portal |
-| `client/scenes/shared/npc/npc.tscn` + `client/scripts/shared/npc.gd` | Interactable service NPC (prompt + dialog panel) |
+| `client/scripts/shared/levels/sanctuary.gd` | `OfflineArena` subclass; rasterizes the city tables into ground/walls/colliders/buildings/props/terraces/stairs |
+| `client/scenes/shared/portal/portal.tscn` + `scripts/shared/portal.gd` | Reusable scene-switch portal |
+| `client/scenes/shared/npc/npc.tscn` + `scripts/shared/npc.gd` | Interactable service NPC (prompt + dialog panel) |
 
 The eight questions: **client** runs everything (town is client-local); **server** runs
 nothing until the Arena portal dials it; nothing is **predicted/replicated/persisted**
-(Glory/skill-tree spend will go through the Go API when implemented — the priest dialog is
-a stub); **validated**: portal refuses to enter Arena without a region URL or on failed
-connect; **fails**: connect timeout shows on the portal prompt and resets; **tested**:
-headless scene-load smoke + manual walkthrough.
-
-## Sprite manifest (PixelLab)
-
-Saved under `client/assets/sprites/environment/town/` and `.../npcs/`. Player sprite is
-32 px — buildings sized per the table above; tiles 32 px.
-
-- Ground tileset: grass↔cobblestone Wang corner set, 32 px, high top-down.
-- Buildings ×7 (church, bank, 3 guild halls, 2 shops), high top-down facades.
-- Fountain (128), Arena portal (96, animated shimmer), market stall, bench, lantern post,
-  notice board, tree, flower beds.
-- NPC characters ×7 (top-down, 32 px, style-guide palette), south-facing idle frames.
+(Glory/skill-tree/shop/bank are stubs through the Go API when implemented); **validated**: the
+portal refuses to enter the Arena without a region URL or on failed connect; **fails**: connect
+timeout shows on the portal prompt and resets; **tested**: headless scene-load smoke (no
+errors, "1346 wall cells → 447 colliders") + whole-city / district screenshot review.

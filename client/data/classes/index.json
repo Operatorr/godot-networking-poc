@@ -1,0 +1,12 @@
+{
+	"_comment": "Authoritative, export-safe manifest of player class definition ids, ordered by class enum id (0..6). To add a class: drop <id>.json beside this file and add <id> here. Numbers here mirror the Rust server constants and docs/classes/.",
+	"classes": [
+		"zealot",
+		"void_hunter",
+		"engineer",
+		"plague_seer",
+		"warrior",
+		"rogue",
+		"mage"
+	]
+}

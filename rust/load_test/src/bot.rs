@@ -236,6 +236,7 @@ impl Bot {
                         self.send(&ClientPacket::ConnectAuth(ConnectAuth {
                             protocol_version: protocol::PROTOCOL_VERSION,
                             ticket: None, // dev mode (unsigned); D9 tickets come from the Go API
+                            character_id: 0, // dev: no real character row to hydrate
                             character_name: format!("LoadBot{:03}", self.id),
                             color: color_for(self.id),
                             class: self.player_class,
@@ -474,6 +475,7 @@ impl Bot {
             aim_angle: self.last_aim,
             position: (self.pos.x, self.pos.y),
             velocity: (self.vel.x, self.vel.y),
+            cursor: (self.pos.x, self.pos.y), // bots aim from their own position
             client_render_tick: (self.metrics.last_server_tick & 0xFFFF) as u16,
             client_rtt_ms: self.last_rtt_ms.clamp(0.0, u16::MAX as f64) as u16,
         });

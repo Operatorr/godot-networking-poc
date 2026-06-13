@@ -1,0 +1,46 @@
+{
+	"id": "void_hunter",
+	"display_name": "Void Hunter",
+	"role": "ranged_skirmisher",
+
+	"stats": {
+		"hp_base": 90,
+		"hp_per_level": 5,
+		"move_speed_base": 205.0,
+		"move_speed_per_level": 0.7,
+		"mana_max": 100,
+		"mana_pool": 100,
+		"mana_regen_per_sec": 8.0,
+		"stamina_max": 100,
+		"hitbox_radius": 16
+	},
+
+	"primary": {
+		"damage_base": 26,
+		"damage_per_level": 2.5,
+		"cooldown": 0.3,
+		"projectile_speed": 400.0
+	},
+
+	"ability": {
+		"id": "multishot",
+		"name": "Multishot",
+		"type": "projectile_spread",
+		"mana_cost": 30,
+		"cooldown": 5.0,
+		"projectiles": 5,
+		"spread_degrees": 28.0,
+		"pierce": 4,
+		"damage": 18
+	},
+
+	"appearance": {
+		"sprite_dir": "void_hunter"
+	},
+
+	"networking": {
+		"server_authoritative": true,
+		"predicted": ["position", "velocity", "primary_attack_aim"],
+		"replicated": ["position", "animation", "flags", "ability_effect"]
+	}
+}

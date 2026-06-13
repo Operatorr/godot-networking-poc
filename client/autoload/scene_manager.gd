@@ -47,6 +47,10 @@ var is_transitioning: bool = false
 
 ## Loading state
 var loading_screen: Node = null
+## High CanvasLayer that hosts the loading screen so it renders ABOVE the newly-added
+## scene during the swap (a plain Control on root would be drawn under it, leaking a
+## half-rendered frame — the "half sanctuary / half black" entry glitch).
+var _loading_layer: CanvasLayer = null
 var is_loading: bool = false
 var load_progress: Array = []
 
@@ -263,7 +267,12 @@ func _show_loading_screen() -> void:
 	var loading_scene = load(SCENE_LOADING)
 	if loading_scene:
 		loading_screen = loading_scene.instantiate()
-		get_tree().root.add_child(loading_screen)
+		# Host the loading screen on a high CanvasLayer (below the fade overlay at 128)
+		# so it stays on top of the swapped-in scene until explicitly hidden.
+		_loading_layer = CanvasLayer.new()
+		_loading_layer.layer = 100
+		get_tree().root.add_child(_loading_layer)
+		_loading_layer.add_child(loading_screen)
 
 		# If loading screen has an animation, play it
 		if loading_screen.has_method("show_loading"):
@@ -283,7 +292,10 @@ func _hide_loading_screen() -> void:
 		loading_screen.hide_loading()
 		await get_tree().create_timer(0.3).timeout
 
-	loading_screen.queue_free()
+	# Free the host layer (which frees the loading screen child).
+	if _loading_layer != null:
+		_loading_layer.queue_free()
+		_loading_layer = null
 	loading_screen = null
 
 ## Load scene from path

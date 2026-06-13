@@ -74,11 +74,14 @@ func _apply_sprite_frames() -> void:
 	var sheet_frames := SheetLibrary.class_frames(player_class)
 	if sheet_frames != null:
 		animated_sprite.sprite_frames = sheet_frames
+		# Normalize differing source canvases to a uniform in-world size.
+		animated_sprite.scale = Vector2.ONE * SheetLibrary.class_sprite_scale(player_class)
 		_uses_sheets = true
 	else:
 		animated_sprite.sprite_frames = ProceduralSprites.create_remote_player_frames_for_color(player_color)
+		animated_sprite.scale = Vector2.ONE
 		_uses_sheets = false
-	animated_sprite.modulate = Color(1, 1, 1, alpha)
+	animated_sprite.modulate = _class_tint(alpha)
 	_update_animation(current_animation_state)
 
 
@@ -88,18 +91,33 @@ func set_character_name(display_name: String) -> void:
 	_update_name_label()
 
 
-## Set the player color. Only re-tints the procedural fallback — class sheets
-## are class-styled and ignore the color.
+## Set the player color. Class sheets are tinted via modulate (matching the local
+## Player) so the swatch slightly recolors a remote player; the procedural fallback
+## bakes the color into regenerated frames.
 func set_player_color(color: Color) -> void:
 	color.a = 1.0
 	player_color = color
-	if animated_sprite and not _uses_sheets:
+	if animated_sprite == null:
+		return
+	var alpha := animated_sprite.modulate.a
+	if _uses_sheets:
+		animated_sprite.modulate = _class_tint(alpha)
+	else:
 		var current_animation := animated_sprite.animation
-		var alpha := animated_sprite.modulate.a
 		animated_sprite.sprite_frames = ProceduralSprites.create_remote_player_frames_for_color(player_color)
 		animated_sprite.modulate = Color(1, 1, 1, alpha)
 		if not current_animation.is_empty() and animated_sprite.sprite_frames.has_animation(current_animation):
 			animated_sprite.play(current_animation)
+
+
+## Modulate color that tints class sheets toward the player color, preserving alpha.
+## Returns plain white (no tint) when the procedural fallback is in use.
+func _class_tint(alpha: float) -> Color:
+	if not _uses_sheets:
+		return Color(1, 1, 1, alpha)
+	var tint := Color.WHITE.lerp(player_color, GameConstants.CLASS_SPRITE_TINT_STRENGTH)
+	tint.a = alpha
+	return tint
 
 
 ## Set the replicated class (from PLAYER_INFO via EntityNameCache) and swap to
@@ -210,9 +228,13 @@ func _update_flags(flags: int) -> void:
 	if _daze_indicator:
 		_daze_indicator.set_active(is_alive and (flags & PacketTypes.ENTITY_FLAG_DAZED) != 0)
 
-	# Visual feedback for invulnerability (flashing)
+	# Visual feedback for invulnerability (flashing), then Rogue stealth dim. Stealth wins
+	# when both are set (a stealthed player reads as faded, not flashing).
+	var is_stealthed := (flags & PacketTypes.ENTITY_FLAG_STEALTH) != 0
 	if animated_sprite:
-		if is_invulnerable:
+		if is_stealthed:
+			animated_sprite.modulate.a = 0.35
+		elif is_invulnerable:
 			animated_sprite.modulate.a = 0.5 + 0.5 * sin(Time.get_ticks_msec() / 100.0)
 		else:
 			animated_sprite.modulate.a = 1.0

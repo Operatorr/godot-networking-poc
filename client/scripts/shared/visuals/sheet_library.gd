@@ -25,6 +25,11 @@ const DIR_ORDER := [
 ## Octant (round(angle / 45deg), angle 0 = +X/east, CW with +Y down) -> row.
 const OCTANT_TO_ROW := [2, 1, 0, 7, 6, 5, 4, 3]
 
+## One-shot action animations: when aliased to a looping source (e.g. a class with no
+## attack art falling back to idle) the alias MUST NOT loop, or the player never emits
+## animation_finished and gets stuck mid-action (the "stuck in idle on shoot" bug).
+const ONE_SHOT_ANIMS := ["attack", "hit", "death", "spawn"]
+
 ## PacketTypes.PlayerClass id -> sheet directory key.
 const CLASS_KEYS := [
 	"zealot", "void_hunter", "engineer", "plague_seer",
@@ -34,6 +39,13 @@ const CLASS_KEYS := [
 const PLAYERS_DIR := "res://assets/sprites/players"
 const MONSTERS_DIR := "res://assets/sprites/monsters"
 const PROJECTILES_DIR := "res://assets/sprites/projectiles"
+
+## Class sheets are authored at different source canvas sizes (bot classes 92px,
+## the Zealot 128px). Every class sprite is scaled so its canvas height maps to
+## this many on-screen pixels, keeping all classes the same in-world size. Pinned
+## to 92 so the 92px bot classes render at scale 1.0 (unchanged) and only the
+## larger Zealot canvas is shrunk to match.
+const REFERENCE_CANVAS_PX := 92.0
 
 ## Animations every class SpriteFrames must answer to; missing ones alias
 ## to the first available fallback in their list.
@@ -49,6 +61,8 @@ const CLASS_ANIM_FALLBACKS := {
 
 static var _class_cache: Dictionary = {}
 static var _sheet_cache: Dictionary = {}
+## dir_path -> [w, h] source canvas, populated when a sheet is first built.
+static var _sheet_canvas_cache: Dictionary = {}
 
 
 ## SpriteFrames for a player class id (clamped); never returns null for
@@ -61,6 +75,21 @@ static func class_frames(class_id: int) -> SpriteFrames:
 	var frames := load_sheet("%s/%s" % [PLAYERS_DIR, CLASS_KEYS[idx]], CLASS_ANIM_FALLBACKS)
 	_class_cache[idx] = frames
 	return frames
+
+
+## Uniform on-screen scale for a class sheet so every class renders the same
+## in-world size despite differing source canvases (REFERENCE_CANVAS_PX / canvas
+## height): 1.0 for the 92px bot classes, ~0.72 for the 128px Zealot. Returns
+## 1.0 when the sheet is absent (the procedural fallback keeps its own size).
+static func class_sprite_scale(class_id: int) -> float:
+	var idx := clampi(class_id, 0, CLASS_KEYS.size() - 1)
+	var dir_path := "%s/%s" % [PLAYERS_DIR, CLASS_KEYS[idx]]
+	if not _sheet_canvas_cache.has(dir_path):
+		load_sheet(dir_path, CLASS_ANIM_FALLBACKS)
+	var canvas: Array = _sheet_canvas_cache.get(dir_path, [])
+	if canvas.size() < 2 or float(canvas[1]) <= 0.0:
+		return 1.0
+	return REFERENCE_CANVAS_PX / float(canvas[1])
 
 
 ## Animations monster.gd plays that the generated slime sheet may lack;
@@ -124,6 +153,7 @@ static func load_sheet(dir_path: String, fallbacks: Dictionary) -> SpriteFrames:
 		return null
 
 	var canvas: Array = meta["canvas"]
+	_sheet_canvas_cache[dir_path] = canvas
 	var directional: bool = meta.get("directional", false)
 	var rows := DIR_ORDER.size() if directional else 1
 	var frames := SpriteFrames.new()
@@ -194,6 +224,7 @@ static func _apply_fallbacks(
 				continue
 			frames.add_animation(dst)
 			frames.set_animation_speed(dst, frames.get_animation_speed(src))
-			frames.set_animation_loop(dst, frames.get_animation_loop(src))
+			# One-shot actions stay non-looping even when aliased to a looping source.
+			frames.set_animation_loop(dst, frames.get_animation_loop(src) and base not in ONE_SHOT_ANIMS)
 			for i in frames.get_frame_count(src):
 				frames.add_frame(dst, frames.get_frame_texture(src, i))

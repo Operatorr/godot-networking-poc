@@ -19,6 +19,9 @@ enum Role { GENERIC, PRIEST, CLASS_TRAINER, VENDOR, BANKER }
 ## Sprite texture; a colored placeholder figure is drawn while missing.
 @export var texture_path: String = ""
 @export var placeholder_color: Color = Color("b8793a")
+## When true, interacting only emits `interacted` and skips the built-in info dialog, so a
+## listener (e.g. the Sanctuary priest's sacrifice flow) can present its own UI instead.
+@export var suppress_default_dialog: bool = false
 
 var _player_inside := false
 var _dialog_layer: CanvasLayer = null
@@ -84,6 +87,11 @@ func _open_dialog() -> void:
 	if _dialog_layer:
 		return
 	interacted.emit(self)
+
+	# A listener may handle this interaction entirely (e.g. the priest's sacrifice
+	# confirm); in that case skip the built-in info dialog.
+	if suppress_default_dialog:
+		return
 
 	_dialog_layer = CanvasLayer.new()
 	_dialog_layer.name = "NpcDialogLayer"

@@ -32,6 +32,31 @@ const LEGACY_MASK_FLAGS: i64 = 4;
 const LEGACY_MASK_REMOVED: i64 = 64;
 const LEGACY_MASK_FULL_STATE: i64 = 128;
 
+// Legacy GDScript EntityType values (PacketTypes.EntityType). Players/monsters/projectiles keep
+// their protocol values (1/2/3); world effects (protocol kind 3) fan out by subtype so the
+// GDScript entity manager dispatches each to its own scene without decoding the id itself.
+const LEGACY_ENTITY_HEALTHORB: i64 = 4;
+const LEGACY_ENTITY_MINE: i64 = 5;
+const LEGACY_ENTITY_DOT_ZONE: i64 = 6;
+const LEGACY_ENTITY_BIBLE: i64 = 7;
+
+/// The GDScript `EntityType` value for a snapshot entity id.
+fn legacy_entity_type(id: u16) -> i64 {
+    use protocol::types::{world_effect, world_effect_subtype_for_id, EntityType};
+    if let Some(sub) = world_effect_subtype_for_id(id) {
+        return match sub {
+            world_effect::HEALTHORB => LEGACY_ENTITY_HEALTHORB,
+            world_effect::MINE => LEGACY_ENTITY_MINE,
+            world_effect::DOT_ZONE => LEGACY_ENTITY_DOT_ZONE,
+            world_effect::BIBLE => LEGACY_ENTITY_BIBLE,
+            _ => LEGACY_ENTITY_HEALTHORB,
+        };
+    }
+    protocol::types::entity_type_for_id(id)
+        .map(|t| t as i64)
+        .unwrap_or(EntityType::Player as i64)
+}
+
 fn legacy_mask(mask: u8) -> i64 {
     use protocol::types::delta_mask as m;
     let mut out = 0;
@@ -106,6 +131,7 @@ impl ProtocolCodec {
         velocity: Vector2,
         input_flags: i64,
         aim_angle: f64,
+        cursor: Vector2,
         sequence: i64,
         client_render_tick: i64,
         client_rtt_ms: i64,
@@ -116,6 +142,7 @@ impl ProtocolCodec {
             aim_angle: aim_angle as f32,
             position: (position.x, position.y),
             velocity: (velocity.x, velocity.y),
+            cursor: (cursor.x, cursor.y),
             client_render_tick: (client_render_tick & 0xFFFF) as u16,
             client_rtt_ms: client_rtt_ms.clamp(0, 65535) as u16,
         });
@@ -128,12 +155,14 @@ impl ProtocolCodec {
     /// dev server) — the caller must abort the handshake instead.
     /// `player_class`: PacketTypes.PlayerClass value (0=Zealot … 6=Mage); the server clamps
     /// out-of-range values to 0. (`class` is a GDScript keyword, hence the longer name.)
+    #[allow(clippy::too_many_arguments)]
     #[func]
     fn encode_connect_auth(
         &self,
         character_name: GString,
         player_color: Color,
         player_class: i64,
+        character_id: i64,
         bandwidth_budget_bps: i64,
         ticket: PackedByteArray,
     ) -> PackedByteArray {
@@ -152,6 +181,7 @@ impl ProtocolCodec {
         let pkt = ClientPacket::ConnectAuth(ConnectAuth {
             protocol_version: protocol::PROTOCOL_VERSION,
             ticket,
+            character_id: character_id.clamp(0, u32::MAX as i64) as u32,
             character_name: character_name.to_string(),
             color: (
                 quant(player_color.r),
@@ -231,10 +261,7 @@ impl ProtocolCodec {
                 for rec in &s.entities {
                     let mut e = VarDictionary::new();
                     e.set("entity_id", rec.entity_id as i64);
-                    e.set(
-                        "entity_type",
-                        rec.entity_type().map(|t| t as i64).unwrap_or(1),
-                    );
+                    e.set("entity_type", legacy_entity_type(rec.entity_id));
                     let (x, y) = rec.position.unwrap_or((0.0, 0.0));
                     e.set("position", v2(x, y));
                     e.set("animation_state", rec.animation.unwrap_or(0) as i64);
@@ -315,6 +342,33 @@ impl ProtocolCodec {
                         data.set("position", v2(x, y));
                         data.set("server_tick", fire_tick as i64);
                     }
+                    protocol::GameEventData::ExpGain { amount } => {
+                        data.set("amount", amount as i64);
+                    }
+                    protocol::GameEventData::AbilityEffect {
+                        effect_id,
+                        x,
+                        y,
+                        radius,
+                    } => {
+                        data.set("effect_id", effect_id as i64);
+                        data.set("position", v2(x, y));
+                        data.set("radius", radius as i64);
+                    }
+                    protocol::GameEventData::Progress {
+                        level,
+                        experience,
+                        move_speed_q,
+                    } => {
+                        data.set("level", level as i64);
+                        data.set("experience", experience as i64);
+                        // Undo the ÷4 quantization so GDScript gets the effective base speed.
+                        data.set("move_speed", (move_speed_q as i64) * 4);
+                    }
+                    protocol::GameEventData::Pickup { kind, amount } => {
+                        data.set("pickup_kind", kind as i64);
+                        data.set("amount", amount as i64);
+                    }
                 }
                 out.set("event_data", &data);
             }
@@ -392,7 +446,62 @@ impl PredictionSim {
         out.set("stamina", self.sm.stamina());
         out.set("mana", self.sm.mana());
         out.set("dash_cooldown", self.sm.dash_cooldown_remaining());
+        out.set("ability_cooldown", self.sm.ability_cooldown_remaining());
+        // True only on the tick an INSTANT class ability cast — the client plays cast VFX.
+        out.set("ability_fired", self.sm.took_ability_this_tick());
+        out.set("is_charging", self.sm.is_charging());
+        // Sprint-exhaustion lockout (the HUD blinks the stamina bar while true).
+        out.set("exhausted", self.sm.is_exhausted());
         out
+    }
+
+    /// Per-class ability tuning (mana cost, cooldown, and charge params). `charge_speed > 0` marks
+    /// the RMB ability as a Warrior-style Charge. Mirror of `MovementSm::set_ability_config`;
+    /// the client sets the SAME values the server uses so prediction matches.
+    #[func]
+    fn set_ability_config(
+        &mut self,
+        cost: f64,
+        cooldown: f64,
+        charge_speed: f64,
+        charge_max_distance: f64,
+    ) {
+        self.sm
+            .set_ability_config(cost, cooldown, charge_speed, charge_max_distance);
+    }
+
+    /// Per-class+level base move speed (the client adopts the authoritative value from PROGRESS).
+    #[func]
+    fn set_base_speed(&mut self, base_speed: f64) {
+        self.sm.set_base_speed(base_speed);
+    }
+
+    /// End an in-progress charge — slaved to the server's charge-ended signal (Warrior).
+    #[func]
+    fn end_charge(&mut self) {
+        self.sm.end_charge();
+    }
+
+    /// Clear movement velocities after a server teleport (Rogue shadowstep) so prediction
+    /// re-derives from the corrected position next tick.
+    #[func]
+    fn interrupt_to_idle(&mut self) {
+        self.sm.interrupt_to_idle();
+    }
+
+    #[func]
+    fn is_charging(&self) -> bool {
+        self.sm.is_charging()
+    }
+
+    #[func]
+    fn is_exhausted(&self) -> bool {
+        self.sm.is_exhausted()
+    }
+
+    #[func]
+    fn ability_cooldown_remaining(&self) -> f64 {
+        self.sm.ability_cooldown_remaining()
     }
 
     /// Reconciliation replay step — the deliberately-stateless ground-speed model (sprint

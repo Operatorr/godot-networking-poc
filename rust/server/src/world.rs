@@ -3,6 +3,7 @@
 //! inputs → shoot spawns → confirms → projectiles/spawner/timers → monster AI → position
 //! history → collisions → backstop (new, D11) → snapshot broadcast → monster cleanup.
 
+use crate::ability::{self, AbilityKind};
 use crate::auth::{region_from_string, TicketVerifier};
 use crate::broadcast::{BroadcastService, EntityData};
 use crate::combat::{self, Backstop, HitReportLimiter};
@@ -11,8 +12,10 @@ use crate::leaderboard::Leaderboard;
 use crate::monster::{MonsterAi, MonsterManager, MonsterSpawner};
 use crate::outbox::Outbox;
 use crate::player::{PeerKey, PendingShot, PlayerState, QueuedInput};
+use crate::progression_client::{ProgressionClient, ProgressionJob};
 use crate::projectile::ProjectileManager;
 use crate::rng::Pcg32;
+use crate::world_entity::WorldEntityManager;
 use protocol::types::{
     action_type, auth_result_code, disconnect_reason, entity_flags, game_event_type, result_code,
 };
@@ -23,6 +26,12 @@ use sim_core::constants::*;
 use sim_core::Vec2;
 use tracing::{debug, info};
 
+/// 50% chance for a monster to drop a Healthorb on death; the orb heals this much HP.
+const HEALTHORB_DROP_CHANCE: f64 = 0.5;
+const HEALTHORB_HEAL: i32 = 5;
+/// How often dirty progression is flushed to the API (s).
+const PROGRESS_FLUSH_INTERVAL: f64 = 10.0;
+
 pub const LEADERBOARD_BROADCAST_INTERVAL: f64 = 5.0;
 const MIN_SNAPSHOT_FLOOR: usize = 256;
 
@@ -31,6 +40,7 @@ pub struct World {
     pub players: crate::player::PlayerManager,
     pub projectiles: ProjectileManager,
     pub monsters: MonsterManager,
+    pub world_entities: WorldEntityManager,
     pub spawner: MonsterSpawner,
     pub ai: MonsterAi,
     pub leaderboard: Leaderboard,
@@ -39,14 +49,22 @@ pub struct World {
     pub hit_limiter: HitReportLimiter,
     pub verifier: TicketVerifier,
     pub rng: Pcg32,
+    /// Server→API progression I/O (None in tests / no-API dev).
+    pub progression: Option<ProgressionClient>,
     pub tick_count: u64,
     snapshot_accumulator: f64,
     snapshot_interval: f64,
     leaderboard_timer: f64,
+    progress_flush_timer: f64,
 }
 
 impl World {
-    pub fn new(config: ServerConfig, verifier: TicketVerifier, rng: Pcg32) -> Self {
+    pub fn new(
+        config: ServerConfig,
+        verifier: TicketVerifier,
+        rng: Pcg32,
+        progression: Option<ProgressionClient>,
+    ) -> Self {
         let snapshot_interval = 1.0 / config.snapshot_rate_hz().max(1) as f64;
         Self {
             broadcast: BroadcastService::new(
@@ -61,15 +79,18 @@ impl World {
             players: crate::player::PlayerManager::new(),
             projectiles: ProjectileManager::new(),
             monsters: MonsterManager::new(),
+            world_entities: WorldEntityManager::new(),
             leaderboard: Leaderboard::new(),
             backstop: Backstop::default(),
             hit_limiter: HitReportLimiter::default(),
             verifier,
             rng,
+            progression,
             tick_count: 0,
             snapshot_accumulator: 0.0,
             snapshot_interval,
             leaderboard_timer: 0.0,
+            progress_flush_timer: 0.0,
             config,
         }
     }
@@ -100,6 +121,19 @@ impl World {
     pub fn on_peer_disconnected(&mut self, peer: PeerKey, outbox: &mut Outbox) {
         if let Some(state) = self.players.get(peer) {
             let entity_id = state.entity_id;
+            // Final progression write-back so a clean disconnect persists level/XP.
+            if let Some(prog) = &self.progression {
+                if state.progression_dirty
+                    && state.progression_hydrated
+                    && state.character_id < 1_000_000
+                {
+                    prog.submit(ProgressionJob::Progress {
+                        character_id: state.character_id,
+                        level: state.level,
+                        experience: state.experience,
+                    });
+                }
+            }
             self.leaderboard.remove_player(entity_id);
             outbox.broadcast(combat::leaderboard_event(&self.leaderboard));
         }
@@ -134,6 +168,7 @@ impl World {
                         sequence: input.sequence,
                         aim_angle: input.aim_angle as f64,
                         position: Vec2::new(input.position.0, input.position.1),
+                        cursor: Vec2::new(input.cursor.0, input.cursor.1),
                         client_render_tick: input.client_render_tick,
                         client_rtt_ms: input.client_rtt_ms,
                     },
@@ -229,23 +264,28 @@ impl World {
         let per_peer_bytes = ((effective as f64 / rate as f64).trunc() as usize)
             .clamp(MIN_SNAPSHOT_FLOOR, self.config.max_snapshot_bytes);
 
-        let (entity_id, name, color, class, position) = {
+        let (entity_id, name, color, class, position, character_id) = {
             let Some(state) = self.players.get_mut(peer) else {
                 return;
             };
             state.authenticated = true;
-            // Dev mode (no ticket): server-assigned placeholder, unique among concurrent
-            // players, so the D10 hydrate seam and per-character logs stay usable.
+            // Signed ticket is authoritative; the dev/unsigned path trusts ConnectAuth.character_id
+            // so server-authoritative progression still hydrates locally. 0/absent ⇒ a unique
+            // placeholder (≥ 1_000_000) that maps to no DB row (hydrate is skipped).
             state.character_id = auth
                 .ticket
                 .as_ref()
                 .map(|t| t.character_id)
+                .filter(|&c| c != 0)
+                .or(Some(auth.character_id).filter(|&c| c != 0))
                 .unwrap_or(1_000_000 + state.entity_id as u32);
             state.character_name = auth.character_name.clone();
             state.player_color = auth.color;
-            // Class is client-chosen identity metadata; clamp out-of-range to Zealot (0).
-            // Not validated against account data yet (the client requests, the server decides).
-            state.player_class = if auth.class > 6 { 0 } else { auth.class };
+            // Class is client-chosen identity metadata; clamp out-of-range to Zealot (0). Apply the
+            // class + level-scaled stats now (level/XP default to 1/0 until the async hydrate lands).
+            let class = if auth.class > 6 { 0 } else { auth.class };
+            state.apply_class_and_level(class, 1, 0);
+            state.progression_hydrated = false;
             state.bandwidth_budget_bps = effective;
             state.max_snapshot_bytes = per_peer_bytes;
             (
@@ -254,8 +294,15 @@ impl World {
                 state.player_color,
                 state.player_class,
                 state.position,
+                state.character_id,
             )
         };
+        // Kick off the async level/XP/mode hydrate (real character ids only).
+        if character_id < 1_000_000 {
+            if let Some(prog) = &self.progression {
+                prog.submit(ProgressionJob::Hydrate { peer, character_id });
+            }
+        }
         self.broadcast.set_peer_byte_budget(peer, per_peer_bytes);
         info!("peer {peer} authenticated as entity {entity_id} '{name}' (budget {per_peer_bytes} B/snap)");
 
@@ -339,9 +386,14 @@ impl World {
             snapshot_due = true;
         }
 
-        // 1. Inputs → movement steps → shoot spawns → move confirmations.
+        // 0. Apply any async progression replies (hydrate / death) — non-blocking.
+        self.poll_progression(outbox);
+
+        // 1. Inputs → movement steps → shoot/ability spawns → move confirmations.
         let move_results = self.players.process_all_inputs(tick_dt, self.tick_count);
         self.process_shoot_inputs(outbox);
+        self.process_ability_activations(outbox);
+        self.process_charge_blasts(outbox);
         for r in &move_results {
             if r.cheat_detected {
                 debug!(
@@ -349,12 +401,20 @@ impl World {
                     r.peer
                 );
             }
+            // Send the LIVE post-ability position so a Rogue shadowstep teleport (which moves the
+            // player after the movement step) reconciles to the corrected spot. mana is also
+            // re-read live so an ability cast this tick reflects in the bar immediately.
+            let (pos, mana) = self
+                .players
+                .get(r.peer)
+                .map(|p| (p.position, protocol::quant_resource(p.movement_sm.mana())))
+                .unwrap_or((r.position, r.mana));
             outbox.send(
                 r.peer,
                 ServerPacket::ActionConfirm(ActionConfirm {
                     sequence: r.sequence,
                     action: action_type::MOVE,
-                    position: (r.position.x, r.position.y),
+                    position: (pos.x, pos.y),
                     result: if r.success {
                         result_code::SUCCESS
                     } else {
@@ -362,7 +422,7 @@ impl World {
                     },
                     server_tick: (self.tick_count & 0xFFFF) as u16,
                     stamina: r.stamina,
-                    mana: r.mana,
+                    mana,
                 }),
             );
         }
@@ -380,7 +440,16 @@ impl World {
         }
         for p in self.players.players.iter_mut().filter(|p| p.authenticated) {
             p.update_respawn_timer(tick_dt);
+            p.update_stealth(tick_dt);
+            p.update_health_regen(tick_dt);
         }
+        // Periodic progression write-back + one-shot hardcore-death Glory/permadeath.
+        self.progress_flush_timer += tick_dt;
+        if self.progress_flush_timer >= PROGRESS_FLUSH_INTERVAL {
+            self.progress_flush_timer = 0.0;
+            self.flush_dirty_progression();
+        }
+        self.process_hardcore_deaths();
         self.leaderboard_timer += tick_dt;
         if self.leaderboard_timer >= LEADERBOARD_BROADCAST_INTERVAL {
             self.leaderboard_timer = 0.0;
@@ -413,8 +482,10 @@ impl World {
         self.monsters.record_position_snapshot(self.tick_count);
         self.players.record_position_snapshot(self.tick_count);
 
-        // 5. Collisions (players pass, then monsters pass).
-        combat::process_collisions(
+        // 5. Collisions (players pass, then monsters pass). Killed monsters may drop healthorbs —
+        //    the roll happens here (world RNG + entity manager live on `self`, not in combat.rs),
+        //    AFTER the collision pass so the shared PCG stream order stays deterministic.
+        let killed = combat::process_collisions(
             &mut self.projectiles,
             &mut self.players,
             &mut self.monsters,
@@ -422,6 +493,7 @@ impl World {
             outbox,
             self.tick_count,
         );
+        self.roll_healthorbs(&killed);
 
         // 5b. D11 backstop (new): blatant unreported monster-bullet overlaps.
         self.backstop.update(
@@ -432,6 +504,11 @@ impl World {
             &mut self.leaderboard,
             outbox,
         );
+
+        // 5c. Ability/loot world entities (bibles orbit + sweep, mines, DOT zones, healthorb
+        //     pickups). Damage funnels through the same monster-damage path; more kills can drop
+        //     more orbs.
+        self.tick_world_entities(tick_dt, outbox);
 
         // 6. Snapshot broadcast.
         if snapshot_due {
@@ -482,6 +559,16 @@ impl World {
                 flags: m.entity_flags,
             });
         }
+        // World effects (kind 3): healthorbs, mines, dot-zones, bibles. The id self-classifies the
+        // subtype; the client picks the visual from the id band.
+        for e in self.world_entities.entities.iter().filter(|e| e.alive) {
+            out.push(EntityData {
+                id: e.entity_id,
+                position: e.position,
+                animation: protocol::types::anim::IDLE,
+                flags: entity_flags::VISIBLE,
+            });
+        }
         out
     }
 
@@ -526,7 +613,8 @@ impl World {
         let (rewind, pvp_rewind) = pve_compensation(shot, self.tick_count, self.config.tick_rate);
         let spawn_pos = fire_origin + aim_dir * (PLAYER_HITBOX_RADIUS + PROJECTILE_RADIUS + 2.0);
         let owner_id = state.entity_id;
-        if let Some(proj) = self.projectiles.spawn_projectile(
+        let primary_damage = state.primary_damage();
+        if let Some(proj) = self.projectiles.spawn_projectile_ex(
             owner_id,
             spawn_pos,
             aim_dir,
@@ -535,6 +623,8 @@ impl World {
             pvp_rewind,
             PROJECTILE_SPEED,
             PLAYER_PROJECTILE_KNOCKBACK_FORCE,
+            primary_damage,
+            0,
         ) {
             let projectile_id = proj.entity_id;
             self.players.players[player_index].start_shoot_cooldown();
@@ -551,6 +641,522 @@ impl World {
         }
         // Failure: no cooldown, no broadcast — but the pending edge was already consumed.
     }
+
+    // ── RMB class abilities ─────────────────────────────────────────────────
+
+    /// Dispatch INSTANT ability casts (the SM flagged `took_ability_this_tick`). Warrior charge is
+    /// movement, handled in `process_charge_blasts`.
+    fn process_ability_activations(&mut self, outbox: &mut Outbox) {
+        for i in 0..self.players.players.len() {
+            let cast = {
+                let s = &self.players.players[i];
+                s.authenticated && s.is_alive && s.movement_sm.took_ability_this_tick()
+            };
+            if cast {
+                self.activate_ability(i, outbox);
+            }
+        }
+    }
+
+    fn activate_ability(&mut self, i: usize, outbox: &mut Outbox) {
+        let (class, owner_id, pos, cursor, aim_angle) = {
+            let s = &self.players.players[i];
+            (
+                s.player_class,
+                s.entity_id,
+                s.position,
+                s.last_cursor,
+                s.aim_angle,
+            )
+        };
+        let stats = ability::stats_for_class(class);
+        match stats.kind {
+            AbilityKind::SpinningBibles => {
+                self.world_entities.spawn_bibles(
+                    owner_id,
+                    pos,
+                    3,
+                    stats.ability_radius,
+                    stats.ability_damage,
+                    3.0,
+                    stats.ability_duration,
+                    0.4,
+                );
+            }
+            AbilityKind::Mageblast => {
+                let center = clamp_cast_target(pos, cursor, stats.ability_cast_range);
+                self.aoe_damage_monsters(
+                    center,
+                    stats.ability_radius,
+                    stats.ability_damage,
+                    owner_id,
+                    outbox,
+                );
+                self.broadcast_ability_effect(
+                    ability::effect::MAGEBLAST,
+                    center,
+                    stats.ability_radius as u16,
+                    owner_id,
+                    outbox,
+                );
+            }
+            AbilityKind::Multishot => {
+                self.spawn_multishot(i, owner_id, pos, cursor, aim_angle, stats, outbox);
+            }
+            AbilityKind::Mine => {
+                self.world_entities.spawn_mine(
+                    pos,
+                    owner_id,
+                    60.0,
+                    stats.ability_radius,
+                    stats.ability_damage,
+                    0.5,
+                    stats.ability_duration,
+                );
+            }
+            AbilityKind::PlagueZone => {
+                let center = clamp_cast_target(pos, cursor, stats.ability_cast_range);
+                self.world_entities.spawn_dot_zone(
+                    center,
+                    owner_id,
+                    stats.ability_radius,
+                    stats.ability_damage,
+                    stats.ability_duration,
+                );
+            }
+            AbilityKind::Shadowstep => {
+                self.shadowstep(i, owner_id, pos, cursor, stats, outbox);
+            }
+            AbilityKind::Charge => { /* movement ability — handled in process_charge_blasts */ }
+        }
+    }
+
+    /// Void Hunter multishot — a spread of piercing projectiles toward the cursor (or aim).
+    #[allow(clippy::too_many_arguments)]
+    fn spawn_multishot(
+        &mut self,
+        i: usize,
+        owner_id: u16,
+        pos: Vec2,
+        cursor: Vec2,
+        aim_angle: f64,
+        stats: &ability::ClassStats,
+        outbox: &mut Outbox,
+    ) {
+        let base_dir = {
+            let to = cursor - pos;
+            if to.length() > 1e-3 {
+                to.normalized()
+            } else {
+                Vec2::from_angle(aim_angle)
+            }
+        };
+        let count = stats.multishot_count.max(1);
+        for k in 0..count {
+            let t = if count > 1 {
+                k as f64 / (count - 1) as f64 - 0.5
+            } else {
+                0.0
+            };
+            let dir = rotate_vec(base_dir, t * stats.multishot_spread);
+            let spawn_pos = pos + dir * (PLAYER_HITBOX_RADIUS + PROJECTILE_RADIUS + 2.0);
+            if let Some(proj) = self.projectiles.spawn_projectile_ex(
+                owner_id,
+                spawn_pos,
+                dir,
+                self.tick_count,
+                0,
+                0,
+                PROJECTILE_SPEED,
+                PLAYER_PROJECTILE_KNOCKBACK_FORCE,
+                stats.ability_damage,
+                stats.multishot_pierce,
+            ) {
+                let projectile_id = proj.entity_id;
+                outbox.broadcast(ServerPacket::GameEvent(GameEvent {
+                    event_type: game_event_type::PROJECTILE_FIRED,
+                    source_id: owner_id,
+                    target_id: projectile_id,
+                    data: GameEventData::ProjectileFired {
+                        x: spawn_pos.x,
+                        y: spawn_pos.y,
+                        fire_tick: (self.tick_count & 0xFFFF) as u16,
+                    },
+                }));
+            }
+        }
+        let _ = i;
+    }
+
+    /// Rogue Shadowstep — blink to the nearest monster within `ability_radius` of the cursor and
+    /// deal a big hitscan hit; if none, go Stealth. The teleport is server-authoritative (the
+    /// client reconciles to the corrected position).
+    fn shadowstep(
+        &mut self,
+        i: usize,
+        owner_id: u16,
+        pos: Vec2,
+        cursor: Vec2,
+        stats: &ability::ClassStats,
+        outbox: &mut Outbox,
+    ) {
+        let search_r2 = stats.ability_radius * stats.ability_radius;
+        let target = self
+            .monsters
+            .monsters
+            .iter()
+            .filter(|m| m.is_alive && m.position.distance_squared_to(cursor) <= search_r2)
+            .min_by(|a, b| {
+                a.position
+                    .distance_squared_to(cursor)
+                    .total_cmp(&b.position.distance_squared_to(cursor))
+            })
+            .map(|m| (m.entity_id, m.position));
+
+        if let Some((monster_id, mpos)) = target {
+            // Land adjacent to the monster, on the side the Rogue came from.
+            let back = orig_offset(pos, mpos);
+            let new_pos = sim_core::arena::clamp_to_bounds(
+                mpos + back * (PLAYER_HITBOX_RADIUS + MONSTER_HITBOX_RADIUS),
+            );
+            {
+                let s = &mut self.players.players[i];
+                s.position = new_pos;
+                s.velocity = Vec2::ZERO;
+                s.movement_sm.interrupt_to_idle();
+                s.break_stealth();
+            }
+            let killed = combat::apply_monster_damage(
+                monster_id,
+                stats.ability_damage,
+                owner_id,
+                &mut self.monsters,
+                &mut self.players,
+                outbox,
+            );
+            if let Some(p) = killed {
+                self.roll_healthorbs(&[p]);
+            }
+            self.broadcast_ability_effect(
+                ability::effect::SHADOWSTEP,
+                new_pos,
+                0,
+                owner_id,
+                outbox,
+            );
+        } else {
+            // No target in range → Stealth.
+            let stealth_pos = {
+                let s = &mut self.players.players[i];
+                s.enter_stealth(stats.ability_duration);
+                s.position
+            };
+            self.broadcast_ability_effect(
+                ability::effect::SHADOWSTEP,
+                stealth_pos,
+                0,
+                owner_id,
+                outbox,
+            );
+        }
+    }
+
+    /// Warrior charge: on charge-end (release / max-distance via the SM, or enemy contact detected
+    /// here) spawn the AOE blast exactly once.
+    fn process_charge_blasts(&mut self, outbox: &mut Outbox) {
+        for i in 0..self.players.players.len() {
+            let (auth, alive, class, pos, owner_id, charging, ended) = {
+                let s = &self.players.players[i];
+                (
+                    s.authenticated,
+                    s.is_alive,
+                    s.player_class,
+                    s.position,
+                    s.entity_id,
+                    s.movement_sm.is_charging(),
+                    s.movement_sm.charge_ended_this_tick(),
+                )
+            };
+            if !auth || !alive {
+                continue;
+            }
+            let stats = ability::stats_for_class(class);
+            if stats.kind != AbilityKind::Charge {
+                continue;
+            }
+            let mut blast = ended;
+            if !ended && charging {
+                let contact = self.monsters.monsters.iter().any(|m| {
+                    m.is_alive
+                        && m.position.distance_to(pos)
+                            < PLAYER_HITBOX_RADIUS + MONSTER_HITBOX_RADIUS
+                });
+                if contact {
+                    self.players.players[i].movement_sm.end_charge();
+                    blast = true;
+                }
+            }
+            if blast {
+                self.aoe_damage_monsters(
+                    pos,
+                    stats.ability_radius,
+                    stats.ability_damage,
+                    owner_id,
+                    outbox,
+                );
+                self.broadcast_ability_effect(
+                    ability::effect::CHARGE_BLAST,
+                    pos,
+                    stats.ability_radius as u16,
+                    owner_id,
+                    outbox,
+                );
+            }
+        }
+    }
+
+    /// Apply instant AOE damage to every alive monster within `radius` of `center`, rolling
+    /// healthorbs on kills.
+    fn aoe_damage_monsters(
+        &mut self,
+        center: Vec2,
+        radius: f32,
+        damage: i32,
+        owner_id: u16,
+        outbox: &mut Outbox,
+    ) {
+        let r2 = radius * radius;
+        let ids: Vec<u16> = self
+            .monsters
+            .monsters
+            .iter()
+            .filter(|m| m.is_alive && m.position.distance_squared_to(center) <= r2)
+            .map(|m| m.entity_id)
+            .collect();
+        let mut killed = Vec::new();
+        for id in ids {
+            if let Some(p) = combat::apply_monster_damage(
+                id,
+                damage,
+                owner_id,
+                &mut self.monsters,
+                &mut self.players,
+                outbox,
+            ) {
+                killed.push(p);
+            }
+        }
+        self.roll_healthorbs(&killed);
+    }
+
+    /// 50% Healthorb drop per killed monster (uses the world PCG so the order is deterministic).
+    fn roll_healthorbs(&mut self, positions: &[Vec2]) {
+        for &pos in positions {
+            if self.rng.randf() < HEALTHORB_DROP_CHANCE {
+                self.world_entities.spawn_healthorb(pos, HEALTHORB_HEAL);
+            }
+        }
+    }
+
+    fn broadcast_ability_effect(
+        &self,
+        effect_id: u8,
+        pos: Vec2,
+        radius: u16,
+        source_id: u16,
+        outbox: &mut Outbox,
+    ) {
+        outbox.broadcast(ServerPacket::GameEvent(GameEvent {
+            event_type: game_event_type::ABILITY_EFFECT,
+            source_id,
+            target_id: 0,
+            data: GameEventData::AbilityEffect {
+                effect_id,
+                x: pos.x,
+                y: pos.y,
+                radius,
+            },
+        }));
+    }
+
+    /// Advance ability/loot world entities and apply their effects (monster damage, player heals,
+    /// VFX). Mirrors the kind+subtype id partition for replication via `collect_entities`.
+    fn tick_world_entities(&mut self, dt: f64, outbox: &mut Outbox) {
+        let players: Vec<(u16, Vec2, bool)> = self
+            .players
+            .players
+            .iter()
+            .filter(|p| p.authenticated)
+            .map(|p| (p.entity_id, p.position, p.is_alive))
+            .collect();
+        let monsters: Vec<(u16, Vec2, bool)> = self
+            .monsters
+            .monsters
+            .iter()
+            .map(|m| (m.entity_id, m.position, m.is_alive))
+            .collect();
+        let outcome = self.world_entities.update_all(dt, &players, &monsters);
+
+        let mut killed = Vec::new();
+        for d in &outcome.monster_damage {
+            if let Some(p) = combat::apply_monster_damage(
+                d.monster_id,
+                d.amount,
+                d.owner_id,
+                &mut self.monsters,
+                &mut self.players,
+                outbox,
+            ) {
+                killed.push(p);
+            }
+        }
+        self.roll_healthorbs(&killed);
+
+        for h in &outcome.player_heals {
+            if let Some(p) = self.players.get_by_entity_id_mut(h.player_id) {
+                let healed = p.heal(h.amount);
+                if healed > 0 {
+                    outbox.broadcast(ServerPacket::GameEvent(GameEvent {
+                        event_type: game_event_type::PICKUP,
+                        source_id: h.orb_id,
+                        target_id: h.player_id,
+                        data: GameEventData::Pickup {
+                            kind: 0,
+                            amount: healed as u16,
+                        },
+                    }));
+                }
+            }
+        }
+
+        for e in &outcome.effects {
+            self.broadcast_ability_effect(e.effect_id, e.position, e.radius, 0, outbox);
+        }
+    }
+
+    // ── Server-authoritative progression I/O ────────────────────────────────
+
+    /// Apply async hydrate / death replies (non-blocking) at the top of each tick.
+    fn poll_progression(&mut self, outbox: &mut Outbox) {
+        let (hydrates, deaths) = match &self.progression {
+            Some(prog) => (
+                prog.hydrate_rx.try_iter().collect::<Vec<_>>(),
+                prog.death_rx.try_iter().collect::<Vec<_>>(),
+            ),
+            None => (Vec::new(), Vec::new()),
+        };
+        for h in hydrates {
+            if let Some(p) = self.players.get_mut(h.peer) {
+                if !p.authenticated || p.character_id != h.character_id {
+                    continue;
+                }
+                p.apply_class_and_level(p.player_class, h.level, h.experience);
+                p.mode_hardcore = h.mode_hardcore;
+                p.progression_hydrated = true;
+                p.progression_dirty = false;
+                let move_speed_q = (p.effective_move_speed() / 4.0).round().clamp(0.0, 255.0) as u8;
+                let (peer, entity_id, level, experience) =
+                    (p.peer, p.entity_id, p.level, p.experience);
+                outbox.send(
+                    peer,
+                    ServerPacket::GameEvent(GameEvent {
+                        event_type: game_event_type::PROGRESS,
+                        source_id: entity_id,
+                        target_id: entity_id,
+                        data: GameEventData::Progress {
+                            level,
+                            experience,
+                            move_speed_q,
+                        },
+                    }),
+                );
+            }
+        }
+        for d in deaths {
+            info!(
+                "character {} death processed: glory +{} (deleted: {})",
+                d.character_id, d.glory_awarded, d.character_deleted
+            );
+            if d.character_deleted {
+                // Hardcore permadeath: the character row is gone — disconnect so the client
+                // returns to character creation.
+                outbox.kick(d.peer, disconnect_reason::KICKED);
+            }
+        }
+    }
+
+    /// Write back any dirty level/XP (real characters only).
+    fn flush_dirty_progression(&mut self) {
+        let Some(prog) = &self.progression else {
+            return;
+        };
+        for p in self.players.players.iter_mut() {
+            if p.authenticated
+                && p.progression_dirty
+                && p.progression_hydrated
+                && p.character_id < 1_000_000
+            {
+                prog.submit(ProgressionJob::Progress {
+                    character_id: p.character_id,
+                    level: p.level,
+                    experience: p.experience,
+                });
+                p.progression_dirty = false;
+            }
+        }
+    }
+
+    /// One-shot hardcore-death Glory conversion + permadeath delete via the API.
+    fn process_hardcore_deaths(&mut self) {
+        let mut report: Vec<(PeerKey, u32)> = Vec::new();
+        for p in self.players.players.iter_mut() {
+            if p.authenticated
+                && !p.is_alive
+                && p.mode_hardcore
+                && p.progression_hydrated
+                && !p.death_reported
+                && p.character_id < 1_000_000
+            {
+                p.death_reported = true;
+                report.push((p.peer, p.character_id));
+            }
+        }
+        if let Some(prog) = &self.progression {
+            for (peer, character_id) in report {
+                prog.submit(ProgressionJob::Death { peer, character_id });
+            }
+        }
+    }
+}
+
+/// Clamp a cursor target to `max_range` from `origin` (0 = no clamp).
+fn clamp_cast_target(origin: Vec2, cursor: Vec2, max_range: f32) -> Vec2 {
+    if max_range <= 0.0 {
+        return cursor;
+    }
+    let to = cursor - origin;
+    let d = to.length();
+    if d <= max_range || d < 1e-3 {
+        cursor
+    } else {
+        origin + to * (max_range / d)
+    }
+}
+
+/// Unit vector from `mpos` back toward `from` (the side a teleporting Rogue lands on).
+fn orig_offset(from: Vec2, mpos: Vec2) -> Vec2 {
+    let back = from - mpos;
+    if back.length() > 1e-3 {
+        back.normalized()
+    } else {
+        Vec2::new(-1.0, 0.0)
+    }
+}
+
+/// Rotate `v` by `phi` radians (CCW in math coordinates), mirroring Godot's `Vector2.rotated`.
+fn rotate_vec(v: Vec2, phi: f64) -> Vec2 {
+    let (s, c) = (phi.sin() as f32, phi.cos() as f32);
+    Vec2::new(v.x * c - v.y * s, v.x * s + v.y * c)
 }
 
 /// Fire-origin validation (extraction combat §4.4d): use the client's stamped position as the
@@ -625,7 +1231,7 @@ mod tests {
     fn test_world() -> World {
         let config = ServerConfig::default();
         let verifier = TicketVerifier::new("", true, 0).unwrap();
-        World::new(config, verifier, Pcg32::new(1234))
+        World::new(config, verifier, Pcg32::new(1234), None)
     }
 
     fn auth_packet(name: &str) -> ClientPacket {
@@ -636,6 +1242,7 @@ mod tests {
         ClientPacket::ConnectAuth(protocol::ConnectAuth {
             protocol_version: protocol::PROTOCOL_VERSION,
             ticket: None,
+            character_id: 0,
             character_name: name.into(),
             color: (69, 135, 255),
             class,
@@ -659,6 +1266,7 @@ mod tests {
             aim_angle: 0.0,
             position: (pos.x, pos.y),
             velocity: (0.0, 0.0),
+            cursor: (0.0, 0.0),
             client_render_tick: 0,
             client_rtt_ms: 0,
         })
@@ -736,7 +1344,9 @@ mod tests {
         );
         world.tick(33, &mut outbox);
         let after = world.players.get(1).unwrap().position;
-        assert!((after.x - start.x - 200.0 / 30.0).abs() < 0.01);
+        // Default join class is Zealot (base move speed 195/s after per-class stats land).
+        let zealot_speed = ability::effective_base_speed(0, 1);
+        assert!((after.x - start.x - (zealot_speed as f32) / 30.0).abs() < 0.01);
         let msgs = outbox.drain();
         assert!(msgs.iter().any(|(t, p)| *t == Target::Peer(1)
             && matches!(p, ServerPacket::ActionConfirm(c) if c.sequence == 1 && c.result == result_code::SUCCESS)));
@@ -839,5 +1449,102 @@ mod tests {
     fn projectile_octant_animation() {
         assert_eq!(projectile_animation_octant(Vec2::new(1.0, 0.0)), 4);
         assert_eq!(projectile_animation_octant(Vec2::new(-1.0, 0.0)), 0);
+    }
+
+    fn cast_input(seq: u8, pos: Vec2, cursor: Vec2) -> ClientPacket {
+        ClientPacket::PlayerInput(protocol::PlayerInput {
+            sequence: seq,
+            input_flags: sim_core::input_flags::ABILITY,
+            aim_angle: 0.0,
+            position: (pos.x, pos.y),
+            velocity: (0.0, 0.0),
+            cursor: (cursor.x, cursor.y),
+            client_render_tick: 0,
+            client_rtt_ms: 0,
+        })
+    }
+
+    #[test]
+    fn mage_blast_damages_monster_at_cursor() {
+        let mut world = test_world();
+        world
+            .on_peer_connected(1, protocol::PROTOCOL_VERSION as u32)
+            .unwrap();
+        let mut outbox = Outbox::new();
+        world.on_packet(1, auth_packet_with_class("Mage", 6), 0, 0, &mut outbox);
+        let ppos = world.players.get(1).unwrap().position;
+        let mpos = ppos + Vec2::new(150.0, 0.0); // within the 600 cast range
+        world.monsters.spawn_monster(mpos, "toxic_slime");
+        outbox.drain();
+        // RMB cast with the cursor on the monster.
+        world.on_packet(1, cast_input(1, ppos, mpos), 0, 0, &mut outbox);
+        world.tick(33, &mut outbox);
+        // Mage blast deals 55 ≥ the slime's 50 HP ⇒ killed; an ABILITY_EFFECT VFX is broadcast.
+        assert!(
+            !world.monsters.monsters.iter().any(|m| m.is_alive),
+            "mageblast should have killed the toxic slime"
+        );
+        let msgs = outbox.drain();
+        assert!(msgs.iter().any(|(_, p)| matches!(
+            p,
+            ServerPacket::GameEvent(e) if e.event_type == game_event_type::ABILITY_EFFECT
+        )));
+        // Mana was spent (Mage ability costs 40).
+        assert!(world.players.get(1).unwrap().movement_sm.mana() < 100.0);
+    }
+
+    #[test]
+    fn rogue_goes_stealth_when_no_monster_near_cursor() {
+        let mut world = test_world();
+        world
+            .on_peer_connected(1, protocol::PROTOCOL_VERSION as u32)
+            .unwrap();
+        let mut outbox = Outbox::new();
+        world.on_packet(1, auth_packet_with_class("Rogue", 5), 0, 0, &mut outbox);
+        let ppos = world.players.get(1).unwrap().position;
+        // Empty space, no monsters anywhere ⇒ Stealth instead of a blink.
+        world.on_packet(
+            1,
+            cast_input(1, ppos, ppos + Vec2::new(40.0, 0.0)),
+            0,
+            0,
+            &mut outbox,
+        );
+        world.tick(33, &mut outbox);
+        assert!(
+            world.players.get(1).unwrap().is_stealthed(),
+            "rogue with no target should enter stealth"
+        );
+        // The STEALTH entity flag lands on the next tick's flag rebuild.
+        world.tick(66, &mut outbox);
+        assert!(
+            world.players.get(1).unwrap().entity_flags & entity_flags::STEALTH != 0,
+            "STEALTH flag must replicate"
+        );
+    }
+
+    #[test]
+    fn rogue_shadowsteps_to_monster_near_cursor() {
+        let mut world = test_world();
+        world
+            .on_peer_connected(1, protocol::PROTOCOL_VERSION as u32)
+            .unwrap();
+        let mut outbox = Outbox::new();
+        world.on_packet(1, auth_packet_with_class("Rogue", 5), 0, 0, &mut outbox);
+        let ppos = world.players.get(1).unwrap().position;
+        // A monster far from the Rogue but right at the cursor (within the 160 search radius).
+        let mpos = ppos + Vec2::new(300.0, 0.0);
+        world.monsters.spawn_monster(mpos, "toxic_slime");
+        outbox.drain();
+        world.on_packet(1, cast_input(1, ppos, mpos), 0, 0, &mut outbox);
+        world.tick(33, &mut outbox);
+        // Teleported adjacent to the monster (not stealthed) and dealt the 85 hitscan (kills it).
+        let after = world.players.get(1).unwrap().position;
+        assert!(
+            after.distance_to(mpos) < 100.0,
+            "rogue should have blinked next to the monster"
+        );
+        assert!(!world.players.get(1).unwrap().is_stealthed());
+        assert!(!world.monsters.monsters.iter().any(|m| m.is_alive));
     }
 }

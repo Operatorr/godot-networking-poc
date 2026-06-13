@@ -32,11 +32,16 @@ enum Type {
 	LOCAL_HIT_REPORT = 13  ## Client -> Server: "a monster projectile hit me" (client-detected, server-validated). [u16 projectile_id]
 }
 
-## Entity types for state updates
+## Entity types for state updates. Values 4-7 are the world-effect band entities
+## (id range 40000-49999) the GDExtension decoder emits for ability spawns.
 enum EntityType {
 	PLAYER = 1,
 	MONSTER = 2,
-	PROJECTILE = 3
+	PROJECTILE = 3,
+	HEALTHORB = 4,   ## Dropped health pickup (green orb)
+	MINE = 5,        ## Engineer proximity mine
+	DOT_ZONE = 6,    ## Plague Seer damage-over-time zone
+	BIBLE = 7        ## Zealot orbiting bible orb
 }
 
 ## Player classes (u8 on the wire, protocol v3). Identity metadata chosen by the
@@ -51,6 +56,30 @@ enum PlayerClass {
 	ROGUE = 5,
 	MAGE = 6
 }
+
+## Display/account names for each PlayerClass, indexed by enum value. These are the
+## strings stored on the character row in the Go API; the wire/sprite layer uses the
+## u8 enum, so class_name_to_id()/class_id_to_name() convert between them.
+const CLASS_DISPLAY_NAMES := [
+	"Zealot", "Void Hunter", "Engineer", "Plague Seer", "Warrior", "Rogue", "Mage"
+]
+
+
+## PlayerClass enum value for a display/account name (case-insensitive). Unknown or
+## legacy names fall back to ZEALOT (the wire default the server also clamps to).
+static func class_name_to_id(class_label: String) -> int:
+	var normalized := class_label.strip_edges().to_lower()
+	for i in CLASS_DISPLAY_NAMES.size():
+		if String(CLASS_DISPLAY_NAMES[i]).to_lower() == normalized:
+			return i
+	return PlayerClass.ZEALOT
+
+
+## Display/account name for a PlayerClass enum value (clamped to the valid range).
+static func class_id_to_name(class_id: int) -> String:
+	if class_id < 0 or class_id >= CLASS_DISPLAY_NAMES.size():
+		return String(CLASS_DISPLAY_NAMES[PlayerClass.ZEALOT])
+	return String(CLASS_DISPLAY_NAMES[class_id])
 
 ## Animation states (fits in u8)
 enum AnimationState {
@@ -87,6 +116,7 @@ const ENTITY_FLAG_VISIBLE := 1 << 5
 const ENTITY_FLAG_DASHING := 1 << 6       ## Movement SM is in the DASHING state
 const ENTITY_FLAG_KNOCKED_BACK := 1 << 7  ## Movement SM is in the KNOCKED_BACK state
 const ENTITY_FLAG_DAZED := 1 << 8         ## Daze timer active (sprint/dash locked out)
+const ENTITY_FLAG_STEALTH := 1 << 9       ## Rogue stealth active (dim the sprite when set)
 
 ## Delta compression mask bits (TASK-021)
 ## Used in STATE_UPDATE packets to indicate which fields changed
@@ -120,7 +150,10 @@ enum GameEventType {
 	PLAYER_INFO = 9,       ## Player identity broadcast (entity_id -> character_name)
 	KILL_PVP = 10,         ## PvP kill event (killer/victim with names)
 	LEADERBOARD_UPDATE = 11, ## Top 10 leaderboard update
-	PROJECTILE_FIRED = 12 ## Entity fired a projectile
+	PROJECTILE_FIRED = 12, ## Entity fired a projectile
+	EXP_GAIN = 13,         ## A player gained experience (COSMETIC "+N XP" floater only — server owns leveling)
+	ABILITY_EFFECT = 14,   ## A class ability fired a transient VFX (effect_id/position/radius)
+	PROGRESS = 15          ## Authoritative level/XP/move-speed update for a player
 }
 
 ## Disconnect reason codes

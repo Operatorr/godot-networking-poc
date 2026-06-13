@@ -58,6 +58,10 @@ impl GameEvent {
             t::PLAYER_INFO => matches!(self.data, GameEventData::PlayerInfo { .. }),
             t::LEADERBOARD_UPDATE => matches!(self.data, GameEventData::Leaderboard { .. }),
             t::PROJECTILE_FIRED => matches!(self.data, GameEventData::ProjectileFired { .. }),
+            t::EXP_GAIN => matches!(self.data, GameEventData::ExpGain { .. }),
+            t::ABILITY_EFFECT => matches!(self.data, GameEventData::AbilityEffect { .. }),
+            t::PROGRESS => matches!(self.data, GameEventData::Progress { .. }),
+            t::PICKUP => matches!(self.data, GameEventData::Pickup { .. }),
             _ => matches!(self.data, GameEventData::None),
         }
     }
@@ -98,6 +102,32 @@ pub enum GameEventData {
         x: f32,
         y: f32,
         fire_tick: u16,
+    },
+    /// Experience gained by `source_id` (a nearby monster died) — a cosmetic "+XP" floater.
+    /// The SERVER owns level/XP accounting now (see `Progress`); this is display-only.
+    ExpGain {
+        amount: u16,
+    },
+    /// A transient ability effect to render at (`x`, `y`). `effect_id` selects the VFX (explosion,
+    /// charge blast, shadowstep blink, mine detonation); `radius` (units) sizes it (0 = point).
+    AbilityEffect {
+        effect_id: u8,
+        x: f32,
+        y: f32,
+        radius: u16,
+    },
+    /// Authoritative progression for the owning player's HUD. `move_speed_q` = effective base
+    /// move speed ÷ 4 (clamped 0..255), so the client adopts the same speed without re-deriving it.
+    Progress {
+        level: u16,
+        experience: u32,
+        move_speed_q: u8,
+    },
+    /// A pickup was consumed by `target_id`. `kind` selects the pickup type (0 = healthorb);
+    /// `amount` is the magnitude (e.g. HP restored), for the client's floater.
+    Pickup {
+        kind: u8,
+        amount: u16,
     },
 }
 
@@ -243,6 +273,33 @@ impl ServerPacket {
                         w.write_i16(quant_coord(*y));
                         w.write_u16(*fire_tick);
                     }
+                    GameEventData::ExpGain { amount } => {
+                        w.write_u16(*amount);
+                    }
+                    GameEventData::AbilityEffect {
+                        effect_id,
+                        x,
+                        y,
+                        radius,
+                    } => {
+                        w.write_u8(*effect_id);
+                        w.write_i16(quant_coord(*x));
+                        w.write_i16(quant_coord(*y));
+                        w.write_u16(*radius);
+                    }
+                    GameEventData::Progress {
+                        level,
+                        experience,
+                        move_speed_q,
+                    } => {
+                        w.write_u16(*level);
+                        w.write_u32(*experience);
+                        w.write_u8(*move_speed_q);
+                    }
+                    GameEventData::Pickup { kind, amount } => {
+                        w.write_u8(*kind);
+                        w.write_u16(*amount);
+                    }
                 }
             }
             ServerPacket::ServerMetrics(m) => {
@@ -338,7 +395,25 @@ impl ServerPacket {
                         y: dequant_coord(r.read_i16()?),
                         fire_tick: r.read_u16()?,
                     },
-                    // KILL, KILL_PVP, PICKUP, LEVEL_UP, CHAT_MESSAGE — head only, same as today.
+                    game_event_type::EXP_GAIN => GameEventData::ExpGain {
+                        amount: r.read_u16()?,
+                    },
+                    game_event_type::ABILITY_EFFECT => GameEventData::AbilityEffect {
+                        effect_id: r.read_u8()?,
+                        x: dequant_coord(r.read_i16()?),
+                        y: dequant_coord(r.read_i16()?),
+                        radius: r.read_u16()?,
+                    },
+                    game_event_type::PROGRESS => GameEventData::Progress {
+                        level: r.read_u16()?,
+                        experience: r.read_u32()?,
+                        move_speed_q: r.read_u8()?,
+                    },
+                    game_event_type::PICKUP => GameEventData::Pickup {
+                        kind: r.read_u8()?,
+                        amount: r.read_u16()?,
+                    },
+                    // KILL, KILL_PVP, LEVEL_UP, CHAT_MESSAGE — head only, same as today.
                     _ => GameEventData::None,
                 };
                 ServerPacket::GameEvent(GameEvent {
@@ -498,6 +573,39 @@ mod tests {
                     fire_tick: 999,
                 },
             },
+            GameEvent {
+                event_type: game_event_type::EXP_GAIN,
+                source_id: 7,
+                target_id: 0,
+                data: GameEventData::ExpGain { amount: 20 },
+            },
+            GameEvent {
+                event_type: game_event_type::ABILITY_EFFECT,
+                source_id: 5,
+                target_id: 0,
+                data: GameEventData::AbilityEffect {
+                    effect_id: 2,
+                    x: 120.0,
+                    y: -80.0,
+                    radius: 120,
+                },
+            },
+            GameEvent {
+                event_type: game_event_type::PROGRESS,
+                source_id: 5,
+                target_id: 5,
+                data: GameEventData::Progress {
+                    level: 23,
+                    experience: 4321,
+                    move_speed_q: 50,
+                },
+            },
+            GameEvent {
+                event_type: game_event_type::PICKUP,
+                source_id: 40001,
+                target_id: 5,
+                data: GameEventData::Pickup { kind: 0, amount: 5 },
+            },
         ];
         for e in cases {
             let p = ServerPacket::GameEvent(e.clone());
@@ -523,6 +631,56 @@ mod tests {
                             GameEventData::Leaderboard { entries: b },
                         ) => {
                             assert_eq!(a, b)
+                        }
+                        (
+                            GameEventData::ExpGain { amount: a },
+                            GameEventData::ExpGain { amount: b },
+                        ) => {
+                            assert_eq!(a, b)
+                        }
+                        (
+                            GameEventData::AbilityEffect {
+                                effect_id: a,
+                                radius: ra,
+                                ..
+                            },
+                            GameEventData::AbilityEffect {
+                                effect_id: b,
+                                radius: rb,
+                                ..
+                            },
+                        ) => {
+                            assert_eq!(a, b);
+                            assert_eq!(ra, rb);
+                        }
+                        (
+                            GameEventData::Progress {
+                                level: a,
+                                experience: ea,
+                                move_speed_q: sa,
+                            },
+                            GameEventData::Progress {
+                                level: b,
+                                experience: eb,
+                                move_speed_q: sb,
+                            },
+                        ) => {
+                            assert_eq!(a, b);
+                            assert_eq!(ea, eb);
+                            assert_eq!(sa, sb);
+                        }
+                        (
+                            GameEventData::Pickup {
+                                kind: a,
+                                amount: aa,
+                            },
+                            GameEventData::Pickup {
+                                kind: b,
+                                amount: ab,
+                            },
+                        ) => {
+                            assert_eq!(a, b);
+                            assert_eq!(aa, ab);
                         }
                         _ => {}
                     }

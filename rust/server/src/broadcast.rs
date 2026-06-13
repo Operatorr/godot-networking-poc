@@ -251,6 +251,9 @@ fn importance(entity_id: u16) -> i64 {
         Some(EntityType::Player) => PRIORITY_PLAYER,
         Some(EntityType::Projectile) => PRIORITY_PROJECTILE,
         Some(EntityType::Monster) => PRIORITY_MONSTER,
+        // World effects (healthorbs/mines/dot-zones/bibles) matter to the player — replicate them
+        // about as eagerly as monsters.
+        Some(EntityType::WorldEffect) => PRIORITY_MONSTER,
         None => PRIORITY_DEFAULT,
     }
 }

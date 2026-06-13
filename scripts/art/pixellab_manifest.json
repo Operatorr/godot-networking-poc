@@ -2,7 +2,9 @@
   "_comment": "PixelLab asset manifest for the arena art set (generated 2026-06-13). Characters/objects persist in the PixelLab account by UUID; map_objects auto-delete ~8h after creation and must be re-generated if lost. Direction row order used in assembled sheets: south, south-east, east, north-east, north, north-west, west, south-west.",
   "style": "Omega Realm grimdark gothic (docs/design/STYLE_GUIDE_SHEET.png), low top-down, 48px characters on ~92px canvas",
   "characters": {
-    "zealot": "96b88efc-e653-46c4-8350-456a41450803",
+    "_zealot_comment": "redesigned 2026-06-13 from a front/back concept (v3, 64px char on 128px canvas) — supersedes the original 96b88efc-e653-46c4-8350-456a41450803 (kept in account); anims idle/run/sprint/dash/attack/hit/death",
+    "zealot": "f39c4094-14e2-4a51-8873-89372fb9f79a",
+    "zealot_original": "96b88efc-e653-46c4-8350-456a41450803",
     "void_hunter": "1cae1006-fb6f-46a2-9d54-acaf68d3ed58",
     "engineer": "ba6a20b3-fe23-403a-ba2b-8f5774122f3b",
     "plague_seer": "93f7021a-6efc-4acf-ae76-e9f908b0c8ca",
