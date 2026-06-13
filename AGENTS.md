@@ -34,7 +34,10 @@ Don't re-derive what's already written there; read it, then go deep where needed
   - `scripts/shared/` — packet enums, game constants, entity scenes, arenas.
   - `bin/` — built GDExtension libraries (`omega_client_ext.gdextension`).
 - `api/` — Go backend: JWT auth, characters, leaderboard, regions. PostgreSQL + Redis.
-- `deployment/` — Docker Compose + per-service Dockerfiles (game server builds from `rust/`).
+- `deployment/` — **native** deploy (no Docker — [ADR 0007](docs/adr/0007-native-systemd-deployment.md)):
+  systemd units (`systemd/`), per-instance configs (`server_config.{arena,sanctuary}.json`), env
+  templates (`env/`), `provision_server.sh` (one-time bootstrap) + `server_update.sh` (git-pull deploy),
+  `harden_vps.sh` (firewall/fail2ban/SSH).
 - `scripts/` — build/deploy/run automation.
 - `docs/` — **system of record** (map below).
 
@@ -90,16 +93,21 @@ checkable and nothing important is skipped:
 # Rust workspace checks (must stay green)
 cd rust && cargo test --workspace && cargo clippy --workspace --all-targets && cargo fmt --check
 
-# Run a local stack
-./scripts/dev_local.sh            # Go API + Rust server, no Docker (Postgres/Redis already running, e.g. DBngin)
-./scripts/deploy.sh up            # docker compose: api + rust server + db + redis (own postgres/redis!)
-./scripts/run_server.sh           # Rust game server only (dev mode: unsigned tickets, udp/8081)
+# Run a local stack (native, no Docker — Postgres/Redis already running, e.g. DBngin)
+./scripts/dev_local.sh            # Go API + BOTH game instances (Arena udp/8081 + Sanctuary udp/8082)
+./scripts/run_server.sh --mode arena --port 8081      # one instance only (dev)
+
+# Deploy to the live server (native systemd; git pull + rebuild) — runs from your laptop
+./scripts/deploy.sh provision     # one-time: install Go/Rust/Postgres/Redis + units (ADR 0007)
+./scripts/deploy.sh               # pull master, rebuild api + both game servers, restart, health-check
+./scripts/deploy.sh logs|status|health|restart
 
 # End-to-end smoke (needs a running server on 127.0.0.1:8081)
 cd client && godot --path . res://scenes/test/net_smoke.tscn   # exits 0 on PASS
 
 # Load test (needs a running server; scenarios + flags in rust/load_test/README.md)
-./scripts/run_load_test.sh --scenario baseline
+./scripts/run_load_test.sh --scenario baseline                       # local Arena
+OMEGA_SERVER=<droplet-ip>:8081 ./scripts/run_load_test.sh --scenario baseline   # live Arena
 ```
 
 ## Invariants (hold today; enforce in review)

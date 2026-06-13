@@ -300,7 +300,8 @@ fresh heartbeat reports it online. The WebSocket-era TCP reachability probe is g
 server is UDP-only (ADR 0003), so there is no TCP endpoint to probe.
 
 Config: `server_config.json`-compatible keys + env/CLI overrides; `--allow-unsigned-tickets`
-defaults **on** for the POC compose, **off** otherwise; Ed25519 public key via
+defaults **on** for the POC (it's the load-test/dev default in `deployment/env/server.env`),
+**off** when you require signed tickets; Ed25519 public key via
 `OMEGA_TICKET_PUBKEY` (hex/base64) when enforcement is on.
 
 ## Invariants (enforced in review + tests)

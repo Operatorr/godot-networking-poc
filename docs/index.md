@@ -78,9 +78,10 @@ for the map; this page is the **catalogue** with verification status. Terms are 
 | [`adr/0004-schema-driven-wire-protocol.md`](adr/0004-schema-driven-wire-protocol.md) | Implemented | Redesigned wire protocol as a shared Rust crate (no codegen); **amends 0003**'s "wire format unchanged". |
 | [`adr/0005-permadeath-persistence-model.md`](adr/0005-permadeath-persistence-model.md) | Accepted | Permadeath persistence — death is the server-authoritative transactional save; item integrity via the Go API. |
 | [`adr/0006-softcore-hardcore-glory-economy.md`](adr/0006-softcore-hardcore-glory-economy.md) | Accepted | Softcore/Hardcore modes, XP→Glory exchange, and server-authoritative progression — **extends 0005** (D15). |
+| [`adr/0007-native-systemd-deployment.md`](adr/0007-native-systemd-deployment.md) | Implemented | Native systemd deploy (drop Docker); git-pull rebuild; Arena+Sanctuary+API as units. |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Reference | Top-level system architecture & POC success criteria. |
 | [`specification.md`](specification.md) | Reference | Game design spec / GDD (the minimal bullet-hell design). |
-| [`INFRASTRUCTURE.md`](INFRASTRUCTURE.md) | Reference | Deployment / infra (Docker, DigitalOcean). |
+| [`INFRASTRUCTURE.md`](INFRASTRUCTURE.md) | Reference | Infra/scaling phases (DigitalOcean). Native systemd deploy: [ADR 0007](adr/0007-native-systemd-deployment.md) + [`deployment/DEPLOYMENT.md`](../deployment/DEPLOYMENT.md). |
 | [`CONTEXT.md`](CONTEXT.md) | Reference | Glossary — the project's canonical language. |
 
 ## Legacy / superseded (kept for history — do not treat as current)

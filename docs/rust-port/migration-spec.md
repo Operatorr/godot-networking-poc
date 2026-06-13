@@ -422,9 +422,10 @@ This resolves **[Validation]** (as a deliberate, narrower scope than offered).
 
 **Decision.** The Rust binary **is a single instance** (one D8 tick loop). Run **N** of them; the Go API
 (matchmaker role) **spawns and assigns** players using the **region/shard the session ticket already
-carries** (D9). POC runs a small fixed pool via **docker-compose** (the `rust-server` container replaces
-today's Godot `server` container; `N=1` reproduces the current single arena); production scales the pool
-under an orchestrator (k8s/Nomad) later. **Crash-isolated** — one instance dying never touches others.
+carries** (D9). POC runs a small fixed pool as **native systemd units** (one `omega-server` process per
+instance — e.g. `omega-arena` + `omega-sanctuary`; [ADR 0007](../adr/0007-native-systemd-deployment.md));
+`N=1` reproduces a single arena; production scales the pool under an orchestrator (k8s/Nomad) later.
+**Crash-isolated** — one instance dying never touches others (`Restart=always` brings it back).
 
 **Why this unifies POC and vision.** Because the binary is one instance, the single-arena POC and the
 instance-based MMO are the *same artifact* at different N — no rearchitecting between them.
@@ -446,7 +447,8 @@ signal); keep the client-facing `SERVER_METRICS` packet. Each instance registers
 API (generalizing today's region-status heartbeat, `server_main.gd:872`).
 
 **Networking/infra notes (carried from ADR 0003).** UDP game port must be reachable per instance
-(open the UDP port in compose/orchestrator); no HTTPS proxy-friendliness as with WebSocket; the Go API
+(open each instance's UDP port in the firewall — `ufw allow 8081/udp` + `8082/udp`, see
+`deployment/harden_vps.sh`); no HTTPS proxy-friendliness as with WebSocket; the Go API
 stays HTTPS for ticket issuance.
 
 This resolves **[Deployment]**.

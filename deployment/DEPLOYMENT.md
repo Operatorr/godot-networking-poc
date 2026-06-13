@@ -1,207 +1,166 @@
-# Omega Realm - Deployment Guide
+# Omega Realm — Deployment Guide (native, Docker-free)
 
-Step-by-step guide for deploying the Omega Realm game server and API to a DigitalOcean droplet.
-
-## Prerequisites
-
-- Docker and Docker Compose on the target server
-- SSH access to the DigitalOcean droplet
+Deploy the Omega Realm stack to a single Ubuntu 24.04 droplet. Everything runs as
+**native systemd services** — no Docker (see [ADR 0007](../docs/adr/0007-native-systemd-deployment.md)
+for why). Git is the deploy channel: the server pulls `master` and rebuilds in place.
 
 ## Architecture
 
 ```
 Internet
-  │
-  ├── :8080/tcp → API Server (Go) → PostgreSQL + Redis
-  └── :8081/udp → Game Server (Rust omega-server, ENet/UDP; Prometheus on :9100)
+  ├── :8080/tcp  → omega-api      (Go: auth, characters, leaderboard, regions)
+  ├── :8081/udp  → omega-arena    (Rust omega-server, ENet/UDP; metrics :9100, localhost)
+  └── :8082/udp  → omega-sanctuary(Rust omega-server, ENet/UDP; metrics :9101, localhost)
+
+localhost only: PostgreSQL :5432 · Redis :6379 · Prometheus :9100/:9101
 ```
 
-## 1. Provision DigitalOcean Droplet
+One process = one Instance (migration-spec D13). The **Arena** has monsters + PvP
+(±1000 + pillars); the **Sanctuary** is the safe hub (±1856 walk-through). The client
+connects to the Sanctuary first, then the Arena on entry — so both must run.
 
-### Recommended Specs
-- **Size**: 4 GB RAM / 2 vCPUs (minimum for 100 players)
-- **Region**: Singapore (SGP1) for alpha testing
-- **Image**: Ubuntu 22.04 LTS
-- **Additional**: Enable monitoring
+Services (systemd units in [`systemd/`](systemd/)):
 
-### Initial Setup
+| Unit | What | Restart on boot | Restart on crash |
+|------|------|:---:|:---:|
+| `postgresql` / `redis-server` | data + cache (apt) | ✅ | ✅ |
+| `omega-api` | Go API (`api/bin/server`) | ✅ | ✅ (`Restart=always`) |
+| `omega-arena` | Rust server, `--config server_config.arena.json` | ✅ | ✅ |
+| `omega-sanctuary` | Rust server, `--config server_config.sanctuary.json` | ✅ | ✅ |
+
+## 1. Provision the droplet
+
+### Specs
+- **Minimum useful:** 2 vCPU / 4 GB (100 players). The $6 1 vCPU/1 GB box works for a
+  functional smoke test but is tight for both game instances + API + Postgres + Redis;
+  `provision_server.sh` adds a 2 GB swapfile so Rust release builds don't OOM.
+- **Image:** Ubuntu 24.04 LTS.
+
+### Secure the box first
+
+As `deploy` (in the `sudo` group), run the hardening script — firewall (opens 22,
+8080/tcp, 8081+8082/udp), fail2ban, SSH lockdown, unattended-upgrades:
 
 ```bash
-# SSH into droplet
-ssh root@<droplet-ip>
-
-# Install Docker
-curl -fsSL https://get.docker.com | sh
-
-# Install Docker Compose plugin
-apt-get install docker-compose-plugin
-
-# Verify
-docker --version
-docker compose version
-
-# Create deploy user (optional, recommended)
-adduser deploy
-usermod -aG docker deploy
+sudo bash deployment/harden_vps.sh
 ```
 
-## 2. Configure Firewall
+### One-time bootstrap
+
+Installs Go (official tarball — apt's is too old for `go 1.24`), Rust (rustup),
+PostgreSQL, Redis, swap, the systemd units, and a narrow passwordless `systemctl`
+rule for the three Omega services. From your **laptop**:
 
 ```bash
-# Allow SSH
-ufw allow 22/tcp
-
-# Allow API
-ufw allow 8080/tcp
-
-# Allow Game Server (ENet over UDP)
-ufw allow 8081/udp
-
-# Enable firewall
-ufw enable
-ufw status
+./scripts/deploy.sh provision      # ssh in, clone repo, run provision_server.sh (asks sudo pw)
 ```
 
-## 3. Game Server Binary
-
-Nothing to pre-build: `server.Dockerfile` compiles the Rust `omega-server` from `rust/`
-inside the image (multi-stage build) and bakes in `server_config.docker.json`. The compose
-stack builds it automatically in the next step.
-
-## 4. Deploy
-
-### Clone and Configure
+Then set real secrets on the server (the role password and the env file must match):
 
 ```bash
-# On the droplet
-git clone <repo-url> /opt/omega-realm
-cd /opt/omega-realm/deployment
-
-# Create production env file
-cp .env.production.example .env.production
-nano .env.production  # Set secure passwords and JWT secret
+ssh deploy@<droplet-ip>
+sudo -u postgres psql -c "ALTER ROLE omega PASSWORD 'YOUR_DB_PASSWORD';"
+sudo nano /etc/omega-realm/api.env      # DB_PASSWORD + JWT_SECRET_KEY
+sudo nano /etc/omega-realm/server.env   # ticket policy (defaults are load-test friendly)
 ```
 
-### Build and Start
+> `/etc/omega-realm/*.env` are `root:deploy 0640` and are **not** in the repo. The
+> templates are `deployment/env/*.example`.
+
+## 2. Deploy
+
+From your laptop, anytime you want the server on the latest `master`:
 
 ```bash
-# Using the deploy script
-../scripts/deploy.sh up
-
-# Or manually
-docker compose --env-file .env.production up -d --build
+./scripts/deploy.sh                # pull master → build api + both game servers → restart → health-check
 ```
 
-### Verify
+Under the hood this SSHes in and runs [`server_update.sh`](server_update.sh):
+`git reset --hard origin/master`, `go build`, `cargo build --release`, restart all three
+units, then verify `/health` (API) and `/metrics` (each instance). Deploy a different
+branch with `OMEGA_BRANCH=my-branch ./scripts/deploy.sh`.
+
+### Operate
 
 ```bash
-# Check all containers are running
-docker compose ps
-
-# Check API health
-curl http://localhost:8080/health
-
-# Check logs
-docker compose logs -f game-server
-docker compose logs -f api
+./scripts/deploy.sh status     # systemctl status for all three services
+./scripts/deploy.sh logs       # follow journald for api + arena + sanctuary
+./scripts/deploy.sh health     # curl API /health + both metrics endpoints
+./scripts/deploy.sh restart    # restart without rebuilding
+./scripts/deploy.sh ssh        # interactive shell on the box
 ```
 
-## 5. Test Auto-Restart
+The API auto-applies its schema on startup (`db.Exec(schema)`), so there is no separate
+migration step.
+
+### OS maintenance
+
+`harden_vps.sh` enables `unattended-upgrades`, so **security** patches land daily on their
+own. For the periodic **full** upgrade (all packages + kernel) and Ubuntu version jumps, use
+[`update_os.sh`](update_os.sh) via:
 
 ```bash
-# Kill the game server container
-docker kill omega-game-server
-
-# Wait a few seconds, verify it restarts
-sleep 10
-docker compose ps  # Should show "Up" status
+./scripts/deploy.sh os-update                  # apt full-upgrade + autoremove + cleanup
+./scripts/deploy.sh os-update --reboot         # ...and reboot if one is required
+./scripts/deploy.sh os-update --release-upgrade # Ubuntu version bump (snapshot first!)
 ```
 
-## 6. Run Load Tests
+A full upgrade often wants a reboot; systemd restarts Postgres, Redis, the API, and both
+game instances automatically on boot (`enable` + `Restart=always`). Verify after a reboot:
+`./scripts/deploy.sh status`.
 
-From your development machine (or another server) — scenarios and flags in
-`rust/load_test/README.md`:
+## 3. Auto-restart
+
+`Restart=always` (units) means a crashed service comes back in 3 s; `WantedBy=multi-user.target`
++ `systemctl enable` means everything (Postgres, Redis, API, both game servers) starts on
+boot. Verify:
 
 ```bash
-# Baseline (50 bots)
-./scripts/run_load_test.sh --scenario baseline --server <droplet-ip>:8081
-
-# Target load (100 bots)
-./scripts/run_load_test.sh --scenario target --server <droplet-ip>:8081
-
-# Stress test (200 bots — needs max_players >= 200 in the server config)
-./scripts/run_load_test.sh --scenario stress --server <droplet-ip>:8081
+ssh deploy@<droplet-ip> 'sudo systemctl kill -s SIGKILL omega-arena; sleep 5; systemctl is-active omega-arena'
+# → active
 ```
 
-> Bots authenticate ticket-less, so the server must allow unsigned tickets (the dev
-> default). A production server running `--require-tickets` will reject them.
+## 4. Load test against the live server
 
-## Monitoring
-
-### Container Stats
+From your dev machine — bots hit the **Arena** (`8081`), never the Sanctuary:
 
 ```bash
-# Real-time resource usage
-docker stats
-
-# Recent logs
-docker compose logs --tail=100 game-server
-docker compose logs --tail=100 api
+export OMEGA_SERVER=<droplet-ip>:8081           # set the live target once
+./scripts/run_load_test.sh --scenario baseline  # 50 bots
+./scripts/run_load_test.sh --scenario target     # 100 bots (POC success metric)
+# or per-invocation: ./scripts/run_load_test.sh --scenario stress --server <droplet-ip>:8081
 ```
 
-### Quick Health Check
+> Bots authenticate ticket-less, so `OMEGA_ALLOW_UNSIGNED_TICKETS=true` (the default in
+> `server.env`). The `stress` scenario (200 bots) needs `max_players >= 200` in
+> `server_config.arena.json` — raise it and redeploy.
 
-```bash
-../scripts/deploy.sh health
-```
+## Runtime config reference
 
-## Rollback Procedure
+| File | Purpose |
+|------|---------|
+| `/etc/omega-realm/api.env` | API secrets + DB/Redis endpoints (`EnvironmentFile`) |
+| `/etc/omega-realm/server.env` | shared game-server env (ticket policy). **No `GAME_SERVER_PORT`** — env wins over config and would clobber both instances onto one port |
+| `deployment/server_config.arena.json` | Arena: mode/port 8081/metrics 9100 + sim tuning |
+| `deployment/server_config.sanctuary.json` | Sanctuary: mode/port 8082/metrics 9101 |
 
-If a deployment fails:
-
-```bash
-# Stop current containers
-docker compose down
-
-# Revert to previous code
-git checkout <previous-commit>
-
-# Rebuild and restart
-docker compose --env-file .env.production up -d --build
-
-# Verify
-docker compose ps
-curl http://localhost:8080/health
-```
-
-## Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DB_USER` | `omega` | PostgreSQL username |
-| `DB_PASSWORD` | `omega_password` | PostgreSQL password |
-| `DB_NAME` | `omega_db` | Database name |
-| `API_PORT` | `8080` | API server port |
-| `GAME_SERVER_PORT` | `8081` | Game server ENet/UDP port |
-| `JWT_SECRET` | (dev default) | JWT signing secret |
-| `LOG_LEVEL` | `info` | Log verbosity (debug/info/warn/error) |
+Env precedence (game server): CLI flag > env var > JSON config > built-in default
+(`rust/server/src/config.rs`).
 
 ## Troubleshooting
 
-### Game server won't start
-- Check logs: `docker compose logs game-server`
-- Ensure UDP port 8081 is not in use: `ss -ulnp | grep 8081`
+| Symptom | Check |
+|---------|-------|
+| Service won't start | `./scripts/deploy.sh logs` → `journalctl -u omega-arena -n 80` |
+| API can't reach DB | password in `/etc/omega-realm/api.env` matches the `omega` role; `sudo -u postgres pg_isready` |
+| Bots can't connect | `sudo ufw status` shows `8081/udp`; ticket policy in `server.env`; `curl localhost:9100/metrics` |
+| Sanctuary metrics missing | Arena=9100, Sanctuary=9101 — they must differ (set in each JSON config) |
+| Build OOM | confirm swap is on: `swapon --show` (provisioning adds 2 GB) |
+| High latency | `journalctl -u omega-arena` tick warnings; consider a larger droplet |
 
-### API can't connect to database
-- Check PostgreSQL health: `docker compose exec postgres pg_isready`
-- Verify env variables match between API and PostgreSQL services
+## Rollback
 
-### Bots can't connect
-- Verify firewall allows UDP port 8081: `ufw status` (must show `8081/udp`)
-- Check the Prometheus endpoint responds: `curl http://<ip>:9100/metrics`
-- Check game server logs for connection errors
-
-### High latency
-- Check server CPU: `docker stats`
-- Review tick rate in game server logs
-- Consider upgrading droplet size
+```bash
+ssh deploy@<droplet-ip> 'cd ~/omega-realm && git reset --hard <previous-commit>'
+./scripts/deploy.sh        # rebuilds + restarts at that commit
+```

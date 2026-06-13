@@ -86,10 +86,10 @@ GDExtension (`rust/client_ext`) — prediction and authority run the same code b
 | Client scripting | GDScript | - |
 | Game server / protocol / sim | Rust | stable |
 | Transport | ENet over UDP (`rusty_enet`) | =0.4.0 |
-| API Backend | Go | 1.21+ |
+| API Backend | Go | 1.24+ |
 | Database | PostgreSQL | 15+ |
 | Cache | Redis | 7+ |
-| Containerization | Docker | - |
+| Deployment | Native systemd (no Docker — [ADR 0007](docs/adr/0007-native-systemd-deployment.md)) | - |
 
 ---
 
@@ -97,10 +97,9 @@ GDExtension (`rust/client_ext`) — prediction and authority run the same code b
 
 - **Godot 4.6** - [Download](https://godotengine.org/download)
 - **Rust** (stable toolchain) - [Install](https://rustup.rs)
-- **Go 1.21+** - [Download](https://go.dev/dl/)
-- **PostgreSQL 15+** - Running locally (e.g. DBngin) or via Docker
+- **Go 1.24+** - [Download](https://go.dev/dl/)
+- **PostgreSQL 15+** - Running locally (e.g. DBngin) or a native install
 - **Redis** - Required (sessions, leaderboard cache, region status; API exits if unreachable)
-- **Docker & Docker Compose** (optional) - For containerized deployment
 
 ---
 
@@ -115,8 +114,8 @@ cd omgea-networking
 
 ### 2. Provision the Databases
 
-The API requires **two** running services — bring them up however you like (DBngin, local
-install, Docker, or managed):
+The API requires **two** running services — bring them up however you like (DBngin, a
+native install, or managed):
 
 - **PostgreSQL** (accounts, characters, leaderboard persistence) — **required**.
 - **Redis** (sessions, leaderboard cache, region status) — **required**. The API exits on
@@ -233,12 +232,14 @@ tail -f logs/api_server.log                     # follow API logs
 Other run options:
 
 ```bash
-./scripts/run_server.sh        # Rust game server only (no API)
-./scripts/deploy.sh up         # Full Docker stack: api + game server + postgres + redis
+./scripts/run_server.sh --mode arena --port 8081   # one Rust game instance only (no API)
+./scripts/deploy.sh                                 # deploy to the live server (native, git-driven)
 ```
 
-> **Note:** the Docker stack starts its **own** PostgreSQL and Redis containers on the
-> default ports — don't combine it with DBngin databases already bound to 5432/6379.
+> **Deploy:** `./scripts/deploy.sh` SSHes into the droplet, pulls `master`, rebuilds, and
+> restarts the native systemd services (API + Arena + Sanctuary). One-time setup:
+> `./scripts/deploy.sh provision`. See [`deployment/DEPLOYMENT.md`](deployment/DEPLOYMENT.md)
+> and [ADR 0007](docs/adr/0007-native-systemd-deployment.md).
 
 ---
 
@@ -267,23 +268,25 @@ omgea-networking/
 │   ├── internal/                   # auth/, database/, handlers/, models/
 │   └── .env.example                # Environment template
 │
-├── deployment/                     # Docker configs
-│   ├── docker-compose.yml          # Service orchestration
-│   ├── api.Dockerfile              # Go API container
-│   ├── server.Dockerfile           # Rust game server container
-│   └── server_config.docker.json   # Game server config for the compose stack
+├── deployment/                     # Native systemd deploy (no Docker — ADR 0007)
+│   ├── systemd/                    # omega-api / omega-arena / omega-sanctuary units
+│   ├── server_config.{arena,sanctuary}.json  # per-instance configs (ports/modes/metrics)
+│   ├── env/                        # api.env / server.env templates → /etc/omega-realm/
+│   ├── provision_server.sh         # one-time bootstrap; server_update.sh = git-pull deploy
+│   ├── update_os.sh                # apt full-upgrade + Ubuntu release upgrade
+│   └── harden_vps.sh               # firewall / fail2ban / SSH lockdown
 │
 ├── scripts/                        # Utility scripts
-│   ├── dev_local.sh                # Local dev stack: Go API + Rust server (no Docker)
-│   ├── run_server.sh               # Rust game server only
-│   ├── run_load_test.sh            # ENet bot swarm load test
+│   ├── dev_local.sh                # Local dev stack: Go API + Arena + Sanctuary (native)
+│   ├── run_server.sh               # One Rust game instance (--mode/--port)
+│   ├── run_load_test.sh            # ENet bot swarm load test (OMEGA_SERVER for live target)
 │   ├── run_tests.sh                # Headless GDScript regression tests
 │   ├── build_client.sh             # Export game client
 │   ├── build_client_ext.sh         # Build Rust GDExtension -> client/bin/
 │   ├── build_server.sh             # Build Rust omega-server (release)
 │   ├── build_api.sh                # Build Go API
 │   ├── seed_test_user.sh           # Seed the local test login
-│   └── deploy.sh                   # Docker compose up/down
+│   └── deploy.sh                   # Native deploy from your laptop (ssh + git pull + rebuild)
 │
 ├── docs/                           # System of record — see docs/index.md
 └── .env.test.example               # Test credentials template
@@ -333,10 +336,95 @@ Governing rule for all gameplay: **the client requests, the server decides.**
 ./scripts/build_client_ext.sh    # Rust GDExtension -> client/bin/
 ./scripts/build_server.sh        # Rust omega-server (release)
 ./scripts/build_api.sh           # Build Go API binary
-
-# Or use Docker
-./scripts/deploy.sh up
 ```
+
+---
+
+## Deploying to a Server (native, no Docker)
+
+The live server runs everything as **native systemd services** — Go API + two Rust game
+instances (Arena `8081`, Sanctuary `8082`) + PostgreSQL + Redis. Git is the deploy
+channel: `./scripts/deploy.sh` SSHes in, the server pulls `master` and rebuilds. Full
+runbook: [`deployment/DEPLOYMENT.md`](deployment/DEPLOYMENT.md) ·
+rationale: [ADR 0007](docs/adr/0007-native-systemd-deployment.md).
+
+> **Deploy reads `origin/master`.** `server_update.sh` does `git reset --hard origin/master`,
+> so commit + push your changes to GitHub **before** deploying — the server only ever runs
+> what's on `master`.
+
+### Configure your server target (one-time, not committed)
+
+`scripts/deploy.sh` reads the server IP / SSH user from **`deployment/deploy.env`**, which is
+**git-ignored** — your IP never lands in the repo:
+
+```bash
+cp deployment/deploy.env.example deployment/deploy.env
+# edit deployment/deploy.env → set OMEGA_HOST=<your-droplet-ip>
+```
+
+| Key | Required | Default |
+|-----|:---:|---------|
+| `OMEGA_HOST` | ✅ | — (script errors if unset) |
+| `OMEGA_USER` | | `deploy` |
+| `OMEGA_BRANCH` | | `master` |
+| `OMEGA_REPO_DIR` | | `/home/<user>/omega-realm` |
+
+A shell export wins over the file for one-off targets, e.g.
+`OMEGA_HOST=1.2.3.4 ./scripts/deploy.sh status`.
+
+### Which script to run when
+
+Everything below is **one script — `scripts/deploy.sh`** — run from your laptop; it SSHes
+in and drives the matching on-server script. The headline one is `all`:
+
+```bash
+./scripts/deploy.sh all     # OS updates → pull master + rebuild → restart → health, in one shot
+```
+
+| Goal | Command (run from your **laptop**) | Runs on server |
+|------|-----------------------------------|----------------|
+| **★ Everything: OS update + deploy + verify** | `./scripts/deploy.sh all` | `update_os.sh` → `server_update.sh` |
+| **0. Harden a fresh box** (firewall, fail2ban, SSH) | `ssh deploy@<ip> 'sudo bash ~/harden_vps.sh'` | `deployment/harden_vps.sh` |
+| **1. One-time bootstrap** (Go/Rust/Postgres/Redis, swap, systemd units, sudoers) | `./scripts/deploy.sh provision` | `deployment/provision_server.sh` |
+| **2. Set secrets** (DB password + JWT) | `ssh deploy@<ip>` → edit `/etc/omega-realm/api.env` | — |
+| **3. Deploy / redeploy latest `master`** | `./scripts/deploy.sh` | `deployment/server_update.sh` |
+| **OS security + package updates** | `./scripts/deploy.sh os-update` | `deployment/update_os.sh` |
+| **OS update + reboot if needed** | `./scripts/deploy.sh os-update --reboot` | `deployment/update_os.sh` |
+| **Ubuntu version upgrade** (risky; snapshot first) | `./scripts/deploy.sh os-update --release-upgrade` | `deployment/update_os.sh` |
+| Status of all services | `./scripts/deploy.sh status` | — |
+| Follow logs (api + arena + sanctuary) | `./scripts/deploy.sh logs` | — |
+| Health (API `/health` + metrics) | `./scripts/deploy.sh health` | — |
+| Restart without rebuilding | `./scripts/deploy.sh restart` | — |
+| Interactive shell on the box | `./scripts/deploy.sh ssh` | — |
+
+> `all` deliberately does **not** reboot mid-run (that would kill the deploy). If
+> `update_os.sh` reports a reboot is required, run `./scripts/deploy.sh os-update --reboot`
+> afterwards — systemd restarts every service on boot.
+
+### First-time deploy, end to end
+
+```bash
+# (after committing + pushing this repo's deployment tooling to master)
+cp deployment/deploy.env.example deployment/deploy.env  # set OMEGA_HOST=<your ip> (git-ignored)
+ssh deploy@<ip> 'sudo bash ~/harden_vps.sh'   # 0. firewall/fail2ban/SSH lockdown
+./scripts/deploy.sh provision                  # 1. install toolchains, DB, units, swap
+ssh deploy@<ip>                                # 2. set real secrets:
+  sudo -u postgres psql -c "ALTER ROLE omega PASSWORD 'YOUR_PW';"
+  sudo nano /etc/omega-realm/api.env           #    DB_PASSWORD + JWT_SECRET_KEY
+  exit
+./scripts/deploy.sh                            # 3. pull master, build, start everything
+./scripts/deploy.sh health                     # 4. verify
+```
+
+### Keeping the OS patched
+
+`harden_vps.sh` enables **`unattended-upgrades`**, so security patches install
+automatically every day — no action needed. For routine maintenance just run
+**`./scripts/deploy.sh all`** (e.g. monthly): it does the **full** package/kernel upgrade,
+redeploys the latest `master`, and verifies health in one go. If it reports a reboot is
+required, follow up with `./scripts/deploy.sh os-update --reboot` (systemd brings all
+services back up on boot). Ubuntu **version** jumps are opt-in via
+`os-update --release-upgrade` — take a droplet snapshot first.
 
 ---
 
@@ -435,7 +523,8 @@ One file per concern — don't mix them:
 |------|---------|----------|
 | `api/.env` | Local API runtime config: port, PostgreSQL, Redis, JWT. Read by the Go API and by `./scripts/dev_local.sh` / `./scripts/seed_test_user.sh`. | `api/.env.example` |
 | `.env.test` | Test login **only**: the seeded user's credentials plus the endpoints the smoke/login test scenes connect to. No DB/Redis config here. | `.env.test.example` |
-| `deployment/.env.production` | Docker deployment config for `./scripts/deploy.sh` (compose stack with its own postgres/redis). | `deployment/.env.production.example` |
+| `/etc/omega-realm/api.env` | **Production** API config on the server (secrets + DB/Redis), loaded by the `omega-api` systemd unit. Not in the repo. | `deployment/env/api.env.example` |
+| `/etc/omega-realm/server.env` | **Production** game-server env on the server (ticket policy), shared by both game units. | `deployment/env/server.env.example` |
 
 ### API Server (.env)
 
@@ -489,9 +578,10 @@ The client loads settings from `client/data/config/client_config.json`:
 ### Game Server Configuration
 
 `omega-server` loads `server_config.json` from its working directory, falling back to
-`client/data/config/server_config.json`, or takes an explicit `--config <file>`
-(`deployment/server_config.docker.json` is the compose-stack config). Env overrides apply on
-top — see `rust/server/src/config.rs` for the full key list. The most relevant keys:
+`client/data/config/server_config.json`, or takes an explicit `--config <file>`. Production
+passes `--config deployment/server_config.arena.json` (or `…sanctuary.json`) via the systemd
+units. Env overrides apply on top (CLI flag > env > config > default) — see
+`rust/server/src/config.rs` for the full key list. The most relevant keys:
 
 | Setting | Description | Default |
 |---------|-------------|---------|
