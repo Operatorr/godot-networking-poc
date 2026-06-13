@@ -67,15 +67,18 @@ if ! command -v go >/dev/null 2>&1 || [[ "$(go version 2>/dev/null | awk '{print
   GO_DL_JSON="$(curl -fsSL 'https://go.dev/dl/?mode=json&include=all')" || {
     echo "could not reach go.dev/dl to resolve the Go SHA256" >&2; exit 1; }
   # Scan with awk, NOT `grep -A<n>`: the fields between "filename" and "sha256"
-  # (os/arch/version) make any fixed line window brittle, and an empty grep
-  # result returns rc=1, which under `set -o pipefail` aborts before the
-  # validation guard below can explain why. awk reads to the first sha256 in
-  # the matched object regardless of field order, and never SIGPIPEs.
+  # (os/arch/version) make any fixed line window brittle. awk finds the first
+  # sha256 in the matched object regardless of field order. Crucially it does
+  # NOT `exit` on match — an early exit closes the pipe while `printf` is still
+  # writing the ~2 MB body, `printf` takes SIGPIPE (rc 141), and under
+  # `set -o pipefail` that aborts the script before the guard below can run.
+  # Reading to EOF and printing in END keeps the pipeline rc 0.
   GO_SHA="$(printf '%s\n' "$GO_DL_JSON" | awk -v f="\"filename\": \"${GO_TARBALL}\"" '
     index($0, f) { found = 1 }
-    found && /"sha256":/ {
-      if (match($0, /[0-9a-f]{64}/)) { print substr($0, RSTART, RLENGTH); exit }
-    }')"
+    found && !got && /"sha256":/ {
+      if (match($0, /[0-9a-f]{64}/)) { sha = substr($0, RSTART, RLENGTH); got = 1 }
+    }
+    END { print sha }')"
   [[ "$GO_SHA" =~ ^[0-9a-f]{64}$ ]] || { echo "could not resolve SHA256 for ${GO_TARBALL}" >&2; exit 1; }
   curl -fsSL "https://go.dev/dl/${GO_TARBALL}" -o /tmp/go.tgz
   echo "${GO_SHA}  /tmp/go.tgz" | sha256sum -c - || { echo "Go tarball checksum mismatch — aborting" >&2; rm -f /tmp/go.tgz; exit 1; }
