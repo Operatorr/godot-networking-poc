@@ -10,6 +10,12 @@
 #   all        ONE-SHOT: os-update -> deploy -> health. The single command that
 #              updates the OS, pulls master, rebuilds, restarts, and verifies.
 #   deploy     (default) ssh in, run server_update.sh (pull master, build, restart)
+#   sync       fast BUILD-FREE deploy: pull master + restart + health-check, no
+#              recompile. Use for runtime-only changes (server_config.*.json,
+#              other non-compiled assets). Code changes to api/ or rust/ need deploy.
+#   pull       JUST sync the server's checkout to master — no rebuild, no restart.
+#              Use for changes that take effect without a restart: server-side
+#              deploy scripts (update_os.sh, server_update.sh, ...), docs.
 #   provision  one-time bootstrap (installs Go/Rust/Postgres/Redis, units, sudoers)
 #   os-update  apt full-upgrade + cleanup on the server (forwards flags, e.g.
 #              `os-update --reboot`, `os-update --release-upgrade`)
@@ -57,6 +63,21 @@ cmd_deploy() {
   info "Deploying ${BRANCH} to ${TARGET} (${REPO_DIR})"
   rexec "cd '${REPO_DIR}' && OMEGA_BRANCH='${BRANCH}' bash deployment/server_update.sh"
   ok "Done."
+}
+
+cmd_sync() {
+  info "Build-free sync of ${BRANCH} to ${TARGET} (${REPO_DIR}) — pull + restart, no rebuild"
+  rexec "cd '${REPO_DIR}' && OMEGA_BRANCH='${BRANCH}' bash deployment/server_sync.sh"
+  ok "Done."
+}
+
+cmd_pull() {
+  info "Syncing ${TARGET} checkout to ${BRANCH} (${REPO_DIR}) — no rebuild, no restart"
+  # Mirror origin exactly (same contract as deploy/sync), but touch nothing running:
+  # no go/cargo build, no systemctl. For changes that need neither — server-side
+  # deploy scripts, docs. Running services keep their current binaries + config.
+  rexec "cd '${REPO_DIR}' && git fetch --prune origin '${BRANCH}' && old=\$(git rev-parse --short HEAD) && git reset --hard 'origin/${BRANCH}' && echo \"repo \$old -> \$(git rev-parse --short HEAD)\""
+  ok "Pulled. Services untouched (run 'deploy' or 'sync' if a restart is needed)."
 }
 
 cmd_provision() {
@@ -108,6 +129,8 @@ cmd="${1:-deploy}"; shift || true
 case "$cmd" in
   all)       cmd_all ;;
   deploy)    cmd_deploy ;;
+  sync)      cmd_sync ;;
+  pull)      cmd_pull ;;
   provision) cmd_provision ;;
   os-update) cmd_os_update "$@" ;;
   status)    cmd_status ;;
@@ -115,6 +138,6 @@ case "$cmd" in
   health)    cmd_health ;;
   restart)   cmd_restart ;;
   ssh)       cmd_ssh ;;
-  -h|--help) sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//' ;;
+  -h|--help) sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//' ;;
   *)         die "unknown command: $cmd (try --help)" ;;
 esac

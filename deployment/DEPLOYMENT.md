@@ -148,12 +148,33 @@ branch with `OMEGA_BRANCH=my-branch ./scripts/deploy.sh`.
 
 ```bash
 # [laptop]
+./scripts/deploy.sh sync       # pull master + restart + health-check, NO rebuild (fast)
+./scripts/deploy.sh pull       # JUST sync the server's checkout — no rebuild, no restart
 ./scripts/deploy.sh status     # systemctl status for all three services
 ./scripts/deploy.sh logs       # follow journald for api + arena + sanctuary
 ./scripts/deploy.sh health     # curl API /health + both metrics endpoints
-./scripts/deploy.sh restart    # restart without rebuilding
+./scripts/deploy.sh restart    # restart without rebuilding (no pull either)
 ./scripts/deploy.sh ssh        # interactive shell on the box
 ```
+
+**`deploy` vs `sync` vs `pull`** — three tiers, cheapest last; pick by what your change needs:
+
+| command | recompiles? | restarts services? | use when the change is… |
+| ------- | ----------- | ------------------ | ----------------------- |
+| `deploy` | yes (`go build` + `cargo build --release`, minutes) | yes | compiled code under `api/` or `rust/` |
+| `sync`   | no | yes | read at **runtime** — `server_config.{arena,sanctuary}.json`, other non-compiled assets a restart picks up |
+| `pull`   | no | no | takes effect **without a restart** — server-side deploy scripts (`update_os.sh`, `server_update.sh`, …), docs |
+
+All three keep the server a pristine mirror of origin (`git reset --hard origin/master`) — that
+reset is instant; the cost is in the rebuild and the restart, which the lighter tiers skip.
+
+- `sync` ([`server_sync.sh`](server_sync.sh)) leaves the existing binaries untouched and
+  **guards** against misuse: if the pulled range touched `api/` or `rust/` it aborts *before*
+  restarting (the binaries would be stale against the new source) and tells you to run `deploy`.
+- `pull` touches nothing running — no `go`/`cargo`, no `systemctl`. The running services keep
+  their current binaries and config; the new files just sit in the checkout for next time a
+  script runs. Note that a change to `scripts/deploy.sh` **itself** needs no server step at all —
+  that script runs on your laptop, not the box.
 
 The API auto-applies its schema on startup (`db.Exec(schema)`), so there is no separate
 migration step.
