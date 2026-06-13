@@ -343,22 +343,49 @@ re-run).
 ```
 
 **Step 2 — Harden the box** (firewall, fail2ban, SSH lockdown, auto security updates). The repo
-exists on the server now (Step 1 cloned it), so run the script from there:
+exists on the server now (Step 1 cloned it), so run the script from there — from an **interactive**
+session you keep open until a second login is verified (it disables root login and password auth,
+so an already-working session is your safety net):
 
 ```bash
-ssh deploy@<your-ip> 'cd ~/omega-realm && sudo bash deployment/harden_vps.sh'
+ssh deploy@<your-ip>                                       # 1. log in interactively
+cd ~/omega-realm && sudo bash deployment/harden_vps.sh     # 2. harden (keep this shell OPEN)
+# 3. From a SECOND terminal, confirm you can still reconnect:  ssh deploy@<your-ip>
+#    Only close the first session once the second one logs in.
 ```
 
+Don't run it as a one-shot `ssh -t deploy@<ip> '… harden_vps.sh'`: that session closes the instant
+the script finishes, taking the script's "this session is still open to fix it" safety net with it.
+(The config is checked with `sshd -t` before any reload, so a lockout is unlikely — but the rescue
+session is there for the unexpected.)
+
 **Step 3 — Set the real secrets.** Provisioning created `/etc/omega-realm/*.env` from templates
-with placeholder values. The DB role password and `api.env` must match, or the API can't connect:
+with placeholder values. Several endpoints fail closed until their secret is set. First generate
+them (anywhere with `openssl` + Go):
+
+```bash
+openssl rand -hex 32                      # SERVER_API_TOKEN
+openssl rand -hex 32                      # REGION_HEARTBEAT_TOKEN (a different value)
+cd api && go run ./cmd/gen_ticket_key     # prints OMEGA_TICKET_PRIVKEY + OMEGA_TICKET_PUBKEY
+```
+
+Then write them on the server. `SERVER_API_TOKEN` and `REGION_HEARTBEAT_TOKEN` must be **identical**
+in both files; the Ed25519 pair splits private→`api.env`, public→`server.env`:
 
 ```bash
 ssh deploy@<your-ip>
 sudo -u postgres psql -c "ALTER ROLE omega PASSWORD 'YOUR_DB_PASSWORD';"
-sudo nano /etc/omega-realm/api.env       # set DB_PASSWORD (same as above) + JWT_SECRET_KEY
-sudo nano /etc/omega-realm/server.env    # ticket policy — defaults are load-test friendly
+sudo nano /etc/omega-realm/api.env       # DB_PASSWORD, JWT_SECRET_KEY, SERVER_API_TOKEN,
+                                         # REGION_HEARTBEAT_TOKEN, OMEGA_TICKET_PRIVKEY
+sudo nano /etc/omega-realm/server.env    # matching SERVER_API_TOKEN + REGION_HEARTBEAT_TOKEN,
+                                         # OMEGA_TICKET_PUBKEY, ticket policy
 exit
 ```
+
+> **Ticket policy.** The default is `OMEGA_ALLOW_UNSIGNED_TICKETS=false` (require signed tickets).
+> The API can mint/sign them now, but the **game client doesn't fetch tickets yet** (M3), so a real
+> player would be refused — set `OMEGA_ALLOW_UNSIGNED_TICKETS=true` on a player-facing box until the
+> client is wired, then flip back to `false` with `OMEGA_TICKET_PUBKEY` set.
 
 > `/etc/omega-realm/*.env` live on the server (`root:deploy 0640`) and are **never** in the
 > repo. Their templates are `deployment/env/*.example`.

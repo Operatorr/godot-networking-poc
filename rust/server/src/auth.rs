@@ -173,4 +173,43 @@ mod tests {
         assert_eq!(dev.verify(None, 0), auth_result_code::OK);
         assert_eq!(prod.verify(None, 0), auth_result_code::BAD_TICKET);
     }
+
+    fn to_hex(bytes: &[u8]) -> String {
+        bytes.iter().map(|b| format!("{b:02x}")).collect()
+    }
+
+    /// Cross-language contract lock. These constants are the SAME vector asserted by the
+    /// Go signer (api/internal/auth/ticket_test.go `TestTicketCrossLanguageVector`).
+    /// Ed25519 (RFC 8032) is deterministic, so if Rust reproduces the identical payload
+    /// bytes, public key, and signature for the shared (seed, fields), the Go API and this
+    /// verifier provably agree on the wire format. If this test drifts, signed joins break.
+    ///
+    /// Vector: seed = 32 × 0x07, character_id = 42, region = 0, issued = 1000, expires = 60000.
+    #[test]
+    fn go_cross_language_ticket_vector() {
+        const VEC_PAYLOAD_HEX: &str = "012a00000000e80300000000000060ea000000000000";
+        const VEC_SIGNATURE_HEX: &str = "005b771601d53ec91d71fa0bfe6dda2c099821c0bcf2bc15b005e6dce24175157d1325ce41735e56211b6ca493a9b42f238309d9d37371ece1508630c8473c05";
+        const VEC_PUBKEY_HEX: &str =
+            "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c";
+
+        let signing = SigningKey::from_bytes(&[7u8; 32]);
+        assert_eq!(to_hex(&signing.verifying_key().to_bytes()), VEC_PUBKEY_HEX);
+
+        let mut ticket = Ticket {
+            ticket_version: 1,
+            character_id: 42,
+            region: 0,
+            issued_at_ms: 1000,
+            expires_at_ms: 60000,
+            signature: [0; 64],
+        };
+        assert_eq!(to_hex(&ticket.payload_bytes()), VEC_PAYLOAD_HEX);
+
+        ticket.signature = signing.sign(&ticket.payload_bytes()).to_bytes();
+        assert_eq!(to_hex(&ticket.signature), VEC_SIGNATURE_HEX);
+
+        // And the verifier accepts a ticket carrying that exact (Go-reproducible) signature.
+        let v = verifier_for(&signing, false);
+        assert_eq!(v.verify(Some(&ticket), 30_000), auth_result_code::OK);
+    }
 }

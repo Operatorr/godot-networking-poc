@@ -154,12 +154,20 @@ In signed-ticket mode it must match the `character_id` inside the verified ticke
 (`--allow-unsigned-tickets`) the server trusts it like the rest of the self-reported identity.
 
 Ticket blob: `[u8 ticket_version=1][u32 character_id][u8 region][u64 issued_at_unix_ms]
-[u64 expires_at_unix_ms][64-byte Ed25519 signature]` — signature over the 22 preceding payload
-bytes, signed by the Go API. Dev mode (`--allow-unsigned-tickets`): `ticket_len == 0` is
-accepted and `character_id` is assigned by the server (a placeholder unique among concurrent
-players; POC parity with today's trust-the-client). A non-empty but malformed ticket is refused
-client-side — the codec returns empty bytes and the handshake aborts (no silent unsigned
-downgrade).
+[u64 expires_at_unix_ms][64-byte Ed25519 signature]` — all multi-byte fields **little-endian**;
+signature over the 22 preceding payload bytes, signed by the Go API. Dev mode
+(`--allow-unsigned-tickets`): `ticket_len == 0` is accepted and `character_id` is assigned by the
+server (a placeholder unique among concurrent players; POC parity with today's trust-the-client).
+A non-empty but malformed ticket is refused client-side — the codec returns empty bytes and the
+handshake aborts (no silent unsigned downgrade).
+
+Minting API (implemented): `POST /api/character/ticket` (JWT-protected) returns
+`{ "ticket": "<base64 of the 86-byte blob>", "character_id", "region", "expires_at_ms" }`. The
+region `u8` map mirrors `region_from_string` (`asia`/`local`/unknown→0, `europe`→1, `us-west`→2,
+`us-east`→3). The payload layout is pinned to the verifier by a shared test vector
+(`api/internal/auth/ticket_test.go` ⇄ `rust/server/src/auth.rs::go_cross_language_ticket_vector`).
+Env: `OMEGA_TICKET_PRIVKEY` (api.env, 32-byte hex seed) ⇄ `OMEGA_TICKET_PUBKEY` (server.env);
+generate a pair with `go run ./cmd/gen_ticket_key`.
 
 ### AuthResult (type 64, ch1)
 

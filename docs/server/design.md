@@ -91,6 +91,16 @@ round-trip, so an API hiccup can't block a spawn surge.
   assigns a placeholder `character_id`. A non-empty but malformed ticket is always refused — no
   silent unsigned downgrade.
 
+**Minting side (implemented).** The Go API signs tickets at `POST /api/character/ticket`
+(JWT-protected): it looks up the caller's own character, encodes the 22-byte payload, signs with
+its Ed25519 seed (`OMEGA_TICKET_PRIVKEY`), and returns the 86-byte blob base64-encoded. Key code:
+`api/internal/auth/ticket.go` (signer + region map), `api/internal/handlers/ticket.go` (endpoint),
+`api/cmd/gen_ticket_key` (keypair generator). The exact byte layout is locked to the verifier by a
+shared cross-language test vector (`api/internal/auth/ticket_test.go` ⇄
+`rust/server/src/auth.rs::go_cross_language_ticket_vector`). **Not yet built:** the *client* fetch
+flow (M3) — `network_manager.gd` still presents an empty ticket — so player-facing deploys run
+`--allow-unsigned-tickets` until that lands.
+
 ## Persistence: permadeath, death-as-save
 
 Durable state lives behind the Go API (Postgres); the sim hydrates only the living character's
