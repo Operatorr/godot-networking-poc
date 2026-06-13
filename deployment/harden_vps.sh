@@ -45,7 +45,12 @@ SSH_PORT="$(awk '{print $4}' <<<"${SSH_CONNECTION:-}")"
 ufw limit "${SSH_PORT}/tcp" comment 'SSH (rate-limited)'
 ufw allow 8081/udp      comment 'omega ARENA game (ENet/UDP)'
 ufw allow 8082/udp      comment 'omega SANCTUARY hub (ENet/UDP)'
-ufw allow 8080/tcp      comment 'Go API (HTTP)'
+ufw allow 80/tcp        comment 'HTTP (ACME challenge + redirect to HTTPS)'
+ufw allow 443/tcp       comment 'HTTPS (Caddy -> Go API)'
+ufw allow 8080/tcp      comment 'Go API (HTTP, direct) — closed by setup_tls.sh once Caddy fronts it'
+# NOTE: once you run deployment/setup_tls.sh, Caddy terminates TLS on 443 and proxies
+# to the API on localhost, and that script CLOSES this direct 8080 rule so the API is
+# reachable only over HTTPS. Until then, 8080 stays open so the API works pre-TLS.
 # NOTE: Prometheus 9100/9101, Postgres 5432, Redis 6379 are intentionally NOT
 # opened. The Rust server binds metrics to 127.0.0.1:9100/9101 and Postgres/Redis
 # listen on localhost only, so they stay off the public interface — there is

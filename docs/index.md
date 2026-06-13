@@ -23,6 +23,12 @@ for the map; this page is the **catalogue** with verification status. Terms are 
 | [`server/design.md`](server/design.md) | Implemented | Architecture & rationale: topology, transport, shared sim, tick, auth, persistence, hits, progression, deploy. |
 | [`server/contract.md`](server/contract.md) | Implemented | Crate APIs, ENet channel plan, the bit-packed wire format, numerics policy — as built. |
 
+## The web API (Go backend — accounts, characters, leaderboard, regions)
+
+| Doc | Status | What it answers |
+|---|---|---|
+| [`api/cms-api.md`](api/cms-api.md) | Implemented | The HTTP/JSON API reference for web/CMS consumers (Astro on Vercel): base URLs + TLS, JWT auth & refresh, register/login/character/regions/leaderboard endpoints, data models, server-only endpoints, and the recommended SSR + httpOnly-cookie integration. |
+
 ## The performance investigation (pre-port; concepts stand, GDScript cites are historical)
 
 | Doc | Status | What it answers |
