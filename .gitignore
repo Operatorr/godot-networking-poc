@@ -66,3 +66,6 @@ report_*.json
 client/bin/macos/*.dylib
 client/bin/linux/*.so
 client/bin/windows/*.dll
+
+# Compiled Go API binary (built by scripts/build_api.sh)
+api/bin/

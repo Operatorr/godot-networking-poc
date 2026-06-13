@@ -17,16 +17,27 @@ CREATE TABLE IF NOT EXISTS users (
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     region VARCHAR(20) DEFAULT 'Asia' CHECK (region IN ('Asia', 'Europe', 'US-West')),
-    glory INTEGER NOT NULL DEFAULT 0 CHECK (glory >= 0),
+    glory INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT username_length CHECK (char_length(username) >= 3 AND char_length(username) <= 50),
-    CONSTRAINT email_format CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$')
+    CONSTRAINT email_format CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'),
+    CONSTRAINT users_glory_non_negative CHECK (glory >= 0)
 );
 
 -- Account-wide Glory currency is added idempotently so already-running databases
--- (created with CREATE TABLE IF NOT EXISTS before this column existed) pick it up.
+-- (created with CREATE TABLE IF NOT EXISTS before this column existed) pick it up,
+-- along with its never-negative CHECK (Postgres has no ADD CONSTRAINT IF NOT EXISTS).
 ALTER TABLE users ADD COLUMN IF NOT EXISTS glory INTEGER NOT NULL DEFAULT 0;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'users_glory_non_negative'
+    ) THEN
+        ALTER TABLE users
+            ADD CONSTRAINT users_glory_non_negative CHECK (glory >= 0);
+    END IF;
+END $$;
 
 COMMENT ON TABLE users IS 'Player account information and authentication data';
 COMMENT ON COLUMN users.region IS 'Preferred game server region: Asia, Europe, or US-West';

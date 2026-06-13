@@ -127,6 +127,18 @@ func (db *DB) InitSchema() error {
 	-- (created before this column existed) pick it up. Existing rows default to 0.
 	ALTER TABLE users ADD COLUMN IF NOT EXISTS glory INTEGER NOT NULL DEFAULT 0;
 
+	-- Glory is server-authoritative and never negative. Enforce it idempotently;
+	-- Postgres has no ADD CONSTRAINT IF NOT EXISTS, so guard on the constraint name.
+	DO $$
+	BEGIN
+		IF NOT EXISTS (
+			SELECT 1 FROM pg_constraint WHERE conname = 'users_glory_non_negative'
+		) THEN
+			ALTER TABLE users
+				ADD CONSTRAINT users_glory_non_negative CHECK (glory >= 0);
+		END IF;
+	END $$;
+
 	-- Characters table (single character per user)
 	CREATE TABLE IF NOT EXISTS characters (
 		id SERIAL PRIMARY KEY,
