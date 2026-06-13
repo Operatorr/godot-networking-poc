@@ -49,7 +49,8 @@ var player_data: Dictionary = {
 	"player_class": 0,  ## PacketTypes.PlayerClass.ZEALOT
 	"player_level": 1,
 	"player_experience": 0,
-	"player_move_speed": 0  ## Effective base move speed from the latest PROGRESS event (0 = unknown)
+	"player_move_speed": 0,  ## Effective base move speed from the latest PROGRESS event (0 = unknown)
+	"character_mode": "softcore"  ## "softcore" (respawn) or "hardcore" (permadeath on death)
 }
 
 ## Game settings
@@ -181,6 +182,12 @@ func set_player_data(data: Dictionary) -> void:
 func get_player_data() -> Dictionary:
 	return player_data.duplicate()
 
+## True when the active character is hardcore (permadeath). On hardcore death the server
+## converts XP→Glory and deletes the character, so the client shows the permadeath death
+## screen ("Your Glory will be remembered" + Back to Main Menu) instead of respawning.
+func is_hardcore() -> bool:
+	return String(player_data.get("character_mode", "softcore")).to_lower() == "hardcore"
+
 ## Update player stat
 func update_stat(stat_name: String, value: int) -> void:
 	if session_stats.has(stat_name):
@@ -270,7 +277,8 @@ func clear_player_data() -> void:
 		"player_class": 0,
 		"player_level": 1,
 		"player_experience": 0,
-		"player_move_speed": 0
+		"player_move_speed": 0,
+		"character_mode": "softcore"
 	}
 	player_data_updated.emit()
 	print("[GameManager] Player data cleared")

@@ -465,6 +465,11 @@ func _merge_character_data(user_data: Dictionary, character: Dictionary) -> void
 		user_data["player_level"] = int(character.get("level", 1))
 	if character.has("experience"):
 		user_data["player_experience"] = int(character.get("experience", 0))
+	# Permadeath mode ("softcore" / "hardcore") drives the death flow: hardcore death is
+	# server-side permadeath (XP→Glory + character delete), so the client shows the
+	# "Your Glory will be remembered" screen instead of the respawn countdown.
+	if character.has("mode"):
+		user_data["character_mode"] = _variant_to_string(character.get("mode", "softcore"))
 
 
 func _fetch_character_after_login(user_data: Dictionary) -> void:

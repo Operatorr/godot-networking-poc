@@ -79,7 +79,7 @@ func _process(delta: float) -> void:
 	# Sprint zoom — identical feel to the arena (GameConstants is the single source).
 	if camera and local_player and is_instance_valid(local_player):
 		var target_zoom := GameConstants.CAMERA_ZOOM_DEFAULT
-		if Input.is_action_pressed("sprint") and local_player.movement_state == Player.MovementState.WALKING:
+		if local_player.is_sprinting():
 			target_zoom = GameConstants.CAMERA_ZOOM_SPRINT
 		camera.zoom = camera.zoom.lerp(target_zoom, clampf(delta * GameConstants.CAMERA_ZOOM_SPEED, 0.0, 1.0))
 

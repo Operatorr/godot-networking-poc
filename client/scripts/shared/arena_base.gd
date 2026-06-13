@@ -43,6 +43,10 @@ const VEIN_BRANCH_COLOR := Color(0.2, 0.06, 0.1, 0.4)  # Subtle branching veins
 ## Runtime mode
 var is_server: bool = false
 
+## When false, _draw() paints nothing — a subclass (e.g. the Sanctuary) supplies its own
+## ground/decor layers and must not have the dark arena grid/border drawn over them.
+var _draws_arena_floor: bool = true
+
 ## Client-only components (null in server mode)
 var local_player: Player = null
 var prediction_controller: PredictionController = null
@@ -70,6 +74,10 @@ var connection_lost_overlay: Control = null
 ## Last known killer for death screen
 var _last_killer_id: int = -1
 var _local_death_feedback_played: bool = false
+## Set when the local player suffered a hardcore (permadeath) death. The server converts
+## XP→Glory, deletes the character, then kicks us; this flag both selects the permadeath
+## death screen and suppresses the reconnect overlay for that expected disconnect.
+var _hardcore_death: bool = false
 
 ## Cached AudioManager reference (lazy-initialized)
 var _cached_audio_manager: Node = null
@@ -97,7 +105,7 @@ const KILL_STREAK_WINDOW := 5.0  # Seconds between kills to count as streak
 func _ready() -> void:
 	is_server = OS.has_feature("dedicated_server") or DisplayServer.get_name() == "headless"
 
-	_setup_arena_tilemap()
+	_build_level_environment()
 	_rebuild_spawn_markers()
 	_cache_spawn_points()
 
@@ -105,9 +113,44 @@ func _ready() -> void:
 		# Server doesn't need visuals
 		set_process(false)
 	else:
-		_build_arena_props()
 		queue_redraw()
 		_setup_client()
+
+
+## Build the level's static environment (tilemap floor, walls, obstacle cells, and — on the
+## client — cosmetic props). Overridable so a subclass can be a different "level": the
+## Sanctuary replaces this with its own town builders and its own EntityContainer.
+## Runs in BOTH server and client mode, before _setup_client().
+func _build_level_environment() -> void:
+	_setup_arena_tilemap()
+	if not is_server:
+		_build_arena_props()
+
+
+## The world geometry [min, max, obstacles_enabled] of the instance this scene connects to.
+## Pushed into the shared prediction sim in _setup_client() BEFORE the first predicted step so
+## client prediction matches the server. Defaults to the Arena (±1000 with obstacles); the
+## Sanctuary overrides this to its ±1856 walk-through bounds.
+func _world_geometry() -> Array:
+	return [Vector2(-1000.0, -1000.0), Vector2(1000.0, 1000.0), true]
+
+
+## Overridable hook called at the END of _setup_client() (client only), once the camera,
+## interpolation, ClientEntityManager, prediction, and HUD all exist. A subclass (Sanctuary)
+## builds decor/NPCs/portal here when they need the entity container or HUD layer present.
+func _after_client_setup() -> void:
+	pass
+
+
+## Forward a world-geometry change into the prediction sim owned by the PredictionController.
+## Must run on the main thread (prediction's thread) BEFORE the first predicted step — the sim
+## geometry is a thread-local in the shared Rust core. Guarded so it is a no-op before the
+## controller spawns or if the GDExtension lacks the method.
+func set_world_geometry(min_bound: Vector2, max_bound: Vector2, obstacles_enabled: bool) -> void:
+	if prediction_controller == null:
+		return
+	if prediction_controller.has_method("set_world_geometry"):
+		prediction_controller.set_world_geometry(min_bound, max_bound, obstacles_enabled)
 
 
 func _process(delta: float) -> void:
@@ -129,9 +172,10 @@ func _process(delta: float) -> void:
 		local_hit_detector.update()
 
 	if camera and local_player and is_instance_valid(local_player):
-		# Camera zoom on sprint
+		# Camera zoom on sprint — gated on the actual sprint state (not raw input) so the
+		# zoom snaps back the instant the player is exhausted and can no longer sprint.
 		var target_zoom := GameConstants.CAMERA_ZOOM_DEFAULT
-		if Input.is_action_pressed("sprint") and local_player.movement_state == Player.MovementState.WALKING:
+		if local_player.is_sprinting():
 			target_zoom = GameConstants.CAMERA_ZOOM_SPRINT
 		camera.zoom = camera.zoom.lerp(target_zoom, clampf(delta * GameConstants.CAMERA_ZOOM_SPEED, 0.0, 1.0))
 
@@ -217,8 +261,15 @@ func _setup_client() -> void:
 	NetworkManager.disconnected_from_server.connect(_on_disconnected)
 	NetworkManager.connected_to_server.connect(_on_reconnected)
 
-	# Spawn local player
+	# Spawn local player (creates the PredictionController that owns the shared sim).
 	_spawn_local_player(entity_container)
+
+	# Push THIS instance's world geometry into the prediction sim BEFORE the first predicted
+	# step or the handshake — the sim geometry is a thread-local set on the main thread, and
+	# prediction must match the server the moment authority syncs. A client returning from the
+	# Sanctuary resets to the Arena geometry here (the Sanctuary overrides _world_geometry()).
+	var geom := _world_geometry()
+	set_world_geometry(geom[0], geom[1], geom[2])
 
 	# Now that the message listener is wired, drive the auth handshake from the
 	# arena so PLAYER_INFO cannot arrive before _on_server_message is connected.
@@ -233,6 +284,9 @@ func _setup_client() -> void:
 	var audio := _get_audio_manager()
 	if audio:
 		audio.play_music("arena_ambience")
+
+	# Subclass decor/NPCs that need the client/HUD/entity-container to exist.
+	_after_client_setup()
 
 	print("[ArenaBase] Client setup complete")
 
@@ -328,6 +382,8 @@ func _setup_hud() -> void:
 	hud_layer.add_child(death_screen)
 	if death_screen.has_signal("respawn_requested"):
 		death_screen.connect("respawn_requested", Callable(self, "_on_respawn_requested"))
+	if death_screen.has_signal("main_menu_requested"):
+		death_screen.connect("main_menu_requested", Callable(self, "_on_main_menu_requested"))
 
 	# Pause Menu (full overlay, hidden by default)
 	pause_menu = _create_hud_component(PAUSE_MENU_PATH, "PauseMenu")
@@ -755,7 +811,14 @@ func _play_local_death_feedback() -> void:
 	_add_effect_to_arena(gore)
 
 	if death_screen:
-		death_screen.show_death(_last_killer_id)
+		# Hardcore = permadeath: the server has already converted XP→Glory and deleted the
+		# character (and will kick us shortly). Show the "Your Glory will be remembered"
+		# screen with a Back to Main Menu button instead of the respawn countdown.
+		if GameManager.is_hardcore():
+			_hardcore_death = true
+			death_screen.show_death_hardcore(_last_killer_id)
+		else:
+			death_screen.show_death(_last_killer_id)
 
 
 ## Handle authoritative projectile fire event for remote player and monster audio.
@@ -930,6 +993,21 @@ func _on_local_player_shot(pos: Vector2, dir: Vector2) -> void:
 
 func _on_respawn_requested() -> void:
 	NetworkManager.send_message(NetworkManager.MessageType.RESPAWN_REQUEST, {})
+
+
+## Hardcore "Back to Main Menu" pressed. The character is already gone server-side (XP→Glory
+## converted, row deleted), so clear the local character data and return to the main menu.
+func _on_main_menu_requested() -> void:
+	if _is_leaving_arena:
+		return
+	_is_leaving_arena = true
+
+	var audio := _get_audio_manager()
+	if audio:
+		audio.stop_music()
+	NetworkManager.disconnect_from_server("Hardcore permadeath")
+	GameManager.clear_player_data()
+	SceneManager.goto_main_menu()
 
 
 ## Show a "You eliminated [Name]" notification for the local player
@@ -1133,6 +1211,10 @@ func _on_local_exhausted_changed(active: bool) -> void:
 
 ## Handle disconnect from server
 func _on_disconnected(_reason: String) -> void:
+	# A hardcore death ends with the server kicking us (character deleted). That disconnect
+	# is expected — keep the permadeath death screen up and don't offer to reconnect.
+	if _hardcore_death:
+		return
 	if GameManager.current_state == GameManager.GameState.IN_ARENA:
 		if connection_lost_overlay:
 			connection_lost_overlay.show_overlay()
@@ -1518,6 +1600,10 @@ func get_hud_layer() -> CanvasLayer:
 
 ## Draw arena floor and grid
 func _draw() -> void:
+	# A subclass (Sanctuary) suppresses the dark arena floor and paints its own ground layers.
+	if not _draws_arena_floor:
+		return
+
 	# Draw floor background
 	var arena_rect := Rect2(arena_min, arena_max - arena_min)
 	draw_rect(arena_rect, FLOOR_COLOR, true)

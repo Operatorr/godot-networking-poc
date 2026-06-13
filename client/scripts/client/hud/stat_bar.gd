@@ -147,9 +147,13 @@ func _get_textures() -> Dictionary:
 func _make_texture_rect(texture: Texture2D, rect_position: Vector2, rect_size: Vector2) -> TextureRect:
 	var texture_rect := TextureRect.new()
 	texture_rect.texture = texture
+	# IGNORE_SIZE so STRETCH_SCALE actually scales the texture down to `rect_size`. With the
+	# default KEEP_SIZE the control's minimum size is forced up to the texture's native width
+	# (the track sprite is 256 px), so the black track would render wider than the frame.
+	texture_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	texture_rect.stretch_mode = TextureRect.STRETCH_SCALE
 	texture_rect.position = rect_position
 	texture_rect.size = rect_size
-	texture_rect.stretch_mode = TextureRect.STRETCH_SCALE
 	texture_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	texture_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return texture_rect

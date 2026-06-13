@@ -358,7 +358,8 @@ func _on_create_completed(result: int, response_code: int, _headers: PackedStrin
 		GameManager.set_player_data({
 			"character_name": character_name,
 			"character_id": character_id,
-			"player_class": _selected_class
+			"player_class": _selected_class,
+			"character_mode": str(character.get("mode", _selected_mode))
 		})
 
 		print("[CharacterCreation] Character created successfully: %s" % character_name)

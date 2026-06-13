@@ -436,7 +436,7 @@ func _update_footsteps(delta: float) -> void:
 		_footstep_timer = 0.0
 		return
 
-	var interval := FOOTSTEP_SPRINT_INTERVAL if Input.is_action_pressed("sprint") else FOOTSTEP_WALK_INTERVAL
+	var interval := FOOTSTEP_SPRINT_INTERVAL if is_sprinting() else FOOTSTEP_WALK_INTERVAL
 	_footstep_timer += delta
 	if _footstep_timer >= interval:
 		_footstep_timer -= interval
@@ -447,6 +447,22 @@ func _update_footsteps(delta: float) -> void:
 				audio = tree.root.get_node_or_null("AudioManager")
 		if audio and audio.has_method("play_footstep"):
 			audio.play_footstep()
+
+
+## True when the local player is genuinely sprinting: sprint held, actively moving,
+## and NOT blocked by exhaustion / empty stamina / daze. Mirrors sim_core's want_sprint
+## gate so the cosmetic feedback (camera zoom + faster sprint footsteps) stops the instant
+## the sim refuses to sprint. Both the Rust sim (online) and this SM (offline) already cap
+## movement to walk speed when exhausted; this keeps the feedback in lockstep instead of
+## keying off the raw `sprint` input (which stays held while exhausted).
+func is_sprinting() -> bool:
+	if movement_sm == null:
+		return false
+	if movement_state != MovementState.WALKING:
+		return false
+	if not Input.is_action_pressed("sprint"):
+		return false
+	return movement_sm.stamina > 0.0 and not movement_sm.is_exhausted() and not movement_sm.is_dazed()
 
 
 func _on_animation_finished() -> void:
