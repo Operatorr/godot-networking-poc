@@ -86,7 +86,6 @@ func main() {
 	mux.HandleFunc("/api/character/me", middleware.RequireAuth(characterHandler.GetCharacter))
 	mux.HandleFunc("/api/character/create", middleware.RequireAuth(characterHandler.CreateCharacter))
 	mux.HandleFunc("/api/character/sacrifice", middleware.RequireAuth(characterHandler.SacrificeCharacter))
-	mux.HandleFunc("PATCH /api/character", middleware.RequireAuth(characterHandler.UpdateCharacter))
 	mux.HandleFunc("DELETE /api/character", middleware.RequireAuth(characterHandler.DeleteCharacter))
 
 	// Internal server-only routes (guarded by X-Server-Token, NOT JWT). The Rust

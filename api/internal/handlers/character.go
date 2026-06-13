@@ -196,60 +196,11 @@ func (h *CharacterHandler) CreateCharacter(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-// UpdateCharacterRequest is the body for PATCH /api/character — server-authoritative
-// progression (level + experience) written back by the client after gameplay.
-type UpdateCharacterRequest struct {
-	Level      int `json:"level"`
-	Experience int `json:"experience"`
-}
-
-// UpdateCharacter persists the authenticated user's character progression.
-func (h *CharacterHandler) UpdateCharacter(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	claims, ok := middleware.GetUserClaims(r)
-	if !ok {
-		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(ErrorResponse{Error: "Unauthorized"})
-		return
-	}
-
-	var req UpdateCharacterRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(ErrorResponse{Error: "Invalid request body"})
-		return
-	}
-	if req.Level < 1 || req.Level > progression.MaxPlayerLevel {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(ErrorResponse{Error: fmt.Sprintf("level must be between 1 and %d", progression.MaxPlayerLevel)})
-		return
-	}
-	if req.Experience < 0 {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(ErrorResponse{Error: "experience must not be negative"})
-		return
-	}
-
-	result, err := h.db.Exec(
-		`UPDATE characters SET level = $1, experience = $2 WHERE user_id = $3`,
-		req.Level, req.Experience, claims.UserID,
-	)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to update character"})
-		return
-	}
-	rows, _ := result.RowsAffected()
-	if rows == 0 {
-		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(ErrorResponse{Error: "No character found for this user"})
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"message": "Character updated"})
-}
+// Character progression (level + experience) is server-authoritative: it is written
+// ONLY by the Rust game server via the X-Server-Token internal endpoints
+// (POST /api/internal/characters/{id}/progress). There is deliberately no
+// JWT/client-writable progression endpoint — that would let a modified client set its
+// own level/XP and then sacrifice it for Glory.
 
 // DeleteCharacter removes the authenticated user's character. Leaderboard and
 // session rows are removed automatically via ON DELETE CASCADE foreign keys.

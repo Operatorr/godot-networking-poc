@@ -25,17 +25,26 @@ func NewInternalHandler(db *database.DB) *InternalHandler {
 }
 
 // requireServerToken validates the X-Server-Token header against SERVER_API_TOKEN.
-// Mirroring the region heartbeat (REGION_HEARTBEAT_TOKEN) behavior: when the env var
-// is empty the check is skipped (dev parity). When set, a mismatch is rejected 401.
-// Returns true if the request may proceed.
+// These endpoints mutate the Glory economy and delete characters, so they FAIL CLOSED:
+// when SERVER_API_TOKEN is unset the request is rejected 401, unless the operator has
+// explicitly opted into the insecure dev path by setting ALLOW_INSECURE_INTERNAL=true
+// (used for the local stack, never in production). Returns true if the request may proceed.
 func requireServerToken(w http.ResponseWriter, r *http.Request) bool {
-	if expectedToken := os.Getenv("SERVER_API_TOKEN"); expectedToken != "" {
-		if r.Header.Get("X-Server-Token") != expectedToken {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(ErrorResponse{Error: "Unauthorized"})
-			return false
+	expectedToken := os.Getenv("SERVER_API_TOKEN")
+	if expectedToken == "" {
+		if os.Getenv("ALLOW_INSECURE_INTERNAL") == "true" {
+			return true // explicit dev opt-in: internal routes are unauthenticated
 		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Internal endpoints unconfigured (set SERVER_API_TOKEN)"})
+		return false
+	}
+	if r.Header.Get("X-Server-Token") != expectedToken {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Unauthorized"})
+		return false
 	}
 	return true
 }
@@ -53,6 +62,11 @@ type ProgressRequest struct {
 	Experience int `json:"experience"`
 }
 
+// OKResponse is a minimal success body for endpoints with nothing else to return.
+type OKResponse struct {
+	OK bool `json:"ok"`
+}
+
 // DeathResponse is the body returned by the death endpoint.
 type DeathResponse struct {
 	GloryAwarded     int64 `json:"glory_awarded"`
@@ -68,10 +82,6 @@ func (h *InternalHandler) GetCharacter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
 
 	id, ok := parsePathID(w, r)
 	if !ok {
@@ -106,10 +116,6 @@ func (h *InternalHandler) UpdateProgress(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
 
 	id, ok := parsePathID(w, r)
 	if !ok {
@@ -152,13 +158,14 @@ func (h *InternalHandler) UpdateProgress(w http.ResponseWriter, r *http.Request)
 	}
 
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	json.NewEncoder(w).Encode(OKResponse{OK: true})
 }
 
-// Death settles a character death atomically: read the character's level,
-// experience, mode and user_id; award Glory (floor of lifetime XP / divisor) to the
-// owning account; and for hardcore characters delete the character (permadeath).
-// Softcore characters are left in place.
+// Death settles a character death atomically. For hardcore (permadeath) characters
+// it awards Glory (floor of lifetime XP / divisor) to the owning account and deletes
+// the character, so its XP converts to Glory exactly once. Softcore characters
+// survive death and receive NO Glory here (that would be farmable); their payout is
+// the player-initiated church sacrifice instead.
 //
 // POST /api/internal/characters/{id}/death
 func (h *InternalHandler) Death(w http.ResponseWriter, r *http.Request) {
@@ -166,10 +173,6 @@ func (h *InternalHandler) Death(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
 
 	id, ok := parsePathID(w, r)
 	if !ok {
@@ -204,17 +207,22 @@ func (h *InternalHandler) Death(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	glory := progression.GloryFor(level, experience)
-	if _, err := tx.Exec(
-		`UPDATE users SET glory = glory + $1 WHERE id = $2`, glory, userID,
-	); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to award glory"})
-		return
-	}
-
+	// Glory is awarded only on permadeath (hardcore), where the character is also
+	// deleted — so a given character's lifetime XP converts to Glory exactly once.
+	// Softcore characters survive death (and could die repeatedly), so paying out
+	// here would let them farm Glory without bound; their only payout is the
+	// player-initiated church sacrifice (SacrificeCharacter), which deletes them.
+	var glory int64
 	characterDeleted := false
 	if mode == "hardcore" {
+		glory = progression.GloryFor(level, experience)
+		if _, err := tx.Exec(
+			`UPDATE users SET glory = glory + $1 WHERE id = $2`, glory, userID,
+		); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to award glory"})
+			return
+		}
 		if _, err := tx.Exec(`DELETE FROM characters WHERE id = $1`, id); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to delete character"})
