@@ -54,24 +54,28 @@ fi
 
 # ---------------------------------------------------------------------------
 log "3/9  Go toolchain (official tarball — apt's Go is too old for go 1.24)"
-# NOTE: capture the full body, THEN take the first line. Don't pipe curl into
-# `head` — go.dev/VERSION returns two lines, head closes the pipe after line 1,
-# and curl dies with EPIPE. Under `set -o pipefail` that aborts the whole script
-# silently. (e.g. body is "go1.24.5\ntime ...".)
+# Capture the body, THEN take the first line — go.dev/VERSION returns two lines
+# ("go1.26.4\ntime ..."); a guard surfaces a network failure instead of dying
+# silently under `set -e`.
 GO_VERSION_BODY="$(curl -fsSL 'https://go.dev/VERSION?m=text')" || {
   echo "could not reach go.dev to resolve the Go version (network/DNS?)" >&2; exit 1; }
-GO_WANT="${GO_VERSION_BODY%%$'\n'*}"   # first line only — e.g. go1.24.5
+GO_WANT="${GO_VERSION_BODY%%$'\n'*}"   # first line only — e.g. go1.26.4
 if ! command -v go >/dev/null 2>&1 || [[ "$(go version 2>/dev/null | awk '{print $3}')" != "$GO_WANT" ]]; then
   GO_TARBALL="${GO_WANT}.linux-${ARCH}.tar.gz"
   # Pull the official SHA256 for this exact tarball from go.dev's release index
   # and verify before extracting (the download is otherwise unauthenticated).
-  # Capture the JSON first (same `curl | head` SIGPIPE hazard as above), then
-  # parse it with `grep -m1` (no trailing `head` to slam the pipe shut).
   GO_DL_JSON="$(curl -fsSL 'https://go.dev/dl/?mode=json&include=all')" || {
     echo "could not reach go.dev/dl to resolve the Go SHA256" >&2; exit 1; }
-  GO_SHA="$(printf '%s' "$GO_DL_JSON" \
-    | grep -A2 "\"filename\": \"${GO_TARBALL}\"" \
-    | grep -m1 '"sha256"' | sed -E 's/.*"sha256": "([0-9a-f]+)".*/\1/')"
+  # Scan with awk, NOT `grep -A<n>`: the fields between "filename" and "sha256"
+  # (os/arch/version) make any fixed line window brittle, and an empty grep
+  # result returns rc=1, which under `set -o pipefail` aborts before the
+  # validation guard below can explain why. awk reads to the first sha256 in
+  # the matched object regardless of field order, and never SIGPIPEs.
+  GO_SHA="$(printf '%s\n' "$GO_DL_JSON" | awk -v f="\"filename\": \"${GO_TARBALL}\"" '
+    index($0, f) { found = 1 }
+    found && /"sha256":/ {
+      if (match($0, /[0-9a-f]{64}/)) { print substr($0, RSTART, RLENGTH); exit }
+    }')"
   [[ "$GO_SHA" =~ ^[0-9a-f]{64}$ ]] || { echo "could not resolve SHA256 for ${GO_TARBALL}" >&2; exit 1; }
   curl -fsSL "https://go.dev/dl/${GO_TARBALL}" -o /tmp/go.tgz
   echo "${GO_SHA}  /tmp/go.tgz" | sha256sum -c - || { echo "Go tarball checksum mismatch — aborting" >&2; rm -f /tmp/go.tgz; exit 1; }
