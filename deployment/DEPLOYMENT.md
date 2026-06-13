@@ -85,7 +85,9 @@ cd ~/omega-realm && sudo bash deployment/harden_vps.sh     # harden (keep this s
 
 Provisioning installs `/etc/omega-realm/{api,server}.env` from the templates with
 placeholder values. You must replace the placeholders before the stack works — several
-endpoints **fail closed** when their secret is unset.
+endpoints **fail closed** when their secret is unset, and in production the **API refuses
+to start at all** until `JWT_SECRET_KEY` is a real (non-placeholder) value: with a missing
+or placeholder secret anyone could forge auth tokens, so the process exits instead.
 
 Do this **all on the server, in one SSH session**: generating the Ed25519 seed there means the
 private key is created where it lives and never leaves the box.
@@ -93,9 +95,10 @@ private key is created where it lives and never leaves the box.
 ```bash
 # [laptop]
 ssh deploy@<droplet-ip>                  # → now on the server for the rest of Step 3
-# [server] — generate the secrets:
+# [server] — generate the secrets (run each line separately; use a DIFFERENT value for each):
+openssl rand -hex 32                                    # JWT_SECRET_KEY      (signs auth tokens; api.env only)
 openssl rand -hex 32                                    # SERVER_API_TOKEN
-openssl rand -hex 32                                    # REGION_HEARTBEAT_TOKEN (a DIFFERENT value)
+openssl rand -hex 32                                    # REGION_HEARTBEAT_TOKEN
 cd ~/omega-realm/api && go run ./cmd/gen_ticket_key     # OMEGA_TICKET_PRIVKEY + OMEGA_TICKET_PUBKEY
 # [server] — set the DB password, then paste the values into the env files:
 sudo -u postgres psql -c "ALTER ROLE omega PASSWORD 'YOUR_DB_PASSWORD';"
@@ -112,6 +115,7 @@ same run. What must line up across the two files:
 
 | Secret | api.env | server.env | Must match? |
 |---|---|---|---|
+| `JWT_SECRET_KEY` | ✅ | — | api.env only (not shared) |
 | `SERVER_API_TOKEN` | ✅ | ✅ | **identical** |
 | `REGION_HEARTBEAT_TOKEN` | ✅ | ✅ | **identical** |
 | Ed25519 ticket key | `OMEGA_TICKET_PRIVKEY` (private) | `OMEGA_TICKET_PUBKEY` (public) | same keypair |
@@ -214,6 +218,7 @@ Env precedence (game server): CLI flag > env var > JSON config > built-in defaul
 | Symptom | Check |
 |---------|-------|
 | Service won't start | `./scripts/deploy.sh logs` → `journalctl -u omega-arena -n 80` |
+| API exits on startup with "JWT config error" | `JWT_SECRET_KEY` in `/etc/omega-realm/api.env` is empty or still a placeholder — set a real one (`openssl rand -hex 32`), then `sudo systemctl restart omega-api` |
 | API can't reach DB | password in `/etc/omega-realm/api.env` matches the `omega` role; `sudo -u postgres pg_isready` |
 | Bots can't connect | `sudo ufw status` shows `8081/udp`; ticket policy in `server.env`; `curl localhost:9100/metrics` |
 | Sanctuary metrics missing | Arena=9100, Sanctuary=9101 — they must differ (set in each JSON config) |
