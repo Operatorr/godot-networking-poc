@@ -22,6 +22,13 @@ func main() {
 		log.Println("[API] No .env file found or error loading it, using environment variables")
 	}
 
+	// Load JWT config (signing secret + token lifetimes) now that .env is loaded. In
+	// production this refuses to start on an empty/placeholder JWT_SECRET_KEY rather than
+	// silently signing with a guessable default.
+	if err := auth.InitConfig(); err != nil {
+		log.Fatalf("[API] JWT config error: %v", err)
+	}
+
 	// Load configuration from environment
 	port := os.Getenv("PORT")
 	if port == "" {
