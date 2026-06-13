@@ -127,6 +127,7 @@ directly, not this enum. Polled in `_process_client` via a `match` on `current_s
 | ERROR / DISCONNECTED | RECONNECTING | `_schedule_reconnect` (had a prior success) | `network_manager.gd:356,1001,1024` |
 | RECONNECTING | CONNECTING | backoff timer elapses → `_attempt_reconnect` | `network_manager.gd:267-270,1027-1029` |
 | RECONNECTING | ERROR | `reconnect_attempts ≥ max` (5) | `network_manager.gd:1012-1016` |
+| RECONNECTING | DISCONNECTED | intentional `disconnect_from_server` cancels pending reconnect | `network_manager.gd:372-385` |
 
 Sub-flows:
 - **Auth handshake** is *not* part of the enum. On reaching CONNECTED, `_complete_connection`
@@ -142,6 +143,24 @@ Sub-flows:
   `reconnect_attempts` to 0 (`:336`). Auto-reconnect only fires if `server_url` is set and a prior
   connection succeeded (`_had_successful_connection`), so a first-attempt failure surfaces as a
   plain `connection_error` (`:356-359,1005-1010`).
+- **Suppressed reconnect** — an *expected* disconnect must not feed the backoff loop. The
+  `_suppress_auto_reconnect` flag (`network_manager.gd:98`) gates `_schedule_reconnect`:
+  `_on_connection_closed` only reconnects when `_had_successful_connection and not
+  _suppress_auto_reconnect` (`:554`). Two callers set it:
+  - **Hardcore (permadeath) death.** When the local player's death is detected as hardcore,
+    `ArenaBase._play_local_death_feedback` calls `NetworkManager.suppress_auto_reconnect()`
+    (`network_manager.gd:560`, `arena_base.gd` hardcore branch) *before* the server's kick lands.
+    Without this the kick reconnects, re-auths (`send_auth_handshake` from `_on_reconnected`), and
+    the server re-spawns the now-deleted character in the background behind the death screen — a
+    respawn loop, since the server immediately re-kicks. The `_hardcore_death` flag only suppresses
+    the reconnect *overlay*; the auto-reconnect loop is a separate concern in `NetworkManager`.
+  - **Intentional disconnect.** `disconnect_from_server` sets the flag and, when already in
+    RECONNECTING (transport closed, backoff timer ticking), forces DISCONNECTED + `client_reset`
+    instead of early-returning (`network_manager.gd:372-385`) — otherwise a pending reconnect
+    fires after the user has left to the main menu / Sanctuary.
+
+  The flag is cleared on the next fresh `connect_to_server` (non-reconnect path,
+  `network_manager.gd:235`), so a later session reconnects normally.
 
 ---
 

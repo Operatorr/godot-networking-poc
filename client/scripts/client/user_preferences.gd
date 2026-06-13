@@ -93,7 +93,7 @@ func rebind_action_key(action_name: String, physical_keycode: int) -> void:
 		if event is InputEventKey:
 			InputMap.action_erase_event(action_name, event)
 	var key_event := InputEventKey.new()
-	key_event.physical_keycode = physical_keycode
+	key_event.physical_keycode = physical_keycode as Key
 	InputMap.action_add_event(action_name, key_event)
 	keybinds[action_name] = physical_keycode
 

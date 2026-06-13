@@ -44,15 +44,18 @@ signal connected_to_server()
 signal disconnected_from_server(reason: String)
 signal connection_error(error: String)
 signal server_message_received(message_type: MessageType, data: Dictionary)
-signal heartbeat_timeout()  ## RETIRED - never emitted (ENet owns liveness); kept for listeners
+@warning_ignore("unused_signal")  # RETIRED - never emitted (ENet owns liveness); kept for listeners
+signal heartbeat_timeout()
 
 ## Signals - legacy server mode (never emitted; the Rust server replaced this role)
+@warning_ignore_start("unused_signal")
 signal server_client_connected(peer_id: int)
 signal server_client_disconnected(peer_id: int)
 signal server_client_message(peer_id: int, message_type: int, data: Dictionary)
+@warning_ignore_restore("unused_signal")
 
-const Transport := preload("res://autoload/transport/transport.gd")
-const ENetTransport := preload("res://autoload/transport/enet_transport.gd")
+## Transport and ENetTransport are global classes (class_name); referenced directly — no
+## preload const, which would shadow the global identifiers.
 
 ## Runtime mode detection (server mode = misconfiguration since the Rust port)
 var is_server: bool = false
@@ -89,6 +92,10 @@ var reconnect_timer: float = 0.0
 var connection_timeout_seconds: float = 5.0
 var _connection_attempt_id: int = 0
 var _had_successful_connection: bool = false
+## Set when a disconnect is expected and must NOT trigger the auto-reconnect loop — e.g. a
+## hardcore (permadeath) kick: the server deleted the character, so reconnecting would just
+## re-auth and spawn the player again behind the death screen. Cleared on a fresh connect.
+var _suppress_auto_reconnect: bool = false
 
 const UINT32_WRAP: int = 4294967296
 const MAX_REASONABLE_PING_MS: int = 10000
@@ -199,14 +206,14 @@ static func _split_host_port(url: String) -> Array:
 
 ## The ARENA instance address for a region: its advertised host:port unchanged (8081 locally).
 ## Accepts a region URL (with or without scheme) and returns a bare "host:port" for ENet.
-static func arena_url_for_region(region_url: String) -> String:
+func arena_url_for_region(region_url: String) -> String:
 	var parts := _split_host_port(region_url)
 	return "%s:%d" % [parts[0], parts[1]]
 
 
 ## The SANCTUARY instance address for a region: the region's HOST on SANCTUARY_PORT (8082).
 ## The Sanctuary runs alongside the Arena on the same machine, one port up.
-static func sanctuary_url_for_region(region_url: String) -> String:
+func sanctuary_url_for_region(region_url: String) -> String:
 	var parts := _split_host_port(region_url)
 	return "%s:%d" % [parts[0], SANCTUARY_PORT]
 
@@ -225,6 +232,7 @@ func connect_to_server(url: String, token: String = "", is_reconnect: bool = fal
 	if not is_reconnect:
 		reconnect_attempts = 0
 		_had_successful_connection = false
+		_suppress_auto_reconnect = false
 
 	server_url = url
 	auth_token = token
@@ -362,6 +370,16 @@ func _get_client_bandwidth_budget() -> int:
 
 ## Disconnect from server. The reason rides ENet's native disconnect data (no packet).
 func disconnect_from_server(reason: String = "User disconnect") -> void:
+	# An intentional disconnect must always cancel a pending auto-reconnect — including from the
+	# RECONNECTING state, where the transport is already closed and the early-return below would
+	# otherwise leave the backoff timer running and dial back in.
+	_suppress_auto_reconnect = true
+	if current_state == ConnectionState.RECONNECTING:
+		current_state = ConnectionState.DISCONNECTED
+		_transport.client_reset()
+		disconnected_from_server.emit(reason)
+		return
+
 	if _transport.client_state() == Transport.LinkState.CLOSED or current_state == ConnectionState.DISCONNECTED:
 		return
 
@@ -533,8 +551,14 @@ func _on_connection_closed(reason: String) -> void:
 	current_state = ConnectionState.DISCONNECTED
 	_auth_handshake_sent = false
 	disconnected_from_server.emit(reason)
-	if _had_successful_connection:
+	if _had_successful_connection and not _suppress_auto_reconnect:
 		_schedule_reconnect()
+
+
+## Suppress the auto-reconnect loop for an expected disconnect (e.g. hardcore permadeath kick).
+## Must be called before the server closes the link; cleared on the next fresh connect.
+func suppress_auto_reconnect() -> void:
+	_suppress_auto_reconnect = true
 
 
 func _schedule_reconnect() -> void:

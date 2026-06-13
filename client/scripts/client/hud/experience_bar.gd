@@ -7,7 +7,7 @@ class_name ExperienceBar
 extends Control
 
 const LEVEL_UP_FLASH_DURATION := 1.0
-const FILL_COLOR := Color(0.55, 0.85, 0.35)
+const FILL_COLOR := Color("5b3a8e")  # Void Violet
 const LEVEL_UP_COLOR := Color(1.0, 0.92, 0.4)
 
 var _level_label: Label = null

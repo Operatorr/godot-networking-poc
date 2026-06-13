@@ -981,8 +981,8 @@ func _build_safe_zone_badge() -> void:
 	badge.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
 	badge.offset_left = -220.0
 	badge.offset_right = 220.0
-	badge.offset_top = 16.0
-	badge.offset_bottom = 48.0
+	badge.offset_top = 62.0
+	badge.offset_bottom = 94.0
 	badge.add_theme_font_size_override("font_size", 22)
 	badge.add_theme_color_override("font_color", Color("ffd36a"))
 	badge.add_theme_color_override("font_outline_color", Color("3c8ccf"))
@@ -996,8 +996,8 @@ func _build_safe_zone_badge() -> void:
 	hint.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
 	hint.offset_left = -300.0
 	hint.offset_right = 300.0
-	hint.offset_top = 50.0
-	hint.offset_bottom = 72.0
+	hint.offset_top = 98.0
+	hint.offset_bottom = 120.0
 	hint.add_theme_font_size_override("font_size", 13)
 	hint.add_theme_color_override("font_color", Color(0.96, 0.94, 0.86, 0.85))
 	hud.add_child(hint)

@@ -3,6 +3,9 @@
 ## Used by both client (visual) and server (spawn logic)
 ## In client mode: sets up local player, interpolation, entity management, camera, HUD
 extends Node2D
+## Global class so subclasses (e.g. Sanctuary) can `extends ArenaBase` and headless
+## startup resolves the base class without a path-based preload.
+class_name ArenaBase
 
 ## Preloaded player scene for local player
 const PLAYER_SCENE_PATH := "res://scenes/shared/player/player.tscn"
@@ -816,6 +819,10 @@ func _play_local_death_feedback() -> void:
 		# screen with a Back to Main Menu button instead of the respawn countdown.
 		if GameManager.is_hardcore():
 			_hardcore_death = true
+			# The server will kick us once the character is deleted. Stop NetworkManager from
+			# auto-reconnecting into that kick — otherwise it re-auths and the server spawns us
+			# again in the background behind the death screen.
+			NetworkManager.suppress_auto_reconnect()
 			death_screen.show_death_hardcore(_last_killer_id)
 		else:
 			death_screen.show_death(_last_killer_id)
@@ -1116,14 +1123,14 @@ func _spawn_damage_number(amount: int, world_pos: Vector2, is_dealt: bool) -> vo
 		container.add_child(dmg_num)
 
 
-## Spawn a green "+N XP" floater (cosmetic, from an EXP_GAIN event).
+## Spawn a Sulfur Yellow "+N XP" floater (cosmetic, from an EXP_GAIN event).
 func _spawn_xp_floater(amount: int, world_pos: Vector2) -> void:
-	_spawn_text_floater("+%d XP" % amount, world_pos, Color(0.45, 1.0, 0.45))
+	_spawn_text_floater("+%d XP" % amount, world_pos, Color("c69a2e"))
 
 
-## Spawn a green "+N" heal floater (from a PICKUP heal event).
+## Spawn a Soul Teal "+N" heal floater (from a PICKUP heal event).
 func _spawn_heal_floater(amount: int, world_pos: Vector2) -> void:
-	_spawn_text_floater("+%d" % amount, world_pos, Color(0.35, 1.0, 0.4))
+	_spawn_text_floater("+%d" % amount, world_pos, Color("1c6c73"))
 
 
 ## Shared rising-and-fading text floater (reuses the damage-number motion/style).
