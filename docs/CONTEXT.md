@@ -218,8 +218,8 @@ _Avoid_: healing (reserve for Healthorb / abilities), regeneration (use the two-
 ## Progression & persistence (Vision — but the Rust port builds the service boundary now)
 
 These describe the future Realm-of-the-Mad-God-like MMO the POC de-risks. POC gameplay is HP-only, but
-the Rust server port designs its Go-API persistence boundary around these terms, so they are canonical.
-See the [Rust port migration spec](rust-port/migration-spec.md) D10 and
+the server designs its Go-API persistence boundary around these terms, so they are canonical.
+See the [server design](server/design.md) and
 [ADR 0005](adr/0005-permadeath-persistence-model.md).
 
 **Account-scoped state**:

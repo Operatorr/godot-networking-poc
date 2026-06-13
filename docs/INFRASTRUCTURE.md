@@ -73,7 +73,7 @@ PRIORITY FOR OMEGA REALM:
 │  │ Rust omega-server (systemd)            │ │
 │  │ ├─ omega-arena    (udp/8081)           │ │
 │  │ ├─ omega-sanctuary(udp/8082)           │ │
-│  │ └─ one process = one Instance (D13)    │ │
+│  │ └─ one process = one Instance          │ │
 │  └────────────────────────────────────────┘ │
 │                                             │
 │  ┌────────────────────────────────────────┐ │

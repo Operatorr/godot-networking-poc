@@ -15,14 +15,13 @@ for the map; this page is the **catalogue** with verification status. Terms are 
 | **Reference** | Numbers/decisions/background, not a system. |
 | **Active** | A live exec-plan being worked. |
 
-## The Rust server port (current core — start here)
+## The game server (current core — start here)
 
 | Doc | Status | What it answers |
 |---|---|---|
-| [`rust-port/README.md`](rust-port/README.md) | Implemented | **Port status** — what was built, how it was verified, deliberate deviations. |
-| [`rust-port/migration-spec.md`](rust-port/migration-spec.md) | Implemented | The full decision log D1–D14 (transport, protocol, sim parity, persistence, deploy, cutover). |
-| [`rust-port/contract.md`](rust-port/contract.md) | Implemented | Crate APIs, ENet channel plan, the bit-packed wire format, numerics policy — as built. |
-| [`rust-port/extraction/`](rust-port/extraction/) | Reference | Behavioral port-notes extracted from the GDScript (`file:line` cited) — the parity ground truth. |
+| [`server/README.md`](server/README.md) | Implemented | Index + the crate map — what each `rust/` crate is. |
+| [`server/design.md`](server/design.md) | Implemented | Architecture & rationale: topology, transport, shared sim, tick, auth, persistence, hits, progression, deploy. |
+| [`server/contract.md`](server/contract.md) | Implemented | Crate APIs, ENet channel plan, the bit-packed wire format, numerics policy — as built. |
 
 ## The performance investigation (pre-port; concepts stand, GDScript cites are historical)
 
@@ -42,7 +41,7 @@ for the map; this page is the **catalogue** with verification status. Terms are 
 | [`netcode/client-prediction.md`](netcode/client-prediction.md) | Partial | Local-player prediction & reconciliation (+ double-movement bug). |
 | [`netcode/interpolation.md`](netcode/interpolation.md) | Partial | Remote-entity interpolation & the **adaptive** (jitter-driven, 1–3 tick) Render delay. |
 | [`netcode/server-tick-broadcast.md`](netcode/server-tick-broadcast.md) | Implemented | 30 Hz tick + 30 Hz snapshot, shared-grid AoI, delta, bandwidth-budget scheduler, baseline acks. |
-| [`netcode/transport-websocket.md`](netcode/transport-websocket.md) | Superseded | WebSocket-over-TCP + transport seam; head-of-line blocking. Retired with the Rust port — live transport is ENet/UDP (ADR 0003, `rust-port/contract.md`). |
+| [`netcode/transport-websocket.md`](netcode/transport-websocket.md) | Superseded | WebSocket-over-TCP + transport seam; head-of-line blocking. Retired with the Rust port — live transport is ENet/UDP (ADR 0003, `server/contract.md`). |
 | [`netcode/interest-mgmt-aoi.md`](netcode/interest-mgmt-aoi.md) | Implemented | AoI 700/800 + shared spatial grid, LOD, byte-budget deferral, surfaced diagnostics. |
 | [`netcode/wire-protocol.md`](netcode/wire-protocol.md) | Implemented | Binary packet formats, quantization, u16 entity_count, `BASELINE_ACK`, auth budget. |
 | [`netcode/performance-budgets.md`](netcode/performance-budgets.md) | Reference | Targets vs measured, with the gap and the doc-drift. |
@@ -77,7 +76,7 @@ for the map; this page is the **catalogue** with verification status. Terms are 
 | [`adr/0003-enet-udp-transport.md`](adr/0003-enet-udp-transport.md) | Implemented | ENet-over-UDP datagram transport (supersedes 0001's substrate) — shipped with the Rust port. |
 | [`adr/0004-schema-driven-wire-protocol.md`](adr/0004-schema-driven-wire-protocol.md) | Implemented | Redesigned wire protocol as a shared Rust crate (no codegen); **amends 0003**'s "wire format unchanged". |
 | [`adr/0005-permadeath-persistence-model.md`](adr/0005-permadeath-persistence-model.md) | Accepted | Permadeath persistence — death is the server-authoritative transactional save; item integrity via the Go API. |
-| [`adr/0006-softcore-hardcore-glory-economy.md`](adr/0006-softcore-hardcore-glory-economy.md) | Accepted | Softcore/Hardcore modes, XP→Glory exchange, and server-authoritative progression — **extends 0005** (D15). |
+| [`adr/0006-softcore-hardcore-glory-economy.md`](adr/0006-softcore-hardcore-glory-economy.md) | Accepted | Softcore/Hardcore modes, XP→Glory exchange, and server-authoritative progression — **extends 0005**. |
 | [`adr/0007-native-systemd-deployment.md`](adr/0007-native-systemd-deployment.md) | Implemented | Native systemd deploy (drop Docker); git-pull rebuild; Arena+Sanctuary+API as units. |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Reference | Top-level system architecture & POC success criteria. |
 | [`specification.md`](specification.md) | Reference | Game design spec / GDD (the minimal bullet-hell design). |

@@ -1,21 +1,21 @@
 # ADR 0004 — Redesigned wire protocol as a shared Rust crate (no codegen)
 
 **Status:** Implemented — 2026-06-11 (`rust/protocol`, exposed to GDScript through the
-`client_ext` GDExtension; [rust-port/contract.md](../rust-port/contract.md) is the wire spec
-as built). Records [Rust port](../rust-port/migration-spec.md)
-decisions **D3** (redesign the wire format) and **D7** (implement it as a shared Rust `protocol`
-crate). **Amends [ADR 0003](0003-enet-udp-transport.md):** ADR 0003 assumed the Rust port would
+`client_ext` GDExtension; [server/contract.md](../server/contract.md) is the wire spec
+as built). Records the decision to redesign the wire format and implement it as a shared Rust
+`protocol` crate (see [server design](../server/design.md)). **Amends
+[ADR 0003](0003-enet-udp-transport.md):** ADR 0003 assumed the Rust port would
 reimplement *only the transport seam* and keep the existing `PacketWriter`/`PacketReader` wire format
-**unchanged**. The port is a **clean-slate rewrite** (migration spec D1) that redesigns transport
+**unchanged**. The port was a **clean-slate rewrite** that redesigns transport
 **and** wire format together, so that consequence of ADR 0003 is superseded. ADR 0003's transport
 choice (ENet-over-UDP via `ENetConnection` raw channels) **stands**.
 
 > **History (kept on purpose).** This ADR first proposed a *custom IDL + generator emitting both a
-> Rust and a GDScript codec*. Grilling collapsed that: migration-spec **D5** put a shared Rust
-> `sim_core` on the client as a GDExtension, and **D6** let the client call the **Rust** codec through
-> that same extension — removing the GDScript target. With no second language to emit, the generator's
-> sole justification vanished, so **D7** collapsed it to a plain shared Rust crate. The custom-IDL idea
-> is recorded as a *rejected option* below.
+> Rust and a GDScript codec*. That collapsed: a shared Rust `sim_core` was put on the client as a
+> GDExtension, and the client calls the **Rust** codec through that same extension — removing the
+> GDScript target. With no second language to emit, the generator's sole justification vanished, so
+> it collapsed to a plain shared Rust crate. The custom-IDL idea is recorded as a *rejected option*
+> below.
 
 ## Decision
 
@@ -26,7 +26,7 @@ it as a single shared Rust crate, **`protocol`**:
   control — position quantized to `i16` at 0.1 units, sub-byte delta masks and entity flags, varints
   where they pay.
 - **Both** consumers depend on the same crate: the **server** binary, and the **client GDExtension**
-  (which exposes `protocol`'s codec to GDScript — migration spec D6).
+  (which exposes `protocol`'s codec to GDScript).
 - A `PROTOCOL_VERSION` const lives in the crate and is checked at handshake; mismatched versions are
   refused. Client and server deploy in lockstep (native-only model, ADR 0003 — no mixed-version
   rollout to support).
@@ -39,8 +39,8 @@ that splits serialization across two languages (GDScript + Rust) — the classic
 sidestepped by *freezing* the format. Once we choose to *evolve* the format to reclaim bandwidth,
 freezing is off the table, so we need a different guarantee that the two sides agree.
 
-Migration-spec D5/D6 supply it from an unexpected direction: the client already links a Rust
-GDExtension (for `sim_core`, to guarantee prediction matches the server). Since the client runs Rust,
+The shared `sim_core` extension supplies it from an unexpected direction: the client already links a
+Rust GDExtension (for `sim_core`, to guarantee prediction matches the server). Since the client runs Rust,
 it can call the **Rust** codec directly — so **both** sides are Rust, and a single shared crate is the
 single source of truth. No codegen is needed because there is no second language. ADR 0003 fixed
 "native-only, permanently — no web client," so no future non-Rust consumer will ever need a
@@ -60,11 +60,11 @@ language-neutral schema either.
 
 - **Serialization drift between client and server is impossible by construction** — there is one codec,
   in one crate, linked by both. This covers the **wire format only**; **simulation-math parity** is
-  handled separately and more fundamentally by the shared `sim_core` crate (migration-spec D5).
+  handled separately and more fundamentally by the shared `sim_core` crate.
 - **All bandwidth budgets are invalidated** and must be re-measured; the numbers in
   [`../netcode/performance-budgets.md`](../netcode/performance-budgets.md) no longer describe the
   shipped protocol.
-- **`HEARTBEAT` and `BATCH` leave the protocol** (ENet subsumes them — ADR 0003 / migration-spec D2);
+- **`HEARTBEAT` and `BATCH` leave the protocol** (ENet subsumes them — ADR 0003);
   the clock-sync payload `HEARTBEAT` carried is relocated, not deleted.
 - **No codegen step and no schema/generated-code skew** to police — the trade is **DIY versioning**
   (a version const + handshake check) instead of an IDL's free field-level back-compat. Acceptable
@@ -92,8 +92,8 @@ language-neutral schema either.
 
 - [ADR 0003](0003-enet-udp-transport.md) — the ENet transport this rides on; this ADR amends its
   "wire format rides unchanged" consequence.
-- [`../rust-port/migration-spec.md`](../rust-port/migration-spec.md) — decisions D3, D4, D6, D7 behind
-  this ADR, and D5 (the shared `sim_core` that makes a single-language codec possible).
+- [`../server/design.md`](../server/design.md) — the server architecture this protocol serves
+  (incl. the shared `sim_core` that makes a single-language codec possible).
 - [`../netcode/wire-protocol.md`](../netcode/wire-protocol.md) — the hand-written format this replaces.
 - [`../netcode/performance-budgets.md`](../netcode/performance-budgets.md) — bandwidth numbers this
   invalidates and must be re-measured.

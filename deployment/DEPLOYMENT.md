@@ -15,7 +15,7 @@ Internet
 localhost only: PostgreSQL :5432 · Redis :6379 · Prometheus :9100/:9101
 ```
 
-One process = one Instance (migration-spec D13). The **Arena** has monsters + PvP
+One process = one Instance. The **Arena** has monsters + PvP
 (±1000 + pillars); the **Sanctuary** is the safe hub (±1856 walk-through). The client
 connects to the Sanctuary first, then the Arena on entry — so both must run.
 
@@ -36,26 +36,33 @@ Services (systemd units in [`systemd/`](systemd/)):
   `provision_server.sh` adds a 2 GB swapfile so Rust release builds don't OOM.
 - **Image:** Ubuntu 24.04 LTS.
 
-### Secure the box first
+> **Order matters on a fresh box.** Nothing is on the server yet — not even this repo.
+> `provision` is what clones it. So **provision first**, then harden from the cloned repo.
+> Do **not** `mkdir ~/omega-realm` by hand; `provision` creates and clones it.
 
-As `deploy` (in the `sudo` group), run the hardening script — firewall (opens 22,
-8080/tcp, 8081+8082/udp), fail2ban, SSH lockdown, unattended-upgrades:
-
-```bash
-sudo bash deployment/harden_vps.sh
-```
-
-### One-time bootstrap
+### Step 1 — One-time bootstrap (clones the repo + installs everything)
 
 Installs Go (official tarball — apt's is too old for `go 1.24`), Rust (rustup),
 PostgreSQL, Redis, swap, the systemd units, and a narrow passwordless `systemctl`
-rule for the three Omega services. From your **laptop**:
+rule for the three Omega services — and **clones the repo** into `~/omega-realm`. From
+your **laptop** (asks for the `deploy` user's sudo password; idempotent):
 
 ```bash
-./scripts/deploy.sh provision      # ssh in, clone repo, run provision_server.sh (asks sudo pw)
+./scripts/deploy.sh provision
 ```
 
-Then set real secrets on the server (the role password and the env file must match):
+### Step 2 — Harden the box
+
+The repo is on the server now (Step 1 cloned it), so run the hardening script from there —
+firewall (opens 22, 8080/tcp, 8081+8082/udp), fail2ban, SSH lockdown, unattended-upgrades:
+
+```bash
+ssh deploy@<droplet-ip> 'cd ~/omega-realm && sudo bash deployment/harden_vps.sh'
+```
+
+### Step 3 — Set real secrets
+
+Set the real secrets on the server (the role password and the env file must match):
 
 ```bash
 ssh deploy@<droplet-ip>

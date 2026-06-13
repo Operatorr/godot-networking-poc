@@ -1,9 +1,8 @@
 # ADR 0006 — Softcore/Hardcore modes, the Glory economy, and server-authoritative progression
 
 **Status:** Accepted (design) — 2026-06-13. Extends [ADR 0005](0005-permadeath-persistence-model.md)
-(permadeath as the server-authoritative transactional save) and the
-[Rust port migration spec](../rust-port/migration-spec.md) (decision **D15**). Builds on D9 (Ed25519
-ticket — now carries `character_id`) and D10 (hydrate-on-join, death-as-save). Reinforces the AGENTS.md
+(permadeath as the server-authoritative transactional save). Builds on the Ed25519
+ticket (now carries `character_id`) and hydrate-on-join / death-as-save. Reinforces the AGENTS.md
 invariant *"all gameplay state is server-authoritative and in-memory; the Go API owns only
 account/character/leaderboard persistence."*
 
@@ -88,7 +87,7 @@ decides."**
 - **The wire grows (protocol v4):** `character_id` in `ConnectAuth`, a `PROGRESS` event, plus the
   ability-system additions (cursor in `PlayerInput`, world-effect entity kind, `STEALTH` flag,
   `ABILITY_EFFECT`, `PICKUP {kind, amount}` for Healthorbs). Full layout in
-  [`../rust-port/contract.md`](../rust-port/contract.md).
+  [`../server/contract.md`](../server/contract.md).
 - **Total lifetime XP must be tracked separately** from within-level `experience` — the conversion
   reads the lifetime total, not the level-progress remainder.
 
@@ -115,7 +114,7 @@ decides."**
 ## See also
 
 - [ADR 0005](0005-permadeath-persistence-model.md) — permadeath as the transactional save this extends.
-- [`../rust-port/migration-spec.md`](../rust-port/migration-spec.md) — decision **D15** (this ADR's home).
-- [`../rust-port/contract.md`](../rust-port/contract.md) — the protocol v4 wire layout.
+- [`../server/design.md`](../server/design.md) — progression & economy in the context of the whole server.
+- [`../server/contract.md`](../server/contract.md) — the protocol v4 wire layout.
 - [`../systems/PROGRESSION.md`](../systems/PROGRESSION.md) · [`../systems/abilities.md`](../systems/abilities.md) · [`../classes/index.md`](../classes/index.md)
 - [`../CONTEXT.md`](../CONTEXT.md) — the Softcore/Hardcore/Sacrifice/Glory terms this ADR makes canonical.

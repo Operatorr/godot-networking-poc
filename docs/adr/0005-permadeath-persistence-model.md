@@ -1,12 +1,12 @@
 # ADR 0005 — Permadeath persistence: death is the server-authoritative transactional save
 
-**Status:** Accepted (design) — 2026-06-11. Records [Rust port](../rust-port/migration-spec.md)
-decision **D10**. Builds on [ADR 0003](0003-enet-udp-transport.md) (session ticket) and the migration
-spec's D8 (single-threaded authoritative tick) and D9 (Ed25519 ticket). Reinforces the AGENTS.md
+**Status:** Accepted (design) — 2026-06-11. Records the permadeath-persistence design (see
+[server design](../server/design.md)). Builds on [ADR 0003](0003-enet-udp-transport.md) (session
+ticket), the single-threaded authoritative tick, and the Ed25519 ticket. Reinforces the AGENTS.md
 invariant *"all gameplay state is server-authoritative and in-memory; the Go API owns only
 account/character/leaderboard persistence."*
 
-> **Extended by [ADR 0006](0006-softcore-hardcore-glory-economy.md) (2026-06-13, D15).** This ADR's
+> **Extended by [ADR 0006](0006-softcore-hardcore-glory-economy.md) (2026-06-13).** This ADR's
 > "death deletes the character and credits Glory" is now the **Hardcore** rule specifically:
 > ADR 0006 adds a forgiving **Softcore** mode (death respawns; the character ends only by voluntary
 > **Sacrifice** at the Church), defines the **XP→Glory** exchange (`floor(total_lifetime_XP / 100)`,
@@ -40,7 +40,7 @@ combat sim** (touched only at a bank chest in the Sanctuary, via the API). This 
 boundary thin despite a rich item economy.
 
 **2. Death is the first-class save, and it is disconnect-immune.** When HP reaches 0 **in the
-authoritative tick** (D8's collision/damage stage), the server **synchronously and transactionally**:
+authoritative tick** (the collision/damage stage), the server **synchronously and transactionally**:
 deletes the character + everything it carried, credits account glory, and leaves the bank untouched —
 **before any client action can intervene.** Alive/dead is server-authoritative at the tick it happens.
 This is **not** save-on-leave; a disconnect handler a cheater never lets you reach cannot be the
@@ -107,7 +107,7 @@ A periodic checkpoint bounds loss on accumulating XP/glory between transitions.
 ## See also
 
 - [ADR 0006](0006-softcore-hardcore-glory-economy.md) — Softcore/Hardcore modes, the XP→Glory exchange,
-  and server-authoritative progression that **extend** this ADR (D15).
-- [`../rust-port/migration-spec.md`](../rust-port/migration-spec.md) — decision D10 (and D15) and the D8/D9 it builds on.
+  and server-authoritative progression that **extend** this ADR.
+- [`../server/design.md`](../server/design.md) — the persistence design in the context of the whole server.
 - [ADR 0003](0003-enet-udp-transport.md) — the session-ticket auth this persistence boundary rides behind.
 - [`../CONTEXT.md`](../CONTEXT.md) — the state-lifetime and progression terms this ADR makes canonical.

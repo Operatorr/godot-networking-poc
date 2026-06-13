@@ -15,8 +15,8 @@
 > WebSocket transport described below are **retired**. In particular, the "WebSocket
 > Architecture & Requirements" and "Godot Server Limitations" sections are historical
 > context only; the current design is governed by
-> [`rust-port/migration-spec.md`](rust-port/migration-spec.md) (D1–D14),
-> [`rust-port/contract.md`](rust-port/contract.md), and
+> [`server/design.md`](server/design.md),
+> [`server/contract.md`](server/contract.md), and
 > [ADR 0003](adr/0003-enet-udp-transport.md). The POC goals, success criteria, sharding
 > strategy, and optimization principles in this file still stand.
 >
@@ -946,7 +946,7 @@ cp api/.env.example api/.env       # point DB_*/REDIS_* at your local Postgres/R
 ```bash
 ./scripts/run_server.sh --mode arena --port 8081   # one Rust instance (dev: unsigned tickets)
 # the authoritative server is the Rust omega-server binary — the Godot headless
-# server is retired (migration-spec D1).
+# server is retired.
 ```
 
 **Test Full Stack:**

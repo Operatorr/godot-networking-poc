@@ -29,7 +29,7 @@ units, and a narrow passwordless `systemctl` sudoers rule scoped to the three se
 
 **Two game instances, always.** The client (`network_manager.gd`) connects players to the
 Sanctuary hub (`8082`) first and the Arena (`8081`) on entry, so a playable deployment
-runs both — one process per Instance (migration-spec D13). Each carries its own JSON
+runs both — one process per Instance. Each carries its own JSON
 config; the metrics port is config-only (no env override), so the two configs assign
 `9100`/`9101` to avoid a bind clash.
 

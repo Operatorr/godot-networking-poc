@@ -6,7 +6,7 @@ side is the Rust `omega-server` binary (`rust/server`, `rusty_enet`). Supersedes
 [ADR 0001](0001-websocket-tcp-transport.md) on the transport substrate. One consequence below
 was later amended: the port redesigned the **wire format too** — see
 [ADR 0004](0004-schema-driven-wire-protocol.md); the channel plan grew to three (snapshots /
-reliable / input) per migration-spec D2. The authoritative fixed-tick model
+reliable / input). The authoritative fixed-tick model
 ([ADR 0002](0002-authoritative-server-fixed-tick.md)) stands unchanged.
 
 **Address-family note:** `omega-server` binds IPv4-only, so `enet_transport.gd` resolves bare

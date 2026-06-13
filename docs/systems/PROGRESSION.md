@@ -87,7 +87,7 @@ Glory = floor(total_lifetime_XP / 100)
 ```
 
 This is an **atomic Go API transaction** (credit Glory, delete the character) owned by the server's
-death/sacrifice path — the same disconnect-immune save permadeath requires (ADR 0005, D10). A
+death/sacrifice path — the same disconnect-immune save permadeath requires (ADR 0005). A
 **Softcore** death does **not** convert: the character respawns and keeps its XP; only a Sacrifice
 ends it. See [`../adr/0006-softcore-hardcore-glory-economy.md`](../adr/0006-softcore-hardcore-glory-economy.md).
 
@@ -153,4 +153,4 @@ ends it. See [`../adr/0006-softcore-hardcore-glory-economy.md`](../adr/0006-soft
 - [`abilities.md`](abilities.md) — Class abilities, Mana, the 8/s regen sink.
 - [`../adr/0006-softcore-hardcore-glory-economy.md`](../adr/0006-softcore-hardcore-glory-economy.md) — Softcore/Hardcore + Glory.
 - [`../adr/0005-permadeath-persistence-model.md`](../adr/0005-permadeath-persistence-model.md) — hydrate-on-join + death-as-save.
-- [`../rust-port/contract.md`](../rust-port/contract.md) — the protocol v4 wire deltas (`PROGRESS`, `character_id`).
+- [`../server/contract.md`](../server/contract.md) — the protocol v4 wire deltas (`PROGRESS`, `character_id`).

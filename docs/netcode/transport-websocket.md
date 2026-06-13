@@ -3,7 +3,7 @@
 **Status:** Superseded (historical — describes the retired WebSocket-era transport, last
 verified 2026-06-04). The live transport is **ENet-over-UDP**, shipped with the Rust port:
 see [ADR 0003](../adr/0003-enet-udp-transport.md) and
-[`../rust-port/contract.md`](../rust-port/contract.md) for the channel plan as built. The
+[`../server/contract.md`](../server/contract.md) for the channel plan as built. The
 transport-abstraction seam (`Transport`, #12) survives on the client; `WebSocketTransport`
 was replaced by `ENetTransport`. The analysis below (especially TCP head-of-line blocking)
 is the *why* behind that swap.

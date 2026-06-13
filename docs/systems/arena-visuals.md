@@ -25,7 +25,7 @@ the generated assets are missing, so a checkout without the art keeps working.
 - **Server:** knows nothing about any of this. The only server-side change is
   the `class: u8` identity byte (protocol v3) it stores, clamps (>6 → 0) and
   re-broadcasts in PLAYER_INFO — see
-  [`../rust-port/contract.md`](../rust-port/contract.md).
+  [`../server/contract.md`](../server/contract.md).
 - **Predicted:** nothing. The local player's animation *reads* predicted motion
   (observed speed from position deltas picks idle/run/sprint/dash) but feeds
   nothing back into the sim.

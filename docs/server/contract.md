@@ -1,24 +1,24 @@
-# Rust port — workspace & interface contract
+# Omega server — workspace & wire contract
 
-**Status:** Active (governs M0–M2 implementation) · **Derived from:** [migration-spec.md](migration-spec.md)
-D2/D3/D5–D8 and the [extraction notes](extraction/). Where this doc and the extraction notes disagree,
-the extraction notes win on *current behavior*; this doc wins on *new wire format and crate shape*.
+**Status:** Active (as built) · **Companion:** [`design.md`](design.md) (architecture & rationale).
+The wire format, crate APIs, and numerics below are the authoritative spec for `rust/` and the
+Godot client extension.
 
 ## Workspace
 
 ```
 rust/
 ├── Cargo.toml          # [workspace] members = protocol, sim_core, server, client_ext
-├── protocol/           # D7 — packet structs + hand-rolled bit codec, PROTOCOL_VERSION
-├── sim_core/           # D5 — movement SM, mover, arena, hit predicates (no godot/net deps)
-├── server/             # D8 — bin: rusty_enet host, 30 Hz tick thread, ureq I/O thread
-└── client_ext/         # D6 — cdylib (gdext): NetCodec + PredictionSim for GDScript
+├── protocol/           # packet structs + hand-rolled bit codec, PROTOCOL_VERSION
+├── sim_core/           # movement SM, mover, arena, hit predicates (no godot/net deps)
+├── server/             # bin: rusty_enet host, 30 Hz tick thread, ureq I/O thread
+└── client_ext/         # cdylib (gdext): ProtocolCodec + PredictionSim + SimHit for GDScript
 ```
 
 Dependency edges: `server → {protocol, sim_core}`, `client_ext → {protocol, sim_core, godot}`.
-`protocol` and `sim_core` depend on nothing network- or Godot-related. Crate pins per
-[extraction/rust-stack-notes.md](extraction/rust-stack-notes.md) (rusty_enet `=0.4.0`, godot 0.5.3
-`api-4-6`, ed25519-dalek 2.2, ureq 3.x, tracing, metrics + metrics-exporter-prometheus).
+`protocol` and `sim_core` depend on nothing network- or Godot-related. Crate pins: rusty_enet
+`=0.4.0`, godot 0.5.3 `api-4-6`, ed25519-dalek 2.2, ureq 3.x, tracing, metrics +
+metrics-exporter-prometheus.
 
 Extension artifacts are copied into the Godot project: `client/bin/<platform>/` +
 `client/bin/omega_client_ext.gdextension` (`compatibility_minimum = 4.6`). Build script:
@@ -32,11 +32,11 @@ Extension artifacts are copied into the Godot project: `client/bin/<platform>/` 
   `vel *= exp(-9.0 * dt) as f32`).
 - Quantization: positions/velocities ×10 **truncate toward zero** then clamp to i16; angles ×100
   same rule. Colors ×255 **round half away from zero** then clamp to u8. Two rules, kept distinct.
-- Exact GDScript float parity is **not** load-bearing (client prediction runs this same crate —
-  D5), but algorithms are ported faithfully (order of operations, strict `<` comparisons,
+- Exact GDScript float parity is **not** load-bearing (client prediction runs this same crate),
+  but algorithms are ported faithfully (order of operations, strict `<` comparisons,
   `maxf(0.0, t - dt)` timer decrements) so game feel matches the GDScript server.
 
-## Channels (D2)
+## Channels
 
 | Const | # | ENet mode | Rust send | Godot send flags |
 |---|---|---|---|---|
@@ -116,16 +116,15 @@ snapshot carries it; the client feeds the same EMA filter (first sample direct, 
 using ENet-native RTT for the half-trip estimate. Mask precedence on decode: FULL before REMOVED.
 Mask 0 entities are omitted by the encoder (cost zero bits). Entity order is not meaningful.
 Baseline packets set `BASELINE`, never `IS_DELTA`; the client acks with `BaselineAck{server_tick}`.
-Delta/baseline cadence, ack/resend (100-tick interval, 30-tick resend, budget clamp 256..1200 B,
-baselines exempt from budget) are ported exactly from
-[extraction/wire-protocol.md](extraction/wire-protocol.md) §4.9–4.14.
+Delta/baseline cadence and ack/resend as built: 100-tick baseline interval, 30-tick resend,
+per-peer budget clamp 256..1200 B, baselines exempt from the budget.
 
 ### PlayerInput (type 2, ch2) — 22 B (was 18 B; protocol v4 adds the cursor)
 
 `[u8 type][u8 seq][u16 input_flags][s16 aim_angle_q][s16 qx][s16 qy][s16 qvx][s16 qvy]
 [u16 client_render_tick][u16 client_rtt_ms][s16 cursor_qx][s16 cursor_qy]`
 
-Field semantics identical to today (seq wraps at 256; render_tick = low 16 bits of server tick;
+Field semantics as built (seq wraps at 256; render_tick = low 16 bits of server tick;
 position is the client's predicted position, server validates against thresholds). **Protocol v4**
 appends the **cursor** as two `s16` (world position, 0.1-unit quantization, +4 B) — the aim point for
 the Class ability (point-target Mageblast/Plague Zone clamp to `max_cast_range`; target-search
@@ -135,7 +134,7 @@ the RMB **ability-held** flag. See [`../systems/abilities.md`](../systems/abilit
 ### ActionConfirm (type 66, ch0) — 12 B
 
 `[u8 type][u8 seq][u8 action][s16 qx][s16 qy][u8 result][u16 server_tick][u8 stamina][u8 mana]`
-(same fields as today; stamina/mana = `clamp(round(v), 0, 255)`).
+(stamina/mana = `clamp(round(v), 0, 255)`).
 
 ### ConnectAuth (type 1, ch1)
 
@@ -156,7 +155,7 @@ In signed-ticket mode it must match the `character_id` inside the verified ticke
 
 Ticket blob: `[u8 ticket_version=1][u32 character_id][u8 region][u64 issued_at_unix_ms]
 [u64 expires_at_unix_ms][64-byte Ed25519 signature]` — signature over the 22 preceding payload
-bytes, signed by the Go API (D9). Dev mode (`--allow-unsigned-tickets`): `ticket_len == 0` is
+bytes, signed by the Go API. Dev mode (`--allow-unsigned-tickets`): `ticket_len == 0` is
 accepted and `character_id` is assigned by the server (a placeholder unique among concurrent
 players; POC parity with today's trust-the-client). A non-empty but malformed ticket is refused
 client-side — the codec returns empty bytes and the handshake aborts (no silent unsigned
@@ -171,14 +170,14 @@ waiting for the PLAYER_INFO broadcast, which is still sent for names/colors).
 
 ### GameEvent (type 67, ch1)
 
-`[u8 type][u8 event_type][u16 source_id][u16 target_id][tail]` — event types and tails identical
-to today (extraction §4.15) except where protocol v4 noted: DAMAGE `[u16 amount][u8 dmg_type]`;
+`[u8 type][u8 event_type][u16 source_id][u16 target_id][tail]` — event types and tails as built,
+except where protocol v4 noted: DAMAGE `[u16 amount][u8 dmg_type]`;
 KILL/KILL_PVP none; RESPAWN `[s16 qx][s16 qy]`; PLAYER_INFO
 `[u8 len][utf8 name][s16 qx][s16 qy][u8 r][u8 g][u8 b][u8 class]`
 (class since protocol v3 — server-clamped to 0..=6, see ConnectAuth);
 LEADERBOARD_UPDATE `[u8 n]{n × [u16 id][u16 kills]}`; PROJECTILE_FIRED
 `[s16 qx][s16 qy][u16 fire_tick]` with target_id = projectile id (**non-zero for monster shots** —
-D11 invariant); EXP_GAIN=13 `[u16 amount]` with source_id = the player who earned it (one event
+hit-authority invariant); EXP_GAIN=13 `[u16 amount]` with source_id = the player who earned it (one event
 per nearby player when a monster dies — the HUD "+XP" pop only; progression itself is now
 server-authoritative, see [`../systems/PROGRESSION.md`](../systems/PROGRESSION.md)).
 
@@ -197,7 +196,7 @@ server-authoritative, see [`../systems/PROGRESSION.md`](../systems/PROGRESSION.m
 
 ### ServerMetrics (type 68, ch1) — 1 Hz
 
-Same 33-byte field set as today (extraction §4.18), prefixed by the type byte.
+33-byte field set (as built), prefixed by the type byte.
 
 ### BaselineAck (3): `[u8 type][u32 baseline_tick]` · RequestFullState (4) / RespawnRequest (5):
 `[u8 type]` · LocalHitReport (6): `[u8 type][u16 projectile_id]`
@@ -218,7 +217,7 @@ above:
 | `PROGRESS=15` | `GameEvent` (type 67) | new: `[u16 level][u32 experience][s16 move_speed_q]` (authoritative progression push) |
 | `PICKUP=6` payload | `GameEvent` (type 67) | now `[u8 kind][u16 amount]` (was empty) — Healthorb +5 HP etc. |
 
-Lockstep client/server deploy as always (DIY versioning, D7): a v3↔v4 mismatch is refused at the
+Lockstep client/server deploy as always (DIY versioning): a v3↔v4 mismatch is refused at the
 handshake (`ConnectAuth` re-check). The new fields are all server-authoritative in effect — abilities,
 progression, and pickups are decided by the server; the client request (ability flag + cursor) stays
 advisory, per "the client requests, the server decides." See
@@ -267,27 +266,30 @@ pub mod hit {
 intra-tick order (timers → stamina(previous state) → mana → edges → actions → dispatch), and
 **no depenetration** (a center inside an expanded obstacle freezes — port verbatim).
 
-## client_ext GDScript surface (D6)
+## client_ext GDScript surface
 
-- `NetCodec` (RefCounted, `#[class(init)]`): `encode_connect_auth(...)`, `encode_input(...)`,
+- `ProtocolCodec` (RefCounted, `#[class(init)]`): `encode_connect_auth(...)`, `encode_input(...)`,
   `encode_baseline_ack(tick)`, `encode_request_full_state()`, `encode_respawn_request()`,
   `encode_local_hit_report(projectile_id)` → `PackedByteArray`; `decode_server_packet(bytes:
-  PackedByteArray) -> Dictionary` (key `"type"`, then per-packet keys mirroring today's decoded
+  PackedByteArray) -> Dictionary` (key `"type"`, then per-packet keys mirroring the decoded
   dicts — snapshot entities as `Array[Dictionary]` with `entity_id/entity_type/position/
   animation_state/flags/delta_mask`). One boundary call per packet.
-- `PredictionSim` (RefCounted): owns a `MovementSm` + position; `step(delta, move_dir, sprint,
+- `PredictionSim` (RefCounted): wraps a `MovementSm`; `step(delta, position, move_dir, sprint,
   dash, ability, attacking, aim_dir) -> Dictionary {position, velocity, state, stamina, mana,
-  dash_cooldown, moving}`; `set_position(p)`, `set_resources(st, mn)`, `reset_at(p)`;
-  `replay_ground(from: Vector2, moves: Array) -> Vector2` (reconciliation ground-speed-only
-  replay); static `swept_hit(...)` for the local hit detector.
+  dash_cooldown, moving}`; `replay_step(position, input_flags, delta) -> Dictionary`
+  (reconciliation replay); `set_resources(stamina, mana)`, `reset()`, plus query/config helpers
+  (`stamina()`, `mana()`, `movement_state()`, `set_world_geometry(...)`, `set_ability_config(...)`,
+  daze/charge helpers).
+- `SimHit` (RefCounted): the static hit predicates shared with the server — `swept_hit(self_pos,
+  prev, cur, hit_radius)`, `is_client_authoritative(owner_id)`, `flight_origin(...)`.
 
-## Server architecture (D8)
+## Server architecture
 
 Single 30 Hz tick thread owning the ENet host and the whole world. Per tick: drain
 `host.service()` → decode → route; apply inputs (per-player latched flags, `_pending_dash`,
 6-tick stale timeout); step players via `sim_core::step_player`; monster AI; record monster
-position history (lag comp ring, ≥ 6 ticks); step projectiles + collision pass (two-netcode model
-per D11 — server skips monster-owned vs players, validates `LocalHitReport` plausibility, lenient
+position history (lag comp ring, ≥ 6 ticks); step projectiles + collision pass (two-netcode model:
+server skips monster-owned vs players, validates `LocalHitReport` plausibility, lenient
 backstop ON); deaths/respawns/leaderboard; build + send per-peer snapshots (AoI grid + hysteresis,
 DeltaStateCache port, byte budget) + ActionConfirms + events; `host.flush()`; sleep remainder
 (1–5 ms slices with `service()` to keep ENet acks timely). Side I/O (Go API heartbeat,
@@ -309,7 +311,7 @@ defaults **on** for the POC (it's the load-test/dev default in `deployment/env/s
 Entity id ranges (players 1–999, projectiles 10000–29999, monsters 30000–39999) · arena bounds
 ±1000, walls ±1005 (visual; sim clamps center to ±1000) · 0.1-unit position quantization ·
 delta-vs-baseline with acks · per-peer byte budget with 256 B floor / 1200 B cap, baselines
-exempt · D11 carried-forward invariants (server skips `owner_id >= 30000` in its player-collision
+exempt · hit-authority invariants (server skips `owner_id >= 30000` in its player-collision
 pass; `LocalHitReport` applies only to the reporter's own entity and rejects player-owned
 projectiles; monster `PROJECTILE_FIRED` carries non-zero projectile id; client tests against
 rendered position) · the client requests, the server decides.

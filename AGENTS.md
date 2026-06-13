@@ -5,20 +5,19 @@ scale** (target: 500–1000 concurrent players on one server Instance). Gameplay
 minimal — one shooting ability, HP only, one monster type — so the **network** is the thing
 under test, not game complexity.
 
-> **Active focus:** the **Rust server port** (ENet/UDP, bit-packed wire protocol, shared
-> client/server sim). The authoritative server is now the Rust `omega-server` binary; the
-> GDScript server is retired. **Start at
-> [`docs/rust-port/migration-spec.md`](docs/rust-port/migration-spec.md)** (decisions D1–D14),
-> then [`docs/rust-port/contract.md`](docs/rust-port/contract.md) (the wire/API contract as built).
+> **The core** is the Rust **`omega-server`** (ENet/UDP, bit-packed wire protocol, shared
+> client/server sim). It is the only authoritative server; the GDScript server is retired.
+> **Start at [`docs/server/design.md`](docs/server/design.md)** (architecture & rationale),
+> then [`docs/server/contract.md`](docs/server/contract.md) (the wire/API contract as built).
 
 This file is a **map, not a manual.** Deep knowledge lives in `docs/` — the system of record.
 Don't re-derive what's already written there; read it, then go deep where needed.
 
 ## Repository layout
 
-- `rust/` — Cargo workspace; **the authoritative server lives here** (migration-spec D1).
+- `rust/` — Cargo workspace; **the authoritative server lives here**.
   - `protocol/` — the bit-packed wire format (shared, no codegen — ADR 0004).
-  - `sim_core/` — movement/collision/hit sim shared by server AND client prediction (D5):
+  - `sim_core/` — movement/collision/hit sim shared by server AND client prediction:
     zero divergence by construction.
   - `server/` — the `omega-server` binary: single-threaded 30 Hz tick over `rusty_enet`
     (pinned `=0.4.0`), Ed25519 session tickets (dev mode: unsigned), Prometheus on `:9100`.
@@ -26,7 +25,7 @@ Don't re-derive what's already written there; read it, then go deep where needed
   - `load_test/` — the `omega-load-test` bot swarm (replaced the Python `load_testing/`
     harness): ENet bots that link `protocol` + `sim_core` directly. See its README.
 - `client/` — Godot 4.6 project; exports the **client only** now. The legacy GDScript server
-  scripts remain under `scripts/server/` as the parity ground truth for the port; they no longer
+  scripts remain under `scripts/server/` as the parity ground truth for the Rust server; they no longer
   run (NetworkManager refuses server mode).
   - `autoload/` — singletons: `network_manager` (ENet client), `transport/` (the transport seam),
     `game_manager`, `scene_manager`, `auth_manager`, `audio_manager`, `entity_name_cache`.
@@ -46,11 +45,9 @@ Don't re-derive what's already written there; read it, then go deep where needed
 - [`docs/CONTEXT.md`](docs/CONTEXT.md) — glossary. **Use these exact terms** (Tick ≠ Frame ≠ Snapshot).
 - [`docs/index.md`](docs/index.md) — full doc catalogue with verification status.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — top-level system architecture + POC success criteria.
-- **[`docs/rust-port/`](docs/rust-port/) — the current core:**
-  - `migration-spec.md` — the D1–D14 decision log governing the port.
+- **[`docs/server/`](docs/server/) — the game server (current core):**
+  - `design.md` — architecture & rationale (transport, shared sim, tick, auth, persistence, hits).
   - `contract.md` — workspace/crate APIs, channel plan, wire format, numerics policy, as built.
-  - `extraction/` — the behavioral port-notes extracted from the GDScript (file:line cited);
-    the parity reference the Rust code was written and reviewed against.
 - [`docs/netcode/`](docs/netcode/) — the pre-port netcode analyses (latency budget, prediction,
   interpolation, AoI, broadcast). Concepts still apply; WebSocket-era file:line cites describe
   the retired GDScript server — cross-check against `rust/` before relying on them.

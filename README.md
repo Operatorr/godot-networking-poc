@@ -8,8 +8,8 @@ MMO-scale games.
 players** while maintaining playable performance.
 
 > Deep documentation lives in [`docs/`](docs/index.md) — start with
-> [`docs/rust-port/migration-spec.md`](docs/rust-port/migration-spec.md) and
-> [`docs/rust-port/contract.md`](docs/rust-port/contract.md) for the current core.
+> [`docs/server/design.md`](docs/server/design.md) and
+> [`docs/server/contract.md`](docs/server/contract.md) for the game server.
 
 ---
 
@@ -18,14 +18,13 @@ players** while maintaining playable performance.
 - [Architecture Overview](#architecture-overview)
 - [Tech Stack](#tech-stack)
 - [Prerequisites](#prerequisites)
-- [Quick Start](#quick-start)
+- [Quick Start (local)](#quick-start-local)
 - [Local Dev Stack](#local-dev-stack)
 - [Project Structure](#project-structure)
-- [Development Workflow](#development-workflow)
+- [Deploying to a Server](#deploying-to-a-server)
 - [Testing](#testing)
 - [Game Controls](#game-controls)
 - [Configuration](#configuration)
-- [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -103,7 +102,7 @@ GDExtension (`rust/client_ext`) — prediction and authority run the same code b
 
 ---
 
-## Quick Start
+## Quick Start (local)
 
 ### 1. Clone the Repository
 
@@ -236,10 +235,9 @@ Other run options:
 ./scripts/deploy.sh                                 # deploy to the live server (native, git-driven)
 ```
 
-> **Deploy:** `./scripts/deploy.sh` SSHes into the droplet, pulls `master`, rebuilds, and
-> restarts the native systemd services (API + Arena + Sanctuary). One-time setup:
-> `./scripts/deploy.sh provision`. See [`deployment/DEPLOYMENT.md`](deployment/DEPLOYMENT.md)
-> and [ADR 0007](docs/adr/0007-native-systemd-deployment.md).
+> **Deploy:** `./scripts/deploy.sh` SSHes into the droplet, pulls `master`, rebuilds, restarts.
+> **A brand-new server must be provisioned first** (`./scripts/deploy.sh provision`) — see
+> [Deploying to a Server](#deploying-to-a-server) for the full walkthrough.
 
 ---
 
@@ -294,137 +292,140 @@ omgea-networking/
 
 ---
 
-## Development Workflow
+## Deploying to a Server
 
-### Running in Development Mode
-
-**Client (GUI):**
-```bash
-cd client
-godot project.godot
-```
-
-**Game server:**
-```bash
-./scripts/run_server.sh        # or ./scripts/dev_local.sh for server + API
-```
-
-The GDScript server mode is retired — `NetworkManager` refuses to start as a server; the
-Rust `omega-server` binary is the only authority.
-
-### Adding New Features
-
-1. **Simulation / protocol** (authority and prediction):
-   - Add to `rust/sim_core` / `rust/protocol`, expose to GDScript via `rust/client_ext`
-   - Rebuild the extension: `./scripts/build_client_ext.sh`
-
-2. **Client-Only** (UI, input, graphics):
-   - Add to `client/scripts/client/`
-   - Example: Menus, HUD, visual effects
-
-3. **Server-Only** (validation, AI, authority):
-   - Add to `rust/server`
-   - Example: Anti-cheat, monster behavior
-
-Governing rule for all gameplay: **the client requests, the server decides.**
-
-### Building for Production
-
-```bash
-# Build all components
-./scripts/build_client.sh        # Export client for Win/Mac/Linux
-./scripts/build_client_ext.sh    # Rust GDExtension -> client/bin/
-./scripts/build_server.sh        # Rust omega-server (release)
-./scripts/build_api.sh           # Build Go API binary
-```
-
----
-
-## Deploying to a Server (native, no Docker)
-
-The live server runs everything as **native systemd services** — Go API + two Rust game
-instances (Arena `8081`, Sanctuary `8082`) + PostgreSQL + Redis. Git is the deploy
-channel: `./scripts/deploy.sh` SSHes in, the server pulls `master` and rebuilds. Full
+Drive the live server from your **laptop** with one script — `./scripts/deploy.sh` SSHes in,
+pulls `master`, rebuilds, and restarts the systemd services. Git is the deploy channel. Full
 runbook: [`deployment/DEPLOYMENT.md`](deployment/DEPLOYMENT.md) ·
 rationale: [ADR 0007](docs/adr/0007-native-systemd-deployment.md).
+
+> ⚠️ **New server? You must run `provision` first.** `deploy`, `all`, `os-update`, etc. all
+> assume the server is already set up (repo cloned, toolchains installed). On a fresh box they
+> fail with `cd: /home/deploy/omega-realm: No such file or directory`. **Do not create that
+> folder by hand** — `provision` clones the repo into it for you. (An empty hand-made folder
+> just turns the error into a more confusing `deployment/…: No such file or directory`.)
 
 > **Deploy reads `origin/master`.** `server_update.sh` does `git reset --hard origin/master`,
 > so commit + push your changes to GitHub **before** deploying — the server only ever runs
 > what's on `master`.
 
-### Configure your server target (one-time, not committed)
+### Part A — First-time setup (run once per server, in this order)
 
-`scripts/deploy.sh` reads the server IP / SSH user from **`deployment/deploy.env`**, which is
-**git-ignored** — your IP never lands in the repo:
+Provisioning is a one-time bootstrap. Skip ahead to [Part B](#part-b--routine-deploys-every-time)
+for everyday deploys once it's done.
+
+**Step 0 — Point the script at your server.** `scripts/deploy.sh` reads the server IP / SSH
+user from `deployment/deploy.env`. That file is **git-ignored**, so your IP never gets
+committed to the repo — you create it locally:
 
 ```bash
 cp deployment/deploy.env.example deployment/deploy.env
-# edit deployment/deploy.env → set OMEGA_HOST=<your-droplet-ip>
+# then edit deployment/deploy.env and set OMEGA_HOST=<your-droplet-ip>
 ```
 
-| Key | Required | Default |
-|-----|:---:|---------|
-| `OMEGA_HOST` | ✅ | — (script errors if unset) |
-| `OMEGA_USER` | | `deploy` |
-| `OMEGA_BRANCH` | | `master` |
-| `OMEGA_REPO_DIR` | | `/home/<user>/omega-realm` |
+| Key | Required | Default | Meaning |
+|-----|:---:|---------|---------|
+| `OMEGA_HOST` | ✅ | — (script errors if unset) | Your server's IP / hostname |
+| `OMEGA_USER` | | `deploy` | SSH user on the server |
+| `OMEGA_BRANCH` | | `master` | Branch the server checks out |
+| `OMEGA_REPO_DIR` | | `/home/<user>/omega-realm` | Where the repo is cloned on the server |
 
-A shell export wins over the file for one-off targets, e.g.
+A shell variable overrides the file for a one-off target, e.g.
 `OMEGA_HOST=1.2.3.4 ./scripts/deploy.sh status`.
 
-### Which script to run when
-
-Everything below is **one script — `scripts/deploy.sh`** — run from your laptop; it SSHes
-in and drives the matching on-server script. The headline one is `all`:
-
-```bash
-./scripts/deploy.sh all     # OS updates → pull master + rebuild → restart → health, in one shot
-```
-
-| Goal | Command (run from your **laptop**) | Runs on server |
-|------|-----------------------------------|----------------|
-| **★ Everything: OS update + deploy + verify** | `./scripts/deploy.sh all` | `update_os.sh` → `server_update.sh` |
-| **0. Harden a fresh box** (firewall, fail2ban, SSH) | `ssh deploy@<ip> 'sudo bash ~/harden_vps.sh'` | `deployment/harden_vps.sh` |
-| **1. One-time bootstrap** (Go/Rust/Postgres/Redis, swap, systemd units, sudoers) | `./scripts/deploy.sh provision` | `deployment/provision_server.sh` |
-| **2. Set secrets** (DB password + JWT) | `ssh deploy@<ip>` → edit `/etc/omega-realm/api.env` | — |
-| **3. Deploy / redeploy latest `master`** | `./scripts/deploy.sh` | `deployment/server_update.sh` |
-| **OS security + package updates** | `./scripts/deploy.sh os-update` | `deployment/update_os.sh` |
-| **OS update + reboot if needed** | `./scripts/deploy.sh os-update --reboot` | `deployment/update_os.sh` |
-| **Ubuntu version upgrade** (risky; snapshot first) | `./scripts/deploy.sh os-update --release-upgrade` | `deployment/update_os.sh` |
-| Status of all services | `./scripts/deploy.sh status` | — |
-| Follow logs (api + arena + sanctuary) | `./scripts/deploy.sh logs` | — |
-| Health (API `/health` + metrics) | `./scripts/deploy.sh health` | — |
-| Restart without rebuilding | `./scripts/deploy.sh restart` | — |
-| Interactive shell on the box | `./scripts/deploy.sh ssh` | — |
-
-> `all` deliberately does **not** reboot mid-run (that would kill the deploy). If
-> `update_os.sh` reports a reboot is required, run `./scripts/deploy.sh os-update --reboot`
-> afterwards — systemd restarts every service on boot.
-
-### First-time deploy, end to end
+**Step 1 — Provision the box.** Installs Go, Rust, PostgreSQL, Redis, a 2 GB swapfile, the
+systemd units, a narrow passwordless `systemctl` rule — and **clones the repo** into
+`~/omega-realm`. You'll be prompted for the `deploy` user's sudo password. Idempotent (safe to
+re-run).
 
 ```bash
-# (after committing + pushing this repo's deployment tooling to master)
-cp deployment/deploy.env.example deployment/deploy.env  # set OMEGA_HOST=<your ip> (git-ignored)
-ssh deploy@<ip> 'sudo bash ~/harden_vps.sh'   # 0. firewall/fail2ban/SSH lockdown
-./scripts/deploy.sh provision                  # 1. install toolchains, DB, units, swap
-ssh deploy@<ip>                                # 2. set real secrets:
-  sudo -u postgres psql -c "ALTER ROLE omega PASSWORD 'YOUR_PW';"
-  sudo nano /etc/omega-realm/api.env           #    DB_PASSWORD + JWT_SECRET_KEY
-  exit
-./scripts/deploy.sh                            # 3. pull master, build, start everything
-./scripts/deploy.sh health                     # 4. verify
+./scripts/deploy.sh provision
 ```
+
+**Step 2 — Harden the box** (firewall, fail2ban, SSH lockdown, auto security updates). The repo
+exists on the server now (Step 1 cloned it), so run the script from there:
+
+```bash
+ssh deploy@<your-ip> 'cd ~/omega-realm && sudo bash deployment/harden_vps.sh'
+```
+
+**Step 3 — Set the real secrets.** Provisioning created `/etc/omega-realm/*.env` from templates
+with placeholder values. The DB role password and `api.env` must match, or the API can't connect:
+
+```bash
+ssh deploy@<your-ip>
+sudo -u postgres psql -c "ALTER ROLE omega PASSWORD 'YOUR_DB_PASSWORD';"
+sudo nano /etc/omega-realm/api.env       # set DB_PASSWORD (same as above) + JWT_SECRET_KEY
+sudo nano /etc/omega-realm/server.env    # ticket policy — defaults are load-test friendly
+exit
+```
+
+> `/etc/omega-realm/*.env` live on the server (`root:deploy 0640`) and are **never** in the
+> repo. Their templates are `deployment/env/*.example`.
+
+**Step 4 — First deploy.** Now pull `master`, build everything, and start the services:
+
+```bash
+./scripts/deploy.sh            # build api + both game servers → start → health-check
+./scripts/deploy.sh health     # confirm API /health + both metrics endpoints are up
+```
+
+### Part B — Routine deploys (every time)
+
+Once Part A is done, this is the whole day-to-day loop (after you've pushed to `master`):
+
+```bash
+./scripts/deploy.sh            # pull master → rebuild → restart → health-check
+```
+
+Or update the OS, redeploy, and verify in one shot:
+
+```bash
+./scripts/deploy.sh all        # OS full-upgrade → pull master + rebuild → restart → health
+```
+
+> `all` deliberately does **not** reboot mid-run (that would kill the deploy). If the OS update
+> reports a reboot is required, run `./scripts/deploy.sh os-update --reboot` afterwards —
+> systemd restarts every service on boot.
+
+### Command reference
+
+Every command is `./scripts/deploy.sh <command>`, run from your **laptop**:
+
+| Command | What it does | On-server script |
+|---------|--------------|------------------|
+| `provision` | **First-time only.** Install toolchains/DB, clone repo, units, swap, sudoers | `provision_server.sh` |
+| *(none)* / `deploy` | Pull `master`, rebuild API + both game servers, restart, health-check | `server_update.sh` |
+| `all` | `os-update` → `deploy` → `health`, in one shot | `update_os.sh` → `server_update.sh` |
+| `os-update` | apt full-upgrade + autoremove + cleanup | `update_os.sh` |
+| `os-update --reboot` | …and reboot if the upgrade requires one | `update_os.sh` |
+| `os-update --release-upgrade` | Ubuntu version jump (snapshot the droplet first!) | `update_os.sh` |
+| `status` | `systemctl status` for all three services | — |
+| `logs` | Follow journald logs (api + arena + sanctuary) | — |
+| `health` | curl API `/health` + both metrics endpoints | — |
+| `restart` | Restart services without rebuilding | — |
+| `ssh` | Open an interactive shell on the box | — |
+
+Deploy a different branch with `OMEGA_BRANCH=my-branch ./scripts/deploy.sh`.
 
 ### Keeping the OS patched
 
-`harden_vps.sh` enables **`unattended-upgrades`**, so security patches install
-automatically every day — no action needed. For routine maintenance just run
-**`./scripts/deploy.sh all`** (e.g. monthly): it does the **full** package/kernel upgrade,
-redeploys the latest `master`, and verifies health in one go. If it reports a reboot is
-required, follow up with `./scripts/deploy.sh os-update --reboot` (systemd brings all
-services back up on boot). Ubuntu **version** jumps are opt-in via
-`os-update --release-upgrade` — take a droplet snapshot first.
+Step 2's hardening enables **`unattended-upgrades`**, so security patches install automatically
+every day — no action needed. For routine maintenance just run **`./scripts/deploy.sh all`**
+(e.g. monthly): it does the **full** package/kernel upgrade, redeploys the latest `master`, and
+verifies health in one go. If it reports a reboot is required, follow up with
+`./scripts/deploy.sh os-update --reboot` (systemd brings all services back up on boot). Ubuntu
+**version** jumps are opt-in via `os-update --release-upgrade` — take a droplet snapshot first.
+
+### Deploy troubleshooting
+
+| Symptom | Cause / fix |
+|---------|-------------|
+| `cd: /home/deploy/omega-realm: No such file or directory` | The server was never provisioned. Run **Part A** (`./scripts/deploy.sh provision`). Don't `mkdir` the folder — provision clones it. |
+| `bash: deployment/...sh: No such file or directory` | The repo folder exists but is empty (e.g. you created it by hand). Run `./scripts/deploy.sh provision` — it clones into the empty folder. |
+| `OMEGA_HOST is not set` | You skipped Step 0 — create `deployment/deploy.env` and set `OMEGA_HOST`. |
+| API won't start / can't reach DB | The `omega` role password and `DB_PASSWORD` in `/etc/omega-realm/api.env` don't match (Step 3). |
+| Permission/sudo prompts on every deploy | `provision` installs a passwordless `systemctl` rule for the three services; if you see prompts, re-run `provision`. |
 
 ---
 
@@ -612,59 +613,6 @@ Collision layers:
 
 ---
 
-## Troubleshooting
-
-### "PacketWriter not found" Error
-
-Clear the Godot cache:
-```bash
-rm -rf client/.godot
-```
-Then reopen the project in Godot.
-
-### Database Connection Failed
-
-1. Ensure PostgreSQL is running:
-   ```bash
-   pg_isready
-   ```
-
-2. Verify credentials in `api/.env`
-
-3. Check database exists:
-   ```bash
-   psql -U omega -d omega_db -c "SELECT 1"
-   ```
-
-### Game Server Won't Start
-
-1. Check if the UDP game port or the metrics port is already in use:
-   ```bash
-   lsof -nP -iUDP:8081
-   lsof -nP -iTCP:9100 -sTCP:LISTEN
-   ```
-
-2. Kill the existing `omega-server` process shown by `lsof`, then restart.
-
-### Verify the Stack Is Up
-
-```bash
-curl http://localhost:8080/health      # Go API
-curl http://localhost:9100/metrics     # Rust server Prometheus metrics
-lsof -nP -iUDP:8081                    # Rust server game socket
-```
-
-### Login Redirects to Login Screen
-
-This is expected behavior when:
-- No valid JWT token is stored
-- Token has expired
-- User is not authenticated
-
-Use valid credentials from `.env.test` (seeded via `./scripts/seed_test_user.sh`).
-
----
-
 ## Performance Targets
 
 | Metric | Target |
@@ -682,7 +630,7 @@ Use valid credentials from `.env.test` (seeded via `./scripts/seed_test_user.sh`
 
 - [Documentation index](docs/index.md) - Full catalogue with verification status
 - [Architecture Guide](docs/ARCHITECTURE.md) - Detailed system architecture
-- [Rust port](docs/rust-port/) - Migration spec (D1-D14), wire/API contract, extraction notes
+- [Game server](docs/server/) - Architecture & rationale, wire/API contract
 - [ADRs](docs/adr/) - Load-bearing decisions
 
 ---
@@ -697,17 +645,27 @@ For more details, see the [LICENSE.md](LICENSE.md) file.
 
 ---
 
-## GUI Pallette
+## Palette
 
-- #111418 background
-- #1E2430 panel dark
-- #2E3748 panel mid
-- #5B657A border/inactive
-- #E7D9B4 primary text
-- #FFF6D6 highlighted text
-- #E3A23B primary accent / selected button
-- #C96B2C pressed state / warning
-- #4DA6A8 secondary accent / submenu / info
-- #A84D6E danger / quit / destructive option
+The palette should feel oppressive and ancient — muted grimdark base colors punctured by
+unnatural eldritch highlights. Full styleguide: [`docs/design/STYLEGUIDE.md`](docs/design/STYLEGUIDE.md).
+
+| Color Name | HEX | Usage |
+| ---------- | --: | ----- |
+| Abyss Black | `#050706` | Primary background, deepest shadows, void interiors |
+| Ash Grey | `#555852` | Dust, ash, worn stone, muted highlights |
+| Iron Slate | `#252928` | Dark metal, armor plates, panel frames |
+| Blood Brown | `#4A1512` | Dried blood, old gore, stained cloth |
+| Rust Red | `#8A261F` | Fresh damage, rust, warning UI accents |
+| Dark Umber | `#3A211A` | Mud, leather, old wood, deep environmental shadows |
+| Tarnished Gold | `#9B7428` | Relics, holy trim, medals, elite accents |
+| Bone White | `#D8D0BC` | Skulls, teeth, parchment, high-value readability highlights |
+| Flesh Taupe | `#7A6253` | Mutated flesh, skin, worn cloth, organic props |
+| Sulfur Yellow | `#C69A2E` | Firelight, muzzle flash, toxic glow, divine decay |
+| Void Violet | `#5B3A8E` | Primary eldritch glow, void energy |
+| Eldritch Purple | `#2B183D` | Deep corruption shadows, rift interiors |
+| Corruption Magenta | `#8A2D55` | Veins, cursed highlights, spell cores |
+| Void Blue | `#1D3557` | Cold cosmic energy, star spawn highlights |
+| Soul Teal | `#1C6C73` | Ghostly magic, spirit effects, rare UI accents |
 
 **Last Updated:** June 2026

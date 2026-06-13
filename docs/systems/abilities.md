@@ -3,7 +3,7 @@
 **Status:** Implemented (2026-06-13). Every Class has one **Class ability** bound to the right mouse
 button, paid for in **Mana**, on its own cooldown. This doc is the system-level home; per-Class
 parameters and behavior live in [`../classes/`](../classes/index.md). The wire additions this system
-introduced bumped the protocol to **v4** — see [`../rust-port/contract.md`](../rust-port/contract.md).
+introduced bumped the protocol to **v4** — see [`../server/contract.md`](../server/contract.md).
 
 > Vocabulary follows [`../CONTEXT.md`](../CONTEXT.md) ("Classes & abilities", "Combat & survival"):
 > **Class ability** is the RMB active, distinct from the shared primary attack (LMB); **Mana** pays
@@ -61,8 +61,8 @@ Multishot spawns ordinary projectiles (band 10000–29999).
 | Rogue | Shadowstep | **movement** (blink) or Stealth | **yes** (blink motion) | target pick, hitscan, `STEALTH` flag |
 
 **The prediction rule.** Only the two **movement** abilities are predicted, and only their *motion*:
-Warrior Charge and Rogue Shadowstep's blink run through the shared `sim_core` `AbilityMovement` state
-(D5), so the client predicts the dash/teleport with zero divergence from the server. Everything
+Warrior Charge and Rogue Shadowstep's blink run through the shared `sim_core` `AbilityMovement` state,
+so the client predicts the dash/teleport with zero divergence from the server. Everything
 else — all damage, every spawn, invulnerability, target selection, Stealth — is decided by the server
 and learned by the client through `ABILITY_EFFECT`, replicated entity flags, or the effect entities.
 
@@ -103,7 +103,7 @@ replicated; the client renders its own translucency from it.
   flag self-heals (inputs ride the replayed unreliable input channel); a mispredicted movement-ability
   end snaps back via reconciliation (rare — same `sim_core`).
 - **Tested:** protocol round-trip for the v4 additions (cursor field, `ABILITY_EFFECT`, world-effect
-  typed-id kind 3, `STEALTH` bit); predicted-movement parity via the prediction-snap monitor (D12);
+  typed-id kind 3, `STEALTH` bit); predicted-movement parity via the prediction-snap monitor;
   per-ability effect/cooldown/Mana behavior by play-test (no automated gameplay harness for abilities
   yet — a gap to close).
 
@@ -113,5 +113,5 @@ replicated; the client renders its own translucency from it.
 - [`PROGRESSION.md`](PROGRESSION.md) — levels, per-level scaling, Mana regen, XP→Glory.
 - [`players-movement.md`](players-movement.md) · [`players-movement-state-machine.md`](players-movement-state-machine.md) — the movement SM the two movement abilities extend.
 - [`combat-hits.md`](combat-hits.md) — the projectile/hit machinery Multishot and primaries share.
-- [`../rust-port/contract.md`](../rust-port/contract.md) — the protocol v4 wire deltas.
+- [`../server/contract.md`](../server/contract.md) — the protocol v4 wire deltas.
 - [`../CONTEXT.md`](../CONTEXT.md) — glossary.

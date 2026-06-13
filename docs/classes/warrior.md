@@ -62,7 +62,7 @@ and starts the cooldown. Invulnerability and damage are server-authoritative; th
 - **Persisted:** nothing — the charge state is Session-ephemeral.
 - **Validated:** Mana ≥ cost and cooldown elapsed, server-side; the server caps the dash distance even if the client over-predicts.
 - **Can fail:** insufficient Mana or on cooldown ⇒ no-op; if the client mispredicts the dash end the server correction snaps it back (rare — same `sim_core`).
-- **Tested:** protocol round-trip for the ability flag + `ABILITY_EFFECT`; predicted-charge parity via the prediction-snap monitor (D12); blast + invuln by play-test.
+- **Tested:** protocol round-trip for the ability flag + `ABILITY_EFFECT`; predicted-charge parity via the prediction-snap monitor; blast + invuln by play-test.
 
 ## See also
 
