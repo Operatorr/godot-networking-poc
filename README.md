@@ -314,11 +314,18 @@ rationale: [ADR 0007](docs/adr/0007-native-systemd-deployment.md).
 Provisioning is a one-time bootstrap. Skip ahead to [Part B](#part-b--routine-deploys-every-time)
 for everyday deploys once it's done.
 
+> **Where each command runs.** Every block below is tagged **`[laptop]`** (run on your own
+> machine, from the repo root) or **`[server]`** (run in an SSH shell on the droplet). The deploy
+> is laptop-driven — `scripts/deploy.sh` SSHes in for you — so the only steps where you open an SSH
+> shell by hand are **2** and **3**. Inside a block, a `# → now on the server` marker shows where
+> an `ssh` line hands you over to the droplet.
+
 **Step 0 — Point the script at your server.** `scripts/deploy.sh` reads the server IP / SSH
 user from `deployment/deploy.env`. That file is **git-ignored**, so your IP never gets
 committed to the repo — you create it locally:
 
 ```bash
+# [laptop]
 cp deployment/deploy.env.example deployment/deploy.env
 # then edit deployment/deploy.env and set OMEGA_HOST=<your-droplet-ip>
 ```
@@ -339,6 +346,7 @@ systemd units, a narrow passwordless `systemctl` rule — and **clones the repo*
 re-run).
 
 ```bash
+# [laptop]
 ./scripts/deploy.sh provision
 ```
 
@@ -348,10 +356,12 @@ session you keep open until a second login is verified (it disables root login a
 so an already-working session is your safety net):
 
 ```bash
-ssh deploy@<your-ip>                                       # 1. log in interactively
-cd ~/omega-realm && sudo bash deployment/harden_vps.sh     # 2. harden (keep this shell OPEN)
-# 3. From a SECOND terminal, confirm you can still reconnect:  ssh deploy@<your-ip>
-#    Only close the first session once the second one logs in.
+# [laptop]
+ssh deploy@<your-ip>                                       # → now on the server
+# [server]
+cd ~/omega-realm && sudo bash deployment/harden_vps.sh     # harden (keep this shell OPEN)
+# From a SECOND laptop terminal, confirm you can still reconnect:  ssh deploy@<your-ip>
+# Only close the first session once the second one logs in.
 ```
 
 Don't run it as a one-shot `ssh -t deploy@<ip> '… harden_vps.sh'`: that session closes the instant
@@ -360,27 +370,28 @@ the script finishes, taking the script's "this session is still open to fix it" 
 session is there for the unexpected.)
 
 **Step 3 — Set the real secrets.** Provisioning created `/etc/omega-realm/*.env` from templates
-with placeholder values. Several endpoints fail closed until their secret is set. First generate
-them (anywhere with `openssl` + Go):
+with placeholder values; several endpoints fail closed until their secret is set. Do this **all on
+the server, in one SSH session** — that way the Ed25519 private seed is generated where it lives and
+never leaves the box:
 
 ```bash
-openssl rand -hex 32                      # SERVER_API_TOKEN
-openssl rand -hex 32                      # REGION_HEARTBEAT_TOKEN (a different value)
-cd api && go run ./cmd/gen_ticket_key     # prints OMEGA_TICKET_PRIVKEY + OMEGA_TICKET_PUBKEY
-```
-
-Then write them on the server. `SERVER_API_TOKEN` and `REGION_HEARTBEAT_TOKEN` must be **identical**
-in both files; the Ed25519 pair splits private→`api.env`, public→`server.env`:
-
-```bash
-ssh deploy@<your-ip>
+# [laptop]
+ssh deploy@<your-ip>                     # → now on the server for the rest of Step 3
+# [server] — generate the secrets:
+openssl rand -hex 32                                   # SERVER_API_TOKEN
+openssl rand -hex 32                                   # REGION_HEARTBEAT_TOKEN (a different value)
+cd ~/omega-realm/api && go run ./cmd/gen_ticket_key    # OMEGA_TICKET_PRIVKEY + OMEGA_TICKET_PUBKEY
+# [server] — set the DB password, then paste the values into the env files:
 sudo -u postgres psql -c "ALTER ROLE omega PASSWORD 'YOUR_DB_PASSWORD';"
 sudo nano /etc/omega-realm/api.env       # DB_PASSWORD, JWT_SECRET_KEY, SERVER_API_TOKEN,
                                          # REGION_HEARTBEAT_TOKEN, OMEGA_TICKET_PRIVKEY
 sudo nano /etc/omega-realm/server.env    # matching SERVER_API_TOKEN + REGION_HEARTBEAT_TOKEN,
                                          # OMEGA_TICKET_PUBKEY, ticket policy
-exit
+exit                                     # → back on your laptop
 ```
+
+`SERVER_API_TOKEN` and `REGION_HEARTBEAT_TOKEN` must be **identical** in both files; the Ed25519
+pair splits private→`api.env`, public→`server.env` (same `gen_ticket_key` run).
 
 > **Ticket policy.** The default is `OMEGA_ALLOW_UNSIGNED_TICKETS=false` (require signed tickets).
 > The API can mint/sign them now, but the **game client doesn't fetch tickets yet** (M3), so a real
@@ -393,6 +404,7 @@ exit
 **Step 4 — First deploy.** Now pull `master`, build everything, and start the services:
 
 ```bash
+# [laptop]
 ./scripts/deploy.sh            # build api + both game servers → start → health-check
 ./scripts/deploy.sh health     # confirm API /health + both metrics endpoints are up
 ```
@@ -402,12 +414,14 @@ exit
 Once Part A is done, this is the whole day-to-day loop (after you've pushed to `master`):
 
 ```bash
+# [laptop]
 ./scripts/deploy.sh            # pull master → rebuild → restart → health-check
 ```
 
 Or update the OS, redeploy, and verify in one shot:
 
 ```bash
+# [laptop]
 ./scripts/deploy.sh all        # OS full-upgrade → pull master + rebuild → restart → health
 ```
 

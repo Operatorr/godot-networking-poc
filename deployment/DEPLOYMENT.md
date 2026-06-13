@@ -40,6 +40,11 @@ Services (systemd units in [`systemd/`](systemd/)):
 > `provision` is what clones it. So **provision first**, then harden from the cloned repo.
 > Do **not** `mkdir ~/omega-realm` by hand; `provision` creates and clones it.
 
+> **Where each command runs.** Blocks are tagged **`[laptop]`** (your own machine, from the repo
+> root) or **`[server]`** (an SSH shell on the droplet). The deploy is laptop-driven —
+> `scripts/deploy.sh` SSHes in for you — so you only open an SSH shell by hand for Steps 2 and 3.
+> A `# → now on the server` marker shows where an `ssh` line inside a block hands you over.
+
 ### Step 1 — One-time bootstrap (clones the repo + installs everything)
 
 Installs Go (official tarball — apt's is too old for `go 1.24`), Rust (rustup),
@@ -48,6 +53,7 @@ rule for the three Omega services — and **clones the repo** into `~/omega-real
 your **laptop** (asks for the `deploy` user's sudo password; idempotent):
 
 ```bash
+# [laptop]
 ./scripts/deploy.sh provision
 ```
 
@@ -61,11 +67,13 @@ second login still works. The script disables root login and password auth, so a
 already-verified session is your safety net:
 
 ```bash
-ssh deploy@<droplet-ip>                                    # 1. log in interactively
-cd ~/omega-realm && sudo bash deployment/harden_vps.sh     # 2. harden (keep this shell OPEN)
-# 3. From a SECOND terminal, confirm you can still reconnect:
+# [laptop]
+ssh deploy@<droplet-ip>                                    # → now on the server
+# [server]
+cd ~/omega-realm && sudo bash deployment/harden_vps.sh     # harden (keep this shell OPEN)
+# From a SECOND laptop terminal, confirm you can still reconnect:
 #        ssh deploy@<droplet-ip>
-#    Only close the first session once the second one logs in.
+# Only close the first session once the second one logs in.
 ```
 
 > Don't run it as a one-shot `ssh -t deploy@<ip> '… harden_vps.sh'`: that session closes the
@@ -79,30 +87,28 @@ Provisioning installs `/etc/omega-realm/{api,server}.env` from the templates wit
 placeholder values. You must replace the placeholders before the stack works — several
 endpoints **fail closed** when their secret is unset.
 
-**3a. Generate the secrets** (on your laptop or the server — anywhere with `openssl` + Go):
+Do this **all on the server, in one SSH session**: generating the Ed25519 seed there means the
+private key is created where it lives and never leaves the box.
 
 ```bash
-openssl rand -hex 32      # SERVER_API_TOKEN      (server↔API internal calls)
-openssl rand -hex 32      # REGION_HEARTBEAT_TOKEN (use a DIFFERENT value)
-cd api && go run ./cmd/gen_ticket_key   # prints OMEGA_TICKET_PRIVKEY + OMEGA_TICKET_PUBKEY
-```
-
-`gen_ticket_key` prints a matched Ed25519 pair: the **private** seed goes in `api.env`
-(the API signs tickets), the **public** key goes in `server.env` (the game server
-verifies). They must come from the same run.
-
-**3b. Set the DB password and write both env files:**
-
-```bash
-ssh deploy@<droplet-ip>
+# [laptop]
+ssh deploy@<droplet-ip>                  # → now on the server for the rest of Step 3
+# [server] — generate the secrets:
+openssl rand -hex 32                                    # SERVER_API_TOKEN
+openssl rand -hex 32                                    # REGION_HEARTBEAT_TOKEN (a DIFFERENT value)
+cd ~/omega-realm/api && go run ./cmd/gen_ticket_key     # OMEGA_TICKET_PRIVKEY + OMEGA_TICKET_PUBKEY
+# [server] — set the DB password, then paste the values into the env files:
 sudo -u postgres psql -c "ALTER ROLE omega PASSWORD 'YOUR_DB_PASSWORD';"
 sudo nano /etc/omega-realm/api.env      # DB_PASSWORD, JWT_SECRET_KEY, SERVER_API_TOKEN,
                                         # REGION_HEARTBEAT_TOKEN, OMEGA_TICKET_PRIVKEY
 sudo nano /etc/omega-realm/server.env   # SERVER_API_TOKEN + REGION_HEARTBEAT_TOKEN (MATCH
                                         # api.env), OMEGA_TICKET_PUBKEY, ticket policy
+exit                                    # → back on your laptop
 ```
 
-What must line up across the two files:
+`gen_ticket_key` prints a matched Ed25519 pair: the **private** seed goes in `api.env` (the API
+signs tickets), the **public** key goes in `server.env` (the game server verifies) — both from the
+same run. What must line up across the two files:
 
 | Secret | api.env | server.env | Must match? |
 |---|---|---|---|
@@ -125,6 +131,7 @@ What must line up across the two files:
 From your laptop, anytime you want the server on the latest `master`:
 
 ```bash
+# [laptop]
 ./scripts/deploy.sh                # pull master → build api + both game servers → restart → health-check
 ```
 
@@ -136,6 +143,7 @@ branch with `OMEGA_BRANCH=my-branch ./scripts/deploy.sh`.
 ### Operate
 
 ```bash
+# [laptop]
 ./scripts/deploy.sh status     # systemctl status for all three services
 ./scripts/deploy.sh logs       # follow journald for api + arena + sanctuary
 ./scripts/deploy.sh health     # curl API /health + both metrics endpoints
@@ -153,6 +161,7 @@ own. For the periodic **full** upgrade (all packages + kernel) and Ubuntu versio
 [`update_os.sh`](update_os.sh) via:
 
 ```bash
+# [laptop]
 ./scripts/deploy.sh os-update                  # apt full-upgrade + autoremove + cleanup
 ./scripts/deploy.sh os-update --reboot         # ...and reboot if one is required
 ./scripts/deploy.sh os-update --release-upgrade # Ubuntu version bump (snapshot first!)
