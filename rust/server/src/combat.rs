@@ -174,22 +174,25 @@ pub fn process_collisions(
     leaderboard: &mut Leaderboard,
     outbox: &mut Outbox,
     tick: u64,
+    pvp_enabled: bool,
 ) -> Vec<Vec2> {
-    // PvP pass.
-    let player_hits = projectiles.check_collisions_with_players(players, tick);
-    for h in player_hits {
-        apply_player_hit(
-            h.owner_id,
-            h.target_id,
-            players,
-            leaderboard,
-            outbox,
-            Some(HitImpact {
-                position: h.position,
-                direction: h.direction,
-                knockback_force: h.knockback_force,
-            }),
-        );
+    // PvP pass — disabled in the safe Sanctuary (you can shoot, but projectiles don't hit players).
+    if pvp_enabled {
+        let player_hits = projectiles.check_collisions_with_players(players, tick);
+        for h in player_hits {
+            apply_player_hit(
+                h.owner_id,
+                h.target_id,
+                players,
+                leaderboard,
+                outbox,
+                Some(HitImpact {
+                    position: h.position,
+                    direction: h.direction,
+                    knockback_force: h.knockback_force,
+                }),
+            );
+        }
     }
 
     // PvE pass (player projectiles vs lag-rewound monsters).
@@ -875,6 +878,57 @@ mod tests {
         assert!(
             outbox.messages.is_empty(),
             "zero applied damage ⇒ no event at all"
+        );
+    }
+
+    #[test]
+    fn pvp_disabled_skips_player_hits() {
+        let mut players = PlayerManager::new();
+        players.add_player(1).unwrap().authenticated = true;
+        players.add_player(2).unwrap().authenticated = true;
+        let mut projectiles = ProjectileManager::new();
+        let mut monsters = MonsterManager::new();
+        let mut lb = Leaderboard::new();
+        let mut outbox = Outbox::new();
+        let shooter = players.players[0].entity_id;
+        let victim_pos = players.players[1].position;
+        players.record_position_snapshot(1);
+        // A shooter-owned projectile travelling straight through the victim.
+        projectiles
+            .spawn_projectile(
+                shooter,
+                victim_pos - Vec2::new(20.0, 0.0),
+                Vec2::new(1.0, 0.0),
+                1,
+                0,
+                0,
+                400.0,
+                PLAYER_PROJECTILE_KNOCKBACK_FORCE,
+            )
+            .unwrap();
+        projectiles.update_all(1.0 / 30.0);
+        let max_hp = players.players[1].max_health;
+        // PvP OFF (Sanctuary): the player pass is skipped — no damage, no DAMAGE event.
+        let killed = process_collisions(
+            &mut projectiles,
+            &mut players,
+            &mut monsters,
+            &mut lb,
+            &mut outbox,
+            2,
+            false,
+        );
+        assert!(killed.is_empty());
+        assert_eq!(
+            players.players[1].health, max_hp,
+            "no PvP damage when pvp_enabled is false"
+        );
+        assert!(
+            !outbox.messages.iter().any(|(_, p)| matches!(
+                p,
+                ServerPacket::GameEvent(e) if e.event_type == game_event_type::DAMAGE
+            )),
+            "no DAMAGE event in the safe Sanctuary"
         );
     }
 

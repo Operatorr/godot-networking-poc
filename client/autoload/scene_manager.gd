@@ -372,12 +372,12 @@ func _update_game_state_for_scene(scene_name: SceneName) -> void:
 func _cleanup_scene(scene: Node) -> void:
 	print("[SceneManager] Cleaning up scene: %s" % scene.name)
 
-	# Disconnect from server if in arena
-	var net_mgr = get_tree().root.get_node_or_null("NetworkManager")
-	if net_mgr and net_mgr.is_server_connected():
-		if current_scene_name == SCENE_ARENA:
-			print("[SceneManager] Disconnecting from game server...")
-			net_mgr.disconnect_from_server("Scene change")
+	# NOTE: the networked scenes (Arena AND Sanctuary) now each own their server-connection
+	# lifecycle — the Arena↔Sanctuary portal/leave handlers disconnect from the old instance
+	# and dial the new one explicitly, and the main menu dials the Sanctuary before entering.
+	# SceneManager must NOT disconnect here: a transition between the two instances opens the
+	# NEXT connection *before* the old scene is freed, and a blind disconnect here would kill
+	# that fresh link (the 0.3s fade window is long enough for a localhost handshake to finish).
 
 	# Give scene a chance to cleanup
 	if scene.has_method("on_scene_exit"):

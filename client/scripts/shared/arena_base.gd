@@ -1248,9 +1248,11 @@ func _on_leave_arena() -> void:
 	_leave_arena()
 
 
-## Leave the arena: disconnect from the server and return to the Sanctuary hub.
-## (The Sanctuary — not the main menu — is the town the player returns to; SceneManager
-## sets the IN_ARENA game state for it via _update_game_state_for_scene.)
+## Leave the Arena and return to the Sanctuary hub. Both are now networked instances on the
+## same region host (Arena = :8081, Sanctuary = :8082), so this disconnects from the Arena and
+## RECONNECTS to the Sanctuary instance before switching scenes — otherwise the Sanctuary scene
+## would come up with no server link. (The Sanctuary, not the main menu, is the town the player
+## returns to; SceneManager sets the IN_ARENA game state for it.)
 func _leave_arena() -> void:
 	if _is_leaving_arena:
 		return
@@ -1260,7 +1262,21 @@ func _leave_arena() -> void:
 	if audio:
 		audio.stop_music()
 	GameManager.persist_progression()  # flush any unsaved XP before tearing down
+
+	# Drop the Arena link, then dial the Sanctuary instance (region host on the Sanctuary port).
 	NetworkManager.disconnect_from_server("Return to Sanctuary")
+	await get_tree().process_frame
+
+	var region_url: String = GameManager.player_data.get("selected_region_url", "")
+	if region_url.is_empty():
+		# No region stashed (shouldn't happen from a live Arena) — fall back to the menu.
+		SceneManager.goto_main_menu()
+		return
+
+	var sanctuary_url := NetworkManager.sanctuary_url_for_region(region_url)
+	NetworkManager.connect_to_server(sanctuary_url, AuthManager.get_token())
+	# Switch scenes immediately; the Sanctuary's _setup_client drives the handshake once the
+	# link opens (connect_to_server awaits the link internally and emits connected_to_server).
 	SceneManager.goto_sanctuary()
 
 

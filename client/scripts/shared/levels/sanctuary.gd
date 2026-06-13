@@ -1,8 +1,11 @@
 ## Sanctuary — the safe-hub city the player enters when entering the world.
 ##
-## Fully client-local (OfflineArena subclass, like Practice): no server, no
-## prediction. The Arena portal on the south dais is what dials the game server
-## and moves the player into the authoritative Arena.
+## NETWORKED shared instance (ArenaBase subclass): the Sanctuary is a real server instance
+## (omega-server --mode sanctuary --port 8082) with no monsters and PvP off (projectiles never
+## hit players), bounds ±1856 with no obstacles (walk-through town). Movement is server-
+## authoritative and predicted exactly like the Arena — abilities run server-side here too
+## (Zealot bibles spawn, etc.) via the inherited ABILITY_EFFECT/entity handling. The Arena
+## portal on the south dais disconnects and dials the Arena instance (8081) on the same host.
 ##
 ## ============================================================================
 ## REDESIGN (vast walled city, code-generated placeholders)
@@ -32,7 +35,7 @@
 ##
 ## Layout + districts are documented in docs/design/sanctuary-layout.md (system
 ## of record) and follow docs/design/SANCTUARY_STYLEGUIDE.md.
-extends OfflineArena
+extends ArenaBase
 
 const NPC_SCENE: PackedScene = preload("res://scenes/shared/npc/npc.tscn")
 const PORTAL_SCENE: PackedScene = preload("res://scenes/shared/portal/portal.tscn")
@@ -391,45 +394,80 @@ var _sacrifice_request: HTTPRequest = null
 var _sacrifice_in_flight := false
 
 
-func _configure() -> void:
-	arena_rect = TOWN_RECT
-	wall_thickness = 32.0
+## ArenaBase calls this on scene entry (before _setup_client). Build the town: the
+## EntityContainer + HUDLayer the networked base needs, then the city's ground/wall/building
+## visuals and the safe-zone badge. NPCs + the Arena portal are deferred to _after_client_setup
+## (they need the HUD/scene present). The wall COLLIDERS are intentionally dropped — movement
+## is server-authoritative now (walk-through), so the Godot colliders do nothing for the
+## networked player.
+func _build_level_environment() -> void:
+	# Suppress the inherited dark arena floor; the town paints its own ground layer.
+	_draws_arena_floor = false
 
+	# ArenaBase needs these by name and the bare sanctuary.tscn has neither.
+	if get_node_or_null("EntityContainer") == null:
+		var entities := Node2D.new()
+		entities.name = "EntityContainer"
+		add_child(entities)
+	if get_node_or_null("HUDLayer") == null:
+		var hud := CanvasLayer.new()
+		hud.name = "HUDLayer"
+		add_child(hud)
 
-func _get_spawn_position() -> Vector2:
-	return SPAWN_POS
-
-
-func _populate() -> void:
 	_world = Node2D.new()
 	_world.name = "World"
-	_world.z_index = -4                       # props/npcs/portal/fountain below the player (z 0)
+	_world.z_index = -4                       # props/buildings/fountain below the player (z 0)
 	add_child(_world)
 
 	_rasterize()                              # fill _wall_cells + _floor_ops from the tables
 	_build_ground_layer()                     # z -20: floors, roads, interiors, stairs, pools
-	_build_wall_visuals()                     # z -8: oblique raised walls
-	_build_city_colliders()                   # solid grid: a collider on every wall cell
+	_build_wall_visuals()                     # z -8: oblique raised walls (no colliders)
 	_build_buildings_meta()                   # named replaceable slots + plaques + interior props
 	_build_terrace_meta()
 	_build_stairs_meta()
 	_build_fountain()                         # KEEP sprite
-	_build_npcs()                             # KEEP sprites
-	_build_portal()                           # KEEP sprite
 	_build_props()
 	_build_safe_zone_badge()
 
 
-## Town stays quiet — no peaceful-hub track is loaded yet.
-func _start_music() -> void:
-	pass
+## Sanctuary world geometry: ±1856 walk-through, NO obstacles. Pushed into the prediction sim
+## by ArenaBase._setup_client BEFORE the first predicted step so prediction matches the
+## --mode sanctuary server.
+func _world_geometry() -> Array:
+	return [Vector2(-1856.0, -1856.0), Vector2(1856.0, 1856.0), false]
 
 
-## All visuals live in dedicated child layers (Ground / WallVisuals / World), so
-## the Sanctuary node itself draws nothing. (Overriding keeps OfflineArena._draw —
-## its dark arena grid/border — from painting over the city.)
+## Runs at the end of _setup_client (client only): the HUD, camera, prediction and entity
+## container now exist. Build the kept-art NPCs and the Arena portal here, and retarget the
+## pause menu's "leave" to return to the main menu (instead of the Arena's "return to Sanctuary").
+func _after_client_setup() -> void:
+	_build_npcs()                             # KEEP sprites (priest opens the sacrifice flow)
+	_build_portal()                           # KEEP sprite (dials the Arena instance)
+	if pause_menu:
+		pause_menu.set_leave_button_text("EXIT TO MENU")
+
+
+## All visuals live in dedicated child layers (Ground / WallVisuals / World) and the inherited
+## arena floor is suppressed (_draws_arena_floor = false), so the Sanctuary node draws nothing.
 func _draw() -> void:
 	pass
+
+
+## Leave the Sanctuary (pause menu "Exit to Menu" or the T/tilde return key): disconnect from
+## the Sanctuary server instance and return to the main menu. Overrides ArenaBase._leave_arena
+## (which would route back to the Sanctuary — meaningless from inside it).
+func _leave_arena() -> void:
+	if _is_leaving_arena:
+		return
+	_is_leaving_arena = true
+
+	var audio := _get_audio_manager()
+	if audio:
+		audio.stop_music()
+	GameManager.persist_progression()
+	NetworkManager.disconnect_from_server("Leave Sanctuary")
+	GameManager.change_state(GameManager.GameState.MAIN_MENU)
+	SceneManager.goto_main_menu()
 
 
 # =============================================================================
@@ -581,54 +619,6 @@ func _build_wall_visuals() -> void:
 	layer.records = records
 	add_child(layer)
 	layer.queue_redraw()
-
-
-## One static collider per merged horizontal run of wall cells — guarantees a
-## solid cell everywhere a wall is drawn, with far fewer shapes than per-cell.
-func _build_city_colliders() -> void:
-	var body := StaticBody2D.new()
-	body.name = "CityColliders"
-	body.collision_layer = ENVIRONMENT_COLLISION_LAYER
-	body.collision_mask = 0
-	add_child(body)
-
-	# Group wall cells by row.
-	var rows: Dictionary = {}
-	for cell: Vector2i in _wall_cells:
-		if not rows.has(cell.y):
-			rows[cell.y] = []
-		rows[cell.y].append(cell.x)
-
-	var count := 0
-	for row_y: int in rows:
-		var xs: Array = rows[row_y]
-		xs.sort()
-		var run_start: int = xs[0]
-		var prev: int = xs[0]
-		for i in range(1, xs.size() + 1):
-			var is_break: bool = i == xs.size() or int(xs[i]) != prev + 1
-			if is_break:
-				_add_run_collider(body, run_start, prev, row_y)
-				count += 1
-				if i < xs.size():
-					run_start = xs[i]
-					prev = xs[i]
-			else:
-				prev = xs[i]
-	print("[Sanctuary] %d wall cells -> %d colliders" % [_wall_cells.size(), count])
-
-
-func _add_run_collider(body: StaticBody2D, tx_start: int, tx_end: int, ty: int) -> void:
-	var width := float(tx_end - tx_start + 1) * TILE
-	var shape := CollisionShape2D.new()
-	shape.position = Vector2(
-		(float(tx_start) + float(tx_end - tx_start + 1) * 0.5) * TILE,
-		(float(ty) + 0.5) * TILE
-	)
-	var rect := RectangleShape2D.new()
-	rect.size = Vector2(width, TILE)
-	shape.shape = rect
-	body.add_child(shape)
 
 
 # =============================================================================
@@ -976,6 +966,11 @@ const _PROP_COLLIDERS: Dictionary = {
 # =============================================================================
 
 func _build_safe_zone_badge() -> void:
+	# HUDLayer is created in _build_level_environment before this runs (networked base owns it).
+	var hud := get_hud_layer()
+	if hud == null:
+		return
+
 	var badge := Label.new()
 	badge.name = "SafeZoneBadge"
 	badge.text = "SANCTUARY  •  SAFE ZONE"
@@ -989,7 +984,7 @@ func _build_safe_zone_badge() -> void:
 	badge.add_theme_color_override("font_color", Color("ffd36a"))
 	badge.add_theme_color_override("font_outline_color", Color("3c8ccf"))
 	badge.add_theme_constant_override("outline_size", 6)
-	hud_layer.add_child(badge)
+	hud.add_child(badge)
 
 	var hint := Label.new()
 	hint.name = "TravelHint"
@@ -1002,7 +997,7 @@ func _build_safe_zone_badge() -> void:
 	hint.offset_bottom = 72.0
 	hint.add_theme_font_size_override("font_size", 13)
 	hint.add_theme_color_override("font_color", Color(0.96, 0.94, 0.86, 0.85))
-	hud_layer.add_child(hint)
+	hud.add_child(hint)
 
 
 # =============================================================================

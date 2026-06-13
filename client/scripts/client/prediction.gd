@@ -933,6 +933,15 @@ func set_base_speed(base_speed: float) -> void:
 		_sim.set_base_speed(base_speed)
 
 
+## Set the connected instance's world geometry on the shared sim (Arena = ±1000 + obstacles;
+## Sanctuary = ±1856, no obstacles). The sim geometry is a thread-local in the Rust core, so
+## this MUST run on the same (main) thread that calls step(), before the first predicted step.
+## No-op if the GDExtension lacks the method.
+func set_world_geometry(min_bound: Vector2, max_bound: Vector2, obstacles_enabled: bool) -> void:
+	if _sim.has_method("set_world_geometry"):
+		_sim.set_world_geometry(min_bound, max_bound, obstacles_enabled)
+
+
 ## Check if the controller has applied an authoritative spawn/server position.
 func has_authoritative_sync() -> bool:
 	return has_authoritative_position

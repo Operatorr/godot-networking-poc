@@ -565,6 +565,8 @@ pub struct PositionSnapshot {
 pub struct PlayerManager {
     /// Insertion (connect) order — iteration order matches GDScript Dictionary semantics.
     pub players: Vec<PlayerState>,
+    /// Spawn anchors for this instance (Arena anchors by default; the Sanctuary sets town anchors).
+    spawn_points: Vec<Vec2>,
     position_history: Vec<(u64, Vec<PositionSnapshot>)>,
     /// Deliberate deviation from GDScript (documented in lifecycle §6.1): ids recycle within
     /// 1–999 so the invariant holds for > 999 lifetime connections.
@@ -589,11 +591,20 @@ impl PlayerManager {
     pub fn new() -> Self {
         Self {
             players: Vec::new(),
+            spawn_points: ARENA_PLAYER_SPAWNS.to_vec(),
             position_history: Vec::new(),
             free_ids: Vec::new(),
             quarantined_ids: Vec::new(),
             next_entity_id: 1,
             spawn_index: 0,
+        }
+    }
+
+    /// Override the spawn anchors (e.g. the Sanctuary's town spawns). Resets the round-robin cursor.
+    pub fn set_spawn_points(&mut self, points: Vec<Vec2>) {
+        if !points.is_empty() {
+            self.spawn_points = points;
+            self.spawn_index = 0;
         }
     }
 
@@ -631,7 +642,8 @@ impl PlayerManager {
     /// Shared round-robin cursor over the (re-filtered) valid spawn list, used by both
     /// connect-spawns and respawns; never reset.
     pub fn next_spawn_position(&mut self) -> Vec2 {
-        let spawns: Vec<Vec2> = ARENA_PLAYER_SPAWNS
+        let spawns: Vec<Vec2> = self
+            .spawn_points
             .iter()
             .copied()
             .filter(|p| arena::is_valid_player_spawn_position(*p))

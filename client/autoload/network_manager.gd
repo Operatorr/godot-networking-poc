@@ -65,6 +65,12 @@ var _codec: ProtocolCodec = ProtocolCodec.new()
 ## Default egress budget the client advertises in CONNECT_AUTH (bytes/sec).
 const DEFAULT_CLIENT_BUDGET := 120000
 
+## The two server instances share a host but listen on different UDP ports: the Arena is the
+## region's advertised port (8081 locally), the Sanctuary hub runs alongside it on 8082. The
+## client derives the Sanctuary address from the selected region's host (see *_url_for_region).
+const ARENA_DEFAULT_PORT := 8081
+const SANCTUARY_PORT := 8082
+
 ## Connection state
 var current_state: ConnectionState = ConnectionState.DISCONNECTED
 var server_url: String = ""
@@ -166,6 +172,43 @@ func _process_reconnecting(delta: float) -> void:
 	reconnect_timer -= delta
 	if reconnect_timer <= 0.0:
 		_attempt_reconnect()
+
+
+## Split a region/server URL into [host, port], tolerating a scheme prefix (ws://, udp://, …)
+## and a missing port. Returns ARENA_DEFAULT_PORT when no port is present. IPv6 literals are
+## not expected from the region API, so the simple rsplit on ":" is sufficient here.
+static func _split_host_port(url: String) -> Array:
+	var rest := url
+	var scheme_idx := rest.find("://")
+	if scheme_idx != -1:
+		rest = rest.substr(scheme_idx + 3)
+	# Drop any path/query the region URL might carry.
+	var slash_idx := rest.find("/")
+	if slash_idx != -1:
+		rest = rest.substr(0, slash_idx)
+	var host := rest
+	var port := ARENA_DEFAULT_PORT
+	var colon_idx := rest.rfind(":")
+	if colon_idx != -1:
+		host = rest.substr(0, colon_idx)
+		var port_str := rest.substr(colon_idx + 1)
+		if port_str.is_valid_int():
+			port = port_str.to_int()
+	return [host, port]
+
+
+## The ARENA instance address for a region: its advertised host:port unchanged (8081 locally).
+## Accepts a region URL (with or without scheme) and returns a bare "host:port" for ENet.
+static func arena_url_for_region(region_url: String) -> String:
+	var parts := _split_host_port(region_url)
+	return "%s:%d" % [parts[0], parts[1]]
+
+
+## The SANCTUARY instance address for a region: the region's HOST on SANCTUARY_PORT (8082).
+## The Sanctuary runs alongside the Arena on the same machine, one port up.
+static func sanctuary_url_for_region(region_url: String) -> String:
+	var parts := _split_host_port(region_url)
+	return "%s:%d" % [parts[0], SANCTUARY_PORT]
 
 
 ## Connect to the game server. Accepts "host:port" with any scheme prefix (the Go API region

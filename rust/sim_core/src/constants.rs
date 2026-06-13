@@ -73,6 +73,24 @@ pub const TELEPORT_THRESHOLD: f32 = 150.0;
 pub const MAP_MIN: Vec2 = Vec2::new(-1000.0, -1000.0);
 pub const MAP_MAX: Vec2 = Vec2::new(1000.0, 1000.0);
 
+// ── Sanctuary instance geometry ─────────────────────────────────────────────
+/// The town (`sanctuary.gd` TOWN_RECT) spans ±1856 — far larger than the Arena's ±1000 — so a
+/// Sanctuary instance widens the sim bounds to match and runs with NO obstacles (walk-through
+/// buildings). Applied via `arena::set_world_geometry`.
+pub const SANCTUARY_MAP_MIN: Vec2 = Vec2::new(-1856.0, -1856.0);
+pub const SANCTUARY_MAP_MAX: Vec2 = Vec2::new(1856.0, 1856.0);
+
+/// Player spawn anchors for a Sanctuary instance — along the Grand Avenue just north of the south
+/// portal dais, so players arrive in the town centre facing the Arena Portal.
+pub const SANCTUARY_PLAYER_SPAWNS: [Vec2; 6] = [
+    Vec2::new(0.0, 640.0),
+    Vec2::new(-140.0, 720.0),
+    Vec2::new(140.0, 720.0),
+    Vec2::new(-200.0, 520.0),
+    Vec2::new(200.0, 520.0),
+    Vec2::new(0.0, 820.0),
+];
+
 // ── Projectiles ─────────────────────────────────────────────────────────────
 pub const PROJECTILE_SPEED: f32 = 400.0;
 pub const PROJECTILE_MAX_DISTANCE: f32 = 800.0;

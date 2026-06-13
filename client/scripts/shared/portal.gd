@@ -102,8 +102,11 @@ func _activate() -> void:
 	_busy = true
 	activated.emit(self)
 
-	if requires_connection and not NetworkManager.is_server_connected():
-		var connected: bool = await _connect_to_selected_region()
+	if requires_connection:
+		# Each destination lives on its own server instance (Arena = region:8081, Sanctuary =
+		# region:8082). Always (re)connect to the destination's instance so traveling from the
+		# connected Sanctuary into the Arena lands on the Arena server, not the Sanctuary one.
+		var connected: bool = await _connect_to_destination_instance()
 		if not connected:
 			_busy = false
 			if _player_inside:
@@ -133,12 +136,33 @@ func _travel() -> void:
 			SceneManager.change_scene_to_path(custom_scene_path, use_loading_screen)
 
 
-## Dial the region chosen in the main menu. Returns true once connected.
-func _connect_to_selected_region() -> bool:
-	var url: String = GameManager.player_data.get("selected_region_url", "")
+## Resolve this destination's server-instance address from the region the main menu stashed.
+## Arena → region host:8081; Sanctuary → region host:8082. Empty when no region is selected.
+func _destination_instance_url() -> String:
+	var region_url: String = GameManager.player_data.get("selected_region_url", "")
+	if region_url.is_empty():
+		return ""
+	match destination:
+		Destination.SANCTUARY:
+			return NetworkManager.sanctuary_url_for_region(region_url)
+		_:
+			# ARENA (and any other online destination) uses the region's advertised instance.
+			return NetworkManager.arena_url_for_region(region_url)
+
+
+## Dial the destination's server instance. Disconnects from any current instance first so a
+## different one (e.g. leaving the Sanctuary for the Arena) is left cleanly. Returns true once
+## connected.
+func _connect_to_destination_instance() -> bool:
+	var url := _destination_instance_url()
 	if url.is_empty():
 		await _show_error_prompt("No realm selected - pick a region in the main menu")
 		return false
+
+	# Drop the current link (e.g. the Sanctuary) before dialing the destination instance.
+	if NetworkManager.is_server_connected():
+		NetworkManager.disconnect_from_server("Portal travel")
+		await get_tree().process_frame
 
 	_set_prompt("Connecting to realm...")
 	NetworkManager.connect_to_server(url, AuthManager.get_token())

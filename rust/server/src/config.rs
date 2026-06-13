@@ -12,6 +12,9 @@ pub struct ServerConfig {
     pub tick_rate: u32,
     pub max_players: usize,
     pub region: String,
+    /// Instance kind: "arena" (combat: monsters + PvP, ±1000 + pillars) or "sanctuary" (safe town:
+    /// no monsters, PvP off, ±1856 walk-through). One process = one Instance (D13).
+    pub mode: String,
     pub debug_logging: bool,
     pub api_server_url: String,
     pub aoi_radius: f32,
@@ -46,6 +49,7 @@ impl Default for ServerConfig {
             tick_rate: 30,
             max_players: 100,
             region: "local".into(),
+            mode: "arena".into(),
             debug_logging: true,
             api_server_url: "http://localhost:8080".into(),
             aoi_radius: 1000.0,
@@ -82,6 +86,21 @@ impl ServerConfig {
 
     pub fn tick_interval(&self) -> f64 {
         1.0 / self.tick_rate.max(1) as f64
+    }
+
+    /// True for a Sanctuary instance (case-insensitive).
+    pub fn is_sanctuary(&self) -> bool {
+        self.mode.eq_ignore_ascii_case("sanctuary")
+    }
+
+    /// PvP collisions (player projectiles hitting players) are on only in the Arena.
+    pub fn pvp_enabled(&self) -> bool {
+        !self.is_sanctuary()
+    }
+
+    /// Monsters spawn only in the Arena.
+    pub fn monsters_enabled(&self) -> bool {
+        !self.is_sanctuary()
     }
 
     pub fn load(path: Option<&Path>) -> ServerConfig {
@@ -133,6 +152,11 @@ impl ServerConfig {
             "region" => {
                 if let Some(s) = v.as_str() {
                     self.region = s.to_string();
+                }
+            }
+            "mode" => {
+                if let Some(s) = v.as_str() {
+                    self.mode = s.to_string();
                 }
             }
             "debug_logging" => {

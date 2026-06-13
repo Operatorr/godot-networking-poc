@@ -51,6 +51,8 @@ pub struct World {
     pub rng: Pcg32,
     /// Server→API progression I/O (None in tests / no-API dev).
     pub progression: Option<ProgressionClient>,
+    /// PvP collisions (player projectiles vs players) — off in a Sanctuary instance.
+    pub pvp_enabled: bool,
     pub tick_count: u64,
     snapshot_accumulator: f64,
     snapshot_interval: f64,
@@ -66,7 +68,10 @@ impl World {
         progression: Option<ProgressionClient>,
     ) -> Self {
         let snapshot_interval = 1.0 / config.snapshot_rate_hz().max(1) as f64;
-        Self {
+        let pvp_enabled = config.pvp_enabled();
+        let monsters_enabled = config.monsters_enabled();
+        let is_sanctuary = config.is_sanctuary();
+        let mut world = Self {
             broadcast: BroadcastService::new(
                 config.aoi_radius,
                 config.aoi_exit_radius,
@@ -86,13 +91,22 @@ impl World {
             verifier,
             rng,
             progression,
+            pvp_enabled,
             tick_count: 0,
             snapshot_accumulator: 0.0,
             snapshot_interval,
             leaderboard_timer: 0.0,
             progress_flush_timer: 0.0,
             config,
+        };
+        // Sanctuary: no monsters, town spawn anchors. (Arena keeps the defaults.)
+        world.spawner.enabled = monsters_enabled;
+        if is_sanctuary {
+            world
+                .players
+                .set_spawn_points(sim_core::constants::SANCTUARY_PLAYER_SPAWNS.to_vec());
         }
+        world
     }
 
     // ── Connection lifecycle ────────────────────────────────────────────────
@@ -492,6 +506,7 @@ impl World {
             &mut self.leaderboard,
             outbox,
             self.tick_count,
+            self.pvp_enabled,
         );
         self.roll_healthorbs(&killed);
 
@@ -1234,6 +1249,21 @@ mod tests {
         World::new(config, verifier, Pcg32::new(1234), None)
     }
 
+    fn sanctuary_world() -> World {
+        // The server sets geometry in main(); a test must apply it on its own (isolated) thread.
+        sim_core::set_world_geometry(
+            sim_core::constants::SANCTUARY_MAP_MIN,
+            sim_core::constants::SANCTUARY_MAP_MAX,
+            false,
+        );
+        let config = ServerConfig {
+            mode: "sanctuary".into(),
+            ..ServerConfig::default()
+        };
+        let verifier = TicketVerifier::new("", true, 0).unwrap();
+        World::new(config, verifier, Pcg32::new(1234), None)
+    }
+
     fn auth_packet(name: &str) -> ClientPacket {
         auth_packet_with_class(name, 0)
     }
@@ -1449,6 +1479,28 @@ mod tests {
     fn projectile_octant_animation() {
         assert_eq!(projectile_animation_octant(Vec2::new(1.0, 0.0)), 4);
         assert_eq!(projectile_animation_octant(Vec2::new(-1.0, 0.0)), 0);
+    }
+
+    #[test]
+    fn sanctuary_mode_is_a_safe_town() {
+        let mut world = sanctuary_world();
+        assert!(!world.pvp_enabled, "PvP off in the sanctuary");
+        assert!(!world.spawner.enabled, "spawner off in the sanctuary");
+        // Player spawns at a town anchor (within the ±1856 town, well outside the ±800 arena ring).
+        let id = join(&mut world, 1, "Townie");
+        let pos = world.players.get_by_entity_id(id).unwrap().position;
+        assert!(pos.y > 400.0, "spawned along the south avenue, got {pos:?}");
+        // No monsters ever spawn, even over a long run that fills the arena.
+        let mut outbox = Outbox::new();
+        for t in 0..600 {
+            world.tick(t * 33, &mut outbox);
+            outbox.drain();
+        }
+        assert_eq!(
+            world.monsters.alive_count(),
+            0,
+            "no monsters in the sanctuary"
+        );
     }
 
     fn cast_input(seq: u8, pos: Vec2, cursor: Vec2) -> ClientPacket {

@@ -499,6 +499,14 @@ impl PredictionSim {
         self.sm.is_exhausted()
     }
 
+    /// Set the connected instance's world geometry so prediction matches the server (Arena =
+    /// ±1000 + obstacles; Sanctuary = ±1856, no obstacles). Call once on scene entry, on the same
+    /// thread that runs `step()` (the main/render thread).
+    #[func]
+    fn set_world_geometry(&self, min: Vector2, max: Vector2, obstacles_enabled: bool) {
+        sim_core::set_world_geometry(sim(min), sim(max), obstacles_enabled);
+    }
+
     #[func]
     fn ability_cooldown_remaining(&self) -> f64 {
         self.sm.ability_cooldown_remaining()

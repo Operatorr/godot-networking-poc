@@ -11,6 +11,8 @@ const TITLE_COLOR := Color(0.12, 0.12, 0.11)
 const TITLE_OUTLINE_COLOR := Color.BLACK
 const TITLE_GLOW_COLOR := Color(0.62, 0.62, 0.58, 0.58)
 const REGION_REFRESH_INTERVAL := 5.0
+## Upper bound on awaiting the Sanctuary link (NetworkManager's own connect timeout is shorter).
+const CONNECT_TIMEOUT_SEC := 10.0
 
 ## Character card run-cycle preview: holder box footprint and the on-screen height every
 ## class canvas is scaled to (so classes with different canvases preview alike). The canvas
@@ -517,17 +519,67 @@ func _on_enter_world_pressed() -> void:
 		_show_error("Region Unavailable", "The selected region is currently unavailable.")
 		return
 
-	# Entering the world lands in the Sanctuary town (offline hub). No server
-	# connection here - the Arena portal in town dials this region's server,
-	# so stash the URL where Portal looks for it.
+	# Entering the world now joins the NETWORKED Sanctuary instance (the region host on the
+	# Sanctuary port, 8082). The Arena portal in town later disconnects and dials the same
+	# region's Arena instance (8081), so stash the region URL where Portal looks for it.
 	GameManager.player_data["selected_region_url"] = region.websocket_url
 	preferences.save()
 
 	enter_world_button.disabled = true
-	_update_status("Entering the Sanctuary...")
+	_is_connecting = true
+	_update_status("Connecting to the Sanctuary...")
 
-	print("[MainMenu] Entering Sanctuary (region for portal: %s at %s)" % [region.name, region.websocket_url])
+	var sanctuary_url := NetworkManager.sanctuary_url_for_region(region.websocket_url)
+	print("[MainMenu] Connecting to Sanctuary instance %s (region %s)" % [sanctuary_url, region.name])
+
+	var connected: bool = await _connect_and_wait(sanctuary_url)
+	_is_connecting = false
+	if not connected:
+		# NetworkManager emits connection_error on a failed dial, which _on_connection_error
+		# turns into the error dialog + button re-enable; just reset the status here so the
+		# two paths don't stack duplicate dialogs.
+		enter_world_button.disabled = false
+		_update_status("Could not reach the Sanctuary")
+		return
+
+	_update_status("Entering the Sanctuary...")
+	enter_world_button.disabled = false
 	SceneManager.goto_sanctuary()
+
+
+## Dial a game-server instance and await the link opening, mirroring Portal._connect_to_destination_instance.
+## Returns true once NetworkManager reports the connection is open, false on error/timeout.
+func _connect_and_wait(url: String) -> bool:
+	if NetworkManager.is_server_connected():
+		# Already linked to some instance — drop it so we land on the requested one.
+		NetworkManager.disconnect_from_server("Switching instance")
+		await get_tree().process_frame
+
+	NetworkManager.connect_to_server(url, AuthManager.get_token())
+
+	var state := {"done": false, "ok": false}
+	var on_connected := func() -> void:
+		state["done"] = true
+		state["ok"] = true
+	var on_error := func(_error: String) -> void:
+		state["done"] = true
+	var on_disconnected := func(_reason: String) -> void:
+		state["done"] = true
+
+	NetworkManager.connected_to_server.connect(on_connected)
+	NetworkManager.connection_error.connect(on_error)
+	NetworkManager.disconnected_from_server.connect(on_disconnected)
+
+	var waited := 0.0
+	while not state["done"] and waited < CONNECT_TIMEOUT_SEC:
+		await get_tree().process_frame
+		waited += get_process_delta_time()
+
+	NetworkManager.connected_to_server.disconnect(on_connected)
+	NetworkManager.connection_error.disconnect(on_error)
+	NetworkManager.disconnected_from_server.disconnect(on_disconnected)
+
+	return state["ok"]
 
 
 ## Handle Practice button press
