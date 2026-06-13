@@ -159,6 +159,7 @@ func _generate_procedural_audio() -> void:
 	audio_library["sfx_player"]["player_hit"] = sfx["player_hit"]
 	audio_library["sfx_player"]["player_death"] = sfx["player_death"]
 	audio_library["sfx_player"]["player_kill"] = sfx["player_kill"]
+	audio_library["sfx_player"]["level_up"] = sfx["level_up"]
 	audio_library["sfx_player"]["projectile_impact"] = sfx["projectile_impact"]
 	audio_library["sfx_player"]["footstep_l"] = sfx["footstep_l"]
 	audio_library["sfx_player"]["footstep_r"] = sfx["footstep_r"]
@@ -330,6 +331,10 @@ func play_player_hit() -> void:
 ## Play player death sound
 func play_player_death() -> void:
 	play_sfx("player_death", AudioCategory.SFX_PLAYER)
+
+## Play the level-up "ding"
+func play_level_up() -> void:
+	play_sfx("level_up", AudioCategory.SFX_PLAYER)
 
 ## Play player kill confirmation sound
 func play_player_kill() -> void:

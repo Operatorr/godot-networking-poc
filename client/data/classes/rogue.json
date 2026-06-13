@@ -1,0 +1,46 @@
+{
+	"id": "rogue",
+	"display_name": "Rogue",
+	"role": "assassin_blinker",
+
+	"stats": {
+		"hp_base": 85,
+		"hp_per_level": 4,
+		"move_speed_base": 215.0,
+		"move_speed_per_level": 0.9,
+		"mana_max": 100,
+		"mana_pool": 100,
+		"mana_regen_per_sec": 8.0,
+		"stamina_max": 100,
+		"hitbox_radius": 16
+	},
+
+	"primary": {
+		"damage_base": 24,
+		"damage_per_level": 2,
+		"cooldown": 0.3,
+		"projectile_speed": 400.0
+	},
+
+	"ability": {
+		"id": "shadowstep",
+		"name": "Shadowstep",
+		"type": "movement_blink_or_stealth",
+		"mana_cost": 30,
+		"cooldown": 10.0,
+		"cursor_search_radius": 160.0,
+		"hitscan_damage": 85,
+		"stealth_duration": 5.0,
+		"stealth_breaks_on_damage_dealt": true
+	},
+
+	"appearance": {
+		"sprite_dir": "rogue"
+	},
+
+	"networking": {
+		"server_authoritative": true,
+		"predicted": ["position", "velocity", "primary_attack_aim", "blink_movement"],
+		"replicated": ["position", "animation", "flags", "ability_effect", "stealth_flag"]
+	}
+}

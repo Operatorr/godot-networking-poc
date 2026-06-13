@@ -115,14 +115,15 @@ omega-networking/
 │   │   ├── database/               # PostgreSQL connection
 │   │   ├── handlers/               # HTTP route handlers
 │   │   └── models/                 # Data models
-│   ├── go.mod                      # Go module definition
-│   └── Dockerfile → ../deployment/api.Dockerfile
+│   └── go.mod                      # Go module definition (built natively to api/bin/server)
 │
-├── deployment/                     # Docker & deployment configs
-│   ├── docker-compose.yml          # Orchestrates all services
-│   ├── api.Dockerfile              # Go API container
-│   ├── server.Dockerfile           # Rust game server container
-│   └── .env.example                # Environment variable template
+├── deployment/                     # Native systemd deploy (no Docker — ADR 0007)
+│   ├── systemd/                    # omega-api / omega-arena / omega-sanctuary units
+│   ├── server_config.{arena,sanctuary}.json  # per-instance configs (ports/modes/metrics)
+│   ├── env/                        # api.env / server.env templates → /etc/omega-realm/
+│   ├── provision_server.sh         # one-time bootstrap (toolchains, DB, units, swap)
+│   ├── server_update.sh            # git-pull + rebuild + restart (runs on the server)
+│   └── harden_vps.sh               # firewall / fail2ban / SSH lockdown
 │
 ├── scripts/                        # Build automation
 │   ├── build_client.sh             # Export client for Win/Mac/Linux
@@ -795,8 +796,8 @@ Players in different shards need to:
 
 **Deployment:**
 
-- Docker containers
-- Kubernetes or Docker Swarm for orchestration (at scale)
+- Native systemd services on a single droplet (no Docker — [ADR 0007](adr/0007-native-systemd-deployment.md))
+- An orchestrator (Kubernetes / Nomad) for multi-region scale-out (future; see INFRASTRUCTURE.md Phase 3)
 - CDN for static content (CloudFlare)
 
 ### Why This Stack
@@ -906,50 +907,32 @@ After each stress test, document:
 
 ### Local Development Setup
 
-**Prerequisites:**
-- Godot 4.6
-- Go 1.21+
-- Docker & Docker Compose
-- PostgreSQL (or use Docker)
-- Redis (or use Docker)
+**Prerequisites** (no Docker — [ADR 0007](adr/0007-native-systemd-deployment.md)):
+- Godot 4.6 (client)
+- Go 1.24+ (API)
+- Rust (stable, via rustup) — server, protocol, sim, load test
+- PostgreSQL + Redis running locally (e.g. DBngin or a native install)
 
-**Quick Start:**
+**Quick Start** (one command brings up the whole local stack):
 ```bash
-# 1. Start infrastructure services
-cd deployment
-docker-compose up postgres redis
-
-# 2. Build and run API
-cd ../api
-go mod download
-go run cmd/server/main.go
-
-# 3. Run Godot client (opens editor)
-cd ../client
-godot project.godot
-
-# 4. Run Godot server (headless mode)
-godot --headless project.godot
+cp api/.env.example api/.env       # point DB_*/REDIS_* at your local Postgres/Redis
+./scripts/dev_local.sh             # Go API + Arena (udp/8081) + Sanctuary (udp/8082)
+# then run the client from the Godot editor (F5) or: godot --path client
 ```
 
 ### Building for Production
 
 **Build All Components:**
 ```bash
-# Client exports (Windows, Mac, Linux)
-./scripts/build_client.sh
-
-# Server export (Linux headless)
-./scripts/build_server.sh
-
-# API binary
-./scripts/build_api.sh
+./scripts/build_client.sh        # Client exports (Windows, Mac, Linux)
+./scripts/build_server.sh        # Rust omega-server (release)
+./scripts/build_api.sh           # Go API binary
 ```
 
-**Docker Deployment:**
+**Deploy (native, git-driven):**
 ```bash
-cd deployment
-docker-compose up --build
+./scripts/deploy.sh provision    # one-time: toolchains, Postgres, Redis, units (see DEPLOYMENT.md)
+./scripts/deploy.sh              # pull master, rebuild, restart api + both game instances
 ```
 
 ### Testing Changes
@@ -957,29 +940,20 @@ docker-compose up --build
 **Test Client Locally:**
 1. Open `client/project.godot` in Godot editor
 2. Press F5 to run
-3. Client detects it's NOT headless, loads main menu
+3. The client connects to the Sanctuary hub, then the Arena on entry.
 
-**Test Server Locally:**
+**Test the Server Locally:**
 ```bash
-cd client
-godot --headless project.godot
-# Server detects headless mode, loads server_main.tscn
-# Starts WebSocket server on port 8081
+./scripts/run_server.sh --mode arena --port 8081   # one Rust instance (dev: unsigned tickets)
+# the authoritative server is the Rust omega-server binary — the Godot headless
+# server is retired (migration-spec D1).
 ```
 
 **Test Full Stack:**
 ```bash
-# Terminal 1: Start infrastructure
-cd deployment && docker-compose up postgres redis
-
-# Terminal 2: Start API
-cd api && go run cmd/server/main.go
-
-# Terminal 3: Start game server
-cd client && godot --headless project.godot
-
-# Terminal 4: Run client
-cd client && godot project.godot
+# Postgres + Redis already running (DBngin/native), then one command:
+./scripts/dev_local.sh           # API + Arena + Sanctuary, Ctrl+C stops all
+# separate terminal: run the Godot client (editor F5, or `godot --path client`)
 ```
 
 ### Code Organization Principles
@@ -1061,10 +1035,10 @@ Before deploying to production:
 
 - [ ] Run all build scripts successfully
 - [ ] Test client exports on target platforms
-- [ ] Test server with `--headless` flag
+- [ ] Test the Rust `omega-server` (Arena + Sanctuary) via `./scripts/dev_local.sh`
 - [ ] Verify API connects to database
-- [ ] Check docker-compose services start
-- [ ] Review `.env` configuration
+- [ ] Check all systemd units come up (`./scripts/deploy.sh status`)
+- [ ] Review `/etc/omega-realm/*.env` configuration
 - [ ] Test full stack locally
 - [ ] Backup database before deployment
 

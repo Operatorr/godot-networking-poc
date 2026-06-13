@@ -13,10 +13,12 @@ pub mod arena;
 pub mod constants;
 pub mod hit;
 mod movement;
+pub mod progression;
 mod rect;
 mod step;
 mod vec2;
 
+pub use arena::{set_world_geometry, world_geometry, WorldGeometry, ARENA_GEOMETRY};
 pub use movement::{MoveState, MovementSm};
 pub use rect::Rect;
 pub use step::{

@@ -1,0 +1,81 @@
+[gd_scene load_steps=2 format=3]
+
+[sub_resource type="GDScript" id="GDScript_arena_visual_smoke"]
+script/source = "## ArenaVisualSmoke - Visual smoke for the generated arena art.
+## Run with the movie writer to capture frames, e.g.:
+##   godot --path . res://scenes/test/arena_visual_smoke.tscn \\
+##     --write-movie /tmp/shots/visual.png --fixed-fps 10 --quit-after 8
+## Instantiates the arena (props + tilemap), parks a camera over the
+## south-west graveyard cluster, and lines up one entity of each kind so
+## the class sheets, slime, and projectile art are all visible in frame.
+extends Node2D
+
+const ArenaScene := preload(\"res://scenes/shared/arena/arena_base.tscn\")
+const RemotePlayerScene := preload(\"res://scenes/shared/player/remote_player.tscn\")
+const MonsterScene := preload(\"res://scenes/shared/monster/monster.tscn\")
+const ProjectileScene := preload(\"res://scenes/shared/projectile/projectile.tscn\")
+
+
+func _ready() -> void:
+	var arena := ArenaScene.instantiate()
+	add_child(arena)
+	# No server is running in this smoke. _leave_arena() early-returns when the
+	# leaving latch is already set, which blocks every teardown path (disconnect
+	# handler, reconnect-failed overlay) for the duration of the capture.
+	arena._is_leaving_arena = true
+	await get_tree().process_frame
+
+	# Movie-writer runs are not headless, so the arena already ran its client
+	# branch (props + camera). Override its camera with our own framing.
+	var cam := Camera2D.new()
+	cam.position = Vector2(-430, 420)
+	cam.zoom = Vector2(1.6, 1.6)
+	add_child(cam)
+	cam.make_current()
+
+	var container: Node = arena.get_entity_container()
+
+	# One remote player per class in a line above the graveyard. Classes whose
+	# sheets aren't generated yet fall back to the procedural sprite.
+	for class_id in range(7):
+		var rp := RemotePlayerScene.instantiate()
+		container.add_child(rp)
+		rp.global_position = Vector2(-640 + class_id * 70, 230)
+		rp.set_character_name(SheetLibrary.CLASS_KEYS[class_id])
+		rp.set_player_class(class_id)
+		rp.update_from_network(PacketTypes.AnimationState.IDLE, PacketTypes.ENTITY_FLAG_ALIVE | PacketTypes.ENTITY_FLAG_VISIBLE)
+
+	# A toxic slime next to the gravestones.
+	var monster := MonsterScene.instantiate()
+	container.add_child(monster)
+	monster.global_position = Vector2(-300, 430)
+	monster.update_from_network(PacketTypes.AnimationState.WALK, PacketTypes.ENTITY_FLAG_ALIVE | PacketTypes.ENTITY_FLAG_VISIBLE)
+
+	# A row of projectiles: one per class + the slime glob, flying right.
+	for class_id in range(7):
+		var proj := ProjectileScene.instantiate()
+		container.add_child(proj)
+		proj.global_position = Vector2(-620 + class_id * 60, 560)
+		proj.set_projectile_class(class_id)
+	var glob := ProjectileScene.instantiate()
+	container.add_child(glob)
+	glob.global_position = Vector2(-620 + 7 * 60, 560)
+	glob.reset_projectile_color()
+
+	print(\"[ArenaVisualSmoke] scene populated\")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var vp_cam := get_viewport().get_camera_2d()
+	print(\"[ArenaVisualSmoke] cam=%s pos=%s zoom=%s\" % [vp_cam.name if vp_cam else \"none\", vp_cam.global_position if vp_cam else Vector2.INF, vp_cam.zoom if vp_cam else Vector2.INF])
+	var rp0: Node = container.get_child(container.get_child_count() - 16)
+	for child in container.get_children():
+		if child is RemotePlayer:
+			rp0 = child
+			break
+	print(\"[ArenaVisualSmoke] rp0 visible=%s pos=%s anim=%s inside=%s\" % [rp0.visible, rp0.global_position, rp0.animated_sprite.animation if rp0.animated_sprite else \"?\", rp0.is_inside_tree()])
+	print(\"[ArenaVisualSmoke] monster visible=%s pos=%s anim=%s\" % [monster.visible, monster.global_position, monster.animated_sprite.animation if monster.animated_sprite else \"?\"])
+	print(\"[ArenaVisualSmoke] glob visible=%s pos=%s frames=%s\" % [glob.visible, glob.global_position, glob.get_node(\"AnimatedSprite2D\").sprite_frames != null])
+"
+
+[node name="ArenaVisualSmoke" type="Node2D"]
+script = SubResource("GDScript_arena_visual_smoke")

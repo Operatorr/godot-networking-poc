@@ -65,6 +65,12 @@ var _codec: ProtocolCodec = ProtocolCodec.new()
 ## Default egress budget the client advertises in CONNECT_AUTH (bytes/sec).
 const DEFAULT_CLIENT_BUDGET := 120000
 
+## The two server instances share a host but listen on different UDP ports: the Arena is the
+## region's advertised port (8081 locally), the Sanctuary hub runs alongside it on 8082. The
+## client derives the Sanctuary address from the selected region's host (see *_url_for_region).
+const ARENA_DEFAULT_PORT := 8081
+const SANCTUARY_PORT := 8082
+
 ## Connection state
 var current_state: ConnectionState = ConnectionState.DISCONNECTED
 var server_url: String = ""
@@ -168,6 +174,43 @@ func _process_reconnecting(delta: float) -> void:
 		_attempt_reconnect()
 
 
+## Split a region/server URL into [host, port], tolerating a scheme prefix (ws://, udp://, …)
+## and a missing port. Returns ARENA_DEFAULT_PORT when no port is present. IPv6 literals are
+## not expected from the region API, so the simple rsplit on ":" is sufficient here.
+static func _split_host_port(url: String) -> Array:
+	var rest := url
+	var scheme_idx := rest.find("://")
+	if scheme_idx != -1:
+		rest = rest.substr(scheme_idx + 3)
+	# Drop any path/query the region URL might carry.
+	var slash_idx := rest.find("/")
+	if slash_idx != -1:
+		rest = rest.substr(0, slash_idx)
+	var host := rest
+	var port := ARENA_DEFAULT_PORT
+	var colon_idx := rest.rfind(":")
+	if colon_idx != -1:
+		host = rest.substr(0, colon_idx)
+		var port_str := rest.substr(colon_idx + 1)
+		if port_str.is_valid_int():
+			port = port_str.to_int()
+	return [host, port]
+
+
+## The ARENA instance address for a region: its advertised host:port unchanged (8081 locally).
+## Accepts a region URL (with or without scheme) and returns a bare "host:port" for ENet.
+static func arena_url_for_region(region_url: String) -> String:
+	var parts := _split_host_port(region_url)
+	return "%s:%d" % [parts[0], parts[1]]
+
+
+## The SANCTUARY instance address for a region: the region's HOST on SANCTUARY_PORT (8082).
+## The Sanctuary runs alongside the Arena on the same machine, one port up.
+static func sanctuary_url_for_region(region_url: String) -> String:
+	var parts := _split_host_port(region_url)
+	return "%s:%d" % [parts[0], SANCTUARY_PORT]
+
+
 ## Connect to the game server. Accepts "host:port" with any scheme prefix (the Go API region
 ## payload historically carries ws:// URLs; only host/port are used over ENet).
 func connect_to_server(url: String, token: String = "", is_reconnect: bool = false) -> void:
@@ -268,14 +311,23 @@ func send_auth_handshake() -> void:
 
 	var character_name = ""
 	var player_color := Color(0.27, 0.53, 1.0)
+	# Class is chosen at character creation and stored on the character; Zealot is the
+	# fallback if GameManager has no class yet (e.g. a legacy character).
+	var player_class: int = PacketTypes.PlayerClass.ZEALOT
+	# The character id lets the server hydrate the right character (dev mode). The Go API
+	# stores it as a string id; pass it as an int (0 when unknown/empty).
+	var character_id: int = 0
 
 	var game_mgr = get_tree().root.get_node_or_null("GameManager")
 	if game_mgr:
 		character_name = game_mgr.player_data.get("character_name", "")
 		player_color = game_mgr.player_data.get("player_color", player_color)
+		player_class = int(game_mgr.player_data.get("player_class", player_class))
+		character_id = _character_id_to_int(game_mgr.player_data.get("character_id", ""))
 
 	var bytes := _codec.encode_connect_auth(
-		character_name, player_color, _get_client_bandwidth_budget(), session_ticket
+		character_name, player_color, player_class, character_id,
+		_get_client_bandwidth_budget(), session_ticket
 	)
 	if bytes.is_empty():
 		# The codec refuses malformed tickets rather than downgrading to an unsigned join.
@@ -287,6 +339,15 @@ func send_auth_handshake() -> void:
 		print("[NetworkManager] Authentication handshake sent")
 	else:
 		print("[NetworkManager] Authentication handshake send failed; retry remains allowed")
+
+
+## Convert the Go API's character id (a string on the account, possibly empty) to the
+## int the wire format expects. Returns 0 when unknown so the server treats it as "no id".
+func _character_id_to_int(raw_id: Variant) -> int:
+	var id_str := str(raw_id).strip_edges()
+	if id_str.is_empty() or not id_str.is_valid_int():
+		return 0
+	return id_str.to_int()
 
 
 func _get_client_bandwidth_budget() -> int:
@@ -409,6 +470,7 @@ func send_message(message_type: MessageType, data: Dictionary = {}) -> bool:
 				data.get("velocity", Vector2.ZERO),
 				input_flags,
 				data.get("aim_angle", 0.0),
+				data.get("cursor", Vector2.ZERO),
 				data.get("sequence", 0),
 				data.get("client_render_tick", 0),
 				data.get("client_rtt_ms", 0)
@@ -428,6 +490,8 @@ func send_message(message_type: MessageType, data: Dictionary = {}) -> bool:
 			bytes = _codec.encode_connect_auth(
 				data.get("character_name", ""),
 				data.get("player_color", Color(0.27, 0.53, 1.0)),
+				int(data.get("player_class", PacketTypes.PlayerClass.ZEALOT)),
+				_character_id_to_int(data.get("character_id", "")),
 				int(data.get("bandwidth_budget_bps", DEFAULT_CLIENT_BUDGET)),
 				session_ticket
 			)

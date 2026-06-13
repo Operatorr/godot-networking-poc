@@ -1,0 +1,46 @@
+{
+	"id": "plague_seer",
+	"display_name": "Plague Seer",
+	"role": "area_denial_caster",
+
+	"stats": {
+		"hp_base": 95,
+		"hp_per_level": 5,
+		"move_speed_base": 195.0,
+		"move_speed_per_level": 0.5,
+		"mana_max": 100,
+		"mana_pool": 120,
+		"mana_regen_per_sec": 8.0,
+		"stamina_max": 100,
+		"hitbox_radius": 16
+	},
+
+	"primary": {
+		"damage_base": 20,
+		"damage_per_level": 2,
+		"cooldown": 0.3,
+		"projectile_speed": 400.0
+	},
+
+	"ability": {
+		"id": "plague_zone",
+		"name": "Plague Zone",
+		"type": "dot_zone",
+		"mana_cost": 35,
+		"cooldown": 7.0,
+		"radius": 100.0,
+		"duration": 5.0,
+		"dps": 12,
+		"max_cast_range": 500.0
+	},
+
+	"appearance": {
+		"sprite_dir": "plague_seer"
+	},
+
+	"networking": {
+		"server_authoritative": true,
+		"predicted": ["position", "velocity", "primary_attack_aim"],
+		"replicated": ["position", "animation", "flags", "ability_effect"]
+	}
+}

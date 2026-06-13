@@ -1,0 +1,47 @@
+{
+	"id": "engineer",
+	"display_name": "Engineer",
+	"role": "trap_controller",
+
+	"stats": {
+		"hp_base": 100,
+		"hp_per_level": 6,
+		"move_speed_base": 195.0,
+		"move_speed_per_level": 0.5,
+		"mana_max": 100,
+		"mana_pool": 110,
+		"mana_regen_per_sec": 8.0,
+		"stamina_max": 100,
+		"hitbox_radius": 16
+	},
+
+	"primary": {
+		"damage_base": 24,
+		"damage_per_level": 2,
+		"cooldown": 0.3,
+		"projectile_speed": 400.0
+	},
+
+	"ability": {
+		"id": "mine",
+		"name": "Mine",
+		"type": "proximity_mine",
+		"mana_cost": 35,
+		"cooldown": 8.0,
+		"trigger_radius": 60.0,
+		"blast_radius": 120.0,
+		"damage": 60,
+		"arm_delay": 0.5,
+		"lifetime": 30.0
+	},
+
+	"appearance": {
+		"sprite_dir": "engineer"
+	},
+
+	"networking": {
+		"server_authoritative": true,
+		"predicted": ["position", "velocity", "primary_attack_aim"],
+		"replicated": ["position", "animation", "flags", "ability_effect"]
+	}
+}

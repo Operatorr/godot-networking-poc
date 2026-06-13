@@ -67,6 +67,24 @@ var last_aim_direction: Vector2 = Vector2.RIGHT
 var _input_enabled: bool = true
 var player_color: Color = Color(0.27, 0.53, 1.0)
 
+## True when class spritesheets (SheetLibrary) drive the visuals; false falls
+## back to the legacy procedural frames (assets missing, e.g. fresh checkout).
+var _uses_sheets: bool = false
+
+## 8-way facing row (SheetLibrary.DIR_ORDER index) derived from aim each frame.
+var _facing_row: int = 0
+
+## Facing row latched when a one-shot action (attack/hit/death) starts, so the
+## animation doesn't restart when the aim crosses an octant mid-swing.
+var _action_row: int = 0
+
+## Speed observed from actual position deltas. Works no matter who integrates
+## the position (offline move_and_slide vs PredictionController) and drives the
+## idle/run/sprint/dash locomotion animation choice.
+var _observed_speed: float = 0.0
+var _last_observed_pos: Vector2 = Vector2.ZERO
+var _has_observed_pos: bool = false
+
 ## When true, take_damage() ignores incoming damage (debug/sandbox tool).
 var invulnerable: bool = false
 
@@ -74,6 +92,18 @@ var invulnerable: bool = false
 var _footstep_timer: float = 0.0
 const FOOTSTEP_WALK_INTERVAL := 0.3
 const FOOTSTEP_SPRINT_INTERVAL := 0.2
+
+## One-shot action animations (attack/hit) are cleared by THIS timer, not by
+## animation_finished: a class sheet that lacks "attack" art aliases it to a LOOPING
+## "idle" (sheet_library.gd), so animation_finished never fires and the action used to
+## stick forever (the player froze mid-run). The attack timer is the fire_rate so the
+## attack pose stays in sync with the attack speed; locomotion resumes when it expires.
+var _action_timer: float = 0.0
+const HIT_ANIM_SECONDS := 0.25
+
+## Per-class RMB ability mana cost, indexed by PacketTypes.PlayerClass (Zealot…Mage). Offline
+## parity with client/data/classes/*.json and the Rust sim's per-class config.
+const _ABILITY_MANA_COST := [35.0, 30.0, 35.0, 35.0, 40.0, 30.0, 40.0]
 
 ## Reference to HP component
 @onready var hp_component: HPComponent = $HPComponent
@@ -92,16 +122,30 @@ func _ready() -> void:
 	# Set motion mode for top-down game (no gravity)
 	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
 
-	# Apply procedural sprites
+	# Class spritesheet when the generated art is present, else procedural fallback
 	if animated_sprite:
 		player_color = _get_configured_player_color()
-		animated_sprite.sprite_frames = ProceduralSprites.create_player_frames_for_color(player_color)
-		animated_sprite.modulate = Color.WHITE  # Override the placeholder blue tint
+		var player_class := _get_configured_player_class()
+		var sheet_frames := SheetLibrary.class_frames(player_class)
+		if sheet_frames != null:
+			animated_sprite.sprite_frames = sheet_frames
+			# Normalize differing source canvases to a uniform in-world size.
+			animated_sprite.scale = Vector2.ONE * SheetLibrary.class_sprite_scale(player_class)
+			_uses_sheets = true
+		else:
+			animated_sprite.sprite_frames = ProceduralSprites.create_player_frames_for_color(player_color)
+		# Class sheets are tinted by the chosen color (the procedural fallback bakes the
+		# color into its frames instead); _class_tint() returns WHITE when not using sheets.
+		animated_sprite.modulate = _class_tint(1.0)
 
 	# Predicted movement state machine for the local networked player.
 	movement_sm = MovementStateMachine.new()
 	movement_sm.daze_started.connect(func(_duration: float) -> void: set_dazed(true))
 	movement_sm.daze_ended.connect(func() -> void: set_dazed(false))
+	# Per-class ability mana cost + offline RMB preview (Sanctuary/practice). Online the Rust sim
+	# owns this and the real effect arrives as a server ABILITY_EFFECT.
+	movement_sm.ability_cost = _ability_mana_cost_for_class(_get_configured_player_class())
+	movement_sm.ability_triggered.connect(_on_offline_ability_triggered)
 
 	_daze_indicator = DazeIndicator.new()
 	add_child(_daze_indicator)
@@ -127,6 +171,13 @@ func _physics_process(delta: float) -> void:
 	if action_state == ActionState.DEAD:
 		return
 
+	# Clear one-shot action states on a timer (NOT animation_finished — see _action_timer).
+	# This is what unsticks the attack: it returns to locomotion after one attack interval.
+	if action_state == ActionState.ATTACKING or action_state == ActionState.HIT:
+		_action_timer = maxf(0.0, _action_timer - delta)
+		if _action_timer <= 0.0:
+			action_state = ActionState.NONE
+
 	# Note: the HIT action state is purely cosmetic (a brief flash animation) and
 	# does NOT block movement. _update_animation() still prioritizes the "hit"
 	# animation, and _on_animation_finished() clears HIT back to NONE. Blocking
@@ -149,6 +200,25 @@ func _physics_process(delta: float) -> void:
 
 	# Footstep audio
 	_update_footsteps(delta)
+
+	# Track real movement speed AND direction from position deltas (integrator-
+	# agnostic: works under offline move_and_slide and online prediction ownership).
+	var move_step := Vector2.ZERO
+	if _has_observed_pos and delta > 0.0:
+		move_step = global_position - _last_observed_pos
+		_observed_speed = move_step.length() / delta
+	_last_observed_pos = global_position
+	_has_observed_pos = true
+
+	# Directional sheets: the body still rotates toward the aim (rotation drives
+	# shooting), but the artwork must not spin — counter-rotate the sprite and pick
+	# the 8-way row from the MOVEMENT direction, kept when stationary so the player
+	# faces where they last moved. The aim now steers only shooting, not the run
+	# cycle; this matches RemotePlayer (remote_player.gd).
+	if _uses_sheets and animated_sprite:
+		animated_sprite.global_rotation = 0.0
+		if _observed_speed > 10.0 and move_step != Vector2.ZERO:
+			_facing_row = SheetLibrary.row_from_angle(move_step.angle())
 
 	# Update animation
 	_update_animation()
@@ -220,6 +290,10 @@ func _shoot() -> void:
 	var projectile: Projectile = projectile_pool.spawn(spawn_pos, last_aim_direction, projectile_range)
 
 	if projectile:
+		# Offline-spawned projectiles carry the local player's class art.
+		if projectile.has_method("set_projectile_class"):
+			projectile.set_projectile_class(_get_configured_player_class())
+
 		# Start cooldown
 		shoot_cooldown_timer.start()
 
@@ -230,21 +304,70 @@ func _shoot() -> void:
 		_set_action_state(ActionState.ATTACKING)
 
 
+func _ability_mana_cost_for_class(class_id: int) -> float:
+	if class_id >= 0 and class_id < _ABILITY_MANA_COST.size():
+		return _ABILITY_MANA_COST[class_id]
+	return GameConstants.PLAYER_MANA_ABILITY_COST
+
+
+## Offline RMB preview: the GDScript SM (offline mover) fired an ability and paid the mana cost.
+## Spawn a cosmetic per-class visual so RMB visibly does something in the Sanctuary. Online this
+## SM's tick() isn't driven for the local player, so this never fires there.
+func _on_offline_ability_triggered() -> void:
+	if prediction_owns_movement:
+		return
+	var world := get_parent()
+	if world == null:
+		return
+	OfflineAbilityPreview.play(world, self, _get_configured_player_class(), get_global_mouse_position())
+
+
+## Offline Rogue stealth preview: dim the sprite for `duration` seconds.
+func apply_stealth_preview(duration: float) -> void:
+	if animated_sprite == null:
+		return
+	var dim := animated_sprite.modulate
+	dim.a = 0.35
+	animated_sprite.modulate = dim
+	var tree := get_tree()
+	if tree == null:
+		return
+	tree.create_timer(duration).timeout.connect(func() -> void:
+		if is_instance_valid(self) and animated_sprite != null:
+			var restored := animated_sprite.modulate
+			restored.a = 1.0
+			animated_sprite.modulate = restored
+	)
+
+
 ## Set movement state with transition
 func _set_movement_state(new_state: MovementState) -> void:
 	if movement_state != new_state:
 		movement_state = new_state
 
 
-## Set action state with transition
+## Set action state with transition. One-shot actions latch the facing row and arm the
+## clear timer so they end in sync with the attack speed even when the animation loops.
 func _set_action_state(new_state: ActionState) -> void:
 	if action_state != new_state:
 		action_state = new_state
+		_action_row = _facing_row
+		match new_state:
+			ActionState.ATTACKING:
+				_action_timer = fire_rate
+			ActionState.HIT:
+				_action_timer = HIT_ANIM_SECONDS
+			_:
+				_action_timer = 0.0
 
 
 ## Update animation based on current state
 func _update_animation() -> void:
 	if animated_sprite == null:
+		return
+
+	if _uses_sheets:
+		_update_animation_directional()
 		return
 
 	# Action state takes priority
@@ -272,13 +395,48 @@ func _update_animation() -> void:
 				animated_sprite.play("walk")
 
 
+## Directional (spritesheet) animation: one-shot actions play on the facing row
+## latched when the action started; locomotion picks idle/run/sprint/dash from
+## the observed speed so it is correct under any position integrator.
+func _update_animation_directional() -> void:
+	match action_state:
+		ActionState.DEAD:
+			_play_directional("death", _action_row)
+			return
+		ActionState.HIT:
+			_play_directional("hit", _action_row)
+			return
+		ActionState.ATTACKING:
+			_play_directional("attack", _action_row)
+			return
+	_play_directional(_locomotion_base(), _facing_row)
+
+
+## Locomotion animation from observed speed. Thresholds sit between the tier
+## speeds (200 / 320 / 720 u/s) so interpolation noise doesn't flicker tiers.
+func _locomotion_base() -> String:
+	if _observed_speed < 10.0:
+		return "idle"
+	if _observed_speed >= GameConstants.PLAYER_DASH_SPEED * 0.8:
+		return "dash"
+	if _observed_speed >= (GameConstants.PLAYER_SPEED + GameConstants.PLAYER_SPRINT_SPEED) * 0.5:
+		return "sprint"
+	return "run"
+
+
+func _play_directional(base: String, row: int) -> void:
+	var anim := SheetLibrary.anim_for(base, row)
+	if animated_sprite.animation != anim and animated_sprite.sprite_frames.has_animation(anim):
+		animated_sprite.play(anim)
+
+
 ## Update footstep audio timer
 func _update_footsteps(delta: float) -> void:
 	if movement_state != MovementState.WALKING:
 		_footstep_timer = 0.0
 		return
 
-	var interval := FOOTSTEP_SPRINT_INTERVAL if Input.is_action_pressed("sprint") else FOOTSTEP_WALK_INTERVAL
+	var interval := FOOTSTEP_SPRINT_INTERVAL if is_sprinting() else FOOTSTEP_WALK_INTERVAL
 	_footstep_timer += delta
 	if _footstep_timer >= interval:
 		_footstep_timer -= interval
@@ -291,9 +449,28 @@ func _update_footsteps(delta: float) -> void:
 			audio.play_footstep()
 
 
+## True when the local player is genuinely sprinting: sprint held, actively moving,
+## and NOT blocked by exhaustion / empty stamina / daze. Mirrors sim_core's want_sprint
+## gate so the cosmetic feedback (camera zoom + faster sprint footsteps) stops the instant
+## the sim refuses to sprint. Both the Rust sim (online) and this SM (offline) already cap
+## movement to walk speed when exhausted; this keeps the feedback in lockstep instead of
+## keying off the raw `sprint` input (which stays held while exhausted).
+func is_sprinting() -> bool:
+	if movement_sm == null:
+		return false
+	if movement_state != MovementState.WALKING:
+		return false
+	if not Input.is_action_pressed("sprint"):
+		return false
+	return movement_sm.stamina > 0.0 and not movement_sm.is_exhausted() and not movement_sm.is_dazed()
+
+
 func _on_animation_finished() -> void:
-	# Return from one-shot action animations to NONE
-	if action_state == ActionState.ATTACKING or action_state == ActionState.HIT:
+	# HIT can end as soon as its (non-looping) animation finishes. ATTACKING is cleared
+	# only by _action_timer so it stays in sync with the attack speed (and so a class
+	# sheet whose "attack" aliases to looping "idle" can't stick — that anim never emits
+	# animation_finished). See _action_timer.
+	if action_state == ActionState.HIT:
 		action_state = ActionState.NONE
 
 
@@ -422,14 +599,30 @@ func set_local_projectile_spawning_enabled(enabled: bool) -> void:
 	local_projectile_spawning_enabled = enabled
 
 
-## Apply the selected player color to procedural frames.
+## Apply the selected player color. Class spritesheets are tinted via modulate so the
+## swatch slightly recolors the class artwork; the legacy procedural fallback instead
+## bakes the color into freshly generated frames.
 func set_player_color(color: Color) -> void:
 	color.a = 1.0
 	player_color = color
-	if animated_sprite:
-		var alpha := animated_sprite.modulate.a
+	if animated_sprite == null:
+		return
+	var alpha := animated_sprite.modulate.a
+	if _uses_sheets:
+		animated_sprite.modulate = _class_tint(alpha)
+	else:
 		animated_sprite.sprite_frames = ProceduralSprites.create_player_frames_for_color(player_color)
 		animated_sprite.modulate = Color(1, 1, 1, alpha)
+
+
+## Modulate color that tints class sheets toward the player color, preserving alpha.
+## Returns plain white (no tint) when the procedural fallback is in use.
+func _class_tint(alpha: float) -> Color:
+	if not _uses_sheets:
+		return Color(1, 1, 1, alpha)
+	var tint := Color.WHITE.lerp(player_color, GameConstants.CLASS_SPRITE_TINT_STRENGTH)
+	tint.a = alpha
+	return tint
 
 
 func _get_configured_player_color() -> Color:
@@ -440,6 +633,18 @@ func _get_configured_player_color() -> Color:
 	if game_mgr == null:
 		return player_color
 	return game_mgr.player_data.get("player_color", player_color)
+
+
+## The local player's class (PacketTypes.PlayerClass). Defaults to Zealot —
+## the same value NetworkManager sends in ConnectAuth.
+func _get_configured_player_class() -> int:
+	var tree := get_tree()
+	if tree == null:
+		return PacketTypes.PlayerClass.ZEALOT
+	var game_mgr = tree.root.get_node_or_null("GameManager")
+	if game_mgr == null:
+		return PacketTypes.PlayerClass.ZEALOT
+	return game_mgr.player_data.get("player_class", PacketTypes.PlayerClass.ZEALOT)
 
 
 ## Get readable state name for debugging

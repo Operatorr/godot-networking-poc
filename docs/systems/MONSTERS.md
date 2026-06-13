@@ -26,6 +26,36 @@ For now, any monster whose `ai_profile` is not implemented yet can temporarily r
 
 ---
 
+# Implemented Monster — Toxic Slime (Tier 1)
+
+The **Toxic Slime** is the POC's live test enemy — currently the only fully implemented
+hostile monster in the Rust server (alongside the stationary Target Dummy, which is a
+practice prop and grants no XP). It is a Tier 1 ranged kiter that spits a slow toxic glob
+and retreats to its preferred distance.
+
+`id`: `toxic_slime` · `faction`: `grave_waste` · `type`: `poisonous_amorphous` ·
+`archetype`: `ranged_grunt` · `tier`: `1` · `level`: `1` · `ai_profile`: `ranged_kiter` ·
+`signature_ability`: `toxic_spit` — slow poison projectile.
+
+| Stat              | Value     | Source (`rust/server/src/monster.rs` → `TOXIC_SLIME`)      |
+| ----------------- | --------- | ---------------------------------------------------------- |
+| `max_health`      | 50        |                                                            |
+| `move_speed`      | 120       |                                                            |
+| `hitbox_radius`   | 16        |                                                            |
+| `detection_range` | 650       |                                                            |
+| `attack_range`    | 200       |                                                            |
+| `shoot_cooldown`  | 0.75 s    |                                                            |
+| `projectile_speed`| 300       |                                                            |
+| `xp_reward`       | **20**    | granted to every player within `XP_SHARE_RADIUS` (500 u) on death |
+
+**Experience:** killing a Toxic Slime grants 20 XP (the Tier 1 baseline). Five slimes take
+a fresh character from level 1 to level 2; thereafter the curve scales so a same-level
+monster is ~10 kills per level, which makes farming low-tier slimes at a high level
+intentionally slow. Higher-tier monsters set a proportionally larger `xp_reward`. See
+[`PROGRESSION.md`](PROGRESSION.md) for the full curve and radius-sharing rules.
+
+---
+
 # Mainland Biomes
 
 ---

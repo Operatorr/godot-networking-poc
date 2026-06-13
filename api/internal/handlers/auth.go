@@ -167,7 +167,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	// Fetch user from database
 	var user models.User
 	query := `
-		SELECT id, username, email, password_hash, region, created_at
+		SELECT id, username, email, password_hash, region, glory, created_at
 		FROM users
 		WHERE username = $1
 	`
@@ -177,6 +177,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		&user.Email,
 		&user.PasswordHash,
 		&user.Region,
+		&user.Glory,
 		&user.CreatedAt,
 	)
 	if err != nil {
@@ -218,7 +219,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	var character *models.Character
 	characterQuery := `
-		SELECT id, user_id, name, class, race, realm, mode, level, created_at
+		SELECT id, user_id, name, class, race, realm, mode, level, experience, created_at
 		FROM characters
 		WHERE user_id = $1
 	`
@@ -232,6 +233,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		&foundCharacter.Realm,
 		&foundCharacter.Mode,
 		&foundCharacter.Level,
+		&foundCharacter.Experience,
 		&foundCharacter.CreatedAt,
 	)
 	if err == nil {
@@ -282,7 +284,7 @@ func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	// Fetch user from database using subject (username)
 	var user models.User
 	query := `
-		SELECT id, username, email, region
+		SELECT id, username, email, region, glory
 		FROM users
 		WHERE username = $1
 	`
@@ -291,6 +293,7 @@ func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 		&user.Username,
 		&user.Email,
 		&user.Region,
+		&user.Glory,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {

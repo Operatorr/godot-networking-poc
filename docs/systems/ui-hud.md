@@ -23,9 +23,9 @@ login_screen ──login ok──▶ has character? ──no──▶ character_
 
 | Screen | Script | Does |
 | --- | --- | --- |
-| Login | `login_screen.gd` | Username/password → `AuthManager.login` (JWT); auto-login on saved token (`:201`); routes to main menu or character creation (`:267`). Themed art/font, button audio. |
-| Character creation | `character_creation.gd` | Validates name (3–16 chars, `^[a-zA-Z0-9_]+$`, `:9-11`), `POST /api/character/create` (`:138`), stores result in `GameManager`, → main menu. |
-| Main menu | `main_menu.gd` | Character panel + player-colour picker; region dropdown fetched from `GET /api/regions` (refreshed every 5 s, `:12,86-90`); **Enter World** calls `NetworkManager.connect_to_server` then `SceneManager.goto_arena` on connect (`:316,328`). |
+| Login | `login_screen.gd` | Username/password → `AuthManager.login` (JWT); auto-login on saved token (`:201`); always routes to the **main menu** (the menu handles the no-character case). Themed art/font, button audio. |
+| Character creation | `character_creation.gd` | Validates name (3–16 chars, `^[a-zA-Z0-9_]+$`, `:9-11`); a **class picker** (looping south-facing run-cycle preview from `SheetLibrary.class_frames` + 7 class buttons) sets the class sent in `POST /api/character/create`; stores name+class in `GameManager`, → main menu. **Back to Main Menu** returns without logging out (non-destructive cancel). |
+| Main menu | `main_menu.gd` | **With a character** — character card: a looping **run-cycle preview** of the character (south-facing `run_0` from `SheetLibrary.class_frames`, tinted to match) sits left of the player-colour picker; the colour picker (tints the class sprite — see [`players-movement.md`](players-movement.md)) live-updates the preview tint; class label, and a **Delete** button on the right (`DELETE /api/character` after a confirm → swaps the card for the Create Character button, stays on the menu). **Without a character** — the card is replaced by a **Create Character** button (`→ goto_character_creation`) and **Enter World is disabled**. Region dropdown from `GET /api/regions`; **Enter World** stashes the region URL and `SceneManager.goto_sanctuary()` (the town hub; its Arena portal dials the server). |
 | Loading | `loading_screen.gd` | "ENTERING THE ARENA" overlay with pulsing glow + animated dots; shown/hidden by `SceneManager._show_loading_screen` (`scene_manager.gd:240-271`) during transitions. |
 
 `SceneManager` skips routing for `res://scenes/test/*` (`scene_manager.gd:78`).
@@ -50,13 +50,17 @@ client mode only. Each widget is `extends Control` and builds its own sub-tree i
 | HP bar | `hud/hp_bar.gd` | current/max HP, colour-graded green→yellow→red, damage flash 0.3 s; width/offset configurable so it sits in the left slot. | bottom-centre, **left slot** |
 | Mana bar | `hud/stat_bar.gd` | current/max mana (blue), driven by `movement_sm.mana_changed`. | bottom-centre, **right slot** |
 | Stamina bar | `hud/stat_bar.gd` | sprint stamina (thin, spans HP+Mana width), driven by `movement_sm.stamina_changed`. | bottom-centre, **above HP/Mana** |
+<!-- All three bar tracks/frames use `TextureRect` with `expand_mode = EXPAND_IGNORE_SIZE` + `STRETCH_SCALE` so the 256-px-wide track sprite scales down to the inset fill rect instead of forcing its native width and overflowing the frame. -->
+<!-- Camera-zoom and sprint footsteps key off `Player.is_sprinting()` (sprint held AND moving AND not exhausted/dazed AND stamina > 0), NOT the raw `sprint` action, so both stop the instant the sim refuses to sprint. -->
+
+| Level / XP bar | `hud/experience_bar.gd` | `Lv N — exp / next` + progress fill; driven by `GameManager.experience_updated`, flashes on level-up. Shown in the Arena **and** offline hubs. See [`PROGRESSION.md`](PROGRESSION.md). | top-centre |
 | Minimap | `hud/minimap.gd` | `_draw()` of arena, obstacles, self (green), players (red), monsters (orange) within 500 u (`:6-13,68-88`); reads `interpolation_controller.entity_last_states`. | top-right |
 | Kill feed | `hud/kill_feed.gd` | last 3 "X eliminated Y" lines, each fades after 3 s (`:6-7,52`). | top-right, under minimap |
 | Leaderboard | `hud/leaderboard.gd` | top 3 by PvP kills, **Tab** expands to top 10 (`:6-7,79-83`); highlights Local player + flash on kill (`:162-185`). | top-left |
 | Server status | `hud/server_status.gd` | player/monster counts, ping (colour-coded), FPS; refreshes every 1 s (`:13,68-94`); reads `NetworkManager.get_stats()`. | bottom-left |
-| Death screen | `hud/death_screen.gd` | "YOU DIED" + killer name (via `EntityNameCache`), respawn countdown (`RESPAWN_DELAY`), Space to respawn → `respawn_requested` (`:102-118,87-98`). | full-rect overlay |
-| Pause menu | `hud/pause_menu.gd` | Esc toggles; Resume / Settings / Leave Arena. **Game keeps running** (multiplayer) — purely a local overlay (`:1-3,119`). | full-rect overlay |
-| Settings menu | `hud/settings_menu.gd` | volume sliders + fullscreen/VSync toggles, persisted to `GameManager.settings`; opened from pause menu (`:141-150`). | child of pause menu |
+| Death screen | `hud/death_screen.gd` | "YOU DIED" + killer name (via `EntityNameCache`). **Softcore:** respawn countdown (`RESPAWN_DELAY`), Space to respawn → `respawn_requested`. **Hardcore:** no countdown — "Your Glory will be remembered" (sulfur-yellow) + "Back to Main Menu" button → `main_menu_requested`; the server has already converted XP→Glory + deleted the character, then kicks the client (the expected kick is ignored, not shown as a reconnect). `arena_base` picks the variant via `GameManager.is_hardcore()`. | full-rect overlay |
+| Pause menu | `hud/pause_menu.gd` | Esc toggles; Resume / Settings / Leave. **Game keeps running** (multiplayer). The leave button label is contextual (`set_leave_button_text`): the Arena returns to the **Sanctuary** ("RETURN TO SANCTUARY"), offline hubs exit to the menu. **T / tilde** also returns to the Sanctuary from the Arena (`return_to_sanctuary` action). | full-rect overlay |
+| Settings menu | `hud/settings_menu.gd` | volume sliders + fullscreen/VSync toggles (persisted to `GameManager.settings`) + a **Keyboard Controls** page that lists/rebinds actions via `InputMap`, persisting to `user://preferences.json` (`UserPreferences.keybinds`, applied at startup). | child of pause menu |
 | Connection-lost overlay | `hud/connection_lost_overlay.gd` | "CONNECTION LOST" + reconnect status; after 15 s emits `reconnect_failed` → return to menu (`:7,55-63`). | full-rect overlay |
 
 ### The server-safe HUD-creation pattern
@@ -96,7 +100,7 @@ cosmetic, auto-freeing.
 - **Server:** nothing; the headless export never loads these scripts (`_setup_hud` is client-only).
 - **Predicted:** nothing — the HUD reflects already-decided state (HP, kills, ping), never forecasts.
 - **Replicated:** HUD values arrive via `STATE_UPDATE` (HP, positions) and `GAME_EVENT` (kills, death) and are merely displayed.
-- **Persisted:** only `user://preferences.json` (region + player colour) and in-session `GameManager.settings`; accounts/characters persist via the Go API.
+- **Persisted:** `user://preferences.json` (region, player colour, **keyboard rebinds**) and in-session `GameManager.settings`; accounts/characters (incl. class, **level + experience**) persist via the Go API.
 - **Validated:** client-side input only — name regex/length (`character_creation.gd:72-94`); the server re-decides all gameplay.
 - **Can fail:** missing `has_method`/`has_signal` guard would crash headless startup; stale `EntityNameCache` shows blank killer/feed names; region fetch failure falls back to defaults (`main_menu.gd:244`).
 - **Tested:** manual/visual only — no automated UI tests. Sandbox scenes use inline overlays because `arena_base.tscn` can't load in test scenes (see `MEMORY.md`).

@@ -30,7 +30,12 @@ pub use types::*;
 
 /// Bumped on every wire-format change; checked at handshake (ENet connect `data` low byte and
 /// the `ConnectAuth` packet). Client and server refuse mismatched versions (D7).
-pub const PROTOCOL_VERSION: u8 = 2; // v2: entity_flags widened to 16 bits (DAZED in bit 8)
+pub const PROTOCOL_VERSION: u8 = 4; // v4: PlayerInput.cursor (+4B) + ConnectAuth.character_id;
+                                    // 4th entity kind (world effects: healthorb/mine/dot-zone/
+                                    // bible); entity_flags STEALTH (bit 9); ABILITY_EFFECT +
+                                    // PROGRESS game events; PICKUP carries {kind, amount}
+                                    // (v3: player class byte in ConnectAuth + PLAYER_INFO;
+                                    // v2: entity_flags widened to 16 bits, DAZED in bit 8)
 
 /// ENet channel plan (migration-spec D2).
 pub const CH_SNAPSHOT: u8 = 0; // unreliable sequenced: Snapshot, ActionConfirm

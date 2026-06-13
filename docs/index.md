@@ -54,13 +54,19 @@ for the map; this page is the **catalogue** with verification status. Terms are 
 | [`systems/players-movement.md`](systems/players-movement.md) | Partial | Player entity, movement, validation (+ double-movement bug home). |
 | [`systems/players-movement-state-machine.md`](systems/players-movement-state-machine.md) | Implemented | 7-state server-authoritative movement SM: dash, sprint, knockback, stun, stamina, mana. |
 | [`systems/combat-hits.md`](systems/combat-hits.md) | Implemented | Shooting, projectiles, lag-compensated swept PvP + PvE hits, cosmetic shoot feedback. |
+| [`systems/abilities.md`](systems/abilities.md) | Implemented | The RMB Class-ability system: input flag + cursor, server dispatch, Mana/cooldown, world-effect entities, `ABILITY_EFFECT` (protocol v4). |
+| [`classes/index.md`](classes/index.md) | Implemented | The seven Classes: base stats, per-level scaling, and each Class's RMB ability (mirrors `client/data/classes/`). |
 | [`systems/monsters-ai.md`](systems/monsters-ai.md) | Implemented | The Toxic Slime and its server-side AI state machine. |
+| [`systems/PROGRESSION.md`](systems/PROGRESSION.md) | Implemented | Experience & levels: server/API-authoritative; per-level stat scaling; XP→Glory; max level 50. |
 | [`systems/bot-ai.md`](systems/bot-ai.md) | Retired | Python bot-swarm tactical AI (removed); live harness is `rust/load_test/` (simplified strategy port). |
 | [`systems/monster-architecture.md`](systems/monster-architecture.md) | Implemented · roadmap Planned | Monster factory, data-driven definitions, schema, and the add-a-monster pipeline. |
 | [`systems/audio.md`](systems/audio.md) | Implemented | AudioManager + procedurally-generated sound (no audio assets). |
 | [`systems/ui-hud.md`](systems/ui-hud.md) | Implemented | HUD components, menus, effects, scene flow. |
 | [`systems/state-machines.md`](systems/state-machines.md) | Implemented | Player-life, movement, scene, connection, and AI state machines. |
 | [`systems/offline-modes.md`](systems/offline-modes.md) | Implemented | Practice & Offline Sandbox — client-authoritative test scenes (no server) on a shared `OfflineArena`. |
+| [`systems/arena-visuals.md`](systems/arena-visuals.md) | Implemented | Generated class/monster/projectile spritesheets (PixelLab), `SheetLibrary` loader, arena props, class identity on the wire (protocol v3), random bot classes. |
+| [`design/sanctuary-layout.md`](design/sanctuary-layout.md) | Implemented | The Sanctuary city hub: vast walled city with enterable buildings, oblique (Hammerwatch-style) placeholder rendering, city plan + coordinates, NPC roster, reusable Portal, asset-replacement guide. |
+| [`design/SANCTUARY_STYLEGUIDE.md`](design/SANCTUARY_STYLEGUIDE.md) | Reference | Town/Sanctuary biome art direction: palette, tiles, props, VFX, HUD. |
 
 ## Decisions & background
 
@@ -71,9 +77,11 @@ for the map; this page is the **catalogue** with verification status. Terms are 
 | [`adr/0003-enet-udp-transport.md`](adr/0003-enet-udp-transport.md) | Implemented | ENet-over-UDP datagram transport (supersedes 0001's substrate) — shipped with the Rust port. |
 | [`adr/0004-schema-driven-wire-protocol.md`](adr/0004-schema-driven-wire-protocol.md) | Implemented | Redesigned wire protocol as a shared Rust crate (no codegen); **amends 0003**'s "wire format unchanged". |
 | [`adr/0005-permadeath-persistence-model.md`](adr/0005-permadeath-persistence-model.md) | Accepted | Permadeath persistence — death is the server-authoritative transactional save; item integrity via the Go API. |
+| [`adr/0006-softcore-hardcore-glory-economy.md`](adr/0006-softcore-hardcore-glory-economy.md) | Accepted | Softcore/Hardcore modes, XP→Glory exchange, and server-authoritative progression — **extends 0005** (D15). |
+| [`adr/0007-native-systemd-deployment.md`](adr/0007-native-systemd-deployment.md) | Implemented | Native systemd deploy (drop Docker); git-pull rebuild; Arena+Sanctuary+API as units. |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Reference | Top-level system architecture & POC success criteria. |
 | [`specification.md`](specification.md) | Reference | Game design spec / GDD (the minimal bullet-hell design). |
-| [`INFRASTRUCTURE.md`](INFRASTRUCTURE.md) | Reference | Deployment / infra (Docker, DigitalOcean). |
+| [`INFRASTRUCTURE.md`](INFRASTRUCTURE.md) | Reference | Infra/scaling phases (DigitalOcean). Native systemd deploy: [ADR 0007](adr/0007-native-systemd-deployment.md) + [`deployment/DEPLOYMENT.md`](../deployment/DEPLOYMENT.md). |
 | [`CONTEXT.md`](CONTEXT.md) | Reference | Glossary — the project's canonical language. |
 
 ## Legacy / superseded (kept for history — do not treat as current)

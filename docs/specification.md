@@ -53,7 +53,7 @@ This project is a **Proof-of-Concept (POC)** designed to stress-test low-level n
 -   **API Server:** Go
 -   **Database:** PostgreSQL
 -   **Cache:** Redis
--   **Deployment:** Docker containers on DigitalOcean
+-   **Deployment:** Native systemd services on DigitalOcean (no Docker — [ADR 0007](adr/0007-native-systemd-deployment.md))
 
 ---
 
@@ -163,7 +163,7 @@ data/enemies/
 ├── main.go                         # API entry point
 ├── go.mod                         # Go modules
 ├── go.sum
-├── Dockerfile                     # Container definition
+│                                   # (built natively to api/bin/server — no Dockerfile; ADR 0007)
 │
 ├── cmd/
 │   └── server/
@@ -199,9 +199,9 @@ data/enemies/
 │   └── utils/
 │       └── validators.go        # Input validation
 │
-└── deployments/
-    ├── docker-compose.yml        # Local development
-    └── kubernetes/               # K8s manifests (future)
+└── (deploy)                      # native systemd — see deployment/ + ADR 0007
+    ├── systemd/*.service         # omega-api / omega-arena / omega-sanctuary units
+    └── provision_server.sh       # one-time bootstrap; server_update.sh = git-pull deploy
 ```
 
 ---

@@ -62,8 +62,16 @@ pub struct ConnectAuth {
     /// `None` = dev-mode join (`ticket_len == 0`); accepted only when the server runs with
     /// `--allow-unsigned-tickets` (POC parity with today's trust-the-client flow).
     pub ticket: Option<Ticket>,
+    /// The character id the client believes it is. The signed-ticket path ignores this and uses
+    /// `ticket.character_id` (authoritative); the dev/unsigned path (`ticket == None`) trusts it
+    /// so the server can hydrate the real character's level/XP/mode. 0 = unknown.
+    pub character_id: u32,
     pub character_name: String,
     pub color: (u8, u8, u8),
+    /// Player class (0=Zealot, 1=VoidHunter, 2=Engineer, 3=PlagueSeer, 4=Warrior, 5=Rogue,
+    /// 6=Mage). Identity metadata chosen by the client; the codec accepts any u8 — the
+    /// SERVER clamps (values > 6 are treated as 0).
+    pub class: u8,
     pub bandwidth_budget_bps: u32,
 }
 
@@ -77,6 +85,10 @@ pub struct PlayerInput {
     pub aim_angle: f32,
     pub position: (f32, f32),
     pub velocity: (f32, f32),
+    /// The mouse world position this tick — the target for cursor-aimed abilities (Mage blast,
+    /// Plague Zone, Rogue shadowstep search). Sent every tick (fixed layout); the server only
+    /// reads it on the tick an ability fires.
+    pub cursor: (f32, f32),
     pub client_render_tick: u16,
     pub client_rtt_ms: u16,
 }
@@ -130,10 +142,12 @@ impl ClientPacket {
                     }
                     None => w.write_u16(0),
                 }
+                w.write_u32(a.character_id);
                 w.write_str8(&a.character_name);
                 w.write_u8(a.color.0);
                 w.write_u8(a.color.1);
                 w.write_u8(a.color.2);
+                w.write_u8(a.class);
                 w.write_u32(a.bandwidth_budget_bps);
             }
             ClientPacket::PlayerInput(i) => {
@@ -144,6 +158,8 @@ impl ClientPacket {
                 w.write_i16(quant_coord(i.position.1));
                 w.write_i16(quant_coord(i.velocity.0));
                 w.write_i16(quant_coord(i.velocity.1));
+                w.write_i16(quant_coord(i.cursor.0));
+                w.write_i16(quant_coord(i.cursor.1));
                 w.write_u16(i.client_render_tick);
                 w.write_u16(i.client_rtt_ms);
             }
@@ -166,14 +182,18 @@ impl ClientPacket {
                 } else {
                     Some(Ticket::from_bytes(r.read_bytes(ticket_len)?)?)
                 };
+                let character_id = r.read_u32()?;
                 let character_name = r.read_str8()?;
                 let color = (r.read_u8()?, r.read_u8()?, r.read_u8()?);
+                let class = r.read_u8()?;
                 let bandwidth_budget_bps = r.read_u32()?;
                 ClientPacket::ConnectAuth(ConnectAuth {
                     protocol_version,
                     ticket,
+                    character_id,
                     character_name,
                     color,
+                    class,
                     bandwidth_budget_bps,
                 })
             }
@@ -187,6 +207,11 @@ impl ClientPacket {
                     (x, y)
                 },
                 velocity: {
+                    let x = dequant_coord(r.read_i16()?);
+                    let y = dequant_coord(r.read_i16()?);
+                    (x, y)
+                },
+                cursor: {
                     let x = dequant_coord(r.read_i16()?);
                     let y = dequant_coord(r.read_i16()?);
                     (x, y)
@@ -231,15 +256,19 @@ mod tests {
         let p = ClientPacket::ConnectAuth(ConnectAuth {
             protocol_version: crate::PROTOCOL_VERSION,
             ticket: Some(t.clone()),
+            character_id: 4242,
             character_name: "Tester".into(),
             color: (69, 135, 255),
+            class: 6,
             bandwidth_budget_bps: 120_000,
         });
         match rt(p) {
             ClientPacket::ConnectAuth(a) => {
                 assert_eq!(a.ticket, Some(t));
+                assert_eq!(a.character_id, 4242);
                 assert_eq!(a.character_name, "Tester");
                 assert_eq!(a.color, (69, 135, 255));
+                assert_eq!(a.class, 6);
                 assert_eq!(a.bandwidth_budget_bps, 120_000);
             }
             other => panic!("wrong: {other:?}"),
@@ -251,12 +280,37 @@ mod tests {
         let p = ClientPacket::ConnectAuth(ConnectAuth {
             protocol_version: 1,
             ticket: None,
+            character_id: 7,
             character_name: "Dev".into(),
             color: (0, 0, 0),
+            class: 0,
             bandwidth_budget_bps: 0,
         });
         match rt(p) {
-            ClientPacket::ConnectAuth(a) => assert!(a.ticket.is_none()),
+            ClientPacket::ConnectAuth(a) => {
+                assert!(a.ticket.is_none());
+                assert_eq!(a.character_id, 7);
+                assert_eq!(a.class, 0);
+            }
+            other => panic!("wrong: {other:?}"),
+        }
+    }
+
+    /// The codec is transport-only: an out-of-range class (> 6) round-trips untouched.
+    /// Clamping is the SERVER's job (values > 6 are treated as 0 there).
+    #[test]
+    fn connect_auth_out_of_range_class_accepted_on_wire() {
+        let p = ClientPacket::ConnectAuth(ConnectAuth {
+            protocol_version: crate::PROTOCOL_VERSION,
+            ticket: None,
+            character_id: 0,
+            character_name: "Overflow".into(),
+            color: (1, 2, 3),
+            class: 200,
+            bandwidth_budget_bps: 0,
+        });
+        match rt(p) {
+            ClientPacket::ConnectAuth(a) => assert_eq!(a.class, 200),
             other => panic!("wrong: {other:?}"),
         }
     }
@@ -269,6 +323,7 @@ mod tests {
             aim_angle: -1.57,
             position: (-800.0, 432.1),
             velocity: (320.0, -120.5),
+            cursor: (640.5, -200.25),
             client_render_tick: 65535,
             client_rtt_ms: 47,
         });
@@ -280,6 +335,8 @@ mod tests {
                 assert!((a.aim_angle - b.aim_angle).abs() < 0.01);
                 assert!((a.position.0 - b.position.0).abs() < 0.1);
                 assert!((a.velocity.1 - b.velocity.1).abs() < 0.1);
+                assert!((a.cursor.0 - b.cursor.0).abs() < 0.1);
+                assert!((a.cursor.1 - b.cursor.1).abs() < 0.1);
                 assert_eq!(a.client_render_tick, b.client_render_tick);
                 assert_eq!(a.client_rtt_ms, b.client_rtt_ms);
             }
@@ -312,17 +369,19 @@ mod tests {
     }
 
     #[test]
-    fn input_packet_is_18_bytes() {
+    fn input_packet_is_22_bytes() {
+        // v4: +4 bytes for the cursor target (was 18 in v3).
         let p = ClientPacket::PlayerInput(PlayerInput {
             sequence: 0,
             input_flags: 0,
             aim_angle: 0.0,
             position: (0.0, 0.0),
             velocity: (0.0, 0.0),
+            cursor: (0.0, 0.0),
             client_render_tick: 0,
             client_rtt_ms: 0,
         });
-        assert_eq!(p.encode().len(), 18);
+        assert_eq!(p.encode().len(), 22);
     }
 
     #[test]
@@ -333,6 +392,7 @@ mod tests {
             aim_angle: 0.0,
             position: (0.0, 0.0),
             velocity: (0.0, 0.0),
+            cursor: (0.0, 0.0),
             client_render_tick: 0,
             client_rtt_ms: 0,
         });

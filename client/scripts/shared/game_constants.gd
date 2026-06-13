@@ -58,6 +58,11 @@ const PLAYER_SPRINT_MULTIPLIER := 1.6
 ## Calculated sprint speed for reference: 320 units/sec
 const PLAYER_SPRINT_SPEED := PLAYER_SPEED * PLAYER_SPRINT_MULTIPLIER
 
+## How strongly the player-chosen color tints class spritesheets (0 = class art
+## untouched, 1 = full modulate). The swatch keeps class identity while letting
+## players slightly recolor their character. White picks no tint. Kept subtle.
+const CLASS_SPRITE_TINT_STRENGTH := 0.25
+
 
 # =============================================================================
 # DASH
@@ -125,8 +130,13 @@ const PLAYER_STAMINA_DRAIN_PER_SEC := 35.0
 ## Stamina regenerated per second while NOT sprinting.
 const PLAYER_STAMINA_REGEN_PER_SEC := 20.0
 
-## Sprint cannot start below this stamina (prevents one-frame flicker sprints).
+## Legacy minimum-to-sprint threshold (kept for reference). The exhaustion model lets
+## stamina deplete fully instead — sprint is allowed while stamina > 0 and not exhausted.
 const PLAYER_STAMINA_SPRINT_MIN := 5.0
+
+## Sprinting to 0 stamina exhausts the player: sprint is locked out and stamina regen is
+## paused for this long, and the stamina bar blinks. Mirrors rust/sim_core.
+const PLAYER_STAMINA_EXHAUST_DURATION := 3.0
 
 
 # =============================================================================
@@ -136,8 +146,9 @@ const PLAYER_STAMINA_SPRINT_MIN := 5.0
 ## Maximum mana pool.
 const PLAYER_MANA_MAX := 100.0
 
-## Mana regenerated per second.
-const PLAYER_MANA_REGEN_PER_SEC := 10.0
+## Mana regenerated per second. MUST match the Rust sim_core constant (8.0) or
+## ability-cost prediction desyncs from the authoritative server.
+const PLAYER_MANA_REGEN_PER_SEC := 8.0
 
 ## Mana consumed by a single ability use (gates the ability input).
 const PLAYER_MANA_ABILITY_COST := 25.0

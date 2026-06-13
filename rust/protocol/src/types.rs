@@ -28,23 +28,56 @@ pub enum EntityType {
     Player = 1,
     Monster = 2,
     Projectile = 3,
+    /// World effects spawned by abilities/loot (healthorb, mine, dot-zone, spinning bible).
+    /// On the wire these are kind 3 (the 4th 2-bit kind tag); the specific kind is the
+    /// `world_effect` subtype, derived from the id sub-band (see `world_effect_subtype_for_id`).
+    WorldEffect = 4,
 }
 
 /// Entity id ranges — the repo-wide invariant (players 1–999, projectiles 10000–29999,
-/// monsters 30000–39999).
+/// monsters 30000–39999, world effects 40000–49999).
 pub const PLAYER_ID_MAX: u16 = 999;
 pub const PROJECTILE_ID_START: u16 = 10000;
 pub const PROJECTILE_ID_END: u16 = 29999;
 pub const MONSTER_ID_START: u16 = 30000;
 pub const MONSTER_ID_END: u16 = 39999;
+pub const WORLD_EFFECT_ID_START: u16 = 40000;
+pub const WORLD_EFFECT_ID_END: u16 = 49999;
+
+/// World-effect subtypes — the id band 40000–49999 is partitioned into four 2500-id sub-bands,
+/// one per subtype, so the subtype is implicit in the id (always present, even on delta records,
+/// without a separate wire field). The server allocates ids within the matching sub-band.
+pub mod world_effect {
+    use super::WORLD_EFFECT_ID_START;
+    pub const HEALTHORB: u8 = 0;
+    pub const MINE: u8 = 1;
+    pub const DOT_ZONE: u8 = 2;
+    pub const BIBLE: u8 = 3;
+    /// Ids per subtype sub-band.
+    pub const STRIDE: u16 = 2500;
+    /// First id of `subtype`'s sub-band.
+    pub const fn band_start(subtype: u8) -> u16 {
+        WORLD_EFFECT_ID_START + (subtype as u16) * STRIDE
+    }
+}
 
 pub fn entity_type_for_id(id: u16) -> Option<EntityType> {
     match id {
         1..=PLAYER_ID_MAX => Some(EntityType::Player),
         PROJECTILE_ID_START..=PROJECTILE_ID_END => Some(EntityType::Projectile),
         MONSTER_ID_START..=MONSTER_ID_END => Some(EntityType::Monster),
+        WORLD_EFFECT_ID_START..=WORLD_EFFECT_ID_END => Some(EntityType::WorldEffect),
         _ => None,
     }
+}
+
+/// The world-effect subtype (`world_effect::*`) for a world-effect id, or `None` if `id` is not
+/// in the world-effect band. Derived from which 2500-id sub-band the id falls into.
+pub fn world_effect_subtype_for_id(id: u16) -> Option<u8> {
+    if !(WORLD_EFFECT_ID_START..=WORLD_EFFECT_ID_END).contains(&id) {
+        return None;
+    }
+    Some(((id - WORLD_EFFECT_ID_START) / world_effect::STRIDE) as u8)
 }
 
 /// Animation states (u8 on the wire, 3 bits in snapshot records) — GDScript `AnimationState`.
@@ -85,6 +118,10 @@ pub mod entity_flags {
     pub const KNOCKED_BACK: u16 = 1 << 7;
     /// Movement SM daze timer active (sprint/dash locked out, walking allowed).
     pub const DAZED: u16 = 1 << 8;
+    /// Rogue Stealth: the entity is invisible to AI targeting (monsters/bots drop aggro) and
+    /// dimmed on clients. It can still be hit by projectiles it walks into — stealth only
+    /// affects targeting, not collision.
+    pub const STEALTH: u16 = 1 << 9;
 }
 
 /// Delta mask bits as used by `EntityRecord.delta_mask` in this crate. These are the NEW 5-bit
@@ -118,6 +155,18 @@ pub mod game_event_type {
     pub const KILL_PVP: u8 = 10;
     pub const LEADERBOARD_UPDATE: u8 = 11;
     pub const PROJECTILE_FIRED: u8 = 12;
+    /// A player gained experience (e.g. a nearby monster died). Tail: [u16 amount].
+    /// source_id = the player who gained it. Cosmetic-only "+XP" floater; the SERVER owns the
+    /// level/XP accounting now (see PROGRESS) — this no longer drives client-side leveling.
+    pub const EXP_GAIN: u8 = 13;
+    /// A transient ability effect to render (explosion / charge-blast / shadowstep-blink /
+    /// mine-detonation). Tail: [u8 effect_id][i16 x][i16 y][u16 radius]. `effect_id` selects the
+    /// client VFX; position is the effect centre; radius (units) sizes it (0 = point effect).
+    pub const ABILITY_EFFECT: u8 = 14;
+    /// Server→owner authoritative level/XP for HUD display (the server owns leveling now).
+    /// Tail: [u16 level][u32 experience][u8 move_speed_q] — `move_speed_q` is the effective base
+    /// move speed ÷ 4 (clamped 0..255) so the client adopts the same speed without re-deriving it.
+    pub const PROGRESS: u8 = 15;
 }
 
 /// ActionConfirm action types — GDScript `ActionConfirmPacket.ActionType`.

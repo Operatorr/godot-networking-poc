@@ -251,6 +251,9 @@ fn importance(entity_id: u16) -> i64 {
         Some(EntityType::Player) => PRIORITY_PLAYER,
         Some(EntityType::Projectile) => PRIORITY_PROJECTILE,
         Some(EntityType::Monster) => PRIORITY_MONSTER,
+        // World effects (healthorbs/mines/dot-zones/bibles) matter to the player — replicate them
+        // about as eagerly as monsters.
+        Some(EntityType::WorldEffect) => PRIORITY_MONSTER,
         None => PRIORITY_DEFAULT,
     }
 }
@@ -543,7 +546,13 @@ impl BroadcastService {
         for p in players.players.iter().filter(|p| p.authenticated) {
             outbox.send(
                 peer,
-                player_info_event(p.entity_id, &p.character_name, p.position, p.player_color),
+                player_info_event(
+                    p.entity_id,
+                    &p.character_name,
+                    p.position,
+                    p.player_color,
+                    p.player_class,
+                ),
             );
         }
     }
@@ -568,6 +577,7 @@ pub fn player_info_event(
     name: &str,
     position: Vec2,
     color: (u8, u8, u8),
+    class: u8,
 ) -> ServerPacket {
     ServerPacket::GameEvent(GameEvent {
         event_type: game_event_type::PLAYER_INFO,
@@ -578,6 +588,7 @@ pub fn player_info_event(
             x: position.x,
             y: position.y,
             color,
+            class,
         },
     })
 }

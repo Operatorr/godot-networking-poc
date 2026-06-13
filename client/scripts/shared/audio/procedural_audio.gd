@@ -20,6 +20,7 @@ static func generate_all_sounds() -> Dictionary:
 	sounds["player_hit"] = _gen_player_hit()
 	sounds["player_death"] = _gen_player_death()
 	sounds["player_kill"] = _gen_player_kill()
+	sounds["level_up"] = _gen_level_up()
 
 	# Monster sounds
 	sounds["monster_shoot"] = _gen_monster_shoot()
@@ -212,6 +213,34 @@ static func _gen_player_kill() -> AudioStreamWAV:
 		# Metallic ring
 		var ring := _sine(t * 3200.0) * exp(-t * 30.0) * 0.1
 		samples[i] = (tone1 + tone2 + ring) * env
+	return _samples_to_wav(samples)
+
+
+## Triumphant ascending C-major arpeggio (C-E-G-C) with a bell timbre — the level-up "ding".
+static func _gen_level_up() -> AudioStreamWAV:
+	var notes := [523.25, 659.25, 783.99, 1046.50]  # C5, E5, G5, C6
+	var note_step := 0.10
+	var total := 0.70
+	var num_samples := int(SAMPLE_RATE * total)
+	var samples := PackedFloat32Array()
+	samples.resize(num_samples)
+	for i in range(num_samples):
+		var t := float(i) / SAMPLE_RATE
+		var sample := 0.0
+		# Each note enters in turn and rings out to the end, building a bright chord.
+		for n in range(notes.size()):
+			var start := n * note_step
+			if t < start:
+				continue
+			var nt := t - start
+			var env := _envelope(nt, 0.004, 0.10, 0.45, 0.4, total - start)
+			var f: float = notes[n]
+			sample += (_sine(t * f) * 0.6 + _sine(t * f * 2.0) * 0.18) * env * 0.32
+		# Sparkle shimmer over the top after the chord forms.
+		if t > 2.0 * note_step:
+			var shimmer := _envelope(t - 2.0 * note_step, 0.01, 0.12, 0.35, 0.4, total - 2.0 * note_step)
+			sample += _sine(t * 2093.0) * shimmer * 0.07
+		samples[i] = clampf(sample, -1.0, 1.0)
 	return _samples_to_wav(samples)
 
 

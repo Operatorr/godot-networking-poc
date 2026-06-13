@@ -6,6 +6,15 @@ spec's D8 (single-threaded authoritative tick) and D9 (Ed25519 ticket). Reinforc
 invariant *"all gameplay state is server-authoritative and in-memory; the Go API owns only
 account/character/leaderboard persistence."*
 
+> **Extended by [ADR 0006](0006-softcore-hardcore-glory-economy.md) (2026-06-13, D15).** This ADR's
+> "death deletes the character and credits Glory" is now the **Hardcore** rule specifically:
+> ADR 0006 adds a forgiving **Softcore** mode (death respawns; the character ends only by voluntary
+> **Sacrifice** at the Church), defines the **XP→Glory** exchange (`floor(total_lifetime_XP / 100)`,
+> run as one atomic transaction on the same death/sacrifice path), and moves **progression itself to
+> server/API authority** (the client used to own the level curve; it no longer does). Read both
+> together — the persistence *mechanism* here is unchanged; ADR 0006 layers modes and the economy
+> onto it.
+
 ## Context
 
 The Rust port is the netcode foundation for a **Realm-of-the-Mad-God-like instance-based MMO**:
@@ -97,6 +106,8 @@ A periodic checkpoint bounds loss on accumulating XP/glory between transitions.
 
 ## See also
 
-- [`../rust-port/migration-spec.md`](../rust-port/migration-spec.md) — decision D10 and the D8/D9 it builds on.
+- [ADR 0006](0006-softcore-hardcore-glory-economy.md) — Softcore/Hardcore modes, the XP→Glory exchange,
+  and server-authoritative progression that **extend** this ADR (D15).
+- [`../rust-port/migration-spec.md`](../rust-port/migration-spec.md) — decision D10 (and D15) and the D8/D9 it builds on.
 - [ADR 0003](0003-enet-udp-transport.md) — the session-ticket auth this persistence boundary rides behind.
 - [`../CONTEXT.md`](../CONTEXT.md) — the state-lifetime and progression terms this ADR makes canonical.

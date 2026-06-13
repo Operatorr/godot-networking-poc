@@ -1,8 +1,10 @@
 //! Server-side player state + manager — port of `player_state.gd` / `player_manager.gd`
 //! (extraction sim-movement §4.7, lifecycle §3/§4).
 
+use crate::ability;
 use protocol::types::{anim, entity_flags};
 use sim_core::constants::*;
+use sim_core::progression;
 use sim_core::{arena, input_flags as inflag, step_movement, MoveState, MovementSm, Vec2};
 
 pub type PeerKey = usize;
@@ -21,6 +23,8 @@ pub struct QueuedInput {
     pub sequence: u8,
     pub aim_angle: f64,
     pub position: Vec2,
+    /// Mouse world position — the target for cursor-aimed abilities.
+    pub cursor: Vec2,
     pub client_render_tick: u16,
     pub client_rtt_ms: u16,
 }
@@ -51,6 +55,9 @@ pub struct PlayerState {
     pub character_id: u32,
     pub character_name: String,
     pub player_color: (u8, u8, u8),
+    /// Player class (0=Zealot … 6=Mage). Identity metadata from ConnectAuth, clamped on join
+    /// (> 6 → 0); not validated against account data yet.
+    pub player_class: u8,
     pub bandwidth_budget_bps: u32,
     pub max_snapshot_bytes: usize,
     pub authenticated: bool,
@@ -66,6 +73,8 @@ pub struct PlayerState {
     pub last_client_rtt_ms: u16,
     pub last_client_position: Vec2,
     pub has_client_position: bool,
+    /// Latest mouse world position (for cursor-aimed ability dispatch).
+    pub last_cursor: Vec2,
     pub last_input_received_tick: u64,
     pub pending_dash: bool,
     pub input_queue: Vec<QueuedInput>,
@@ -83,6 +92,26 @@ pub struct PlayerState {
     pub deaths: u32,
     pub last_killer_id: i32,
 
+    // ── Server-authoritative progression (hydrated from the Go API on join, written back) ──
+    pub level: u16,
+    pub experience: u32,
+    /// Hardcore = permadeath: death converts XP→Glory and deletes the character (vs softcore
+    /// respawn). Hydrated from the character's `mode`.
+    pub mode_hardcore: bool,
+    /// Set whenever level/XP changed and the API write-back is pending.
+    pub progression_dirty: bool,
+    /// True once the async hydrate from the API has applied (so we don't write back placeholder
+    /// level-1 state over a real character before it loads).
+    pub progression_hydrated: bool,
+    /// True once a hardcore death has been reported to the API (one-shot Glory/permadeath).
+    pub death_reported: bool,
+
+    // ── Survival ──
+    /// Fractional HP regen carry (HP is integer; regen scales with level).
+    pub health_regen_accum: f64,
+    /// Rogue Stealth: while > 0 the player is invisible to AI targeting.
+    pub stealth_timer: f64,
+
     pub animation_state: u8,
     pub entity_flags: u16,
 }
@@ -95,6 +124,7 @@ impl PlayerState {
             character_id: 0,
             character_name: String::new(),
             player_color: (69, 135, 255), // Color(0.27, 0.53, 1.0) quantized
+            player_class: 0,              // Zealot
             bandwidth_budget_bps: 0,
             max_snapshot_bytes: 0,
             authenticated: false,
@@ -108,6 +138,7 @@ impl PlayerState {
             last_client_rtt_ms: 0,
             last_client_position: Vec2::ZERO,
             has_client_position: false,
+            last_cursor: Vec2::ZERO,
             last_input_received_tick: 0,
             pending_dash: false,
             input_queue: Vec::new(),
@@ -123,8 +154,97 @@ impl PlayerState {
             monster_kills: 0,
             deaths: 0,
             last_killer_id: -1,
+            level: 1,
+            experience: 0,
+            mode_hardcore: false,
+            progression_dirty: false,
+            progression_hydrated: false,
+            death_reported: false,
+            health_regen_accum: 0.0,
+            stealth_timer: 0.0,
             animation_state: anim::IDLE,
             entity_flags: entity_flags::ALIVE | entity_flags::VISIBLE,
+        }
+    }
+
+    /// Apply the class + level: recompute the level-scaled max HP / base move speed / primary
+    /// damage and push the per-class ability config into the shared MovementSm (so prediction
+    /// matches). Called on auth, on hydrate, and on every level-up. Raising the HP cap also raises
+    /// current HP by the same delta (a level-up partially heals); the cap never lowers current HP.
+    pub fn apply_class_and_level(&mut self, class: u8, level: u16, experience: u32) {
+        self.player_class = if class > 6 { 0 } else { class };
+        self.level = level.clamp(1, progression::MAX_PLAYER_LEVEL);
+        self.experience = experience;
+        let new_max = ability::effective_max_health(self.player_class, self.level).max(1);
+        let delta = new_max - self.max_health;
+        self.max_health = new_max;
+        if delta > 0 {
+            self.health = (self.health + delta).min(new_max);
+        } else {
+            self.health = self.health.min(new_max);
+        }
+        let s = ability::stats_for_class(self.player_class);
+        self.movement_sm
+            .set_base_speed(ability::effective_base_speed(self.player_class, self.level));
+        self.movement_sm.set_ability_config(
+            s.ability_mana,
+            s.ability_cooldown,
+            s.charge_speed,
+            s.charge_distance,
+        );
+    }
+
+    /// Class+level-scaled primary-attack damage (used at projectile spawn).
+    pub fn primary_damage(&self) -> i32 {
+        ability::effective_primary_damage(self.player_class, self.level)
+    }
+
+    /// Effective base move speed (for the PROGRESS event's `move_speed_q`).
+    pub fn effective_move_speed(&self) -> f64 {
+        ability::effective_base_speed(self.player_class, self.level)
+    }
+
+    /// Level-scaled health regen: smooth, only while alive and below max. Integer HP via a
+    /// fractional accumulator. No regen while dead.
+    pub fn update_health_regen(&mut self, delta: f64) {
+        if !self.is_alive || self.health >= self.max_health {
+            self.health_regen_accum = 0.0;
+            return;
+        }
+        self.health_regen_accum += progression::health_regen_per_sec(self.level) * delta;
+        while self.health_regen_accum >= 1.0 && self.health < self.max_health {
+            self.health = (self.health + 1).min(self.max_health);
+            self.health_regen_accum -= 1.0;
+        }
+    }
+
+    /// Heal (Healthorb pickup). Clamps to max; no-op while dead. Returns the HP actually restored.
+    pub fn heal(&mut self, amount: i32) -> i32 {
+        if !self.is_alive || amount <= 0 || self.health >= self.max_health {
+            return 0;
+        }
+        let before = self.health;
+        self.health = (self.health + amount).min(self.max_health);
+        self.health - before
+    }
+
+    /// Start (or refresh) Rogue Stealth.
+    pub fn enter_stealth(&mut self, duration: f64) {
+        self.stealth_timer = self.stealth_timer.max(duration);
+    }
+
+    pub fn is_stealthed(&self) -> bool {
+        self.stealth_timer > 0.0
+    }
+
+    /// Stealth ends early when the Rogue deals damage (cast/shoot) — call on any offensive action.
+    pub fn break_stealth(&mut self) {
+        self.stealth_timer = 0.0;
+    }
+
+    pub fn update_stealth(&mut self, delta: f64) {
+        if self.stealth_timer > 0.0 {
+            self.stealth_timer = (self.stealth_timer - delta).max(0.0);
         }
     }
 
@@ -163,6 +283,7 @@ impl PlayerState {
         self.last_client_rtt_ms = input.client_rtt_ms;
         self.last_input_received_tick = server_tick;
         self.last_client_position = input.position;
+        self.last_cursor = input.cursor;
         self.has_client_position = true;
     }
 
@@ -292,17 +413,22 @@ impl PlayerState {
         if self.input_flags & inflag::SHOOT != 0 {
             f |= entity_flags::ATTACKING;
         }
-        if self.life_state == LifeState::Invulnerable {
+        // Charge-invulnerability is orthogonal to spawn invulnerability (which is broken by input);
+        // the Warrior stays invulnerable for the whole charge even while moving.
+        if self.life_state == LifeState::Invulnerable || self.movement_sm.is_charging() {
             f |= entity_flags::INVULNERABLE;
         }
         match self.movement_sm.state() {
-            MoveState::Dashing => f |= entity_flags::DASHING,
+            MoveState::Dashing | MoveState::Charging => f |= entity_flags::DASHING,
             MoveState::KnockedBack => f |= entity_flags::KNOCKED_BACK,
             MoveState::Stunned => f |= entity_flags::STUNNED,
             _ => {}
         }
         if self.movement_sm.is_dazed() {
             f |= entity_flags::DAZED;
+        }
+        if self.is_stealthed() {
+            f |= entity_flags::STEALTH;
         }
         f |= entity_flags::VISIBLE;
         self.entity_flags = f;
@@ -339,7 +465,8 @@ impl PlayerState {
         if !self.is_alive || amount <= 0 {
             return false;
         }
-        if self.life_state == LifeState::Invulnerable {
+        // Spawn invulnerability OR an in-progress Warrior charge absorbs damage silently.
+        if self.life_state == LifeState::Invulnerable || self.movement_sm.is_charging() {
             return false;
         }
         self.health = (self.health - amount).max(0);
@@ -370,6 +497,8 @@ impl PlayerState {
         self.respawn_timer = RESPAWN_DELAY;
         self.deaths += 1;
         self.last_killer_id = killer_id;
+        self.stealth_timer = 0.0;
+        self.health_regen_accum = 0.0;
         self.animation_state = anim::DEATH;
         self.update_entity_flags();
     }
@@ -391,6 +520,9 @@ impl PlayerState {
         self.has_client_position = false;
         self.last_input_received_tick = 0;
         self.last_killer_id = -1;
+        self.stealth_timer = 0.0;
+        self.health_regen_accum = 0.0;
+        self.death_reported = false;
         self.animation_state = anim::SPAWN;
         self.entity_flags =
             entity_flags::ALIVE | entity_flags::VISIBLE | entity_flags::INVULNERABLE;
@@ -433,6 +565,8 @@ pub struct PositionSnapshot {
 pub struct PlayerManager {
     /// Insertion (connect) order — iteration order matches GDScript Dictionary semantics.
     pub players: Vec<PlayerState>,
+    /// Spawn anchors for this instance (Arena anchors by default; the Sanctuary sets town anchors).
+    spawn_points: Vec<Vec2>,
     position_history: Vec<(u64, Vec<PositionSnapshot>)>,
     /// Deliberate deviation from GDScript (documented in lifecycle §6.1): ids recycle within
     /// 1–999 so the invariant holds for > 999 lifetime connections.
@@ -457,11 +591,20 @@ impl PlayerManager {
     pub fn new() -> Self {
         Self {
             players: Vec::new(),
+            spawn_points: ARENA_PLAYER_SPAWNS.to_vec(),
             position_history: Vec::new(),
             free_ids: Vec::new(),
             quarantined_ids: Vec::new(),
             next_entity_id: 1,
             spawn_index: 0,
+        }
+    }
+
+    /// Override the spawn anchors (e.g. the Sanctuary's town spawns). Resets the round-robin cursor.
+    pub fn set_spawn_points(&mut self, points: Vec<Vec2>) {
+        if !points.is_empty() {
+            self.spawn_points = points;
+            self.spawn_index = 0;
         }
     }
 
@@ -499,7 +642,8 @@ impl PlayerManager {
     /// Shared round-robin cursor over the (re-filtered) valid spawn list, used by both
     /// connect-spawns and respawns; never reset.
     pub fn next_spawn_position(&mut self) -> Vec2 {
-        let spawns: Vec<Vec2> = ARENA_PLAYER_SPAWNS
+        let spawns: Vec<Vec2> = self
+            .spawn_points
             .iter()
             .copied()
             .filter(|p| arena::is_valid_player_spawn_position(*p))

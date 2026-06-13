@@ -63,6 +63,24 @@ There are now **two** distinct movement state machines, and they must not be con
 For a Remote entity the animation state (and the new DASHING / KNOCKED_BACK / STUNNED entity flags)
 arrive over the wire and are applied in `remote_player._update_animation()` (`remote_player.gd:63`).
 
+### Directional sprites — facing follows movement, not aim
+
+With class spritesheets active, the 8-way facing **row** is derived from the **movement
+direction** (the position delta), kept when stationary — `player.gd` mirrors `remote_player.gd`
+so local and remote players animate consistently. Earlier the local player picked its row from
+the **aim/cursor** angle, so the run cycle faced the mouse while strafing; the body still rotates
+to the aim (that drives shooting), but the artwork is counter-rotated and the row tracks motion.
+The locomotion tier (idle/run/sprint/dash) comes from the observed speed against thresholds
+between the tier speeds (200 / 320 / 720 u/s) — sprint shows the sprint cycle, run shows run.
+
+### Class sprite tint
+
+The main-menu colour swatch tints the chosen **class** spritesheet via `modulate`, blended
+toward the colour at `GameConstants.CLASS_SPRITE_TINT_STRENGTH` (white = untinted). It lets a
+player slightly recolour their character while keeping class identity; the legacy procedural
+fallback instead bakes the colour into regenerated frames. Applied identically in `player.gd`
+and `remote_player.gd` (`_class_tint`).
+
 ## HP (the only stat)
 
 `HPComponent` (`hp_component.gd:3`), a child node: `max_hp` default 100 (`hp_component.gd:13`),

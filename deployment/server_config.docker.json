@@ -1,6 +1,0 @@
-{
-  "port": 8081,
-  "api_server_url": "http://api:8080",
-  "region": "local",
-  "debug_logging": false
-}

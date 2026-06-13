@@ -1,0 +1,47 @@
+{
+	"id": "warrior",
+	"display_name": "Warrior",
+	"role": "melee_bruiser",
+
+	"stats": {
+		"hp_base": 130,
+		"hp_per_level": 9,
+		"move_speed_base": 200.0,
+		"move_speed_per_level": 0.6,
+		"mana_max": 100,
+		"mana_pool": 90,
+		"mana_regen_per_sec": 8.0,
+		"stamina_max": 100,
+		"hitbox_radius": 16
+	},
+
+	"primary": {
+		"damage_base": 25,
+		"damage_per_level": 2.5,
+		"cooldown": 0.3,
+		"projectile_speed": 400.0
+	},
+
+	"ability": {
+		"id": "charge",
+		"name": "Charge",
+		"type": "movement_dash_blast",
+		"mana_cost": 40,
+		"cooldown": 9.0,
+		"charge_speed": 720.0,
+		"max_distance": 420.0,
+		"blast_radius": 120.0,
+		"blast_damage": 50,
+		"invulnerable_while_charging": true
+	},
+
+	"appearance": {
+		"sprite_dir": "warrior"
+	},
+
+	"networking": {
+		"server_authoritative": true,
+		"predicted": ["position", "velocity", "primary_attack_aim", "charge_movement"],
+		"replicated": ["position", "animation", "flags", "ability_effect"]
+	}
+}

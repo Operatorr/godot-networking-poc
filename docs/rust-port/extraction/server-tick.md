@@ -140,7 +140,7 @@ Derived values used inline:
 | `min_client_bandwidth_bps` | `24000` | — (absent → default `24000`) | floor on advertised budget |
 | `monster_ai_difficulty` | `0.85` | `0.85` | getter clamps to `[0.0, 1.0]` |
 
-Config file precedence: `user://server_config.json` (Docker volume) → `res://data/config/server_config.json` (embedded) → defaults; **only keys present in `DEFAULTS` are merged** (unknown keys warn and are dropped); env override applies last on every path (`server_config.gd:129-164`).
+Config file precedence (GDScript parity reference): `user://server_config.json` → `res://data/config/server_config.json` (embedded) → defaults; **only keys present in `DEFAULTS` are merged** (unknown keys warn and are dropped); env override applies last on every path (`server_config.gd:129-164`). The Rust port mirrors this: `--config <file>` → `server_config.json` (cwd) → `../client/data/config/server_config.json` → defaults, env last (`rust/server/src/config.rs`). Production passes `--config deployment/server_config.{arena,sanctuary}.json`.
 
 With the live values, the per-peer snapshot byte cap for a default client is `clamp(trunc(120000 / 30) = 4000, 256, 1200)` = **1200 bytes/snapshot** = 36 KB/s ceiling at 30 Hz.
 

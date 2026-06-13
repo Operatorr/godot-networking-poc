@@ -58,6 +58,10 @@ impl GameEvent {
             t::PLAYER_INFO => matches!(self.data, GameEventData::PlayerInfo { .. }),
             t::LEADERBOARD_UPDATE => matches!(self.data, GameEventData::Leaderboard { .. }),
             t::PROJECTILE_FIRED => matches!(self.data, GameEventData::ProjectileFired { .. }),
+            t::EXP_GAIN => matches!(self.data, GameEventData::ExpGain { .. }),
+            t::ABILITY_EFFECT => matches!(self.data, GameEventData::AbilityEffect { .. }),
+            t::PROGRESS => matches!(self.data, GameEventData::Progress { .. }),
+            t::PICKUP => matches!(self.data, GameEventData::Pickup { .. }),
             _ => matches!(self.data, GameEventData::None),
         }
     }
@@ -86,6 +90,8 @@ pub enum GameEventData {
         x: f32,
         y: f32,
         color: (u8, u8, u8),
+        /// Player class (0=Zealot … 6=Mage). Already server-clamped when broadcast.
+        class: u8,
     },
     Leaderboard {
         entries: Vec<(u16, u16)>,
@@ -96,6 +102,32 @@ pub enum GameEventData {
         x: f32,
         y: f32,
         fire_tick: u16,
+    },
+    /// Experience gained by `source_id` (a nearby monster died) — a cosmetic "+XP" floater.
+    /// The SERVER owns level/XP accounting now (see `Progress`); this is display-only.
+    ExpGain {
+        amount: u16,
+    },
+    /// A transient ability effect to render at (`x`, `y`). `effect_id` selects the VFX (explosion,
+    /// charge blast, shadowstep blink, mine detonation); `radius` (units) sizes it (0 = point).
+    AbilityEffect {
+        effect_id: u8,
+        x: f32,
+        y: f32,
+        radius: u16,
+    },
+    /// Authoritative progression for the owning player's HUD. `move_speed_q` = effective base
+    /// move speed ÷ 4 (clamped 0..255), so the client adopts the same speed without re-deriving it.
+    Progress {
+        level: u16,
+        experience: u32,
+        move_speed_q: u8,
+    },
+    /// A pickup was consumed by `target_id`. `kind` selects the pickup type (0 = healthorb);
+    /// `amount` is the magnitude (e.g. HP restored), for the client's floater.
+    Pickup {
+        kind: u8,
+        amount: u16,
     },
 }
 
@@ -213,13 +245,20 @@ impl ServerPacket {
                         w.write_u16(*duration_ms);
                     }
                     GameEventData::EffectRemove { effect_id } => w.write_u8(*effect_id),
-                    GameEventData::PlayerInfo { name, x, y, color } => {
+                    GameEventData::PlayerInfo {
+                        name,
+                        x,
+                        y,
+                        color,
+                        class,
+                    } => {
                         w.write_str8(name);
                         w.write_i16(quant_coord(*x));
                         w.write_i16(quant_coord(*y));
                         w.write_u8(color.0);
                         w.write_u8(color.1);
                         w.write_u8(color.2);
+                        w.write_u8(*class);
                     }
                     GameEventData::Leaderboard { entries } => {
                         let n = entries.len().min(10);
@@ -233,6 +272,33 @@ impl ServerPacket {
                         w.write_i16(quant_coord(*x));
                         w.write_i16(quant_coord(*y));
                         w.write_u16(*fire_tick);
+                    }
+                    GameEventData::ExpGain { amount } => {
+                        w.write_u16(*amount);
+                    }
+                    GameEventData::AbilityEffect {
+                        effect_id,
+                        x,
+                        y,
+                        radius,
+                    } => {
+                        w.write_u8(*effect_id);
+                        w.write_i16(quant_coord(*x));
+                        w.write_i16(quant_coord(*y));
+                        w.write_u16(*radius);
+                    }
+                    GameEventData::Progress {
+                        level,
+                        experience,
+                        move_speed_q,
+                    } => {
+                        w.write_u16(*level);
+                        w.write_u32(*experience);
+                        w.write_u8(*move_speed_q);
+                    }
+                    GameEventData::Pickup { kind, amount } => {
+                        w.write_u8(*kind);
+                        w.write_u16(*amount);
                     }
                 }
             }
@@ -311,6 +377,7 @@ impl ServerPacket {
                         x: dequant_coord(r.read_i16()?),
                         y: dequant_coord(r.read_i16()?),
                         color: (r.read_u8()?, r.read_u8()?, r.read_u8()?),
+                        class: r.read_u8()?,
                     },
                     game_event_type::LEADERBOARD_UPDATE => {
                         let n = r.read_u8()? as usize;
@@ -328,7 +395,25 @@ impl ServerPacket {
                         y: dequant_coord(r.read_i16()?),
                         fire_tick: r.read_u16()?,
                     },
-                    // KILL, KILL_PVP, PICKUP, LEVEL_UP, CHAT_MESSAGE — head only, same as today.
+                    game_event_type::EXP_GAIN => GameEventData::ExpGain {
+                        amount: r.read_u16()?,
+                    },
+                    game_event_type::ABILITY_EFFECT => GameEventData::AbilityEffect {
+                        effect_id: r.read_u8()?,
+                        x: dequant_coord(r.read_i16()?),
+                        y: dequant_coord(r.read_i16()?),
+                        radius: r.read_u16()?,
+                    },
+                    game_event_type::PROGRESS => GameEventData::Progress {
+                        level: r.read_u16()?,
+                        experience: r.read_u32()?,
+                        move_speed_q: r.read_u8()?,
+                    },
+                    game_event_type::PICKUP => GameEventData::Pickup {
+                        kind: r.read_u8()?,
+                        amount: r.read_u16()?,
+                    },
+                    // KILL, KILL_PVP, LEVEL_UP, CHAT_MESSAGE — head only, same as today.
                     _ => GameEventData::None,
                 };
                 ServerPacket::GameEvent(GameEvent {
@@ -467,6 +552,7 @@ mod tests {
                     x: 1.0,
                     y: -1.0,
                     color: (69, 135, 255),
+                    class: 4,
                 },
             },
             GameEvent {
@@ -487,6 +573,39 @@ mod tests {
                     fire_tick: 999,
                 },
             },
+            GameEvent {
+                event_type: game_event_type::EXP_GAIN,
+                source_id: 7,
+                target_id: 0,
+                data: GameEventData::ExpGain { amount: 20 },
+            },
+            GameEvent {
+                event_type: game_event_type::ABILITY_EFFECT,
+                source_id: 5,
+                target_id: 0,
+                data: GameEventData::AbilityEffect {
+                    effect_id: 2,
+                    x: 120.0,
+                    y: -80.0,
+                    radius: 120,
+                },
+            },
+            GameEvent {
+                event_type: game_event_type::PROGRESS,
+                source_id: 5,
+                target_id: 5,
+                data: GameEventData::Progress {
+                    level: 23,
+                    experience: 4321,
+                    move_speed_q: 50,
+                },
+            },
+            GameEvent {
+                event_type: game_event_type::PICKUP,
+                source_id: 40001,
+                target_id: 5,
+                data: GameEventData::Pickup { kind: 0, amount: 5 },
+            },
         ];
         for e in cases {
             let p = ServerPacket::GameEvent(e.clone());
@@ -497,10 +616,15 @@ mod tests {
                     assert_eq!(d.target_id, e.target_id);
                     match (&d.data, &e.data) {
                         (
-                            GameEventData::PlayerInfo { name: a, .. },
-                            GameEventData::PlayerInfo { name: b, .. },
+                            GameEventData::PlayerInfo {
+                                name: a, class: ca, ..
+                            },
+                            GameEventData::PlayerInfo {
+                                name: b, class: cb, ..
+                            },
                         ) => {
-                            assert_eq!(a, b)
+                            assert_eq!(a, b);
+                            assert_eq!(ca, cb);
                         }
                         (
                             GameEventData::Leaderboard { entries: a },
@@ -508,11 +632,86 @@ mod tests {
                         ) => {
                             assert_eq!(a, b)
                         }
+                        (
+                            GameEventData::ExpGain { amount: a },
+                            GameEventData::ExpGain { amount: b },
+                        ) => {
+                            assert_eq!(a, b)
+                        }
+                        (
+                            GameEventData::AbilityEffect {
+                                effect_id: a,
+                                radius: ra,
+                                ..
+                            },
+                            GameEventData::AbilityEffect {
+                                effect_id: b,
+                                radius: rb,
+                                ..
+                            },
+                        ) => {
+                            assert_eq!(a, b);
+                            assert_eq!(ra, rb);
+                        }
+                        (
+                            GameEventData::Progress {
+                                level: a,
+                                experience: ea,
+                                move_speed_q: sa,
+                            },
+                            GameEventData::Progress {
+                                level: b,
+                                experience: eb,
+                                move_speed_q: sb,
+                            },
+                        ) => {
+                            assert_eq!(a, b);
+                            assert_eq!(ea, eb);
+                            assert_eq!(sa, sb);
+                        }
+                        (
+                            GameEventData::Pickup {
+                                kind: a,
+                                amount: aa,
+                            },
+                            GameEventData::Pickup {
+                                kind: b,
+                                amount: ab,
+                            },
+                        ) => {
+                            assert_eq!(a, b);
+                            assert_eq!(aa, ab);
+                        }
                         _ => {}
                     }
                 }
                 other => panic!("wrong: {other:?}"),
             }
+        }
+    }
+
+    /// The codec is transport-only: an out-of-range class (> 6) round-trips untouched
+    /// (the server clamps before broadcasting, but the wire accepts any u8).
+    #[test]
+    fn player_info_out_of_range_class_accepted_on_wire() {
+        let p = ServerPacket::GameEvent(GameEvent {
+            event_type: game_event_type::PLAYER_INFO,
+            source_id: 0,
+            target_id: 9,
+            data: GameEventData::PlayerInfo {
+                name: "Overflow".into(),
+                x: 0.0,
+                y: 0.0,
+                color: (1, 2, 3),
+                class: 255,
+            },
+        });
+        match rt(p) {
+            ServerPacket::GameEvent(GameEvent {
+                data: GameEventData::PlayerInfo { class, .. },
+                ..
+            }) => assert_eq!(class, 255),
+            other => panic!("wrong: {other:?}"),
         }
     }
 

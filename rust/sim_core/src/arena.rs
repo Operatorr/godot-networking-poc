@@ -5,6 +5,53 @@
 use crate::constants::{MAP_MAX, MAP_MIN, MONSTER_HITBOX_RADIUS, PLAYER_HITBOX_RADIUS};
 use crate::rect::Rect;
 use crate::vec2::Vec2;
+use std::cell::Cell;
+
+/// Per-instance world geometry (D13: one process = one Instance). The Arena uses the ±1000 bounds
+/// with the 16 static obstacles; a Sanctuary instance uses the larger town bounds and NO obstacles
+/// (walk-through). Both the authoritative server and the client predictor must agree, so it is set
+/// ONCE (at server start / at client scene entry) and read by every bounds/obstacle function.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WorldGeometry {
+    pub min: Vec2,
+    pub max: Vec2,
+    /// When false, the obstacle passes are skipped entirely (bounds-clamp only).
+    pub obstacles_enabled: bool,
+}
+
+/// Default = the Arena (existing behavior, byte-identical).
+pub const ARENA_GEOMETRY: WorldGeometry = WorldGeometry {
+    min: MAP_MIN,
+    max: MAP_MAX,
+    obstacles_enabled: true,
+};
+
+thread_local! {
+    // Thread-local (not a global): the sim runs single-threaded in production (the server tick
+    // thread; the client's main/render thread), and per-test isolation comes for free since
+    // libtest runs each test on its own thread that re-initializes to the Arena default.
+    static WORLD: Cell<WorldGeometry> = const { Cell::new(ARENA_GEOMETRY) };
+}
+
+/// Set the active instance's world geometry. Call once before the sim runs.
+pub fn set_world_geometry(min: Vec2, max: Vec2, obstacles_enabled: bool) {
+    WORLD.with(|w| {
+        w.set(WorldGeometry {
+            min,
+            max,
+            obstacles_enabled,
+        })
+    });
+}
+
+/// The active instance's world geometry.
+pub fn world_geometry() -> WorldGeometry {
+    WORLD.with(|w| w.get())
+}
+
+fn obstacles_active() -> bool {
+    WORLD.with(|w| w.get().obstacles_enabled)
+}
 
 /// Obstacle definitions, world coordinates, exact values from `game_constants.gd:480-502`.
 pub const OBSTACLES: [Rect; 16] = [
@@ -31,34 +78,35 @@ pub const OBSTACLES: [Rect; 16] = [
 
 /// Clamp a position (the entity CENTER — the radius is deliberately not subtracted) to the map.
 pub fn clamp_to_bounds(pos: Vec2) -> Vec2 {
-    Vec2::new(
-        pos.x.clamp(MAP_MIN.x, MAP_MAX.x),
-        pos.y.clamp(MAP_MIN.y, MAP_MAX.y),
-    )
+    let g = world_geometry();
+    Vec2::new(pos.x.clamp(g.min.x, g.max.x), pos.y.clamp(g.min.y, g.max.y))
 }
 
 pub fn is_within_bounds(pos: Vec2) -> bool {
-    pos.x >= MAP_MIN.x && pos.x <= MAP_MAX.x && pos.y >= MAP_MIN.y && pos.y <= MAP_MAX.y
+    let g = world_geometry();
+    pos.x >= g.min.x && pos.x <= g.max.x && pos.y >= g.min.y && pos.y <= g.max.y
 }
 
 pub fn is_circle_within_bounds(pos: Vec2, radius: f32) -> bool {
-    pos.x - radius >= MAP_MIN.x
-        && pos.x + radius <= MAP_MAX.x
-        && pos.y - radius >= MAP_MIN.y
-        && pos.y + radius <= MAP_MAX.y
+    let g = world_geometry();
+    pos.x - radius >= g.min.x
+        && pos.x + radius <= g.max.x
+        && pos.y - radius >= g.min.y
+        && pos.y + radius <= g.max.y
 }
 
-/// Point-in-any-obstacle (unexpanded).
+/// Point-in-any-obstacle (unexpanded). No obstacles in a Sanctuary instance.
 pub fn is_point_in_obstacle(point: Vec2) -> bool {
-    OBSTACLES.iter().any(|o| o.has_point(point))
+    obstacles_active() && OBSTACLES.iter().any(|o| o.has_point(point))
 }
 
 /// Chebyshev (radius-expanded rect) circle test — NOT true circle-vs-AABB; corners are square.
-/// Parity requires this exact shape (extraction §4.2).
+/// Parity requires this exact shape (extraction §4.2). No obstacles in a Sanctuary instance.
 pub fn circle_intersects_obstacle(center: Vec2, radius: f32) -> bool {
-    OBSTACLES
-        .iter()
-        .any(|o| o.expanded(radius).has_point(center))
+    obstacles_active()
+        && OBSTACLES
+            .iter()
+            .any(|o| o.expanded(radius).has_point(center))
 }
 
 /// Slab-method segment-vs-rect intersection. Returns the first intersection point, or `None`.
@@ -118,6 +166,9 @@ fn line_rect_intersection(from: Vec2, to: Vec2, rect: &Rect) -> Option<Vec2> {
 
 /// Does a swept circle move cross or end inside an obstacle?
 fn movement_hits_obstacle(from: Vec2, to: Vec2, radius: f32) -> bool {
+    if !obstacles_active() {
+        return false;
+    }
     if from.is_equal_approx(to) {
         return circle_intersects_obstacle(to, radius);
     }
@@ -177,7 +228,11 @@ pub fn closest_point_on_segment(point: Vec2, seg_start: Vec2, seg_end: Vec2) -> 
 }
 
 /// First obstacle intersection of a (projectile) segment, or `None` — unexpanded rects.
+/// No obstacles in a Sanctuary instance ⇒ projectiles only stop on bounds.
 pub fn line_intersects_obstacle(from: Vec2, to: Vec2) -> Option<Vec2> {
+    if !obstacles_active() {
+        return None;
+    }
     let mut closest: Option<Vec2> = None;
     let mut closest_dist = f32::INFINITY;
     for obs in &OBSTACLES {
@@ -302,5 +357,43 @@ mod tests {
         let inside = Vec2::new(0.0, -100.0); // inside the center north pillar itself
         let r = move_with_obstacle_collision(inside, Vec2::new(0.0, -300.0), 16.0);
         assert_eq!(r, inside);
+    }
+
+    #[test]
+    fn sanctuary_geometry_widens_bounds_and_drops_obstacles() {
+        // Each test runs on its own thread, so this thread starts at the Arena default.
+        assert_eq!(world_geometry(), ARENA_GEOMETRY);
+        // Sanctuary: ±1856 town bounds, no obstacles.
+        set_world_geometry(
+            Vec2::new(-1856.0, -1856.0),
+            Vec2::new(1856.0, 1856.0),
+            false,
+        );
+        // Bounds clamp at the wider extent (a position the Arena would have clamped to ±1000).
+        assert_eq!(
+            clamp_to_bounds(Vec2::new(-1500.0, 1500.0)),
+            Vec2::new(-1500.0, 1500.0)
+        );
+        assert_eq!(
+            clamp_to_bounds(Vec2::new(-3000.0, 0.0)),
+            Vec2::new(-1856.0, 0.0)
+        );
+        // The center north pillar no longer blocks: a move straight through it succeeds.
+        assert!(!circle_intersects_obstacle(Vec2::new(0.0, -100.0), 16.0));
+        let r =
+            move_with_obstacle_collision(Vec2::new(-100.0, -100.0), Vec2::new(100.0, -100.0), 16.0);
+        assert_eq!(r, Vec2::new(100.0, -100.0), "no obstacles ⇒ free move");
+        // Projectiles only stop on bounds (no obstacle hit).
+        assert!(
+            line_intersects_obstacle(Vec2::new(-100.0, -100.0), Vec2::new(100.0, -100.0)).is_none()
+        );
+
+        // Restore the Arena default and confirm the obstacle is back.
+        set_world_geometry(ARENA_GEOMETRY.min, ARENA_GEOMETRY.max, true);
+        assert!(circle_intersects_obstacle(Vec2::new(0.0, -100.0), 16.0));
+        assert_eq!(
+            clamp_to_bounds(Vec2::new(-1500.0, 0.0)),
+            Vec2::new(-1000.0, 0.0)
+        );
     }
 }

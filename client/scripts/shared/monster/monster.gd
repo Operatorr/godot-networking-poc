@@ -38,22 +38,40 @@ func _ready() -> void:
 	max_hp = definition.max_health
 	current_hp = definition.max_health
 
-	# Apply procedural sprites (monster variant) from the definition's palette
+	# Generated toxic-slime spritesheet when present, else the procedural
+	# palette-driven fallback from the monster definition.
 	if animated_sprite:
-		animated_sprite.sprite_frames = ProceduralSprites.create_monster_frames_from_colors(
-			definition.core_color, definition.glow_color, definition.shell_color
-		)
+		var sheet_frames := SheetLibrary.monster_frames("toxic_slime")
+		if sheet_frames != null:
+			animated_sprite.sprite_frames = sheet_frames
+		else:
+			animated_sprite.sprite_frames = ProceduralSprites.create_monster_frames_from_colors(
+				definition.core_color, definition.glow_color, definition.shell_color
+			)
 		animated_sprite.modulate = Color.WHITE  # Override placeholder tint
 		animated_sprite.play("idle")
 
 
 ## Update visual state from network data
 func update_from_network(animation_state: int, flags: int) -> void:
+	# The generated slime sheet has no dedicated hit frames (aliased to idle),
+	# so flash the sprite red on the HIT edge to keep damage readable.
+	if animation_state == PacketTypes.AnimationState.HIT \
+			and current_animation_state != PacketTypes.AnimationState.HIT:
+		_flash_hit()
 	current_animation_state = animation_state
 	current_flags = flags
 
 	_update_animation(animation_state)
 	_update_flags(flags)
+
+
+func _flash_hit() -> void:
+	if animated_sprite == null:
+		return
+	var tween := create_tween()
+	animated_sprite.modulate = Color(1.0, 0.35, 0.35)
+	tween.tween_property(animated_sprite, "modulate", Color.WHITE, 0.18)
 
 
 ## Update animation based on server state

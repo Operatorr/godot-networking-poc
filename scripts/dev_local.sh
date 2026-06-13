@@ -1,16 +1,21 @@
 #!/usr/bin/env bash
-# Start the local dev stack: Go API (background) + Rust omega-server (foreground).
+# Start the local dev stack: Go API + BOTH game instances (Arena + Sanctuary).
+#
+# Two omega-server instances run side by side (one binary, two --mode/--port):
+#   * Arena     — udp/8081, --mode arena     (monsters + PvP, ±1000 w/ pillars; the default)
+#   * Sanctuary — udp/8082, --mode sanctuary (no monsters, PvP off, ±1856 walk-through town)
+# Entering the world joins the Sanctuary (8082); the Arena portal dials the Arena (8081).
 #
 # Assumes PostgreSQL and Redis are ALREADY RUNNING outside this repo (e.g. via
 # DBngin or a local install) — this script never starts Docker or databases.
 # API config is read from api/.env (the Go server loads .env from its cwd).
 #
-# Usage: ./scripts/dev_local.sh [-- <omega-server args>]
-#   ./scripts/dev_local.sh                          # API on :8080, game on udp/8081
+# Usage: ./scripts/dev_local.sh [-- <extra omega-server args>]
+#   ./scripts/dev_local.sh                          # API :8080, arena udp/8081, sanctuary udp/8082
 #   API_PORT=9090 ./scripts/dev_local.sh            # override API port
-#   ./scripts/dev_local.sh -- --require-tickets     # pass args to omega-server
+#   ./scripts/dev_local.sh -- --require-tickets     # extra args passed to BOTH instances
 #
-# Ctrl+C stops both processes. API log: logs/api_server.log
+# Ctrl+C stops all three processes. API log: logs/api_server.log
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -30,8 +35,11 @@ fail()  { echo -e "${RED}[ERROR]${NC} $*" >&2; exit 1; }
 PID_DIR="$PROJECT_ROOT/.pids"
 LOG_DIR="$PROJECT_ROOT/logs"
 API_PID_FILE="$PID_DIR/api_server.pid"
-GAME_PID_FILE="$PID_DIR/game_server.pid"
+ARENA_PID_FILE="$PID_DIR/arena_server.pid"
+SANCTUARY_PID_FILE="$PID_DIR/sanctuary_server.pid"
 API_LOG="$LOG_DIR/api_server.log"
+ARENA_LOG="$LOG_DIR/arena_server.log"
+SANCTUARY_LOG="$LOG_DIR/sanctuary_server.log"
 mkdir -p "$PID_DIR" "$LOG_DIR"
 
 # Args after `--` are forwarded to omega-server.
@@ -44,7 +52,7 @@ while [[ $# -gt 0 ]]; do
             break
             ;;
         --help|-h)
-            sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+            sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
         *)
@@ -98,7 +106,8 @@ ok "Redis reachable at $REDIS_HOST:$REDIS_PORT"
 # ---- Cleanup on exit ---------------------------------------------------------
 
 API_PID=""
-GAME_PID=""
+ARENA_PID=""
+SANCTUARY_PID=""
 stop_pid() {
     local pid="$1" name="$2"
     [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null || return 0
@@ -113,9 +122,10 @@ stop_pid() {
 cleanup() {
     trap - INT TERM EXIT
     echo ""
-    stop_pid "$GAME_PID" "game server"
+    stop_pid "$SANCTUARY_PID" "sanctuary server"
+    stop_pid "$ARENA_PID" "arena server"
     stop_pid "$API_PID" "API server"
-    rm -f "$API_PID_FILE" "$GAME_PID_FILE"
+    rm -f "$API_PID_FILE" "$ARENA_PID_FILE" "$SANCTUARY_PID_FILE"
     ok "Local dev stack stopped"
 }
 trap cleanup INT TERM EXIT
@@ -145,16 +155,30 @@ done
 curl -fsS "http://localhost:$API_PORT/health" >/dev/null 2>&1 \
     || { tail -30 "$API_LOG" >&2; fail "API server did not become healthy — see $API_LOG"; }
 
-# ---- Rust game server -----------------------------------------------------------
+# ---- Rust game servers (Arena + Sanctuary) --------------------------------------
 
 info "Building omega-server (release)..."
 (cd "$PROJECT_ROOT/rust" && cargo build --release -p omega-server)
 
-info "Starting omega-server (udp/8081 game, :9100 metrics). Ctrl+C stops everything."
-# cwd rust/ so the config fallback ../client/data/config/server_config.json resolves.
+# Both instances share one binary, distinguished by --mode/--port. cwd rust/ so the config
+# fallback ../client/data/config/server_config.json resolves. Extra args after `--` (e.g.
+# --require-tickets) are forwarded to BOTH. NOTE: both default to Prometheus :9100; the second
+# bind warns and is skipped (non-fatal) — only the Arena's metrics are scrapeable locally.
 cd "$PROJECT_ROOT/rust"
-./target/release/omega-server ${SERVER_ARGS+"${SERVER_ARGS[@]}"} &
-GAME_PID=$!
-echo "$GAME_PID" > "$GAME_PID_FILE"
-# wait (not a foreground child) so INT/TERM run the cleanup trap immediately.
-wait "$GAME_PID"
+
+info "Starting ARENA server (udp/8081, monsters + PvP). Log: $ARENA_LOG"
+./target/release/omega-server --mode arena --port 8081 ${SERVER_ARGS+"${SERVER_ARGS[@]}"} \
+    >"$ARENA_LOG" 2>&1 &
+ARENA_PID=$!
+echo "$ARENA_PID" > "$ARENA_PID_FILE"
+
+info "Starting SANCTUARY server (udp/8082, safe town). Log: $SANCTUARY_LOG"
+./target/release/omega-server --mode sanctuary --port 8082 ${SERVER_ARGS+"${SERVER_ARGS[@]}"} \
+    >"$SANCTUARY_LOG" 2>&1 &
+SANCTUARY_PID=$!
+echo "$SANCTUARY_PID" > "$SANCTUARY_PID_FILE"
+
+ok "Stack up: API :$API_PORT, Arena udp/8081, Sanctuary udp/8082. Ctrl+C stops everything."
+# wait -n would exit when EITHER server dies; wait on both so the trap runs on Ctrl+C and the
+# script stays up as long as either instance lives.
+wait "$ARENA_PID" "$SANCTUARY_PID"

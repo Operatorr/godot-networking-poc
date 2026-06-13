@@ -16,6 +16,14 @@ pub struct ProjectileState {
     /// Knockback impulse (u/s) this projectile applies on a surviving player hit. Per-projectile
     /// so future weapons/abilities/items can vary it; today set from the spawn-site constant.
     pub knockback_force: f64,
+    /// Damage this projectile deals to a MONSTER (PvE pass). 0 = use the legacy flat constant
+    /// (monster-owned bullets never enter the PvE pass, so theirs is ignored). Player primary
+    /// shots set their class+level-scaled value; ability projectiles set the ability value.
+    pub damage: i32,
+    /// Max monsters this projectile can hit before dying. 0/1 = single-hit; >1 = piercing
+    /// (Void Hunter multishot). Targets already hit are tracked in `hit_targets`.
+    pub pierce: u8,
+    pub hit_targets: Vec<u16>,
     pub distance_traveled: f32,
     pub alive: bool,
     pub spawn_tick: u64,
@@ -89,6 +97,8 @@ pub struct HitEvent {
     pub direction: Vec2,
     /// The projectile's per-spawn knockback impulse (u/s).
     pub knockback_force: f64,
+    /// Per-projectile monster damage (0 = use the legacy flat constant). Used by the PvE branch.
+    pub damage: i32,
 }
 
 #[derive(Default)]
@@ -133,6 +143,36 @@ impl ProjectileManager {
         speed: f32,
         knockback_force: f64,
     ) -> Option<&ProjectileState> {
+        self.spawn_projectile_ex(
+            owner_id,
+            position,
+            direction,
+            spawn_tick,
+            rewind_ticks,
+            pvp_rewind_ticks,
+            speed,
+            knockback_force,
+            0,
+            0,
+        )
+    }
+
+    /// Full spawn with a per-projectile monster `damage` and `pierce` count (multishot). The
+    /// 8-arg `spawn_projectile` forwards here with `damage = 0` (legacy flat) and `pierce = 0`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn spawn_projectile_ex(
+        &mut self,
+        owner_id: u16,
+        position: Vec2,
+        direction: Vec2,
+        spawn_tick: u64,
+        rewind_ticks: u64,
+        pvp_rewind_ticks: u64,
+        speed: f32,
+        knockback_force: f64,
+        damage: i32,
+        pierce: u8,
+    ) -> Option<&ProjectileState> {
         if direction.x.abs() < 1e-5 && direction.y.abs() < 1e-5 {
             return None;
         }
@@ -145,6 +185,9 @@ impl ProjectileManager {
             direction: direction.normalized(),
             speed,
             knockback_force,
+            damage,
+            pierce,
+            hit_targets: Vec::new(),
             distance_traveled: 0.0,
             alive: true,
             spawn_tick,
@@ -226,8 +269,9 @@ impl ProjectileManager {
                         position: hit_point,
                         direction: proj.direction,
                         knockback_force: proj.knockback_force,
+                        damage: proj.damage,
                     });
-                    break; // one target per projectile
+                    break; // one target per projectile (PvP is single-hit even for pierce)
                 }
             }
         }
@@ -250,7 +294,16 @@ impl ProjectileManager {
             }
             let collision_tick = proj.lag_compensated_monster_tick();
             let roster = monster_snapshot(collision_tick);
+            // pierce 0/1 ⇒ single-hit; pierce N>1 ⇒ passes through up to N monsters.
+            let max_hits = if proj.pierce <= 1 {
+                1
+            } else {
+                proj.pierce as usize
+            };
             for snap in nearby(&roster, proj.position) {
+                if proj.hit_targets.contains(&snap.entity_id) {
+                    continue; // a piercing bullet hits each monster at most once
+                }
                 let hit_point = arena::closest_point_on_segment(
                     snap.position,
                     proj.previous_position,
@@ -258,8 +311,7 @@ impl ProjectileManager {
                 );
                 if snap.position.distance_to(hit_point) < PROJECTILE_RADIUS + MONSTER_HITBOX_RADIUS
                 {
-                    proj.alive = false;
-                    proj.removal_reason = "monster_hit";
+                    proj.hit_targets.push(snap.entity_id);
                     hits.push(HitEvent {
                         projectile_id: proj.entity_id,
                         target_id: snap.entity_id,
@@ -267,8 +319,13 @@ impl ProjectileManager {
                         position: hit_point,
                         direction: proj.direction,
                         knockback_force: proj.knockback_force,
+                        damage: proj.damage,
                     });
-                    break;
+                    if proj.hit_targets.len() >= max_hits {
+                        proj.alive = false;
+                        proj.removal_reason = "monster_hit";
+                        break;
+                    }
                 }
             }
         }

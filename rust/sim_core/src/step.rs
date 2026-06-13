@@ -3,7 +3,7 @@
 //! deliberately-simplified reconciliation replay model (extraction §4.7–4.9).
 
 use crate::arena::move_with_obstacle_collision;
-use crate::constants::{PLAYER_HITBOX_RADIUS, PLAYER_STAMINA_SPRINT_MIN};
+use crate::constants::PLAYER_HITBOX_RADIUS;
 use crate::movement::MovementSm;
 use crate::vec2::Vec2;
 
@@ -96,7 +96,8 @@ pub fn replay_ground_step(
 ) -> StepResult {
     let direction = movement_direction(input_flags);
     let sprint = input_flags & flags::SPRINT != 0
-        && sm.stamina() > PLAYER_STAMINA_SPRINT_MIN
+        && sm.stamina() > 0.0
+        && !sm.is_exhausted()
         && !sm.is_dazed();
     let velocity = direction * (sm.ground_speed(sprint) as f32);
     let target = position + velocity * (delta as f32);

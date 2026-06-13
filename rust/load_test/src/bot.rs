@@ -55,6 +55,9 @@ pub struct Bot {
     peer_key: usize,
     behavior: BehaviorState,
     rng: Pcg32,
+    /// Player class (0=Zealot … 6=Mage), picked uniformly at random once at construction and
+    /// sent in ConnectAuth — exercises the identity plumbing across the swarm.
+    player_class: u8,
     sm: MovementSm,
     pos: Vec2,
     vel: Vec2,
@@ -117,6 +120,9 @@ impl Bot {
             behavior: behavior.name(),
             ..Default::default()
         };
+        let mut rng = Pcg32::from_entropy(id as u64);
+        let player_class = rng.rand_index(7) as u8; // uniform over the 7 classes (0=Zealot … 6=Mage)
+        debug!("bot {id} picked class {player_class}");
         Ok(Self {
             id,
             phase: Phase::Connecting,
@@ -125,7 +131,8 @@ impl Bot {
             host,
             peer_key,
             behavior: BehaviorState::new(behavior, difficulty),
-            rng: Pcg32::from_entropy(id as u64),
+            rng,
+            player_class,
             sm: MovementSm::new(),
             pos: Vec2::ZERO,
             vel: Vec2::ZERO,
@@ -229,8 +236,10 @@ impl Bot {
                         self.send(&ClientPacket::ConnectAuth(ConnectAuth {
                             protocol_version: protocol::PROTOCOL_VERSION,
                             ticket: None, // dev mode (unsigned); D9 tickets come from the Go API
+                            character_id: 0, // dev: no real character row to hydrate
                             character_name: format!("LoadBot{:03}", self.id),
                             color: color_for(self.id),
+                            class: self.player_class,
                             bandwidth_budget_bps: self.bandwidth_budget_bps,
                         }));
                         self.phase = Phase::Authing;
@@ -466,6 +475,7 @@ impl Bot {
             aim_angle: self.last_aim,
             position: (self.pos.x, self.pos.y),
             velocity: (self.vel.x, self.vel.y),
+            cursor: (self.pos.x, self.pos.y), // bots aim from their own position
             client_render_tick: (self.metrics.last_server_tick & 0xFFFF) as u16,
             client_rtt_ms: self.last_rtt_ms.clamp(0.0, u16::MAX as f64) as u16,
         });

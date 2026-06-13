@@ -1,0 +1,19 @@
+{
+  "mode": "sanctuary",
+  "port": 8082,
+  "metrics_port": 9101,
+  "tick_rate": 30,
+  "max_players": 100,
+  "region": "Asia",
+  "debug_logging": false,
+  "heartbeat_timeout_seconds": 5.0,
+  "api_server_url": "http://localhost:8080",
+  "aoi_radius": 1000.0,
+  "aoi_exit_radius": 1100.0,
+  "lod_near_radius": 400.0,
+  "lod_mid_radius": 1000.0,
+  "snapshot_rate_hz": 30,
+  "default_client_bandwidth_bps": 120000,
+  "max_client_bandwidth_bps": 200000,
+  "monster_ai_difficulty": 0.85
+}

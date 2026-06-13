@@ -28,6 +28,9 @@ pub struct MonsterDefinition {
     pub projectile_speed: f32,
     pub steering_randomness: f64,
     pub avoidance_distance: f32,
+    /// Experience granted to every player within XP_SHARE_RADIUS when this monster dies.
+    /// Scales with the monster's strength/tier (Tier 1 Toxic Slime = 20); 0 = no XP (dummies).
+    pub xp_reward: u32,
 }
 
 /// The shipped catalogue (client/data/monsters/*.json) embedded; unknown ids fall back to
@@ -56,6 +59,7 @@ pub static TOXIC_SLIME: MonsterDefinition = MonsterDefinition {
     projectile_speed: 300.0,
     steering_randomness: 0.15,
     avoidance_distance: 50.0,
+    xp_reward: 20,
 };
 
 pub static TARGET_DUMMY: MonsterDefinition = MonsterDefinition {
@@ -75,6 +79,7 @@ pub static TARGET_DUMMY: MonsterDefinition = MonsterDefinition {
     projectile_speed: 0.0,
     steering_randomness: 0.0,
     avoidance_distance: 0.0,
+    xp_reward: 0,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -731,6 +736,16 @@ impl MonsterAi {
 
         monster.update_timers(delta);
 
+        // Rogue Stealth: a monster actively drops aggro the moment its target turns invisible.
+        if monster.target_id != 0 {
+            if let Some(t) = players.get_by_entity_id(monster.target_id) {
+                if t.entity_flags & entity_flags::STEALTH != 0 {
+                    monster.target_id = 0;
+                    self.transition(monster, AiState::Idle);
+                }
+            }
+        }
+
         if monster.target_id == 0
             || monster.retarget_timer >= self.retarget_interval(monster.definition)
         {
@@ -836,6 +851,11 @@ impl MonsterAi {
 
     fn score_target(&self, monster: &MonsterState, player: &crate::player::PlayerState) -> f64 {
         if !player.is_alive {
+            return f64::NEG_INFINITY;
+        }
+        // Rogue Stealth is invisible to AI targeting (it can still be hit by projectiles it walks
+        // into — stealth only affects targeting, not collision).
+        if player.entity_flags & entity_flags::STEALTH != 0 {
             return f64::NEG_INFINITY;
         }
         let def = monster.definition;

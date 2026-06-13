@@ -19,12 +19,22 @@ var player_entities: Dictionary = {}
 var monster_entities: Dictionary = {}
 var _dead_monster_effects_played: Dictionary = {}
 
+## World-effect entities (healthorb / mine / dot-zone / bible) spawned from the ability
+## id band (40000-49999). entity_id -> _AbilityVisual. Server-authoritative: position
+## comes from snapshots via the InterpolationController; these carry no logic.
+var _ability_entities: Dictionary = {}
+
 ## Projectile pool for network projectiles (separate from local player pool)
 var _projectile_pool: Array[Projectile] = []
 var _active_projectiles: Dictionary = {}  # entity_id -> Projectile
 ## Ordered queue of active projectile entity IDs by spawn time (oldest first)
 var _active_projectile_order: Array[int] = []
 var _projectile_sources: Dictionary = {}  # projectile_id -> source_entity_id
+## Last rendered position per active projectile, used to face it along its travel
+## direction. Server projectiles are process-disabled (InterpolationController writes
+## their position), so unlike offline pool projectiles they never run activate()'s
+## rotation set — we derive facing from interpolated motion instead.
+var _projectile_prev_pos: Dictionary = {}  # entity_id -> Vector2
 const NETWORK_PROJECTILE_POOL_SIZE := 64
 
 ## Reference to the entity container in the arena scene
@@ -57,6 +67,8 @@ func setup(container: Node2D, interp_controller: InterpolationController) -> voi
 		interpolation_controller.entity_despawned.connect(_on_entity_despawned)
 	if EntityNameCache and not EntityNameCache.entity_color_updated.is_connected(_on_entity_color_updated):
 		EntityNameCache.entity_color_updated.connect(_on_entity_color_updated)
+	if EntityNameCache and not EntityNameCache.entity_class_updated.is_connected(_on_entity_class_updated):
+		EntityNameCache.entity_class_updated.connect(_on_entity_class_updated)
 
 	# Pre-allocate projectile pool
 	_initialize_projectile_pool()
@@ -112,6 +124,11 @@ func _on_entity_spawned(entity_id: int, entity_type: int, initial_position: Vect
 			_spawn_monster(entity_id, initial_position)
 		PacketTypes.EntityType.PROJECTILE:
 			_spawn_projectile(entity_id, initial_position)
+		PacketTypes.EntityType.HEALTHORB, \
+		PacketTypes.EntityType.MINE, \
+		PacketTypes.EntityType.DOT_ZONE, \
+		PacketTypes.EntityType.BIBLE:
+			_spawn_ability_entity(entity_id, entity_type, initial_position)
 		_:
 			if debug_logging:
 				print("[ClientEntityManager] Unknown entity type: %d" % entity_type)
@@ -125,6 +142,8 @@ func _on_entity_despawned(entity_id: int) -> void:
 		_despawn_monster(entity_id)
 	elif _active_projectiles.has(entity_id):
 		_despawn_projectile(entity_id)
+	elif _ability_entities.has(entity_id):
+		_despawn_ability_entity(entity_id)
 
 
 ## Spawn a remote player visual
@@ -289,6 +308,13 @@ func _spawn_projectile(entity_id: int, position: Vector2) -> void:
 	if interpolation_controller:
 		interpolation_controller.register_entity_node(entity_id, projectile)
 
+	# Seed facing from the replicated direction octant so frame one points the right
+	# way before interpolated motion takes over (see _update_projectile_rotations).
+	_projectile_prev_pos[entity_id] = position
+	if interpolation_controller:
+		var octant := interpolation_controller.get_entity_animation_state(entity_id)
+		projectile.rotation = _angle_from_direction_octant(octant)
+
 	if debug_logging:
 		print("[ClientEntityManager] Spawned projectile: id=%d, pos=%s" % [entity_id, position])
 
@@ -302,6 +328,7 @@ func _despawn_projectile(entity_id: int) -> void:
 	_active_projectiles.erase(entity_id)
 	_active_projectile_order.erase(entity_id)
 	_projectile_sources.erase(entity_id)
+	_projectile_prev_pos.erase(entity_id)
 
 	if interpolation_controller:
 		interpolation_controller.unregister_entity_node(entity_id)
@@ -318,6 +345,45 @@ func _despawn_projectile(entity_id: int) -> void:
 
 	if debug_logging:
 		print("[ClientEntityManager] Despawned projectile: id=%d" % entity_id)
+
+
+## Spawn a server-authoritative world-effect visual (healthorb / mine / dot-zone / bible).
+## Position is driven by snapshots through the InterpolationController; no local logic.
+func _spawn_ability_entity(entity_id: int, entity_type: int, position: Vector2) -> void:
+	if _ability_entities.has(entity_id) or entity_container == null:
+		return
+
+	var visual := _AbilityVisual.new()
+	visual.entity_type = entity_type
+	visual.position = position
+	entity_container.add_child(visual)
+	_ability_entities[entity_id] = visual
+
+	if interpolation_controller:
+		interpolation_controller.register_entity_node(entity_id, visual)
+
+	if debug_logging:
+		print("[ClientEntityManager] Spawned ability entity: id=%d type=%d pos=%s" % [
+			entity_id, entity_type, position
+		])
+
+
+## Despawn a world-effect visual.
+func _despawn_ability_entity(entity_id: int) -> void:
+	if not _ability_entities.has(entity_id):
+		return
+
+	var visual: Node2D = _ability_entities[entity_id]
+	_ability_entities.erase(entity_id)
+
+	if interpolation_controller:
+		interpolation_controller.unregister_entity_node(entity_id)
+
+	if is_instance_valid(visual):
+		visual.queue_free()
+
+	if debug_logging:
+		print("[ClientEntityManager] Despawned ability entity: id=%d" % entity_id)
 
 
 ## Get a projectile from the pool, evicting the oldest active if exhausted
@@ -382,6 +448,34 @@ func update_entity_visuals() -> void:
 		var flags := interpolation_controller.get_entity_flags(entity_id)
 		monster.update_from_network(anim_state, flags)
 
+	# Rotate server-driven projectiles to face their travel direction
+	_update_projectile_rotations()
+
+
+## Face each active network projectile along its interpolated travel direction.
+## The server controls projectile movement, so InterpolationController writes the
+## position each frame and we derive the body rotation from the position delta —
+## exact (full angular resolution), and consistent with how RemotePlayer faces its
+## movement. The per-class sprite-rotation offset stays on the child sprite.
+func _update_projectile_rotations() -> void:
+	for entity_id: int in _active_projectiles.keys():
+		var projectile: Projectile = _active_projectiles[entity_id]
+		if not is_instance_valid(projectile):
+			continue
+		var prev: Vector2 = _projectile_prev_pos.get(entity_id, projectile.global_position)
+		var step := projectile.global_position - prev
+		if step.length_squared() > 0.0001:
+			projectile.rotation = step.angle()
+		_projectile_prev_pos[entity_id] = projectile.global_position
+
+
+## Decode the replicated 3-bit direction octant back to a travel angle (radians).
+## Inverse of the server's projectile_animation_octant() (world.rs): the octant is
+## trunc((angle + PI) mod TAU / TAU * 8), so the lower bucket edge recovers the
+## angle exactly for axis/diagonal shots and snaps within 45° otherwise.
+func _angle_from_direction_octant(octant: int) -> float:
+	return (float(octant) / 8.0) * TAU - PI
+
 
 ## Clear all managed entities
 func clear_all() -> void:
@@ -416,6 +510,14 @@ func clear_all() -> void:
 	_active_projectiles.clear()
 	_active_projectile_order.clear()
 	_projectile_sources.clear()
+	_projectile_prev_pos.clear()
+
+	# Free world-effect visuals (healthorb / mine / dot-zone / bible)
+	for entity_id: int in _ability_entities.keys():
+		var visual = _ability_entities[entity_id]
+		if is_instance_valid(visual):
+			visual.queue_free()
+	_ability_entities.clear()
 
 	if debug_logging:
 		print("[ClientEntityManager] All entities cleared")
@@ -562,12 +664,19 @@ func _apply_projectile_color(projectile_id: int) -> void:
 	var projectile: Projectile = _active_projectiles[projectile_id]
 	if is_instance_valid(projectile):
 		projectile.set_projectile_color(_get_player_color(source_id))
+		projectile.set_projectile_class(_get_player_class(source_id))
 
 
 func _get_player_color(entity_id: int) -> Color:
 	if entity_id == GameManager.get_local_player_entity_id():
 		return GameManager.player_data.get("player_color", Color(0.27, 0.53, 1.0))
 	return EntityNameCache.get_entity_color(entity_id)
+
+
+func _get_player_class(entity_id: int) -> int:
+	if entity_id == GameManager.get_local_player_entity_id():
+		return GameManager.player_data.get("player_class", PacketTypes.PlayerClass.ZEALOT)
+	return EntityNameCache.get_entity_class(entity_id)
 
 
 func _on_entity_color_updated(entity_id: int, player_color: Color) -> void:
@@ -581,11 +690,71 @@ func _on_entity_color_updated(entity_id: int, player_color: Color) -> void:
 			_apply_projectile_color(projectile_id)
 
 
+## Late PLAYER_INFO class updates propagate like color updates. RemotePlayer does not expose
+## set_player_class yet (sprite selection is wired separately), so the call is guarded — once
+## the visual hook lands, this handler feeds it without further changes here.
+func _on_entity_class_updated(entity_id: int, player_class: int) -> void:
+	if player_entities.has(entity_id):
+		var remote_player: RemotePlayer = player_entities[entity_id]
+		if is_instance_valid(remote_player) and remote_player.has_method("set_player_class"):
+			remote_player.call("set_player_class", player_class)
+
+
 ## Get entity counts for debug
 func get_debug_info() -> Dictionary:
 	return {
 		"remote_players": player_entities.size(),
 		"monsters": monster_entities.size(),
 		"active_projectiles": _active_projectiles.size(),
-		"pooled_projectiles": _projectile_pool.size()
+		"pooled_projectiles": _projectile_pool.size(),
+		"ability_entities": _ability_entities.size()
 	}
+
+
+## Minimal server-authoritative visual for world-effect entities (healthorb / mine /
+## dot-zone / bible). Pure cosmetics: the InterpolationController writes its position from
+## snapshots; this node only draws a distinct colored shape per type and pulses a little so
+## it reads as alive. No collision, no logic.
+class _AbilityVisual extends Node2D:
+	var entity_type: int = PacketTypes.EntityType.HEALTHORB
+
+	func _ready() -> void:
+		z_index = -1  # under players/monsters/projectiles, above the floor
+
+	func _process(_delta: float) -> void:
+		queue_redraw()
+
+	func _draw() -> void:
+		var t := Time.get_ticks_msec() / 1000.0
+		match entity_type:
+			PacketTypes.EntityType.HEALTHORB:
+				# Green glowing circle.
+				var pulse := 0.6 + 0.4 * sin(t * TAU)
+				draw_circle(Vector2.ZERO, 12.0, Color(0.2, 0.9, 0.3, 0.35 * pulse))
+				draw_circle(Vector2.ZERO, 7.0, Color(0.4, 1.0, 0.45, 0.95))
+				draw_arc(Vector2.ZERO, 11.0, 0.0, TAU, 24, Color(0.6, 1.0, 0.6, 0.8), 1.5)
+			PacketTypes.EntityType.MINE:
+				# Dark red circle with a blinking core.
+				var blink := 0.5 + 0.5 * sin(t * TAU * 2.0)
+				draw_circle(Vector2.ZERO, 10.0, Color(0.45, 0.05, 0.05, 0.95))
+				draw_circle(Vector2.ZERO, 4.0, Color(1.0, 0.2, 0.15, 0.4 + 0.6 * blink))
+				draw_arc(Vector2.ZERO, 10.0, 0.0, TAU, 20, Color(0.7, 0.1, 0.1, 0.9), 1.5)
+			PacketTypes.EntityType.DOT_ZONE:
+				# Translucent purple circle sized like the plague zone (~100 u radius).
+				var zone_pulse := 0.85 + 0.15 * sin(t * TAU * 0.5)
+				var radius := 100.0 * zone_pulse
+				draw_circle(Vector2.ZERO, radius, Color(0.45, 0.15, 0.6, 0.18))
+				draw_arc(Vector2.ZERO, radius, 0.0, TAU, 48, Color(0.6, 0.25, 0.8, 0.55), 2.0)
+			PacketTypes.EntityType.BIBLE:
+				# Small white/gold diamond ("book") that bobs.
+				var bob := sin(t * TAU) * 2.0
+				var c := Vector2(0.0, bob)
+				var pts := PackedVector2Array([
+					c + Vector2(0.0, -8.0), c + Vector2(6.0, 0.0),
+					c + Vector2(0.0, 8.0), c + Vector2(-6.0, 0.0),
+				])
+				draw_colored_polygon(pts, Color(1.0, 0.95, 0.75, 0.95))
+				draw_polyline(PackedVector2Array([pts[0], pts[1], pts[2], pts[3], pts[0]]),
+					Color(0.85, 0.7, 0.25, 1.0), 1.5)
+			_:
+				draw_circle(Vector2.ZERO, 8.0, Color(0.8, 0.8, 0.8, 0.8))

@@ -19,6 +19,10 @@ pub enum MoveState {
     KnockedBack = 4,
     Stunned = 5,
     AbilityMovement = 6,
+    /// Warrior Charge: held-input dash along the aim/move direction, INVULNERABLE, up to a max
+    /// distance. Ends on release, max-distance, or (server-side) enemy contact — the server then
+    /// spawns the AOE blast. Predicted on the client (purely directional, no target lookup).
+    Charging = 7,
 }
 
 #[derive(Debug, Clone)]
@@ -36,6 +40,30 @@ pub struct MovementSm {
     speed_multiplier: f64,
     prev_dash_held: bool,
     prev_ability_held: bool,
+    // ── Per-class config (set once when the class/level is known; preserved across reset) ──
+    /// Base ground speed for this class+level (replaces the global PLAYER_SPEED).
+    base_speed: f64,
+    /// Mana cost of the RMB ability for this class.
+    ability_cost: f64,
+    /// Cooldown (s) of the RMB ability for this class. 0 = no cooldown.
+    ability_cooldown_max: f64,
+    /// >0 marks the RMB ability as a Charge (Warrior): this is the charge speed (u/s).
+    charge_speed: f64,
+    /// Max charge distance (units) before the charge ends on its own.
+    charge_max_distance: f64,
+    // ── Ability runtime state ──
+    ability_cooldown_left: f64,
+    /// Sprint-exhaustion lockout: while > 0, sprint is refused and stamina regen is paused.
+    /// Set when sprinting drains stamina to 0.
+    exhaust_time_left: f64,
+    /// Transient: an INSTANT ability (non-charge) cast + spent mana this tick. The server reads it
+    /// to dispatch the effect; the client to play cast VFX. Cleared at the top of every tick.
+    ability_fired: bool,
+    /// Transient: the charge ended NATURALLY this tick (release or max-distance), so the server
+    /// should spawn the AOE blast. NOT set by `end_charge`/stun/teleport (those are not "blasts").
+    charge_just_ended: bool,
+    charge_velocity: Vec2,
+    charge_distance_left: f64,
 }
 
 impl Default for MovementSm {
@@ -60,7 +88,40 @@ impl MovementSm {
             speed_multiplier: 1.0,
             prev_dash_held: false,
             prev_ability_held: false,
+            base_speed: PLAYER_SPEED,
+            ability_cost: PLAYER_MANA_ABILITY_COST,
+            ability_cooldown_max: 0.0,
+            charge_speed: 0.0,
+            charge_max_distance: 0.0,
+            ability_cooldown_left: 0.0,
+            exhaust_time_left: 0.0,
+            ability_fired: false,
+            charge_just_ended: false,
+            charge_velocity: Vec2::ZERO,
+            charge_distance_left: 0.0,
         }
+    }
+
+    /// Configure per-class movement/ability tuning. Set once when the class+level is known
+    /// (server on join/level-up; client on class load and on each PROGRESS event). Identical
+    /// values on both sides keep prediction in lockstep. `charge_speed > 0` ⇒ the RMB ability is
+    /// a Charge (Warrior); otherwise it is an instant cast handled server-side.
+    pub fn set_ability_config(
+        &mut self,
+        cost: f64,
+        cooldown: f64,
+        charge_speed: f64,
+        charge_max_distance: f64,
+    ) {
+        self.ability_cost = cost.max(0.0);
+        self.ability_cooldown_max = cooldown.max(0.0);
+        self.charge_speed = charge_speed.max(0.0);
+        self.charge_max_distance = charge_max_distance.max(0.0);
+    }
+
+    /// Set the per-class+level base ground speed (replaces the global PLAYER_SPEED default).
+    pub fn set_base_speed(&mut self, base_speed: f64) {
+        self.base_speed = base_speed.max(0.0);
     }
 
     /// Advance one simulation step and return the velocity to integrate this step.
@@ -79,6 +140,8 @@ impl MovementSm {
         attacking: bool,
         aim_dir: Vec2,
     ) -> Vec2 {
+        self.ability_fired = false;
+        self.charge_just_ended = false;
         self.update_timers(delta);
         self.update_stamina(delta);
         self.update_mana(delta);
@@ -92,7 +155,7 @@ impl MovementSm {
             self.try_dash(move_dir, aim_dir);
         }
         if ability_edge {
-            self.try_use_mana(PLAYER_MANA_ABILITY_COST);
+            self.try_activate_ability(move_dir, aim_dir);
         }
         if attacking && self.state == MoveState::Sprinting {
             self.end_sprint();
@@ -106,7 +169,64 @@ impl MovementSm {
             MoveState::KnockedBack => self.tick_knockback(delta),
             MoveState::Stunned => Vec2::ZERO,
             MoveState::AbilityMovement => self.ability_velocity,
+            MoveState::Charging => self.tick_charging(delta, ability_held),
         }
+    }
+
+    /// RMB ability edge: gate on cooldown + mana, then either start a Charge (Warrior) or mark an
+    /// instant cast (`ability_fired`) for the server to dispatch. A refused cast costs nothing.
+    fn try_activate_ability(&mut self, move_dir: Vec2, aim_dir: Vec2) {
+        if self.ability_cooldown_left > 0.0 {
+            return;
+        }
+        // Charge needs a direction; refuse (and don't spend) if there's no aim/move direction.
+        let is_charge = self.charge_speed > 0.0;
+        let charge_dir = if move_dir != Vec2::ZERO {
+            move_dir
+        } else {
+            aim_dir
+        };
+        if is_charge && charge_dir == Vec2::ZERO {
+            return;
+        }
+        if !self.try_use_mana(self.ability_cost) {
+            return;
+        }
+        self.ability_cooldown_left = self.ability_cooldown_max;
+        if is_charge {
+            self.start_charge(charge_dir);
+        } else {
+            self.ability_fired = true;
+        }
+    }
+
+    fn start_charge(&mut self, dir: Vec2) {
+        if matches!(self.state, MoveState::Stunned | MoveState::KnockedBack) {
+            return;
+        }
+        let dir = dir.normalized();
+        if dir == Vec2::ZERO {
+            return;
+        }
+        self.charge_velocity = dir * (self.charge_speed as f32);
+        self.charge_distance_left = self.charge_max_distance;
+        self.transition_to(MoveState::Charging);
+    }
+
+    fn tick_charging(&mut self, delta: f64, ability_held: bool) -> Vec2 {
+        // End NATURALLY on release or once the max distance is spent — flag the blast. (Enemy
+        // contact ends it server-side via `end_charge`, which the server pairs with its own blast;
+        // stun/teleport clear the charge without a blast.)
+        if !ability_held || self.charge_distance_left <= 0.0 {
+            self.charge_velocity = Vec2::ZERO;
+            self.charge_distance_left = 0.0;
+            self.charge_just_ended = true;
+            self.transition_to(MoveState::Idle);
+            return Vec2::ZERO;
+        }
+        self.charge_distance_left =
+            (self.charge_distance_left - self.charge_velocity.length() as f64 * delta).max(0.0);
+        self.charge_velocity
     }
 
     fn tick_grounded(&mut self, move_dir: Vec2, sprint_held: bool) -> Vec2 {
@@ -114,8 +234,9 @@ impl MovementSm {
             self.transition_to(MoveState::Idle);
             return Vec2::ZERO;
         }
+        // Sprint until stamina is fully gone; exhaustion (not a 5-stamina floor) is what stops it.
         let want_sprint =
-            sprint_held && self.stamina > PLAYER_STAMINA_SPRINT_MIN && !self.is_dazed();
+            sprint_held && self.stamina > 0.0 && self.exhaust_time_left <= 0.0 && !self.is_dazed();
         if want_sprint {
             self.transition_to(MoveState::Sprinting);
         } else {
@@ -145,6 +266,7 @@ impl MovementSm {
     fn update_timers(&mut self, delta: f64) {
         self.dash_time_left = (self.dash_time_left - delta).max(0.0);
         self.dash_cooldown_left = (self.dash_cooldown_left - delta).max(0.0);
+        self.ability_cooldown_left = (self.ability_cooldown_left - delta).max(0.0);
         self.daze_time_left = (self.daze_time_left - delta).max(0.0);
         if self.state == MoveState::Stunned {
             self.stun_time_left = (self.stun_time_left - delta).max(0.0);
@@ -156,8 +278,16 @@ impl MovementSm {
 
     fn update_stamina(&mut self, delta: f64) {
         // Uses LAST tick's state — runs before this tick's state re-derivation.
+        if self.exhaust_time_left > 0.0 {
+            // Exhausted: regen is paused for the lockout (the bar blinks client-side).
+            self.exhaust_time_left = (self.exhaust_time_left - delta).max(0.0);
+            return;
+        }
         if self.state == MoveState::Sprinting {
             self.stamina = (self.stamina - PLAYER_STAMINA_DRAIN_PER_SEC * delta).max(0.0);
+            if self.stamina <= 0.0 {
+                self.exhaust_time_left = PLAYER_STAMINA_EXHAUST_DURATION;
+            }
         } else {
             self.stamina =
                 (self.stamina + PLAYER_STAMINA_REGEN_PER_SEC * delta).min(PLAYER_STAMINA_MAX);
@@ -209,7 +339,10 @@ impl MovementSm {
         }
         if matches!(
             self.state,
-            MoveState::Stunned | MoveState::KnockedBack | MoveState::AbilityMovement
+            MoveState::Stunned
+                | MoveState::KnockedBack
+                | MoveState::AbilityMovement
+                | MoveState::Charging
         ) {
             return false;
         }
@@ -247,13 +380,15 @@ impl MovementSm {
         self.transition_to(MoveState::Walking);
     }
 
-    /// Stun blocks movement for `duration` and cancels an in-progress dash.
+    /// Stun blocks movement for `duration` and cancels an in-progress dash or charge.
     pub fn apply_stun(&mut self, duration: f64) {
         if duration <= 0.0 {
             return;
         }
         self.stun_time_left = duration;
         self.dash_time_left = 0.0;
+        self.charge_distance_left = 0.0;
+        self.charge_velocity = Vec2::ZERO;
         self.transition_to(MoveState::Stunned);
     }
 
@@ -317,9 +452,9 @@ impl MovementSm {
     /// prediction and reconciliation replay so they agree.
     pub fn ground_speed(&self, is_sprinting: bool) -> f64 {
         let base = if is_sprinting {
-            PLAYER_SPRINT_SPEED
+            self.base_speed * PLAYER_SPRINT_MULTIPLIER
         } else {
-            PLAYER_SPEED
+            self.base_speed
         };
         base * self.speed_multiplier
     }
@@ -337,9 +472,42 @@ impl MovementSm {
         }
     }
 
-    /// Reset to a clean alive state (spawn / respawn / death).
+    /// End an in-progress Charge (release / max-distance / server-side enemy contact). Idempotent.
+    pub fn end_charge(&mut self) {
+        if self.state != MoveState::Charging {
+            return;
+        }
+        self.charge_velocity = Vec2::ZERO;
+        self.charge_distance_left = 0.0;
+        self.transition_to(MoveState::Idle);
+    }
+
+    /// Force back to a clean grounded state, clearing dash/charge/ability velocities — used by the
+    /// server when it teleports a player (Rogue shadowstep) so prediction re-derives next tick.
+    pub fn interrupt_to_idle(&mut self) {
+        self.dash_time_left = 0.0;
+        self.charge_distance_left = 0.0;
+        self.charge_velocity = Vec2::ZERO;
+        self.ability_velocity = Vec2::ZERO;
+        self.knockback_velocity = Vec2::ZERO;
+        self.state = MoveState::Idle;
+    }
+
+    /// Reset to a clean alive state (spawn / respawn / death). Per-class config (base speed,
+    /// ability cost/cooldown, charge tuning) is PRESERVED — it belongs to the character, not the
+    /// life, so respawning must not silently revert to the global defaults.
     pub fn reset(&mut self) {
+        let base_speed = self.base_speed;
+        let ability_cost = self.ability_cost;
+        let ability_cooldown_max = self.ability_cooldown_max;
+        let charge_speed = self.charge_speed;
+        let charge_max_distance = self.charge_max_distance;
         *self = Self::new();
+        self.base_speed = base_speed;
+        self.ability_cost = ability_cost;
+        self.ability_cooldown_max = ability_cooldown_max;
+        self.charge_speed = charge_speed;
+        self.charge_max_distance = charge_max_distance;
     }
 
     // ── Queries ─────────────────────────────────────────────────────────────
@@ -376,6 +544,31 @@ impl MovementSm {
         self.daze_time_left
     }
 
+    /// Sprint-exhaustion lockout active (sprint refused, stamina regen paused, bar blinks).
+    pub fn is_exhausted(&self) -> bool {
+        self.exhaust_time_left > 0.0
+    }
+
+    /// An INSTANT (non-charge) RMB ability cast + spent mana this tick. Server dispatches the
+    /// effect; client plays cast VFX. Transient — only true on the tick of the cast.
+    pub fn took_ability_this_tick(&self) -> bool {
+        self.ability_fired
+    }
+
+    pub fn is_charging(&self) -> bool {
+        self.state == MoveState::Charging
+    }
+
+    /// The charge ended naturally (release / max-distance) this tick — the server spawns the
+    /// AOE blast. Transient: only true on the ending tick.
+    pub fn charge_ended_this_tick(&self) -> bool {
+        self.charge_just_ended
+    }
+
+    pub fn ability_cooldown_remaining(&self) -> f64 {
+        self.ability_cooldown_left
+    }
+
     pub fn is_input_locked(&self) -> bool {
         matches!(
             self.state,
@@ -383,6 +576,7 @@ impl MovementSm {
                 | MoveState::KnockedBack
                 | MoveState::Stunned
                 | MoveState::AbilityMovement
+                | MoveState::Charging
         )
     }
 }
@@ -466,36 +660,35 @@ mod tests {
     }
 
     #[test]
-    fn sprint_runs_about_82_ticks_then_flaps_at_the_gate() {
+    fn sprint_depletes_then_exhausts() {
         let mut sm = MovementSm::new();
-        // Continuous sprint from full stamina until the first walking tick: drain 35/30 per tick
-        // from 100 down to the strict >5.0 gate ≈ 82 ticks (the first tick regens — previous
-        // state is IDLE).
+        // Continuous sprint from full stamina until the first non-sprint tick: stamina drains to 0
+        // (no 5-stamina floor anymore), which EXHAUSTS the player.
         let mut continuous = 0;
         loop {
             let v = sm.tick(DT, RIGHT, true, false, false, false, RIGHT);
             if v.length() > 300.0 {
                 continuous += 1;
-                assert!(continuous < 100, "gate never reached");
+                assert!(continuous < 120, "never exhausted");
             } else {
                 break;
             }
         }
-        assert!((80..=84).contains(&continuous), "continuous = {continuous}");
-        // At the gate the SM oscillates (drain while sprinting / regen while walking) — sprint
-        // resumes within a couple of ticks rather than staying off.
-        let mut resumed = false;
-        for _ in 0..4 {
-            if sm
-                .tick(DT, RIGHT, true, false, false, false, RIGHT)
-                .length()
-                > 300.0
-            {
-                resumed = true;
-                break;
-            }
+        assert!((80..=92).contains(&continuous), "continuous = {continuous}");
+        assert!(sm.is_exhausted(), "depleting stamina must exhaust");
+        assert!(sm.stamina() <= 0.01);
+        // While exhausted: sprint refused (walk speed) and stamina does NOT regen.
+        let v = sm.tick(DT, RIGHT, true, false, false, false, RIGHT);
+        assert!(v.length() < 300.0, "exhausted ⇒ no sprint");
+        assert!(sm.stamina() <= 0.01, "no regen while exhausted");
+        // After the 3 s lockout + recovery, stamina regenerates and sprint works again.
+        for _ in 0..200 {
+            sm.tick(DT, Vec2::ZERO, false, false, false, false, RIGHT);
         }
-        assert!(resumed, "sprint should flap back on at the gate");
+        assert!(!sm.is_exhausted());
+        assert!(sm.stamina() > 50.0, "stamina = {}", sm.stamina());
+        let v2 = sm.tick(DT, RIGHT, true, false, false, false, RIGHT);
+        assert!(v2.length() > 300.0, "sprint resumes after recovery");
     }
 
     #[test]
@@ -626,6 +819,123 @@ mod tests {
                     i % 7 == 0,
                     RIGHT,
                 );
+                acc.push(v.x.to_bits());
+                acc.push(v.y.to_bits());
+            }
+            acc
+        };
+        assert_eq!(run(), run());
+    }
+
+    #[test]
+    fn charge_starts_moves_and_ends_on_release() {
+        let mut sm = MovementSm::new();
+        sm.set_ability_config(40.0, 9.0, 720.0, 420.0);
+        // Edge with ability held, aiming right, standing still ⇒ charge toward aim.
+        let v = sm.tick(DT, Vec2::ZERO, false, false, true, false, RIGHT);
+        assert_eq!(sm.state(), MoveState::Charging);
+        assert!(sm.is_charging());
+        assert!(
+            (v.length() - 720.0).abs() < 0.5,
+            "charge speed = {}",
+            v.length()
+        );
+        // Mana spent, cooldown started, no instant-fire flag (the effect is the blast on end).
+        assert!((sm.mana() - 60.0).abs() < 0.1, "mana = {}", sm.mana());
+        assert!(sm.ability_cooldown_remaining() > 0.0);
+        assert!(!sm.took_ability_this_tick());
+        // Releasing RMB ends the charge.
+        let v2 = sm.tick(DT, Vec2::ZERO, false, false, false, false, RIGHT);
+        assert_eq!(v2, Vec2::ZERO);
+        assert_eq!(sm.state(), MoveState::Idle);
+    }
+
+    #[test]
+    fn charge_ends_at_max_distance() {
+        let mut sm = MovementSm::new();
+        // 720 u/s over 100 u ⇒ ~5 ticks even while RMB stays held.
+        sm.set_ability_config(40.0, 9.0, 720.0, 100.0);
+        let mut charging_ticks = 0;
+        for _ in 0..30 {
+            let v = sm.tick(DT, Vec2::ZERO, false, false, true, false, RIGHT);
+            if sm.is_charging() || v.length() > 700.0 {
+                charging_ticks += 1;
+            }
+        }
+        assert!(
+            (4..=7).contains(&charging_ticks),
+            "charging_ticks = {charging_ticks}"
+        );
+        assert_eq!(sm.state(), MoveState::Idle);
+    }
+
+    #[test]
+    fn server_can_end_charge_on_contact() {
+        let mut sm = MovementSm::new();
+        sm.set_ability_config(40.0, 9.0, 720.0, 420.0);
+        sm.tick(DT, Vec2::ZERO, false, false, true, false, RIGHT);
+        assert!(sm.is_charging());
+        sm.end_charge(); // server: hit a monster
+        assert_eq!(sm.state(), MoveState::Idle);
+        assert!(!sm.is_charging());
+    }
+
+    #[test]
+    fn per_class_base_speed_changes_walk_and_sprint_speed() {
+        let mut sm = MovementSm::new();
+        sm.set_base_speed(215.0); // Rogue
+        let v = sm.tick(DT, RIGHT, false, false, false, false, RIGHT);
+        assert!(
+            (v.length() - 215.0).abs() < 0.5,
+            "walk speed = {}",
+            v.length()
+        );
+        assert!((sm.ground_speed(true) - 215.0 * PLAYER_SPRINT_MULTIPLIER).abs() < 1e-9);
+    }
+
+    #[test]
+    fn base_speed_and_ability_config_survive_reset() {
+        let mut sm = MovementSm::new();
+        sm.set_base_speed(215.0);
+        sm.set_ability_config(30.0, 10.0, 0.0, 0.0);
+        sm.reset();
+        assert!((sm.ground_speed(false) - 215.0).abs() < 1e-9);
+        // Ability cost preserved: a cast spends 30, not the default 25.
+        sm.tick(DT, Vec2::ZERO, false, false, true, false, RIGHT);
+        assert!((sm.mana() - 70.0).abs() < 0.1, "mana = {}", sm.mana());
+    }
+
+    #[test]
+    fn instant_ability_sets_fired_flag_and_respects_cooldown() {
+        let mut sm = MovementSm::new();
+        sm.set_ability_config(30.0, 0.5, 0.0, 0.0); // instant, 0.5s cooldown
+        sm.tick(DT, Vec2::ZERO, false, false, true, false, RIGHT);
+        assert!(sm.took_ability_this_tick());
+        assert!((sm.mana() - 70.0).abs() < 0.1);
+        assert!(sm.ability_cooldown_remaining() > 0.0);
+        // Release, then re-press during the cooldown ⇒ refused (no fire, no second spend).
+        sm.tick(DT, Vec2::ZERO, false, false, false, false, RIGHT);
+        let mana_before = sm.mana();
+        sm.tick(DT, Vec2::ZERO, false, false, true, false, RIGHT);
+        assert!(!sm.took_ability_this_tick());
+        assert!((sm.mana() - mana_before).abs() < 0.5);
+    }
+
+    #[test]
+    fn charge_determinism_bitwise() {
+        let run = || {
+            let mut sm = MovementSm::new();
+            sm.set_ability_config(40.0, 9.0, 720.0, 420.0);
+            sm.set_base_speed(200.0);
+            let mut acc: Vec<u32> = Vec::new();
+            for i in 0..600u32 {
+                let ability_held = (i % 120) < 20; // press + hold a charge periodically
+                let dir = if i % 2 == 0 {
+                    RIGHT
+                } else {
+                    Vec2::new(0.0, 1.0).normalized()
+                };
+                let v = sm.tick(DT, dir, false, false, ability_held, false, RIGHT);
                 acc.push(v.x.to_bits());
                 acc.push(v.y.to_bits());
             }

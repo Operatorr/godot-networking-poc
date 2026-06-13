@@ -9,20 +9,22 @@ type User struct {
 	Email        string    `json:"email"`
 	PasswordHash string    `json:"-"`
 	Region       string    `json:"region"`
+	Glory        int       `json:"glory"`
 	CreatedAt    time.Time `json:"created_at"`
 }
 
 // Character represents a player character
 type Character struct {
-	ID        int       `json:"id"`
-	UserID    int       `json:"user_id"`
-	Name      string    `json:"name"`
-	Class     string    `json:"class"`
-	Race      string    `json:"race"`
-	Realm     string    `json:"realm"`
-	Mode      string    `json:"mode"`
-	Level     int       `json:"level"`
-	CreatedAt time.Time `json:"created_at"`
+	ID         int       `json:"id"`
+	UserID     int       `json:"user_id"`
+	Name       string    `json:"name"`
+	Class      string    `json:"class"`
+	Race       string    `json:"race"`
+	Realm      string    `json:"realm"`
+	Mode       string    `json:"mode"`
+	Level      int       `json:"level"`
+	Experience int       `json:"experience"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 // Leaderboard represents leaderboard stats

@@ -56,6 +56,9 @@ tmp/
 # API environment
 api/.env
 
+# Deploy target config (server IP / SSH user) — local only, never committed
+deployment/deploy.env
+
 # Load test reports (omega-load-test writes report_<timestamp>.json to the CWD)
 report_*.json
 
