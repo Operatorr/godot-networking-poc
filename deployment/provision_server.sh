@@ -54,14 +54,24 @@ fi
 
 # ---------------------------------------------------------------------------
 log "3/9  Go toolchain (official tarball — apt's Go is too old for go 1.24)"
-GO_WANT="$(curl -fsSL https://go.dev/VERSION?m=text | head -1)"   # e.g. go1.24.5
+# NOTE: capture the full body, THEN take the first line. Don't pipe curl into
+# `head` — go.dev/VERSION returns two lines, head closes the pipe after line 1,
+# and curl dies with EPIPE. Under `set -o pipefail` that aborts the whole script
+# silently. (e.g. body is "go1.24.5\ntime ...".)
+GO_VERSION_BODY="$(curl -fsSL 'https://go.dev/VERSION?m=text')" || {
+  echo "could not reach go.dev to resolve the Go version (network/DNS?)" >&2; exit 1; }
+GO_WANT="${GO_VERSION_BODY%%$'\n'*}"   # first line only — e.g. go1.24.5
 if ! command -v go >/dev/null 2>&1 || [[ "$(go version 2>/dev/null | awk '{print $3}')" != "$GO_WANT" ]]; then
   GO_TARBALL="${GO_WANT}.linux-${ARCH}.tar.gz"
   # Pull the official SHA256 for this exact tarball from go.dev's release index
   # and verify before extracting (the download is otherwise unauthenticated).
-  GO_SHA="$(curl -fsSL 'https://go.dev/dl/?mode=json&include=all' \
+  # Capture the JSON first (same `curl | head` SIGPIPE hazard as above), then
+  # parse it with `grep -m1` (no trailing `head` to slam the pipe shut).
+  GO_DL_JSON="$(curl -fsSL 'https://go.dev/dl/?mode=json&include=all')" || {
+    echo "could not reach go.dev/dl to resolve the Go SHA256" >&2; exit 1; }
+  GO_SHA="$(printf '%s' "$GO_DL_JSON" \
     | grep -A2 "\"filename\": \"${GO_TARBALL}\"" \
-    | grep '"sha256"' | head -1 | sed -E 's/.*"sha256": "([0-9a-f]+)".*/\1/')"
+    | grep -m1 '"sha256"' | sed -E 's/.*"sha256": "([0-9a-f]+)".*/\1/')"
   [[ "$GO_SHA" =~ ^[0-9a-f]{64}$ ]] || { echo "could not resolve SHA256 for ${GO_TARBALL}" >&2; exit 1; }
   curl -fsSL "https://go.dev/dl/${GO_TARBALL}" -o /tmp/go.tgz
   echo "${GO_SHA}  /tmp/go.tgz" | sha256sum -c - || { echo "Go tarball checksum mismatch — aborting" >&2; rm -f /tmp/go.tgz; exit 1; }

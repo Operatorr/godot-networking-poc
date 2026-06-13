@@ -66,6 +66,9 @@ This installs Go, Rust, PostgreSQL, Redis, swap, systemd units, and a sudoers
 rule. It clones the repo if missing. You'll be prompted for deploy's sudo password.
 NOTE
   rexec "test -d '${REPO_DIR}/.git' || git clone --branch '${BRANCH}' https://github.com/Operatorr/godot-networking-poc.git '${REPO_DIR}'"
+  # Sync to the latest ${BRANCH} so a re-run picks up fixes to the provision
+  # script itself (clone above is a no-op once the repo exists).
+  rexec "cd '${REPO_DIR}' && git fetch origin '${BRANCH}' && git checkout '${BRANCH}' && git reset --hard 'origin/${BRANCH}'"
   rexec "cd '${REPO_DIR}' && sudo bash deployment/provision_server.sh"
   ok "Provisioned. Set secrets in /etc/omega-realm/*.env, then: ./scripts/deploy.sh"
 }
