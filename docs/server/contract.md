@@ -169,6 +169,10 @@ region `u8` map mirrors `region_from_string` (`asia`/`local`/unknown→0, `europ
 Env: `OMEGA_TICKET_PRIVKEY` (api.env, 32-byte hex seed) ⇄ `OMEGA_TICKET_PUBKEY` (server.env);
 generate a pair with `go run ./cmd/gen_ticket_key`.
 
+> The full HTTP/JSON surface of the Go API (auth, characters, regions, leaderboard) — as
+> consumed by web/CMS clients — is documented in [`../api/cms-api.md`](../api/cms-api.md).
+> This section covers only the game-connect ticket the Rust server verifies.
+
 ### AuthResult (type 64, ch1)
 
 `[u8 type][u8 result]` then on success: `[u16 entity_id][u32 server_tick][u8 tick_rate]`.

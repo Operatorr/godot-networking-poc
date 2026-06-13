@@ -97,6 +97,8 @@ cd rust && cargo test --workspace && cargo clippy --workspace --all-targets && c
 # Deploy to the live server (native systemd; git pull + rebuild) — runs from your laptop
 ./scripts/deploy.sh provision     # one-time: install Go/Rust/Postgres/Redis + units (ADR 0007)
 ./scripts/deploy.sh               # pull master, rebuild api + both game servers, restart, health-check
+./scripts/deploy.sh sync          # BUILD-FREE: pull master + restart + health-check (runtime-only changes, e.g. server_config.*.json)
+./scripts/deploy.sh pull          # JUST sync the server checkout — no rebuild, no restart (server-side deploy scripts, docs)
 ./scripts/deploy.sh logs|status|health|restart
 
 # End-to-end smoke (needs a running server on 127.0.0.1:8081)

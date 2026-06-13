@@ -44,7 +44,7 @@ apt-get update -y
 
 log "2/5  Full upgrade (packages + kernel)"
 # full-upgrade (a.k.a. dist-upgrade) handles deps that plain upgrade holds back.
-apt-get "${APT_YES[@]:-}" full-upgrade
+apt-get ${APT_YES[@]+"${APT_YES[@]}"} full-upgrade
 
 log "3/5  Removing orphaned packages + cleaning cache"
 apt-get -y autoremove --purge

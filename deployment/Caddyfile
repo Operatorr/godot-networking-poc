@@ -1,0 +1,25 @@
+# Omega Realm — Caddy reverse proxy: terminates TLS in front of the Go API.
+#
+# WHY: the Go API (omega-api) serves PLAIN HTTP on 127.0.0.1:8080. Both the game
+# client and the CMS website's server-side (SSR) calls send credentials and JWTs, so
+# the public hop MUST be encrypted. Caddy serves the domain on 443 with an automatic
+# Let's Encrypt certificate and proxies to the API on localhost. Once this is in place
+# the direct :8080 port is closed at the firewall (setup_tls.sh) — the API is then
+# reachable only through Caddy.
+#
+# REQUIREMENTS: an A/AAAA DNS record for the domain must point at this droplet, and
+# ports 80 (ACME HTTP-01 challenge + HTTP→HTTPS redirect) and 443 must be open.
+# `deployment/setup_tls.sh` installs Caddy, copies this file to /etc/caddy/Caddyfile,
+# and pins OMEGA_API_DOMAIN into the caddy service environment.
+#
+# The domain defaults to omega.marrowtech.app; override by setting OMEGA_API_DOMAIN
+# in the caddy service environment (setup_tls.sh writes a systemd drop-in for this).
+
+{$OMEGA_API_DOMAIN:omega.marrowtech.app} {
+	# Compress responses (the CMS reads JSON; cheap win).
+	encode zstd gzip
+
+	# Everything goes to the Go API on localhost. Caddy handles cert issuance/renewal
+	# and the HTTP→HTTPS redirect automatically.
+	reverse_proxy 127.0.0.1:8080
+}

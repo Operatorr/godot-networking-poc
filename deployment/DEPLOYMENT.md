@@ -8,12 +8,17 @@ for why). Git is the deploy channel: the server pulls `master` and rebuilds in p
 
 ```
 Internet
-  ├── :8080/tcp  → omega-api      (Go: auth, characters, leaderboard, regions)
+  ├── :443/tcp   → caddy          (TLS reverse proxy) ──▶ omega-api @ 127.0.0.1:8080
+  │                               (Go: auth, characters, leaderboard, regions)
   ├── :8081/udp  → omega-arena    (Rust omega-server, ENet/UDP; metrics :9100, localhost)
   └── :8082/udp  → omega-sanctuary(Rust omega-server, ENet/UDP; metrics :9101, localhost)
 
-localhost only: PostgreSQL :5432 · Redis :6379 · Prometheus :9100/:9101
+localhost only: omega-api :8080 · PostgreSQL :5432 · Redis :6379 · Prometheus :9100/:9101
+(:80 redirects to :443. Before setup_tls.sh runs, the API is exposed directly on :8080/tcp.)
 ```
+
+TLS terminates at **Caddy** (auto Let's Encrypt) so the public hop is encrypted — the game
+client and the CMS website both send credentials/JWTs. See [Step 4](#step-4--put-the-go-api-behind-https-tls).
 
 One process = one Instance. The **Arena** has monsters + PvP
 (±1000 + pillars); the **Sanctuary** is the safe hub (±1856 walk-through). The client
@@ -60,7 +65,9 @@ your **laptop** (asks for the `deploy` user's sudo password; idempotent):
 ### Step 2 — Harden the box
 
 The repo is on the server now (Step 1 cloned it), so run the hardening script from there —
-firewall (opens 22, 8080/tcp, 8081+8082/udp), fail2ban, SSH lockdown, unattended-upgrades.
+firewall (opens 22, 80+443/tcp, 8080/tcp, 8081+8082/udp), fail2ban, SSH lockdown,
+unattended-upgrades. (80/443 are for the TLS proxy in Step 4; `setup_tls.sh` later closes the
+direct 8080 rule.)
 
 Run it from an **interactive** SSH session and keep that session open until you've confirmed a
 second login still works. The script disables root login and password auth, so a separate,
@@ -130,6 +137,39 @@ same run. What must line up across the two files:
 > `/etc/omega-realm/*.env` are `root:deploy 0640` and are **not** in the repo. The
 > templates are `deployment/env/*.example`.
 
+### Step 4 — Put the Go API behind HTTPS (TLS)
+
+The Go API serves **plain HTTP** on `:8080`. The game client and the CMS website's
+server-side calls both send credentials/JWTs, so the public hop must be encrypted.
+[`setup_tls.sh`](setup_tls.sh) installs **Caddy** as a TLS-terminating reverse proxy: it
+serves your domain on `443` with an automatic Let's Encrypt certificate and proxies to the API
+on `127.0.0.1:8080`, then **closes the direct 8080 firewall rule** so the API is reachable only
+over HTTPS.
+
+> **Prerequisite:** a DNS `A`/`AAAA` record for the domain must already point at this droplet —
+> Caddy proves domain control to Let's Encrypt over ports 80/443. The shipped default domain is
+> `omega.marrowtech.app` (see [`Caddyfile`](Caddyfile)); override with `OMEGA_API_DOMAIN`.
+
+```bash
+# [laptop]
+ssh deploy@<droplet-ip>                                  # → now on the server
+# [server] — default domain (omega.marrowtech.app):
+cd ~/omega-realm && sudo bash deployment/setup_tls.sh
+#   …or a different domain:
+#   sudo OMEGA_API_DOMAIN=api.example.com bash deployment/setup_tls.sh
+exit                                                     # → back on your laptop
+# [laptop] — verify the cert + proxy:
+curl https://omega.marrowtech.app/health                 # → {"status":"healthy",...}
+```
+
+Then point API consumers at `https://<domain>` (no `:8080`):
+- **Game client** — `client/data/config/client_config.json` → `"api_base_url": "https://omega.marrowtech.app"` (already set in-repo; rebuild/redistribute the client).
+- **CMS website** — `API_BASE_URL=https://omega.marrowtech.app` (server-side env; see [`docs/api/cms-api.md`](../docs/api/cms-api.md)).
+
+> **Alternative (zero server-side TLS):** front the droplet with Cloudflare's proxy (orange-cloud
+> the DNS record, SSL mode Full). Then you can skip Caddy — but still close 8080 to the public and
+> only allow Cloudflare's IPs, or the plaintext origin stays reachable.
+
 ## 2. Deploy
 
 From your laptop, anytime you want the server on the latest `master`:
@@ -148,12 +188,33 @@ branch with `OMEGA_BRANCH=my-branch ./scripts/deploy.sh`.
 
 ```bash
 # [laptop]
+./scripts/deploy.sh sync       # pull master + restart + health-check, NO rebuild (fast)
+./scripts/deploy.sh pull       # JUST sync the server's checkout — no rebuild, no restart
 ./scripts/deploy.sh status     # systemctl status for all three services
 ./scripts/deploy.sh logs       # follow journald for api + arena + sanctuary
 ./scripts/deploy.sh health     # curl API /health + both metrics endpoints
-./scripts/deploy.sh restart    # restart without rebuilding
+./scripts/deploy.sh restart    # restart without rebuilding (no pull either)
 ./scripts/deploy.sh ssh        # interactive shell on the box
 ```
+
+**`deploy` vs `sync` vs `pull`** — three tiers, cheapest last; pick by what your change needs:
+
+| command | recompiles? | restarts services? | use when the change is… |
+| ------- | ----------- | ------------------ | ----------------------- |
+| `deploy` | yes (`go build` + `cargo build --release`, minutes) | yes | compiled code under `api/` or `rust/` |
+| `sync`   | no | yes | read at **runtime** — `server_config.{arena,sanctuary}.json`, other non-compiled assets a restart picks up |
+| `pull`   | no | no | takes effect **without a restart** — server-side deploy scripts (`update_os.sh`, `server_update.sh`, …), docs |
+
+All three keep the server a pristine mirror of origin (`git reset --hard origin/master`) — that
+reset is instant; the cost is in the rebuild and the restart, which the lighter tiers skip.
+
+- `sync` ([`server_sync.sh`](server_sync.sh)) leaves the existing binaries untouched and
+  **guards** against misuse: if the pulled range touched `api/` or `rust/` it aborts *before*
+  restarting (the binaries would be stale against the new source) and tells you to run `deploy`.
+- `pull` touches nothing running — no `go`/`cargo`, no `systemctl`. The running services keep
+  their current binaries and config; the new files just sit in the checkout for next time a
+  script runs. Note that a change to `scripts/deploy.sh` **itself** needs no server step at all —
+  that script runs on your laptop, not the box.
 
 The API auto-applies its schema on startup (`db.Exec(schema)`), so there is no separate
 migration step.
@@ -209,6 +270,7 @@ export OMEGA_SERVER=<droplet-ip>:8081           # set the live target once
 | `/etc/omega-realm/server.env` | shared game-server env (ticket policy). **No `GAME_SERVER_PORT`** — env wins over config and would clobber both instances onto one port |
 | `deployment/server_config.arena.json` | Arena: mode/port 8081/metrics 9100 + sim tuning |
 | `deployment/server_config.sanctuary.json` | Sanctuary: mode/port 8082/metrics 9101 |
+| `deployment/Caddyfile` | TLS reverse proxy: `{$OMEGA_API_DOMAIN}` → `127.0.0.1:8080`. Installed to `/etc/caddy/Caddyfile` by `setup_tls.sh`; domain pinned via the `caddy.service.d/10-omega-domain.conf` drop-in |
 
 Env precedence (game server): CLI flag > env var > JSON config > built-in default
 (`rust/server/src/config.rs`).
@@ -224,6 +286,8 @@ Env precedence (game server): CLI flag > env var > JSON config > built-in defaul
 | Sanctuary metrics missing | Arena=9100, Sanctuary=9101 — they must differ (set in each JSON config) |
 | Build OOM | confirm swap is on: `swapon --show` (provisioning adds 2 GB) |
 | High latency | `journalctl -u omega-arena` tick warnings; consider a larger droplet |
+| HTTPS cert not issued | `journalctl -u caddy -f`; confirm the DNS `A` record points here and 80/443 are open (`sudo ufw status`). Caddy retries automatically once DNS/ports are right |
+| Client/CMS can't reach API over HTTPS | `curl https://<domain>/health`; if 8080 was closed by `setup_tls.sh`, the API is only reachable via Caddy — confirm `systemctl is-active caddy` |
 
 ## Rollback
 
