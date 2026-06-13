@@ -116,8 +116,19 @@ pub fn replay_ground_step(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::arena::{set_world_geometry, ARENA_GEOMETRY};
 
     const DT: f64 = 1.0 / 30.0;
+
+    /// Honor the arena "set once before any read" contract on this test's thread (each libtest
+    /// test gets its own thread). Sets the Arena default, so behavior is unchanged.
+    fn init_arena() {
+        set_world_geometry(
+            ARENA_GEOMETRY.min,
+            ARENA_GEOMETRY.max,
+            ARENA_GEOMETRY.obstacles_enabled,
+        );
+    }
 
     #[test]
     fn opposite_keys_cancel() {
@@ -135,6 +146,7 @@ mod tests {
 
     #[test]
     fn walk_step_moves_at_player_speed() {
+        init_arena();
         let mut sm = MovementSm::new();
         let r = step_movement(
             &mut sm,
@@ -153,6 +165,7 @@ mod tests {
 
     #[test]
     fn realized_velocity_reflects_bounds_clamp() {
+        init_arena();
         let mut sm = MovementSm::new();
         // Walking right at the east edge: position clamps, realized velocity is zero.
         let r = step_movement(
@@ -174,6 +187,7 @@ mod tests {
     fn replay_matches_walk_prediction_for_plain_movement() {
         // For plain WASD movement (no dash/sprint edge cases) the replay model and the full SM
         // produce identical positions.
+        init_arena();
         let mut sm = MovementSm::new();
         let start = Vec2::new(100.0, 100.0);
         let live = step_movement(
@@ -194,6 +208,7 @@ mod tests {
 
     #[test]
     fn replay_never_dashes() {
+        init_arena();
         let sm = MovementSm::new();
         let r = replay_ground_step(&sm, Vec2::ZERO, flags::MOVE_RIGHT | flags::DASH, DT);
         // Ground speed only — 200 u/s, not 720.

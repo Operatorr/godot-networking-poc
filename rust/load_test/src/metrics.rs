@@ -39,8 +39,15 @@ pub struct BotMetrics {
     pub unexpected_disconnect: bool,
     pub error_count: u64,
     pub last_error: String,
+    /// Times this bot's `poll` panicked and was caught at the swarm boundary (see `poll_all`).
+    /// Non-zero means a bot crashed but the swarm survived; surfaced in the report so a caught
+    /// panic is never silently lost.
+    pub panic_count: u64,
     /// Server packets that failed `ServerPacket::decode` — must be zero (strict decode).
     pub decode_failures: u64,
+    /// `peer.send` calls that failed (queue full / peer not connected) — a dropped client→server
+    /// packet (a lost ConnectAuth/BaselineAck/input). Non-zero means the swarm is shedding sends.
+    pub send_failures: u64,
     /// ENet's mean packet-loss ratio (0..1), last sampled value.
     pub enet_packet_loss: f64,
     /// Farthest replicated entity ever observed (AoI cull assertion input).
@@ -78,9 +85,11 @@ impl BotMetrics {
             "hit_reports_sent": self.hit_reports_sent,
             "respawn_requests_sent": self.respawn_requests_sent,
             "decode_failures": self.decode_failures,
+            "send_failures": self.send_failures,
             "enet_packet_loss_pct": round2(self.enet_packet_loss * 100.0),
             "max_observed_entity_distance": round1(self.max_observed_entity_distance as f64),
             "error_count": self.error_count,
+            "panic_count": self.panic_count,
             "last_error": self.last_error,
         })
     }
@@ -118,11 +127,19 @@ pub struct Aggregated {
     pub packet_loss_pct: f64,
     pub total_errors: u64,
     pub total_decode_failures: u64,
+    /// Failed `peer.send` calls across the swarm (dropped client→server packets).
+    pub total_send_failures: u64,
+    /// Bots whose `poll` panicked and was caught at the swarm boundary (see `poll_all`).
+    pub total_panics: u64,
     pub crash_rate_pct: f64,
     pub server_avg_tick_time_ms: f64,
     pub server_max_tick_time_ms: f64,
     pub server_entity_count: u16,
     pub server_player_count: u16,
+    /// Kept `u32` to mirror the wire field exactly (`protocol::ServerMetrics.total_bytes_sent` is
+    /// `u32`): widening here would not extend the range, since the source value already wraps at
+    /// 4 GB on the wire. A long run that overflows this counter is a protocol-level limit, not a
+    /// load-test one.
     pub server_total_bytes_sent: u32,
     pub server_avg_bandwidth_per_client: u32,
 }
@@ -169,6 +186,8 @@ where
         agg.total_bytes_received += m.bytes_received;
         agg.total_errors += m.error_count;
         agg.total_decode_failures += m.decode_failures;
+        agg.total_send_failures += m.send_failures;
+        agg.total_panics += m.panic_count;
         if let Some(sm) = &m.latest_server_metrics {
             if latest_sm.is_none_or(|cur| sm.0 > cur.0) {
                 latest_sm = Some(sm);
@@ -190,6 +209,12 @@ where
     }
     if let Some(min) = tick_min {
         if duration > 0.0 && tick_max > min {
+            // Bias note: `tick_max - min` is the span of server ticks SEEN across the swarm, but
+            // `duration` is the run window. Because bots spawn staggered (the first bot sees ticks
+            // the last never will) and tear down within a fixed drain window, the observed span
+            // can run slightly short of `duration * true_tick_rate`, so this estimate is a mild
+            // UNDER-count of the real tick rate — not an exact measurement. The server-reported
+            // `avg_tick_time_ms` is the authoritative figure; this is a sanity cross-check.
             agg.estimated_server_tick_rate = (tick_max - min) as f64 / duration;
         }
     }
@@ -197,6 +222,10 @@ where
     if !loss_samples.is_empty() {
         agg.packet_loss_pct = loss_samples.iter().sum::<f64>() / loss_samples.len() as f64 * 100.0;
     }
+    // Crash rate = bots that never reached Running OR were dropped unexpectedly, over all bots
+    // (including stillborn). Note: this lumps connect-time failures (a bot that timed out during
+    // the staggered spawn) together with mid-run server drops; with aggressive staggering a slow
+    // connect can inflate this slightly versus a true mid-run crash rate.
     agg.crash_rate_pct = agg.disconnected_bots as f64 / agg.total_bots as f64 * 100.0;
     if let Some((_, sm)) = latest_sm {
         agg.server_avg_tick_time_ms = sm.avg_tick_time_ms_x100 as f64 / 100.0;
@@ -277,6 +306,8 @@ pub fn generate_report(agg: &Aggregated, server: &str, unix_secs: u64) -> String
         format!("  Disconnected:    {}", agg.disconnected_bots),
         format!("  Errors:          {}", agg.total_errors),
         format!("  Decode Failures: {}", agg.total_decode_failures),
+        format!("  Send Failures:   {}", agg.total_send_failures),
+        format!("  Bot Panics:      {}", agg.total_panics),
         String::new(),
         "Server Metrics (client-estimated):".into(),
         format!(
@@ -367,6 +398,8 @@ pub fn report_json(
             "disconnected_bots": agg.disconnected_bots,
             "total_errors": agg.total_errors,
             "total_decode_failures": agg.total_decode_failures,
+            "total_send_failures": agg.total_send_failures,
+            "total_panics": agg.total_panics,
             "latency_min_ms": round1(agg.latency_min_ms),
             "latency_avg_ms": round1(agg.latency_avg_ms),
             "latency_max_ms": round1(agg.latency_max_ms),

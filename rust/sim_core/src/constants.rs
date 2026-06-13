@@ -140,6 +140,20 @@ pub const MONSTER_STEERING_RANDOMNESS: f64 = 0.15;
 pub const MONSTER_RETARGET_INTERVAL: f64 = 1.0;
 pub const MONSTER_LOSE_INTEREST_DISTANCE: f32 = 900.0;
 
+// ── D11 lenient hit backstop ────────────────────────────────────────────────
+/// The backstop's blatant-overlap window: the TRUE hit radius (projectile radius + player hitbox
+/// radius = 8 + 16 = 24 u), no looser. The lenient backstop must only fire on this exact overlap —
+/// a tighter or wider value would change the phantom-hit feel the client-authoritative path exists
+/// to prevent (migration-spec D11; hit-authority-model invariant #4). The server's swept-hit check
+/// currently passes `PROJECTILE_RADIUS + PLAYER_HITBOX_RADIUS` directly; this names that value so
+/// the invariant is owned in `sim_core`.
+pub const HIT_BACKSTOP_OVERLAP_UNITS: f32 = PROJECTILE_RADIUS + PLAYER_HITBOX_RADIUS;
+/// Minimum grace period (in ticks) after a blatant authoritative overlap before the backstop may
+/// apply the hit — leaves the client time to send its own LOCAL_HIT_REPORT. The invariant is
+/// grace ≥ 15 ticks; the server reads its actual grace from config (`backstop_grace_ticks`,
+/// default 20), so this constant pins the floor that config must not drop below.
+pub const HIT_BACKSTOP_GRACE_TICKS: u32 = 15;
+
 // ── Experience / progression ────────────────────────────────────────────────
 /// Every alive player within this distance of a dying monster shares its full XP
 /// reward (a friend nearby can boost you — no split). See docs/systems/PROGRESSION.md.

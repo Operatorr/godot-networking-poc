@@ -865,6 +865,9 @@ func _on_sacrifice_completed(result: int, response_code: int, _headers: PackedSt
 		GameManager.player_data["player_class"] = PacketTypes.PlayerClass.ZEALOT
 		GameManager.reset_progression()
 		GameManager.player_data_updated.emit()
+		# Tear down the live Sanctuary ENet session before leaving (matches _leave_arena);
+		# the sacrificed character must not linger as a connected entity.
+		NetworkManager.disconnect_from_server("Character sacrificed")
 		print("[Sanctuary] Character sacrificed; routing to character creation")
 		SceneManager.goto_character_creation()
 	else:

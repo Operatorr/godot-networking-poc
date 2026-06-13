@@ -59,7 +59,16 @@ fn main() {
                 i += 1;
             }
             "--port" if i + 1 < args.len() => {
-                port_override = args[i + 1].parse().ok();
+                match args[i + 1].parse::<u16>() {
+                    Ok(p) if p != 0 => port_override = Some(p),
+                    _ => {
+                        eprintln!(
+                            "fatal: --port '{}' is not a valid port (1..=65535)",
+                            args[i + 1]
+                        );
+                        std::process::exit(2);
+                    }
+                }
                 i += 1;
             }
             "--allow-unsigned-tickets" => allow_unsigned_override = Some(true),
@@ -90,6 +99,19 @@ fn main() {
     if let Some(port) = port_override {
         config.port = port;
     }
+    // Re-validate: a `--mode` typo or other CLI override must be caught the same way a bad JSON
+    // value is (load() already validated the file-derived config before the overrides landed).
+    config.validate();
+
+    // Defense-in-depth: unsigned tickets are a dev/load-test affordance only. If they're enabled
+    // on a non-local (production) region, that's almost certainly a misconfiguration — shout.
+    if config.allow_unsigned_tickets && !config.region.eq_ignore_ascii_case("local") {
+        warn!(
+            "SECURITY: allow_unsigned_tickets is TRUE on non-local region '{}' — auth is OPEN. \
+             Set OMEGA_ALLOW_UNSIGNED_TICKETS=false (or --require-tickets) in production.",
+            config.region
+        );
+    }
 
     // Apply this instance's world geometry ONCE, on the tick thread (this thread), before the sim
     // runs. Arena = ±1000 + 16 pillars; Sanctuary = ±1856 walk-through. The client sets the same
@@ -113,10 +135,12 @@ fn main() {
 
     if config.metrics_port != 0 {
         match metrics_exporter_prometheus::PrometheusBuilder::new()
-            .with_http_listener(([0, 0, 0, 0], config.metrics_port))
+            // Loopback-only: metrics are scraped over an SSH tunnel / local Prometheus, never
+            // exposed publicly (the UDP game socket below stays on 0.0.0.0 — it must be public).
+            .with_http_listener(([127, 0, 0, 1], config.metrics_port))
             .install()
         {
-            Ok(()) => info!("prometheus metrics on :{}", config.metrics_port),
+            Ok(()) => info!("prometheus metrics on 127.0.0.1:{}", config.metrics_port),
             Err(e) => warn!("metrics exporter failed to start: {e}"),
         }
     }

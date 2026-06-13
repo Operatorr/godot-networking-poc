@@ -4,7 +4,9 @@
 //! drift in one place (migration-spec D11).
 
 use crate::arena::closest_point_on_segment;
-use crate::constants::MONSTER_ENTITY_ID_START;
+use crate::constants::{
+    HIT_BACKSTOP_GRACE_TICKS, HIT_BACKSTOP_OVERLAP_UNITS, MONSTER_ENTITY_ID_START,
+};
 use crate::vec2::Vec2;
 
 /// A projectile is client-authoritative for the victim's dodge iff it is monster-owned.
@@ -25,6 +27,27 @@ pub fn swept_hit(self_pos: Vec2, prev_pos: Vec2, cur_pos: Vec2, hit_radius: f32)
 /// obstacle.
 pub fn flight_origin(current_position: Vec2, direction: Vec2, distance_traveled: f32) -> Vec2 {
     current_position - direction * distance_traveled
+}
+
+/// D11 lenient-backstop overlap test: did a monster-owned bullet's authoritative swept path
+/// (`prev_pos → cur_pos`) blatantly overlap the victim this tick — i.e. pass within the TRUE
+/// 24 u hit window ([`HIT_BACKSTOP_OVERLAP_UNITS`]), no looser? This is the single predicate the
+/// backstop bookkeeping should record on; expressing it here ties the "blatant overlap only"
+/// invariant to the owned constant instead of a hardcoded radius sum at the call site.
+pub fn is_backstop_overlap(victim_pos: Vec2, prev_pos: Vec2, cur_pos: Vec2) -> bool {
+    swept_hit(victim_pos, prev_pos, cur_pos, HIT_BACKSTOP_OVERLAP_UNITS)
+}
+
+/// Has a recorded blatant overlap aged past the grace period and become applyable? `grace_ticks`
+/// is the server's configured grace; the backstop must never use a value below
+/// [`HIT_BACKSTOP_GRACE_TICKS`] (the D11 floor). Uses saturating subtraction so a stale/out-of-order
+/// tick can never underflow.
+pub fn backstop_grace_elapsed(overlap_tick: u64, now_tick: u64, grace_ticks: u64) -> bool {
+    debug_assert!(
+        grace_ticks >= HIT_BACKSTOP_GRACE_TICKS as u64,
+        "backstop grace {grace_ticks} is below the D11 floor of {HIT_BACKSTOP_GRACE_TICKS} ticks"
+    );
+    now_tick.saturating_sub(overlap_tick) >= grace_ticks
 }
 
 /// Server plausibility test: does the bullet's straight-line flight pass within `threshold` of
@@ -80,6 +103,42 @@ mod tests {
             Vec2::new(50.0, 0.0),
             16.0
         ));
+    }
+
+    #[test]
+    fn backstop_overlap_uses_true_24u_window() {
+        use crate::constants::HIT_BACKSTOP_OVERLAP_UNITS;
+        assert_eq!(HIT_BACKSTOP_OVERLAP_UNITS, 24.0);
+        // Bullet sweeps directly over the victim — blatant overlap.
+        assert!(is_backstop_overlap(
+            Vec2::new(0.0, 0.0),
+            Vec2::new(-50.0, 0.0),
+            Vec2::new(50.0, 0.0),
+        ));
+        // Passes just outside the 24 u window — not a backstop overlap (must stay lenient).
+        assert!(!is_backstop_overlap(
+            Vec2::new(0.0, 24.0),
+            Vec2::new(-50.0, 0.0),
+            Vec2::new(50.0, 0.0),
+        ));
+        // 23 u away — inside the window.
+        assert!(is_backstop_overlap(
+            Vec2::new(0.0, 23.0),
+            Vec2::new(-50.0, 0.0),
+            Vec2::new(50.0, 0.0),
+        ));
+    }
+
+    #[test]
+    fn backstop_grace_elapsed_floor_and_saturation() {
+        use crate::constants::HIT_BACKSTOP_GRACE_TICKS;
+        let grace = HIT_BACKSTOP_GRACE_TICKS as u64;
+        // Not yet elapsed one tick before the grace window closes.
+        assert!(!backstop_grace_elapsed(100, 100 + grace - 1, grace));
+        // Exactly at the grace boundary ⇒ applyable.
+        assert!(backstop_grace_elapsed(100, 100 + grace, grace));
+        // Out-of-order tick (now < overlap): saturating sub ⇒ 0, never panics, not elapsed.
+        assert!(!backstop_grace_elapsed(100, 90, grace));
     }
 
     #[test]

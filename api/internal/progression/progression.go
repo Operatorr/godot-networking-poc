@@ -1,7 +1,8 @@
 // Package progression ports the shared level curve and Glory conversion math from
-// rust/sim_core/src/progression.rs. The numbers here MUST stay byte-for-byte
-// identical to the Rust authoritative server so that death/sacrifice Glory awards
-// computed by the Go API match what the simulation expects.
+// rust/sim_core/src/progression.rs. This port MUST produce identical results for
+// all valid (non-negative, in-range) inputs as the Rust authoritative server, so
+// that death/sacrifice Glory awards computed by the Go API match what the
+// simulation expects.
 //
 // Reference: rust/sim_core/src/progression.rs (the source of truth).
 package progression

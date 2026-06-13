@@ -5,6 +5,10 @@ Documentation=https://github.com/Operatorr/godot-networking-poc
 After=network-online.target postgresql.service redis-server.service
 Wants=network-online.target
 Requires=postgresql.service redis-server.service
+# Start-limit directives belong in [Unit]; systemd ignores them under [Service].
+# Survive transient DB blips without tripping the start-limit.
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -16,9 +20,6 @@ EnvironmentFile=/etc/omega-realm/api.env
 ExecStart=/home/deploy/omega-realm/api/bin/server
 Restart=always
 RestartSec=3
-# Survive transient DB blips without tripping the start-limit.
-StartLimitIntervalSec=60
-StartLimitBurst=5
 
 # --- light hardening (POC-appropriate; everything lives under /home/deploy) ---
 NoNewPrivileges=true

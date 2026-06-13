@@ -1,6 +1,17 @@
 //! The arena geometry + the analytic mover — THE function the networked sim runs on
 //! (extraction §4.1–4.5). No physics engine: pure rect math against 16 static obstacles and the
 //! ±1000 bounds clamp. The ±1005 scene walls are visual scenery and play no role here.
+//!
+//! ## World-geometry "set once, single thread" contract
+//!
+//! The active [`WorldGeometry`] is a thread-local that the whole module reads. The sim is
+//! single-threaded in production (the server's tick thread; the client's main/render thread), so
+//! each such thread MUST call [`set_world_geometry`] exactly once before running any bounds /
+//! obstacle / movement query. A thread that never sets it would silently fall back to the Arena
+//! default — which on a Sanctuary instance would corrupt collision (Arena obstacles + ±1000
+//! bounds instead of the wider walk-through town). To catch that, debug builds track whether the
+//! geometry was set and `debug_assert!` it on every read; release builds keep the Arena default
+//! (unchanged behavior) so a misconfigured deploy degrades rather than panics.
 
 use crate::constants::{MAP_MAX, MAP_MIN, MONSTER_HITBOX_RADIUS, PLAYER_HITBOX_RADIUS};
 use crate::rect::Rect;
@@ -31,6 +42,10 @@ thread_local! {
     // thread; the client's main/render thread), and per-test isolation comes for free since
     // libtest runs each test on its own thread that re-initializes to the Arena default.
     static WORLD: Cell<WorldGeometry> = const { Cell::new(ARENA_GEOMETRY) };
+
+    // Debug-only: was `set_world_geometry` called on this thread? Reads `debug_assert!` it, to
+    // catch a thread that silently inherited the Arena default (see the module-level contract).
+    static WORLD_INITIALIZED: Cell<bool> = const { Cell::new(false) };
 }
 
 /// Set the active instance's world geometry. Call once before the sim runs.
@@ -42,14 +57,33 @@ pub fn set_world_geometry(min: Vec2, max: Vec2, obstacles_enabled: bool) {
             obstacles_enabled,
         })
     });
+    #[cfg(debug_assertions)]
+    WORLD_INITIALIZED.with(|i| i.set(true));
+}
+
+/// Debug-only guard: in debug builds, assert the active thread set its geometry before reading it.
+/// No-op in release (the Arena default stands, unchanged behavior).
+#[inline]
+fn debug_assert_world_initialized() {
+    #[cfg(debug_assertions)]
+    WORLD_INITIALIZED.with(|i| {
+        debug_assert!(
+            i.get(),
+            "world_geometry() read before set_world_geometry() on this thread — the Arena default \
+             would silently apply (wrong for a Sanctuary instance). Call set_world_geometry() once \
+             at server start / client scene entry. See arena.rs module docs."
+        );
+    });
 }
 
 /// The active instance's world geometry.
 pub fn world_geometry() -> WorldGeometry {
+    debug_assert_world_initialized();
     WORLD.with(|w| w.get())
 }
 
 fn obstacles_active() -> bool {
+    debug_assert_world_initialized();
     WORLD.with(|w| w.get().obstacles_enabled)
 }
 
@@ -261,14 +295,27 @@ pub fn is_valid_monster_spawn_position(pos: Vec2) -> bool {
 mod tests {
     use super::*;
 
+    /// Explicitly honor the "set once before any read" contract on this test's thread (libtest
+    /// gives each test its own thread, so this satisfies the debug-build initialized guard). The
+    /// value equals the Arena default, so behavior is unchanged.
+    fn init_arena() {
+        set_world_geometry(
+            ARENA_GEOMETRY.min,
+            ARENA_GEOMETRY.max,
+            ARENA_GEOMETRY.obstacles_enabled,
+        );
+    }
+
     #[test]
     fn clamp_center_to_1000() {
+        init_arena();
         let p = clamp_to_bounds(Vec2::new(-2000.0, 1500.0));
         assert_eq!(p, Vec2::new(-1000.0, 1000.0));
     }
 
     #[test]
     fn free_move_returns_target() {
+        init_arena();
         let r = move_with_obstacle_collision(
             Vec2::new(-800.0, -800.0),
             Vec2::new(-790.0, -800.0),
@@ -279,6 +326,7 @@ mod tests {
 
     #[test]
     fn diagonal_into_wall_slides_full_axis_component() {
+        init_arena();
         // Center north pillar spans x −20..20, y −200..−40; expanded by 16: x −36..36, y −216..−24.
         // Approach from the left, moving right+down along the pillar's left face.
         let from = Vec2::new(-40.0, -150.0);
@@ -291,6 +339,7 @@ mod tests {
 
     #[test]
     fn blocked_both_axes_freezes() {
+        init_arena();
         // Surrounded: heading straight into the expanded rect with both slides blocked.
         let from = Vec2::new(-37.0, -150.0); // 1 unit left of expanded edge (−36)
         let to = Vec2::new(-25.0, -150.0); // inside expanded rect
@@ -303,6 +352,7 @@ mod tests {
 
     #[test]
     fn expanded_upper_edge_exclusive() {
+        init_arena();
         // Center exactly on the expanded max-x edge of the NE mid barrier:
         // barrier x 350..450 expanded by 16 ⇒ 334..466. has_point(466,…) must be false.
         assert!(!circle_intersects_obstacle(Vec2::new(466.0, -337.5), 16.0));
@@ -312,6 +362,7 @@ mod tests {
 
     #[test]
     fn swept_test_prevents_tunneling() {
+        init_arena();
         // Mid barrier is 25 thick; a 200-unit step would pass clean over it without the sweep.
         let from = Vec2::new(-400.0, -450.0);
         let to = Vec2::new(-400.0, -250.0);
@@ -334,6 +385,7 @@ mod tests {
 
     #[test]
     fn projectile_line_hits_unexpanded_rect() {
+        init_arena();
         // Straight through the center north pillar.
         let hit = line_intersects_obstacle(Vec2::new(-100.0, -100.0), Vec2::new(100.0, -100.0));
         assert!(hit.is_some());
@@ -346,6 +398,7 @@ mod tests {
 
     #[test]
     fn all_player_spawns_valid() {
+        init_arena();
         for s in crate::constants::ARENA_PLAYER_SPAWNS {
             assert!(is_valid_player_spawn_position(s), "spawn {s:?} invalid");
         }
@@ -353,6 +406,7 @@ mod tests {
 
     #[test]
     fn inside_expanded_rect_freezes_forever() {
+        init_arena();
         // No depenetration: starting inside, every move (including zero) reports a hit.
         let inside = Vec2::new(0.0, -100.0); // inside the center north pillar itself
         let r = move_with_obstacle_collision(inside, Vec2::new(0.0, -300.0), 16.0);
@@ -360,8 +414,25 @@ mod tests {
     }
 
     #[test]
+    #[cfg(debug_assertions)]
+    fn debug_guard_fires_when_geometry_unset() {
+        // A fresh thread that never calls set_world_geometry must trip the debug guard on the
+        // first geometry read. (Release builds skip this — the Arena default stands.)
+        let joined = std::thread::spawn(|| {
+            // Reading geometry without an init call: debug_assert must panic.
+            let _ = world_geometry();
+        })
+        .join();
+        assert!(
+            joined.is_err(),
+            "world_geometry() must debug_assert when read before set_world_geometry()"
+        );
+    }
+
+    #[test]
     fn sanctuary_geometry_widens_bounds_and_drops_obstacles() {
-        // Each test runs on its own thread, so this thread starts at the Arena default.
+        // Honor the set-once contract on this thread; the value equals the Arena default.
+        init_arena();
         assert_eq!(world_geometry(), ARENA_GEOMETRY);
         // Sanctuary: ±1856 town bounds, no obstacles.
         set_world_geometry(

@@ -27,6 +27,14 @@ pub enum ProgressionJob {
 pub struct HydrateResult {
     pub peer: usize,
     pub character_id: u32,
+    /// `None` ⇒ the hydrate failed (request error or parse error). The world MUST NOT fall back to
+    /// softcore defaults for a real character — a hardcore character played as softcore would
+    /// silently lose permadeath. The world kicks the peer so they retry a clean join instead.
+    pub state: Option<HydrateState>,
+}
+
+#[derive(Debug, Clone)]
+pub struct HydrateState {
     pub level: u16,
     pub experience: u32,
     pub mode_hardcore: bool,
@@ -99,15 +107,32 @@ pub fn spawn(api_server_url: String) -> ProgressionClient {
                                     let _ = hydrate_tx.send(HydrateResult {
                                         peer,
                                         character_id,
-                                        level: dto.level.clamp(1, 65535) as u16,
-                                        experience: dto.experience.max(0) as u32,
-                                        mode_hardcore: dto.mode == "hardcore",
+                                        state: Some(HydrateState {
+                                            level: dto.level.clamp(1, 65535) as u16,
+                                            experience: dto.experience.max(0) as u32,
+                                            mode_hardcore: dto.mode == "hardcore",
+                                        }),
                                     });
                                 }
-                                Err(e) => warn!("hydrate parse failed (char {character_id}): {e}"),
+                                Err(e) => {
+                                    warn!("hydrate parse failed (char {character_id}): {e}");
+                                    let _ = hydrate_tx.send(HydrateResult {
+                                        peer,
+                                        character_id,
+                                        state: None,
+                                    });
+                                }
                             },
                             Err(e) => {
-                                debug!("hydrate request failed (char {character_id}): {e}")
+                                // Fail CLOSED: don't let a hardcore character be played as softcore
+                                // just because the API was unreachable. Signal failure so the world
+                                // kicks the peer (raised from debug! — this is operationally real).
+                                warn!("hydrate request failed (char {character_id}): {e}");
+                                let _ = hydrate_tx.send(HydrateResult {
+                                    peer,
+                                    character_id,
+                                    state: None,
+                                });
                             }
                         }
                     }

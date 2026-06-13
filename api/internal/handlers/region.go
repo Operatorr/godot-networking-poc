@@ -74,12 +74,20 @@ func (h *RegionHandler) UpdateRegionHeartbeat(w http.ResponseWriter, r *http.Req
 
 	w.Header().Set("Content-Type", "application/json")
 
-	if expectedToken := os.Getenv("REGION_HEARTBEAT_TOKEN"); expectedToken != "" {
-		if r.Header.Get("X-Region-Heartbeat-Token") != expectedToken {
-			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(ErrorResponse{Error: "Unauthorized"})
+	// Fail closed, mirroring internal.go's requireServerToken: an unset
+	// REGION_HEARTBEAT_TOKEN rejects the request (503) unless the operator has
+	// explicitly opted into the insecure dev path via ALLOW_INSECURE_INTERNAL=true.
+	expectedToken := os.Getenv("REGION_HEARTBEAT_TOKEN")
+	if expectedToken == "" {
+		if os.Getenv("ALLOW_INSECURE_INTERNAL") != "true" {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(ErrorResponse{Error: "Region heartbeat unconfigured (set REGION_HEARTBEAT_TOKEN)"})
 			return
 		}
+	} else if !serverTokenValid(r.Header.Get("X-Region-Heartbeat-Token"), expectedToken) {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Unauthorized"})
+		return
 	}
 
 	var req RegionHeartbeatRequest
@@ -282,4 +290,3 @@ func (h *RegionHandler) applyRuntimeStatuses(ctx context.Context, regions []*mod
 	}
 	return applied
 }
-

@@ -108,6 +108,7 @@ OPTIONS:
         --difficulty <0..1>    Bot tactical difficulty (default: 1.0)
         --input-hz <HZ>        Input send rate (default: 30, like the real client)
         --bandwidth-budget <BPS>  Advertised per-peer budget in ConnectAuth (0 = server default)
+        --seed <U64>           Seed bots as (seed ^ bot_id) for reproducible runs (default: entropy)
     -o, --output <PATH>        JSON report path (default: report_<timestamp>.json)
         --no-report            Skip the JSON report and success-criteria exit code
         --assertions <MODE>    strict | warn | off — regression assertions (default: warn)
@@ -139,6 +140,8 @@ struct Args {
     difficulty: f64,
     input_hz: f64,
     bandwidth_budget: u32,
+    /// When set, bots are seeded `seed ^ bot_id` for reproducible swarm runs; unset = entropy.
+    seed: Option<u64>,
     no_report: bool,
     assertions: AssertionMode,
     rate_budget: u64,
@@ -165,6 +168,7 @@ fn parse_args() -> Result<Args, String> {
         difficulty: 1.0,
         input_hz: 30.0,
         bandwidth_budget: 0,
+        seed: None,
         no_report: false,
         assertions: AssertionMode::Warn,
         rate_budget: 0,
@@ -217,9 +221,15 @@ fn parse_args() -> Result<Args, String> {
                 })?);
             }
             "--difficulty" => {
-                args.difficulty = value(&mut i)?
+                let d: f64 = value(&mut i)?
                     .parse()
-                    .map_err(|e| format!("--difficulty: {e}"))?
+                    .map_err(|e| format!("--difficulty: {e}"))?;
+                if !d.is_finite() {
+                    return Err(format!(
+                        "--difficulty: must be a finite number in 0..1 (got {d})"
+                    ));
+                }
+                args.difficulty = d;
             }
             "--input-hz" => {
                 args.input_hz = value(&mut i)?
@@ -230,6 +240,9 @@ fn parse_args() -> Result<Args, String> {
                 args.bandwidth_budget = value(&mut i)?
                     .parse()
                     .map_err(|e| format!("--bandwidth-budget: {e}"))?
+            }
+            "--seed" => {
+                args.seed = Some(value(&mut i)?.parse().map_err(|e| format!("--seed: {e}"))?)
             }
             "--no-report" => args.no_report = true,
             "--assertions" => {
@@ -315,6 +328,17 @@ fn main() {
         }
     };
 
+    // Initialize the sim's world geometry on this (single) thread before any bot steps
+    // `sim_core`. The swarm is single-threaded — every bot's `step_movement` runs here on main —
+    // so one call configures them all. Without it, a debug build would `debug_assert!` on the
+    // first geometry read; release silently falls back to the same Arena default. The load test
+    // exercises the Arena instance (see README), so the Arena geometry is the correct match.
+    sim_core::set_world_geometry(
+        sim_core::ARENA_GEOMETRY.min,
+        sim_core::ARENA_GEOMETRY.max,
+        sim_core::ARENA_GEOMETRY.obstacles_enabled,
+    );
+
     let stop = Arc::new(AtomicBool::new(false));
     {
         let stop = stop.clone();
@@ -333,7 +357,25 @@ fn main() {
         args.server
     );
 
+    // Each bot owns one UDP socket (one file descriptor), so a 1000-bot swarm needs ~1000+ fds.
+    // A low `ulimit -n` (macOS defaults to 256) makes binds fail mid-spawn, surfacing only as
+    // per-bot "failed to start". Warn loudly up front so the cause isn't misread. We have no
+    // `libc` dependency to read the live soft limit cheaply, so this is a static heuristic plus a
+    // pointer to raise it.
+    if bot_count >= 200 {
+        warn!(
+            "Spawning {bot_count} bots — each needs its own UDP socket (file descriptor). If bots \
+             fail to start mid-spawn, raise the open-file limit first: `ulimit -n {}` (macOS \
+             defaults to 256).",
+            (bot_count + 256).next_power_of_two()
+        );
+    }
+
     // ── Phase 1: spawn bots (staggered, sequential settle like the Python harness) ─────────
+    // Note: the spawn loop settles each new bot by polling EVERY bot already up (O(n²) overall),
+    // and the whole swarm runs on this single thread over blocking ENet polling. The load
+    // generator is therefore CPU-bound on one core past a few hundred bots — at high counts a low
+    // client-side tick rate is the generator saturating, not the server; read results accordingly.
     info!("Phase 1: Spawning bots...");
     let mut bots: Vec<Bot> = Vec::with_capacity(bot_count);
     let mut stillborn: Vec<metrics::BotMetrics> = Vec::new();
@@ -348,6 +390,7 @@ fn main() {
             args.difficulty,
             args.input_hz,
             args.bandwidth_budget,
+            args.seed,
             now(),
         ) {
             Ok(b) => bots.push(b),
@@ -498,9 +541,12 @@ fn main() {
     let output_path = args
         .output
         .unwrap_or_else(|| format!("report_{}.json", metrics::compact_timestamp(unix_secs)));
-    match std::fs::write(&output_path, serde_json::to_string_pretty(&report).unwrap()) {
-        Ok(()) => info!("JSON report saved to: {output_path}"),
-        Err(e) => error!("failed to write {output_path}: {e}"),
+    match serde_json::to_string_pretty(&report) {
+        Ok(json) => match std::fs::write(&output_path, json) {
+            Ok(()) => info!("JSON report saved to: {output_path}"),
+            Err(e) => error!("failed to write {output_path}: {e}"),
+        },
+        Err(e) => error!("failed to serialize report JSON: {e}"),
     }
 
     let all_passed = metrics::evaluate_success(&agg).iter().all(|c| c.passed);
@@ -512,7 +558,27 @@ fn main() {
 
 fn poll_all(bots: &mut [Bot], now: f64) {
     for b in bots.iter_mut() {
-        b.poll(now);
+        // Per-bot panic boundary: a panic inside one bot's poll (a decode/sim/ENet edge case)
+        // must not unwind through the swarm and kill every other bot. Catch it, mark that one bot
+        // crashed (counted in the crash metric), and keep going. `&mut Bot` isn't `UnwindSafe`,
+        // but a caught panic only ever sends the bot terminal, so asserting unwind-safety is sound.
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| b.poll(now)));
+        if let Err(payload) = result {
+            let msg = panic_message(payload.as_ref());
+            error!("bot {} panicked in poll: {msg}", b.id);
+            b.mark_crashed(format!("panic in poll: {msg}"));
+        }
+    }
+}
+
+/// Best-effort extraction of a panic payload's message (`&str` / `String` cases).
+fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "non-string panic payload".to_string()
     }
 }
 

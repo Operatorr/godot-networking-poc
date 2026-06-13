@@ -8,6 +8,9 @@
 pub fn quant_coord(v: f32) -> i16 {
     // GDScript: clampi(int(v * 10.0), -32768, 32767) — f32 promoted to f64, int() truncates
     // toward zero. NaN saturates to 0 via Rust's `as` cast, matching GDScript's int(NaN) == 0.
+    // Non-finite inputs are pinned (see tests): +inf clamps to 32767, -inf clamps to -32768
+    // (`f64::clamp` returns the matching bound for ±inf), NaN ⇒ 0. Both sides agree, so a stray
+    // non-finite coordinate can never desync client and server.
     let q = (v as f64 * 10.0).trunc();
     q.clamp(-32768.0, 32767.0) as i16
 }
@@ -17,6 +20,8 @@ pub fn dequant_coord(q: i16) -> f32 {
 }
 
 pub fn quant_angle(rad: f32) -> i16 {
+    // Same non-finite policy as quant_coord (pinned by `angle_non_finite_pinned`): NaN ⇒ 0,
+    // +inf ⇒ 32767, -inf ⇒ -32768.
     let q = (rad as f64 * 100.0).trunc();
     q.clamp(-32768.0, 32767.0) as i16
 }
@@ -47,6 +52,30 @@ mod tests {
     fn coord_clamps() {
         assert_eq!(quant_coord(40000.0), 32767);
         assert_eq!(quant_coord(-40000.0), -32768);
+    }
+
+    #[test]
+    fn coord_non_finite_pinned() {
+        // NaN ⇒ 0 (Rust `as i16` saturates NaN to 0, matching GDScript int(NaN) == 0).
+        assert_eq!(quant_coord(f32::NAN), 0);
+        // ±inf clamp to the i16 extremes — pinned so client/server can't diverge on a stray inf.
+        assert_eq!(quant_coord(f32::INFINITY), 32767);
+        assert_eq!(quant_coord(f32::NEG_INFINITY), -32768);
+    }
+
+    #[test]
+    fn angle_non_finite_pinned() {
+        assert_eq!(quant_angle(f32::NAN), 0);
+        assert_eq!(quant_angle(f32::INFINITY), 32767);
+        assert_eq!(quant_angle(f32::NEG_INFINITY), -32768);
+    }
+
+    #[test]
+    fn resource_non_finite_pinned() {
+        // NaN ⇒ 0; +inf clamps to 255; -inf clamps to 0.
+        assert_eq!(quant_resource(f64::NAN), 0);
+        assert_eq!(quant_resource(f64::INFINITY), 255);
+        assert_eq!(quant_resource(f64::NEG_INFINITY), 0);
     }
 
     #[test]

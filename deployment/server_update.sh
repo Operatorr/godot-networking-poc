@@ -43,6 +43,18 @@ log "Building Rust omega-server (release)"
 ( cd rust && cargo build --release -p omega-server )
 ok "server -> rust/target/release/omega-server"
 
+# Guard: never (re)start with placeholder secrets still in the installed env
+# files. provision_server.sh copies *.env.example verbatim (DB_PASSWORD,
+# JWT_SECRET_KEY, *_TOKEN = CHANGE_ME...); if the operator forgot to edit them
+# the DB role and JWT signing would use known placeholders. Fail loudly instead.
+log "Verifying installed env files have no placeholder secrets"
+for env_file in /etc/omega-realm/api.env /etc/omega-realm/server.env; do
+  if [[ -f "$env_file" ]] && grep -q 'CHANGE_ME' "$env_file"; then
+    fail "placeholder secret (CHANGE_ME) still present in $env_file — edit it with real secrets before deploying (sudo nano $env_file)"
+  fi
+done
+ok "env files contain no CHANGE_ME placeholders"
+
 log "Restarting services (api + arena + sanctuary)"
 sudo systemctl restart omega-api.service
 sudo systemctl restart omega-arena.service

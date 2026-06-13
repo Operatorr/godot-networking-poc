@@ -3,7 +3,11 @@
 class_name PacketTypes
 extends RefCounted
 
-## Packet header size: [u8 type][u16 payload_length]
+## Legacy WebSocket framing header size: [u8 type][u16 payload_length].
+## RETIRED on the wire — ENet datagrams carry no length field (frame = [u8 type][payload],
+## bounded by datagram edges; see AGENTS.md invariants). Kept only because the parity-reference
+## GDScript packet builders under scripts/server/ and networking/packets/ still compute sizes
+## against it (e.g. StateUpdatePacket.FULL_STATE_HEADER_BYTES). Not used by the live ENet path.
 const HEADER_SIZE := 3
 
 ## Maximum packet size (64KB)
@@ -15,21 +19,27 @@ const MAX_PACKET_SIZE := 65535
 ## works out far lower; see StateUpdatePacket.STATE_MAX_FULL_ENTITIES.
 const STATE_MAX_ENTITIES := 65535
 
-## Packet types as per ARCHITECTURE.md
+## Packet types as per ARCHITECTURE.md.
+## MUST stay in sync (same ids) with NetworkManager.MessageType, the live ENet-facing
+## dispatch enum — the two are parallel and any divergence breaks is_valid_type/dispatch.
+## HEARTBEAT (4) and BATCH (11) are RETIRED on the live ENet path (D2: ENet keepalive/RTT
+## is native, the clock-sync payload rides every Snapshot) but remain here because the
+## parity-reference GDScript packet builders + retired server scripts still reference them.
 enum Type {
 	PLAYER_INPUT = 1,      ## Client -> Server: Movement, actions (~16 bytes)
 	STATE_UPDATE = 2,      ## Server -> Client: Entity positions, animations (variable)
 	GAME_EVENT = 3,        ## Server -> Client: Damage, kills, status effects (50-200 bytes)
-	HEARTBEAT = 4,         ## Bidirectional: Keep-alive (4 bytes)
+	HEARTBEAT = 4,         ## RETIRED (D2) — kept for parity scripts only
 	ACTION_CONFIRM = 5,    ## Server -> Client: Confirm attack (20 bytes)
 	CONNECT_AUTH = 6,      ## Client -> Server: Authentication handshake (variable)
-	DISCONNECT = 7,        ## Client -> Server: Clean disconnect (4 bytes)
+	DISCONNECT = 7,        ## Clean disconnect — handled natively by ENet on the live path
 	REQUEST_FULL_STATE = 8, ## Client -> Server: Request full state sync (TASK-021)
 	RESPAWN_REQUEST = 9,   ## Client -> Server: Request respawn after death
 	SERVER_METRICS = 10,   ## Server -> Client: Server performance metrics (1/sec)
-	BATCH = 11,            ## Server -> Client: Multiple packets in a single WS frame (TASK-066)
-	BASELINE_ACK = 12,     ## Client -> Server: acknowledge a received full-state Baseline (#14, forward-looking for UDP transport #12)
-	LOCAL_HIT_REPORT = 13  ## Client -> Server: "a monster projectile hit me" (client-detected, server-validated). [u16 projectile_id]
+	BATCH = 11,            ## RETIRED (D2) — kept for parity scripts only
+	BASELINE_ACK = 12,     ## Client -> Server: acknowledge a received full-state Baseline
+	LOCAL_HIT_REPORT = 13, ## Client -> Server: "a monster projectile hit me" (client-detected, server-validated). [u16 projectile_id]
+	AUTH_RESULT = 14       ## Server -> Client: explicit auth answer (D9); carries entity_id
 }
 
 ## Entity types for state updates. Values 4-7 are the world-effect band entities
@@ -182,12 +192,15 @@ static func get_type_name(packet_type: int) -> String:
 		Type.SERVER_METRICS: return "SERVER_METRICS"
 		Type.BATCH: return "BATCH"
 		Type.BASELINE_ACK: return "BASELINE_ACK"
+		Type.LOCAL_HIT_REPORT: return "LOCAL_HIT_REPORT"
+		Type.AUTH_RESULT: return "AUTH_RESULT"
 		_: return "UNKNOWN(%d)" % packet_type
 
 
-## Helper: Check if packet type is valid
+## Helper: Check if packet type is valid. Spans the whole enum range including
+## AUTH_RESULT (the current max) — keep this upper bound in step with the enum.
 static func is_valid_type(packet_type: int) -> bool:
-	return packet_type >= Type.PLAYER_INPUT and packet_type <= Type.LOCAL_HIT_REPORT
+	return packet_type >= Type.PLAYER_INPUT and packet_type <= Type.AUTH_RESULT
 
 
 ## Helper: Encode input flags from dictionary

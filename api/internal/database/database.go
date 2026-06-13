@@ -163,11 +163,14 @@ func (db *DB) InitSchema() error {
 
 	-- Restrict mode to the two supported permadeath modes. Added idempotently;
 	-- Postgres has no ADD CONSTRAINT IF NOT EXISTS, so guard on the constraint name.
+	-- Pre-normalize any legacy out-of-range rows FIRST so adding the (validating)
+	-- constraint can't scan an offending row and abort InitSchema.
 	DO $$
 	BEGIN
 		IF NOT EXISTS (
 			SELECT 1 FROM pg_constraint WHERE conname = 'character_mode_valid'
 		) THEN
+			UPDATE characters SET mode = 'softcore' WHERE mode NOT IN ('softcore', 'hardcore');
 			ALTER TABLE characters
 				ADD CONSTRAINT character_mode_valid CHECK (mode IN ('softcore', 'hardcore'));
 		END IF;

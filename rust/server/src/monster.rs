@@ -1210,7 +1210,18 @@ fn rotated(v: Vec2, phi: f32) -> Vec2 {
 mod tests {
     use super::*;
 
+    /// sim_core debug_asserts each thread set its world geometry before any bounds/obstacle read
+    /// (arena.rs contract). Each libtest test is its own thread — apply the Arena geometry first.
+    fn init_arena_geometry() {
+        sim_core::set_world_geometry(
+            sim_core::constants::MAP_MIN,
+            sim_core::constants::MAP_MAX,
+            true,
+        );
+    }
+
     fn world_with_player(pos: Vec2) -> PlayerManager {
+        init_arena_geometry();
         let mut players = PlayerManager::new();
         let p = players.add_player(1).unwrap();
         p.authenticated = true;

@@ -27,6 +27,10 @@ var current_flags: int = 0
 var current_hp: int = GameConstants.MONSTER_HEALTH
 var max_hp: int = GameConstants.MONSTER_HEALTH
 
+## Active hit-flash tween, kept so a fresh hit kills the prior one instead of
+## stacking concurrent tweens that fight over modulate.
+var _hit_flash_tween: Tween = null
+
 
 func _ready() -> void:
 	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
@@ -69,9 +73,21 @@ func update_from_network(animation_state: int, flags: int) -> void:
 func _flash_hit() -> void:
 	if animated_sprite == null:
 		return
-	var tween := create_tween()
+	# Kill any in-flight flash so rapid hits don't stack tweens that fight over modulate.
+	if _hit_flash_tween != null and _hit_flash_tween.is_valid():
+		_hit_flash_tween.kill()
 	animated_sprite.modulate = Color(1.0, 0.35, 0.35)
-	tween.tween_property(animated_sprite, "modulate", Color.WHITE, 0.18)
+	# Restore to the flags-derived base color (e.g. dimmed under stealth), not hardcoded white.
+	_hit_flash_tween = create_tween()
+	_hit_flash_tween.tween_property(animated_sprite, "modulate", _base_modulate(), 0.18)
+
+
+## Base sprite modulate implied by the current entity flags (white normally, dimmed
+## under stealth). The hit-flash restores to this so it doesn't clobber flag-driven tint.
+func _base_modulate() -> Color:
+	if (current_flags & PacketTypes.ENTITY_FLAG_STEALTH) != 0:
+		return Color(1.0, 1.0, 1.0, 0.35)
+	return Color.WHITE
 
 
 ## Update animation based on server state
@@ -108,6 +124,11 @@ func _update_flags(flags: int) -> void:
 		died.emit()
 
 	visible = is_alive
+
+	# Apply the flag-driven base tint (e.g. stealth dim) unless a hit-flash is mid-
+	# tween — the flash restores to _base_modulate() itself, so don't clobber it.
+	if animated_sprite != null and (_hit_flash_tween == null or not _hit_flash_tween.is_valid()):
+		animated_sprite.modulate = _base_modulate()
 
 
 ## Set HP for visual feedback

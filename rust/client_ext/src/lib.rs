@@ -86,6 +86,18 @@ fn sim(v: Vector2) -> SimVec2 {
     SimVec2::new(v.x, v.y)
 }
 
+/// Sanitize a Vector2 crossing FFI into the sim: a NaN/Inf component (a GDScript bug, or a
+/// divide-by-zero in an aim/move-dir calculation) would propagate through the sim and silently
+/// corrupt the node transform. Replace any non-finite vector with `fallback` at the boundary so
+/// the sim only ever sees finite input. Returns the sanitized vector and whether it was clamped.
+fn sim_finite(v: Vector2, fallback: SimVec2) -> SimVec2 {
+    if v.x.is_finite() && v.y.is_finite() {
+        SimVec2::new(v.x, v.y)
+    } else {
+        fallback
+    }
+}
+
 fn from_sim(v: SimVec2) -> Vector2 {
     Vector2::new(v.x, v.y)
 }
@@ -258,6 +270,13 @@ impl ProtocolCodec {
                 out.set("state_flags", flags);
                 out.set("baseline_tick", s.baseline_tick.unwrap_or(0) as i64);
                 let mut entities = VarArray::new();
+                // Coupling: a delta record only carries the fields whose bit is set in
+                // `delta_mask`. The `unwrap_or` defaults below (position → (0,0), animation/flags
+                // → 0) are placeholders for ABSENT fields — the GDScript entity manager MUST gate
+                // on the per-entity `delta_mask` bits (POSITION/ANIMATION/FLAGS) and ignore a
+                // field whose bit is clear, exactly as it did against the GDScript codec
+                // (extraction client-integration §6.1). A consumer that reads these unconditionally
+                // would treat an unchanged entity as having teleported to the origin.
                 for rec in &s.entities {
                     let mut e = VarDictionary::new();
                     e.set("entity_id", rec.entity_id as i64);
@@ -428,16 +447,29 @@ impl PredictionSim {
         attacking: bool,
         aim_dir: Vector2,
     ) -> VarDictionary {
+        // Sanitize at the FFI boundary: a NaN/Inf in any input would propagate through the sim
+        // into the node transform as silent, hard-to-trace corruption. A non-finite position
+        // falls back to ZERO (the sim re-derives from the next authoritative correction); a
+        // non-finite move/aim dir falls back to ZERO (no movement / no aim this tick); a
+        // non-finite delta falls back to the fixed tick interval.
+        let position = sim_finite(position, SimVec2::ZERO);
+        let move_dir = sim_finite(move_dir, SimVec2::ZERO);
+        let aim_dir = sim_finite(aim_dir, SimVec2::ZERO);
+        let delta = if delta.is_finite() {
+            delta
+        } else {
+            sim_core::constants::SERVER_TICK_INTERVAL
+        };
         let result = sim_core::step_movement(
             &mut self.sm,
-            sim(position),
+            position,
             delta,
-            sim(move_dir),
+            move_dir,
             sprint_held,
             dash_held,
             ability_held,
             attacking,
-            sim(aim_dir),
+            aim_dir,
         );
         let mut out = VarDictionary::new();
         out.set("position", from_sim(result.position));
@@ -500,8 +532,17 @@ impl PredictionSim {
     }
 
     /// Set the connected instance's world geometry so prediction matches the server (Arena =
-    /// ±1000 + obstacles; Sanctuary = ±1856, no obstacles). Call once on scene entry, on the same
-    /// thread that runs `step()` (the main/render thread).
+    /// ±1000 + obstacles; Sanctuary = ±1856, no obstacles).
+    ///
+    /// **Thread contract (call once, on the sim thread):** despite taking `&self`, this mutates
+    /// `sim_core`'s thread-local world geometry — it is process/thread-global state, not per
+    /// `PredictionSim` instance. The GDScript client MUST call this exactly once, on scene entry,
+    /// on the SAME thread that later calls `step()`/`replay_step()`/`move_with_obstacle_collision()`
+    /// (the main/render thread). In debug builds `sim_core` `debug_assert!`s that geometry was set
+    /// before the first geometry read, so a missing call surfaces immediately rather than silently
+    /// applying the Arena default (which would corrupt collision on a Sanctuary instance). Release
+    /// builds fall back to the Arena default unchanged. Setting it from one thread does NOT
+    /// configure another, so all sim calls must stay on that single thread.
     #[func]
     fn set_world_geometry(&self, min: Vector2, max: Vector2, obstacles_enabled: bool) {
         sim_core::set_world_geometry(sim(min), sim(max), obstacles_enabled);
@@ -516,12 +557,16 @@ impl PredictionSim {
     /// gated by CURRENT stamina; never dash/knockback). Does not mutate the SM.
     #[func]
     fn replay_step(&self, position: Vector2, input_flags: i64, delta: f64) -> VarDictionary {
-        let result = sim_core::replay_ground_step(
-            &self.sm,
-            sim(position),
-            (input_flags & 0xFFFF) as u16,
-            delta,
-        );
+        // Sanitize at the FFI boundary (see `step`): non-finite input would corrupt the replayed
+        // transform.
+        let position = sim_finite(position, SimVec2::ZERO);
+        let delta = if delta.is_finite() {
+            delta
+        } else {
+            sim_core::constants::SERVER_TICK_INTERVAL
+        };
+        let result =
+            sim_core::replay_ground_step(&self.sm, position, (input_flags & 0xFFFF) as u16, delta);
         let mut out = VarDictionary::new();
         out.set("position", from_sim(result.position));
         out.set("velocity", from_sim(result.velocity));
@@ -587,11 +632,13 @@ impl PredictionSim {
     /// The shared analytic mover — byte-identical to the server's.
     #[func]
     fn move_with_obstacle_collision(&self, from: Vector2, to: Vector2, radius: f32) -> Vector2 {
-        from_sim(arena::move_with_obstacle_collision(
-            sim(from),
-            sim(to),
-            radius,
-        ))
+        // Sanitize at the FFI boundary (see `step`): a non-finite endpoint would corrupt the
+        // returned transform. A non-finite `from` falls back to ZERO; a non-finite `to` or radius
+        // falls back to `from` (no movement). The mover never sees non-finite input.
+        let from = sim_finite(from, SimVec2::ZERO);
+        let to = sim_finite(to, from);
+        let radius = if radius.is_finite() { radius } else { 0.0 };
+        from_sim(arena::move_with_obstacle_collision(from, to, radius))
     }
 
     #[func]
@@ -612,7 +659,9 @@ pub struct SimHit {
 impl SimHit {
     #[func]
     fn is_client_authoritative(owner_id: i64) -> bool {
-        owner_id >= 0 && hit::is_client_authoritative(owner_id.min(u16::MAX as i64) as u16)
+        // Reject out-of-range ids rather than clamping: a too-large id silently mapping to entity
+        // 65535 could mis-authorize a hit. Only a real u16 entity id can be client-authoritative.
+        (0..=u16::MAX as i64).contains(&owner_id) && hit::is_client_authoritative(owner_id as u16)
     }
 
     #[func]
@@ -626,9 +675,18 @@ impl SimHit {
         direction: Vector2,
         distance_traveled: f32,
     ) -> Vector2 {
+        // Sanitize at the FFI boundary (see `PredictionSim::step`): a non-finite input would
+        // propagate into the returned origin and corrupt VFX placement.
+        let current_position = sim_finite(current_position, SimVec2::ZERO);
+        let direction = sim_finite(direction, SimVec2::ZERO);
+        let distance_traveled = if distance_traveled.is_finite() {
+            distance_traveled
+        } else {
+            0.0
+        };
         from_sim(hit::flight_origin(
-            sim(current_position),
-            sim(direction),
+            current_position,
+            direction,
             distance_traveled,
         ))
     }

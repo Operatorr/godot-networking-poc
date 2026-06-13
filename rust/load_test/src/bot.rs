@@ -87,6 +87,7 @@ pub struct Bot {
 }
 
 impl Bot {
+    #[allow(clippy::too_many_arguments)]
     pub fn connect(
         id: u32,
         server: SocketAddr,
@@ -94,6 +95,7 @@ impl Bot {
         difficulty: f64,
         input_hz: f64,
         bandwidth_budget_bps: u32,
+        seed: Option<u64>,
         now: f64,
     ) -> std::io::Result<Self> {
         let socket = UdpSocket::bind(("0.0.0.0", 0))?;
@@ -120,7 +122,12 @@ impl Bot {
             behavior: behavior.name(),
             ..Default::default()
         };
-        let mut rng = Pcg32::from_entropy(id as u64);
+        // Reproducible per-bot stream when `--seed` is given (`seed ^ bot_id`, matching the rng
+        // module contract); otherwise fall back to entropy for an unseeded run.
+        let mut rng = match seed {
+            Some(s) => Pcg32::new(s ^ id as u64),
+            None => Pcg32::from_entropy(id as u64),
+        };
         let player_class = rng.rand_index(7) as u8; // uniform over the 7 classes (0=Zealot … 6=Mage)
         debug!("bot {id} picked class {player_class}");
         Ok(Self {
@@ -209,6 +216,15 @@ impl Bot {
             self.host.peer_mut(enet::PeerID(self.peer_key)).reset();
             self.phase = Phase::Closed;
         }
+    }
+
+    /// Mark this bot crashed after a caught panic in `poll` (see `poll_all`). A single bad bot
+    /// (e.g. a decode/sim edge case) must not take down the whole swarm, so the caller catches the
+    /// unwind and routes it here: the bot goes terminal-Failed and is counted in the crash metric,
+    /// while every other bot keeps running.
+    pub fn mark_crashed(&mut self, error: String) {
+        self.metrics.panic_count += 1;
+        self.fail(error);
     }
 
     fn fail(&mut self, error: String) {
@@ -547,9 +563,22 @@ impl Bot {
             enet::Packet::unreliable(bytes.as_slice())
         };
         let peer = self.host.peer_mut(enet::PeerID(self.peer_key));
-        if peer.send(packet.channel(), &enet_packet).is_ok() {
-            self.metrics.packets_sent += 1;
-            self.metrics.bytes_sent += bytes.len() as u64;
+        match peer.send(packet.channel(), &enet_packet) {
+            Ok(()) => {
+                self.metrics.packets_sent += 1;
+                self.metrics.bytes_sent += bytes.len() as u64;
+            }
+            Err(e) => {
+                // A swallowed send failure hides lost handshakes (ConnectAuth/BaselineAck) and
+                // inputs. Count and log it so the failure is observable in the report rather than
+                // vanishing.
+                self.metrics.send_failures += 1;
+                debug!(
+                    "bot {}: send failed on channel {}: {e}",
+                    self.id,
+                    packet.channel()
+                );
+            }
         }
     }
 }

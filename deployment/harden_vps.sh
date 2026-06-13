@@ -36,19 +36,28 @@ ufw --force reset
 ufw default deny incoming
 ufw default allow outgoing
 
-# SSH: 'limit' adds rate-limiting against brute force (max 6 conns / 30s / IP)
-ufw limit 22/tcp        comment 'SSH (rate-limited)'
+# SSH: 'limit' adds rate-limiting against brute force (max 6 conns / 30s / IP).
+# Detect the live SSH port from the current connection ($SSH_CONNECTION's 4th
+# field is the server-side port) so we never lock out a session on a non-22 port.
+# Falls back to 22 when not run over SSH (e.g. console).
+SSH_PORT="$(awk '{print $4}' <<<"${SSH_CONNECTION:-}")"
+[[ "$SSH_PORT" =~ ^[0-9]+$ ]] || SSH_PORT=22
+ufw limit "${SSH_PORT}/tcp" comment 'SSH (rate-limited)'
 ufw allow 8081/udp      comment 'omega ARENA game (ENet/UDP)'
 ufw allow 8082/udp      comment 'omega SANCTUARY hub (ENet/UDP)'
 ufw allow 8080/tcp      comment 'Go API (HTTP)'
 # NOTE: Prometheus 9100/9101, Postgres 5432, Redis 6379 are intentionally NOT
-# opened. Keep them internal (bound to localhost by the native services).
+# opened. The Rust server binds metrics to 127.0.0.1:9100/9101 and Postgres/Redis
+# listen on localhost only, so they stay off the public interface — there is
+# nothing to firewall here. If remote Prometheus scraping is ever needed, add a
+# source-restricted rule (e.g. `ufw allow from <scraper-ip> to any port 9100`),
+# never `ufw allow 9100/tcp` to the world.
 ufw --force enable
 ufw status verbose
 
 # ---------------------------------------------------------------------------
 log "4/6  Configuring fail2ban for sshd"
-cat > /etc/fail2ban/jail.local <<'EOF'
+cat > /etc/fail2ban/jail.local <<EOF
 [DEFAULT]
 # Ban for 1h after 5 failures within 10 min; escalate on repeat offenders.
 bantime  = 1h
@@ -60,13 +69,39 @@ ignoreip = 127.0.0.1/8 ::1
 
 [sshd]
 enabled = true
-port    = 22
+port    = ${SSH_PORT}
 EOF
 systemctl enable --now fail2ban
 systemctl restart fail2ban
 
 # ---------------------------------------------------------------------------
 log "5/6  Hardening SSH (drop-in: 99-hardening.conf)"
+# SAFETY: AllowUsers ${ADMIN_USER} + PermitRootLogin no can lock you out if the
+# admin user can't actually log in. Assert it exists AND has authorized_keys
+# before writing the restriction; abort otherwise (we'd rather not harden than
+# brick the box).
+if ! id "$ADMIN_USER" >/dev/null 2>&1; then
+  echo "FATAL: admin user '$ADMIN_USER' does not exist — refusing to write AllowUsers (would lock out all logins)." >&2
+  exit 1
+fi
+ADMIN_HOME="$(getent passwd "$ADMIN_USER" | cut -d: -f6)"
+ADMIN_KEYS="${ADMIN_HOME%/}/.ssh/authorized_keys"
+if [[ ! -s "$ADMIN_KEYS" ]]; then
+  echo "FATAL: '$ADMIN_USER' has no authorized_keys at $ADMIN_KEYS — refusing to write AllowUsers + disable passwords (would lock you out)." >&2
+  echo "       Add a public key for '$ADMIN_USER' first, then re-run." >&2
+  exit 1
+fi
+# Loud warning if the CURRENT login is root: this drop-in disables root SSH, so
+# THIS session won't be reconnectable. Make sure '$ADMIN_USER' works first.
+if [[ "${SSH_CONNECTION:-}" && "$(logname 2>/dev/null || echo "${SUDO_USER:-$USER}")" == "root" ]]; then
+  printf '\n\033[1;33m############################################################\033[0m\n'
+  printf '\033[1;33m# WARNING: you are logged in as ROOT over SSH.\033[0m\n'
+  printf '\033[1;33m# This drop-in sets PermitRootLogin no — after reload you will\033[0m\n'
+  printf '\033[1;33m# NOT be able to reconnect as root. Confirm a SEPARATE\033[0m\n'
+  printf "\033[1;33m# 'ssh %s@<host>' session works BEFORE closing this one.\033[0m\n" "$ADMIN_USER"
+  printf '\033[1;33m############################################################\033[0m\n\n'
+fi
+
 # Written as a drop-in so we never clobber cloud-init's config.
 # Ordering: drop-ins load alphabetically; 99- wins over the 50-/60- defaults.
 cat > /etc/ssh/sshd_config.d/99-hardening.conf <<EOF

@@ -69,6 +69,9 @@ command -v cargo >/dev/null 2>&1 || fail "cargo not found in PATH (install Rust)
 # Read DB/Redis endpoints from api/.env so the reachability checks match what
 # the API will actually dial.
 if [ -f "$PROJECT_ROOT/api/.env" ]; then
+    # NOTE: this executes api/.env as shell (any code in it runs with your
+    # privileges). Trusted because it's a dev-owned, gitignored local file —
+    # never point this at an untrusted .env.
     set -a
     # shellcheck disable=SC1091
     source "$PROJECT_ROOT/api/.env"
@@ -83,7 +86,23 @@ REDIS_PORT="${REDIS_PORT:-6379}"
 API_PORT="${API_PORT:-${PORT:-8080}}"
 export PORT="$API_PORT"
 
-tcp_open() { nc -z -G 2 "$1" "$2" >/dev/null 2>&1; }
+# The Go internal endpoints (/api/internal/*) and the region heartbeat now FAIL
+# CLOSED: without SERVER_API_TOKEN / REGION_HEARTBEAT_TOKEN they reject (503)
+# unless ALLOW_INSECURE_INTERNAL=true. The local stack runs token-less, so opt
+# into the insecure dev path explicitly here (never set this in production).
+export ALLOW_INSECURE_INTERNAL=true
+
+# Portable TCP reachability probe (only used as a fallback when pg_isready /
+# redis-cli aren't installed). Avoids `nc -G` (BSD/macOS-only connect timeout):
+# bash's /dev/tcp works on both macOS and Linux. `timeout` caps the connect if
+# present; otherwise the kernel's default connect timeout applies.
+tcp_open() {
+    if command -v timeout >/dev/null 2>&1; then
+        timeout 2 bash -c "exec 3<>/dev/tcp/$1/$2" >/dev/null 2>&1
+    else
+        (exec 3<>/dev/tcp/"$1"/"$2") >/dev/null 2>&1
+    fi
+}
 
 if command -v pg_isready >/dev/null 2>&1; then
     pg_isready -q -h "$DB_HOST" -p "$DB_PORT" \
@@ -166,14 +185,18 @@ info "Building omega-server (release)..."
 # bind warns and is skipped (non-fatal) — only the Arena's metrics are scrapeable locally.
 cd "$PROJECT_ROOT/rust"
 
+# The server's allow_unsigned_tickets default is now false (fail closed). The
+# local stack runs token-less, so opt into unsigned tickets here. Passing the
+# flag BEFORE SERVER_ARGS means an explicit `-- --require-tickets` still wins
+# (omega-server applies ticket args last-wins).
 info "Starting ARENA server (udp/8081, monsters + PvP). Log: $ARENA_LOG"
-./target/release/omega-server --mode arena --port 8081 ${SERVER_ARGS+"${SERVER_ARGS[@]}"} \
+./target/release/omega-server --mode arena --port 8081 --allow-unsigned-tickets ${SERVER_ARGS+"${SERVER_ARGS[@]}"} \
     >"$ARENA_LOG" 2>&1 &
 ARENA_PID=$!
 echo "$ARENA_PID" > "$ARENA_PID_FILE"
 
 info "Starting SANCTUARY server (udp/8082, safe town). Log: $SANCTUARY_LOG"
-./target/release/omega-server --mode sanctuary --port 8082 ${SERVER_ARGS+"${SERVER_ARGS[@]}"} \
+./target/release/omega-server --mode sanctuary --port 8082 --allow-unsigned-tickets ${SERVER_ARGS+"${SERVER_ARGS[@]}"} \
     >"$SANCTUARY_LOG" 2>&1 &
 SANCTUARY_PID=$!
 echo "$SANCTUARY_PID" > "$SANCTUARY_PID_FILE"

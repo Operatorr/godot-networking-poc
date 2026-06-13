@@ -113,6 +113,15 @@ impl MovementSm {
         charge_speed: f64,
         charge_max_distance: f64,
     ) {
+        // Reject a non-finite config wholesale (a NaN would slip through `max` as 0.0 and silently
+        // mis-tune the ability). Finite values keep the existing `max(0.0)` floor.
+        if !cost.is_finite()
+            || !cooldown.is_finite()
+            || !charge_speed.is_finite()
+            || !charge_max_distance.is_finite()
+        {
+            return;
+        }
         self.ability_cost = cost.max(0.0);
         self.ability_cooldown_max = cooldown.max(0.0);
         self.charge_speed = charge_speed.max(0.0);
@@ -121,6 +130,9 @@ impl MovementSm {
 
     /// Set the per-class+level base ground speed (replaces the global PLAYER_SPEED default).
     pub fn set_base_speed(&mut self, base_speed: f64) {
+        if !base_speed.is_finite() {
+            return;
+        }
         self.base_speed = base_speed.max(0.0);
     }
 
@@ -255,6 +267,12 @@ impl MovementSm {
 
     fn tick_knockback(&mut self, delta: f64) -> Vec2 {
         // Decay FIRST, then test, then move.
+        // DETERMINISM NOTE: `f64::exp` is not guaranteed bit-identical across platforms/libm
+        // versions. This is reachable through the shared `tick()`, but only the SERVER ever enters
+        // KnockedBack: the client never calls `apply_knockback` ("the client never predicts
+        // knockback" — see `apply_knockback`), so on the client this branch is dead and the
+        // knockback position is taken from replicated snapshots, never re-derived for a bit
+        // comparison. The pinned-bit test below catches silent libm drift in CI.
         self.knockback_velocity *= (-PLAYER_KNOCKBACK_DECAY * delta).exp() as f32;
         if self.knockback_velocity.length() as f64 <= PLAYER_KNOCKBACK_END_SPEED {
             self.transition_to(MoveState::Idle);
@@ -365,6 +383,11 @@ impl MovementSm {
     /// Replaces (does not stack with) any in-flight knockback. Refused while STUNNED by the
     /// guard table. Server-only caller today; the client never predicts knockback.
     pub fn apply_knockback(&mut self, direction: Vec2, force: f64, multiplier: f64) {
+        // Non-finite force/multiplier/direction would produce a NaN knockback velocity that the
+        // decay-then-test loop never ends; reject it. (`force <= 0.0` does not catch NaN.)
+        if !direction.is_finite() || !force.is_finite() || !multiplier.is_finite() {
+            return;
+        }
         if direction == Vec2::ZERO || force <= 0.0 {
             return;
         }
@@ -382,7 +405,7 @@ impl MovementSm {
 
     /// Stun blocks movement for `duration` and cancels an in-progress dash or charge.
     pub fn apply_stun(&mut self, duration: f64) {
-        if duration <= 0.0 {
+        if !duration.is_finite() || duration <= 0.0 {
             return;
         }
         self.stun_time_left = duration;
@@ -397,7 +420,7 @@ impl MovementSm {
     /// it coexists with KNOCKED_BACK (the usual companion on a hit). Re-application extends,
     /// never shortens.
     pub fn apply_daze(&mut self, duration: f64) {
-        if duration <= 0.0 {
+        if !duration.is_finite() || duration <= 0.0 {
             return;
         }
         self.daze_time_left = self.daze_time_left.max(duration);
@@ -410,7 +433,7 @@ impl MovementSm {
     }
 
     pub fn start_ability_movement(&mut self, initial_velocity: Vec2) {
-        if self.state == MoveState::Stunned {
+        if !initial_velocity.is_finite() || self.state == MoveState::Stunned {
             return;
         }
         self.ability_velocity = initial_velocity;
@@ -418,6 +441,9 @@ impl MovementSm {
     }
 
     pub fn set_ability_velocity(&mut self, velocity: Vec2) {
+        if !velocity.is_finite() {
+            return;
+        }
         self.ability_velocity = velocity;
     }
 
@@ -430,7 +456,9 @@ impl MovementSm {
     }
 
     pub fn try_use_mana(&mut self, cost: f64) -> bool {
-        if cost <= 0.0 {
+        // A NaN cost slips past the `<= 0.0` and `mana < cost` checks and then zeroes mana via
+        // `(mana - NaN).max(0.0)`; treat non-finite as a no-cost no-op (mana untouched, succeeds).
+        if !cost.is_finite() || cost <= 0.0 {
             return true;
         }
         if self.mana < cost {
@@ -441,6 +469,11 @@ impl MovementSm {
     }
 
     pub fn apply_speed_modifier(&mut self, multiplier: f64) {
+        // Guard non-finite (NaN passes straight through `clamp`, poisoning every later speed
+        // calc). Finite inputs are unaffected — the clamp math is unchanged.
+        if !multiplier.is_finite() {
+            return;
+        }
         self.speed_multiplier = multiplier.clamp(PLAYER_SPEED_MULT_MIN, PLAYER_SPEED_MULT_MAX);
     }
 
@@ -462,6 +495,12 @@ impl MovementSm {
     /// Authoritatively set resources (server → owner correction via ActionConfirm). Assignment is
     /// epsilon-gated exactly like the GDScript (`is_equal_approx`).
     pub fn set_resources(&mut self, new_stamina: f64, new_mana: f64) {
+        // Guard non-finite (NaN passes through `clamp` unchanged and would poison stamina/mana).
+        // Skip entirely if either is non-finite — a corrupt correction must not overwrite valid
+        // state. Finite inputs are unaffected.
+        if !new_stamina.is_finite() || !new_mana.is_finite() {
+            return;
+        }
         let clamped_stamina = new_stamina.clamp(0.0, PLAYER_STAMINA_MAX);
         let clamped_mana = new_mana.clamp(0.0, PLAYER_MANA_MAX);
         if !is_equal_approx_f64(clamped_stamina, self.stamina) {
@@ -800,6 +839,51 @@ mod tests {
     }
 
     #[test]
+    fn non_finite_setters_are_noops_and_never_poison_state() {
+        let mut sm = MovementSm::new();
+        let stamina0 = sm.stamina();
+        let mana0 = sm.mana();
+
+        // set_resources: NaN in either slot leaves both untouched.
+        sm.set_resources(f64::NAN, 50.0);
+        assert_eq!(sm.stamina(), stamina0);
+        assert_eq!(sm.mana(), mana0);
+        sm.set_resources(50.0, f64::INFINITY);
+        assert_eq!(sm.stamina(), stamina0);
+
+        // apply_speed_modifier: NaN must not poison the multiplier.
+        sm.apply_speed_modifier(f64::NAN);
+        assert!((sm.ground_speed(false) - PLAYER_SPEED).abs() < 1e-9);
+        assert!(sm.ground_speed(false).is_finite());
+
+        // set_base_speed / set_ability_config: non-finite rejected, defaults retained.
+        sm.set_base_speed(f64::INFINITY);
+        assert!((sm.ground_speed(false) - PLAYER_SPEED).abs() < 1e-9);
+        sm.set_ability_config(f64::NAN, 1.0, 0.0, 0.0);
+
+        // try_use_mana(NaN): no-op success, mana untouched.
+        assert!(sm.try_use_mana(f64::NAN));
+        assert_eq!(sm.mana(), mana0);
+        assert!(sm.mana().is_finite());
+
+        // apply_knockback / apply_stun / apply_daze with NaN: no state change.
+        sm.apply_knockback(RIGHT, f64::NAN, 1.0);
+        assert_eq!(sm.state(), MoveState::Idle);
+        sm.apply_stun(f64::NAN);
+        assert_eq!(sm.state(), MoveState::Idle);
+        sm.apply_daze(f64::NAN);
+        assert!(!sm.is_dazed());
+
+        // Ability-velocity setters reject non-finite vectors.
+        sm.start_ability_movement(Vec2::new(f32::NAN, 0.0));
+        assert_eq!(sm.state(), MoveState::Idle);
+
+        // A normal tick still produces finite velocity afterwards.
+        let v = sm.tick(DT, RIGHT, false, false, false, false, RIGHT);
+        assert!(v.is_finite());
+    }
+
+    #[test]
     fn determinism_bitwise() {
         let run = || {
             let mut sm = MovementSm::new();
@@ -919,6 +1003,28 @@ mod tests {
         sm.tick(DT, Vec2::ZERO, false, false, true, false, RIGHT);
         assert!(!sm.took_ability_this_tick());
         assert!((sm.mana() - mana_before).abs() < 0.5);
+    }
+
+    /// DETERMINISM regression net for the knockback decay `exp()` (see `tick_knockback`). `f64::exp`
+    /// is not guaranteed bit-identical across platforms/libm versions; the decay is server-only
+    /// (the client never enters KnockedBack), so a tiny delta cannot desync prediction — but this
+    /// pins the exact bit pattern of one decay step so future libm drift surfaces in CI rather than
+    /// silently shifting server-authoritative knockback.
+    #[test]
+    fn knockback_decay_exp_bits_pinned() {
+        // One decay multiplier at 30 Hz: (-PLAYER_KNOCKBACK_DECAY * (1/30)).exp().
+        let factor = (-PLAYER_KNOCKBACK_DECAY * DT).exp();
+        assert_eq!(
+            factor.to_bits(),
+            0x3FE7B4C869C37C05,
+            "knockback decay exp(-9/30) f64 bits drifted"
+        );
+        // The narrowed f32 the sim actually multiplies by.
+        assert_eq!(
+            (factor as f32).to_bits(),
+            0x3F3DA643,
+            "knockback decay exp(-9/30) f32 bits drifted"
+        );
     }
 
     #[test]

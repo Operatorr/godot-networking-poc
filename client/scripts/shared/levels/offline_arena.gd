@@ -248,7 +248,12 @@ func _setup_hud() -> void:
 
 func _on_pause_menu_visibility_changed() -> void:
 	if local_player and is_instance_valid(local_player):
-		local_player.set_input_enabled(not (pause_menu != null and pause_menu.visible))
+		var paused := pause_menu != null and pause_menu.visible
+		# Never re-enable input on a dead player when the pause menu closes — death
+		# disables input (Player._on_hp_component_died) and it must stay disabled.
+		if not paused and local_player.action_state == Player.ActionState.DEAD:
+			return
+		local_player.set_input_enabled(not paused)
 
 
 func _create_hud_component(script_path: String, node_name: String) -> Control:

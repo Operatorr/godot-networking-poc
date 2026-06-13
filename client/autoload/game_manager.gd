@@ -329,16 +329,6 @@ func get_player_move_speed() -> int:
 	return maxi(0, int(player_data.get("player_move_speed", 0)))
 
 
-## Seed progression from the account (after login). Emits experience_updated so the HUD
-## initializes. Level/XP are display-only now; the server stays authoritative.
-func init_progression(level: int, experience: int) -> void:
-	player_data["player_level"] = clampi(level, 1, MAX_PLAYER_LEVEL)
-	player_data["player_experience"] = maxi(0, experience)
-	experience_updated.emit(
-		get_player_level(), get_player_experience(), xp_to_next_level(get_player_level()), false
-	)
-
-
 ## Reset local progression display to a brand-new character (level 1, no XP). The DB is
 ## authoritative; this only keeps the local display from leaking a deleted/old character's
 ## level into the next one. Does NOT persist (the server owns persistence).

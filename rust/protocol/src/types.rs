@@ -44,6 +44,14 @@ pub const MONSTER_ID_END: u16 = 39999;
 pub const WORLD_EFFECT_ID_START: u16 = 40000;
 pub const WORLD_EFFECT_ID_END: u16 = 49999;
 
+/// Hard upper bound on the entity count a single decoded Snapshot may carry. The wire field is a
+/// u16 (≤65535), but no legitimate AoI-filtered snapshot approaches that: a peer sees at most a few
+/// hundred entities. This caps decode-time loop iterations so an attacker-controlled count cannot
+/// drive a 65k-iteration parse against a truncated buffer. Generous (4096) so it never rejects a
+/// valid frame, while staying far below the u16 ceiling. Also used as the decode pre-allocation
+/// reserve.
+pub const MAX_SNAPSHOT_ENTITIES: usize = 4096;
+
 /// World-effect subtypes — the id band 40000–49999 is partitioned into four 2500-id sub-bands,
 /// one per subtype, so the subtype is implicit in the id (always present, even on delta records,
 /// without a separate wire field). The server allocates ids within the matching sub-band.

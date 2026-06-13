@@ -222,7 +222,12 @@ func (h *CharacterHandler) DeleteCharacter(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	rows, _ := result.RowsAffected()
+	rows, err := result.RowsAffected()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to delete character"})
+		return
+	}
 	if rows == 0 {
 		w.WriteHeader(http.StatusNotFound)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "No character found for this user"})

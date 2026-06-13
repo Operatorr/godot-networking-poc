@@ -166,19 +166,17 @@ fn broadcast_player_kill(
 /// Tick step 5 — players pass first, then monsters pass (extraction combat §1). Returns the
 /// positions of monsters killed this pass, so the caller can roll healthorb drops (which need the
 /// world RNG + the world-entity manager, not held here).
-#[allow(clippy::too_many_arguments)]
 pub fn process_collisions(
     projectiles: &mut ProjectileManager,
     players: &mut PlayerManager,
     monsters: &mut MonsterManager,
     leaderboard: &mut Leaderboard,
     outbox: &mut Outbox,
-    tick: u64,
     pvp_enabled: bool,
 ) -> Vec<Vec2> {
     // PvP pass — disabled in the safe Sanctuary (you can shoot, but projectiles don't hit players).
     if pvp_enabled {
-        let player_hits = projectiles.check_collisions_with_players(players, tick);
+        let player_hits = projectiles.check_collisions_with_players(players);
         for h in player_hits {
             apply_player_hit(
                 h.owner_id,
@@ -457,12 +455,10 @@ impl Backstop {
                 .iter()
                 .filter(|p| p.authenticated && p.is_alive)
             {
-                if hit::swept_hit(
-                    player.position,
-                    proj.previous_position,
-                    proj.position,
-                    PROJECTILE_RADIUS + PLAYER_HITBOX_RADIUS,
-                ) {
+                // Records on the TRUE 24 u window only (HIT_BACKSTOP_OVERLAP_UNITS), tying the
+                // "blatant overlap only" D11 invariant to the shared sim_core constant.
+                if hit::is_backstop_overlap(player.position, proj.previous_position, proj.position)
+                {
                     self.overlaps
                         .entry((proj.entity_id, player.entity_id))
                         .or_insert(tick);
@@ -476,7 +472,7 @@ impl Backstop {
         let mut expired: Vec<(u16, u16)> = self
             .overlaps
             .iter()
-            .filter(|(_, &t)| tick.saturating_sub(t) >= grace_ticks)
+            .filter(|(_, &t)| hit::backstop_grace_elapsed(t, tick, grace_ticks))
             .map(|(&k, _)| k)
             .collect();
         expired.sort_unstable();
@@ -522,7 +518,19 @@ impl Backstop {
 mod tests {
     use super::*;
 
+    /// sim_core debug_asserts that each thread set its world geometry before any bounds/obstacle
+    /// read (arena.rs "set once, single thread" contract). Each libtest test runs on its own thread,
+    /// so every test must apply the Arena geometry first.
+    fn init_arena_geometry() {
+        sim_core::set_world_geometry(
+            sim_core::constants::MAP_MIN,
+            sim_core::constants::MAP_MAX,
+            true,
+        );
+    }
+
     fn setup() -> (PlayerManager, ProjectileManager, Leaderboard, Outbox) {
+        init_arena_geometry();
         let mut players = PlayerManager::new();
         let p = players.add_player(1).unwrap();
         p.authenticated = true;
@@ -883,6 +891,7 @@ mod tests {
 
     #[test]
     fn pvp_disabled_skips_player_hits() {
+        init_arena_geometry();
         let mut players = PlayerManager::new();
         players.add_player(1).unwrap().authenticated = true;
         players.add_player(2).unwrap().authenticated = true;
@@ -915,7 +924,6 @@ mod tests {
             &mut monsters,
             &mut lb,
             &mut outbox,
-            2,
             false,
         );
         assert!(killed.is_empty());

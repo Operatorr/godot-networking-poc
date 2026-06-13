@@ -1,6 +1,14 @@
 //! D9 auth: locally-verified Ed25519 session tickets. The Go API signs with the private key;
 //! this server holds only the public key — it can verify but cannot forge. No API round-trip on
-//! the join hot path; expiry IS the revocation story.
+//! the join hot path.
+//!
+//! Revocation model: there is NO revocation list. **Expiry IS the revocation story**, so tickets
+//! MUST be short-TTL (minutes, not hours) — a leaked/abused ticket stays valid until `expires_at_ms`
+//! and nothing here can cut it short. The API owns TTL; keep it tight.
+//!
+//! Signature check uses `verify_strict` (not `verify`): it rejects the malleable/low-order
+//! signature edge cases ed25519 otherwise admits, so two distinct signatures can't validate the
+//! same payload. Use `verify_strict` only — never relax to `verify`.
 
 use ed25519_dalek::{Signature, VerifyingKey};
 use protocol::types::auth_result_code;
@@ -41,7 +49,16 @@ impl TicketVerifier {
             };
         };
         let Some(key) = &self.key else {
-            // Ticket presented but no key configured: dev mode accepts, prod mode rejects.
+            // Ticket presented but no key configured: dev mode accepts, prod mode rejects. This is
+            // a misconfiguration (a client signed in, but the server can't verify) — surface it.
+            tracing::warn!(
+                "signed ticket presented but no OMEGA_TICKET_PUBKEY configured; {}",
+                if self.allow_unsigned {
+                    "accepting (dev/unsigned mode)"
+                } else {
+                    "rejecting"
+                }
+            );
             return if self.allow_unsigned {
                 auth_result_code::OK
             } else {

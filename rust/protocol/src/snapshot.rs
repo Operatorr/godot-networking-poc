@@ -19,8 +19,8 @@ use crate::bits::{BitReader, BitWriter};
 use crate::error::DecodeError;
 use crate::quant::{dequant_coord, quant_coord};
 use crate::types::{
-    delta_mask, entity_type_for_id, snapshot_flags, EntityType, MONSTER_ID_START,
-    PROJECTILE_ID_START, WORLD_EFFECT_ID_END, WORLD_EFFECT_ID_START,
+    delta_mask, entity_type_for_id, snapshot_flags, EntityType, MAX_SNAPSHOT_ENTITIES,
+    MONSTER_ID_START, PROJECTILE_ID_START, WORLD_EFFECT_ID_END, WORLD_EFFECT_ID_START,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -253,7 +253,13 @@ impl Snapshot {
         }
         let baseline_tick = if is_delta { Some(r.read_u32()?) } else { None };
         let count = r.read_u16()? as usize;
-        let mut entities = Vec::with_capacity(count.min(4096));
+        // Bound the count BEFORE the loop: the u16 wire field allows up to 65535, but an
+        // attacker-controlled value that large would drive a 65k-iteration parse. Reject anything
+        // above the realistic per-snapshot cap up front (returning an error, never panicking).
+        if count > MAX_SNAPSHOT_ENTITIES {
+            return Err(DecodeError::BadValue("snapshot entity count"));
+        }
+        let mut entities = Vec::with_capacity(count.min(MAX_SNAPSHOT_ENTITIES));
         for _ in 0..count {
             let entity_id = read_typed_id(r)?;
             if !is_delta {
@@ -424,6 +430,37 @@ mod tests {
         };
         let rt = round_trip(s);
         assert_eq!(rt.entities.len(), 0);
+    }
+
+    #[test]
+    fn oversized_entity_count_rejected_not_panicked() {
+        // Encode a valid full-state (baseline) snapshot, then patch the u16 count field to a value
+        // far above MAX_SNAPSHOT_ENTITIES. Decode must return an error, never panic or loop 65k×.
+        let s = Snapshot {
+            server_tick: 1,
+            server_ms: 2,
+            is_baseline: true,
+            baseline_tick: None,
+            entities: vec![EntityRecord::full(1, (0.0, 0.0), 0, 0)],
+        };
+        let mut bytes = ServerPacket::Snapshot(s).encode();
+        // Header (full-state, no baseline_tick): [type][u32 tick][u32 ms][u8 flags][u16 count].
+        // Count is the little-endian u16 at offset 1+4+4+1 = 10.
+        let count_off = 1 + 4 + 4 + 1;
+        bytes[count_off] = 0xFF;
+        bytes[count_off + 1] = 0xFF; // 65535
+        match ServerPacket::decode(&bytes) {
+            Err(DecodeError::BadValue("snapshot entity count")) => {}
+            other => panic!("expected BadValue rejection, got {other:?}"),
+        }
+        // A count exactly at the cap+1 is likewise rejected.
+        let over = (crate::types::MAX_SNAPSHOT_ENTITIES + 1) as u16;
+        bytes[count_off] = over.to_le_bytes()[0];
+        bytes[count_off + 1] = over.to_le_bytes()[1];
+        assert!(matches!(
+            ServerPacket::decode(&bytes),
+            Err(DecodeError::BadValue("snapshot entity count"))
+        ));
     }
 
     #[test]

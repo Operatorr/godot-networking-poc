@@ -56,7 +56,15 @@ fi
 log "3/9  Go toolchain (official tarball — apt's Go is too old for go 1.24)"
 GO_WANT="$(curl -fsSL https://go.dev/VERSION?m=text | head -1)"   # e.g. go1.24.5
 if ! command -v go >/dev/null 2>&1 || [[ "$(go version 2>/dev/null | awk '{print $3}')" != "$GO_WANT" ]]; then
-  curl -fsSL "https://go.dev/dl/${GO_WANT}.linux-${ARCH}.tar.gz" -o /tmp/go.tgz
+  GO_TARBALL="${GO_WANT}.linux-${ARCH}.tar.gz"
+  # Pull the official SHA256 for this exact tarball from go.dev's release index
+  # and verify before extracting (the download is otherwise unauthenticated).
+  GO_SHA="$(curl -fsSL 'https://go.dev/dl/?mode=json&include=all' \
+    | grep -A2 "\"filename\": \"${GO_TARBALL}\"" \
+    | grep '"sha256"' | head -1 | sed -E 's/.*"sha256": "([0-9a-f]+)".*/\1/')"
+  [[ "$GO_SHA" =~ ^[0-9a-f]{64}$ ]] || { echo "could not resolve SHA256 for ${GO_TARBALL}" >&2; exit 1; }
+  curl -fsSL "https://go.dev/dl/${GO_TARBALL}" -o /tmp/go.tgz
+  echo "${GO_SHA}  /tmp/go.tgz" | sha256sum -c - || { echo "Go tarball checksum mismatch — aborting" >&2; rm -f /tmp/go.tgz; exit 1; }
   rm -rf /usr/local/go
   tar -C /usr/local -xzf /tmp/go.tgz
   rm -f /tmp/go.tgz
@@ -116,13 +124,15 @@ cp "$REPO_DIR/deployment/systemd/omega-sanctuary.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable omega-api.service omega-arena.service omega-sanctuary.service
 
-# Let deploy.sh (running as deploy) start/stop/restart/status ONLY these units
-# without a password. '*' covers the optional .service suffix.
+# Let deploy.sh (running as deploy) start/stop/restart/status ONLY these three
+# units without a password. Fully-qualified unit names, no wildcards — a wildcard
+# like 'omega-api*' would also match e.g. 'omega-api.service.d' or unrelated units
+# the operator later creates with that prefix.
 cat > /etc/sudoers.d/omega-deploy <<EOF
-${DEPLOY_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl start omega-api* omega-arena* omega-sanctuary*, \
-/usr/bin/systemctl stop omega-api* omega-arena* omega-sanctuary*, \
-/usr/bin/systemctl restart omega-api* omega-arena* omega-sanctuary*, \
-/usr/bin/systemctl status omega-api* omega-arena* omega-sanctuary*
+${DEPLOY_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl start omega-api.service omega-arena.service omega-sanctuary.service, \
+/usr/bin/systemctl stop omega-api.service omega-arena.service omega-sanctuary.service, \
+/usr/bin/systemctl restart omega-api.service omega-arena.service omega-sanctuary.service, \
+/usr/bin/systemctl status omega-api.service omega-arena.service omega-sanctuary.service
 EOF
 chmod 0440 /etc/sudoers.d/omega-deploy
 visudo -cf /etc/sudoers.d/omega-deploy >/dev/null

@@ -65,7 +65,9 @@ impl Default for ServerConfig {
             // Live value is the server_main.tscn scene override (0.1), not the 0.4 export
             // default on ServerMain (extraction server-tick §2.1).
             monster_spawn_rate: 0.1,
-            allow_unsigned_tickets: true,
+            // Fail CLOSED: signed tickets are required by default. Dev/load-test opt in via
+            // `--allow-unsigned-tickets` / `OMEGA_ALLOW_UNSIGNED_TICKETS=true` (dev_local.sh does).
+            allow_unsigned_tickets: false,
             ticket_pubkey_hex: String::new(),
             advertise_url: String::new(),
             backstop_grace_ticks: 20,
@@ -136,7 +138,14 @@ impl ServerConfig {
         match key {
             "port" => {
                 if let Some(x) = as_u32(v) {
-                    self.port = x as u16;
+                    if x == 0 || x > u16::MAX as u32 {
+                        warn!(
+                            "config port {x} out of range 1..=65535; keeping {}",
+                            self.port
+                        );
+                    } else {
+                        self.port = x as u16;
+                    }
                 }
             }
             "tick_rate" => {
@@ -245,13 +254,25 @@ impl ServerConfig {
             }
             "metrics_port" => {
                 if let Some(x) = as_u32(v) {
-                    self.metrics_port = x as u16;
+                    if x > u16::MAX as u32 {
+                        warn!(
+                            "config metrics_port {x} out of range 0..=65535; keeping {}",
+                            self.metrics_port
+                        );
+                    } else {
+                        self.metrics_port = x as u16;
+                    }
                 }
             }
             other => warn!("unknown config key '{other}' ignored"),
         }
     }
 
+    /// Env overrides win over the JSON file. The set is deliberately the operationally-relevant
+    /// keys (the systemd units inject these): tick rate, port, region, mode, metrics port, max
+    /// players, API URL, and the two auth knobs. Tuning knobs (AoI/LOD radii, bandwidth, monster
+    /// difficulty) are config-file-only on purpose — they belong with the per-instance JSON, not
+    /// the unit env, so a deploy can't silently retune the sim from an env template.
     fn apply_env(&mut self) {
         if let Ok(v) = std::env::var("GAME_SERVER_TICK_RATE") {
             if let Ok(x) = v.parse::<u32>() {
@@ -263,6 +284,29 @@ impl ServerConfig {
                 self.port = x;
             }
         }
+        if let Ok(v) = std::env::var("OMEGA_REGION") {
+            if !v.is_empty() {
+                self.region = v;
+            }
+        }
+        if let Ok(v) = std::env::var("OMEGA_MODE") {
+            if !v.is_empty() {
+                self.mode = v;
+            }
+        }
+        if let Ok(v) = std::env::var("OMEGA_API_SERVER_URL") {
+            self.api_server_url = v;
+        }
+        if let Ok(v) = std::env::var("OMEGA_MAX_PLAYERS") {
+            if let Ok(x) = v.parse::<usize>() {
+                self.max_players = x;
+            }
+        }
+        if let Ok(v) = std::env::var("OMEGA_METRICS_PORT") {
+            if let Ok(x) = v.parse::<u16>() {
+                self.metrics_port = x;
+            }
+        }
         if let Ok(v) = std::env::var("OMEGA_TICKET_PUBKEY") {
             self.ticket_pubkey_hex = v;
         }
@@ -272,10 +316,21 @@ impl ServerConfig {
     }
 
     /// The GDScript misbehaved on `tick_rate = 0` (infinite interval); validate instead.
-    fn validate(&mut self) {
+    /// Public so main.rs can re-validate after CLI overrides (`--mode`/`--port`) land.
+    pub fn validate(&mut self) {
         if self.tick_rate == 0 {
             warn!("tick_rate 0 is invalid; using 30");
             self.tick_rate = 30;
+        }
+        // An unknown mode (typo) would silently fall through to Arena (PvP + monsters) — a town
+        // turning into a kill-zone. Refuse the typo and default to the safe instance.
+        if !self.mode.eq_ignore_ascii_case("arena") && !self.mode.eq_ignore_ascii_case("sanctuary")
+        {
+            warn!(
+                "mode '{}' is not one of {{arena, sanctuary}}; defaulting to 'arena'",
+                self.mode
+            );
+            self.mode = "arena".into();
         }
         if self.max_snapshot_bytes == 0 {
             warn!("max_snapshot_bytes 0 would disable the budget; using 1200");
@@ -284,13 +339,15 @@ impl ServerConfig {
         if self.monster_spawn_rate < 0.01 {
             self.monster_spawn_rate = 0.01;
         }
-        // D11 invariant #4: the backstop must stay lenient. Floor ≈ render-delay + RTT @30 Hz.
-        if self.backstop_grace_ticks < 15 {
+        // D11 invariant #4: the backstop must stay lenient. Floor ≈ render-delay + RTT @30 Hz,
+        // enforced from the shared sim_core constant so client and server agree.
+        let grace_floor = sim_core::constants::HIT_BACKSTOP_GRACE_TICKS as u64;
+        if self.backstop_grace_ticks < grace_floor {
             warn!(
-                "backstop_grace_ticks {} is below the leniency floor; using 15",
+                "backstop_grace_ticks {} is below the leniency floor; using {grace_floor}",
                 self.backstop_grace_ticks
             );
-            self.backstop_grace_ticks = 15;
+            self.backstop_grace_ticks = grace_floor;
         }
     }
 }

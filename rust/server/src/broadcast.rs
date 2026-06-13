@@ -426,10 +426,11 @@ impl BroadcastService {
         let mut tick_peers_evaluated = 0u64;
 
         for (peer, self_entity_id, self_position) in peers {
-            let prev_visible = self
+            // HashSet membership for the per-entity hysteresis check (was Vec::contains → O(n²)).
+            let prev_visible: std::collections::HashSet<u16> = self
                 .visible_entities
                 .get(&peer)
-                .cloned()
+                .map(|v| v.iter().copied().collect())
                 .unwrap_or_default();
 
             // AoI filter with hysteresis (strict >: exactly-on-radius stays visible).
@@ -467,10 +468,12 @@ impl BroadcastService {
             let current_visible: Vec<u16> =
                 visible.iter().map(|(i, _)| all_entities[*i].id).collect();
             let removed_entity_ids: Vec<u16> = if aoi_enabled {
+                let current_set: std::collections::HashSet<u16> =
+                    current_visible.iter().copied().collect();
                 prev_visible
                     .iter()
                     .copied()
-                    .filter(|id| !current_visible.contains(id))
+                    .filter(|id| !current_set.contains(id))
                     .collect()
             } else {
                 Vec::new()
@@ -753,6 +756,17 @@ fn create_delta_packet(
 mod tests {
     use super::*;
 
+    /// sim_core debug_asserts each thread set its world geometry before any bounds/obstacle read
+    /// (arena.rs contract). PlayerManager spawn placement reads geometry, so the broadcast tests
+    /// that build players must apply the Arena geometry on their own libtest thread first.
+    fn init_arena_geometry() {
+        sim_core::set_world_geometry(
+            sim_core::constants::MAP_MIN,
+            sim_core::constants::MAP_MAX,
+            true,
+        );
+    }
+
     fn entity(id: u16, x: f32, y: f32) -> EntityData {
         EntityData {
             id,
@@ -871,6 +885,7 @@ mod tests {
 
     #[test]
     fn broadcast_emits_baseline_then_deltas_then_removal() {
+        init_arena_geometry();
         let mut svc = BroadcastService::new(1000.0, 1100.0, 400.0, 1000.0, 1200);
         let mut players = PlayerManager::new();
         let p = players.add_player(1).unwrap();
@@ -926,6 +941,7 @@ mod tests {
 
     #[test]
     fn aoi_hysteresis_keeps_on_ring_entities() {
+        init_arena_geometry();
         let mut svc = BroadcastService::new(1000.0, 1100.0, 400.0, 1000.0, 1200);
         let mut players = PlayerManager::new();
         let p = players.add_player(1).unwrap();
@@ -962,6 +978,7 @@ mod tests {
 
     #[test]
     fn baseline_deferred_when_removals_pending() {
+        init_arena_geometry();
         let mut svc = BroadcastService::new(1000.0, 1100.0, 400.0, 1000.0, 1200);
         let mut players = PlayerManager::new();
         let p = players.add_player(1).unwrap();

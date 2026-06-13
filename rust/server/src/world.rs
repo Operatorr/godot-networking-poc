@@ -175,14 +175,30 @@ impl World {
         match packet {
             ClientPacket::ConnectAuth(auth) => self.handle_auth(peer, auth, now_unix_ms, outbox),
             ClientPacket::PlayerInput(input) => {
+                // Single choke point for client floats entering the sim. The wire decode already
+                // bounds these (i16 dequant can't produce NaN/Inf), but guard here too so no
+                // future ingest path can poison sim math: a NaN aim_angle would slip past the
+                // `< 1e-5` direction guard and corrupt every projectile/snapshot it touches.
+                let aim_angle = input.aim_angle as f64;
+                let position = Vec2::new(input.position.0, input.position.1);
+                let cursor = Vec2::new(input.cursor.0, input.cursor.1);
+                if !aim_angle.is_finite()
+                    || !position.x.is_finite()
+                    || !position.y.is_finite()
+                    || !cursor.x.is_finite()
+                    || !cursor.y.is_finite()
+                {
+                    debug!("dropping non-finite PlayerInput from peer {peer}");
+                    return;
+                }
                 self.players.queue_player_input(
                     peer,
                     QueuedInput {
                         input_flags: input.input_flags,
                         sequence: input.sequence,
-                        aim_angle: input.aim_angle as f64,
-                        position: Vec2::new(input.position.0, input.position.1),
-                        cursor: Vec2::new(input.cursor.0, input.cursor.1),
+                        aim_angle,
+                        position,
+                        cursor,
                         client_render_tick: input.client_render_tick,
                         client_rtt_ms: input.client_rtt_ms,
                     },
@@ -227,6 +243,13 @@ impl World {
         now_unix_ms: u64,
         outbox: &mut Outbox,
     ) {
+        // Ignore re-auth from an already-authenticated peer (M6): a second ConnectAuth would
+        // otherwise overwrite the established identity (character_id/name/class) and re-fire the
+        // join broadcasts — an identity-swap vector. First successful auth wins for a peer's life.
+        if self.players.get(peer).is_some_and(|s| s.authenticated) {
+            debug!("ignoring re-auth from already-authenticated peer {peer}");
+            return;
+        }
         if auth.protocol_version != protocol::PROTOCOL_VERSION {
             outbox.send(
                 peer,
@@ -238,7 +261,6 @@ impl World {
             outbox.kick(peer, disconnect_reason::INVALID_AUTH);
             return;
         }
-        // Re-auth is unguarded (parity): overwrites identity and re-fires the broadcasts.
         let verdict = {
             let mut v = self.verifier.verify(auth.ticket.as_ref(), now_unix_ms);
             // Region check uses the instance's region (config) — local/dev maps to ASIA.
@@ -505,7 +527,6 @@ impl World {
             &mut self.monsters,
             &mut self.leaderboard,
             outbox,
-            self.tick_count,
             self.pvp_enabled,
         );
         self.roll_healthorbs(&killed);
@@ -716,7 +737,7 @@ impl World {
                 );
             }
             AbilityKind::Multishot => {
-                self.spawn_multishot(i, owner_id, pos, cursor, aim_angle, stats, outbox);
+                self.spawn_multishot(owner_id, pos, cursor, aim_angle, stats, outbox);
             }
             AbilityKind::Mine => {
                 self.world_entities.spawn_mine(
@@ -747,10 +768,8 @@ impl World {
     }
 
     /// Void Hunter multishot — a spread of piercing projectiles toward the cursor (or aim).
-    #[allow(clippy::too_many_arguments)]
     fn spawn_multishot(
         &mut self,
-        i: usize,
         owner_id: u16,
         pos: Vec2,
         cursor: Vec2,
@@ -800,7 +819,6 @@ impl World {
                 }));
             }
         }
-        let _ = i;
     }
 
     /// Rogue Shadowstep — blink to the nearest monster within `ability_radius` of the cursor and
@@ -1065,8 +1083,18 @@ impl World {
                 if !p.authenticated || p.character_id != h.character_id {
                     continue;
                 }
-                p.apply_class_and_level(p.player_class, h.level, h.experience);
-                p.mode_hardcore = h.mode_hardcore;
+                let Some(state) = h.state else {
+                    // Hydrate failed — fail CLOSED rather than play a possibly-hardcore character
+                    // as softcore (no permadeath). Kick so the client retries a clean join.
+                    info!(
+                        "hydrate failed for char {} (peer {}); kicking to avoid softcore fallback",
+                        h.character_id, h.peer
+                    );
+                    outbox.kick(h.peer, disconnect_reason::KICKED);
+                    continue;
+                };
+                p.apply_class_and_level(p.player_class, state.level, state.experience);
+                p.mode_hardcore = state.mode_hardcore;
                 p.progression_hydrated = true;
                 p.progression_dirty = false;
                 let move_speed_q = (p.effective_move_speed() / 4.0).round().clamp(0.0, 255.0) as u8;
@@ -1244,6 +1272,14 @@ mod tests {
     use crate::outbox::Target;
 
     fn test_world() -> World {
+        // sim_core now debug_asserts that each thread set its geometry before any bounds/obstacle
+        // read (arena.rs "set once, single thread" contract). main() does this at server start; a
+        // unit test runs on its own libtest thread, so it must apply the Arena geometry itself.
+        sim_core::set_world_geometry(
+            sim_core::constants::MAP_MIN,
+            sim_core::constants::MAP_MAX,
+            true,
+        );
         let config = ServerConfig::default();
         let verifier = TicketVerifier::new("", true, 0).unwrap();
         World::new(config, verifier, Pcg32::new(1234), None)

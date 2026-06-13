@@ -1,5 +1,10 @@
 //! Seedable PCG32 owned by the sim — replaces Godot's process-global RNG (extraction monsters §7:
 //! match distributions and call sites, not the stream; seedable for tests).
+//!
+//! NOT cryptographic. PCG32 is fast and statistically good for gameplay (drops, spawns, AI jitter)
+//! but fully predictable from its state. Never use it for auth, tokens, session ids, or anything
+//! an adversary must not be able to predict — use a CSPRNG (e.g. `getrandom`/`rand::rngs::OsRng`)
+//! there. Auth tickets are Ed25519-signed by the API, not generated here.
 
 pub struct Pcg32 {
     state: u64,

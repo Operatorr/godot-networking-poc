@@ -185,11 +185,20 @@ func _connect_to_destination_instance() -> bool:
 	var waited := 0.0
 	while not state["done"] and waited < CONNECT_TIMEOUT_SEC:
 		await get_tree().process_frame
+		# If the portal was freed mid-await, tear the signal connections down so the
+		# captured lambdas can't fire on a freed node, then bail. Disconnect inline here
+		# (NetworkManager is a persistent autoload) — don't call a method on freed self.
+		if not is_instance_valid(self):
+			if NetworkManager.connected_to_server.is_connected(on_connected):
+				NetworkManager.connected_to_server.disconnect(on_connected)
+			if NetworkManager.connection_error.is_connected(on_error):
+				NetworkManager.connection_error.disconnect(on_error)
+			if NetworkManager.disconnected_from_server.is_connected(on_disconnected):
+				NetworkManager.disconnected_from_server.disconnect(on_disconnected)
+			return false
 		waited += get_process_delta_time()
 
-	NetworkManager.connected_to_server.disconnect(on_connected)
-	NetworkManager.connection_error.disconnect(on_error)
-	NetworkManager.disconnected_from_server.disconnect(on_disconnected)
+	_disconnect_connection_handlers(on_connected, on_error, on_disconnected)
 
 	if state["ok"]:
 		_set_prompt("Connected!")
@@ -200,6 +209,17 @@ func _connect_to_destination_instance() -> bool:
 		reason = "Connection timed out"
 	await _show_error_prompt(reason)
 	return false
+
+
+## Disconnect the transient connection-result handlers, tolerating an already-removed
+## connection (e.g. NetworkManager re-emitted/disconnected) so early exit stays safe.
+func _disconnect_connection_handlers(on_connected: Callable, on_error: Callable, on_disconnected: Callable) -> void:
+	if NetworkManager.connected_to_server.is_connected(on_connected):
+		NetworkManager.connected_to_server.disconnect(on_connected)
+	if NetworkManager.connection_error.is_connected(on_error):
+		NetworkManager.connection_error.disconnect(on_error)
+	if NetworkManager.disconnected_from_server.is_connected(on_disconnected):
+		NetworkManager.disconnected_from_server.disconnect(on_disconnected)
 
 
 func _show_default_prompt() -> void:

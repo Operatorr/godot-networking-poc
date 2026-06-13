@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"crypto/subtle"
 	"database/sql"
 	"encoding/json"
 	"net/http"
@@ -40,13 +41,21 @@ func requireServerToken(w http.ResponseWriter, r *http.Request) bool {
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "Internal endpoints unconfigured (set SERVER_API_TOKEN)"})
 		return false
 	}
-	if r.Header.Get("X-Server-Token") != expectedToken {
+	if !serverTokenValid(r.Header.Get("X-Server-Token"), expectedToken) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "Unauthorized"})
 		return false
 	}
 	return true
+}
+
+// serverTokenValid reports whether the presented token matches the expected one
+// using a constant-time comparison, so the handler does not leak the token length
+// or contents through response timing. Shared by the internal endpoints and the
+// region heartbeat.
+func serverTokenValid(got, expected string) bool {
+	return subtle.ConstantTimeCompare([]byte(got), []byte(expected)) == 1
 }
 
 // CharacterProgressResponse is the body returned by GetCharacter.
@@ -56,10 +65,12 @@ type CharacterProgressResponse struct {
 	Mode       string `json:"mode"`
 }
 
-// ProgressRequest is the body for the progress-update endpoint.
+// ProgressRequest is the body for the progress-update endpoint. Level and
+// Experience are pointers so an OMITTED field is rejected (nil) rather than
+// silently decoding to 0 and zeroing a character's progression.
 type ProgressRequest struct {
-	Level      int `json:"level"`
-	Experience int `json:"experience"`
+	Level      *int `json:"level"`
+	Experience *int `json:"experience"`
 }
 
 // OKResponse is a minimal success body for endpoints with nothing else to return.
@@ -108,7 +119,13 @@ func (h *InternalHandler) GetCharacter(w http.ResponseWriter, r *http.Request) {
 }
 
 // UpdateProgress writes level + experience for the character with the given id.
-// Level is clamped to 1..MaxPlayerLevel and experience to >= 0.
+// Both fields are required (omitted => 400, so a partial body can't zero out
+// progression) and must fall on the shared progression curve: 1 <= level <=
+// MaxPlayerLevel and 0 <= experience < XPToNextLevel(level). Progression is
+// monotonic, so the write is guarded with a WHERE clause that refuses to move a
+// character backwards: it only applies when the new (level, experience) is
+// strictly ahead of the stored value. An in-range request that loses this race
+// (the stored row is already further along) is treated as a no-op success.
 //
 // POST /api/internal/characters/{id}/progress
 func (h *InternalHandler) UpdateProgress(w http.ResponseWriter, r *http.Request) {
@@ -128,32 +145,50 @@ func (h *InternalHandler) UpdateProgress(w http.ResponseWriter, r *http.Request)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "Invalid request body"})
 		return
 	}
-
-	level := req.Level
-	if level < 1 {
-		level = 1
-	}
-	if level > progression.MaxPlayerLevel {
-		level = progression.MaxPlayerLevel
-	}
-	experience := req.Experience
-	if experience < 0 {
-		experience = 0
+	if req.Level == nil || req.Experience == nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Both level and experience are required"})
+		return
 	}
 
-	result, err := h.db.Exec(
-		`UPDATE characters SET level = $1, experience = $2 WHERE id = $3`,
+	level := *req.Level
+	experience := *req.Experience
+	if level < 1 || level > progression.MaxPlayerLevel {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "level out of range"})
+		return
+	}
+	// experience is the in-level progress: it must be non-negative and below the
+	// cost of advancing past the current level (0 at the cap, where the bar is full).
+	maxExp := progression.XPToNextLevel(level)
+	if experience < 0 || (maxExp > 0 && experience >= maxExp) || (maxExp == 0 && experience != 0) {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "experience out of range for level"})
+		return
+	}
+
+	// Monotonic write: only advance, never regress. The character must exist
+	// (separate existence probe) but a stale/behind write is a benign no-op.
+	var exists bool
+	if err := h.db.QueryRow(`SELECT true FROM characters WHERE id = $1`, id).Scan(&exists); err != nil {
+		if err == sql.ErrNoRows {
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(ErrorResponse{Error: "Character not found"})
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to fetch character"})
+		return
+	}
+
+	_, err := h.db.Exec(
+		`UPDATE characters SET level = $1, experience = $2
+		 WHERE id = $3 AND ($1 > level OR ($1 = level AND $2 > experience))`,
 		level, experience, id,
 	)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to update character"})
-		return
-	}
-	rows, _ := result.RowsAffected()
-	if rows == 0 {
-		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(ErrorResponse{Error: "Character not found"})
 		return
 	}
 

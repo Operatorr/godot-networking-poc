@@ -3,12 +3,13 @@
 //! wrapping (deliberate fix of the u16-wrap hazard H12).
 
 use protocol::ServerMetrics;
+use std::collections::VecDeque;
 
 const METRICS_SAMPLE_SIZE: usize = 30;
 
 #[derive(Default)]
 pub struct MetricsCollector {
-    tick_times_ms: Vec<f64>,
+    tick_times_ms: VecDeque<f64>,
     pub total_bytes_sent: u64,
     pub total_bytes_received: u64,
     pub bytes_sent_per_peer: std::collections::HashMap<usize, u64>,
@@ -19,9 +20,9 @@ pub struct MetricsCollector {
 
 impl MetricsCollector {
     pub fn record_tick_time(&mut self, ms: f64) {
-        self.tick_times_ms.push(ms);
+        self.tick_times_ms.push_back(ms);
         if self.tick_times_ms.len() > METRICS_SAMPLE_SIZE {
-            self.tick_times_ms.remove(0);
+            self.tick_times_ms.pop_front();
         }
         metrics::histogram!("tick_duration_ms").record(ms);
     }
@@ -48,7 +49,9 @@ impl MetricsCollector {
         diag: &crate::broadcast::TickDiagnostics,
         now_ms: u64,
     ) -> ServerMetrics {
-        let elapsed_s = (now_ms - self.prev_metrics_ms) as f64 / 1000.0;
+        // saturating_sub: the very first call has prev_metrics_ms == 0, and a non-monotonic clock
+        // read would otherwise underflow into a huge bogus elapsed.
+        let elapsed_s = now_ms.saturating_sub(self.prev_metrics_ms) as f64 / 1000.0;
         let peer_count = self.bytes_sent_per_peer.len();
         let avg_bandwidth = if peer_count > 0 && elapsed_s > 0.0 {
             let total: u64 = self.bytes_sent_per_peer.values().sum();

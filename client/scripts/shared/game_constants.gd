@@ -130,8 +130,10 @@ const PLAYER_STAMINA_DRAIN_PER_SEC := 35.0
 ## Stamina regenerated per second while NOT sprinting.
 const PLAYER_STAMINA_REGEN_PER_SEC := 20.0
 
-## Legacy minimum-to-sprint threshold (kept for reference). The exhaustion model lets
-## stamina deplete fully instead — sprint is allowed while stamina > 0 and not exhausted.
+## Legacy minimum-to-sprint threshold. No longer the sprint gate: the exhaustion model
+## lets stamina deplete fully instead (sprint allowed while stamina > 0 and not exhausted —
+## see movement_state_machine.gd want_sprint). Unused in GDScript; retained only to mirror
+## rust/sim_core constants.rs PLAYER_STAMINA_SPRINT_MIN, which is likewise kept for reference.
 const PLAYER_STAMINA_SPRINT_MIN := 5.0
 
 ## Sprinting to 0 stamina exhausts the player: sprint is locked out and stamina regen is

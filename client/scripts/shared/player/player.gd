@@ -119,6 +119,14 @@ const _ABILITY_MANA_COST := [35.0, 30.0, 35.0, 35.0, 40.0, 30.0, 40.0]
 
 
 func _ready() -> void:
+	# Guard against a silent desync: the per-class cost table must have exactly one entry
+	# per PacketTypes.PlayerClass, so adding a class can't index past the end (or alias).
+	# CLASS_DISPLAY_NAMES is the canonical one-per-class list (PlayerClass enum mirror).
+	assert(
+		_ABILITY_MANA_COST.size() == PacketTypes.CLASS_DISPLAY_NAMES.size(),
+		"_ABILITY_MANA_COST must have one entry per PacketTypes.PlayerClass"
+	)
+
 	# Set motion mode for top-down game (no gravity)
 	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
 

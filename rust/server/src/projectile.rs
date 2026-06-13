@@ -228,12 +228,7 @@ impl ProjectileManager {
 
     /// PvP pass — server-authoritative, lag-compensated, defender-favor lerp. The skip on
     /// monster-owned projectiles is D11 carried-forward invariant #1.
-    pub fn check_collisions_with_players(
-        &mut self,
-        players: &PlayerManager,
-        tick: u64,
-    ) -> Vec<HitEvent> {
-        let _ = tick;
+    pub fn check_collisions_with_players(&mut self, players: &PlayerManager) -> Vec<HitEvent> {
         let mut hits = Vec::new();
         for proj in &mut self.projectiles {
             if !proj.alive {
@@ -364,6 +359,16 @@ mod tests {
 
     const DT: f64 = 1.0 / 30.0;
 
+    /// sim_core debug_asserts each thread set its world geometry before any bounds/obstacle read
+    /// (arena.rs contract). Each libtest test is its own thread — apply the Arena geometry first.
+    fn init_arena_geometry() {
+        sim_core::set_world_geometry(
+            sim_core::constants::MAP_MIN,
+            sim_core::constants::MAP_MAX,
+            true,
+        );
+    }
+
     fn spawn(mgr: &mut ProjectileManager, owner: u16, pos: Vec2, dir: Vec2) -> u16 {
         mgr.spawn_projectile(
             owner,
@@ -381,6 +386,7 @@ mod tests {
 
     #[test]
     fn max_distance_kills_at_800() {
+        init_arena_geometry();
         let mut mgr = ProjectileManager::new();
         spawn(&mut mgr, 1, Vec2::new(-900.0, 900.0), Vec2::new(1.0, 0.0));
         let mut ticks = 0;
@@ -396,6 +402,7 @@ mod tests {
 
     #[test]
     fn obstacle_clamps_position() {
+        init_arena_geometry();
         let mut mgr = ProjectileManager::new();
         // Fired straight at the center north pillar from the left.
         spawn(&mut mgr, 1, Vec2::new(-40.0, -100.0), Vec2::new(1.0, 0.0));
@@ -428,6 +435,7 @@ mod tests {
 
     #[test]
     fn monster_owned_skips_player_pass() {
+        init_arena_geometry();
         let mut mgr = ProjectileManager::new();
         let mut players = PlayerManager::new();
         let p = players.add_player(7).unwrap();
@@ -442,7 +450,7 @@ mod tests {
         );
         players.record_position_snapshot(1);
         mgr.update_all(DT);
-        let hits = mgr.check_collisions_with_players(&players, 1);
+        let hits = mgr.check_collisions_with_players(&players);
         assert!(
             hits.is_empty(),
             "monster-owned projectiles must never hit in the server player pass"
@@ -452,6 +460,7 @@ mod tests {
 
     #[test]
     fn player_projectile_hits_other_player_not_owner() {
+        init_arena_geometry();
         let mut mgr = ProjectileManager::new();
         let mut players = PlayerManager::new();
         players.add_player(1).unwrap().authenticated = true;
@@ -467,7 +476,7 @@ mod tests {
             Vec2::new(1.0, 0.0),
         );
         mgr.update_all(DT);
-        let hits = mgr.check_collisions_with_players(&players, 2);
+        let hits = mgr.check_collisions_with_players(&players);
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].target_id, players.players[1].entity_id);
     }

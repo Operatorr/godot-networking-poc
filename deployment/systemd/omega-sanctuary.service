@@ -3,6 +3,9 @@ Description=Omega Realm SANCTUARY instance (Rust omega-server, ENet/UDP 8082, me
 Documentation=https://github.com/Operatorr/godot-networking-poc
 After=network-online.target omega-api.service
 Wants=network-online.target omega-api.service
+# Start-limit directives belong in [Unit]; systemd ignores them under [Service].
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -13,8 +16,6 @@ EnvironmentFile=/etc/omega-realm/server.env
 ExecStart=/home/deploy/omega-realm/rust/target/release/omega-server --config /home/deploy/omega-realm/deployment/server_config.sanctuary.json
 Restart=always
 RestartSec=3
-StartLimitIntervalSec=60
-StartLimitBurst=5
 
 NoNewPrivileges=true
 PrivateTmp=true

@@ -170,24 +170,34 @@ impl<'a> BitReader<'a> {
         Ok(s)
     }
 
+    /// `take` into a fixed-size array — the slice `take(N)` returns is provably exactly `N` bytes,
+    /// so the conversion cannot fail; this packages that proof so the fixed-width readers need no
+    /// `unwrap`/`expect` on untrusted input.
+    fn take_array<const N: usize>(&mut self) -> Result<[u8; N], DecodeError> {
+        let s = self.take(N)?;
+        let mut buf = [0u8; N];
+        buf.copy_from_slice(s);
+        Ok(buf)
+    }
+
     pub fn read_u8(&mut self) -> Result<u8, DecodeError> {
         Ok(self.take(1)?[0])
     }
 
     pub fn read_u16(&mut self) -> Result<u16, DecodeError> {
-        Ok(u16::from_le_bytes(self.take(2)?.try_into().unwrap()))
+        Ok(u16::from_le_bytes(self.take_array()?))
     }
 
     pub fn read_i16(&mut self) -> Result<i16, DecodeError> {
-        Ok(i16::from_le_bytes(self.take(2)?.try_into().unwrap()))
+        Ok(i16::from_le_bytes(self.take_array()?))
     }
 
     pub fn read_u32(&mut self) -> Result<u32, DecodeError> {
-        Ok(u32::from_le_bytes(self.take(4)?.try_into().unwrap()))
+        Ok(u32::from_le_bytes(self.take_array()?))
     }
 
     pub fn read_u64(&mut self) -> Result<u64, DecodeError> {
-        Ok(u64::from_le_bytes(self.take(8)?.try_into().unwrap()))
+        Ok(u64::from_le_bytes(self.take_array()?))
     }
 
     pub fn read_bytes(&mut self, n: usize) -> Result<&'a [u8], DecodeError> {
@@ -200,8 +210,14 @@ impl<'a> BitReader<'a> {
         String::from_utf8(bytes.to_vec()).map_err(|_| DecodeError::BadUtf8)
     }
 
+    /// Whole bytes not yet consumed. Saturating: a fully-consumed reader (and the case where the
+    /// final byte is mid-read, so it does not count as a whole remaining byte) returns 0 rather
+    /// than underflowing. `pub` and reachable from untrusted-input paths, so it must never panic.
     pub fn remaining_bytes(&self) -> usize {
-        self.data.len() - self.byte_pos - if self.bit_pos > 0 { 1 } else { 0 }
+        self.data
+            .len()
+            .saturating_sub(self.byte_pos)
+            .saturating_sub(if self.bit_pos > 0 { 1 } else { 0 })
     }
 
     /// Strict end-of-packet check: no full bytes may remain, and any padding bits in the final
@@ -265,6 +281,29 @@ mod tests {
         let mut r = BitReader::new(&buf);
         assert_eq!(r.read_bits(3).unwrap(), 0b101);
         assert_eq!(r.expect_end(), Err(DecodeError::TrailingData));
+    }
+
+    #[test]
+    fn remaining_bytes_saturates_on_empty_and_consumed() {
+        // Empty reader: no underflow, just 0.
+        let r = BitReader::new(&[]);
+        assert_eq!(r.remaining_bytes(), 0);
+
+        // Fully consumed reader: byte_pos == len, must return 0 (not wrap).
+        let buf = [1u8, 2, 3];
+        let mut r = BitReader::new(&buf);
+        assert_eq!(r.remaining_bytes(), 3);
+        r.read_u8().unwrap();
+        assert_eq!(r.remaining_bytes(), 2);
+        r.read_u16().unwrap();
+        assert_eq!(r.remaining_bytes(), 0);
+
+        // Mid-byte read on a single-byte buffer: the in-progress byte is not a whole remaining
+        // byte, and the subtraction must saturate to 0 rather than underflow.
+        let one = [0u8; 1];
+        let mut r = BitReader::new(&one);
+        r.read_bits(3).unwrap();
+        assert_eq!(r.remaining_bytes(), 0);
     }
 
     #[test]

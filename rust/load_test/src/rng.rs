@@ -1,6 +1,11 @@
 //! Seedable PCG32 — same generator as the server's `rng.rs` (Godot-equivalent helpers), plus a
-//! Box-Muller gaussian for the strategy bot's aim error. Per-bot streams come from seeding with
-//! `base_seed ^ bot_id` so swarm runs are reproducible enough to compare without being lockstep.
+//! Box-Muller gaussian for the strategy bot's aim error.
+//!
+//! Per-bot streams: when the swarm is run with `--seed <base>`, each bot seeds its stream with
+//! `Pcg32::new(base ^ bot_id)` ([`new`](Pcg32::new)) so runs are reproducible enough to compare
+//! without being lockstep. Without `--seed`, bots seed from [`from_entropy`](Pcg32::from_entropy)
+//! (wall clock ⊕ pid ⊕ bot_id) for a fresh non-reproducible run. The `^ bot_id` decorrelation is
+//! the same in both paths; only the base differs.
 
 pub struct Pcg32 {
     state: u64,
