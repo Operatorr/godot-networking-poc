@@ -1,0 +1,35 @@
+-- Migration 0002 — Content CMS (SCAFFOLD, NOT YET APPLIED)
+--
+-- Backs the data-driven content CMS (docs/CMS.md): the versioned store of
+-- enemy / item / spell / projectile definitions and balance patches that
+-- designers edit, then publish to the JSON artifacts the game downloads.
+--
+-- STATUS: scaffold. This file is NOT run by InitSchema yet (api/database/schema.sql
+-- is the only auto-applied schema). Fold it into the schema / a migration runner
+-- when the content.Store (api/internal/content) is implemented.
+
+-- One versioned, schema-validated content record. `payload` is validated against
+-- client/data/schemas/<kind>_schema.json before a draft may be published.
+-- CREATE TABLE IF NOT EXISTS content_definitions (
+--     id           TEXT        NOT NULL,
+--     kind         TEXT        NOT NULL,   -- enemy | item | spell | projectile | balance
+--     version      INTEGER     NOT NULL DEFAULT 1,
+--     payload      JSONB       NOT NULL,
+--     draft        BOOLEAN     NOT NULL DEFAULT TRUE,
+--     updated_by   BIGINT      REFERENCES users(id),
+--     updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+--     PRIMARY KEY (kind, id, version)
+-- );
+
+-- Tracks the currently-published content version per kind (the value the game's
+-- version-check compares against to decide whether to re-download artifacts).
+-- CREATE TABLE IF NOT EXISTS content_releases (
+--     kind          TEXT        PRIMARY KEY,
+--     version       INTEGER     NOT NULL,
+--     artifact_url  TEXT        NOT NULL,
+--     published_by  BIGINT      REFERENCES users(id),
+--     published_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+-- );
+
+-- TODO: add an admin/role column on users (or a roles table) so the CMS editor
+-- endpoints can be gated to designers, not every authenticated player.

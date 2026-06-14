@@ -130,6 +130,18 @@ func main() {
 	mux.HandleFunc("/api/regions/heartbeat", regionHandler.UpdateRegionHeartbeat)
 	mux.HandleFunc("/api/regions/select", middleware.RequireAuth(regionHandler.SelectRegion))
 
+	// Content CMS routes (SCAFFOLD — see docs/CMS.md, internal/handlers/content.go).
+	// Left commented so the live API behavior is unchanged until the content.Store
+	// and content_definitions table exist. Gate behind an ADMIN-role check (not
+	// plain JWT) before enabling.
+	//
+	// contentHandler := handlers.NewContentHandler()
+	// mux.HandleFunc("GET /api/content/{kind}", middleware.RequireAuth(contentHandler.ListDefinitions))
+	// mux.HandleFunc("GET /api/content/{kind}/{id}", middleware.RequireAuth(contentHandler.GetDefinition))
+	// mux.HandleFunc("POST /api/content/{kind}", middleware.RequireAuth(contentHandler.UpsertDefinition))
+	// mux.HandleFunc("POST /api/content/{kind}/publish", middleware.RequireAuth(contentHandler.PublishKind))
+	// mux.HandleFunc("GET /api/admin/balance/dashboard", middleware.RequireAuth(contentHandler.BalanceDashboard))
+
 	// CORS middleware
 	handler := corsMiddleware(mux)
 
