@@ -1,0 +1,20 @@
+{
+	"_comment": "Random affix pool for Omega Realm items. Holds the rollable affixes (prefixes/suffixes) that can be attached to weapons/armor, each with the stat it modifies, value range, and tier/rarity gating. The Rust omega-server is the numeric authority: affixes are rolled and applied server-side when items generate and their stat effects are enforced in the sim ('the client requests, the server decides'); this file mirrors definitions for client display/tooling and the server wins on disagreement. Governing GDD doc: docs/gdd/loot.md (affix system is an explicit open question; STATUS: TBD/UNBUILT — no affix system in code today), data/schemas/item_schema.json, data/loot/rarity_weights.json (affix count per rarity). TODO: the whole affix list and all ranges are unfilled pending design; the single example below is schema-shape only.",
+
+	"affixes": {
+		"_comment": "Keyed by stable affix id. One schema-shaped example entry. 'kind' = prefix|suffix; value_range is rolled at item-generation time; tier/rarity fields gate where the affix can appear.",
+		"EXAMPLE_of_swiftness": {
+			"id": "EXAMPLE_of_swiftness",
+			"display_name": "of Swiftness (EXAMPLE)",
+			"kind": "suffix",
+			"stat": "move_speed",
+			"modifier_type": "flat",
+			"value_range": { "min": null, "max": null },
+			"min_tier": 1,
+			"allowed_rarities": ["uncommon", "rare"],
+			"allowed_item_types": ["armor"],
+			"weight": 100,
+			"notes": "TODO: placeholder example; all values are unfilled"
+		}
+	}
+}

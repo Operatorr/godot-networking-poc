@@ -6,7 +6,7 @@ single Ubuntu 24.04 droplet; Docker is removed entirely. Operational guide:
 [`deployment/systemd/`](../../deployment/systemd/); provisioning + deploy scripts in
 [`deployment/`](../../deployment/) and `scripts/deploy.sh`. This supersedes the Docker
 Compose deployment described in earlier revisions of `DEPLOYMENT.md` and
-[`docs/INFRASTRUCTURE.md`](../INFRASTRUCTURE.md) (§Deployment Procedures).
+[`docs/ops/infrastructure.md`](../ops/infrastructure.md) (§Deployment Procedures).
 
 ## Decision
 
@@ -76,7 +76,7 @@ was standing in for.
 - **No image immutability / pinned base.** Reproducibility now rests on the apt packages
   and the toolchain versions provisioned. Acceptable for a single-box POC.
 - **Single host.** No orchestration story for multi-region scale-out. The
-  [INFRASTRUCTURE.md](../INFRASTRUCTURE.md) Phase 3 design still applies; that future may
+  [infrastructure.md](../ops/infrastructure.md) Phase 3 design still applies; that future may
   reintroduce containers/orchestration on its own merits — this ADR governs the POC, not
   forever.
 - **Two units to keep in lockstep.** Arena/Sanctuary share `server.env`; `GAME_SERVER_PORT`

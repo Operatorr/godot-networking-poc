@@ -1,3 +1,11 @@
+> ⚠️ **SUPERSEDED (2026-06).** This bright, cheerful style guide describes the *old* Sanctuary and no
+> longer reflects the implemented town. The Sanctuary was redesigned into a grim, ruined gothic
+> pilgrim city (Diablo/Tristram tone). The current art direction, palette, and layout are the system
+> of record in [`sanctuary-redesign-spec.md`](sanctuary-redesign-spec.md) (theme/palette) and
+> [`sanctuary-layout.md`](sanctuary-layout.md) (grid layout). Implementation lives in
+> `client/scripts/levels/town/` (`sanctuary_town_world.gd`, `sanctuary_props.gd`) +
+> `client/assets/shaders/town/`. This file is retained only for historical reference.
+
 Here is the markdown **Light Town / Sanctuary Style Guide** based on the look you liked.
 
 # Omega Realm — Town / Sanctuary Style Guide

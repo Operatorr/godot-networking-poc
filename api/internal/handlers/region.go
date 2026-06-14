@@ -30,9 +30,9 @@ type SelectRegionRequest struct {
 
 // SelectRegionResponse represents the response after selecting a region
 type SelectRegionResponse struct {
-	Message      string         `json:"message"`
-	Region       *models.Region `json:"region"`
-	WebSocketURL string         `json:"websocket_url"`
+	Message    string         `json:"message"`
+	Region     *models.Region `json:"region"`
+	ConnectURL string         `json:"connect_url"`
 }
 
 // RegionHeartbeatRequest is published by game servers so the API can expose
@@ -42,7 +42,7 @@ type RegionHeartbeatRequest struct {
 	Region        string `json:"region"`
 	ActivePlayers int64  `json:"active_players"`
 	MaxPlayers    int    `json:"max_players"`
-	WebSocketURL  string `json:"websocket_url"`
+	ConnectURL    string `json:"connect_url"`
 	Status        string `json:"status"`
 }
 
@@ -135,9 +135,9 @@ func (h *RegionHandler) UpdateRegionHeartbeat(w http.ResponseWriter, r *http.Req
 		status = models.RegionStatusOnline
 	}
 
-	webSocketURL := strings.TrimSpace(req.WebSocketURL)
-	if webSocketURL == "" {
-		webSocketURL = region.WebSocketURL
+	connectURL := strings.TrimSpace(req.ConnectURL)
+	if connectURL == "" {
+		connectURL = region.ConnectURL
 	}
 
 	err := h.redis.SetRegionRuntimeStatus(
@@ -146,7 +146,7 @@ func (h *RegionHandler) UpdateRegionHeartbeat(w http.ResponseWriter, r *http.Req
 			RegionID:      regionID,
 			ActivePlayers: activePlayers,
 			MaxPlayers:    maxPlayers,
-			WebSocketURL:  webSocketURL,
+			ConnectURL:    connectURL,
 			Status:        status,
 		},
 		regionRuntimeStatusTTL,
@@ -248,9 +248,9 @@ func (h *RegionHandler) SelectRegion(w http.ResponseWriter, r *http.Request) {
 	// Return success response with region details and WebSocket URL
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(SelectRegionResponse{
-		Message:      "Region selected successfully",
-		Region:       region,
-		WebSocketURL: region.WebSocketURL,
+		Message:    "Region selected successfully",
+		Region:     region,
+		ConnectURL: region.ConnectURL,
 	})
 }
 
@@ -280,8 +280,8 @@ func (h *RegionHandler) applyRuntimeStatuses(ctx context.Context, regions []*mod
 		if status.MaxPlayers > 0 {
 			region.MaxPlayers = status.MaxPlayers
 		}
-		if status.WebSocketURL != "" {
-			region.WebSocketURL = status.WebSocketURL
+		if status.ConnectURL != "" {
+			region.ConnectURL = status.ConnectURL
 		}
 		if status.Status != "" {
 			region.Status = status.Status

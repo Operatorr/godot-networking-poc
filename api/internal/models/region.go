@@ -1,10 +1,15 @@
 package models
 
+import (
+	"os"
+	"strings"
+)
+
 // Region represents a game server region
 type Region struct {
 	ID              string `json:"id"`
 	DisplayName     string `json:"display_name"`
-	WebSocketURL    string `json:"websocket_url"`
+	ConnectURL      string `json:"connect_url"`
 	Status          string `json:"status"`
 	ActivePlayers   int64  `json:"active_players"`
 	MaxPlayers      int    `json:"max_players"`
@@ -39,15 +44,29 @@ func IsValidRegion(regionID string) bool {
 	return ValidRegions[regionID]
 }
 
-// GetRegionDetails returns static details for a region
+// regionConnectURL resolves a region's advertised connect address. Operators set
+// REGION_<ID>_URL (e.g. REGION_EUROPE_URL=fra.omega.example:8081) to point a region at its
+// game-server droplet. The value is a bare host:port for the ENet/UDP game server
+// (ADR 0003 — no scheme, no TLS); the client's _split_host_port tolerates a leftover scheme
+// if one slips in. This is only the *fallback*: a live game server's heartbeat advertise_url
+// overrides it at runtime (see handlers/region.go applyRuntimeStatuses), so it is what the API
+// reports when a server is up but has not advertised its own address. Empty means "no static
+// fallback — rely on the heartbeat", which is the norm in production.
+func regionConnectURL(envKey, fallback string) string {
+	if v := strings.TrimSpace(os.Getenv(envKey)); v != "" {
+		return v
+	}
+	return fallback
+}
+
+// GetRegionDetails returns details for a region. Connect URLs come from REGION_<ID>_URL env
+// vars (with a runtime heartbeat override); capacity/latency are static metadata.
 func GetRegionDetails(regionID string) *Region {
-	// In production, WebSocket URLs would come from environment variables
-	// For now, we'll use placeholder URLs
 	regions := map[string]*Region{
 		RegionLocal: {
 			ID:              RegionLocal,
 			DisplayName:     "Local",
-			WebSocketURL:    "ws://localhost:8081",
+			ConnectURL:      regionConnectURL("REGION_LOCAL_URL", "localhost:8081"),
 			Status:          RegionStatusOnline,
 			MaxPlayers:      100,
 			LatencyEstimate: "< 10ms",
@@ -55,15 +74,15 @@ func GetRegionDetails(regionID string) *Region {
 		RegionAsia: {
 			ID:              RegionAsia,
 			DisplayName:     "Asia",
-			WebSocketURL:    "ws://asia.omegagame.io:9001",
+			ConnectURL:      regionConnectURL("REGION_ASIA_URL", ""),
 			Status:          RegionStatusOnline,
 			MaxPlayers:      200,
-			LatencyEstimate: "< 50ms",
+			LatencyEstimate: "< 80ms",
 		},
 		RegionEurope: {
 			ID:              RegionEurope,
 			DisplayName:     "Europe",
-			WebSocketURL:    "ws://europe.omegagame.io:9001",
+			ConnectURL:      regionConnectURL("REGION_EUROPE_URL", ""),
 			Status:          RegionStatusOnline,
 			MaxPlayers:      200,
 			LatencyEstimate: "< 80ms",
@@ -71,7 +90,7 @@ func GetRegionDetails(regionID string) *Region {
 		RegionUSWest: {
 			ID:              RegionUSWest,
 			DisplayName:     "US West",
-			WebSocketURL:    "ws://us-west.omegagame.io:9001",
+			ConnectURL:      regionConnectURL("REGION_US_WEST_URL", ""),
 			Status:          RegionStatusOnline,
 			MaxPlayers:      200,
 			LatencyEstimate: "< 100ms",

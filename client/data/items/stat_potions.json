@@ -1,0 +1,23 @@
+{
+	"_comment": "Permanent stat potions for Omega Realm — the Glory sink. Holds consumables bought with account Glory that permanently raise a character stat (the deliberate counterpart to earning Glory via X->Glory conversion). The Go API (Postgres) is the authority for the Glory balance and the purchase transaction, and the Rust omega-server is the authority for applying the permanent stat increase in the live sim ('the client requests, the server decides'); this file mirrors definitions for client display/shop tooling and the server/API wins on disagreement. Governing GDD docs: ADR 0006 (docs/adr/0006-softcore-hardcore-glory-economy.md — Glory economy: Glory = floor(total_lifetime_XP/100), permanent stat potions as the Glory sink), data/balance/stat_caps.json (per-stat-potion caps). TODO: every potion and all costs/increments are unfilled pending design; the single example below is schema-shape only.",
+
+	"potions": {
+		"_comment": "Keyed by stable potion id. One schema-shaped example entry. glory_cost may scale with how many of that potion the character already consumed (escalating sink); see cost_curve.",
+		"EXAMPLE_potion_of_vitality": {
+			"id": "EXAMPLE_potion_of_vitality",
+			"name": "Potion of Vitality (EXAMPLE)",
+			"stat": "hp",
+			"increment_per_use": null,
+			"glory_cost": null,
+			"cost_curve": {
+				"type": "escalating",
+				"formula": "TODO: e.g. base_cost * growth^uses_so_far",
+				"base_cost": null,
+				"growth": null
+			},
+			"max_uses_per_character": null,
+			"capped_by": "data/balance/stat_caps.json#stat_potion_caps",
+			"notes": "TODO: placeholder example; all values are unfilled"
+		}
+	}
+}

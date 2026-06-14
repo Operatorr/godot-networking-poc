@@ -1,0 +1,19 @@
+{
+	"_comment": "Projectile type definitions for Omega Realm. Holds each projectile's sim parameters {damage, speed, radius, lifetime, pierce} plus visuals, shared by player primaries, monster shots, and projectile-spread abilities. The Rust omega-server / sim_core is the numeric authority: projectiles are stepped and collision-resolved in the authoritative tick (positions quantized to 0.1 unit, ids in band 10000-29999) and the client only predicts/renders; this file mirrors definitions for client tooling and the server wins on disagreement. Governing GDD/spec docs: docs/server/contract.md (wire format, PROJECTILE_FIRED, id bands, quantization), docs/systems/combat-hits.md, data/schemas/projectile_schema.json. INVARIANT: projectile ids 10000-29999. TODO: every projectile is unfilled pending design; the single example below is schema-shape only (shape is encoded; values are placeholders).",
+
+	"projectiles": {
+		"_comment": "Keyed by stable projectile id. One schema-shaped example entry showing the standard sim parameter set. pierce = number of additional targets after the first (0 = single-hit).",
+		"EXAMPLE_arrow": {
+			"id": "EXAMPLE_arrow",
+			"name": "Arrow (EXAMPLE)",
+			"damage": null,
+			"speed": null,
+			"radius": null,
+			"lifetime": null,
+			"pierce": null,
+			"sprite": "projectiles/arrow",
+			"owner_factions": ["player"],
+			"notes": "TODO: placeholder example; all sim values are unfilled. id band on the wire is 10000-29999 (assigned at spawn, not here)."
+		}
+	}
+}

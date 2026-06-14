@@ -165,12 +165,12 @@ Minting API (implemented): `POST /api/character/ticket` (JWT-protected) returns
 `{ "ticket": "<base64 of the 86-byte blob>", "character_id", "region", "expires_at_ms" }`. The
 region `u8` map mirrors `region_from_string` (`asia`/`local`/unknown→0, `europe`→1, `us-west`→2,
 `us-east`→3). The payload layout is pinned to the verifier by a shared test vector
-(`api/internal/auth/ticket_test.go` ⇄ `rust/server/src/auth.rs::go_cross_language_ticket_vector`).
+(`api/internal/auth/ticket_test.go` ⇄ `rust/server/src/net/auth.rs::go_cross_language_ticket_vector`).
 Env: `OMEGA_TICKET_PRIVKEY` (api.env, 32-byte hex seed) ⇄ `OMEGA_TICKET_PUBKEY` (server.env);
 generate a pair with `go run ./cmd/gen_ticket_key`.
 
 > The full HTTP/JSON surface of the Go API (auth, characters, regions, leaderboard) — as
-> consumed by web/CMS clients — is documented in [`../api/cms-api.md`](../api/cms-api.md).
+> consumed by web/CMS clients — is documented in [`../api/web-api.md`](../api/web-api.md).
 > This section covers only the game-connect ticket the Rust server verifies.
 
 ### AuthResult (type 64, ch1)

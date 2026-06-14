@@ -22,7 +22,7 @@ movement and collapsed both scenes onto a shared base.
 
 ## The shared spine: `OfflineArena`
 
-`OfflineArena` (`client/scripts/shared/levels/offline_arena.gd`) is the base both modes extend. It
+`OfflineArena` (`client/scripts/levels/offline_arena.gd`) is the base both modes extend. It
 owns everything the online `arena_base.gd` gets from the prediction/network layer:
 
 | Concern | How |

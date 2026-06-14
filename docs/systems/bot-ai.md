@@ -51,7 +51,7 @@ sprints, flanks, and dashes more aggressively.
 
 ## Movement, speed, sprint & dash
 
-Movement constants **mirror** [`game_constants.gd`](../../client/scripts/shared/game_constants.gd)
+Movement constants **mirror** [`game_constants.gd`](../../client/scripts/data/game_constants.gd)
 so dead-reckoning matches the server-authoritative movement state machine
 ([`players-movement-state-machine.md`](players-movement-state-machine.md)) — keep them in sync:
 

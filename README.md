@@ -670,7 +670,7 @@ Collision layers:
 ## Documentation
 
 - [Documentation index](docs/index.md) - Full catalogue with verification status
-- [Architecture Guide](docs/ARCHITECTURE.md) - Detailed system architecture
+- [Architecture Guide](docs/ops/architecture.md) - Detailed system architecture
 - [Game server](docs/server/) - Architecture & rationale, wire/API contract
 - [ADRs](docs/adr/) - Load-bearing decisions
 

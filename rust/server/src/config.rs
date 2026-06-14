@@ -13,7 +13,7 @@ pub struct ServerConfig {
     pub max_players: usize,
     pub region: String,
     /// Instance kind: "arena" (combat: monsters + PvP, ±1000 + pillars) or "sanctuary" (safe town:
-    /// no monsters, PvP off, ±1856 walk-through). One process = one Instance (D13).
+    /// no monsters, PvP off, ±3328×±3072 walk-through). One process = one Instance (D13).
     pub mode: String,
     pub debug_logging: bool,
     pub api_server_url: String,

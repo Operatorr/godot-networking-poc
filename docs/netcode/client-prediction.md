@@ -1,151 +1,187 @@
 # Client prediction & reconciliation
 
-**Status:** Partial (verified 2026-06-03 against code)
+**Status:** Implemented (verified 2026-06-14 against the Rust port).
 
-> Built and live, but tagged **Partial** for two reasons:
-> 1. A second integrator (`Player.gd`) also moves the Local player, fighting the predictor —
->    the "steering boat" feel. Full bug + fix in [`../systems/players-movement.md`](../systems/players-movement.md).
-> 2. Input is sampled *and* sent at 30 Hz, coupling responsiveness to the Tick rate.
->    Where that lands in the latency stack: [`latency-budget.md`](latency-budget.md).
+> Post-Rust-port reality: the predictor no longer integrates movement in GDScript. It drives the
+> **shared compiled `sim_core` crate** through the `PredictionSim` GDExtension class, which wraps
+> the **same `MovementSm` + analytic mover the authoritative Rust server runs** (`rust/sim_core/src/step.rs`,
+> exposed by `rust/client_ext/src/lib.rs`). Prediction cannot diverge from the server's movement
+> code by construction — there is one implementation, compiled once, called from both sides.
 
 The **Local player** is predicted: the client simulates its own input immediately and corrects
 to the server later. Every **Remote entity** is interpolated instead, never predicted — see
-[`interpolation.md`](interpolation.md). This doc is entirely client-side; the authority that
-the client reconciles *against* lives in [`server-tick-broadcast.md`](server-tick-broadcast.md).
+[`interpolation.md`](interpolation.md). This doc is entirely client-side; the authority that the
+client reconciles *against* is the Rust `omega-server` — see [`server-tick-broadcast.md`](server-tick-broadcast.md)
+and the wire contract in [`../server/contract.md`](../server/contract.md).
 
-`PredictionController` (`prediction.gd`) owns the whole loop. It is attached as a child of the
-Local player node and initialised by `setup()` once authority syncs (`arena_base.gd:368-371`).
+The prediction loop lives in the **prediction controller** (`client/scripts/network/prediction.gd`,
+`class_name PredictionController`; slated to move under `client/scripts/network/` later — described
+here by role). It is attached as a child of the Local player node and initialised by `setup()` once
+Authority sync lands (entity id from `AuthResult`, or the PLAYER_INFO broadcast).
+
+## The shared sim seam
+
+`PredictionController` owns one `PredictionSim` instance (`prediction.gd` `_sim`), created at load.
+`PredictionSim` (Rust, `rust/client_ext/src/lib.rs`) holds a `sim_core::MovementSm` and exposes two
+movement entry points, both byte-identical to the server:
+
+| Call | Backs onto | Used for |
+|------|-----------|----------|
+| `step(delta, position, move_dir, sprint, dash, ability, attacking, aim_dir)` | `sim_core::step_movement` (`rust/sim_core/src/step.rs`) | live per-tick prediction — full SM: dash, sprint, knockback, charge, daze, stamina/mana |
+| `replay_step(position, input_flags, delta)` | `sim_core::replay_ground_step` (same file) | reconciliation replay — the deliberately-simplified ground-speed-only model |
+
+`step_movement` runs the full stages — `MovementSm::tick` (state machine) → integrate
+`velocity * dt` → `move_with_obstacle_collision` (the shared analytic mover) → recompute the
+*realized* velocity from the actual delta moved (`StepResult`). This mirrors the server's
+`PlayerState.step` exactly (`rust/sim_core/src/step.rs` module doc). FFI inputs are sanitized at the
+boundary: a NaN/Inf position/dir/delta falls back to ZERO / the fixed tick interval rather than
+corrupting the node transform (`PredictionSim::step`, `rust/client_ext/src/lib.rs`).
+
+The connected instance's world geometry is pushed in once on scene entry via
+`set_world_geometry(min, max, obstacles_enabled)` (Arena ±1000 + obstacles, Sanctuary ±3328×±3072 no
+obstacles) so the predicted mover collides identically to the server. Per-class ability tuning and
+base move speed are pushed via `set_ability_config` / `set_base_speed` from `CLASS_ABILITY_CONFIG`
+(`prediction.gd`), so a predicted Warrior Charge / Rogue Shadowstep matches the authoritative cast.
 
 ## The loop (one `_physics_process`, 30 Hz)
 
-Everything happens inside `_physics_process` (`prediction.gd:142`), which Godot runs at
-`physics_ticks_per_second = 30`. There is no `_process` pass — a cause of the separate render
-stutter in [`smoothness-render.md`](smoothness-render.md). Per Tick, in order:
+Everything happens inside `_physics_process` (`prediction.gd`), which Godot runs at
+`physics_ticks_per_second = 30`. Per Tick, in order:
 
-| Step | What | Evidence |
-|------|------|----------|
-| 1 | Sample input into a bitmask (`_capture_input_flags`) | `prediction.gd:157`, `:177-200` |
-| 2 | Apply local prediction immediately (move predicted_position) | `prediction.gd:162`, `:262-281` |
-| 3 | If mid-correction, advance the visual lerp | `prediction.gd:165-166`, `:622-640` |
-| 4 | Every `INPUT_SEND_INTERVAL`, stamp a sequence and send the input | `prediction.gd:169-172` |
+| Step | What | Where |
+|------|------|-------|
+| 1 | Sample input into a bitmask (`_capture_input_flags`) + cosmetic shoot feedback | `prediction.gd` `_capture_input_flags`, `_maybe_emit_shoot_predicted` |
+| 2 | Apply local prediction immediately via `PredictionSim.step` | `prediction.gd` `_apply_local_prediction` |
+| 3 | If mid-correction, advance the visual lerp | `prediction.gd` `_apply_smooth_correction` |
+| 4 | Every `INPUT_SEND_INTERVAL`, stamp a sequence and send the input | `prediction.gd` `_send_input_to_server` |
 
-`INPUT_SEND_INTERVAL = GameConstants.SERVER_TICK_INTERVAL` (`prediction.gd:71`,
-`game_constants.gd:15`) = 1/30 s. Because the gate equals the physics interval, **input is sampled
-and sent once per Tick — 30 Hz both ways.** Mouse aim is resolved at send time
-(`_get_aim_angle`, `prediction.gd:203-208`).
+`INPUT_SEND_INTERVAL = GameConstants.SERVER_TICK_INTERVAL` = 1/30 s (`prediction.gd`,
+`game_constants.gd`). Because the gate equals the physics interval, **input is sampled and sent once
+per Tick — 30 Hz both ways.** Mouse aim is resolved at step/send time (`_get_aim_angle`); the
+world-space cursor (`_get_cursor_world`) is also sent, for the server's cursor-targeted abilities
+(protocol v4 PlayerInput, see [`../server/contract.md`](../server/contract.md)).
+
+Movement is **single-owner**: the predictor is the sole integrator of the Local player. `Player.gd`
+sets `prediction_owns_movement = true` for the networked Local player and **skips its own
+`move_and_slide()`** (`client/scripts/entities/player/player.gd`), so the old "steering boat"
+double-integration is gone — see [`../systems/players-movement.md`](../systems/players-movement.md).
 
 ## Prediction (Step 2)
 
-Input flags → direction → speed → integrate `predicted_position` analytically with obstacle
-collision, then derive velocity from the actual delta moved (`prediction.gd:262-281`):
+`_apply_local_prediction` builds the direction from WASD flags (`_get_direction_from_flags`) and the
+aim direction from the mouse, then makes **one** extension call into `PredictionSim.step` with the
+sprint / dash / ability / shoot flags. The Rust SM applies speed (`PLAYER_SPEED` 200, sprint via the
+SM's stamina-gated ground speed), the state machine (dash/charge/knockback/daze), and the analytic
+obstacle mover — all server-identical. The returned `position` / `velocity` become
+`predicted_position` / `predicted_velocity`, and `stamina` / `mana` / `exhausted` are mirrored into
+the GDScript movement SM purely so the HUD bars and blink signals keep working (the Rust sim owns the
+real prediction state).
 
-- Direction from WASD flags, normalised (`_get_direction_from_flags`, `:283-295`).
-- Speed: `PLAYER_SPEED` 200, or `PLAYER_SPRINT_SPEED` 320 when the sprint flag is set
-  (`_get_speed_from_flags`, `:298-301`; `game_constants.gd:32,38`).
-- Move via `GameConstants.move_with_obstacle_collision(... PLAYER_HITBOX_RADIUS)` — the **same**
-  analytic mover used on replay, so prediction and replay stay byte-for-byte consistent.
-
-The visual node follows `predicted_position` directly (`_update_player_visual`, `:602-607`) —
-*unless* a smooth correction is in flight (Step 3 owns the node then).
+The visual node follows `predicted_position` directly (`_update_player_visual`) — *unless* a smooth
+correction is in flight (Step 3 owns the node then). The Local player uses Godot
+`physics_interpolation` so 30 Hz physics writes render smoothly at any FPS; hard snaps call
+`reset_physics_interpolation()` to avoid lerping across a discontinuity (see
+[`smoothness-render.md`](smoothness-render.md)).
 
 ## Input buffering & sequence numbers
 
-Each sent input is stored as an `InputSnapshot` keyed by its sequence
-(`_store_input`, `prediction.gd:306-310`; class at `:83-104`). The snapshot records the
-flags, the predicted positions before/after, velocity, aim, and the `delta` used
-(`INPUT_SEND_INTERVAL`) so replay re-simulates the identical step.
+Each sent input is stored as an `InputSnapshot` keyed by its sequence (`_store_input`; class at the
+top of `prediction.gd`). The snapshot records the flags, the predicted positions before/after, the
+velocity, the aim, and the `delta` used (`INPUT_SEND_INTERVAL`) so replay re-simulates the identical
+step. The "after" position/velocity at send time come from a `replay_step` dry-run, so the buffered
+prediction and the replay model agree from the start.
 
-| Property | Value | Evidence |
-|----------|-------|----------|
-| Sequence width | 8-bit, wraps at 256 | `_advance_sequence` `prediction.gd:356-359` |
-| Replay buffer cap | 256 (`max_buffer_size`, == sequence range) | `prediction.gd:22` |
-| Wraparound compare | forward-distance < 128 ⇒ "before" | `_sequence_less_than` `:346-352` |
-| Pruning | erase any seq ≤ `last_ack_sequence` | `_prune_acknowledged_inputs` `:313-329` |
+| Property | Value | Where |
+|----------|-------|-------|
+| Sequence width | 8-bit, wraps at 256 | `_advance_sequence` (matches the wire `u8 seq`) |
+| Replay buffer cap | 256 (`max_buffer_size`, == sequence range) | `prediction.gd` |
+| Wraparound compare | forward-distance < 128 ⇒ "before" | `_sequence_less_than` |
+| Pruning | erase any seq ≤ `last_ack_sequence` | `_prune_acknowledged_inputs` |
 
-The buffer is a `Dictionary` (`prediction.gd:60`), so 256 is a logical cap matching the sequence
-space, not a ring; acked entries are pruned each ack/reconcile. The wire packet carries
-position, velocity, flags, aim, `sequence_number`, `client_render_tick`, and `client_rtt_ms`
-(`player_input_packet.gd:1-11,79-86`).
+The buffer is a `Dictionary`, so 256 is a logical cap matching the 8-bit sequence space, not a ring;
+acked entries are pruned each ack/reconcile. The PlayerInput packet (type 2, ch2 — **22 B**,
+protocol v4) carries seq, input_flags, aim_angle, the predicted position+velocity, the cursor,
+`client_render_tick`, and `client_rtt_ms`; it is encoded by `ProtocolCodec.encode_input`
+(`rust/client_ext/src/lib.rs`). Exact layout: [`../server/contract.md`](../server/contract.md) §PlayerInput.
 
 ## Reconciliation
 
-Two server messages drive correction (`_on_server_message`, `prediction.gd:423-428`):
+Two server messages drive correction (`_on_server_message`, decoded by
+`ProtocolCodec.decode_server_packet` into the legacy dict shapes):
 
-- **`ACTION_CONFIRM`** — per-input ack carrying `sequence_number` + `corrected_position`
-  (`_handle_action_confirm`, `:431-461`). Updates `last_ack_sequence`. If the server flags a
+- **`ACTION_CONFIRM`** — per-input ack carrying `sequence_number`, `corrected_position`, `result_code`,
+  and the authoritative `stamina` / `mana` (`_handle_action_confirm`). Updates `last_ack_sequence`
+  and feeds stamina/mana into the sim via `PredictionSim.set_resources`. If the server flags a
   non-`SUCCESS` result, or the predicted position has drifted past the epsilon, it reconciles.
-- **`STATE_UPDATE`** — the Local player's own entity inside a Snapshot
-  (`_handle_state_update`, `:464-506`). If there are no unacked inputs it snaps directly
-  (`_apply_authoritative_position_without_replay`, `:702-714`); otherwise it reconciles on drift.
+  Wire: ActionConfirm (type 66, ch0), [`../server/contract.md`](../server/contract.md) §ActionConfirm.
+- **`STATE_UPDATE`** (the Snapshot) — the Local player's own entity record inside a Snapshot
+  (`_handle_state_update` → `_process_own_state_update`). If there are no unacked inputs it snaps
+  directly (`_apply_authoritative_position_without_replay`); otherwise it reconciles on drift. The
+  server's own entity flags also slave local **daze** and **Warrior charge-end** (`_update_own_flags`,
+  `_update_own_charge`) so prediction releases those states exactly when the server does instead of
+  rubber-banding through them. Wire: Snapshot (type 65; deltas ch0, baselines ch1), with `server_ms`
+  riding every snapshot for clock sync.
 
 **Drift gate:** reconciliation only fires when
 `predicted_position.distance_to(server_position) > server_position_epsilon` (= **4 units**,
-`prediction.gd:30,458,503`). Below that, the quantised server position (0.1-unit wire precision)
-is treated as jitter and ignored — no correction.
+`prediction.gd`). Below that, the quantised server position (0.1-unit wire precision — pos ×10
+truncate-toward-zero, [`../server/contract.md`](../server/contract.md) §Numerics) is treated as
+jitter and ignored — no correction.
 
-**Reconcile = snap + replay** (`_reconcile`, `prediction.gd:511-559`):
+**Reconcile = snap + replay** (`_reconcile`, `prediction.gd`):
 
-1. Snap `predicted_position` to the server's authoritative position (`:521`).
-2. Collect unacked sequences after the ack, in order (`_get_unacknowledged_sequences`, `:562-577`).
-3. Re-simulate each (`_replay_input`, `:580-597`) with the *same* mover and `delta` used originally,
-   so the predictor catches back up to "now" from the authoritative base.
+1. Snap `predicted_position` to the server's authoritative position.
+2. Collect unacked sequences after the ack, in order (`_get_unacknowledged_sequences`).
+3. Re-simulate each (`_replay_input` → `PredictionSim.replay_step` → `sim_core::replay_ground_step`)
+   with the same `input_flags` and `delta`, catching the predictor back up to "now" from the
+   authoritative base.
 4. Decide how the **visual** node reaches the new predicted position (smoothing, below).
 5. Prune acked inputs.
 
+### Why replay uses a simpler model
+
+`replay_step` runs `replay_ground_step` (`rust/sim_core/src/step.rs`), a deliberately-simplified,
+**stateless ground-speed-only** model: it applies WASD direction at the SM's ground speed (sprint
+gated by the SM's *current* stamina / exhaustion / daze, not snapshot-time state) through the same
+`move_with_obstacle_collision` mover, and **never replays dash, knockback, charge, or stun
+velocities**. It does not mutate the SM. The rationale (`step.rs` doc comment + `prediction.gd`
+`_replay_input`): those states are brief, rarely span a correction window, and any small residual
+heals on the next snapshot — replaying them statefully would be both harder and less stable. For
+plain WASD movement the replay model and the full `step_movement` produce identical positions, which
+the crate asserts in tests (`replay_matches_walk_prediction_for_plain_movement`, `replay_never_dashes`
+in `rust/sim_core/src/step.rs`).
+
 ### Smoothing the correction
 
-The reconcile updates the logical `predicted_position` instantly, but the visible node is eased
-so corrections don't pop — unless the jump is large:
+The reconcile updates the logical `predicted_position` instantly, but the visible node is eased so
+corrections don't pop — unless the jump is large:
 
-| Case | Behaviour | Evidence |
-|------|-----------|----------|
-| visual→predicted distance > `teleport_threshold` (**150 u**) | instant snap | `prediction.gd:543-544`, `_apply_instant_correction` `:615-619` |
-| otherwise | exponential lerp toward predicted | `_start_smooth_correction` `:610-612` |
-| lerp rate | `interpolation_speed` = **12.0** (`current.lerp(target, 12.0 * delta)`) | `prediction.gd:20`, `_apply_smooth_correction` `:632` |
-| stop condition | within 1.0 u of target | `prediction.gd:636-638` |
+| Case | Behaviour | Where |
+|------|-----------|-------|
+| visual→predicted distance > `teleport_threshold` (**150 u**) | instant snap + `reset_physics_interpolation()` | `prediction.gd` `_apply_instant_correction` |
+| otherwise | exponential lerp toward predicted | `prediction.gd` `_start_smooth_correction` |
+| lerp rate | `interpolation_speed` = **12.0** (`current.lerp(target, 12.0 * delta)`) | `prediction.gd` `_apply_smooth_correction` |
+| stop condition | within 1.0 u of target | `prediction.gd` `_apply_smooth_correction` |
 
-`force_sync` (`prediction.gd:646-657`) is the hard reset used at authority sync / recovery:
-clears the buffer, slams position, and snaps the node — no smoothing.
-
-## Status caveats (why Partial)
-
-### Double-movement ("steering boat")
-
-After authority sync, `arena_base.gd` calls `local_player.set_input_enabled(true)` (`:374`, also
-`:418`, `:493`). That re-arms `Player.gd._physics_process`, which independently reads the *same*
-input and drives the **same** node via `_handle_movement` + `move_and_slide`
-(`player.gd:103-109,119-127`, speed 200 at `:24`). So two integrators write the node each Tick —
-the `CharacterBody2D` physics mover *and* the predictor's analytic `predicted_position`
-(`prediction.gd:271-280`) — and they leapfrog. Fix: the `PredictionController` must be the **sole**
-owner of Local-player motion; do not re-enable `Player.gd` movement for the networked Local player.
-Full writeup: [`../systems/players-movement.md`](../systems/players-movement.md).
-
-(Local projectile spawning is *correctly* disabled here — `set_local_projectile_spawning_enabled(false)`
-at `arena_base.gd:220`, `player.gd:145-147` — so this is a movement-only double-ownership, not a
-shooting one.)
-
-### 30 Hz input coupling
-
-Input is sampled and sent strictly at the Tick interval (`prediction.gd:71,157,170`). At 30 Hz a
-keypress waits up to ~33 ms before it is even sampled, before any network or server time. Raising
-`physics_ticks_per_second` lowers that floor but doubles prediction/replay CPU and shifts the send
-cadence with it. Where this sits in the end-to-end budget: [`latency-budget.md`](latency-budget.md).
+`force_sync` (`prediction.gd`) is the hard reset used at Authority sync / recovery: clears the
+buffer, slams position, snaps the node, and resets physics interpolation — no smoothing.
 
 ## The eight questions
 
-- **Client:** samples input, predicts Local-player motion, buffers inputs, reconciles, eases the visual.
-- **Server:** the authority being reconciled against — sends `ACTION_CONFIRM` + `STATE_UPDATE` (see [`server-tick-broadcast.md`](server-tick-broadcast.md)).
-- **Predicted:** the Local player's position/velocity only; Remote entities are interpolated, never predicted.
-- **Replicated:** the Local player's authoritative position arrives via Snapshot/ack and overrides prediction on drift.
-- **Persisted:** nothing — prediction is transient client state; the Go API persists no gameplay position.
-- **Validated:** server-side (movement validation), not here; the client only requests, the server decides.
-- **Can fail:** the double-movement leapfrog (`Player.gd` + predictor) and 30 Hz sample latency; replay desync if the mover diverges from the server's.
-- **Tested:** no automated reconciliation test today; exercised via the live arena and bot swarm.
+- **Client:** samples input, predicts Local-player motion via the shared `sim_core` (`PredictionSim.step`), buffers inputs, reconciles, eases the visual.
+- **Server:** the Rust `omega-server` authority being reconciled against — sends `ACTION_CONFIRM` + Snapshot (see [`server-tick-broadcast.md`](server-tick-broadcast.md), [`../server/contract.md`](../server/contract.md)).
+- **Predicted:** the Local player's position/velocity (and predicted stamina/mana via the SM, plus predicted Warrior Charge / Rogue Shadowstep blink). Remote entities are interpolated, never predicted.
+- **Replicated:** the Local player's authoritative position arrives via Snapshot/ack and overrides prediction on drift; daze and charge-end are slaved to the server's entity flags.
+- **Persisted:** nothing — prediction is transient client state. The Go API persists only account/character/leaderboard/progression, never live position (server-authoritative + in-memory).
+- **Validated:** server-side. The client requests; the server decides and answers with `ACTION_CONFIRM` (incl. authoritative stamina/mana). The client only corrects toward that answer.
+- **Can fail:** packet loss past the 256-deep buffer; a large unacked server-side knockback before reconcile (heals on snap+replay); replay can only mismatch if the buffered flags/delta differ from what the server applied — the movement *code* cannot diverge (one compiled crate).
+- **Tested:** `sim_core` movement/replay parity is unit-tested in Rust (`rust/sim_core/src/step.rs`); the end-to-end reconcile loop is exercised via the live arena and the `omega-load-test` bot swarm, plus the net smoke scene.
 
 ## See also
 
-- [`../systems/players-movement.md`](../systems/players-movement.md) — the double-movement bug + fix in full
+- [`../server/contract.md`](../server/contract.md) — the wire contract (PlayerInput, ActionConfirm, Snapshot, numerics) the predictor encodes/decodes against
+- [`../systems/players-movement.md`](../systems/players-movement.md) — the Local-player movement system (single-owner integration)
 - [`latency-budget.md`](latency-budget.md) — where 30 Hz input sampling lands in perceived delay
-- [`smoothness-render.md`](smoothness-render.md) — why 30 Hz physics writes look choppy regardless of FPS
+- [`smoothness-render.md`](smoothness-render.md) — `physics_interpolation` + discontinuity resets for the Local player
 - [`interpolation.md`](interpolation.md) — the Remote-entity counterpart (interpolated, not predicted)
 - [`server-tick-broadcast.md`](server-tick-broadcast.md) — the authority side: ack + Snapshot generation

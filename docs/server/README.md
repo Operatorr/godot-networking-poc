@@ -23,7 +23,7 @@ uses, so movement prediction and authority cannot diverge on the math.
 
 ## See also
 
-- [`../ARCHITECTURE.md`](../ARCHITECTURE.md) — top-level system architecture + POC success criteria.
+- [`../ops/architecture.md`](../ops/architecture.md) — top-level system architecture + POC success criteria.
 - [`../CONTEXT.md`](../CONTEXT.md) — glossary (Tick ≠ Frame ≠ Snapshot; the three state lifetimes).
 - [`../adr/`](../adr/) — load-bearing decisions (0003 ENet/UDP, 0004 wire protocol, 0005
   permadeath, 0006 Softcore/Hardcore + Glory, 0007 native systemd deploy).

@@ -14,7 +14,7 @@ type RegionRuntimeStatus struct {
 	RegionID      string    `json:"region_id"`
 	ActivePlayers int64     `json:"active_players"`
 	MaxPlayers    int       `json:"max_players"`
-	WebSocketURL  string    `json:"websocket_url,omitempty"`
+	ConnectURL    string    `json:"connect_url,omitempty"`
 	Status        string    `json:"status"`
 	UpdatedAt     time.Time `json:"updated_at"`
 }

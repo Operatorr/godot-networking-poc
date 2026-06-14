@@ -1,0 +1,174 @@
+[gd_scene load_steps=6 format=3 uid="uid://c2main_menu_new"]
+
+[ext_resource type="Script" path="res://scripts/ui/menus/main_menu.gd" id="1_script"]
+[ext_resource type="PackedScene" uid="uid://c2error_dialog" path="res://scenes/ui/dialogs/error_dialog.tscn" id="2_error_dialog"]
+[ext_resource type="FontFile" path="res://assets/fonts/CormorantUnicase-Bold.ttf" id="3_title_font"]
+[ext_resource type="VideoStream" path="res://assets/ui/backgrounds/menu_background_loop.ogv" id="4_bg_video"]
+[ext_resource type="Script" path="res://scripts/ui/helpers/themed_button.gd" id="5_themed_button"]
+
+[node name="MainMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_script")
+
+[node name="MenuBackground" type="VideoStreamPlayer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+stream = ExtResource("4_bg_video")
+volume_db = -80.0
+autoplay = true
+expand = true
+loop = true
+
+[node name="CenterContainer" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CenterContainer"]
+custom_minimum_size = Vector2(520, 0)
+layout_mode = 2
+theme_override_constants/separation = 15
+
+[node name="TitleLabel" type="Label" parent="CenterContainer/VBoxContainer"]
+custom_minimum_size = Vector2(520, 86)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.12, 0.12, 0.11, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_colors/font_shadow_color = Color(0.62, 0.62, 0.58, 0.58)
+theme_override_constants/outline_size = 8
+theme_override_constants/shadow_offset_x = 0
+theme_override_constants/shadow_offset_y = 0
+theme_override_constants/shadow_outline_size = 12
+theme_override_fonts/font = ExtResource("3_title_font")
+theme_override_font_sizes/font_size = 56
+text = "OMEGA REALM"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="CenterContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="CharacterPanel" type="Control" parent="CenterContainer/VBoxContainer"]
+custom_minimum_size = Vector2(400, 80)
+layout_mode = 2
+
+[node name="HBoxContainer" type="HBoxContainer" parent="CenterContainer/VBoxContainer/CharacterPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 20
+
+[node name="PlayerColorPicker" type="ColorPickerButton" parent="CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer"]
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+size_flags_vertical = 4
+tooltip_text = "Player color"
+
+[node name="CharacterInfo" type="VBoxContainer" parent="CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+alignment = 1
+
+[node name="CharacterLabel" type="Label" parent="CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer/CharacterInfo"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+text = "Character"
+
+[node name="CharacterNameLabel" type="Label" parent="CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer/CharacterInfo"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "Player Name"
+
+[node name="DeleteButton" type="Button" parent="CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer"]
+custom_minimum_size = Vector2(120, 56)
+layout_mode = 2
+size_flags_horizontal = 8
+size_flags_vertical = 4
+tooltip_text = "Delete this character"
+text = "Delete"
+script = ExtResource("5_themed_button")
+
+[node name="HSeparator2" type="HSeparator" parent="CenterContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="RegionLabel" type="Label" parent="CenterContainer/VBoxContainer"]
+layout_mode = 2
+text = "Select Region"
+
+[node name="RegionDropdown" type="OptionButton" parent="CenterContainer/VBoxContainer"]
+custom_minimum_size = Vector2(300, 40)
+layout_mode = 2
+size_flags_horizontal = 4
+
+[node name="HSeparator3" type="HSeparator" parent="CenterContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="EnterWorldButton" type="Button" parent="CenterContainer/VBoxContainer"]
+custom_minimum_size = Vector2(320, 72)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 20
+text = "Enter World"
+
+[node name="StatusLabel" type="Label" parent="CenterContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+text = "Ready"
+horizontal_alignment = 1
+
+[node name="HSeparator4" type="HSeparator" parent="CenterContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="LogoutButton" type="Button" parent="CenterContainer/VBoxContainer"]
+custom_minimum_size = Vector2(320, 72)
+layout_mode = 2
+size_flags_horizontal = 4
+text = "Logout"
+
+[node name="ExitButton" type="Button" parent="CenterContainer/VBoxContainer"]
+custom_minimum_size = Vector2(320, 72)
+layout_mode = 2
+size_flags_horizontal = 4
+text = "Exit Game"
+
+[node name="BottomLeftActions" type="VBoxContainer" parent="."]
+custom_minimum_size = Vector2(320, 156)
+layout_mode = 1
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 40.0
+offset_top = -196.0
+offset_right = 360.0
+offset_bottom = -40.0
+grow_vertical = 0
+theme_override_constants/separation = 12
+
+[node name="PracticeButton" type="Button" parent="BottomLeftActions"]
+custom_minimum_size = Vector2(320, 72)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "Practice"
+
+[node name="OfflineSandboxButton" type="Button" parent="BottomLeftActions"]
+custom_minimum_size = Vector2(320, 72)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "Offline Sandbox"
+
+[node name="ErrorDialog" parent="." instance=ExtResource("2_error_dialog")]

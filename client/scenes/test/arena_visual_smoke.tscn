@@ -10,10 +10,10 @@ script/source = "## ArenaVisualSmoke - Visual smoke for the generated arena art.
 ## the class sheets, slime, and projectile art are all visible in frame.
 extends Node2D
 
-const ArenaScene := preload(\"res://scenes/shared/arena/arena_base.tscn\")
-const RemotePlayerScene := preload(\"res://scenes/shared/player/remote_player.tscn\")
-const MonsterScene := preload(\"res://scenes/shared/monster/monster.tscn\")
-const ProjectileScene := preload(\"res://scenes/shared/projectile/projectile.tscn\")
+const ArenaScene := preload(\"res://scenes/levels/arena/arena_base.tscn\")
+const RemotePlayerScene := preload(\"res://scenes/entities/player/remote_player.tscn\")
+const MonsterScene := preload(\"res://scenes/entities/enemies/monster.tscn\")
+const ProjectileScene := preload(\"res://scenes/entities/projectiles/projectile.tscn\")
 
 
 func _ready() -> void:

@@ -8,16 +8,15 @@ var is_server: bool = false
 
 ## Scene paths (updated for client/server/shared structure)
 const SCENE_MAIN = "res://scenes/main.tscn"
-const SCENE_LOGIN = "res://scenes/client/menus/login_screen.tscn"
-const SCENE_MAIN_MENU = "res://scenes/client/menus/main_menu.tscn"
-const SCENE_CHARACTER_CREATION = "res://scenes/client/menus/character_creation.tscn"
-const SCENE_LOADING = "res://scenes/client/menus/loading_screen.tscn"
-const SCENE_ARENA = "res://scenes/shared/arena/arena_base.tscn"
-const SCENE_SANCTUARY = "res://scenes/shared/sanctuary/sanctuary.tscn"
-const SCENE_PRACTICE = "res://scenes/shared/levels/practice.tscn"
+const SCENE_LOGIN = "res://scenes/ui/menus/login_screen.tscn"
+const SCENE_MAIN_MENU = "res://scenes/ui/menus/main_menu.tscn"
+const SCENE_CHARACTER_CREATION = "res://scenes/ui/menus/character_creation.tscn"
+const SCENE_LOADING = "res://scenes/ui/menus/loading_screen.tscn"
+const SCENE_ARENA = "res://scenes/levels/arena/arena_base.tscn"
+const SCENE_SANCTUARY = "res://scenes/levels/hub/sanctuary.tscn"
+const SCENE_PRACTICE = "res://scenes/levels/offline/practice.tscn"
 const SCENE_OFFLINE_SANDBOX = "res://scenes/test/sandbox.tscn"
 const SCENE_GAME_UI = "res://scenes/client/components/game_ui.tscn"
-const SCENE_SERVER_MAIN = "res://scenes/server/server_main.tscn"
 
 ## Scene names enum
 enum SceneName {
@@ -30,8 +29,7 @@ enum SceneName {
 	SANCTUARY,
 	PRACTICE,
 	OFFLINE_SANDBOX,
-	GAME_UI,
-	SERVER_MAIN
+	GAME_UI
 }
 
 ## Signals
@@ -89,13 +87,13 @@ func _ready() -> void:
 		print("[SceneManager] Standalone scene detected, skipping route")
 		return
 
-	# If server, load server scene
+	# Headless (no display) has no client UI to route to (the GDScript server is gone)
 	if is_server:
-		print("[SceneManager] Loading server scene...")
-		change_scene(SceneName.SERVER_MAIN, false)
-	else:
-		# Client: Route based on auth state
-		_route_to_initial_scene()
+		print("[SceneManager] Headless mode - no scene routing")
+		return
+
+	# Client: Route based on auth state
+	_route_to_initial_scene()
 
 ## Route to initial scene based on authentication and character state
 func _route_to_initial_scene() -> void:
@@ -345,8 +343,6 @@ func _get_scene_path(scene_name: SceneName) -> String:
 			return SCENE_OFFLINE_SANDBOX
 		SceneName.GAME_UI:
 			return SCENE_GAME_UI
-		SceneName.SERVER_MAIN:
-			return SCENE_SERVER_MAIN
 		_:
 			return ""
 

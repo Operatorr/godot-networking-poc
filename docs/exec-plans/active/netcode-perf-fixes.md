@@ -142,7 +142,7 @@ lands.
 ### 12. WebSocket/TCP head-of-line blocking — move state to datagrams
 - **Problem:** All traffic is WebSocket-over-TCP both directions, so one lost segment stalls **all** subsequent state until retransmit — exactly the wrong failure mode for continuous Snapshots.
 - **Fix (seam done; ENet impl deferred):** A **transport abstraction seam** now exists — `transport.gd` (`class_name Transport`) + `websocket_transport.gd` (`class_name WebSocketTransport`); `network_manager.gd` delegates every raw socket verb through it with **zero behaviour / wire change**. The datagram target is **ENet-over-UDP** (not WebRTC/WebTransport — the game is native-only and the server will be ported to Rust, so `rusty_enet` keeps one wire format across both languages). The ENet `Transport` subclass is a deferred, human-approved follow-up; `STATE_UPDATE`+`PLAYER_INPUT` ride unreliable/unsequenced ch0, reliable traffic ch1. Recorded in [ADR 0003](../../adr/0003-enet-udp-transport.md), which supersedes 0001's substrate.
-- **Evidence:** seam `client/autoload/transport/transport.gd:22`, `websocket_transport.gd:11`; ADR `../../adr/0003-enet-udp-transport.md`.
+- **Evidence:** seam `client/scripts/network/transport/transport.gd:22`, `websocket_transport.gd:11`; ADR `../../adr/0003-enet-udp-transport.md`.
 - **Effort:** large · **Impact:** high (on lossy WAN; ~nil on localhost) · **Status:** Done — seam landed (2026-06-04); **ENet datagram impl deferred** (human-approved follow-up).
 - See: [`../../netcode/transport-websocket.md`](../../netcode/transport-websocket.md), [`../../adr/0003-enet-udp-transport.md`](../../adr/0003-enet-udp-transport.md).
 
@@ -182,8 +182,8 @@ what's solved.
 | Client/server teleport-threshold parity | `interpolation_controller.gd` ← `GameConstants.TELEPORT_THRESHOLD` | Phase 1 |
 | Decoupled Snapshot rate *knob* | `ServerConfig.snapshot_rate_hz` | Phase 1 (value is #3) |
 | Priority/budget Snapshot scheduler (built & wired) | `snapshot_scheduler.gd`, `server_broadcast_service.gd` | Phase 2 (diagnostics = #15) |
-| Server walked 1/3 client speed (persistent-input model) | `player_state.gd` ingest/step, `player_manager.gd` | `../../DESYNC_PLAN.md` Fix A |
-| Ghost player (Local player never learned its id) | auth defer + `PLAYER_INFO` force-sync, `arena_base.gd` | `../../DESYNC_PLAN.md` Fix B/C |
+| Server walked 1/3 client speed (persistent-input model) | `player_state.gd` ingest/step, `player_manager.gd` | legacy desync plan Fix A (historical; see git history) |
+| Ghost player (Local player never learned its id) | auth defer + `PLAYER_INFO` force-sync, `arena_base.gd` | legacy desync plan Fix B/C (historical; see git history) |
 
 ---
 
@@ -205,4 +205,4 @@ what's solved.
 - [`../../netcode/client-prediction.md`](../../netcode/client-prediction.md) · [`../../netcode/interpolation.md`](../../netcode/interpolation.md) · [`../../netcode/server-tick-broadcast.md`](../../netcode/server-tick-broadcast.md)
 - [`../../netcode/interest-mgmt-aoi.md`](../../netcode/interest-mgmt-aoi.md) · [`../../netcode/wire-protocol.md`](../../netcode/wire-protocol.md) · [`../../netcode/transport-websocket.md`](../../netcode/transport-websocket.md)
 - [`../../systems/combat-hits.md`](../../systems/combat-hits.md) · [`../../systems/players-movement.md`](../../systems/players-movement.md)
-- Detailed source plans (superseded by this ordering): [`../../../plans/NETWORK_PERFORMANCE_UPGRADES.md`](../../../plans/NETWORK_PERFORMANCE_UPGRADES.md) · [`../../../plans/CODEX_NETWORK_PERFORMANCE_UPGRADES.md`](../../../plans/CODEX_NETWORK_PERFORMANCE_UPGRADES.md) · [`../../../plans/RECOMMENDATIONS.md`](../../../plans/RECOMMENDATIONS.md) · [`../../DESYNC_PLAN.md`](../../DESYNC_PLAN.md)
+- Detailed source plans (superseded by this ordering): [`../../../plans/NETWORK_PERFORMANCE_UPGRADES.md`](../../../plans/NETWORK_PERFORMANCE_UPGRADES.md) · [`../../../plans/CODEX_NETWORK_PERFORMANCE_UPGRADES.md`](../../../plans/CODEX_NETWORK_PERFORMANCE_UPGRADES.md) · [`../../../plans/RECOMMENDATIONS.md`](../../../plans/RECOMMENDATIONS.md) · the legacy desync plan (historical; see git history)

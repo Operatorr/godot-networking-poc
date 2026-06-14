@@ -1,7 +1,7 @@
 ## LoginCharacterTest - Headless integration test for login character hydration
 extends Node
 
-const TestConfigScript := preload("res://scripts/shared/test_config.gd")
+const TestConfigScript := preload("res://scripts/utils/test_config.gd")
 const TIMEOUT_SECONDS := 15.0
 
 var config: TestConfigScript = null

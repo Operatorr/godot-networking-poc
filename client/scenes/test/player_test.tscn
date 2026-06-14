@@ -1,13 +1,13 @@
 [gd_scene load_steps=3 format=3 uid="uid://c2qmvnl5xr8py"]
 
-[ext_resource type="PackedScene" uid="uid://cvn8xq3pywbpm" path="res://scenes/shared/player/player.tscn" id="1_player"]
+[ext_resource type="PackedScene" uid="uid://cvn8xq3pywbpm" path="res://scenes/entities/player/player.tscn" id="1_player"]
 
 [sub_resource type="GDScript" id="GDScript_test"]
 script/source = "## PlayerTest - Test scene for player character
 ## Press Space to apply 25 damage, R to reset player
 extends Node2D
 
-const PlayerScript := preload(\"res://scripts/shared/player/player.gd\")
+const PlayerScript := preload(\"res://scripts/entities/player/player.gd\")
 
 
 func _input(event: InputEvent) -> void:

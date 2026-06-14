@@ -5,22 +5,17 @@
 //! ticks (extraction rust-stack §1); messages are processed in arrival order between ticks,
 //! matching the GDScript's frame-loop handler semantics.
 
-mod ability;
-mod api_client;
-mod auth;
-mod broadcast;
-mod combat;
 mod config;
-mod leaderboard;
-mod metrics;
-mod monster;
-mod outbox;
-mod player;
-mod progression_client;
-mod projectile;
-mod rng;
-mod world;
-mod world_entity;
+mod net;
+mod sim;
+
+// The sim/ and net/ subdirectories group the subsystems physically; the rest of the
+// crate still refers to them flat (crate::player, crate::broadcast, …) via these
+// re-exports, so module moves don't churn every `crate::…` path.
+pub(crate) use net::{api_client, auth, broadcast, metrics, outbox, progression_client};
+pub(crate) use sim::{
+    ability, combat, leaderboard, monster, player, projectile, rng, world, world_entity,
+};
 
 use config::ServerConfig;
 use outbox::{Outbox, Target};
@@ -114,7 +109,7 @@ fn main() {
     }
 
     // Apply this instance's world geometry ONCE, on the tick thread (this thread), before the sim
-    // runs. Arena = ±1000 + 16 pillars; Sanctuary = ±1856 walk-through. The client sets the same
+    // runs. Arena = ±1000 + 16 pillars; Sanctuary = ±3328×±3072 walk-through. The client sets the same
     // geometry on scene entry so prediction matches.
     if config.is_sanctuary() {
         sim_core::set_world_geometry(
@@ -122,7 +117,7 @@ fn main() {
             sim_core::constants::SANCTUARY_MAP_MAX,
             false,
         );
-        info!("instance mode: SANCTUARY — no monsters, PvP off, ±1856 walk-through town");
+        info!("instance mode: SANCTUARY — no monsters, PvP off, ±3328×±3072 walk-through town");
     } else {
         sim_core::set_world_geometry(
             sim_core::constants::MAP_MIN,
@@ -317,7 +312,7 @@ fn main() {
                     region_id: region.clone(),
                     active_players: world.players.player_count(),
                     max_players,
-                    websocket_url: advertise_url.clone(),
+                    connect_url: advertise_url.clone(),
                     status: "online".into(),
                 });
             }

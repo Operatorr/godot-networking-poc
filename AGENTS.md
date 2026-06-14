@@ -21,17 +21,34 @@ Don't re-derive what's already written there; read it, then go deep where needed
     zero divergence by construction.
   - `server/` — the `omega-server` binary: single-threaded 30 Hz tick over `rusty_enet`
     (pinned `=0.4.0`), Ed25519 session tickets (dev mode: unsigned), Prometheus on `:9100`.
+    Modules are grouped: `src/sim/` (world, player, monster, projectile, combat, ability,
+    world_entity, rng, leaderboard) and `src/net/` (broadcast, outbox, metrics, auth,
+    api_client, progression_client); they re-export flat at the crate root, so code still
+    refers to them as `crate::player`, `crate::broadcast`, etc.
   - `client_ext/` — GDExtension exposing `ProtocolCodec`, `PredictionSim`, `SimHit` to GDScript.
   - `load_test/` — the `omega-load-test` bot swarm (replaced the Python `load_testing/`
     harness): ENet bots that link `protocol` + `sim_core` directly. See its README.
 - `client/` — Godot 4.6 project; exports the **client only** now. The legacy GDScript server
-  scripts remain under `scripts/server/` as the parity ground truth for the Rust server; they no longer
-  run (NetworkManager refuses server mode).
-  - `autoload/` — singletons: `network_manager` (ENet client), `transport/` (the transport seam),
-    `game_manager`, `scene_manager`, `auth_manager`, `audio_manager`, `entity_name_cache`.
-  - `scripts/client/` — prediction (drives the Rust `PredictionSim`), interpolation, HUD, menus.
-  - `scripts/shared/` — packet enums, game constants, entity scenes, arenas.
-  - `bin/` — built GDExtension libraries (`omega_client_ext.gdextension`).
+  has been **removed** (it was retired by the Rust port); its file-by-file parity map to the Rust
+  modules lives in [`docs/server/legacy-parity.md`](docs/server/legacy-parity.md), and the source is
+  in git history. `NetworkManager` still refuses to run in headless/server mode. The client uses
+  a **data-driven layout** (see [`docs/gdd/folder-structure.md`](docs/gdd/folder-structure.md)):
+  - `autoload/` — singletons: `game_manager`, `network_manager`, `auth_manager`, `scene_manager`,
+    `entity_name_cache`, `audio_manager`, `event_bus`.
+  - `scripts/network/` — transport seam, `packet_types`, prediction, interpolation, entity buffer,
+    client entity manager.
+  - `scripts/entities/` — `player/` (+ `classes/`), `enemies/`, `projectiles/`, `world_effects/`,
+    npc, portal. `scripts/data/` — definitions/, validators/, loaders, `game_constants`.
+  - `scripts/systems/` — combat/, spawning/, visuals/, audio/, progression/, inventory/, loot/.
+  - `scripts/ui/` (hud/, menus/, dialogs/, helpers/), `scripts/core/` (game modes),
+    `scripts/factories/`, `scripts/levels/` (incl. `town/` — the Sanctuary is a thin networked
+    shell `sanctuary.gd` over `town/sanctuary_town_world.gd`, a code-generated grim placeholder city
+    drawing ~90 prop kinds via `town/sanctuary_props.gd`; layout = `docs/design/sanctuary-layout.md`),
+    `scripts/utils/`.
+  - `scenes/` — `entities/`, `levels/` (arena/, hub/, offline/, pve/, biomes/), `ui/`, `test/`.
+  - `data/` — JSON content (classes/, monsters/, balance/, loot/, items/, spells/, projectiles/,
+    world/, schemas/); `bin/` — built GDExtension (`omega_client_ext.gdextension`);
+    `assets/shaders/town/` — town wind-sway + additive glow shaders.
 - `api/` — Go backend: JWT auth, characters, leaderboard, regions. PostgreSQL + Redis.
 - `deployment/` — **native** deploy (no Docker — [ADR 0007](docs/adr/0007-native-systemd-deployment.md)):
   systemd units (`systemd/`), per-instance configs (`server_config.{arena,sanctuary}.json`), env
@@ -44,13 +61,13 @@ Don't re-derive what's already written there; read it, then go deep where needed
 
 - [`docs/CONTEXT.md`](docs/CONTEXT.md) — glossary. **Use these exact terms** (Tick ≠ Frame ≠ Snapshot).
 - [`docs/index.md`](docs/index.md) — full doc catalogue with verification status.
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — top-level system architecture + POC success criteria.
+- [`docs/ops/architecture.md`](docs/ops/architecture.md) — top-level system architecture + POC success criteria.
 - **[`docs/server/`](docs/server/) — the game server (current core):**
   - `design.md` — architecture & rationale (transport, shared sim, tick, auth, persistence, hits).
   - `contract.md` — workspace/crate APIs, channel plan, wire format, numerics policy, as built.
-- [`docs/netcode/`](docs/netcode/) — the pre-port netcode analyses (latency budget, prediction,
-  interpolation, AoI, broadcast). Concepts still apply; WebSocket-era file:line cites describe
-  the retired GDScript server — cross-check against `rust/` before relying on them.
+- [`docs/netcode/`](docs/netcode/) — netcode analyses (latency budget, prediction, interpolation,
+  AoI, broadcast), rewritten around the Rust omega-server / `sim_core` / ENet. (The retired
+  WebSocket/wire-protocol docs are now redirect stubs pointing at `docs/server/contract.md`.)
 - [`docs/systems/`](docs/systems/) — gameplay systems, **status-tagged**: players/movement,
   combat/hits, monsters/AI, audio, UI/HUD, state machines.
 - [`docs/adr/`](docs/adr/) — load-bearing decisions: 0002 fixed-tick authority (stands),
@@ -112,7 +129,9 @@ OMEGA_SERVER=<droplet-ip>:8081 ./scripts/run_load_test.sh --scenario baseline   
 ## Invariants (hold today; enforce in review)
 
 - Entity id ranges: **players 1–999, projectiles 10000–29999, monsters 30000–39999**.
-- Arena bounds: `(-1000,-1000)..(1000,1000)`; boundary walls at ±1005.
+- Arena bounds: `(-1000,-1000)..(1000,1000)`; boundary walls at ±1005. Sanctuary bounds (walk-through,
+  no obstacles): `(-3328,-3072)..(3328,3072)` — `SANCTUARY_MAP_MIN/MAX` in `rust/sim_core/src/constants.rs`
+  must stay in lockstep with the client's `sanctuary.gd` `_world_geometry()` / `SanctuaryTownWorld.TOWN_RECT`.
 - Wire format: `[u8 type][payload]` over ENet (no length field — datagram boundaries);
   positions quantized to 0.1 unit (truncate toward zero). 3 channels: ch0 snapshots/confirms
   (unreliable sequenced), ch1 reliable (+ baselines), ch2 input. Unreliable payloads < 1200 B.

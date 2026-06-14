@@ -1,247 +1,307 @@
-# State machines (player life, movement, scene, connection, AI)
+# State machines (player life, movement, monster AI, scene, connection)
 
-**Status:** Implemented (verified 2026-06-03 against code).
+**Status:** Implemented (verified 2026-06-14 against the Rust port).
 
-The POC runs six distinct finite state machines, split across server and client. None
-share a base class — each is a hand-rolled `enum` plus a `match` (or `if`) transition block.
-This doc enumerates the states, the transitions, where each lives, and which side owns it,
-so you can reason about every authoritative or UI state change in one place.
+The POC runs six distinct finite state machines, split across the **Rust omega-server** and the
+**Godot client**. None share a base class — each is a hand-rolled `enum` plus a `match` (or `if`)
+transition block. This doc enumerates the states, the transitions, where each lives, and which side
+owns it, so you can reason about every authoritative or UI state change in one place.
+
+> **Post-Rust-port reality.** The only authoritative server is the Rust `omega-server` binary
+> (`rust/server/`), a single-threaded synchronous 30 Hz tick over `rusty_enet` (`=0.4.0`); one
+> process = one instance. The two server-side gameplay machines (player movement, monster AI) now
+> live in `rust/sim_core/` and `rust/server/`; the client-side machines (scene flow, connection
+> lifecycle) live in GDScript. The GDScript headless server is **retired** (`NetworkManager`
+> refuses server mode) and is being deleted — do **not** cite `client/scripts/server/*.gd` as live
+> code. Wire/transport facts below are the [server contract](../server/contract.md).
 
 | Machine | Enum / values | Owner | Where |
 |---|---|---|---|
-| Player life | `PlayerLifeState` ALIVE / DEAD / INVULNERABLE | Server | `player_state.gd:8` |
-| Player animation (movement-derived) | `AnimationState` IDLE / WALK / RUN / ATTACK / HIT / DEATH / SPAWN | Server (derived), replicated | `packet_types.gd:35`, `player_state.gd:318` |
-| Game / scene state | `GameState` INITIALIZING / MAIN_MENU / LOADING / IN_ARENA / PAUSED / EXITING | Both (different routes) | `game_manager.gd:6`, `scene_manager.gd:20` |
-| Connection lifecycle | `ConnectionState` DISCONNECTED / CONNECTING / CONNECTED / RECONNECTING / ERROR | Client | `network_manager.gd:7` |
-| Monster AI | `AIState` IDLE / CHASE / ATTACK / FLEE | Server | `monster_ai.gd:9` |
-| Local-player movement | `MovementStateMachine.State` IDLE / WALKING / SPRINTING / DASHING / KNOCKED_BACK / STUNNED / ABILITY_MOVEMENT | Server (authoritative) + Client (predicted) | `movement_state_machine.gd` |
+| Player life | `LifeState` Alive / Dead / Invulnerable | **Server (Rust)** | `rust/server/src/sim/player.rs` |
+| Player animation (movement-derived) | `anim` IDLE / WALK / RUN / ATTACK / HIT / DEATH / SPAWN | Server (derived), replicated | `rust/protocol/src/types.rs` (`mod anim`), derived in `rust/server/src/sim/player.rs` |
+| Player movement | `MoveState` Idle / Walking / Sprinting / Dashing / KnockedBack / Stunned / AbilityMovement / Charging | **Shared sim** (`rust/sim_core`): server-authoritative + client-predicted | `rust/sim_core/src/movement.rs` |
+| Monster AI | `AiState` Idle / Chase / Attack / Flee | **Server (Rust)** | `rust/server/src/sim/monster.rs` |
+| Game / scene state | `GameState` INITIALIZING / MAIN_MENU / LOADING / IN_ARENA / PAUSED / EXITING | Client | `client/autoload/game_manager.gd`, `client/autoload/scene_manager.gd` |
+| Connection lifecycle | `ConnectionState` DISCONNECTED / CONNECTING / CONNECTED / RECONNECTING / ERROR | Client | `client/autoload/network_manager.gd` |
+
+The first four are server-side (Rust); the last two are client-side (GDScript). Player movement is
+the one machine that runs on **both** sides: the server owns the authoritative `MovementSm`, and the
+client runs the *same compiled crate* through the `client_ext` GDExtension (`PredictionSim`), so
+prediction cannot diverge by construction.
 
 ---
 
-## 1. Player life — `PlayerLifeState` (server-authoritative)
+## 1. Player life — `LifeState` (server-authoritative)
 
-`enum PlayerLifeState { ALIVE, DEAD, INVULNERABLE }` (`player_state.gd:8`). One per connected
-player, held on the server `PlayerState`. The client never sets it; it only *reflects* it via
-the `ENTITY_FLAG_INVULNERABLE` / `ENTITY_FLAG_ALIVE` bits in each Snapshot.
+`enum LifeState { Alive, Dead, Invulnerable }` on the Rust `PlayerState`
+(`rust/server/src/sim/player.rs`). One per connected player, owned by the server. The client never
+sets it; it only *reflects* it via the `INVULNERABLE` / `ALIVE` bits in each entity's 16-bit
+`entity_flags` field in the Snapshot (`rust/protocol/src/types.rs`, `mod entity_flags`).
 
 | From | To | Trigger | Evidence |
 |---|---|---|---|
-| ALIVE | DEAD | `take_damage` drops health ≤ 0 → `_mark_dead` | `player_state.gd:384,393` |
-| INVULNERABLE | DEAD | (cannot — invuln blocks damage; `take_damage` returns false) | `player_state.gd:379` |
-| DEAD | INVULNERABLE | respawn after `RESPAWN_DELAY` 3.0 s → `reset_for_respawn` | `player_state.gd:413,353` |
-| INVULNERABLE | ALIVE | active move/shoot input, OR `INVULNERABILITY_DURATION` 3.0 s timer | `player_state.gd:225,422` |
+| Alive | Dead | `take_damage` drops health ≤ 0 → `mark_dead` | `player.rs` `take_damage`, `mark_dead` |
+| Invulnerable | (stays) | invuln absorbs damage silently; `take_damage` returns false | `player.rs` `take_damage` |
+| Dead | Invulnerable | client `RespawnRequest` after the timer gate → `reset_for_respawn` | `world.rs` `handle_respawn_request`; `player.rs` `reset_for_respawn` |
+| Invulnerable | Alive | active move/SHOOT input, OR the `INVULNERABILITY_DURATION` (3.0 s) timer | `player.rs` `step` (`has_active_input`), `update_invulnerability`, `end_invulnerability` |
 
 Details:
-- **Death** zeros velocity/input, clears the input + pending-shot queues, sets `respawn_timer =
-  RESPAWN_DELAY` (3.0 s), bumps `deaths`, records `last_killer_id`, sets `AnimationState.DEATH`
-  (`player_state.gd:397-409`). `_mark_dead` is idempotent (guards on already-DEAD, `:394`).
-- **Respawn** is driven by `update_respawn_timer` counting `respawn_timer` to 0
-  (`player_state.gd:413-418`); `reset_for_respawn` then enters INVULNERABLE with
-  `invulnerability_timer = INVULNERABILITY_DURATION` (3.0 s) and `AnimationState.SPAWN`
-  (`:353-369`).
+- **Death** (`mark_dead`) zeros velocity/input, resets the movement SM, clears the input + pending-shot
+  queues, sets `respawn_timer = RESPAWN_DELAY` (3.0 s, `rust/sim_core/src/constants.rs`), bumps
+  `deaths`, records `last_killer_id`, and sets `anim::DEATH`. It is idempotent (guards on
+  already-`Dead`). Dead players are **not despawned** — they keep replicating with flags == VISIBLE
+  and animation DEATH.
+- **Respawn is client-requested, not automatic.** The server counts `respawn_timer` down each tick
+  (`world.rs` step → `update_respawn_timer`); the client sends a `RespawnRequest` (C→S type 5, ch1
+  reliable). `handle_respawn_request` silently rejects while `is_alive || respawn_timer > 0.0` (the
+  client retries), then `reset_for_respawn` enters `Invulnerable` with `invulnerability_timer =
+  INVULNERABILITY_DURATION` (3.0 s), `anim::SPAWN`, and broadcasts a `RESPAWN` GameEvent carrying the
+  spawn position.
 - **Invulnerability ends two ways**: (a) the player acts — `step()` calls `end_invulnerability()`
-  when `has_active_input()` sees any move or SHOOT flag (`player_state.gd:225-226,443-447`); or
-  (b) the 3 s timer expires via `update_invulnerability` (`:422-430`). Either path routes through
-  `end_invulnerability()` (`:434`), which clears `ENTITY_FLAG_INVULNERABLE`.
-- **Dead players are inert**: `ingest_input` discards input while DEAD (`player_state.gd:135`),
-  and `step()` early-returns with zeroed velocity (`:207-218`).
+  when `has_active_input()` sees any move or SHOOT flag (sprint/dash/ability/interact alone do **not**
+  break it); or (b) the 3 s timer expires via `update_invulnerability`. Either path routes through
+  `end_invulnerability()`, which returns to `Alive` and clears the `INVULNERABLE` flag.
+  - **Caveat (Warrior charge):** charge-invulnerability is orthogonal — `update_entity_flags` sets
+    `INVULNERABLE` while `movement_sm.is_charging()` even when the life state is `Alive`, and
+    `take_damage` absorbs damage during a charge. This is movement-SM state, not a `LifeState`
+    transition.
+- **Dead players are inert**: `step()` early-returns while `Dead` (no input ingestion, zeroed
+  velocity); damage/input are dropped.
 
 ---
 
-## 2. Player animation (movement-derived) — `AnimationState`
+## 2. Player animation (movement-derived) — `anim`
 
-`enum AnimationState { IDLE, WALK, RUN, ATTACK, HIT, DEATH, SPAWN }` (`packet_types.gd:35`).
-This is not a separate controller — it is *derived* every Tick from the player's movement and
-input, then replicated in the Snapshot's per-entity `anim` byte. The spec's "IDLE/WALKING"
-movement machine is exactly these states.
+`mod anim { IDLE=0, WALK=1, RUN=2, ATTACK=3, HIT=4, DEATH=5, SPAWN=6 }`
+(`rust/protocol/src/types.rs`; 3 bits on the wire inside each Snapshot record). This is not a
+separate controller — it is *derived* every tick from the player's movement and input, then
+replicated in the Snapshot's per-entity `anim` field.
 
-Server precedence, top-down, in `_update_animation_state()` (`player_state.gd:318-329`):
+Server precedence, top-down, in `PlayerState::update_animation_state` (`rust/server/src/sim/player.rs`):
 
 | Result | Condition |
 |---|---|
-| DEATH | `not is_alive` |
+| DEATH | `!is_alive` |
 | ATTACK | SHOOT flag held |
-| RUN | moving (`velocity² > 0.01`) **and** SPRINT flag |
+| RUN | moving (`velocity.length_squared() > 0.01`) **and** SPRINT flag |
 | WALK | moving, not sprinting |
 | IDLE | otherwise (no movement) |
 
 HIT and SPAWN are set imperatively elsewhere, not by this derivation: HIT on a non-fatal
-`take_damage` (`player_state.gd:388`), SPAWN by `reset_for_respawn` (`:368`). Monsters reuse the
-same enum but only ever emit IDLE / WALK / ATTACK (`monster_ai.gd:508-518`). The client reads
-`anim` purely for visuals (Remote entity animation); it is never predicted.
+`take_damage` (`player.rs`), SPAWN by `reset_for_respawn`. Monsters reuse the same enum but only
+ever emit IDLE / WALK / ATTACK (`rust/server/src/sim/monster.rs` `update_monster` animation sync;
+HIT/DEATH are set in `MonsterState::take_damage`). The client reads `anim` purely for visuals
+(remote-entity animation); it is never predicted.
 
 ---
 
-## 3. Game / scene flow — `GameState` + `SceneManager` routing
+## 3. Player movement — `MoveState` (shared sim: server-authoritative + client-predicted)
 
-Two cooperating pieces:
+`enum MoveState { Idle, Walking, Sprinting, Dashing, KnockedBack, Stunned, AbilityMovement,
+Charging }` (`rust/sim_core/src/movement.rs`). This is the one **shared** machine: the server owns
+the authoritative `MovementSm` on `PlayerState` and drives it once per tick via
+`sim_core::step_player`; the client runs an identical `MovementSm` through the `PredictionSim`
+GDExtension wrapper for responsiveness. Same compiled crate ⇒ zero divergence by construction.
 
-**`GameManager.GameState`** (`game_manager.gd:6`): INITIALIZING / MAIN_MENU / LOADING /
-IN_ARENA / PAUSED / EXITING. `change_state` is a guarded setter (no-op if unchanged) that emits
-`game_state_changed` and dispatches `_handle_state_transition` (`game_manager.gd:83-108`).
-- Server boots straight to IN_ARENA (`_initialize_server`, `:72-75`).
-- Client boots to MAIN_MENU after loading settings (`_initialize_client`, `:78-80`).
-- PAUSED and EXITING exist in the enum; EXITING has an enter-handler that saves settings
-  (`:128-130`). PAUSED has no handler branch (HUD pause is UI-only).
-
-**`SceneManager`** owns the actual scene swaps and drives `GameState` as a side effect via
-`_update_game_state_for_scene` (`scene_manager.gd:324-339`): the menu scenes →
-`GameState.MAIN_MENU`, LOADING → LOADING, ARENA → IN_ARENA.
-
-Client initial routing, after one frame, in `_route_to_initial_scene` (`scene_manager.gd:91-107`):
-
-| Condition | Scene |
-|---|---|
-| not logged in | LOGIN (`scene_manager.gd:107`) |
-| logged in, no character | CHARACTER_CREATION (`:104`) |
-| logged in, has character | MAIN_MENU (`:101`) |
-
-Server routing: `_ready` sends it directly to `SERVER_MAIN` (`scene_manager.gd:83-85`).
-
-**Test-scene escape hatch:** `_ready` returns early — **skipping all routing** — when the current
-scene path begins with `res://scenes/test/` (`scene_manager.gd:77-80`). `GameManager` mirrors
-this: its server-mode detection is suppressed for test scenes so a headless test scene still runs
-as a client (`game_manager.gd:60,256-263`). This is why test scenes (`sandbox.tscn`,
-`net_smoke.tscn`) build their world inline instead of being routed.
-
-Transitions go through `change_scene` (`scene_manager.gd:110`), which guards re-entrancy with
-`is_transitioning`, fades (client only), cleans up the old scene, and on arena exit disconnects
-the network (`_cleanup_scene`, `:342-350`).
-
----
-
-## 4. Connection lifecycle — `ConnectionState` (client)
-
-`enum ConnectionState { DISCONNECTED, CONNECTING, CONNECTED, RECONNECTING, ERROR }`
-(`network_manager.gd:7`). Client-only; the server side tracks per-peer WebSocket ready-states
-directly, not this enum. Polled in `_process_client` via a `match` on `current_state`
-(`network_manager.gd:222-227`) — note: polled per render Frame, not per Tick.
-
-| From | To | Trigger | Evidence |
-|---|---|---|---|
-| DISCONNECTED | CONNECTING | `connect_to_server` | `network_manager.gd:288` |
-| CONNECTING | CONNECTED | socket reaches `STATE_OPEN` → `_complete_connection` | `network_manager.gd:319,333-346` |
-| CONNECTING | ERROR | timeout 5 s or socket closed → `_fail_connection_attempt` | `network_manager.gd:312,323,349-359` |
-| CONNECTED | DISCONNECTED | clean `disconnect_from_server`, or heartbeat timeout 5 s | `network_manager.gd:405-418,250-255` |
-| CONNECTED | DISCONNECTED | socket observed CLOSED → `_on_connection_closed` | `network_manager.gd:260,996-999` |
-| ERROR / DISCONNECTED | RECONNECTING | `_schedule_reconnect` (had a prior success) | `network_manager.gd:356,1001,1024` |
-| RECONNECTING | CONNECTING | backoff timer elapses → `_attempt_reconnect` | `network_manager.gd:267-270,1027-1029` |
-| RECONNECTING | ERROR | `reconnect_attempts ≥ max` (5) | `network_manager.gd:1012-1016` |
-| RECONNECTING | DISCONNECTED | intentional `disconnect_from_server` cancels pending reconnect | `network_manager.gd:372-385` |
-
-Sub-flows:
-- **Auth handshake** is *not* part of the enum. On reaching CONNECTED, `_complete_connection`
-  resets `_auth_handshake_sent = false` and lets the arena scene fire `send_auth_handshake`
-  (`CONNECT_AUTH`) once its listener is bound (`network_manager.gd:340-344,369-402`). The send is
-  idempotent per session. Authoritative identity arrives later via `PLAYER_INFO` (Authority sync).
-- **Heartbeat** runs only in CONNECTED: send 1 Hz (`heartbeat_interval` 1.0), and if no heartbeat
-  received for `heartbeat_timeout_seconds` 5.0 s, emit `heartbeat_timeout` and disconnect
-  (`network_manager.gd:244-255`). The server mirrors this with a 5 s per-peer timeout (`:215-219`).
-- **Reconnect backoff** is exponential: `delay = min(base·2^attempts, max)` =
-  `min(1.0·2^n, 32.0)` → 1, 2, 4, 8, 16, then capped at 32 s, for up to
-  `max_reconnect_attempts` 5 (`network_manager.gd:83-87,1019-1021`). A successful connect resets
-  `reconnect_attempts` to 0 (`:336`). Auto-reconnect only fires if `server_url` is set and a prior
-  connection succeeded (`_had_successful_connection`), so a first-attempt failure surfaces as a
-  plain `connection_error` (`:356-359,1005-1010`).
-- **Suppressed reconnect** — an *expected* disconnect must not feed the backoff loop. The
-  `_suppress_auto_reconnect` flag (`network_manager.gd:98`) gates `_schedule_reconnect`:
-  `_on_connection_closed` only reconnects when `_had_successful_connection and not
-  _suppress_auto_reconnect` (`:554`). Two callers set it:
-  - **Hardcore (permadeath) death.** When the local player's death is detected as hardcore,
-    `ArenaBase._play_local_death_feedback` calls `NetworkManager.suppress_auto_reconnect()`
-    (`network_manager.gd:560`, `arena_base.gd` hardcore branch) *before* the server's kick lands.
-    Without this the kick reconnects, re-auths (`send_auth_handshake` from `_on_reconnected`), and
-    the server re-spawns the now-deleted character in the background behind the death screen — a
-    respawn loop, since the server immediately re-kicks. The `_hardcore_death` flag only suppresses
-    the reconnect *overlay*; the auto-reconnect loop is a separate concern in `NetworkManager`.
-  - **Intentional disconnect.** `disconnect_from_server` sets the flag and, when already in
-    RECONNECTING (transport closed, backoff timer ticking), forces DISCONNECTED + `client_reset`
-    instead of early-returning (`network_manager.gd:372-385`) — otherwise a pending reconnect
-    fires after the user has left to the main menu / Sanctuary.
-
-  The flag is cleared on the next fresh `connect_to_server` (non-reconnect path,
-  `network_manager.gd:235`), so a later session reconnects normally.
-
----
-
-## 5. Monster AI — `AIState` (server)
-
-`enum AIState { IDLE, CHASE, ATTACK, FLEE }` (`monster_ai.gd:9`). One per monster, evaluated each
-Tick by `MonsterAI._update_monster` → `match monster.ai_state` (`monster_ai.gd:76-84`).
-Transitions funnel through `_transition_to_state`, which is a no-op on same-state and resets
-per-state timers/flags (`monster_ai.gd:301-325`). Full behavior — target scoring, kiting,
-predictive aim — is documented in [`monsters-ai.md`](monsters-ai.md); the transition map:
-
-| From | To | Trigger | Evidence |
-|---|---|---|---|
-| (any) | IDLE | no alive players / target lost / out of lose-interest range | `monster_ai.gd:100-101,123-126,202-203` |
-| IDLE | CHASE | a valid alive target acquired | `monster_ai.gd:192-195` |
-| CHASE | ATTACK | distance ≤ attack range | `monster_ai.gd:215-216` |
-| CHASE | FLEE | distance < flee distance | `monster_ai.gd:210-211` |
-| ATTACK | CHASE | distance > attack range·1.2 (hysteresis), or post-attack out of range | `monster_ai.gd:247-248,266-267` |
-| ATTACK | FLEE | target rushed inside flee distance | `monster_ai.gd:242-243` |
-| FLEE | ATTACK | reached preferred distance and within attack range | `monster_ai.gd:284-286` |
-| FLEE | CHASE | reached preferred distance but out of attack range | `monster_ai.gd:287-288` |
-
-Only ATTACK can fire a projectile (gated by cooldown, returns the fired flag up the stack;
-`monster_ai.gd:257-261`). All thresholds scale with a per-monster `difficulty` (0..1) via the
-`_get_*` lerp helpers (`monster_ai.gd:154-179`).
-
----
-
-## 6. Local-player movement — `MovementStateMachine` (server + predicted)
-
-`enum State { IDLE, WALKING, SPRINTING, DASHING, KNOCKED_BACK, STUNNED, ABILITY_MOVEMENT }`
-(`movement_state_machine.gd`). Unlike the other five machines this one is **shared**: the server
-owns the authoritative instance on `PlayerState` and drives it once per tick in `step()`; the client
-runs an identical instance in `PredictionController` for responsiveness. Centralized
-`_transition_to(new)` early-returns on same-state, runs a `match` enter block, and emits paired
-enter/exit signals — the codebase convention (cf. `monster_ai._transition_to_state`).
+`MovementSm::tick(dt, move_dir, sprint, dash, ability, attacking, aim_dir)` runs a fixed intra-tick
+order — timers → stamina (using the *previous* tick's state) → mana → edge detection →
+dash/ability/attack actions → dispatch on the (possibly just-changed) state — then returns the
+velocity to integrate. Transitions funnel through `transition_to`, which early-returns on same-state
+and is gated by `can_transition` (the guard table below). GDScript signals are not ported; callers
+diff `state()` before/after `tick()` for transition-driven effects (HUD/audio live client-side).
 
 | From | To | Trigger | Guard |
 |---|---|---|---|
-| IDLE/WALKING/SPRINTING | (each other) | move dir / sprint held / stamina | sprint needs stamina > MIN |
-| IDLE/WALKING/SPRINTING | DASHING | dash edge | cooldown ready, not stunned/knocked/ability, dir≠0 |
-| DASHING | IDLE | dash duration (0.4 s) elapses | — |
-| any (except STUNNED/ABILITY) | KNOCKED_BACK | `apply_knockback()` | dir≠0, force>0 |
-| KNOCKED_BACK | IDLE | velocity decays below END_SPEED | interruptible only by STUNNED/ABILITY |
-| any | STUNNED | `apply_stun/root()` | duration>0; cancels an in-progress dash |
-| STUNNED | IDLE | stun timer elapses | only the timer may release it |
-| (most) | ABILITY_MOVEMENT | `start_ability_movement()` | not STUNNED |
-| ABILITY_MOVEMENT | IDLE | `end_ability_movement()` | — |
+| Idle/Walking/Sprinting | (each other) | move dir / sprint held | sprint needs `stamina > 0`, not exhausted, not dazed |
+| Idle/Walking/Sprinting | Dashing | dash edge (`try_dash`) | cooldown ready, not dazed, not Stunned/KnockedBack/AbilityMovement/Charging, dir≠0 |
+| Dashing | Idle | dash duration elapses (≈13 ticks, float residue) | — |
+| Idle/Walking/Sprinting | Charging | RMB ability edge with `charge_speed > 0` (Warrior) | cooldown ready, mana ≥ cost, charge dir≠0, not Stunned/KnockedBack |
+| Charging | Idle | RMB released, max distance spent, or server `end_charge` (enemy contact) | natural end flags the AOE blast (`charge_just_ended`); `end_charge`/stun/teleport do not |
+| any (except Stunned/KnockedBack) | KnockedBack | `apply_knockback()` | dir≠0, force>0, finite; **server-only caller** (client never predicts knockback) |
+| KnockedBack | Idle | velocity decays below `PLAYER_KNOCKBACK_END_SPEED` | interruptible only by Stunned/AbilityMovement |
+| any | Stunned | `apply_stun()` | duration>0; cancels an in-progress dash or charge |
+| Stunned | Idle | stun timer elapses | only the timer may release it |
+| (most) | AbilityMovement | `start_ability_movement()` | not Stunned |
+| AbilityMovement | Idle | `end_ability_movement()` | — |
 
-Daze (`apply_daze()`, hit-while-sprinting) is **not a state** — it is a timer that gates the
-sprint derivation and `try_dash()` while any state runs (typically alongside KNOCKED_BACK);
-replicated via `ENTITY_FLAG_DAZED`. Full detail (numbers, signals, the reconciliation caveat,
-status effects) lives in [`players-movement-state-machine.md`](players-movement-state-machine.md).
+Notes specific to the Rust port:
+- **Guard table** (`can_transition`): `Stunned` only releases to `Idle` (via its own timer);
+  `KnockedBack` rides out unless interrupted by `Stunned` / `AbilityMovement`.
+- **Charging** is the protocol-v4 Class-ability state for the **Warrior Charge** (held-input dash
+  along the aim/move direction, invulnerable, up to a max distance; ends → server spawns an AOE
+  blast). It is fully **predicted** (purely directional, no target lookup). The Rogue **Shadowstep**
+  blink is also predicted movement but is realized as a server teleport + `interrupt_to_idle`, not a
+  dedicated state. Only Warrior/Rogue/Mage are in pre-alpha scope; the RMB ability spends **Mana**.
+- **Instant (non-charge) abilities** set the transient `ability_fired` flag (no state change) for the
+  server to dispatch; the client plays cast VFX. Cleared at the top of every tick.
+- **Daze** (`apply_daze`, hit-while-sprinting) is **not a state** — it is a timer that refuses sprint
+  and dash while it runs; walking proceeds. Replicated via the `DAZED` entity flag (bit 8).
+  **Stealth** (Rogue, bit 9) and **Exhaustion** (sprint-stamina lockout) are likewise timer/flag
+  states, not `MoveState`s.
+- **Determinism:** timers decrement `max(0.0, x - dt)` in f64; the exact accumulation order is
+  load-bearing (a dash lasts 13 ticks at 30 Hz from f64 residue). Knockback decay uses `f64::exp`
+  (not bit-stable across libm), but it is server-only, so it cannot desync prediction (pinned by a
+  CI bit test). Per-class tuning (`set_base_speed`, `set_ability_config`) is set identically on both
+  sides and preserved across `reset()`.
+
+Authoritative correction: movement-SM divergence is corrected by position reconciliation (replay via
+`replay_step`) plus the `ActionConfirm` stamina/mana sync (`set_resources`, epsilon-gated). Full
+detail — numbers, signals, reconciliation caveat, status effects — lives in
+[`players-movement-state-machine.md`](players-movement-state-machine.md).
+
+---
+
+## 4. Monster AI — `AiState` (server-authoritative)
+
+`enum AiState { Idle, Chase, Attack, Flee }` (`rust/server/src/sim/monster.rs`). One per monster,
+evaluated each tick by `MonsterAi::update_monster` → `match monster.ai_state`. Transitions funnel
+through `transition`, which is a no-op on same-state and resets per-state flags. Full behavior —
+target scoring, kiting, predictive aim, the three-layer spawn director — is documented in
+[`monsters-ai.md`](monsters-ai.md); the transition map:
+
+| From | To | Trigger | Evidence |
+|---|---|---|---|
+| (any) | Idle | no alive players / target lost / target turns Stealth (Rogue Shadowstep) | `monster.rs` `select_target`, `process_*` (target filter), Stealth aggro drop |
+| Idle | Chase | a valid alive target acquired | `monster.rs` `process_idle` |
+| Chase | Attack | distance ≤ attack range | `monster.rs` `process_chase` |
+| Chase | Flee | distance < flee distance | `monster.rs` `process_chase` |
+| Attack | Chase | distance > attack range·1.2 (hysteresis), or post-attack out of range | `monster.rs` `process_attack` |
+| Attack | Flee | target rushed inside flee distance | `monster.rs` `process_attack` |
+| Flee | Attack | reached preferred distance and within attack range | `monster.rs` `process_flee` |
+| Flee | Chase | reached preferred distance but out of attack range | `monster.rs` `process_flee` |
+
+Only `Attack` can fire a projectile (gated by `shoot_cooldown`; the fired flag bubbles up as a
+`FireEvent`). All thresholds scale with a per-monster `difficulty` (0..1) via the `MonsterAi`
+lerp helpers (`retarget_interval`, `detection_range`, `attack_range`, …). The `stationary_dummy`
+profile (`target_dummy`) never leaves `Idle`. A targeted monster never goes idle from distance alone
+(the lose-interest branch is effectively dead code — ported as-is, see `monsters-ai.md`). All RNG
+goes through the sim-owned PCG (`rng::Pcg32`, seedable for tests).
+
+---
+
+## 5. Game / scene flow — `GameState` + `SceneManager` routing (client)
+
+Client-only since the Rust port — the server has no `GameState`. Two cooperating pieces:
+
+**`GameManager.GameState`** (`client/autoload/game_manager.gd`): INITIALIZING / MAIN_MENU / LOADING /
+IN_ARENA / PAUSED / EXITING. `change_state` is a guarded setter (no-op if unchanged) that emits
+`game_state_changed` and dispatches `_handle_state_transition`.
+- The client boots to MAIN_MENU after loading settings.
+- PAUSED and EXITING exist in the enum; EXITING has an enter-handler that saves settings. PAUSED has
+  no handler branch (HUD pause is UI-only).
+
+**`SceneManager`** owns the actual scene swaps and drives `GameState` as a side effect via
+`_update_game_state_for_scene`: the menu scenes → `GameState.MAIN_MENU`, LOADING → LOADING,
+ARENA → IN_ARENA.
+
+Client initial routing, after one frame, in `_route_to_initial_scene`:
+
+| Condition | Scene |
+|---|---|
+| not logged in | LOGIN |
+| logged in, no character | CHARACTER_CREATION |
+| logged in, has character | MAIN_MENU |
+
+**Test-scene escape hatch:** `_ready` returns early — **skipping all routing** — when the current
+scene path begins with `res://scenes/test/` (or is the practice level). This is why test scenes
+(`sandbox.tscn`, `net_smoke.tscn`) build their world inline instead of being routed. `NetworkManager`
+mirrors this check (`_is_test_scene`) so a headless test scene still runs as a client rather than
+tripping the retired-server-mode guard.
+
+Transitions go through `change_scene`, which guards re-entrancy with `is_transitioning`, fades
+(client only), cleans up the old scene, and on arena exit disconnects the network.
+
+---
+
+## 6. Connection lifecycle — `ConnectionState` (client)
+
+`enum ConnectionState { DISCONNECTED, CONNECTING, CONNECTED, RECONNECTING, ERROR }`
+(`client/autoload/network_manager.gd`). Client-only. The transport is **ENet over UDP** through the
+`ENetTransport` seam (the wire codec is the Rust `ProtocolCodec` GDExtension) — **not** Godot
+High-Level Multiplayer, `MultiplayerSynchronizer`, `ENetMultiplayerPeer`, or WebSocket. There is no
+app-level heartbeat: ENet provides native keepalive/RTT, and the clock-sync payload (`server_ms`)
+rides every Snapshot. Polled in `_process` via a `match` on `current_state` (per render frame, not
+per tick).
+
+| From | To | Trigger | Evidence |
+|---|---|---|---|
+| DISCONNECTED | CONNECTING | `connect_to_server` | `network_manager.gd` `connect_to_server` |
+| CONNECTING | CONNECTED | link reaches `LinkState.OPEN` → `_complete_connection` | `network_manager.gd` `_wait_for_connection`, `_complete_connection` |
+| CONNECTING | ERROR | timeout (`connection_timeout_seconds` 5 s) or link CLOSED → `_fail_connection_attempt` | `network_manager.gd` `_wait_for_connection`, `_fail_connection_attempt` |
+| CONNECTED | DISCONNECTED | clean `disconnect_from_server` | `network_manager.gd` `disconnect_from_server` |
+| CONNECTED | DISCONNECTED | link observed CLOSED → `_on_connection_closed` | `network_manager.gd` `_process_connected`, `_on_connection_closed` |
+| ERROR / DISCONNECTED | RECONNECTING | `_schedule_reconnect` (had a prior success) | `network_manager.gd` `_fail_connection_attempt`, `_on_connection_closed`, `_schedule_reconnect` |
+| RECONNECTING | CONNECTING | backoff timer elapses → `_attempt_reconnect` | `network_manager.gd` `_process_reconnecting`, `_attempt_reconnect` |
+| RECONNECTING | ERROR | `reconnect_attempts ≥ max` (5) | `network_manager.gd` `_schedule_reconnect` |
+| RECONNECTING | DISCONNECTED | intentional `disconnect_from_server` cancels pending reconnect | `network_manager.gd` `disconnect_from_server` |
+
+Sub-flows:
+- **Auth handshake** is *not* part of the enum. On reaching CONNECTED, `_complete_connection` resets
+  `_auth_handshake_sent = false` and lets the arena scene fire `send_auth_handshake` (`ConnectAuth`,
+  ch1 reliable) once its listener is bound. The send is idempotent per session. Authentication is an
+  **Ed25519 session ticket** minted by the Go API and verified locally by the server (dev default
+  `--allow-unsigned-tickets`: an empty ticket is trusted). The explicit `AuthResult` (S→C, ch1)
+  carries the entity id for instant Authority sync; `PLAYER_INFO` remains the name/color fallback.
+- **Liveness** is ENet-native — no app heartbeat. RTT comes from `client_rtt_ms()`; a dropped link
+  surfaces as `LinkState.CLOSED` in `_process_connected`. `server_ms` on each Snapshot feeds the EMA
+  clock-offset filter (`_update_clock_from_server_ms`, alpha 0.2, u32-wrap-folded).
+- **Reconnect backoff** is exponential: `delay = min(base·2^attempts, max)` = `min(1.0·2^n, 32.0)`
+  → 1, 2, 4, 8, 16, capped at 32 s, for up to `max_reconnect_attempts` 5. A successful connect resets
+  `reconnect_attempts` to 0. Auto-reconnect only fires if `server_url` is set and a prior connection
+  succeeded (`_had_successful_connection`), so a first-attempt failure surfaces as a plain
+  `connection_error`.
+- **Suppressed reconnect** — an *expected* disconnect must not feed the backoff loop. The
+  `_suppress_auto_reconnect` flag gates `_schedule_reconnect`: `_on_connection_closed` only
+  reconnects when `_had_successful_connection and not _suppress_auto_reconnect`. Two callers set it:
+  - **Hardcore (permadeath) death.** When the local player's death is detected as hardcore, the arena
+    calls `NetworkManager.suppress_auto_reconnect()` *before* the server's kick lands. Without this
+    the kick reconnects, re-auths, and the server re-spawns the now-deleted character behind the
+    death screen — a respawn loop, since the server immediately re-kicks.
+  - **Intentional disconnect.** `disconnect_from_server` sets the flag and, when already in
+    RECONNECTING (transport closed, backoff timer ticking), forces DISCONNECTED + `client_reset`
+    instead of early-returning — otherwise a pending reconnect fires after the user has left to the
+    main menu / Sanctuary.
+
+  The flag is cleared on the next fresh `connect_to_server` (non-reconnect path), so a later session
+  reconnects normally.
 
 ---
 
 ## The eight questions
 
-- **Client:** runs `ConnectionState`, `GameState` routing (`SceneManager`), and renders the
-  replicated `AnimationState` / invuln flag — no authoritative state.
-- **Server:** owns `PlayerLifeState`, `AIState`, the movement-derived `AnimationState`, and its
-  own `GameState` (boots to IN_ARENA).
-- **Predicted:** the client predicts Local-player *position* AND the new `MovementStateMachine`
-  (dash/sprint/knockback/stun + stamina/mana) by running an identical instance; all other machines
-  (life/animation/AI) are authoritative-only and never predicted. Movement-SM divergence is corrected
-  by the existing position reconciliation plus the ACTION_CONFIRM stamina/mana sync.
-- **Replicated:** life (as flags) and animation per-entity in each Snapshot; AI state only via its
-  resulting animation + movement.
-- **Persisted:** none — all five are in-memory; only account/character/stats persist (Go API).
-- **Validated:** life transitions gate on server health/timers; dead-player input is dropped
-  (`player_state.gd:135`); connection transitions gate on socket ready-state and timeouts.
+- **Client:** runs `ConnectionState`, `GameState` routing (`SceneManager`), the client copy of the
+  movement `MovementSm` (prediction), and renders the replicated `anim` / flags. No authoritative
+  game state.
+- **Server:** owns `LifeState`, `AiState`, the authoritative movement `MovementSm`, and the
+  movement-derived `anim`. There is no server-side `GameState` (one process = one instance).
+- **Predicted:** the client predicts Local-player *position* AND the movement `MovementSm`
+  (dash/sprint/charge + stamina/mana) by running the same `sim_core` crate. Knockback is **not**
+  predicted (server-only). Life / animation / monster AI are authoritative-only and never predicted.
+  Movement-SM divergence is corrected by position reconciliation plus the `ActionConfirm`
+  stamina/mana sync.
+- **Replicated:** life and movement status as `entity_flags` bits (ALIVE/INVULNERABLE/DASHING/
+  KNOCKED_BACK/STUNNED/DAZED/STEALTH) and the per-entity `anim` byte in each Snapshot; monster AI
+  state only via its resulting animation + movement.
+- **Persisted:** none of these machines persist — all gameplay state is server-authoritative and
+  **in-memory**. Only accounts/characters/leaderboard/regions/Glory persist, owned by the Go API
+  (Postgres + Redis).
+- **Validated:** life transitions gate on server health/timers; respawn is gated by `respawn_timer`
+  and silently rejects early requests; dead-player input is dropped; connection transitions gate on
+  link state and timeouts. Governing rule everywhere: **the client requests, the server decides.**
 - **Can fail:** invuln can end a frame "early" on the input that also moves you; PAUSED has no
   `GameState` handler; reconnect gives up after 5 attempts → ERROR; a missed test-scene-path check
-  would mis-route a test scene to LOGIN/SERVER_MAIN.
-- **Tested:** server life/AI machines exercised by the bot swarm and arena E2E test scenes; scene
-  routing is verified manually; no isolated unit test per machine today.
+  would mis-route a test scene.
+- **Tested:** the movement SM and monster AI have Rust unit tests in their modules
+  (`movement.rs` / `monster.rs` `#[cfg(test)]`, including determinism bit-tests); server life/AI are
+  exercised by the `omega-load-test` bot swarm and arena E2E test scenes (`net_smoke.tscn`); scene
+  routing is verified manually.
 
 ## See also
 
 - [`players-movement.md`](players-movement.md) — movement integration that feeds the animation states
-- [`monsters-ai.md`](monsters-ai.md) — full `AIState` behavior, scoring, and combat
-- [`combat-hits.md`](combat-hits.md) — what drives ALIVE→DEAD (damage and hit resolution)
-- [`../netcode/transport-websocket.md`](../netcode/transport-websocket.md) — the transport behind `ConnectionState`
+- [`players-movement-state-machine.md`](players-movement-state-machine.md) — full `MoveState` detail (numbers, daze/charge, reconciliation)
+- [`abilities.md`](abilities.md) — Class abilities (Warrior Charge, Rogue Shadowstep) behind the Charging/AbilityMovement states
+- [`monsters-ai.md`](monsters-ai.md) — full `AiState` behavior, scoring, spawn director, and combat
+- [`combat-hits.md`](combat-hits.md) — what drives Alive→Dead (the two-netcode hit model)
+- [`../server/contract.md`](../server/contract.md) — the ENet/UDP transport and wire format behind `ConnectionState`
 - [`../CONTEXT.md`](../CONTEXT.md) — glossary (Authority sync, Game event, Snapshot)

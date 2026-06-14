@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="Omgea Networking"
-run/main_scene="res://scenes/client/menus/boot_scene.tscn"
+run/main_scene="res://scenes/boot_scene.tscn"
 config/features=PackedStringArray("4.6", "Forward Plus")
 config/icon="res://icon.svg"
 
@@ -23,6 +23,7 @@ AuthManager="*res://autoload/auth_manager.gd"
 AudioManager="*res://autoload/audio_manager.tscn"
 SceneManager="*res://autoload/scene_manager.gd"
 EntityNameCache="*res://autoload/entity_name_cache.gd"
+EventBus="*res://autoload/event_bus.gd"
 
 [display]
 

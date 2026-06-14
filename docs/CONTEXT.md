@@ -29,7 +29,7 @@ _Avoid_: dimension, realm (reserve for the product name "Omega Realm"), world (t
 
 **Biome**:
 The environmental theme of a World — determines monster roster, visual style, and tier. Each Biome
-belongs to exactly one Plane. Canonical Biome IDs are in `docs/systems/MONSTERS.md`.
+belongs to exactly one Plane. Canonical Biome IDs are in `docs/gdd/MONSTERS.md`.
 _Avoid_: zone, region, area.
 
 **World**:
@@ -146,7 +146,7 @@ _Avoid_: hit rewind, favor-the-shooter (that's the policy, not the mechanism).
 **Class**:
 One of the seven character archetypes a player picks at character creation — Zealot, Void Hunter,
 Engineer, Plague Seer, Warrior, Rogue, Mage. Each has its own base stats, per-level scaling, and a
-unique **Class ability**. Numbers live in `client/data/classes/` and `docs/classes/`.
+unique **Class ability**. Numbers live in `client/data/classes/` and `docs/gdd/classes/`.
 _Avoid_: hero, kit, build, profession.
 
 **Class ability**:

@@ -116,5 +116,5 @@ decides."**
 - [ADR 0005](0005-permadeath-persistence-model.md) — permadeath as the transactional save this extends.
 - [`../server/design.md`](../server/design.md) — progression & economy in the context of the whole server.
 - [`../server/contract.md`](../server/contract.md) — the protocol v4 wire layout.
-- [`../systems/PROGRESSION.md`](../systems/PROGRESSION.md) · [`../systems/abilities.md`](../systems/abilities.md) · [`../classes/index.md`](../classes/index.md)
+- [`../systems/PROGRESSION.md`](../systems/PROGRESSION.md) · [`../systems/abilities.md`](../systems/abilities.md) · [`../gdd/classes/index.md`](../gdd/classes/index.md)
 - [`../CONTEXT.md`](../CONTEXT.md) — the Softcore/Hardcore/Sacrifice/Glory terms this ADR makes canonical.

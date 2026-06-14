@@ -1,225 +1,268 @@
 # Server tick loop & snapshot broadcast
 
-**Status:** Implemented (verified 2026-06-04 against code). The former Partial gaps are closed: the
-per-player Snapshot build now narrows candidates through a **shared per-tick spatial grid** (#9), the
-scheduler's per-tick diagnostics are **surfaced to `ServerMetrics`** and the HUD (#15), each peer has
-a **bandwidth-derived byte budget** (#13), and Baselines are **acked** (#14, inert on TCP). What
-remains is measurement at the 500–1000-player target, not missing mechanism.
+**Status:** Implemented (verified 2026-06-14 against `rust/`). This describes the **Rust
+`omega-server`** (`rust/server/`) — the only authoritative server. One process = one instance
+(an Arena or a Sanctuary). The legacy GDScript headless server is retired (the client refuses
+server mode); none of this runs on a Godot node anymore. What remains open is measurement at the
+500–1000-player target, not missing mechanism.
 
 This is the server-side counterpart to [`interpolation.md`](interpolation.md) and
 [`client-prediction.md`](client-prediction.md): how the authoritative simulation advances one
-**Tick** at a time, and how it turns world state into per-client **Snapshots**.
+**Tick** at a time, and how it turns world state into per-client **Snapshots**. The tick order is
+grounded in [`rust/server/src/sim/world.rs`](../../rust/server/src/sim/world.rs) (`World::tick`); the
+snapshot/baseline/byte-budget machinery in [`rust/server/src/net/broadcast.rs`](../../rust/server/src/net/broadcast.rs).
+The wire layer is the bit-packed `protocol` crate, spec'd in [`../server/contract.md`](../server/contract.md).
 
 ## The two cadences are decoupled
 
 | Cadence | Rate | Period | Where | Drives |
 | --- | --- | --- | --- | --- |
-| **Tick** (simulation) | 30 Hz | 33.3 ms | `server_main.gd:178-188` | inputs, movement, AI, collisions, Game events |
-| **Snapshot** (`STATE_UPDATE`) | **30 Hz live** | 33.3 ms | `server_main.gd:170`, broadcast gate per tick | replicated entity state to clients |
+| **Tick** (simulation) | 30 Hz | 33.3 ms | `World::tick` (`world.rs`) | inputs, movement, abilities, AI, collisions, backstop, game events |
+| **Snapshot** | **30 Hz live** | 33.3 ms | `snapshot_due` gate in `World::tick`, broadcast in `broadcast.rs` | replicated entity state to clients |
 
-The Tick rate is `config.tick_rate` = 30 (`server_config.gd:13`, `server_config.json` `tick_rate:30`;
-the default now derives from `GameConstants.SERVER_TICK_RATE`, with a `GAME_SERVER_TICK_RATE` env
-override). The Snapshot rate is decoupled via a separate accumulator: `ServerConfig`'s *default*
-`snapshot_rate_hz` is `0`, which falls back to the Tick rate (`server_config.gd:102-107`) — and the
-shipped config file now sets `snapshot_rate_hz = 30` (raised from 20 by #3), so the **live Snapshot
-rate is 30 Hz**, matching the Tick. (Several client constants that once assumed 20 Hz are noted in
-[`interpolation.md`](interpolation.md); the 30-vs-60 trial is in
-[`perf-notes/tick-rate-30-vs-60.md`](perf-notes/tick-rate-30-vs-60.md).)
+The Tick rate is `config.tick_rate` = 30 (`ServerConfig::default`, `config.rs`; overridable via
+`server_config.json`). The Snapshot rate is decoupled through a separate accumulator
+(`World::snapshot_accumulator`, seeded from `config.snapshot_rate_hz()`): a raw value of `0`
+falls back to the Tick rate, and the effective rate is `min(raw, tick_rate)` (`config.rs`
+`snapshot_rate_hz`). The shipped default is `0` ⇒ **30 Hz live Snapshot rate, matching the Tick**.
+(The 30-vs-60 trial is in [`perf-notes/tick-rate-30-vs-60.md`](perf-notes/tick-rate-30-vs-60.md).)
 
-## The tick loop runs in `_process`, not `_physics_process`
+## The tick loop is a synchronous accumulator on the main thread
 
-The server drives its own fixed Tick from a manual accumulator inside `Node._process`
-(`server_main.gd:178-188`), **not** Godot's `_physics_process`:
+There is no Godot engine loop here. `main()` (`rust/server/src/main.rs`) runs a fixed-tick
+accumulator: the **main thread IS the tick thread (D8)**. Each pass it drains
+`host.service()` (decode + route ENet events in arrival order), flushes staged packets, then
+advances the sim:
 
-```gdscript
-func _process(delta: float) -> void:
-    ...
-    tick_timer += delta
-    var tick_interval := 1.0 / config.tick_rate
-    while tick_timer >= tick_interval:
-        tick_timer -= tick_interval
-        _process_server_tick()
+```rust
+tick_timer += now.duration_since(last_loop).as_secs_f64();
+while tick_timer >= tick_interval {
+    tick_timer -= tick_interval;
+    world.tick(now_ms(start), &mut outbox);   // one Tick
+    flush_outbox(&mut outbox, &mut host, ...); // its packets leave
+    host.flush();
+    collector.record_tick_time(...);
+}
+std::thread::sleep(Duration::from_millis(1));
 ```
 
 Consequences, all deliberate:
 
-- **Catch-up `while`-loop** (`:180`): if a frame ran long, multiple Ticks fire in one `_process`
-  pass to keep wall-clock cadence. No frame is skipped; Ticks can bunch.
-- **No `Engine.max_fps` cap.** Headless `_process` is called as fast as the OS schedules it, so on
-  a quiet server `_process` fires far more often than 30 Hz and the `while` body simply does
-  nothing until `tick_timer` crosses the interval. Burns CPU spinning; a `max_fps` or wait would
-  reduce idle load (Planned — not set today).
-- Decoupling from `_physics_process` means physics-tick settings (30 Hz) don't gate the loop; the
-  loop owns its own clock.
+- **Catch-up `while`-loop:** if a pass ran long, multiple Ticks fire to keep wall-clock cadence.
+  No tick is skipped. The Snapshot accumulator has a **runaway-drift guard** — at most one
+  snapshot per catch-up burst (`world.rs`: if the accumulator overshoots a full interval after
+  one decrement it resets to 0).
+- **`sleep(1 ms)`** at the bottom yields the CPU between passes instead of busy-spinning; ENet is
+  still serviced each pass so acks/retransmits stay timely. Side I/O (Go API region heartbeat,
+  server→API progression jobs) runs on a **separate thread** over `std::sync::mpsc` so the tick
+  never blocks on HTTP.
 
 ### One Tick, in order
 
-`_process_server_tick()` (`server_main.gd:213-283`) does exactly this, every Tick:
+`World::tick` (`world.rs`) does exactly this, every Tick. The order is the ported
+`_process_server_tick` order, with the D11 backstop and world-effect passes added:
 
-| Step | Call | Line |
+| Step | What | Call(s) in `world.rs` |
 | --- | --- | --- |
-| advance Snapshot accumulator, set `snapshot_due` | inline | `:217-228` |
-| open per-tick batch window | `nm.begin_batch()` | `:236-238` |
-| 1. process client inputs (incl. shoot edges) | `_process_client_inputs()` | `:241` |
-| 2. update game state (projectiles, spawner, timers) | `_update_game_state()` | `:244` |
-| 3. monster AI | `_update_monster_ai()` | `:247` |
-| 4. snapshot monster **and player** positions (PvE **and PvP** lag-comp rewind) | `record_position_snapshot()` | `:253-254` |
-| 5. collisions / damage / kills | `collision_handler.process_collisions()` | `:257-259` |
-| 6. **build shared AoI grid + broadcast Snapshot — only if `snapshot_due`** | `build_aoi_grid()` + `broadcast_state_updates()` | `:262-273` |
-| 7. cleanup dead monsters | `cleanup_dead_monsters()` | `:276` |
-| flush per-peer batches | `nm.flush_batches()` | `:278-279` |
-| record tick time | `record_tick_time()` | `:282-283` |
+| set `snapshot_due` | advance snapshot accumulator (+ drift guard) | inline |
+| 0 | apply async progression replies (hydrate / hardcore death) | `poll_progression` |
+| 1 | inputs → movement steps → shoot/ability spawns → **per-input `ActionConfirm`** | `players.process_all_inputs`, `process_shoot_inputs`, `process_ability_activations`, `process_charge_blasts` |
+| 2 | projectiles integrate; spawner; invuln/respawn/stealth/regen timers; progression flush; hardcore deaths; leaderboard cadence | `projectiles.update_all`, `spawner.update`, per-player timers, `flush_dirty_progression`, `process_hardcore_deaths` |
+| 3 | monster AI (+ `PROJECTILE_FIRED` events, non-zero projectile id) | `ai.update_all` |
+| 4 | **lag-comp position history** for monsters **and players** (post-move, pre-collision) | `monsters.record_position_snapshot`, `players.record_position_snapshot` |
+| 5 | collisions / damage / kills (players pass, then monsters); healthorb rolls | `combat::process_collisions`, `roll_healthorbs` |
+| 5b | **D11 backstop** — blatant unreported monster-bullet overlaps | `backstop.update` |
+| 5c | ability/loot world entities (bibles, mines, DOT zones, healthorb pickups) | `tick_world_entities` |
+| 6 | **build + broadcast Snapshot — only if `snapshot_due`**; then release quarantined ids | `collect_entities` + `broadcast.broadcast_state_updates` |
+| 7 | cleanup dead monsters (they got exactly one death snapshot) | `monsters.cleanup_dead_monsters` |
 
-**Game events** (damage, kill, shot-fired, respawn, `PLAYER_INFO`) are broadcast inline during
-steps 1–5 on *every* Tick — only the continuous `STATE_UPDATE` Snapshot is gated by `snapshot_due`.
-With the live Snapshot rate now equal to the 30 Hz Tick (#3), positions and events stream at the same
-cadence; the gate still exists so a future lower snapshot rate decouples cleanly. Step 4 now snapshots
-**player** positions too (`player_manager.record_position_snapshot`) — the history the new PvP
-lag-comp rewind (#7) reads (see [`../systems/combat-hits.md`](../systems/combat-hits.md)).
+**Game events** (DAMAGE, KILL, PROJECTILE_FIRED, RESPAWN, PLAYER_INFO, ABILITY_EFFECT, PROGRESS,
+PICKUP, LEADERBOARD_UPDATE) are staged inline during steps 0–5c on *every* Tick — only the
+continuous `Snapshot` is gated by `snapshot_due`. With the live Snapshot rate equal to the 30 Hz
+Tick, positions and events stream at the same cadence; the gate still exists so a future lower
+snapshot rate decouples cleanly. Step 4 snapshots **player** positions too — the history the PvP
+lag-comp rewind reads (see [`hit-authority-model.md`](hit-authority-model.md)).
 
-## Per-tick BATCH flush adds up to one tick of queuing
+## ENet replaces the BATCH frame: per-tick send, channel-routed
 
-When `packet_batching_enabled` (default true, `server_config.gd:25,79`), the loop opens a batch
-window at the top of the Tick and flushes at the bottom (`server_main.gd:226-228,258-259`). Every
-`send_to_client` / `broadcast_to_clients` during the Tick is queued per-peer and coalesced into a
-single WebSocket BATCH frame at end-of-Tick. This slashes per-frame framing overhead when inputs,
-collisions, and a Snapshot all fire together — but it means a message produced early in a Tick
-waits until that Tick ends before it leaves the box: **up to ~33 ms of server-side queuing** on
-top of transport latency. See [`transport-websocket.md`](transport-websocket.md) for how the
-batched frame is then polled and sent over TCP.
+There is no application-level BATCH frame anymore. Instead the sim stages every packet in an
+**`Outbox`** (`outbox.rs`) — `send(peer, …)` / `broadcast(…)` — and the net layer drains and
+encodes it **once per Tick** in `flush_outbox` (`main.rs`), right after `world.tick` returns and
+before `host.flush()`. This preserves the "a tick's packets for a peer leave together, in order"
+property that BATCH gave, but the coalescing is now ENet's own per-channel framing, not a custom
+frame over TCP.
 
-## Per-player Snapshot build now uses a shared spatial grid (#9)
+Each packet self-routes to one of **three ENet channels** (`ServerPacket::channel` / `reliable`
+in `rust/protocol/src/server.rs`; see [`../server/contract.md`](../server/contract.md) §Channels):
 
-`build_aoi_grid()` (`server_broadcast_service.gd:79-107`) runs **once per Snapshot tick**: it
-collects every authoritative entity into one list and inserts each into a fresh `SpatialGrid`
-(`spatial_grid.gd`, `class_name SpatialGrid`) with cell size `aoi_exit_radius / 4`. `ServerMain`
-primes it right before the broadcast (`server_main.gd:269`).
+| Channel | Const | ENet mode | Carries (S→C) |
+| --- | --- | --- | --- |
+| 0 | `CH_SNAPSHOT` | unreliable **sequenced** | **delta `Snapshot`s**, `ActionConfirm` |
+| 1 | `CH_RELIABLE` | reliable ordered | `AuthResult`, `GameEvent`, `ServerMetrics`, **baseline `Snapshot`s** (incl. full-state replies) |
+| 2 | `CH_INPUT` | unreliable sequenced | (C→S only: `PlayerInput`) |
 
-`broadcast_state_updates()` (`server_broadcast_service.gd:112`) then **loops over every authenticated
-player** (`:144`) and, for each, queries the shared grid for a candidate band
-(`_tick_grid.query_radius(state.position, aoi_exit_radius)`, `:161`) instead of walking all entities,
-before running the hysteresis-aware AoI filter + delta + scheduler pass. This turns the former
-**O(players × entities)** scan into **O(players × nearby)** — the change that retired this doc's
-Partial tag. The radius was also tuned down to 700 enter / 800 exit (#10) so the candidate band is
-genuinely small when players cluster. See [`interest-mgmt-aoi.md`](interest-mgmt-aoi.md). (The
-projectile/monster *collision* grids in `projectile_manager` are separate and unchanged.)
+The split that matters here: **delta snapshots ride ch0 unreliable** (a newer delta supersedes a
+lost one), but **baseline snapshots ride ch1 reliable** because they are must-arrive and may
+exceed the unreliable MTU budget. Letting an oversized ch0 datagram silently upgrade to
+reliable-fragmented would reintroduce head-of-line blocking, so baselines are sent reliable
+*explicitly* instead. Ordering stays safe: the server only emits deltas against an **acked**
+baseline, so no delta referencing tick T is in flight before the client holds baseline T.
+
+Keep every ch0 datagram **< 1200 B** (`MAX_UNRELIABLE_PAYLOAD`); `flush_outbox` warns loudly if an
+unreliable packet exceeds it. The per-peer byte budget enforces this for deltas; baselines are
+exempt (hence ch1).
+
+`server_ms` (server monotonic ms, u32-wrapped) rides **every** snapshot header — the relocated
+clock-sync that the old app HEARTBEAT carried. The client feeds it through an EMA filter using
+**ENet-native RTT** for the half-trip estimate; there is no longer an application heartbeat.
+
+## Building one Snapshot tick (`broadcast.rs`)
+
+`broadcast_state_updates` runs **once per snapshot tick** with the entity set `collect_entities`
+built fresh in `world.rs` (authenticated players incl. dead, alive projectiles, all monsters,
+alive world-effect entities). It:
+
+1. Builds one **shared `SpatialGrid`** (cell size `aoi_exit_radius / 4`) over the whole entity
+   set, inserting each entity once.
+2. **Loops over every authenticated peer.** For each, it queries the shared grid for a candidate
+   band (`grid.query_radius(self_position, effective_exit)`) instead of walking all entities —
+   turning the former **O(players × entities)** scan into **O(players × nearby)** — then runs the
+   hysteresis-aware AoI filter, delta diff, and byte-budget scheduler.
+
+AoI uses **enter/exit hysteresis** with strict `>` culling (exactly-on-radius stays visible):
+an already-visible entity is kept out to `aoi_exit_radius`, a new one must be inside `aoi_radius`
+to enter. Defaults (`config.rs`): enter 1000 / exit 1100, LOD near 400 / mid 1000. See
+[`interest-mgmt-aoi.md`](interest-mgmt-aoi.md). (The projectile/monster *collision* grids in the
+sim are separate and unchanged.)
 
 ## Delta compression
 
 Each per-player packet is either a **baseline** (full state) or a **delta**, decided per peer by
-its `DeltaStateCache` (`delta_state_cache.gd`).
+its `DeltaStateCache` (`broadcast.rs`).
 
-- **Delta mask** is an 8-bit field (`packet_types.gd:66-70`): `POSITION` (bit 0), `ANIMATION`,
-  `FLAGS`, plus `REMOVED` (bit 6) and `FULL_STATE` (bit 7). `calculate_delta_mask`
-  (`delta_state_cache.gd:71-104`) diffs current state against the per-peer cache and sets only
-  changed bits; an entity whose mask is 0 is skipped entirely (`server_broadcast_service.gd:475-476`).
-- Position equality uses a 0.05-unit threshold (`delta_state_cache.gd:109-111`), matching the
-  0.1-unit wire quantization. See [`wire-protocol.md`](wire-protocol.md) for byte layout.
-- **Forced baseline every 100 Ticks** (`DELTA_FULL_STATE_INTERVAL`, `packet_types.gd:85`;
-  `needs_full_state_for_interval`, `delta_state_cache.gd`). At the 30 Hz live Snapshot rate that is one
-  full resync per peer every ~3.3 s (the constant's comment now reads "~3.3s at 30Hz").
-- **Baseline acks (#14, inert on TCP).** The 100-Tick cadence is now a **floor**, not the only repair:
-  the client acks each received full-state Baseline via a `BASELINE_ACK` packet
-  (`interpolation_controller.gd:185`), and the server tracks the per-peer acked/pending Baseline
-  (`delta_state_cache.gd:44-47,210,218-224`; `server_broadcast_service.gd:446-452`) and **proactively
-  resends** on a detected gap rather than waiting out the full interval. On **today's TCP** transport
-  this is **inert** — reliable in-order delivery never drops a Baseline — so it is forward-looking for
-  the [ADR 0003](../adr/0003-enet-udp-transport.md) ENet/UDP transport. A client can still force a
-  resync with `REQUEST_FULL_STATE`.
-- Only entries that actually go out update the cache (`update_cache_partial`,
-  `server_broadcast_service.gd:533-540`); deferred entities keep their stale cache entry so they
-  re-prioritize next tick.
-- AoI exits and stale-cache entries are emitted as explicit `REMOVED` deltas so a client never
-  strands an entity (`:128-133,504-524`).
+- **Delta mask** is a 5-bit field on the wire (`delta_mask` in `protocol`): `POSITION` (bit 0),
+  `ANIMATION` (bit 1), `FLAGS` (bit 2), `REMOVED` (bit 3), `FULL` (bit 4). `calculate_delta_mask`
+  diffs current state against the per-peer cache and sets only changed bits; an entity whose mask
+  is 0 is **omitted entirely** (costs zero bits). See [`../server/contract.md`](../server/contract.md)
+  §Snapshot for the exact bitstream layout and quantization (positions ×10 truncate-toward-zero,
+  clamp i16; 16-bit entity flags; 3-bit anim).
+- Position equality uses a **0.05-unit epsilon** per axis (`POSITION_EPSILON`), half the 0.1-unit
+  wire quantization step.
+- **Forced baseline every 100 Ticks** (`DELTA_FULL_STATE_INTERVAL`,
+  `needs_full_state_for_interval`). At the 30 Hz live Snapshot rate that is one full resync per
+  peer every ~3.3 s.
+- **Baseline acks + proactive resend.** The 100-Tick cadence is a **floor**, not the only repair:
+  the client acks each received baseline with `BaselineAck{baseline_tick}`
+  (`World::on_packet` → `broadcast.mark_baseline_acked`), and the server tracks per-peer
+  `baseline_tick` / `pending_baseline_tick` / `acked_baseline_tick`. `needs_baseline_resend`
+  re-sends a baseline once an un-acked one has been outstanding `BASELINE_ACK_TIMEOUT_TICKS` = 30
+  ticks (~1 s). **On ENet/UDP this is live, not inert** (unlike the old TCP transport) — a dropped
+  unreliable-path baseline is genuinely possible, though baselines themselves ride ch1 reliable so
+  the common case is covered; the ack path is the belt-and-suspenders repair. A client can still
+  force a resync with `RequestFullState`, which replies with an unfiltered full-state baseline plus
+  a `PLAYER_INFO` replay for every authenticated player (Authority-sync recovery).
+- **Lossless deferral.** Only fields whose bit actually went out update the cache
+  (`update_cache_partial`); a withheld field stays dirty so a deferred entity re-prioritizes next
+  tick.
+- **AoI exits and stale-cache entries** are emitted as explicit **pinned `REMOVED`** deltas so a
+  client never strands an entity.
+- **Baseline defers when removals are pending:** if a baseline is due the same tick an entity
+  exits AoI, the delta (carrying the REMOVED) is sent instead, and the true baseline goes out the
+  next tick — so a baseline is never mixed with pending removals.
 
-## Per-peer byte budget (now bandwidth-derived, #13) + priority scheduler
+## Per-peer byte budget (bandwidth-derived) + priority scheduler
 
-Each delta packet is sized by a per-peer `SnapshotScheduler` (`snapshot_scheduler.gd`) against that
-peer's byte budget. The service-global ceiling is `max_snapshot_bytes` = **1200**
-(`server_config.gd:37`), but each peer's effective cap is now **derived from the bandwidth budget it
-advertised in `CONNECT_AUTH`** (#13): the client sends a trailing `[u32 bandwidth_budget_bps]`
-(`auth_packet.gd:33`), the server clamps it to `[min_client_bandwidth_bps, max_client_bandwidth_bps]`
-(defaults 24000 / 200000) and computes
+Each delta packet is sized by a greedy **scheduler** (`schedule` in `broadcast.rs`) against that
+peer's byte budget. The service-global ceiling is `max_snapshot_bytes` = **1200** (`config.rs`),
+but each peer's effective cap is derived from the bandwidth budget it advertised in `ConnectAuth`:
+the client sends `bandwidth_budget_bps`; the server clamps it to
+`[min_client_bandwidth_bps, max_client_bandwidth_bps]` (defaults 24000 / 200000; absent ⇒
+`default_client_bandwidth_bps` = 120000) and computes
 `per_peer_bytes = clamp(budget / snapshot_rate_hz, MIN_SNAPSHOT_FLOOR=256, max_snapshot_bytes)`
-(`server_main.gd:700-702`), stored per peer in `server_broadcast_service.gd:300` and read back via
-`_budget_for_peer` (`:308`). A peer that advertised nothing falls back to the global 1200. This is the
-**per-second** ceiling the old budget lacked: a marginal connection now gets fewer bytes per Snapshot,
-not just per packet. The scheduler scores every candidate:
+(`World::handle_auth`), stored via `broadcast.set_peer_byte_budget`. This is the **per-second**
+ceiling: a marginal connection gets fewer bytes per Snapshot. The scheduler scores every
+candidate:
 
 ```
 priority = importance(type) + ticks_since_last_sent − distance_penalty(lod) + change_bonus(mask)
 ```
 
-(`snapshot_scheduler.gd:117-155`). Numbers:
-
-| Term | Values | Source |
+| Term | Values | Source (`broadcast.rs`) |
 | --- | --- | --- |
-| importance | player 10, projectile 8, monster 4, default 1 | `:20-23,129-134` |
-| distance_penalty (LOD) | NEAR 0, MID 4, FAR 8 | `:26,137-140` |
-| change_bonus | full/removed 6; else +2 per changed field | `:143-155` |
-| `ticks_since_last_sent` | raw add — starved entities climb until they win | `:124` |
+| importance | player 10, projectile 8, monster 4, **world-effect 4**, default 1 | `importance` |
+| distance_penalty (LOD) | NEAR 0, MID 4, FAR 8 | `DISTANCE_PENALTY_BY_LOD` |
+| change_bonus | full/removed 6; else +2 per changed field | `change_bonus` |
+| `ticks_since_last_sent` | raw add — starved entities climb until they win | per-candidate |
 
-`schedule()` (`:87-107`) sorts by priority, then greedily admits candidates while
-`bytes + encoded_size <= max_bytes`. **Pinned** candidates (removals, AoI exits, cache cleanup)
-bypass the budget entirely (`:99`) so a despawn is never dropped. Anything that doesn't fit is
-**deferred** — it isn't sent this Snapshot, accrues `ticks_since_last_sent`, and bubbles up next
-time. Net effect: under budget pressure, far/low-priority entities update at a *fraction* of the
-Snapshot rate rather than being lost. Encoded sizes are predicted by
-`encoded_size_for_mask` (`:161-173`) mirroring the wire encoder, so no speculative encode is
-needed.
+`schedule` sorts by (priority desc, entity_id asc) and greedily admits while
+`bits + encoded_bits <= max_bits` — **no early break** (a smaller item may still fit). **Pinned**
+candidates (AoI-exit removals, stale-cache cleanup) **bypass and consume** the budget so a despawn
+is never dropped. Anything that doesn't fit is **deferred** — not sent this Snapshot, accrues
+`ticks_since_last_sent`, and bubbles up next time. Net effect under budget pressure: far/low-priority
+entities update at a *fraction* of the Snapshot rate rather than being lost. Encoded sizes are the
+**real bit-level wire sizes** (`EntityRecord::wire_bits`), so no speculative encode is needed.
 
-> **Baselines have no byte budget.** A full-state packet (`_create_full_state_packet`,
-> `server_broadcast_service.gd:480`) emits *every* visible entity with no scheduler and no
-> 1200-byte cap. The old hard 255-entity ceiling is **gone** — `entity_count` is now a `u16`
-> (#11), so a crowded Baseline no longer silently truncates; the only ceiling left is the
-> `MAX_PACKET_SIZE` byte budget, and `snapshot_count_overflow` warns if it is ever brushed. See
-> [`wire-protocol.md`](wire-protocol.md).
+> **Baselines have no byte budget.** `create_full_state_packet` emits every visible entity with no
+> scheduler and no 1200-byte cap (that is why they ride ch1 reliable). The wire `entity_count` is a
+> `u16`, so a crowded baseline doesn't silently truncate; the only soft ceiling left is
+> `STATE_MAX_FULL_ENTITIES` = 7280 (a per-packet diagnostic carried from the old 64 KB frame),
+> and `snapshot_count_overflow` is incremented if it is ever brushed.
 
-### Scheduler diagnostics: now surfaced (#15)
+### Scheduler diagnostics
 
-`broadcast_state_updates` aggregates per-tick scheduler stats into `last_tick_diagnostics`
-(`server_broadcast_service.gd:62-67,221-226`): `entities_deferred_per_tick`, `max_queue_age_ticks`,
-`peers_at_budget_pct`, `peers_evaluated`, plus the #11 `snapshot_count_overflow` counter. These now
-**reach the client.** `ServerMetrics` gained matching `sched_*` fields (`server_metrics.gd:27-31`),
-populated from `broadcast_service.last_tick_diagnostics` each metrics tick (`:74-75`); they are
-encoded into the fixed-length `SERVER_METRICS` packet (`network_manager.gd:876-880`, decode
-`:1010-1014`) and rendered in the HUD `server_status` panel (`server_status.gd:65-69,125-127`). So you
-can now see whether the budget is starving entities. See
+`broadcast_state_updates` aggregates per-tick scheduler stats into `BroadcastService.diagnostics`
+(`TickDiagnostics`): `entities_deferred_per_tick`, `max_queue_age_ticks`, `peers_at_budget_pct`,
+`peers_evaluated`, plus the cumulative `snapshot_count_overflow`. These feed the 1 Hz
+`ServerMetrics` packet (`main.rs` builds it via `collector.build_packet`, reading
+`world.broadcast.diagnostics`; fields `sched_*` in `protocol`), broadcast on ch1 and rendered in
+the client's server-status HUD — so budget starvation is observable. The Prometheus exporter
+(`:9100` Arena / `:9101` Sanctuary) carries the same counters. See
 [`performance-budgets.md`](performance-budgets.md).
 
-## Eviction, batching, and the connect/disconnect bookkeeping
+## Connect / disconnect bookkeeping
 
-- A new peer gets a fresh `DeltaStateCache` and (lazily) a `SnapshotScheduler` on connect
-  (`server_main.gd:582`, `server_broadcast_service.gd:221-224,360-364`); both are dropped on
-  disconnect (`:368-371`).
-- On shutdown the half-built batch is discarded so each `DISCONNECT` ships immediately
-  (`server_main.gd:800-803`).
+- A new peer gets a fresh `DeltaStateCache` on connect (`World::on_peer_connected` →
+  `broadcast.get_or_create_delta_cache`); its byte budget is set at auth. Both the cache and the
+  per-peer visibility/budget maps are dropped on disconnect (`broadcast.remove_peer`).
+- Departure replicates via the delta stream's pinned `REMOVED` records — there is **no** explicit
+  "player left" game event. Entity ids are quarantined until a snapshot carries their removal, then
+  released (`players.release_quarantined_ids` after step 6).
+- On shutdown each peer is sent a reasoned native ENet `disconnect`, then a short service window
+  lets the disconnect packets actually leave before the process exits (`main.rs`).
 
 ## The eight questions
 
-- **Client:** nothing — this doc is the authoritative server's hot path. Clients only *consume* the
-  Snapshots ([`interpolation.md`](interpolation.md)).
-- **Server:** the entire 30 Hz Tick loop, 30 Hz Snapshot build, shared-grid AoI filter, delta
-  compression, bandwidth-derived priority scheduler, baseline-ack tracking, and per-tick BATCH flush.
+- **Client:** nothing — this doc is the authoritative server's hot path. The Godot client only
+  *consumes* the Snapshots ([`interpolation.md`](interpolation.md)) (and runs the same `sim_core`
+  crate for prediction, [`client-prediction.md`](client-prediction.md)).
+- **Server:** the entire synchronous 30 Hz Tick loop, 30 Hz Snapshot build, shared-grid AoI
+  filter, delta compression, bandwidth-derived priority scheduler, baseline-ack tracking, and the
+  per-tick ENet channel-routed flush.
 - **Predicted:** nothing here — prediction is client-side; the server is authoritative.
-- **Replicated:** all entity state, as per-peer delta/baseline `STATE_UPDATE` Snapshots; Game
-  events replicate inline every Tick.
-- **Persisted:** nothing — all sim state is in-memory; only the Go API persists account/leaderboard.
-- **Validated:** inputs and movement during step 1 (`_process_client_inputs`); broadcast itself
-  validates nothing beyond `entity_id >= 0`.
-- **Can fail:** unmeasured at the 500–1000-player target (the shared grid + 700/800 radius should
-  hold but are unproven — now observable via the surfaced scheduler diagnostics); an unbudgeted
-  Baseline for a clustered player can still exceed 1200 bytes (truncation risk is gone — count is now
-  u16); the baseline-ack resend path is inert on TCP.
-- **Tested:** load-tested via the Python bot swarm (`load_testing/`, `baseline`/`target`/`stress`)
-  with `regression_assertions.py` asserting AoI cull at 700/800; `ServerMetrics` reports avg/max tick
-  time plus the new `sched_*` diagnostics; no automated test asserts Snapshot correctness or scheduler
-  fairness today.
+- **Replicated:** all entity state, as per-peer delta/baseline `Snapshot`s; game events replicate
+  inline (ch1 reliable) every Tick.
+- **Persisted:** nothing in this loop — all sim state is in-memory. Only the Go API persists
+  accounts/characters/leaderboard/progression (server→API jobs leave on the I/O thread).
+- **Validated:** inputs (NaN/Inf guard in `on_packet`, position/cheat thresholds during step 1);
+  the broadcast itself validates nothing beyond entity-id typing.
+- **Can fail:** unmeasured at the 500–1000-player target (the shared grid + 1000/1100 radius should
+  hold but are unproven — now observable via the surfaced scheduler diagnostics); a clustered
+  baseline can exceed 1200 B (no truncation — `entity_count` is u16, and it rides ch1 reliable so
+  it arrives fragmented). The unreliable ch0 delta path can drop datagrams — repaired by the next
+  delta and, for baselines, the ack/resend path.
+- **Tested:** `broadcast.rs` unit tests cover baseline→delta→removal sequencing, AoI hysteresis,
+  baseline-defer-on-removals, the ack/resend flow, and scheduler admission/deferral; `world.rs`
+  tests cover the tick order (join, input/confirm, shoot, respawn gate, abilities, sanctuary).
+  `protocol`'s `baselines_ride_the_reliable_channel` test pins the channel split. End-to-end load
+  is driven by the Rust bot swarm (`rust/load_test/`, scenarios `baseline`/`target`/`stress`);
+  `ServerMetrics` reports avg/max tick time plus the `sched_*` diagnostics.
 
 ## See also
 
 - [`interest-mgmt-aoi.md`](interest-mgmt-aoi.md) — the AoI filter and LOD bands this loop runs per player
-- [`wire-protocol.md`](wire-protocol.md) — delta-mask byte layout, `u8` entity_count cap, quantization
-- [`transport-websocket.md`](transport-websocket.md) — how the end-of-tick BATCH frame is polled and sent
+- [`../server/contract.md`](../server/contract.md) — the as-built wire/channel spec: Snapshot bitstream, delta mask, typed-id, quantization, budget cadence
+- [`../server/design.md`](../server/design.md) — architecture & rationale (transport, shared sim, tick, auth, persistence, hits)
+- [`hit-authority-model.md`](hit-authority-model.md) — the two-netcode hit model the lag-comp history (step 4) feeds
 - [`interpolation.md`](interpolation.md) · [`client-prediction.md`](client-prediction.md) — the client side of these Snapshots
 - [`performance-budgets.md`](performance-budgets.md) — tick-time and bandwidth targets vs. measured
+- [ADR 0003 — ENet/UDP transport](../adr/0003-enet-udp-transport.md) · [ADR 0004 — schema-driven wire protocol](../adr/0004-schema-driven-wire-protocol.md)
