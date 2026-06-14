@@ -25,8 +25,9 @@ Don't re-derive what's already written there; read it, then go deep where needed
   - `load_test/` — the `omega-load-test` bot swarm (replaced the Python `load_testing/`
     harness): ENet bots that link `protocol` + `sim_core` directly. See its README.
 - `client/` — Godot 4.6 project; exports the **client only** now. The legacy GDScript server
-  scripts remain under `scripts/server/` as the parity ground truth for the Rust server; they no longer
-  run (NetworkManager refuses server mode).
+  has been **removed** (it was retired by the Rust port); its file-by-file parity map to the Rust
+  modules lives in [`docs/server/legacy-parity.md`](docs/server/legacy-parity.md), and the source is
+  in git history. `NetworkManager` still refuses to run in headless/server mode.
   - `autoload/` — singletons: `network_manager` (ENet client), `transport/` (the transport seam),
     `game_manager`, `scene_manager`, `auth_manager`, `audio_manager`, `entity_name_cache`.
   - `scripts/client/` — prediction (drives the Rust `PredictionSim`), interpolation, HUD, menus.

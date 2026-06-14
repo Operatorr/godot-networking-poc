@@ -47,13 +47,6 @@ signal server_message_received(message_type: MessageType, data: Dictionary)
 @warning_ignore("unused_signal")  # RETIRED - never emitted (ENet owns liveness); kept for listeners
 signal heartbeat_timeout()
 
-## Signals - legacy server mode (never emitted; the Rust server replaced this role)
-@warning_ignore_start("unused_signal")
-signal server_client_connected(peer_id: int)
-signal server_client_disconnected(peer_id: int)
-signal server_client_message(peer_id: int, message_type: int, data: Dictionary)
-@warning_ignore_restore("unused_signal")
-
 ## Transport and ENetTransport are global classes (class_name); referenced directly — no
 ## preload const, which would shadow the global identifiers.
 

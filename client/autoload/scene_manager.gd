@@ -17,7 +17,6 @@ const SCENE_SANCTUARY = "res://scenes/shared/sanctuary/sanctuary.tscn"
 const SCENE_PRACTICE = "res://scenes/shared/levels/practice.tscn"
 const SCENE_OFFLINE_SANDBOX = "res://scenes/test/sandbox.tscn"
 const SCENE_GAME_UI = "res://scenes/client/components/game_ui.tscn"
-const SCENE_SERVER_MAIN = "res://scenes/server/server_main.tscn"
 
 ## Scene names enum
 enum SceneName {
@@ -30,8 +29,7 @@ enum SceneName {
 	SANCTUARY,
 	PRACTICE,
 	OFFLINE_SANDBOX,
-	GAME_UI,
-	SERVER_MAIN
+	GAME_UI
 }
 
 ## Signals
@@ -89,13 +87,13 @@ func _ready() -> void:
 		print("[SceneManager] Standalone scene detected, skipping route")
 		return
 
-	# If server, load server scene
+	# Headless (no display) has no client UI to route to (the GDScript server is gone)
 	if is_server:
-		print("[SceneManager] Loading server scene...")
-		change_scene(SceneName.SERVER_MAIN, false)
-	else:
-		# Client: Route based on auth state
-		_route_to_initial_scene()
+		print("[SceneManager] Headless mode - no scene routing")
+		return
+
+	# Client: Route based on auth state
+	_route_to_initial_scene()
 
 ## Route to initial scene based on authentication and character state
 func _route_to_initial_scene() -> void:
@@ -345,8 +343,6 @@ func _get_scene_path(scene_name: SceneName) -> String:
 			return SCENE_OFFLINE_SANDBOX
 		SceneName.GAME_UI:
 			return SCENE_GAME_UI
-		SceneName.SERVER_MAIN:
-			return SCENE_SERVER_MAIN
 		_:
 			return ""
 

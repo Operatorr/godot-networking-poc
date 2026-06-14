@@ -5,9 +5,9 @@ extends RefCounted
 
 ## Legacy WebSocket framing header size: [u8 type][u16 payload_length].
 ## RETIRED on the wire — ENet datagrams carry no length field (frame = [u8 type][payload],
-## bounded by datagram edges; see AGENTS.md invariants). Kept only because the parity-reference
-## GDScript packet builders under scripts/server/ and networking/packets/ still compute sizes
-## against it (e.g. StateUpdatePacket.FULL_STATE_HEADER_BYTES). Not used by the live ENet path.
+## bounded by datagram edges; see AGENTS.md invariants). Kept only because the legacy GDScript
+## packet builders under networking/packets/ still compute sizes against it
+## (e.g. StateUpdatePacket.FULL_STATE_HEADER_BYTES). Not used by the live ENet path.
 const HEADER_SIZE := 3
 
 ## Maximum packet size (64KB)
