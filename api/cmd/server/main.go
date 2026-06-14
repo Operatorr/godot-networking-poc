@@ -10,6 +10,7 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/omega-realm/api/internal/auth"
+	"github.com/omega-realm/api/internal/content"
 	"github.com/omega-realm/api/internal/database"
 	"github.com/omega-realm/api/internal/handlers"
 	"github.com/omega-realm/api/internal/middleware"
@@ -90,6 +91,8 @@ func main() {
 	leaderboardHandler := handlers.NewLeaderboardHandler(db)
 	regionHandler := handlers.NewRegionHandler(redis)
 	internalHandler := handlers.NewInternalHandler(db)
+	contentStore := content.NewPostgresStore(db)
+	contentHandler := handlers.NewContentHandler(db, contentStore)
 
 	// Setup HTTP routes
 	mux := http.NewServeMux()
@@ -130,17 +133,15 @@ func main() {
 	mux.HandleFunc("/api/regions/heartbeat", regionHandler.UpdateRegionHeartbeat)
 	mux.HandleFunc("/api/regions/select", middleware.RequireAuth(regionHandler.SelectRegion))
 
-	// Content CMS routes (SCAFFOLD — see docs/CMS.md, internal/handlers/content.go).
-	// Left commented so the live API behavior is unchanged until the content.Store
-	// and content_definitions table exist. Gate behind an ADMIN-role check (not
-	// plain JWT) before enabling.
-	//
-	// contentHandler := handlers.NewContentHandler()
-	// mux.HandleFunc("GET /api/content/{kind}", middleware.RequireAuth(contentHandler.ListDefinitions))
-	// mux.HandleFunc("GET /api/content/{kind}/{id}", middleware.RequireAuth(contentHandler.GetDefinition))
-	// mux.HandleFunc("POST /api/content/{kind}", middleware.RequireAuth(contentHandler.UpsertDefinition))
-	// mux.HandleFunc("POST /api/content/{kind}/publish", middleware.RequireAuth(contentHandler.PublishKind))
-	// mux.HandleFunc("GET /api/admin/balance/dashboard", middleware.RequireAuth(contentHandler.BalanceDashboard))
+	// Content CMS routes (see docs/CMS.md, internal/handlers/content.go). Wrapped in
+	// RequireAuth (JWT) for authentication; each handler then runs requireAdmin
+	// (users.is_admin) for authorization, so plain players are 403'd. The dev opt-in
+	// ALLOW_INSECURE_CMS=true bypasses the admin check for the local stack.
+	mux.HandleFunc("GET /api/content/{kind}", middleware.RequireAuth(contentHandler.ListDefinitions))
+	mux.HandleFunc("GET /api/content/{kind}/{id}", middleware.RequireAuth(contentHandler.GetDefinition))
+	mux.HandleFunc("POST /api/content/{kind}", middleware.RequireAuth(contentHandler.UpsertDefinition))
+	mux.HandleFunc("POST /api/content/{kind}/publish", middleware.RequireAuth(contentHandler.PublishKind))
+	mux.HandleFunc("GET /api/admin/balance/dashboard", middleware.RequireAuth(contentHandler.BalanceDashboard))
 
 	// CORS middleware
 	handler := corsMiddleware(mux)

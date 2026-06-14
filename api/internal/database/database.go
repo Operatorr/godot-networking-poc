@@ -195,6 +195,35 @@ func (db *DB) InitSchema() error {
 		ended_at TIMESTAMP
 	);
 
+	-- Content CMS (docs/CMS.md, migration 0002_content_cms.sql) -----------------
+	-- Admin flag gates the CMS editor endpoints to designers, not every player.
+	-- Added idempotently so already-running databases pick it up (defaults false).
+	-- Grant with: UPDATE users SET is_admin = true WHERE username = '<name>';
+	ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false;
+
+	-- One versioned content record per (kind, id). payload is validated against
+	-- client/data/schemas/<kind>_schema.json before a draft is published. version
+	-- stays stable on edit; Publish bumps the released version (see content_releases).
+	CREATE TABLE IF NOT EXISTS content_definitions (
+		kind       TEXT NOT NULL,
+		id         TEXT NOT NULL,
+		version    INTEGER NOT NULL DEFAULT 1,
+		payload    JSONB NOT NULL,
+		draft      BOOLEAN NOT NULL DEFAULT true,
+		updated_by INTEGER REFERENCES users(id),
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (kind, id)
+	);
+
+	-- Currently-published content version per kind (the value the game's
+	-- version-check compares against to decide whether to re-download artifacts).
+	CREATE TABLE IF NOT EXISTS content_releases (
+		kind         TEXT PRIMARY KEY,
+		version      INTEGER NOT NULL,
+		artifact_url TEXT,
+		published_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);
+
 	-- Create indexes for performance
 	CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 	CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
@@ -204,6 +233,8 @@ func (db *DB) InitSchema() error {
 	CREATE INDEX IF NOT EXISTS idx_leaderboards_pvp_kills ON leaderboards(pvp_kills DESC);
 	CREATE INDEX IF NOT EXISTS idx_sessions_character_id ON sessions(character_id);
 	CREATE INDEX IF NOT EXISTS idx_sessions_started_at ON sessions(started_at DESC);
+	CREATE INDEX IF NOT EXISTS idx_content_definitions_kind ON content_definitions(kind);
+	CREATE INDEX IF NOT EXISTS idx_content_definitions_kind_draft ON content_definitions(kind, draft);
 	`
 
 	_, err := db.Exec(schema)

@@ -12,7 +12,14 @@
 // version-check hot reload" flow in docs/CMS.md).
 package content
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+// ErrNotFound is returned by Store.Get when no definition matches the requested
+// kind + id, so handlers can map it to a 404 with errors.Is.
+var ErrNotFound = errors.New("content: definition not found")
 
 // Kind enumerates the editable content domains the CMS manages. Each maps to a
 // JSON schema under client/data/schemas/<kind>_schema.json.
@@ -25,6 +32,24 @@ const (
 	KindProjectile Kind = "projectile"
 	KindBalance    Kind = "balance"
 )
+
+// validKinds is the closed set of editable content domains. Used by ParseKind to
+// reject unknown {kind} path segments before any store call.
+var validKinds = map[Kind]bool{
+	KindEnemy:      true,
+	KindItem:       true,
+	KindSpell:      true,
+	KindProjectile: true,
+	KindBalance:    true,
+}
+
+// ParseKind validates a raw {kind} path segment against the closed Kind set,
+// returning ok=false for anything outside enemy|item|spell|projectile|balance so
+// handlers can answer 400 without touching the store.
+func ParseKind(raw string) (Kind, bool) {
+	k := Kind(raw)
+	return k, validKinds[k]
+}
 
 // Definition is one versioned content record. Payload is validated against the
 // matching data/schemas/<kind>_schema.json before it may be published.
