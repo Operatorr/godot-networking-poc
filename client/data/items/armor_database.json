@@ -1,0 +1,24 @@
+{
+	"_comment": "Armor definitions for Omega Realm. Holds each armor piece's display, drop gating (tier_requirement required, biome_requirement optional), class restrictions, defensive/utility stats, and affixes. The Rust omega-server is the numeric authority for armor stats and mitigation (it owns the sim and decides damage taken; 'the client requests, the server decides'), with durable item ownership persisted by the Go API (Postgres); this file mirrors definitions for client display/tooling and the server wins on disagreement. Governing GDD docs: docs/gdd/loot.md (item-definition fields; STATUS: TBD/UNBUILT — no item/armor system in code today), docs/gdd/BIOMES.md (tier->biome mapping), data/schemas/item_schema.json. Class bytes: 0 Zealot,1 VoidHunter,2 Engineer,3 PlagueSeer,4 Warrior,5 Rogue,6 Mage (only Warrior/Rogue/Mage in pre-alpha scope). TODO: every armor entry is unfilled pending design; the single example below is schema-shape only (note armor mitigation formula itself is TBD in data/balance/damage_formulas.json).",
+
+	"armor": {
+		"_comment": "Keyed by stable item id. One schema-shaped example entry. tier_requirement = min monster tier that can drop it (required); biome_requirement = optional single-biome restriction (null/omit = any); class_restriction = list of allowed class bytes (empty = all).",
+		"EXAMPLE_leather_vest": {
+			"id": "EXAMPLE_leather_vest",
+			"name": "Leather Vest (EXAMPLE)",
+			"item_type": "armor",
+			"slot": "chest",
+			"sprite": "items/armor/leather_vest",
+			"tier_requirement": 1,
+			"biome_requirement": null,
+			"class_restriction": [],
+			"stats": {
+				"armor": null,
+				"hp_bonus": null
+			},
+			"affixes": [],
+			"drop_weight": 100,
+			"notes": "TODO: placeholder example; all values are unfilled"
+		}
+	}
+}

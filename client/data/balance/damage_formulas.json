@@ -1,0 +1,30 @@
+{
+	"_comment": "Damage calculation configuration for Omega Realm combat (player->monster, monster->player, ability AOE/DoT). Holds the formula coefficients and modifier order used to turn a base damage value plus attacker/target stats into final damage. The Rust omega-server (sim_core hit pass + combat.rs) is the numeric authority and computes all damage server-side ('the client requests, the server decides'); this file mirrors the config for client tooltips/tooling and the server wins on disagreement. Governing GDD docs: docs/systems/combat-hits.md, docs/systems/abilities.md, docs/server/contract.md. TODO: all formula coefficients and the modifier pipeline are unfilled pending design; the example below is schema-shape only. Today combat is flat (primary damage_base/per_level per class, ability flat damage) with no armor/resist/crit layer in code.",
+
+	"global": {
+		"_comment": "Top-level toggles/order. TODO: confirm whether armor, resistances, crit exist at all.",
+		"modifier_order": ["base", "additive_flat", "multiplicative", "armor_mitigation", "crit"],
+		"min_damage": 1
+	},
+
+	"formulas": {
+		"_comment": "One schema-shaped example. Replace coefficients when design lands. Add one entry per damage channel (primary, ability, dot, monster_attack).",
+		"physical": {
+			"expression": "max(min_damage, (base + flat_bonus) * (1 + percent_bonus) - armor)",
+			"variables": {
+				"base": "weapon/ability base damage",
+				"flat_bonus": "sum of additive flat damage affixes",
+				"percent_bonus": "sum of multiplicative damage affixes (0.0 = none)",
+				"armor": "target armor mitigation, TODO formula"
+			},
+			"notes": "TODO: design value unknown; current code applies flat base damage only"
+		}
+	},
+
+	"crit": {
+		"_comment": "Critical hit config, if any. TODO: undecided.",
+		"enabled": false,
+		"base_chance": null,
+		"base_multiplier": null
+	}
+}

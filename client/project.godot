@@ -23,6 +23,7 @@ AuthManager="*res://autoload/auth_manager.gd"
 AudioManager="*res://autoload/audio_manager.tscn"
 SceneManager="*res://autoload/scene_manager.gd"
 EntityNameCache="*res://autoload/entity_name_cache.gd"
+EventBus="*res://autoload/event_bus.gd"
 
 [display]
 

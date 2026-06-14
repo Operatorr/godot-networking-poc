@@ -1,0 +1,23 @@
+{
+	"_comment": "Descriptive JSON-shape schema for item definitions (weapons in data/items/weapon_database.json, armor in data/items/armor_database.json, plus stat potions and ability-grant items). A human-readable shape guide for validators/tooling, NOT a strict JSON-Schema document. The Rust omega-server is the numeric authority for item stats/effects in the live sim and the Go API (Postgres) is the authority for durable item ownership (inventory/equipment) — 'the client requests, the server decides'; item files are a client mirror and the server/API wins on disagreement. Governing GDD doc: docs/gdd/loot.md (proposed item-definition fields; STATUS: TBD/UNBUILT — no item system in code today), docs/gdd/BIOMES.md (tier mapping), data/balance/damage_formulas.json. Class bytes: 0 Zealot,1 VoidHunter,2 Engineer,3 PlagueSeer,4 Warrior,5 Rogue,6 Mage. TODO: promote to formal JSON-Schema once the loot system is built and the final item schema is co-designed with the CMS.",
+
+	"$shape": "item_definition",
+	"fields": {
+		"id": "string — stable item id",
+		"name": "string", "sprite": "string",
+		"item_type": "string — weapon | armor | consumable | ability_grant | etc.",
+		"slot": "string — equipment slot (weapon-class or armor-slot)",
+		"tier_requirement": "int 1-7 — REQUIRED; min monster tier that can drop it",
+		"biome_requirement": "string|null — OPTIONAL single biome id restriction (null = any qualifying-tier biome)",
+		"class_restriction": "int[] — allowed class bytes (empty = all classes)",
+		"stats": "object — stat modifiers (damage, armor, hp_bonus, ...)",
+		"affixes": "string[] — affix ids rolled from data/items/affix_pool.json",
+		"granted_ability_id": "string|null — OPTIONAL ability/spell slotted into action-bar slots 1-4",
+		"drop_weight": "number — relative roll weight within its tier/biome pool"
+	},
+	"invariants": [
+		"tier_requirement is REQUIRED; biome_requirement and class_restriction are OPTIONAL",
+		"loot is server-rolled on monster death; clients never roll drops",
+		"a parameterised granted ability is live-addable; a genuinely new ability behaviour needs a sim_core change + deploy"
+	]
+}

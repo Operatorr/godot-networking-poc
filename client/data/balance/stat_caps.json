@@ -1,0 +1,18 @@
+{
+	"_comment": "Per-stat maximum values (hard caps) for player characters in Omega Realm. Holds the ceiling each stat can reach via levels, items, affixes, and permanent stat potions (the Glory sink, see data/items/stat_potions.json and ADR 0006). The Rust omega-server is the numeric authority and enforces these caps in the authoritative tick; this file mirrors them for client display/tooling and the server wins on disagreement. Governing GDD docs: docs/gdd/classes/index.md (base stats + per-level scaling), docs/systems/PROGRESSION.md, docs/adr/0006-softcore-hardcore-glory-economy.md. TODO: all cap VALUES are unfilled pending design; the example entry below is schema-shape only. Fill hp_max/move_speed_max/etc. and decide whether caps are global or per-class.",
+
+	"caps": {
+		"_comment": "One schema-shaped example entry. Replace the placeholder values when design lands. Add one entry per capped stat.",
+		"hp": {
+			"max": null,
+			"applies_to": "all_classes",
+			"sources_counted": ["level", "items", "affixes", "stat_potions"],
+			"notes": "TODO: design value unknown"
+		}
+	},
+
+	"stat_potion_caps": {
+		"_comment": "Optional separate ceiling on how much a single stat can be raised by permanent stat potions specifically (the Glory sink). TODO: values unknown.",
+		"per_stat_potion_max": null
+	}
+}

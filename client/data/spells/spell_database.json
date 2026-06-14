@@ -1,0 +1,26 @@
+{
+	"_comment": "Spell/ability definitions for Omega Realm — the slottable abilities (action-bar slots 1-4) acquired from Glory unlocks, items, or the skill tree, distinct from the per-class RMB Class ability (see data/spells/class_abilities.json). Holds each spell's effect shape and parameters {damage, speed, radius, lifetime, pierce, mana_cost, cooldown}. The Rust omega-server is the numeric authority: all spell damage and spawned world effects are server-authoritative and resolved in the authoritative tick, replicated via the ABILITY_EFFECT event ('the client requests, the server decides'); this file mirrors definitions for client VFX/tooling and the server wins on disagreement. Data-driven caveat: a parameterised spell is live-addable, but a genuinely new behaviour (teleport/reflect) needs a rust/sim_core change + deploy. Governing GDD doc: docs/systems/abilities.md, data/schemas/spell_schema.json, docs/gdd/loot.md (items that grant spells). TODO: every spell is unfilled pending design; the single example below is schema-shape only.",
+
+	"spells": {
+		"_comment": "Keyed by stable spell id. One schema-shaped example entry. 'shape' is one of: instant_aoe | spawned_world_effect | projectile_spread | movement (mirrors the RMB ability effect shapes in abilities.md).",
+		"EXAMPLE_fireball": {
+			"id": "EXAMPLE_fireball",
+			"name": "Fireball (EXAMPLE)",
+			"shape": "projectile_spread",
+			"slot_eligible": true,
+			"acquired_from": ["glory_unlock", "item", "skill_tree"],
+			"mana_cost": null,
+			"cooldown": null,
+			"params": {
+				"damage": null,
+				"speed": null,
+				"radius": null,
+				"lifetime": null,
+				"pierce": null
+			},
+			"projectile_id": null,
+			"effect_id": null,
+			"notes": "TODO: placeholder example; all values are unfilled"
+		}
+	}
+}

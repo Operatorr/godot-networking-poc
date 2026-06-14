@@ -1,0 +1,33 @@
+{
+	"_comment": "Descriptive JSON-shape schema for monster/enemy definitions (data/monsters/<id>.json). A human-readable shape guide for validators/tooling, NOT a strict JSON-Schema document. The Rust omega-server is the numeric authority for all monster stats, AI, and combat (monsters are server-authoritative, in-memory, ids in band 30000-39999, not client-predicted) — 'the client requests, the server decides'; enemy files are a client mirror and the server wins on disagreement. Governing docs: docs/systems/monster-architecture.md (the data-driven three-layer model: base scene + JSON definition + schema), docs/gdd/MONSTERS.md, docs/server/contract.md (id ranges). INVARIANT: monster ids 30000-39999. Shape below is DERIVED from the existing data/monsters/toxic_slime.json definition. TODO: promote to formal JSON-Schema if the validators/ pipeline requires; fill optional fields (status effects, phases for bosses) as the monster system grows.",
+
+	"$shape": "enemy_definition",
+	"fields": {
+		"id": "string — stable monster id, matches filename",
+		"display_name": "string",
+		"archetype": "string (e.g. 'ranged_grunt')",
+		"faction": "string (e.g. 'hostile_fauna')",
+		"tier": "int 1-7 — biome tier (gates loot/level; see data/world/biomes.json)",
+		"ai_profile": "string (e.g. 'ranged_kiter') — see monster-architecture.md",
+		"stats": { "max_health": "int", "move_speed": "number", "hitbox_radius": "number" },
+		"perception": {
+			"detection_range": "number", "lose_interest_range": "number",
+			"retarget_interval": "number", "leash_range": "number (0 = none)"
+		},
+		"combat": {
+			"attack_range": "number", "flee_distance": "number", "preferred_distance": "number",
+			"shoot_cooldown": "number", "attack_duration": "number",
+			"projectile_speed": "number", "projectile_damage": "int"
+		},
+		"movement": { "steering_randomness": "number", "avoidance_distance": "number" },
+		"appearance": { "_note": "color/sprite keys, archetype-specific (e.g. core_color, glow_color)" },
+		"abilities": "object[] — {id, type, damage, cooldown, projectile_speed, telegraph}",
+		"loot": { "xp": "int", "table": "string — loot table id (data/loot/loot_tables.json) or 'none'", "rare_drops": "string[]" },
+		"spawn": { "weight": "number", "biomes": "string[] — biome ids", "min_tier": "int" },
+		"networking": { "server_authoritative": "bool (true)", "replicated": "string[]", "client_predicted": "bool (false)" }
+	},
+	"invariants": [
+		"monster entity ids occupy band 30000-39999",
+		"all monster state is server-authoritative and in-memory; never client-predicted"
+	]
+}

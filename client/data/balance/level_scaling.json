@@ -1,0 +1,46 @@
+{
+	"_comment": "Player + monster EXP/leveling curves for Omega Realm. Holds the monster EXP-reward curve and the player EXP-to-next-level curve, plus max level. The Rust omega-server (authoritative tick) and the Go API (XP->Glory persistence per ADR 0006) are the numeric authority; this client-side file is a mirror for display/tooling and the server wins on any disagreement. Governing GDD docs: docs/gdd/progression/EXP_monster_table.md and docs/gdd/progression/EXP_player_table.md (also docs/systems/PROGRESSION.md, docs/adr/0006-softcore-hardcore-glory-economy.md). ENCODED from those tables. TODO: confirm rounding mode matches server (round() in GDD vs server impl), confirm whether levels >50 monsters exist (table goes to 66 for high-tier biome bosses) and add a separate boss/monster level cap if needed.",
+
+	"max_level": 50,
+
+	"monster_exp": {
+		"_comment": "EXP a monster of a given level rewards on kill. ENCODED from EXP_monster_table.md.",
+		"base": 100,
+		"growth": 1.15,
+		"formula": "round(100*1.15^(level-1))",
+		"examples": {
+			"1": 100,
+			"2": 115,
+			"10": 352,
+			"50": 94231,
+			"66": 881779
+		}
+	},
+
+	"player_exp_required": {
+		"_comment": "EXP required to advance FROM the listed level to the next. ENCODED from EXP_player_table.md. MonsterEXP(level)=round(100*1.15^(level-1)).",
+		"level_1": "5*MonsterEXP(1)=500",
+		"levels_2_49": "10*MonsterEXP(level)",
+		"level_50": 0,
+		"formula_levels_2_49": "10*round(100*1.15^(level-1))",
+		"table_to_next_level": {
+			"1": 500,
+			"2": 1150,
+			"3": 1320,
+			"4": 1520,
+			"5": 1750,
+			"10": 3520,
+			"20": 14240,
+			"30": 57610,
+			"40": 233060,
+			"49": 819400,
+			"50": 0
+		},
+		"cumulative_to_max": 6276870
+	},
+
+	"player_stat_scaling": {
+		"_comment": "Per-level stat growth is class-defined: stat(L) = base + per_lvl*(L-1), max level 50. The actual base/per_lvl numbers live per-class in client/data/classes/<id>.json (mirrored from the Rust server constants which are authoritative). Listed here only as the formula. See docs/gdd/classes/index.md.",
+		"formula": "stat(level) = base + per_lvl*(level-1)"
+	}
+}

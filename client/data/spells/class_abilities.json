@@ -1,0 +1,93 @@
+{
+	"_comment": "Class -> RMB Class ability mapping for Omega Realm's seven archetypes. Holds which unique right-mouse-button ability each Class casts (paid in Mana, on its own cooldown), keyed by class byte. The Rust omega-server is the numeric authority: it reads the ability flag, looks up the player's Class, gates on Mana>=cost and cooldown, and resolves all damage/spawns server-side ('the client requests, the server decides'); this file mirrors the mapping for client input/VFX/tooling and the server wins on disagreement. Full per-ability parameters live per-class in client/data/classes/<id>.json (mirrored from the authoritative Rust constants). Governing GDD docs: docs/gdd/classes/index.md, docs/gdd/classes/<id>.md, docs/systems/abilities.md, data/spells/spell_database.json. SCOPE NOTE (docs/gdd/classes/index.md): only Warrior, Rogue, Mage are active in pre-alpha; the other 4 (Zealot, Void Hunter, Engineer, Plague Seer) are deferred. The high-level ability params below are ENCODED from classes/index.md; the server remains authoritative. TODO: confirm against rust/server constants; add slot-1..4 acquired-spell layering if/when that lands.",
+
+	"class_abilities": {
+		"_comment": "Keyed by class byte (wire order, protocol v3+). 'active' = in pre-alpha scope; 'deferred' = disabled to limit scope. Params mirror docs/gdd/classes/index.md; authority is the Rust server.",
+
+		"4": {
+			"class": "warrior",
+			"status": "active",
+			"ability_id": "charge",
+			"name": "Charge",
+			"shape": "movement",
+			"predicted": true,
+			"mana_cost": 40,
+			"cooldown": 9.0,
+			"params": { "blast_damage": 50, "blast_radius": 120, "invulnerable_while_charging": true },
+			"one_liner": "Hold to dash (invulnerable); AOE blast (50) on contact or at max distance."
+		},
+		"5": {
+			"class": "rogue",
+			"status": "active",
+			"ability_id": "shadowstep",
+			"name": "Shadowstep",
+			"shape": "movement",
+			"predicted": true,
+			"mana_cost": 30,
+			"cooldown": 10.0,
+			"params": { "hitscan_damage": 85, "stealth_seconds": 5 },
+			"one_liner": "Blink to the nearest monster for an 85 hitscan, or go Stealth 5 s if none."
+		},
+		"6": {
+			"class": "mage",
+			"status": "active",
+			"ability_id": "mageblast",
+			"name": "Mageblast",
+			"shape": "instant_aoe",
+			"predicted": false,
+			"mana_cost": 40,
+			"cooldown": 6.0,
+			"params": { "damage": 55, "radius": 120 },
+			"one_liner": "Instant AOE explosion at the cursor, 55 in radius 120."
+		},
+
+		"0": {
+			"class": "zealot",
+			"status": "deferred",
+			"ability_id": "spinning_bibles",
+			"name": "Spinning Bibles",
+			"shape": "spawned_world_effect",
+			"predicted": false,
+			"mana_cost": 35,
+			"cooldown": 8.0,
+			"params": { "orb_count": 3, "duration_s": 5, "damage_per_hit": 15, "rehit_s": 0.4 },
+			"one_liner": "3 orbs orbit you for 5 s, sweep-damaging monsters (15/hit, re-hit 0.4 s)."
+		},
+		"1": {
+			"class": "void_hunter",
+			"status": "deferred",
+			"ability_id": "multishot",
+			"name": "Multishot",
+			"shape": "projectile_spread",
+			"predicted": false,
+			"mana_cost": 30,
+			"cooldown": 5.0,
+			"params": { "projectiles": 5, "pierce": 4, "spread_deg": 28, "damage_each": 18 },
+			"one_liner": "5 piercing projectiles (pierce 4) in a 28 degree spread, 18 each."
+		},
+		"2": {
+			"class": "engineer",
+			"status": "deferred",
+			"ability_id": "mine",
+			"name": "Mine",
+			"shape": "spawned_world_effect",
+			"predicted": false,
+			"mana_cost": 35,
+			"cooldown": 8.0,
+			"params": { "arm_time_s": 0.5, "blast_damage": 60, "blast_radius": 120 },
+			"one_liner": "Drop a proximity mine; arms in 0.5 s, blasts for 60 in radius 120."
+		},
+		"3": {
+			"class": "plague_seer",
+			"status": "deferred",
+			"ability_id": "plague_zone",
+			"name": "Plague Zone",
+			"shape": "spawned_world_effect",
+			"predicted": false,
+			"mana_cost": 35,
+			"cooldown": 7.0,
+			"params": { "duration_s": 5, "dps": 12, "radius": 100 },
+			"one_liner": "A DoT AOE at the cursor for 5 s, 12 dps, radius 100."
+		}
+	}
+}

@@ -1,0 +1,19 @@
+{
+	"_comment": "Bullet-hell pattern definitions for Omega Realm. Holds reusable multi-projectile emission patterns (spreads, rings, spirals, waves) referencing projectile types from data/projectiles/projectile_database.json, used by monster attacks and spread abilities. The Rust omega-server / sim_core is the numeric authority: every bullet in a pattern is spawned and stepped server-side in the authoritative tick (ids in band 10000-29999, 0.1-unit quantization) and the client only renders/predicts; this file mirrors patterns for client tooling and the server wins on disagreement. Governing GDD/spec docs: docs/systems/abilities.md (projectile-spread shape, e.g. Void Hunter Multishot: 5 projectiles, 28 deg spread, pierce 4), docs/systems/monsters-ai.md, docs/server/contract.md, data/schemas/projectile_schema.json. TODO: every pattern is unfilled pending design; the single example below is schema-shape only.",
+
+	"patterns": {
+		"_comment": "Keyed by stable pattern id. One schema-shaped example entry. 'type' = spread | ring | spiral | wave | aimed_burst. count = number of bullets; spread_deg = total angular spread (spread type); each bullet uses the referenced projectile id.",
+		"EXAMPLE_fan_spread": {
+			"id": "EXAMPLE_fan_spread",
+			"name": "Fan Spread (EXAMPLE)",
+			"type": "spread",
+			"projectile_id": "EXAMPLE_arrow",
+			"count": null,
+			"spread_deg": null,
+			"angular_velocity_deg_s": null,
+			"burst_interval_s": null,
+			"bursts": 1,
+			"notes": "TODO: placeholder example; all values are unfilled. Reference shape from Multishot in abilities.md (5 bullets, 28 deg)."
+		}
+	}
+}

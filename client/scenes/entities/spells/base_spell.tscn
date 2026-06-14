@@ -1,0 +1,5 @@
+[gd_scene format=3]
+
+[node name="BaseSpell" type="Node2D"]
+
+[node name="Visual" type="Node2D" parent="."]

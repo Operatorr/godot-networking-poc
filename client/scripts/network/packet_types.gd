@@ -93,6 +93,18 @@ const CLASS_DISPLAY_NAMES := [
 	"Zealot", "Void Hunter", "Engineer", "Plague Seer", "Warrior", "Rogue", "Mage"
 ]
 
+## Pre-alpha scope gate: only these classes are playable/selectable in the client.
+## The other four (Zealot, Void Hunter, Engineer, Plague Seer) stay fully defined in
+## the enum above, in data/classes/<id>.json, in the Rust server and in
+## docs/gdd/classes/ — they are DEFERRED, not removed (see docs/gdd/classes/index.md).
+## Keep the PlayerClass enum order (0..6) stable: it is the wire class byte the server
+## clamps against, so the deferred ids must not be reused or renumbered.
+const PLAYABLE_CLASSES: Array[int] = [PlayerClass.WARRIOR, PlayerClass.ROGUE, PlayerClass.MAGE]
+
+## True if a class id is selectable in the current (pre-alpha) scope.
+static func is_class_playable(class_id: int) -> bool:
+	return PLAYABLE_CLASSES.has(class_id)
+
 
 ## PlayerClass enum value for a display/account name (case-insensitive). Unknown or
 ## legacy names fall back to ZEALOT (the wire default the server also clamps to).

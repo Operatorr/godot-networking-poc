@@ -1,0 +1,31 @@
+{
+	"_comment": "Descriptive JSON-shape schema for projectile type definitions (data/projectiles/projectile_database.json) and bullet patterns (data/projectiles/bullet_patterns.json). A human-readable shape guide for validators/tooling, NOT a strict JSON-Schema document. The Rust omega-server / sim_core is the numeric authority: projectiles are spawned, stepped, and collision-resolved in the authoritative tick (positions quantized to 0.1 unit, ids assigned in band 10000-29999); the client only predicts/renders — 'the client requests, the server decides'; projectile files are a client mirror and the server wins on disagreement. Governing docs: docs/server/contract.md (wire format, PROJECTILE_FIRED, id bands, 0.1-unit quantization), docs/systems/combat-hits.md, docs/systems/abilities.md. INVARIANT: projectile ids 10000-29999. TODO: promote to formal JSON-Schema if the validators/ pipeline requires.",
+
+	"$shape": "projectile_definition",
+	"fields": {
+		"id": "string — stable projectile type id",
+		"name": "string",
+		"damage": "int|null",
+		"speed": "number|null — world units/sec",
+		"radius": "number|null — collision radius",
+		"lifetime": "number|null — seconds before despawn",
+		"pierce": "int|null — additional targets after the first (0 = single-hit)",
+		"sprite": "string",
+		"owner_factions": "string[] — player | monster"
+	},
+	"bullet_pattern_shape": {
+		"$shape": "bullet_pattern",
+		"fields": {
+			"id": "string", "name": "string",
+			"type": "string — spread | ring | spiral | wave | aimed_burst",
+			"projectile_id": "string — refs a projectile definition",
+			"count": "int|null", "spread_deg": "number|null",
+			"angular_velocity_deg_s": "number|null",
+			"burst_interval_s": "number|null", "bursts": "int"
+		}
+	},
+	"invariants": [
+		"projectile entity ids occupy band 10000-29999 (assigned at spawn, not in the definition)",
+		"positions/velocities are quantized to 0.1 unit (truncate toward zero) on the wire"
+	]
+}

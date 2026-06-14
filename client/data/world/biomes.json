@@ -1,0 +1,47 @@
+{
+	"_comment": "Biome definitions for Omega Realm — the 19 biomes across 3 shards (mainland, underworld, creators_realm), each with its tier, suggested regular monster level range, and boss level. The Rust omega-server is the authority for which biome/shard a player is in and the monster levels actually spawned there ('the client requests, the server decides'); this file mirrors the design layout for client tooling/maps and the server wins on disagreement. Biome tier is what gates loot drops (data/loot/loot_tables.json) and item tier_requirement (data/items/*). The biome list + tiers and the Tier->Level guide below are ENCODED from docs/gdd/BIOMES.md (the governing GDD doc). TODO: per-biome boss IDENTITY (which monster is the boss) is not in BIOMES.md — boss_level is the level guideline only; fill boss_monster_id per biome from docs/gdd/MONSTERS.md when assigned. Also TODO: exact world bounds/spawn tables per biome.",
+
+	"tier_level_guide": {
+		"_comment": "ENCODED from BIOMES.md 'Biome Tier to Level Guide'. regular_level_range = suggested level range for normal monsters; boss_level = suggested boss level. Tier 7 spans 66-85+ with boss 90+.",
+		"1": { "regular_level_range": [1, 8],   "boss_level": 10 },
+		"2": { "regular_level_range": [9, 18],  "boss_level": 20 },
+		"3": { "regular_level_range": [20, 30], "boss_level": 32 },
+		"4": { "regular_level_range": [31, 40], "boss_level": 42 },
+		"5": { "regular_level_range": [41, 50], "boss_level": 55 },
+		"6": { "regular_level_range": [51, 65], "boss_level": 70 },
+		"7": { "regular_level_range": [66, 85], "boss_level": 90 }
+	},
+
+	"shards": {
+		"_comment": "Three worlds, each spanning a tier range. ENCODED from BIOMES.md.",
+		"mainland":       { "display_name": "Mainland",           "tier_range": [1, 4] },
+		"underworld":     { "display_name": "Underworld",         "tier_range": [3, 7] },
+		"creators_realm": { "display_name": "The Creators Realm", "tier_range": [4, 7] }
+	},
+
+	"biomes": {
+		"_comment": "All 19 biomes ENCODED from BIOMES.md, keyed by stable biome id. regular_level_range/boss_level are inherited from tier_level_guide above (copied for convenience). boss_monster_id is TODO (BIOMES.md gives the boss LEVEL only, not which monster).",
+
+		"forest_meadows":     { "display_name": "Forest / Meadows",            "shard": "mainland",       "tier": 1, "regular_level_range": [1, 8],   "boss_level": 10, "boss_monster_id": null },
+		"beach":              { "display_name": "Beach",                       "shard": "mainland",       "tier": 1, "regular_level_range": [1, 8],   "boss_level": 10, "boss_monster_id": null },
+		"dark_forest":        { "display_name": "Dark / Deep / Dense Forest",  "shard": "mainland",       "tier": 2, "regular_level_range": [9, 18],  "boss_level": 20, "boss_monster_id": null },
+		"reef":               { "display_name": "Reef",                        "shard": "mainland",       "tier": 3, "regular_level_range": [20, 30], "boss_level": 32, "boss_monster_id": null },
+		"mountains":          { "display_name": "Mountains",                   "shard": "mainland",       "tier": 3, "regular_level_range": [20, 30], "boss_level": 32, "boss_monster_id": null },
+		"ocean":              { "display_name": "Ocean",                       "shard": "mainland",       "tier": 4, "regular_level_range": [31, 40], "boss_level": 42, "boss_monster_id": null },
+		"unholy_infected":    { "display_name": "Unholy / Infected (Outside)", "shard": "mainland",       "tier": 4, "regular_level_range": [31, 40], "boss_level": 42, "boss_monster_id": null },
+
+		"rocks":              { "display_name": "Rocks",                       "shard": "underworld",     "tier": 3, "regular_level_range": [20, 30], "boss_level": 32, "boss_monster_id": null },
+		"scorched_ground":    { "display_name": "Scorched Ground",            "shard": "underworld",     "tier": 4, "regular_level_range": [31, 40], "boss_level": 42, "boss_monster_id": null },
+		"underworld_mountain":{ "display_name": "Mountain (Underworld)",       "shard": "underworld",     "tier": 4, "regular_level_range": [31, 40], "boss_level": 42, "boss_monster_id": null },
+		"lava":               { "display_name": "Lava",                        "shard": "underworld",     "tier": 5, "regular_level_range": [41, 50], "boss_level": 55, "boss_monster_id": null },
+		"purgatory":          { "display_name": "Purgatory",                   "shard": "underworld",     "tier": 6, "regular_level_range": [51, 65], "boss_level": 70, "boss_monster_id": null },
+		"hell":               { "display_name": "Hell",                        "shard": "underworld",     "tier": 7, "regular_level_range": [66, 85], "boss_level": 90, "boss_monster_id": null },
+
+		"grass":              { "display_name": "Grass",                       "shard": "creators_realm", "tier": 4, "regular_level_range": [31, 40], "boss_level": 42, "boss_monster_id": null },
+		"cloud":              { "display_name": "Cloud",                       "shard": "creators_realm", "tier": 5, "regular_level_range": [41, 50], "boss_level": 55, "boss_monster_id": null },
+		"platform":           { "display_name": "Platform",                    "shard": "creators_realm", "tier": 5, "regular_level_range": [41, 50], "boss_level": 55, "boss_monster_id": null },
+		"construct":          { "display_name": "Construct",                   "shard": "creators_realm", "tier": 6, "regular_level_range": [51, 65], "boss_level": 70, "boss_monster_id": null },
+		"void":               { "display_name": "Void",                        "shard": "creators_realm", "tier": 7, "regular_level_range": [66, 85], "boss_level": 90, "boss_monster_id": null },
+		"higher_construct":   { "display_name": "Higher Construct",            "shard": "creators_realm", "tier": 7, "regular_level_range": [66, 85], "boss_level": 90, "boss_monster_id": null }
+	}
+}

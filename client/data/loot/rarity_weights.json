@@ -1,0 +1,22 @@
+{
+	"_comment": "Rarity roll weights for Omega Realm loot. Holds the relative weights used to roll an item's rarity tier (e.g. common/uncommon/rare/...) once a drop is decided, and any per-context (tier/biome/boss) weight overrides. The Rust omega-server is the numeric authority: rarity is rolled server-side on monster death and clients never roll ('the client requests, the server decides'); this file mirrors the weights for tooling and the server wins on disagreement. Governing GDD doc: docs/gdd/loot.md (STATUS: TBD/UNBUILT — rarity tiers + affix system are an explicit open question, no loot/rarity system in code today). TODO: rarity tier list and all weights are unfilled pending design; the single example below is schema-shape only.",
+
+	"rarity_tiers": {
+		"_comment": "Ordered rarity definitions. One schema-shaped example entry; add the real tiers (and affix-count ranges) when design lands.",
+		"common": {
+			"order": 0,
+			"color": "#cfcfcf",
+			"affix_count": { "min": 0, "max": 1 },
+			"notes": "TODO: placeholder; tier list undecided"
+		}
+	},
+
+	"weight_pools": {
+		"_comment": "Named weighted rarity pools referenced by loot tables. One schema-shaped example; weights are relative (not percentages). TODO: real pools/weights unknown.",
+		"common_pool": {
+			"common": 100,
+			"uncommon": 0,
+			"rare": 0
+		}
+	}
+}

@@ -1,10 +1,16 @@
 {
-	"_comment": "Authoritative, export-safe manifest of player class definition ids, ordered by class enum id (0..6). To add a class: drop <id>.json beside this file and add <id> here. Numbers here mirror the Rust server constants and docs/classes/.",
+	"_comment": "Authoritative, export-safe manifest of player class definition ids, ordered by class enum id (0..6). To add a class: drop <id>.json beside this file and add <id> here. Numbers here mirror the Rust server constants and docs/gdd/classes/.",
 	"classes": [
 		"zealot",
 		"void_hunter",
 		"engineer",
 		"plague_seer",
+		"warrior",
+		"rogue",
+		"mage"
+	],
+	"_playable_comment": "Pre-alpha scope gate: only these classes are selectable in the client (PacketTypes.PLAYABLE_CLASSES mirrors this). The other four remain fully defined here, in the Rust server, and in docs/gdd/classes/ — deferred, not removed (docs/gdd/classes/index.md).",
+	"playable": [
 		"warrior",
 		"rogue",
 		"mage"

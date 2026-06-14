@@ -1,0 +1,38 @@
+{
+	"_comment": "Descriptive JSON-shape schema for data/classes/<id>.json (per-Class definition: base stats, per-level scaling, primary attack, RMB Class ability, appearance, networking). This is a human-readable shape guide for validators/tooling, NOT a strict JSON-Schema document. The Rust omega-server constants are the numeric authority for every value a class file holds (the class file is a client mirror; the server wins on disagreement) — 'the client requests, the server decides.' Governing GDD docs: docs/gdd/classes/index.md (enum order, base stats + per-level scaling table), docs/gdd/classes/<id>.md, docs/systems/abilities.md, docs/systems/PROGRESSION.md. TODO: promote to a formal JSON-Schema (draft 2020-12) if the validators/ pipeline requires it; current entry is descriptive only.",
+
+	"$shape": "class_definition",
+	"fields": {
+		"id": "string — stable class id, matches filename (e.g. 'warrior')",
+		"display_name": "string",
+		"role": "string — flavor archetype (e.g. 'melee_bruiser')",
+		"stats": {
+			"hp_base": "int", "hp_per_level": "number",
+			"move_speed_base": "number", "move_speed_per_level": "number",
+			"mana_max": "int (100 for all classes — gameplay pool)",
+			"mana_pool": "int (flavor figure, not gameplay)",
+			"mana_regen_per_sec": "number (8.0 for all)",
+			"stamina_max": "int (100 for all)",
+			"hitbox_radius": "number"
+		},
+		"primary": {
+			"damage_base": "int", "damage_per_level": "number",
+			"cooldown": "number (0.3 for all)", "projectile_speed": "number (400 for all)"
+		},
+		"ability": {
+			"id": "string", "name": "string", "type": "string",
+			"mana_cost": "int", "cooldown": "number",
+			"_note": "remaining keys are ability-shape-specific (e.g. blast_radius, charge_speed, radius, dps)"
+		},
+		"appearance": { "sprite_dir": "string" },
+		"networking": {
+			"server_authoritative": "bool (true)",
+			"predicted": "string[]", "replicated": "string[]"
+		}
+	},
+	"invariants": [
+		"stat(level) = base + per_lvl*(level-1); max level 50",
+		"class enum/byte order: 0 Zealot,1 VoidHunter,2 Engineer,3 PlagueSeer,4 Warrior,5 Rogue,6 Mage",
+		"only Warrior/Rogue/Mage active in pre-alpha (others deferred)"
+	]
+}

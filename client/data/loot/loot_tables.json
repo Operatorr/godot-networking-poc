@@ -1,0 +1,27 @@
+{
+	"_comment": "Loot drop tables keyed by tier+biome for Omega Realm. Holds the weighted pools of item ids that can drop on monster death, filtered by the monster's biome tier and (optionally) specific biome, per the loot design. The Rust omega-server is the numeric authority: when loot is built it rolls drops server-side on monster death (combat.rs PvE pass, alongside XP/health-orb rolls) and clients never roll their own drops ('the client requests, the server decides'); this file mirrors the tables for tooling and the server wins on disagreement. Governing GDD doc: docs/gdd/loot.md (STATUS: TBD/UNBUILT — no loot system exists in code today; the only live 'drops' are +5 HP health orbs). Tier->level/biome mapping in docs/gdd/BIOMES.md. TODO: every table is unfilled pending design; the single example below is schema-shape only. Open: drop-rate curve, boss vs trash tables, rarity layer.",
+
+	"tables": {
+		"_comment": "Keyed by table id. Convention shown: '<tier>__<biome>' or 'none'. One schema-shaped example entry; the rest is an empty intent. Each entry is a weighted pool resolved per monster by tier+biome (+ per-monster overrides).",
+		"t1__forest_meadows": {
+			"tier": 1,
+			"biome": "forest_meadows",
+			"shard": "mainland",
+			"rarity_weights_ref": "data/loot/rarity_weights.json#common_pool",
+			"entries": [
+				{
+					"item_id": "EXAMPLE_item_id",
+					"drop_weight": 100,
+					"min_quantity": 1,
+					"max_quantity": 1,
+					"notes": "TODO: placeholder example; real item ids live in data/items/*"
+				}
+			]
+		}
+	},
+
+	"no_drop": {
+		"_comment": "Tables/monsters that drop nothing lootable (today: everything; only health orbs spawn).",
+		"none": []
+	}
+}

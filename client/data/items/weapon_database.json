@@ -1,0 +1,26 @@
+{
+	"_comment": "Weapon definitions for Omega Realm. Holds each weapon's display, drop gating (tier_requirement required, biome_requirement optional), class restrictions, base stats, affixes, and any granted ability. The Rust omega-server is the numeric authority for all weapon stats and combat effects (it owns the sim and decides damage; 'the client requests, the server decides'), with durable item ownership persisted by the Go API (Postgres); this file mirrors definitions for client display/tooling and the server wins on disagreement. Governing GDD docs: docs/gdd/loot.md (item-definition fields; STATUS: TBD/UNBUILT — no item/weapon system in code today), docs/gdd/BIOMES.md (tier->biome mapping), data/schemas/item_schema.json. Class bytes: 0 Zealot,1 VoidHunter,2 Engineer,3 PlagueSeer,4 Warrior,5 Rogue,6 Mage (only Warrior/Rogue/Mage in pre-alpha scope). TODO: every weapon is unfilled pending design; the single example below is schema-shape only.",
+
+	"weapons": {
+		"_comment": "Keyed by stable item id. One schema-shaped example entry. tier_requirement = min monster tier that can drop it (required); biome_requirement = optional single-biome restriction (null/omit = any qualifying biome); class_restriction = list of allowed class bytes (empty = all).",
+		"EXAMPLE_short_bow": {
+			"id": "EXAMPLE_short_bow",
+			"name": "Short Bow (EXAMPLE)",
+			"item_type": "weapon",
+			"weapon_class": "bow",
+			"sprite": "items/weapons/short_bow",
+			"tier_requirement": 1,
+			"biome_requirement": null,
+			"class_restriction": [],
+			"stats": {
+				"damage_base": null,
+				"projectile_speed": null,
+				"attack_cooldown": null
+			},
+			"affixes": [],
+			"granted_ability_id": null,
+			"drop_weight": 100,
+			"notes": "TODO: placeholder example; all values are unfilled"
+		}
+	}
+}

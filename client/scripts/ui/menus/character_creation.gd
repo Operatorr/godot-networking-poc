@@ -25,7 +25,7 @@ var http_request: HTTPRequest
 
 ## Selected class (PacketTypes.PlayerClass). The color swatch on the main menu still
 ## tints the sprite — class chooses which class artwork is tinted.
-var _selected_class: int = PacketTypes.PlayerClass.ZEALOT
+var _selected_class: int = PacketTypes.PlayerClass.WARRIOR
 var _class_buttons: Array[Button] = []
 var _class_preview_holder: Control = null
 var _class_preview_sprite: AnimatedSprite2D = null
@@ -200,6 +200,11 @@ func _build_class_picker() -> void:
 		btn.add_theme_font_size_override("font_size", 13)
 		btn.toggled.connect(_on_class_toggled.bind(class_id))
 		btn.mouse_entered.connect(func(): AudioManager.play_button_hover())
+		# Pre-alpha scope: hide classes that are not yet playable (kept in the enum so
+		# array indices stay class-id-aligned and the deferred art/data survives).
+		if not PacketTypes.is_class_playable(class_id):
+			btn.disabled = true
+			btn.visible = false
 		grid.add_child(btn)
 		_class_buttons.append(btn)
 

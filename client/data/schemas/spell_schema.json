@@ -1,0 +1,26 @@
+{
+	"_comment": "Descriptive JSON-shape schema for spell/ability definitions (data/spells/spell_database.json for slottable spells; data/spells/class_abilities.json for the per-class RMB ability mapping). A human-readable shape guide for validators/tooling, NOT a strict JSON-Schema document. The Rust omega-server / sim_core is the numeric authority: all spell damage and spawned world effects are server-authoritative, gated on Mana>=cost and cooldown, replicated via the ABILITY_EFFECT event — 'the client requests, the server decides'; spell files are a client mirror and the server wins on disagreement. Governing GDD doc: docs/systems/abilities.md (the four effect shapes + world-effect entity bands), docs/gdd/classes/index.md, data/schemas/projectile_schema.json. TODO: promote to formal JSON-Schema if the validators/ pipeline requires.",
+
+	"$shape": "spell_definition",
+	"fields": {
+		"id": "string — stable spell/ability id",
+		"name": "string",
+		"shape": "string — instant_aoe | spawned_world_effect | projectile_spread | movement",
+		"slot_eligible": "bool — can this be slotted into action-bar slots 1-4 (vs a fixed RMB Class ability)",
+		"acquired_from": "string[] — glory_unlock | item | skill_tree (for slottable spells)",
+		"predicted": "bool — only movement abilities (Warrior Charge, Rogue Shadowstep) are predicted; everything else false",
+		"mana_cost": "int", "cooldown": "number",
+		"params": {
+			"damage": "int|null", "speed": "number|null", "radius": "number|null",
+			"lifetime": "number|null", "pierce": "int|null",
+			"_note": "the standard parameter set; a parameterised spell is live-addable"
+		},
+		"projectile_id": "string|null — for projectile_spread shape (refs data/projectiles/projectile_database.json)",
+		"effect_id": "string|null — VFX/SFX effect id broadcast in ABILITY_EFFECT"
+	},
+	"invariants": [
+		"effect shapes: instant_aoe | spawned_world_effect | projectile_spread | movement",
+		"world-effect entities ride entity kind 3, id band 40000-49999 (healthorb 40000-42499, mine 42500-44999, dot-zone 45000-47499, bible 47500-49999)",
+		"a genuinely new behaviour (teleport/reflect) needs a rust/sim_core change + deploy"
+	]
+}
