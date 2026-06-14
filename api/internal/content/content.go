@@ -1,6 +1,7 @@
 // Package content holds the data-driven game-content domain for the CMS — the
-// enemy / item / spell / projectile definitions and balance patches that
-// designers edit without a game rebuild.
+// monsters / classes / weapons / spells / projectiles definitions and balance
+// patches that designers edit without a game rebuild. The Kind slugs here are an
+// identity mapping with the web CMS collection names (no translation layer).
 //
 // See docs/CMS.md and docs/gdd/index.md ("Data-Driven Content System").
 //
@@ -25,27 +26,33 @@ var ErrNotFound = errors.New("content: definition not found")
 // JSON schema under client/data/schemas/<kind>_schema.json.
 type Kind string
 
+// These values are the canonical content collection slugs. They are an IDENTITY
+// mapping with the web CMS collection names — web↔api use the SAME kind strings,
+// so the web ApiBackend needs NO kind translation.
 const (
-	KindEnemy      Kind = "enemy"
-	KindItem       Kind = "item"
-	KindSpell      Kind = "spell"
-	KindProjectile Kind = "projectile"
-	KindBalance    Kind = "balance"
+	KindMonsters    Kind = "monsters"
+	KindClasses     Kind = "classes"
+	KindWeapons     Kind = "weapons"
+	KindSpells      Kind = "spells"
+	KindProjectiles Kind = "projectiles"
+	KindBalance     Kind = "balance"
 )
 
 // validKinds is the closed set of editable content domains. Used by ParseKind to
 // reject unknown {kind} path segments before any store call.
 var validKinds = map[Kind]bool{
-	KindEnemy:      true,
-	KindItem:       true,
-	KindSpell:      true,
-	KindProjectile: true,
-	KindBalance:    true,
+	KindMonsters:    true,
+	KindClasses:     true,
+	KindWeapons:     true,
+	KindSpells:      true,
+	KindProjectiles: true,
+	KindBalance:     true,
 }
 
 // ParseKind validates a raw {kind} path segment against the closed Kind set,
-// returning ok=false for anything outside enemy|item|spell|projectile|balance so
-// handlers can answer 400 without touching the store.
+// returning ok=false for anything outside
+// monsters|classes|weapons|spells|projectiles|balance so handlers can answer 400
+// without touching the store.
 func ParseKind(raw string) (Kind, bool) {
 	k := Kind(raw)
 	return k, validKinds[k]
@@ -73,6 +80,9 @@ type Store interface {
 	Get(kind Kind, id string) (Definition, error)
 	// Upsert creates or updates a draft definition.
 	Upsert(def Definition) error
+	// Remove deletes a definition by kind + id. Deleting a missing record is a
+	// no-op success (idempotent delete).
+	Remove(kind Kind, id string) error
 	// Publish validates all drafts of a kind, exports the JSON artifact (CDN),
 	// bumps the content version, and returns the artifact URL.
 	Publish(kind Kind) (artifactURL string, err error)

@@ -21,7 +21,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT fal
 -- `version` stays stable on edit; Publish bumps the released version (tracked in
 -- content_releases below).
 CREATE TABLE IF NOT EXISTS content_definitions (
-    kind       TEXT NOT NULL,             -- enemy | item | spell | projectile | balance
+    kind       TEXT NOT NULL,             -- monsters | classes | weapons | spells | projectiles | balance
     id         TEXT NOT NULL,
     version    INTEGER NOT NULL DEFAULT 1,
     payload    JSONB NOT NULL,

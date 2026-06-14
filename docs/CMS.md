@@ -46,6 +46,17 @@ So: the player website is **done**. The content-CMS is a **green-field feature**
 **extend the Go API (`api/`) and the Astro app (`web/`)** and require deciding how the Rust
 server ingests content data.
 
+### Content kinds (web↔api identity mapping)
+
+The CMS content store keys every definition by a **kind** slug. The Go API and the web CMS use the
+**same** strings — an identity mapping, so the web `ApiBackend` needs **no kind translation**:
+
+`monsters` · `classes` · `weapons` · `spells` · `projectiles` · `balance`
+
+These are the canonical collection slugs (`content.Kind` in `api/internal/content/content.go`; the
+web collection names match exactly). The CRUD surface is `GET/POST /api/content/{kind}`,
+`GET/DELETE /api/content/{kind}/{id}`, and `POST /api/content/{kind}/publish` (all admin-gated).
+
 ---
 
 ## 2. AS BUILT — the player website / dashboard

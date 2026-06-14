@@ -13,9 +13,9 @@ import (
 	"github.com/omega-realm/api/internal/middleware"
 )
 
-// ContentHandler serves the CMS content-editor API — the enemy/item/spell/
-// projectile/balance editors and the balance dashboard described in docs/CMS.md
-// and docs/gdd/index.md.
+// ContentHandler serves the CMS content-editor API — the monsters/classes/weapons/
+// spells/projectiles/balance editors and the balance dashboard described in
+// docs/CMS.md and docs/gdd/index.md.
 //
 // Every endpoint is gated by requireAdmin (users.is_admin), NOT plain JWT: the
 // routes are registered behind middleware.RequireAuth in cmd/server/main.go, and
@@ -143,6 +143,35 @@ func (h *ContentHandler) GetDefinition(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(def)
+}
+
+// DeleteDefinition: DELETE /api/content/{kind}/{id} — remove one definition.
+// Idempotent: deleting a missing id still returns 200 (the store treats 0 rows
+// affected as success).
+func (h *ContentHandler) DeleteDefinition(w http.ResponseWriter, r *http.Request) {
+	if !h.requireAdmin(w, r) {
+		return
+	}
+	kind, ok := parseKind(w, r)
+	if !ok {
+		return
+	}
+
+	id := r.PathValue("id")
+	if id == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "id is required"})
+		return
+	}
+
+	if err := h.store.Remove(kind, id); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to delete definition"})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(OKResponse{OK: true})
 }
 
 // upsertRequest is the body for UpsertDefinition. Draft defaults to false when

@@ -102,6 +102,19 @@ func (s *PostgresStore) Upsert(def Definition) error {
 	return nil
 }
 
+// Remove deletes a definition by kind + id. Deleting a row that does not exist is
+// treated as success (idempotent delete), so a double-DELETE from the editor still
+// returns 200.
+func (s *PostgresStore) Remove(kind Kind, id string) error {
+	if _, err := s.db.Exec(
+		`DELETE FROM content_definitions WHERE kind = $1 AND id = $2`,
+		string(kind), id,
+	); err != nil {
+		return fmt.Errorf("content: remove %s/%s: %w", kind, id, err)
+	}
+	return nil
+}
+
 // Publish marks every draft of a kind clean, bumps the released content version,
 // and returns the artifact URL the game's version-check downloads.
 //

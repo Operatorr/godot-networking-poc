@@ -140,6 +140,7 @@ func main() {
 	mux.HandleFunc("GET /api/content/{kind}", middleware.RequireAuth(contentHandler.ListDefinitions))
 	mux.HandleFunc("GET /api/content/{kind}/{id}", middleware.RequireAuth(contentHandler.GetDefinition))
 	mux.HandleFunc("POST /api/content/{kind}", middleware.RequireAuth(contentHandler.UpsertDefinition))
+	mux.HandleFunc("DELETE /api/content/{kind}/{id}", middleware.RequireAuth(contentHandler.DeleteDefinition))
 	mux.HandleFunc("POST /api/content/{kind}/publish", middleware.RequireAuth(contentHandler.PublishKind))
 	mux.HandleFunc("GET /api/admin/balance/dashboard", middleware.RequireAuth(contentHandler.BalanceDashboard))
 

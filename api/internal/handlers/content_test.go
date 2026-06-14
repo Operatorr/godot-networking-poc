@@ -11,7 +11,7 @@ import (
 // segments are rejected. Anything needing a live DB (admin check, store calls) is
 // covered by integration tests, not here.
 func TestParseKind(t *testing.T) {
-	valid := []string{"enemy", "item", "spell", "projectile", "balance"}
+	valid := []string{"monsters", "classes", "weapons", "spells", "projectiles", "balance"}
 	for _, raw := range valid {
 		kind, ok := content.ParseKind(raw)
 		if !ok {
@@ -22,7 +22,7 @@ func TestParseKind(t *testing.T) {
 		}
 	}
 
-	invalid := []string{"", "weapon", "Enemy", "enemy ", "monster", "balanc", "items"}
+	invalid := []string{"", "enemy", "item", "spell", "Monsters", "monsters ", "monster", "balanc", "weapon"}
 	for _, raw := range invalid {
 		if _, ok := content.ParseKind(raw); ok {
 			t.Errorf("ParseKind(%q) ok = true, want false", raw)
