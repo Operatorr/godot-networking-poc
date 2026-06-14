@@ -13,7 +13,7 @@
 ##
 ## Governing docs: docs/gdd/loot.md, docs/gdd/MONSTERS.md (tier/biome sourcing).
 ##
-## # TODO:
+## TODO:
 ##   - Load tier/biome -> LootPool mapping from the loot JSON definition.
 ##   - resolve_pool(): pick the pool for (tier, biome) via the Strategy.
 ##   - roll(): delegate to the selected LootPool's weighted-random pick (preview).

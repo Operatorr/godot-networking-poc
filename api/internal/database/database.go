@@ -201,9 +201,9 @@ func (db *DB) InitSchema() error {
 	-- Grant with: UPDATE users SET is_admin = true WHERE username = '<name>';
 	ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false;
 
-	-- One versioned content record per (kind, id). payload is validated against
-	-- client/data/schemas/<kind>_schema.json before a draft is published. version
-	-- stays stable on edit; Publish bumps the released version (see content_releases).
+	-- One versioned content record per (kind, id). payload will be validated against
+	-- client/data/schemas/<kind>_schema.json before publish (TODO: not yet enforced).
+	-- version stays stable on edit; Publish bumps the released version (see content_releases).
 	CREATE TABLE IF NOT EXISTS content_definitions (
 		kind       TEXT NOT NULL,
 		id         TEXT NOT NULL,

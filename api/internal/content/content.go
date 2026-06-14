@@ -58,8 +58,9 @@ func ParseKind(raw string) (Kind, bool) {
 	return k, validKinds[k]
 }
 
-// Definition is one versioned content record. Payload is validated against the
-// matching data/schemas/<kind>_schema.json before it may be published.
+// Definition is one versioned content record. Payload WILL be validated against the
+// matching data/schemas/<kind>_schema.json before publish — see Store.Publish (TODO:
+// schema validation is not yet enforced).
 type Definition struct {
 	ID        string         `json:"id"`
 	Kind      Kind           `json:"kind"`
@@ -69,17 +70,16 @@ type Definition struct {
 	UpdatedAt time.Time      `json:"updated_at"`
 }
 
-// Store is the persistence seam for content definitions (Postgres-backed in the
-// real implementation; see api/database/migrations/0002_content_cms.sql).
-//
-// TODO: implement a PostgresStore and inject it into handlers.ContentHandler.
+// Store is the persistence seam for content definitions, implemented by
+// PostgresStore (see postgres.go and api/database/migrations/0002_content_cms.sql).
 type Store interface {
 	// List returns every definition of a kind (drafts included for editors).
 	List(kind Kind) ([]Definition, error)
 	// Get returns one definition by kind + id.
 	Get(kind Kind, id string) (Definition, error)
-	// Upsert creates or updates a draft definition.
-	Upsert(def Definition) error
+	// Upsert creates or updates a draft definition. editorID records the acting
+	// user (content_definitions.updated_by); pass 0 when unknown (stored NULL).
+	Upsert(def Definition, editorID int) error
 	// Remove deletes a definition by kind + id. Deleting a missing record is a
 	// no-op success (idempotent delete).
 	Remove(kind Kind, id string) error

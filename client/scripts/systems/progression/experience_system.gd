@@ -17,20 +17,15 @@
 ##
 ## Governing docs: docs/gdd/progression/, docs/systems/PROGRESSION.md.
 ##
-## # TODO:
+## TODO:
 ##   - Subscribe to PROGRESS events; update current_xp / level and emit signals.
 ##   - Drive the XP bar fill (display prediction); reconcile to server values.
 ##   - Trigger level-up VFX/SFX on an authoritative level change only.
 class_name ExperienceSystem
 extends Node
 
-## XP awarded by killing a monster of the given level: round(100 * 1.15^(L-1)).
-const EXP_BASE: float = 100.0
-const EXP_GROWTH: float = 1.15
-## Multipliers for XP required to advance: 5x for L1->2, 10x for L2..49.
-const REQUIRED_MULT_FIRST: int = 5
-const REQUIRED_MULT_REST: int = 10
-const LEVEL_CAP: int = 50
+## The XP curve lives in LevelSystem (single source of truth) — see LevelSystem.LEVEL_CAP
+## and the advance_cost/level_for_xp helpers. This node only displays/animates it.
 
 
 ## Apply an authoritative XP grant from a PROGRESS event (display only).
@@ -39,10 +34,9 @@ func add_experience(amount: int) -> void:
 	pass
 
 
-## XP required to advance FROM the given level (display preview).
+## XP required to advance FROM the given level to the next (display preview).
 func xp_required_for_level(level: int) -> int:
-	# TODO: REQUIRED_MULT_* * round(EXP_BASE * EXP_GROWTH^(level-1)); clamp at cap.
-	return 0
+	return LevelSystem.advance_cost(level)
 
 
 ## Reconcile local display to the server/API authoritative state.

@@ -13,7 +13,7 @@
 ## Governing docs: docs/systems/abilities.md (effect catalogue & CC rules),
 ## docs/server/contract.md (which flags ride the wire).
 ##
-## # TODO:
+## TODO:
 ##   - Define the effect record shape (id, source, expires_tick, stacks, magnitude).
 ##   - apply/refresh/remove from server flags; tick local timers for smooth UI only.
 ##   - Emit signals the HUD/visuals listen to (effect_added / effect_removed).

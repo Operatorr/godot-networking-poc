@@ -13,7 +13,7 @@
 ## Governing docs: docs/systems/combat-hits.md, docs/systems/abilities.md,
 ## docs/server/contract.md (numerics policy: f32 ops, truncate-toward-zero).
 ##
-## # TODO:
+## TODO:
 ##   - Port the server damage formula (base + scaling per stat/level, crit, mitigation).
 ##   - Match server quantization/rounding exactly (truncate toward zero) to avoid
 ##     off-by-one mispredicts in the floating numbers.
@@ -23,9 +23,11 @@ class_name DamageCalculator
 extends RefCounted
 
 
-## Predicted damage for a single landed hit (display only; server is authoritative).
-## attacker_stats / defender_stats are flat Dictionaries sourced from JSON defs + level.
-func calculate_damage(attacker_stats: Dictionary, defender_stats: Dictionary, ability_id: String) -> int:
+## Predicted damage for a single landed hit, for floating numbers (display only;
+## server is authoritative — named preview_* to mirror preview_range and signal this
+## never changes HP). attacker_stats / defender_stats are flat Dictionaries sourced
+## from JSON defs + level: {stat_name: float}.
+func preview_damage(attacker_stats: Dictionary, defender_stats: Dictionary, ability_id: String) -> int:
 	# TODO: base + per-stat scaling, crit roll preview, defender mitigation, truncate.
 	return 0
 

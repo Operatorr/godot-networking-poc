@@ -30,13 +30,18 @@ var errors: Array = []
 
 ## Validate a parsed definition object of the given kind. Returns true if valid;
 ## populates errors with human-readable messages otherwise.
+## STUB: passes everything (errors stays empty == valid) until real rules land, so it
+## never blocks the pipeline. Returning false here would reject all content at boot.
 func validate(kind: String, definition: Object) -> bool:
 	# TODO: dispatch by kind; check required fields, ranges, references.
-	return false
+	errors.clear()
+	return true
 
 
 ## Validate a whole already-parsed bucket (kind -> { id -> definition }),
 ## including cross-references. Returns true if every entry is valid.
+## STUB: passes everything until per-kind/cross-reference rules land (see validate()).
 func validate_kind(kind: String, definitions: Dictionary) -> bool:
 	# TODO: validate each entry + resolve cross-references.
-	return false
+	errors.clear()
+	return true

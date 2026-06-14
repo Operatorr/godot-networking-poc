@@ -84,7 +84,8 @@ pub const SANCTUARY_MAP_MAX: Vec2 = Vec2::new(3328.0, 3072.0);
 
 /// Player spawn anchors for a Sanctuary instance — the West Gate Refuge yard (grid x≈-78, y≈-4),
 /// so players arrive through the damaged west gate into the refugee yard, not a clean central
-/// plaza (redesign spec §9 "West Gate Refuge"). Matches `SanctuaryTownWorld.SPAWN_POINTS`.
+/// plaza (redesign spec §9 "West Gate Refuge"). These are `SanctuaryTownWorld.SPAWN_POINTS` (grid
+/// cells) * TILE(32), one-for-one — keep both lists at the same length and order in lockstep.
 pub const SANCTUARY_PLAYER_SPAWNS: [Vec2; 6] = [
     Vec2::new(-2496.0, -128.0),
     Vec2::new(-2560.0, -224.0),

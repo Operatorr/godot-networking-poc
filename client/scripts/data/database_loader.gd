@@ -1,6 +1,6 @@
 ## DatabaseLoader - Boot-time loader for every JSON definition catalogue.
 ##
-## Responsibility: walk res://data/** at boot, parse each catalogue (enemies,
+## Responsibility: walk res://data/** at boot, parse each catalogue (monsters,
 ## classes, spells, projectiles, items, loot, balance), validate it, and hand
 ## the parsed definitions to a [DefinitionCache]. This is the entry point of the
 ## data-driven pipeline:
@@ -21,7 +21,7 @@
 ## gdd/folder-structure.md, docs/CMS.md (hot-reload).
 ##
 ## TODO:
-## - Enumerate the catalogue roots under res://data/ (enemies, classes, spells,
+## - Enumerate the catalogue roots under res://data/ (monsters, classes, spells,
 ##   projectiles, items, loot, balance) and their index.json manifests.
 ## - Parse each JSON via FileAccess + JSON.parse; route by kind to the matching
 ##   <Kind>Definition.from_dict() builder.

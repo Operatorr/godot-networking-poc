@@ -13,7 +13,7 @@
 ##
 ## Governing docs: docs/gdd/loot.md, docs/gdd/index.md.
 ##
-## # TODO:
+## TODO:
 ##   - Cache the server-held item list; expose slot/stack queries for the UI.
 ##   - request_move/use/drop: send to the API, await authoritative result, refresh.
 ##   - Emit an inventory_changed signal on any authoritative update.

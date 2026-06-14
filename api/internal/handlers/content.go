@@ -37,6 +37,11 @@ func NewContentHandler(db *database.DB, store content.Store) *ContentHandler {
 // id becomes part of the published artifact path and the in-game lookup key.
 var contentIDPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
+// maxContentBodyBytes caps an UpsertDefinition request body. The payload is stored
+// verbatim as JSONB, so an unbounded decode is a memory/row-size DoS vector; bodies
+// over this limit are rejected instead of buffered.
+const maxContentBodyBytes = 1 << 20 // 1 MiB
+
 // requireAdmin authorizes a CMS request: the caller must be authenticated (JWT
 // claims present) AND flagged users.is_admin = true. It mirrors internal.go's
 // dev opt-in — if ALLOW_INSECURE_CMS=true the check is bypassed entirely (local
@@ -192,6 +197,7 @@ func (h *ContentHandler) UpsertDefinition(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxContentBodyBytes)
 	var req upsertRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -209,12 +215,19 @@ func (h *ContentHandler) UpsertDefinition(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Record who edited (users.is_admin gate ran in requireAdmin). editorID is 0 in
+	// the ALLOW_INSECURE_CMS dev bypass (no JWT claims) → stored as NULL updated_by.
+	var editorID int
+	if claims, ok := middleware.GetUserClaims(r); ok {
+		editorID = claims.UserID
+	}
+
 	err := h.store.Upsert(content.Definition{
 		Kind:    kind,
 		ID:      req.ID,
 		Payload: req.Payload,
 		Draft:   req.Draft,
-	})
+	}, editorID)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to save definition"})

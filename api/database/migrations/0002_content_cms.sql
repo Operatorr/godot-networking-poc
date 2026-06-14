@@ -1,8 +1,8 @@
 -- Migration 0002 — Content CMS (APPLIED via InitSchema)
 --
 -- Backs the data-driven content CMS (docs/CMS.md): the versioned store of
--- enemy / item / spell / projectile definitions and balance patches that
--- designers edit, then publish to the JSON artifacts the game downloads.
+-- monsters / classes / weapons / spells / projectiles definitions and balance
+-- patches that designers edit, then publish to the JSON artifacts the game downloads.
 --
 -- STATUS: APPLIED. This DDL is the source-of-truth mirror of the inline schema
 -- string in InitSchema() (api/internal/database/database.go) — that inline
@@ -16,8 +16,8 @@
 --   UPDATE users SET is_admin = true WHERE username = '<name>';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false;
 
--- One versioned content record per (kind, id). `payload` is validated against
--- client/data/schemas/<kind>_schema.json before a draft may be published.
+-- One versioned content record per (kind, id). `payload` will be validated against
+-- client/data/schemas/<kind>_schema.json before publish (TODO: not yet enforced).
 -- `version` stays stable on edit; Publish bumps the released version (tracked in
 -- content_releases below).
 CREATE TABLE IF NOT EXISTS content_definitions (

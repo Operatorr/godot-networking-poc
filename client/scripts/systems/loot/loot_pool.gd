@@ -12,7 +12,7 @@
 ##
 ## Governing docs: docs/gdd/loot.md.
 ##
-## # TODO:
+## TODO:
 ##   - Store entries as parallel item-id / weight arrays (or a records array).
 ##   - add_entry(): append an (item_id, weight); maintain a cumulative-weight cache.
 ##   - pick(): weighted-random select using a provided seed/rng (preview only).

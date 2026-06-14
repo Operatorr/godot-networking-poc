@@ -44,10 +44,12 @@ const FOUNTAIN_RADIUS := 64.0
 const ARENA_PORTAL_CELL := Vector2i(42, 56)      # Lower Sanctum
 const WORLD_GATE_CELL := Vector2i(-28, 64)       # decorative, sealed
 
-## Server-authoritative spawn anchors mirror rust SANCTUARY_PLAYER_SPAWNS; kept for client use.
+## Spawn anchors kept for client/offline use. These mirror the server's authoritative
+## SANCTUARY_PLAYER_SPAWNS (rust/sim_core/src/constants.rs) one-for-one: grid cell * TILE
+## = the Rust world coord (e.g. (-78,-4)*32 = (-2496,-128)). Keep the two lists in lockstep.
 const SPAWN_POINTS: Array = [
-	Vector2i(-78, -4), Vector2i(-80, -7), Vector2i(-76, -1), Vector2i(-73, -5),
-	Vector2i(-82, 2), Vector2i(-74, 4), Vector2i(-85, -2), Vector2i(-71, -9),
+	Vector2i(-78, -4), Vector2i(-80, -7), Vector2i(-76, -1),
+	Vector2i(-73, -5), Vector2i(-82, 2), Vector2i(-74, 4),
 ]
 
 # --- Grim palette (redesign spec §8) ------------------------------------------------

@@ -15,7 +15,7 @@
 ## Governing docs: docs/gdd/folder-structure.md, docs/gdd/MONSTERS.md,
 ## docs/server/contract.md (entity id ranges & snapshot format).
 ##
-## # TODO:
+## TODO:
 ##   - Wire per-type object pools (reuse ProjectilePool pattern) keyed by entity type.
 ##   - On snapshot add: factory-configure a base scene from the JSON def, activate.
 ##   - On snapshot remove: recycle back to its pool (despawn VFX optional).

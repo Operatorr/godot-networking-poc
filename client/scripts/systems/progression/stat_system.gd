@@ -13,7 +13,7 @@
 ## Governing docs: docs/gdd/classes/, docs/gdd/progression/,
 ## docs/systems/PROGRESSION.md.
 ##
-## # TODO:
+## TODO:
 ##   - Read base/per_lvl per stat from the class JSON definition.
 ##   - scale_stat(): base + per_lvl*(L-1); match server numeric policy.
 ##   - Provide a whole-sheet resolver for a given class+level for the UI.
@@ -21,10 +21,10 @@ class_name StatSystem
 extends RefCounted
 
 
-## Linear per-level scaling: base + per_lvl * (level - 1). Display only.
+## Linear per-level scaling: base + per_lvl * (level - 1). Display only. Level is
+## clamped to >= 1 so level 0/negative inputs don't subtract from base.
 static func scale_stat(base: float, per_lvl: float, level: int) -> float:
-	# TODO: return base + per_lvl * (level - 1).
-	return base
+	return base + per_lvl * float(maxi(level, 1) - 1)
 
 
 ## Resolve all stats for a class at a level into a flat {stat_name: value} sheet.

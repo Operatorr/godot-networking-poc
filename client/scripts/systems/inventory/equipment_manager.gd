@@ -14,7 +14,7 @@
 ## Governing docs: docs/gdd/index.md (Action-bar, Slots 1-4), docs/gdd/loot.md,
 ## docs/systems/abilities.md.
 ##
-## # TODO:
+## TODO:
 ##   - Cache equipped-by-slot; resolve each item's granted ability for Slots 1-4.
 ##   - request_equip/unequip: send to the API, await authoritative result, refresh.
 ##   - Emit equipment_changed / loadout_changed signals for the HUD/action bar.

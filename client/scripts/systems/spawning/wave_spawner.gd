@@ -14,7 +14,7 @@
 ## Governing docs: docs/gdd/game-modes.md (practice/sandbox), docs/gdd/MONSTERS.md,
 ## docs/gdd/folder-structure.md.
 ##
-## # TODO:
+## TODO:
 ##   - Define the wave-definition shape (count, types, interval, spawn region).
 ##   - Implement Strategy hook for choosing the next wave; Template loop to run it.
 ##   - Drive spawns through SpawnSystem + the monster Factory (no direct instancing).
@@ -25,6 +25,12 @@ extends Node
 
 ## Begin spawning waves using the configured strategy (offline only).
 func start_waves(wave_config: Dictionary) -> void:
+	# Hard offline gate: the server owns all spawns online (client requests, server
+	# decides). assert() trips in debug builds; the guard return also protects release.
+	assert(not NetworkManager.is_server_connected(), "WaveSpawner must not run while connected to a server")
+	if NetworkManager.is_server_connected():
+		push_error("WaveSpawner.start_waves() called online — ignored (spawns are server-authoritative)")
+		return
 	# TODO: load wave defs, init strategy, kick off the template spawn loop.
 	pass
 

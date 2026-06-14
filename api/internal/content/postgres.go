@@ -80,21 +80,28 @@ func (s *PostgresStore) Get(kind Kind, id string) (Definition, error) {
 }
 
 // Upsert creates or updates a draft definition. New records start at version 1
-// and draft=true; on conflict only payload + draft + updated_at change, so the
-// stored version stays stable across edits (Publish is what bumps the version).
-func (s *PostgresStore) Upsert(def Definition) error {
+// and draft=true; on conflict only payload + draft + updated_by + updated_at
+// change, so the stored version stays stable across edits (Publish is what bumps
+// the version). editorID is recorded as updated_by; 0 stores NULL (e.g. the
+// ALLOW_INSECURE_CMS dev bypass, where there are no JWT claims).
+func (s *PostgresStore) Upsert(def Definition, editorID int) error {
 	payload, err := json.Marshal(def.Payload)
 	if err != nil {
 		return fmt.Errorf("content: marshal %s/%s payload: %w", def.Kind, def.ID, err)
 	}
+	var updatedBy any // NULL unless we know the editing user (FK -> users.id).
+	if editorID > 0 {
+		updatedBy = editorID
+	}
 	_, err = s.db.Exec(
-		`INSERT INTO content_definitions (kind, id, version, payload, draft, updated_at)
-		      VALUES ($1, $2, 1, $3, true, now())
+		`INSERT INTO content_definitions (kind, id, version, payload, draft, updated_by, updated_at)
+		      VALUES ($1, $2, 1, $3, true, $4, now())
 		 ON CONFLICT (kind, id) DO UPDATE
 		    SET payload    = EXCLUDED.payload,
 		        draft      = EXCLUDED.draft,
+		        updated_by = EXCLUDED.updated_by,
 		        updated_at = now()`,
-		string(def.Kind), def.ID, payload,
+		string(def.Kind), def.ID, payload, updatedBy,
 	)
 	if err != nil {
 		return fmt.Errorf("content: upsert %s/%s: %w", def.Kind, def.ID, err)

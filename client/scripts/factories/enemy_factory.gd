@@ -1,8 +1,8 @@
 ## EnemyFactory - Build enemies from a MonsterDefinition.
 ##
 ## Concrete EntityFactory for monsters. Takes a monster definition (from the
-## data/monsters or data/enemies catalogue, via MonsterDatabase) plus the base
-## enemy scene, then instantiates and configures stats, appearance, and AI hooks.
+## data/monsters catalogue, via MonsterDatabase) plus the base enemy scene, then
+## instantiates and configures stats, appearance, and AI hooks.
 ##
 ## Data-driven pattern (GDD): JSON definition -> Factory -> base scene -> configured
 ## entity. The "definition" here is a MonsterDefinition (built from a monster JSON

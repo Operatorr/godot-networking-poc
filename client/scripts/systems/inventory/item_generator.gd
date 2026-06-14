@@ -13,7 +13,7 @@
 ##
 ## Governing docs: docs/gdd/loot.md.
 ##
-## # TODO:
+## TODO:
 ##   - Load base templates + affix pools from JSON; implement weighted affix rolls.
 ##   - generate(): compose base + rarity + affixes into an item record (preview).
 ##   - Mirror the server's seed/roll math so previews match confirmed drops.

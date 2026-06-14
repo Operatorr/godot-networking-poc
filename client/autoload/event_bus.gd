@@ -38,7 +38,3 @@ extends Node
 
 ## Example: a HUD-relevant notification to surface to the player.
 # signal notification(text: String)
-
-
-func _ready() -> void:
-	pass
