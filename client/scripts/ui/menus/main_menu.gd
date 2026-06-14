@@ -4,7 +4,7 @@ extends Control
 
 const MenuFontHelper := preload("res://scripts/ui/helpers/menu_font_helper.gd")
 const MenuButtonHelper := preload("res://scripts/ui/helpers/menu_button_helper.gd")
-const ConfirmDialogScene := preload("res://scenes/client/menus/components/confirm_dialog.tscn")
+const ConfirmDialogScene := preload("res://scenes/ui/dialogs/confirm_dialog.tscn")
 const MENU_BACKGROUND_PATH := "res://assets/ui/backgrounds/menu_background_004.jpg"
 const TITLE_FONT_PATH := "res://assets/fonts/CormorantUnicase-Bold.ttf"
 const TITLE_COLOR := Color(0.12, 0.12, 0.11)

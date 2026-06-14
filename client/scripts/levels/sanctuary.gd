@@ -37,10 +37,10 @@
 ## of record) and follow docs/design/SANCTUARY_STYLEGUIDE.md.
 extends ArenaBase
 
-const NPC_SCENE: PackedScene = preload("res://scenes/shared/npc/npc.tscn")
-const PORTAL_SCENE: PackedScene = preload("res://scenes/shared/portal/portal.tscn")
+const NPC_SCENE: PackedScene = preload("res://scenes/entities/npc/npc.tscn")
+const PORTAL_SCENE: PackedScene = preload("res://scenes/entities/portal/portal.tscn")
 ## Reused confirm modal for the priest's church sacrifice prompt.
-const ConfirmDialogScene: PackedScene = preload("res://scenes/client/menus/components/confirm_dialog.tscn")
+const ConfirmDialogScene: PackedScene = preload("res://scenes/ui/dialogs/confirm_dialog.tscn")
 
 ## The three KEPT art pieces live here (fountain + portal). NPC art is in NPC_TEXTURE_DIR.
 ## All other town PNGs (buildings, floor tiles, old props) were removed in the redesign.

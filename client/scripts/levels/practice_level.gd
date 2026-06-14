@@ -4,7 +4,7 @@
 ## the dummies. Fully client-authoritative — no NetworkManager or server.
 extends OfflineArena
 
-const TARGET_DUMMY_SCENE: PackedScene = preload("res://scenes/shared/monster/target_dummy.tscn")
+const TARGET_DUMMY_SCENE: PackedScene = preload("res://scenes/entities/enemies/target_dummy.tscn")
 
 const ROOM_RECT := Rect2(Vector2(-960.0, -693.0), Vector2(1920.0, 1386.0))
 const DUMMY_RESPAWN_DELAY := 1.5

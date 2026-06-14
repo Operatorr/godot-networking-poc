@@ -8,13 +8,13 @@ var is_server: bool = false
 
 ## Scene paths (updated for client/server/shared structure)
 const SCENE_MAIN = "res://scenes/main.tscn"
-const SCENE_LOGIN = "res://scenes/client/menus/login_screen.tscn"
-const SCENE_MAIN_MENU = "res://scenes/client/menus/main_menu.tscn"
-const SCENE_CHARACTER_CREATION = "res://scenes/client/menus/character_creation.tscn"
-const SCENE_LOADING = "res://scenes/client/menus/loading_screen.tscn"
-const SCENE_ARENA = "res://scenes/shared/arena/arena_base.tscn"
-const SCENE_SANCTUARY = "res://scenes/shared/sanctuary/sanctuary.tscn"
-const SCENE_PRACTICE = "res://scenes/shared/levels/practice.tscn"
+const SCENE_LOGIN = "res://scenes/ui/menus/login_screen.tscn"
+const SCENE_MAIN_MENU = "res://scenes/ui/menus/main_menu.tscn"
+const SCENE_CHARACTER_CREATION = "res://scenes/ui/menus/character_creation.tscn"
+const SCENE_LOADING = "res://scenes/ui/menus/loading_screen.tscn"
+const SCENE_ARENA = "res://scenes/levels/arena/arena_base.tscn"
+const SCENE_SANCTUARY = "res://scenes/levels/hub/sanctuary.tscn"
+const SCENE_PRACTICE = "res://scenes/levels/offline/practice.tscn"
 const SCENE_OFFLINE_SANDBOX = "res://scenes/test/sandbox.tscn"
 const SCENE_GAME_UI = "res://scenes/client/components/game_ui.tscn"
 

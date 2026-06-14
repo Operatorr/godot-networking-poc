@@ -5,7 +5,7 @@ script/source = "## ArenaClientSmoke - Headless smoke test for client arena setu
 ## Exercises ArenaBase._setup_client() and one render frame without needing API/server auth.
 extends Node2D
 
-const ArenaScene := preload(\"res://scenes/shared/arena/arena_base.tscn\")
+const ArenaScene := preload(\"res://scenes/levels/arena/arena_base.tscn\")
 
 
 func _ready() -> void:

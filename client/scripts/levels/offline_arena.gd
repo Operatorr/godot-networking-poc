@@ -14,7 +14,7 @@
 class_name OfflineArena
 extends Node2D
 
-const PLAYER_SCENE_PATH := "res://scenes/shared/player/player.tscn"
+const PLAYER_SCENE_PATH := "res://scenes/entities/player/player.tscn"
 const PAUSE_MENU_PATH := "res://scripts/ui/hud/pause_menu.gd"
 ## Preloaded so the class resolves during headless startup (per AGENTS.md).
 const ExperienceBar := preload("res://scripts/ui/hud/experience_bar.gd")

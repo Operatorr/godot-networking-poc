@@ -5,9 +5,9 @@ class_name ClientEntityManager
 extends Node
 
 ## Scene references for entity instantiation
-const REMOTE_PLAYER_SCENE := "res://scenes/shared/player/remote_player.tscn"
-const MONSTER_SCENE := "res://scenes/shared/monster/monster.tscn"
-const PROJECTILE_SCENE := "res://scenes/shared/projectile/projectile.tscn"
+const REMOTE_PLAYER_SCENE := "res://scenes/entities/player/remote_player.tscn"
+const MONSTER_SCENE := "res://scenes/entities/enemies/monster.tscn"
+const PROJECTILE_SCENE := "res://scenes/entities/projectiles/projectile.tscn"
 
 ## Preloaded scenes
 var _remote_player_packed: PackedScene = null

@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://scripts/entities/player/player.gd" id="1_player"]
 [ext_resource type="Script" path="res://scripts/entities/player/hp_component.gd" id="2_hp_component"]
 [ext_resource type="Script" path="res://scripts/systems/spawning/projectile_pool.gd" id="3_projectile_pool"]
-[ext_resource type="PackedScene" uid="uid://bw7qkh5xmvqjl" path="res://scenes/shared/player/debug_overlay.tscn" id="4_debug_overlay"]
+[ext_resource type="PackedScene" uid="uid://bw7qkh5xmvqjl" path="res://scenes/entities/player/debug_overlay.tscn" id="4_debug_overlay"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_1"]
 radius = 16.0

@@ -1,7 +1,7 @@
 [gd_scene load_steps=5 format=3 uid="uid://c2character_creation"]
 
 [ext_resource type="Script" path="res://scripts/ui/menus/character_creation.gd" id="1_script"]
-[ext_resource type="PackedScene" uid="uid://c2error_dialog" path="res://scenes/client/menus/components/error_dialog.tscn" id="2_error_dialog"]
+[ext_resource type="PackedScene" uid="uid://c2error_dialog" path="res://scenes/ui/dialogs/error_dialog.tscn" id="2_error_dialog"]
 [ext_resource type="FontFile" path="res://assets/fonts/CormorantUnicase-Bold.ttf" id="3_title_font"]
 [ext_resource type="VideoStream" path="res://assets/ui/backgrounds/menu_background_loop.ogv" id="4_bg_video"]
 

@@ -7,7 +7,7 @@ extends Node
 const POOL_SIZE: int = 16
 
 ## Path to projectile scene
-const PROJECTILE_SCENE_PATH := "res://scenes/shared/projectile/projectile.tscn"
+const PROJECTILE_SCENE_PATH := "res://scenes/entities/projectiles/projectile.tscn"
 const LOCAL_PROJECTILE_COLLISION_MASK := 10  # Monsters + Environment (player bullets).
 const MONSTER_PROJECTILE_COLLISION_MASK := 9  # Players + Environment (monster bullets).
 

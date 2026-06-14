@@ -424,7 +424,7 @@ func _is_test_scene() -> bool:
 
 	var scene_path := current_scene.scene_file_path
 	return scene_path.begins_with("res://scenes/test/") \
-		or scene_path == "res://scenes/shared/levels/practice.tscn"
+		or scene_path == "res://scenes/levels/offline/practice.tscn"
 
 
 func _extract_user_data(data: Dictionary) -> Dictionary:

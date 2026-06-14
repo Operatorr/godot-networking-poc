@@ -8,7 +8,7 @@ extends Node2D
 class_name ArenaBase
 
 ## Preloaded player scene for local player
-const PLAYER_SCENE_PATH := "res://scenes/shared/player/player.tscn"
+const PLAYER_SCENE_PATH := "res://scenes/entities/player/player.tscn"
 
 ## Tile atlas generation
 const TILE_ATLAS_COLUMNS := 3
