@@ -19,8 +19,8 @@ them from the Go API on join, and writes them back. The client is **display-only
 | Constant | Value | Where |
 | --- | --- | --- |
 | XP share radius | 500 u | `sim_core/src/constants.rs` (`XP_SHARE_RADIUS`) |
-| Toxic Slime reward | 20 XP | `server/src/monster.rs` (`TOXIC_SLIME.xp_reward`) |
-| Target Dummy reward | 0 XP | `server/src/monster.rs` (`TARGET_DUMMY.xp_reward`) |
+| Toxic Slime reward | 20 XP | `server/src/sim/monster.rs` (`TOXIC_SLIME.xp_reward`) |
+| Target Dummy reward | 0 XP | `server/src/sim/monster.rs` (`TARGET_DUMMY.xp_reward`) |
 | Level 1 → 2 cost | 100 XP (= 5 slimes) | `sim_core/src/constants.rs` (`XP_FIRST_LEVEL`) |
 | Level L → L+1 cost (L ≥ 2) | 200 × L XP | `sim_core/src/constants.rs` (`XP_LEVEL_SLOPE`) |
 | Max level | **50** | `sim_core/src/constants.rs` (`MAX_PLAYER_LEVEL`) |

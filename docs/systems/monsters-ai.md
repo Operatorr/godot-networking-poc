@@ -1,10 +1,10 @@
 # Monsters & server-side AI
 
-**Status:** Implemented (verified 2026-06-14 against `rust/server/src/monster.rs`)
+**Status:** Implemented (verified 2026-06-14 against `rust/server/src/sim/monster.rs`)
 
 The POC ships one hostile monster — the **Toxic Slime** — plus a stationary **Target Dummy** prop.
 Both run a small **server-authoritative** AI living entirely in the Rust `omega-server`
-([`rust/server/src/monster.rs`](../../rust/server/src/monster.rs)): a four-state machine that
+([`rust/server/src/sim/monster.rs`](../../rust/server/src/sim/monster.rs)): a four-state machine that
 selects a target, chases, kites-and-shoots, or flees, all advanced on the
 [Tick](../CONTEXT.md). Monsters are [Remote entities](../CONTEXT.md) on every client — there is
 **no client-side monster AI**; clients only interpolate and animate the server's snapshot stream.
@@ -30,16 +30,16 @@ load for the netcode stress-test, not an interesting combat AI.
 ## Where it runs in the Tick
 
 All monster logic is part of the 30 Hz authoritative [Tick](../CONTEXT.md), in fixed order
-(`rust/server/src/world.rs`, the `tick` method):
+(`rust/server/src/sim/world.rs`, the `tick` method):
 
 | Step | Call (`world.rs`) | What |
 |------|-------------------|------|
 | 2 | `MonsterSpawner::update` (`monster.rs`) | spawn timing / placement |
 | 3 | `MonsterAi::update_all` (`monster.rs`) | state machine, move, shoot → returns `FireEvent`s |
 | 4 | `MonsterManager::record_position_snapshot` (`monster.rs`) | 8-tick position history for PvE [lag compensation](../CONTEXT.md) |
-| 5 | `combat::process_collisions` (`rust/server/src/combat.rs`) | projectile→monster / monster→player damage |
+| 5 | `combat::process_collisions` (`rust/server/src/sim/combat.rs`) | projectile→monster / monster→player damage |
 | 5b | `Backstop::update` (`combat.rs`) | D11 lenient backstop for blatant unreported monster-bullet overlaps |
-| 6 | `Broadcast::broadcast_state_updates` (`rust/server/src/broadcast.rs`) | snapshots (incl. dead monsters' final death frame) |
+| 6 | `Broadcast::broadcast_state_updates` (`rust/server/src/net/broadcast.rs`) | snapshots (incl. dead monsters' final death frame) |
 | 7 | `MonsterManager::cleanup_dead_monsters` (`monster.rs`) | erase dead monsters after their final death [Snapshot](../CONTEXT.md) |
 
 AI runs every Tick (30 Hz) for **all** alive monsters in registry order

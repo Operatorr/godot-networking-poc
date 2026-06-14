@@ -9,8 +9,8 @@ server mode); none of this runs on a Godot node anymore. What remains open is me
 This is the server-side counterpart to [`interpolation.md`](interpolation.md) and
 [`client-prediction.md`](client-prediction.md): how the authoritative simulation advances one
 **Tick** at a time, and how it turns world state into per-client **Snapshots**. The tick order is
-grounded in [`rust/server/src/world.rs`](../../rust/server/src/world.rs) (`World::tick`); the
-snapshot/baseline/byte-budget machinery in [`rust/server/src/broadcast.rs`](../../rust/server/src/broadcast.rs).
+grounded in [`rust/server/src/sim/world.rs`](../../rust/server/src/sim/world.rs) (`World::tick`); the
+snapshot/baseline/byte-budget machinery in [`rust/server/src/net/broadcast.rs`](../../rust/server/src/net/broadcast.rs).
 The wire layer is the bit-packed `protocol` crate, spec'd in [`../server/contract.md`](../server/contract.md).
 
 ## The two cadences are decoupled

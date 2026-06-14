@@ -21,18 +21,30 @@ Don't re-derive what's already written there; read it, then go deep where needed
     zero divergence by construction.
   - `server/` — the `omega-server` binary: single-threaded 30 Hz tick over `rusty_enet`
     (pinned `=0.4.0`), Ed25519 session tickets (dev mode: unsigned), Prometheus on `:9100`.
+    Modules are grouped: `src/sim/` (world, player, monster, projectile, combat, ability,
+    world_entity, rng, leaderboard) and `src/net/` (broadcast, outbox, metrics, auth,
+    api_client, progression_client); they re-export flat at the crate root, so code still
+    refers to them as `crate::player`, `crate::broadcast`, etc.
   - `client_ext/` — GDExtension exposing `ProtocolCodec`, `PredictionSim`, `SimHit` to GDScript.
   - `load_test/` — the `omega-load-test` bot swarm (replaced the Python `load_testing/`
     harness): ENet bots that link `protocol` + `sim_core` directly. See its README.
 - `client/` — Godot 4.6 project; exports the **client only** now. The legacy GDScript server
   has been **removed** (it was retired by the Rust port); its file-by-file parity map to the Rust
   modules lives in [`docs/server/legacy-parity.md`](docs/server/legacy-parity.md), and the source is
-  in git history. `NetworkManager` still refuses to run in headless/server mode.
-  - `autoload/` — singletons: `network_manager` (ENet client), `transport/` (the transport seam),
-    `game_manager`, `scene_manager`, `auth_manager`, `audio_manager`, `entity_name_cache`.
-  - `scripts/client/` — prediction (drives the Rust `PredictionSim`), interpolation, HUD, menus.
-  - `scripts/shared/` — packet enums, game constants, entity scenes, arenas.
-  - `bin/` — built GDExtension libraries (`omega_client_ext.gdextension`).
+  in git history. `NetworkManager` still refuses to run in headless/server mode. The client uses
+  a **data-driven layout** (see [`docs/gdd/folder-structure.md`](docs/gdd/folder-structure.md)):
+  - `autoload/` — singletons: `game_manager`, `network_manager`, `auth_manager`, `scene_manager`,
+    `entity_name_cache`, `audio_manager`, `event_bus`.
+  - `scripts/network/` — transport seam, `packet_types`, prediction, interpolation, entity buffer,
+    client entity manager.
+  - `scripts/entities/` — `player/` (+ `classes/`), `enemies/`, `projectiles/`, `world_effects/`,
+    npc, portal. `scripts/data/` — definitions/, validators/, loaders, `game_constants`.
+  - `scripts/systems/` — combat/, spawning/, visuals/, audio/, progression/, inventory/, loot/.
+  - `scripts/ui/` (hud/, menus/, dialogs/, helpers/), `scripts/core/` (game modes),
+    `scripts/factories/`, `scripts/levels/`, `scripts/utils/`.
+  - `scenes/` — `entities/`, `levels/` (arena/, hub/, offline/, pve/, biomes/), `ui/`, `test/`.
+  - `data/` — JSON content (classes/, monsters/, balance/, loot/, items/, spells/, projectiles/,
+    world/, schemas/); `bin/` — built GDExtension (`omega_client_ext.gdextension`).
 - `api/` — Go backend: JWT auth, characters, leaderboard, regions. PostgreSQL + Redis.
 - `deployment/` — **native** deploy (no Docker — [ADR 0007](docs/adr/0007-native-systemd-deployment.md)):
   systemd units (`systemd/`), per-instance configs (`server_config.{arena,sanctuary}.json`), env
@@ -49,9 +61,9 @@ Don't re-derive what's already written there; read it, then go deep where needed
 - **[`docs/server/`](docs/server/) — the game server (current core):**
   - `design.md` — architecture & rationale (transport, shared sim, tick, auth, persistence, hits).
   - `contract.md` — workspace/crate APIs, channel plan, wire format, numerics policy, as built.
-- [`docs/netcode/`](docs/netcode/) — the pre-port netcode analyses (latency budget, prediction,
-  interpolation, AoI, broadcast). Concepts still apply; WebSocket-era file:line cites describe
-  the retired GDScript server — cross-check against `rust/` before relying on them.
+- [`docs/netcode/`](docs/netcode/) — netcode analyses (latency budget, prediction, interpolation,
+  AoI, broadcast), rewritten around the Rust omega-server / `sim_core` / ENet. (The retired
+  WebSocket/wire-protocol docs are now redirect stubs pointing at `docs/server/contract.md`.)
 - [`docs/systems/`](docs/systems/) — gameplay systems, **status-tagged**: players/movement,
   combat/hits, monsters/AI, audio, UI/HUD, state machines.
 - [`docs/adr/`](docs/adr/) — load-bearing decisions: 0002 fixed-tick authority (stands),

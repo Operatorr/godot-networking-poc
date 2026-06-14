@@ -23,13 +23,13 @@ Main Menu ── Enter World ──> Sanctuary (offline hub)
 
 - The main menu owns region selection; it stashes the chosen region's URL in
   `GameManager.player_data["selected_region_url"]` before `SceneManager.goto_sanctuary()`.
-- `Portal` (`scripts/shared/portal.gd`) is the reusable level/scene-switch script;
+- `Portal` (`scripts/entities/portal.gd`) is the reusable level/scene-switch script;
   `requires_connection` makes it dial the server first.
 
 ## Rendering model (the oblique placeholder look)
 
 The whole city is **data-driven** from `const` tables in
-[`scripts/shared/levels/sanctuary.gd`](../../client/scripts/shared/levels/sanctuary.gd)
+[`scripts/levels/sanctuary.gd`](../../client/scripts/levels/sanctuary.gd)
 (`OfflineArena` subclass). Tables are "rasterized" onto a tile grid; layers then render it.
 
 - **Tile grid.** `TILE = 32 px` (matches the 32 px player sprite; hitbox r16). North = −Y.
@@ -149,10 +149,10 @@ Every placeholder element is **findable and tagged**:
 
 | File | What |
 | --- | --- |
-| `client/scenes/shared/sanctuary/sanctuary.tscn` | Town scene (root + script; layout is data-driven) |
-| `client/scripts/shared/levels/sanctuary.gd` | `OfflineArena` subclass; rasterizes the city tables into ground/walls/colliders/buildings/props/terraces/stairs |
-| `client/scenes/shared/portal/portal.tscn` + `scripts/shared/portal.gd` | Reusable scene-switch portal |
-| `client/scenes/shared/npc/npc.tscn` + `scripts/shared/npc.gd` | Interactable service NPC (prompt + dialog panel) |
+| `client/scenes/levels/hub/sanctuary.tscn` | Town scene (root + script; layout is data-driven) |
+| `client/scripts/levels/sanctuary.gd` | `OfflineArena` subclass; rasterizes the city tables into ground/walls/colliders/buildings/props/terraces/stairs |
+| `client/scenes/entities/portal/portal.tscn` + `scripts/entities/portal.gd` | Reusable scene-switch portal |
+| `client/scenes/entities/npc/npc.tscn` + `scripts/entities/npc.gd` | Interactable service NPC (prompt + dialog panel) |
 
 The eight questions: **client** runs everything (town is client-local); **server** runs
 nothing until the Arena portal dials it; nothing is **predicted/replicated/persisted**

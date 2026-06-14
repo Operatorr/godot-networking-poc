@@ -14,7 +14,7 @@ until a load run proves 60 Hz fits the budgets below.
 - 60 Hz is a **toggle, not the default.** Default stays 30 Hz.
 - The authoritative server is the Rust **`omega-server`** binary (`rust/server/`); one process = one
   Instance. Its sim clock authority is `tick_rate` in `rust/server/src/config.rs`. The Godot client's
-  clock authority is `GameConstants.SERVER_TICK_RATE` (`client/scripts/shared/game_constants.gd`). For
+  clock authority is `GameConstants.SERVER_TICK_RATE` (`client/scripts/data/game_constants.gd`). For
   an honest end-to-end test you must move **both** together — see below.
 - The load-test swarm (`omega-load-test`, `rust/load_test/`) measures **server CPU + downstream
   bandwidth** and, unlike the retired Python harness, **also drives real-client-rate input** via
@@ -77,10 +77,10 @@ The server rate is **config/env-driven** (no source edit, no rebuild). The clien
 
   Effective rate = `0 → tick_rate`, else `min(raw, tick_rate)` (`ServerConfig::snapshot_rate_hz`,
   `config.rs`; the accumulator that consumes it lives in `World::tick`,
-  `rust/server/src/world.rs` — `snapshot_interval = 1.0 / snapshot_rate_hz`). Run **both** variants
+  `rust/server/src/sim/world.rs` — `snapshot_interval = 1.0 / snapshot_rate_hz`). Run **both** variants
   so server CPU and downstream bandwidth are attributed separately.
 
-**Client:** edit `client/scripts/shared/game_constants.gd` → `const SERVER_TICK_RATE := 60.0`
+**Client:** edit `client/scripts/data/game_constants.gd` → `const SERVER_TICK_RATE := 60.0`
 (drives the client `_physics_process` clock + `INPUT_SEND_INTERVAL`) **and**
 `rust/sim_core/src/constants.rs` → `pub const SERVER_TICK_RATE: f64 = 60.0;` (keep the two mirrored),
 then rebuild the GDExtension (`./scripts/build_client_ext.sh`).
@@ -108,11 +108,11 @@ nothing silently changes meaning:
 | Constant | @30 Hz | @60 Hz | Effect | Where |
 | --- | --- | --- | --- | --- |
 | `REMOTE_ENTITY_RENDER_DELAY_TICKS = 2` | 66.7 ms | 33.3 ms | Remote-smoothness margin shrinks. Interp seeds from `SERVER_TICK_INTERVAL`, so it adapts. | `sim_core/src/constants.rs` |
-| `MAX_PVE_PROJECTILE_COMPENSATION_TICKS = 6` | 200 ms | 100 ms | Lag-comp rewind window auto-scales (`pve_compensation` uses `tick_rate`, `rust/server/src/world.rs`) — PvE hits get slightly harder to land. | `sim_core/src/constants.rs` |
+| `MAX_PVE_PROJECTILE_COMPENSATION_TICKS = 6` | 200 ms | 100 ms | Lag-comp rewind window auto-scales (`pve_compensation` uses `tick_rate`, `rust/server/src/sim/world.rs`) — PvE hits get slightly harder to land. | `sim_core/src/constants.rs` |
 | `MAX_PVP_PROJECTILE_COMPENSATION_TICKS = 4` | ~133 ms | ~66.7 ms | Same auto-scale, tighter PvP rewind. | `sim_core/src/constants.rs` |
-| `POSITION_HISTORY_TICKS = 8` | ~267 ms | ~133 ms | The lag-comp position ring (`rust/server/src/player.rs`) holds 8 ticks — at 60 Hz it covers half the wall-clock, so deep rewinds run out of history sooner. | `rust/server/src/player.rs` |
+| `POSITION_HISTORY_TICKS = 8` | ~267 ms | ~133 ms | The lag-comp position ring (`rust/server/src/sim/player.rs`) holds 8 ticks — at 60 Hz it covers half the wall-clock, so deep rewinds run out of history sooner. | `rust/server/src/sim/player.rs` |
 | `HIT_BACKSTOP_GRACE_TICKS = 15` (floor) | 500 ms | 250 ms | The D11 lenient backstop grace floor (`config.rs` clamps `backstop_grace_ticks` up to this). Halving the wall-clock grace risks the backstop firing on lag — re-check leniency if 60 Hz ships. | `sim_core/src/constants.rs` |
-| `DELTA_FULL_STATE_INTERVAL = 100` | ~3.3 s | ~1.7 s | Forced full baselines twice as often = more downstream bandwidth. | `rust/server/src/broadcast.rs` |
+| `DELTA_FULL_STATE_INTERVAL = 100` | ~3.3 s | ~1.7 s | Forced full baselines twice as often = more downstream bandwidth. | `rust/server/src/net/broadcast.rs` |
 
 **Tick-rate INVARIANT (no change):** cooldowns/respawn/invulnerability are in seconds and the server
 applies them via tick-interval accumulation, so they are unaffected by the tick rate.
@@ -124,7 +124,7 @@ Run `omega-load-test` (`./scripts/run_load_test.sh`) against a server at **30 Hz
 test. Per run, capture from the JSON report (sourced from the server `ServerMetrics` packet, see
 `docs/server/contract.md`):
 
-- per-peer downstream bandwidth (server `MetricsCollector` per-peer bytes, `rust/server/src/metrics.rs`).
+- per-peer downstream bandwidth (server `MetricsCollector` per-peer bytes, `rust/server/src/net/metrics.rs`).
 - `avg_tick_time_ms` / `max_tick_time_ms` — avg/max over the last 30 ticks (`METRICS_SAMPLE_SIZE`,
   `metrics.rs`); also exported as the Prometheus `tick_duration_ms` histogram + `avg_tick_time_ms` gauge.
 - player/entity counts, packet-loss, crash/disconnect rate for context.
@@ -214,11 +214,11 @@ max tick time under **~16–25 ms** at `target` (100) load. If 60 Hz only fits a
   must be kept mirrored and the GDExtension rebuilt.
 - **Server:** the sim/snapshot loop follows `config.tick_rate` / `snapshot_rate_hz`
   (`rust/server/src/config.rs`) via the fixed accumulator in `rust/server/src/main.rs` and the
-  snapshot accumulator in `rust/server/src/world.rs`; `GAME_SERVER_TICK_RATE` env overrides at runtime.
+  snapshot accumulator in `rust/server/src/sim/world.rs`; `GAME_SERVER_TICK_RATE` env overrides at runtime.
 - **Predicted:** nothing new — tick rate is a cadence, not gameplay state.
 - **Replicated:** the *effect* is observable (faster snapshot stream at 60-tick/60-snap); the rate
   itself is not on the wire. Each snapshot carries an absolute `server_tick` and a `server_ms`
-  timestamp (`rust/server/src/broadcast.rs`; see `docs/server/contract.md`), so clients adapt by
+  timestamp (`rust/server/src/net/broadcast.rs`; see `docs/server/contract.md`), so clients adapt by
   measuring inter-snapshot arrival — no protocol change is needed.
 - **Persisted:** nothing; the deploy-time authority is the per-instance config
   (`deployment/server_config.{arena,sanctuary}.json`) plus optional env. Durable state lives only in

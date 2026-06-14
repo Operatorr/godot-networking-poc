@@ -6,7 +6,7 @@ GDScript server — is **on** in the port. This doc is the **canonical statement
 *who decides a projectile hit*. When the code disagrees with the intent below, the code wins —
 fix the code or fix this doc, and say which. The mechanism here is grounded in
 [`rust/sim_core/src/hit.rs`](../../rust/sim_core/src/hit.rs) (the pure predicates, shared with the
-client via the GDExtension) and [`rust/server/src/combat.rs`](../../rust/server/src/combat.rs)
+client via the GDExtension) and [`rust/server/src/sim/combat.rs`](../../rust/server/src/sim/combat.rs)
 (report validation, the shared damage path, the backstop).
 
 > Terms: [Tick](../CONTEXT.md) · [Snapshot](../CONTEXT.md) · [Render delay](../CONTEXT.md) ·
@@ -92,7 +92,7 @@ would reintroduce the phantom/pass-through feel).
    — hit-authority invariant"*). The client records `projectile_id → monster_id` so it can tag the
    bullet monster-owned. If this id were 0 the client would never tag the bullet and the whole PvE
    path would silently no-op (you'd take *no* monster damage) — this is why the contract pins it.
-2. **Client detects.** The Godot-side `LocalHitDetector` (`client/scripts/client/local_hit_detector.gd`),
+2. **Client detects.** The Godot-side `LocalHitDetector` (`client/scripts/systems/combat/local_hit_detector.gd`),
    driven each render frame, swept-tests every visible **monster-owned** projectile's render-frame
    travel against the player's **rendered** position (what's drawn on screen — not the raw predicted
    position, which is ahead of the screen during a correction). The test is the shared
@@ -104,7 +104,7 @@ would reintroduce the phantom/pass-through feel).
    [`../server/contract.md`](../server/contract.md)). HP is **not** touched locally — it stays
    authoritative.
 4. **Server validates + applies.** `combat::handle_local_hit_report` runs a fixed gate order
-   ([`rust/server/src/combat.rs`](../../rust/server/src/combat.rs)): `projectile_id != 0`; reporter
+   ([`rust/server/src/sim/combat.rs`](../../rust/server/src/sim/combat.rs)): `projectile_id != 0`; reporter
    exists, is authenticated and alive; per-peer **rate limit** holds (`HitReportLimiter`,
    `LOCAL_HIT_REPORT_MAX_PER_SECOND = 20`); the projectile exists and is alive; it is **monster-owned**
    (`hit::is_client_authoritative` — *invariant #2: no PvP via client report*); and the bullet's
@@ -131,7 +131,7 @@ Tightening it toward the true 24 u window would re-break dodge-feel — do not.
 
 A hacked client that never sends `LocalHitReport` would be immune to monster bullets. The port adds a
 **deliberately lenient** server backstop (`combat::Backstop` in
-[`rust/server/src/combat.rs`](../../rust/server/src/combat.rs)) that catches only *egregious*
+[`rust/server/src/sim/combat.rs`](../../rust/server/src/sim/combat.rs)) that catches only *egregious*
 never-reporters, without re-introducing phantom hits:
 
 - **Record (true 24 u overlap only).** Each tick, after projectile integration and before the
@@ -187,7 +187,7 @@ cheating). It is shrunk and rebalanced with three server-authoritative levers, *
 per-player / per-ping** — there is no single global ping knob, and that's correct:
 
 1. **Lag-comp rewind is per-SHOOTER, per-shot (live).** Each shot's rewind is derived from *that
-   shooter's* latency by `world::pve_compensation` (`rust/server/src/world.rs`): it resolves the
+   shooter's* latency by `world::pve_compensation` (`rust/server/src/sim/world.rs`): it resolves the
    `client_render_tick` the client stamps on every `PlayerInput` against the server tick counter (16-bit
    wrap-corrected), falling back to an RTT estimate (`2 + ceil((rtt/2)/tick_ms)`). It returns both the
    PvE rewind (cap 6) and the PvP rewind (`min(rewind, 4)`). So a 90 ms shooter rewinds the target
@@ -285,12 +285,12 @@ The load-bearing predicates are centralized so they can only drift in one place:
   shared with the Godot client through the `SimHit` GDExtension class (compiled from the *same* crate),
   so client detection and server validation cannot diverge.
 - **Server validation, shared damage path, and the backstop** live in
-  [`rust/server/src/combat.rs`](../../rust/server/src/combat.rs), tested by the module's own suite
+  [`rust/server/src/sim/combat.rs`](../../rust/server/src/sim/combat.rs), tested by the module's own suite
   (report-applies-to-reporter-only, rejects-player-owned, rejects-implausible, rate-limit window,
   backstop-after-grace, backstop-yields-to-report, id-recycle safety, knockback direction, sprint daze,
   invulnerable no-op, PvP-disabled skip, kill broadcast).
-- **Lag-compensated collision passes** live in `rust/server/src/projectile.rs`; the per-shot rewind
-  derivation is `world::pve_compensation` in `rust/server/src/world.rs`.
+- **Lag-compensated collision passes** live in `rust/server/src/sim/projectile.rs`; the per-shot rewind
+  derivation is `world::pve_compensation` in `rust/server/src/sim/world.rs`.
 
 ## The eight questions
 
@@ -316,7 +316,7 @@ The load-bearing predicates are centralized so they can only drift in one place:
   blatant overlaps); a missing/zero monster projectile id silently disables PvE-on-player; PvP defender
   dodge-feel is offset by design.
 - **Tested:** the predicates are unit-tested in `rust/sim_core/src/hit.rs`; the validation/backstop/
-  damage paths in `rust/server/src/combat.rs`; the collision passes in `rust/server/src/projectile.rs`.
+  damage paths in `rust/server/src/sim/combat.rs`; the collision passes in `rust/server/src/sim/projectile.rs`.
   Run `cd rust && cargo test --workspace`. End-to-end client↔server behaviour is verified by play-test
   and the net smoke scene.
 

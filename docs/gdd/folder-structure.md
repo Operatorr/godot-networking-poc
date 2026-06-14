@@ -165,16 +165,19 @@ client/
 └── tests/
 ```
 
-> **Reality note (today vs. target).** Current on-disk paths differ in places and are converging on
-> the above:
-> - `autoload/auth_manager.gd` → **`auth_service.gd`**; `event_bus.gd` not yet added.
-> - client scripts currently live under `scripts/client/` and `scripts/shared/`; the restructure
->   flattens them into the `core/ data/ factories/ entities/ systems/ network/ ui/ levels/ utils/`
->   layout above. (`scripts/server/` is retired parity ground-truth — see top of this doc.)
-> - `data/` currently has `classes/ config/ definitions/ monsters/`; it gains
->   `enemies/ balance/ loot/ items/ spells/ projectiles/ world/biomes/ schemas/`.
-> - `scenes/` currently mirrors `client/ server/ shared/ test/`; it moves to
->   `entities/ levels/ ui/ test/`.
+> **Status — restructure complete.** The client now uses the
+> `core/ data/ factories/ entities/ systems/ network/ ui/ levels/ utils/` script layout and the
+> `entities/ levels/ ui/ test/` scene layout above; `data/` carries `classes/ config/ monsters/
+> balance/ loot/ items/ spells/ projectiles/ world/ schemas/ definitions/`. A few **intentional
+> deviations** from the idealized tree:
+> - `autoload/auth_manager.gd` keeps its name (the `AuthManager` autoload singleton is referenced
+>   everywhere; renaming the singleton was deemed not worth the churn). `event_bus.gd` is added as
+>   the `EventBus` autoload.
+> - Monster/enemy content data lives under `data/monsters/` (not `data/enemies/`).
+> - `scripts/server/` (the retired GDScript server) was **deleted** — see
+>   [`../server/legacy-parity.md`](../server/legacy-parity.md), not the top of this doc.
+> - Class scope: all seven classes are defined, but only Warrior/Rogue/Mage are playable
+>   (`PacketTypes.PLAYABLE_CLASSES`); the other four are deferred, not removed.
 
 ---
 

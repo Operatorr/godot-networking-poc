@@ -142,7 +142,7 @@ lands.
 ### 12. WebSocket/TCP head-of-line blocking — move state to datagrams
 - **Problem:** All traffic is WebSocket-over-TCP both directions, so one lost segment stalls **all** subsequent state until retransmit — exactly the wrong failure mode for continuous Snapshots.
 - **Fix (seam done; ENet impl deferred):** A **transport abstraction seam** now exists — `transport.gd` (`class_name Transport`) + `websocket_transport.gd` (`class_name WebSocketTransport`); `network_manager.gd` delegates every raw socket verb through it with **zero behaviour / wire change**. The datagram target is **ENet-over-UDP** (not WebRTC/WebTransport — the game is native-only and the server will be ported to Rust, so `rusty_enet` keeps one wire format across both languages). The ENet `Transport` subclass is a deferred, human-approved follow-up; `STATE_UPDATE`+`PLAYER_INPUT` ride unreliable/unsequenced ch0, reliable traffic ch1. Recorded in [ADR 0003](../../adr/0003-enet-udp-transport.md), which supersedes 0001's substrate.
-- **Evidence:** seam `client/autoload/transport/transport.gd:22`, `websocket_transport.gd:11`; ADR `../../adr/0003-enet-udp-transport.md`.
+- **Evidence:** seam `client/scripts/network/transport/transport.gd:22`, `websocket_transport.gd:11`; ADR `../../adr/0003-enet-udp-transport.md`.
 - **Effort:** large · **Impact:** high (on lossy WAN; ~nil on localhost) · **Status:** Done — seam landed (2026-06-04); **ENet datagram impl deferred** (human-approved follow-up).
 - See: [`../../netcode/transport-websocket.md`](../../netcode/transport-websocket.md), [`../../adr/0003-enet-udp-transport.md`](../../adr/0003-enet-udp-transport.md).
 

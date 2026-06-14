@@ -45,7 +45,7 @@ All combat constants live in [`rust/sim_core/src/constants.rs`](../../rust/sim_c
 | Projectile per-tick advance | ~13.3 u (400 ÷ 30) | derived |
 
 > Player primary shots carry a **per-projectile** class+level-scaled damage value
-> (`PlayerState::primary_damage`, [`rust/server/src/player.rs`](../../rust/server/src/player.rs));
+> (`PlayerState::primary_damage`, [`rust/server/src/sim/player.rs`](../../rust/server/src/sim/player.rs));
 > the flat `PLAYER_PROJECTILE_DAMAGE` is only the `damage == 0` fallback in the PvE pass
 > (`combat::process_collisions`). Ability projectiles set their own value. See
 > [`abilities.md`](abilities.md).
@@ -58,22 +58,22 @@ separate "fire" message — the held SHOOT flag and the aim angle ride the input
 
 1. **Client captures intent.** `PredictionController` reads the SHOOT action and ships it inside the
    normal input packet at the server-tick cadence (~33 ms, 30 Hz)
-   (`client/scripts/client/prediction.gd`, `INPUT_FLAG_SHOOT`). On the SHOOT **rising edge** it also
+   (`client/scripts/network/prediction.gd`, `INPUT_FLAG_SHOOT`). On the SHOOT **rising edge** it also
    emits a cosmetic-only `shoot_predicted` signal — see "Client shoot feedback" below.
 2. **Server ingests + edge-detects.** Each tick `PlayerManager::process_all_inputs` drains the input
    queue into the persistent input model. `PlayerState::ingest_input`
-   ([`rust/server/src/player.rs`](../../rust/server/src/player.rs)) detects a rising-edge SHOOT
+   ([`rust/server/src/sim/player.rs`](../../rust/server/src/sim/player.rs)) detects a rising-edge SHOOT
    (`is_shooting && !was_shooting`) and queues a `PendingShot` (aim angle + claimed origin) onto
    `pending_shots`.
 3. **Server fires (single-path, fire-once-per-Tick).** `World::process_shoot_inputs`
-   ([`rust/server/src/world.rs`](../../rust/server/src/world.rs)) drains `pending_shots` first; a
+   ([`rust/server/src/sim/world.rs`](../../rust/server/src/sim/world.rs)) drains `pending_shots` first; a
    `fired_this_tick` latch makes it spawn **at most one** projectile per Tick (surplus same-Tick edges
    are dropped). Held auto-fire runs **only if** no rising-edge press already fired this Tick
    (`!fired_this_tick && state.is_shoot_held() && state.can_shoot()`). `try_spawn_projectile` then
    checks `can_shoot()` (cooldown + alive + authenticated), validates the fire origin
    (`validated_fire_origin`, RTT-bounded muzzle clamp), computes the per-shot rewind ticks
    (`pve_compensation`), spawns via `ProjectileManager::spawn_projectile_ex`
-   ([`rust/server/src/projectile.rs`](../../rust/server/src/projectile.rs)), starts the 0.3 s
+   ([`rust/server/src/sim/projectile.rs`](../../rust/server/src/sim/projectile.rs)), starts the 0.3 s
    cooldown (`start_shoot_cooldown`), and broadcasts a `PROJECTILE_FIRED`
    [Game event](../CONTEXT.md) (event type 12) carrying the muzzle position and the projectile id.
 4. **Projectile integrates.** Each tick `ProjectileState::update` records `previous_position`,
@@ -157,7 +157,7 @@ projectiles only** (monster-owned are skipped — D11 invariant #1):
 
 ### Monster → player: client-detected + server-validated
 
-- **Client detects** (`client/scripts/client/local_hit_detector.gd`). Each frame it swept-tests every
+- **Client detects** (`client/scripts/systems/combat/local_hit_detector.gd`). Each frame it swept-tests every
   live **monster-owned** projectile's rendered travel segment against its **rendered** self position
   (where the player is actually drawn, not the prediction lead), via the shared
   `SimHit.swept_hit` / `SimHit.is_client_authoritative` GDExtension predicates
@@ -217,7 +217,7 @@ Damage/kill events fire every Tick, not gated by the snapshot rate.
 
 The client draws **immediate cosmetic feedback** when the player presses fire, decoupled from the
 server round-trip. `PredictionController` fires the `shoot_predicted` signal on the SHOOT **rising
-edge** (`client/scripts/client/prediction.gd`); the arena plays the shoot sound and spawns a muzzle
+edge** (`client/scripts/network/prediction.gd`); the arena plays the shoot sound and spawns a muzzle
 flash particle. This is **cosmetic only** — the client cannot spawn a local *authoritative*
 projectile, so the real bullet still spawns server-side and damage stays server-confirmed. The
 shooter no longer stares at nothing for a full round-trip; the real bullet arrives in a later
@@ -263,11 +263,11 @@ Snapshot. See [`../netcode/latency-budget.md`](../netcode/latency-budget.md).
   [`rust/sim_core/src/hit.rs`](../../rust/sim_core/src/hit.rs) (authority split, swept-hit strictness,
   flight reconstruction, plausibility, backstop overlap + grace floor); the server damage/report/
   backstop paths have integration tests in
-  [`rust/server/src/combat.rs`](../../rust/server/src/combat.rs) (reporter-only application,
+  [`rust/server/src/sim/combat.rs`](../../rust/server/src/sim/combat.rs) (reporter-only application,
   no-PvP-via-report, implausible-flight rejection, rate limiter, backstop apply/yield/recycle,
   knockback direction, sprint-daze, invulnerable no-event, PvP-disabled skip, kill broadcast); and the
   projectile passes are tested in
-  [`rust/server/src/projectile.rs`](../../rust/server/src/projectile.rs). The client mirror keeps
+  [`rust/server/src/sim/projectile.rs`](../../rust/server/src/sim/projectile.rs). The client mirror keeps
   `client/scripts/test/hit_authority_test.gd`. Run with `cd rust && cargo test --workspace`.
 
 ## See also

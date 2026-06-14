@@ -33,11 +33,11 @@ render frames. So on a 100 fps display, every group of ~3.3 consecutive frames d
 Mechanism, end to end (pre-fix):
 
 1. The client physics clock is the server tick rate. `GameConstants.SERVER_TICK_RATE` (30.0,
-   `client/scripts/shared/game_constants.gd`) is the single authority; `game_manager._ready()`
+   `client/scripts/data/game_constants.gd`) is the single authority; `game_manager._ready()`
    applies it via `Engine.physics_ticks_per_second` (`client/autoload/game_manager.gd`).
    `project.godot`'s `physics/common/physics_ticks_per_second=30` is only the fallback.
 2. **Local player:** `PredictionController._physics_process` writes `player_node.position`
-   (`client/scripts/client/prediction.gd`, `_update_player_visual` / corrections). No `_process`
+   (`client/scripts/network/prediction.gd`, `_update_player_visual` / corrections). No `_process`
    pass moved the node, so between Ticks it never moved.
 3. **Remote entities:** `InterpolationController` assigned `node.position` for every entity but
    committed it only on the physics tick.

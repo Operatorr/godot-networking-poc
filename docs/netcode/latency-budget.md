@@ -3,7 +3,7 @@
 **Status:** Verified against the Rust port (2026-06-14). Evidence base: the authoritative server
 (`rust/server/src/{world,broadcast,config}.rs`), the shared sim (`rust/sim_core/`), the wire spec
 ([`../server/contract.md`](../server/contract.md)), and the Godot client glue
-(`client/scripts/client/{prediction,interpolation_controller}.gd`). Numbers below are the *current*
+(`client/scripts/network/{prediction,interpolation_controller}.gd`). Numbers below are the *current*
 code reality, not targets — for targets see [`performance-budgets.md`](performance-budgets.md) and the
 load-test success criteria in `rust/load_test/src/metrics.rs`.
 
@@ -36,8 +36,8 @@ defaults to 30 and rejects 0):
 | # | Stage | Avg | Worst | Where (rust/ + client) | Fixable? |
 |---|---|---|---|---|---|
 | 1 | Input captured each frame, **sent once per tick (30 Hz)** | ~16 ms | ~33 ms | `prediction.gd` (`INPUT_SEND_INTERVAL = SERVER_TICK_INTERVAL`, tap-latched so a fast tap between sends is never dropped) | **Yes** — raise tick to 60 Hz (costs CPU; gated trial) |
-| 2 | Server waits for next tick to apply input (30 Hz) | ~16 ms | ~33 ms | `rust/server/src/world.rs` (`step`: drain `host.service()` → apply inputs → `sim_core::step_player`) | Partly — raise tick rate |
-| 3 | Server waits to emit next snapshot (**30 Hz**) | ~16 ms | ~33 ms | `rust/server/src/config.rs` `snapshot_rate_hz()` (raw 0 ⇒ tick rate; config sets 30); built in `rust/server/src/broadcast.rs` | Done — snapshot rate matches the tick |
+| 2 | Server waits for next tick to apply input (30 Hz) | ~16 ms | ~33 ms | `rust/server/src/sim/world.rs` (`step`: drain `host.service()` → apply inputs → `sim_core::step_player`) | Partly — raise tick rate |
+| 3 | Server waits to emit next snapshot (**30 Hz**) | ~16 ms | ~33 ms | `rust/server/src/config.rs` `snapshot_rate_hz()` (raw 0 ⇒ tick rate; config sets 30); built in `rust/server/src/net/broadcast.rs` | Done — snapshot rate matches the tick |
 | 4 | Client renders remote entities in the past — **adaptive 1–3 ticks**, jitter-driven | **~33 ms** (clean LAN) | up to **~100 ms** (high jitter) | `interpolation_controller.gd` (`MIN_RENDER_DELAY_TICKS=1`, `MAX=3`) | **Done** — collapses toward ~33 ms on localhost |
 | — | **Total (your action → seen on a remote entity)** | **~80 ms** (clean LAN) | jitter-dependent | — | — |
 
@@ -50,7 +50,7 @@ still sent at 30 Hz (stage 1) and the body still visually steps at 30 Hz (see
 ### Note on the cadence authority
 
 The tick is the single cadence authority. The server runs one synchronous **30 Hz** tick loop on a
-dedicated thread (`rust/server/src/world.rs`; [`design.md` §"The tick"](../server/design.md)); the
+dedicated thread (`rust/server/src/sim/world.rs`; [`design.md` §"The tick"](../server/design.md)); the
 client mirrors it — `Engine.physics_ticks_per_second` and `GameConstants.SERVER_TICK_INTERVAL` drive
 both the prediction step and the input-send cadence. The **snapshot rate equals the tick rate**:
 `snapshot_rate_hz()` returns the tick rate when the raw config value is 0, and otherwise clamps to
@@ -100,7 +100,7 @@ lag-compensated** — the server rewinds against an 8-tick position-history ring
 (`POSITION_HISTORY_TICKS = 8` in `rust/server/src/{monster,player}.rs`) and swept-tests, capped at
 **6 ticks PvE / 4 ticks PvP** (`MAX_PVE_PROJECTILE_COMPENSATION_TICKS = 6`,
 `MAX_PVP_PROJECTILE_COMPENSATION_TICKS = 4` in `rust/sim_core/src/constants.rs`; derivation in
-`rust/server/src/world.rs::pve_compensation`), so the server checks where the shooter *saw* the
+`rust/server/src/sim/world.rs::pve_compensation`), so the server checks where the shooter *saw* the
 victim. See [`../systems/combat-hits.md`](../systems/combat-hits.md). Because the transport is
 per-channel UDP, packet loss no longer stalls all state — the localhost baseline is the floor
 everything else stacks on, which is why fixing the baked-in latency comes first.

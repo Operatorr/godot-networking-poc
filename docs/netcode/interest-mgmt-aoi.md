@@ -1,6 +1,6 @@
 # Interest management (AoI) & LOD
 
-**Status:** Implemented (verified 2026-06-14 against `rust/server/src/broadcast.rs`) — AoI radius
+**Status:** Implemented (verified 2026-06-14 against `rust/server/src/net/broadcast.rs`) — AoI radius
 (1000 enter / 1100 exit, sized to cover the client's view on wide/ultrawide displays), hysteresis,
 3-tier LOD, a per-peer byte-budget scheduler, **and a shared per-tick spatial-grid broad-phase** are
 all built and wired in the Rust **`omega-server`**. The two former structural gaps — a near-useless
@@ -10,7 +10,7 @@ has yet been *measured* at the 500–1000-player target.
 > The Rust `omega-server` (single-threaded synchronous 30 Hz tick over `rusty_enet`) is the **only**
 > authoritative server. The legacy GDScript headless server is retired; its
 > `server_broadcast_service.gd` / `snapshot_scheduler.gd` / `spatial_grid.gd` / `delta_state_cache.gd`
-> were ported verbatim into `rust/server/src/broadcast.rs`, which is the single source of truth for
+> were ported verbatim into `rust/server/src/net/broadcast.rs`, which is the single source of truth for
 > everything below. Cite the Rust module, not the GDScript.
 
 > This is a **scale** concern, not a perceived-latency one. AoI exists so a Snapshot to one player
@@ -37,8 +37,8 @@ Four mechanisms stack, all per-peer, every Snapshot tick:
    ones past a per-peer byte cap (see [`server-tick-broadcast.md`](server-tick-broadcast.md)).
 
 The whole pipeline lives in `BroadcastService::broadcast_state_updates`
-(`rust/server/src/broadcast.rs`), called once per Snapshot tick from the tick loop
-(`rust/server/src/world.rs`, step 6, gated on `snapshot_due`). Entities are gathered fresh that tick
+(`rust/server/src/net/broadcast.rs`), called once per Snapshot tick from the tick loop
+(`rust/server/src/sim/world.rs`, step 6, gated on `snapshot_due`). Entities are gathered fresh that tick
 via `World::collect_entities` (`world.rs`) into a flat `&[EntityData]` (`{ id, position, animation,
 flags }`).
 
@@ -242,7 +242,7 @@ tuning-under-measurement, not missing mechanism:
   delta records); does no AoI itself.
 - **Server:** the Rust `omega-server` builds the shared grid once and computes AoI, hysteresis, LOD,
   and budget per peer every Snapshot tick (`BroadcastService::broadcast_state_updates`,
-  `rust/server/src/broadcast.rs`).
+  `rust/server/src/net/broadcast.rs`).
 - **Predicted:** nothing — AoI is server-side Snapshot filtering, orthogonal to the shared-sim
   prediction (`sim_core` via the `client_ext` GDExtension).
 - **Replicated:** only entities inside a peer's AoI are replicated to that peer; exits are despawned.
@@ -255,7 +255,7 @@ tuning-under-measurement, not missing mechanism:
 - **Can fail:** unproven at 500–1000 players (now observable via the surfaced diagnostics); baseline
   ticks ignore the byte budget (mitigated by ch1 reliable + u16 count + `snapshot_count_overflow`
   warn).
-- **Tested:** `rust/server/src/broadcast.rs` `#[cfg(test)]` unit tests cover delta-mask transitions,
+- **Tested:** `rust/server/src/net/broadcast.rs` `#[cfg(test)]` unit tests cover delta-mask transitions,
   the baseline interval/ack/resend flow, scheduler pinned-bypass and no-early-break, the
   baseline→delta→removal sequence, on-ring hysteresis, and baseline-deferral-while-removals-pending.
   End-to-end load behavior is exercised by the `rust/load_test/` bot swarm; no dedicated

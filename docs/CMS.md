@@ -26,8 +26,8 @@ the rest:
 
 - **Gameplay tuning is not data-loaded at runtime by the authoritative server.** The only
   authoritative server is the Rust **`omega-server`** (`rust/server/`). Monster stats are
-  **compiled-in Rust statics** (`rust/server/src/monster.rs` — `TOXIC_SLIME`, `TARGET_DUMMY`),
-  and per-class / ability tuning is likewise hardcoded (`rust/server/src/ability.rs` —
+  **compiled-in Rust statics** (`rust/server/src/sim/monster.rs` — `TOXIC_SLIME`, `TARGET_DUMMY`),
+  and per-class / ability tuning is likewise hardcoded (`rust/server/src/sim/ability.rs` —
   `ClassStats`). The `client/data/monsters/*.json` and `client/data/classes/*.json` files are a
   **parity mirror / human reference** that the retired GDScript code read; they are *not* the
   authoritative numbers and the Rust server does **not** read them at runtime. Changing a
@@ -106,7 +106,7 @@ Fields: Name · Health · Damage · Speed · AI Type (melee_aggressive | ranged_
         Abilities (from spell list) · Loot Table · Experience Reward · Resistances (k/v)
 Actions: Create · Clone · Visual Preview · Stat-compare Preview · Publish · Archive (soft delete)
 ```
-Today the equivalent values live as Rust statics in `rust/server/src/monster.rs` (and as a parity
+Today the equivalent values live as Rust statics in `rust/server/src/sim/monster.rs` (and as a parity
 mirror in `client/data/monsters/*.json`). An editor would need to write those, then trigger §4.
 
 ### 3.2 Item Editor — NOT BUILT
@@ -124,7 +124,7 @@ Fields: Name · Damage · Mana Cost · Cooldown · Cast Time · Range · Project
         Class Assignment (which classes can cast)
 Features: Visual preview · DPS calculator
 ```
-Today the per-class RMB ability and its tuning are hardcoded in `rust/server/src/ability.rs`
+Today the per-class RMB ability and its tuning are hardcoded in `rust/server/src/sim/ability.rs`
 (`ClassStats`, `AbilityKind`), and that same config feeds the shared `sim_core` so prediction
 matches the server. **Any editor here is constrained by the shared-sim invariant:** the
 prediction sim and the server run the *same compiled crate*, so edited ability numbers must reach
@@ -212,8 +212,8 @@ content (monster HP, AI ranges, XP rewards) that prediction never reads.
 - **As-built HTTP/JSON contract + Astro SSR integration:** [`api/web-api.md`](api/web-api.md)
 - **As-built website app:** [`web/README.md`](../web/README.md), `web/src/`
 - **Authoritative server (where content actually lives today):** [`server/design.md`](server/design.md),
-  [`server/contract.md`](server/contract.md); statics in `rust/server/src/monster.rs`,
-  `rust/server/src/ability.rs`; runtime config in `rust/server/src/main.rs` ↔
+  [`server/contract.md`](server/contract.md); statics in `rust/server/src/sim/monster.rs`,
+  `rust/server/src/sim/ability.rs`; runtime config in `rust/server/src/main.rs` ↔
   `client/data/config/server_config.json`
 - **Deployment (no CDN; git-pull rebuild):** [ADR 0007](adr/0007-native-systemd-deployment.md),
   `scripts/deploy.sh`

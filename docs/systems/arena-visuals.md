@@ -13,13 +13,13 @@ the generated assets are missing, so a checkout without the art keeps working.
 ## The eight questions
 
 - **Client:** everything in this doc — all art is render-only.
-  [`SheetLibrary`](../../client/scripts/shared/visuals/sheet_library.gd) builds
+  [`SheetLibrary`](../../client/scripts/systems/visuals/sheet_library.gd) builds
   `SpriteFrames` from sheet directories at runtime;
-  [`player.gd`](../../client/scripts/shared/player/player.gd),
-  [`remote_player.gd`](../../client/scripts/shared/player/remote_player.gd),
-  [`monster.gd`](../../client/scripts/shared/monster/monster.gd),
-  [`projectile.gd`](../../client/scripts/shared/projectile/projectile.gd) consume
-  them; [`arena_base.gd`](../../client/scripts/shared/arena_base.gd) builds the
+  [`player.gd`](../../client/scripts/entities/player/player.gd),
+  [`remote_player.gd`](../../client/scripts/entities/player/remote_player.gd),
+  [`monster.gd`](../../client/scripts/entities/enemies/monster.gd),
+  [`projectile.gd`](../../client/scripts/entities/projectiles/projectile.gd) consume
+  them; [`arena_base.gd`](../../client/scripts/levels/arena_base.gd) builds the
   prop layer (`ARENA_PROPS` table → "Props" Node2D ordered just before
   `EntityContainer`).
 - **Server:** knows nothing about any of this. The only server-side change is

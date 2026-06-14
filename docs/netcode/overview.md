@@ -23,14 +23,14 @@ Two client-side techniques hide the round-trip without surrendering authority:
 
 - The [Local player](../CONTEXT.md) is **predicted** — the client simulates its own input
   immediately through the **same compiled `sim_core` crate** the server runs, exposed to GDScript
-  as `PredictionSim` (`client/scripts/client/prediction.gd`; the `client_ext` GDExtension). Because
+  as `PredictionSim` (`client/scripts/network/prediction.gd`; the `client_ext` GDExtension). Because
   client and server execute literally the same movement code, prediction cannot diverge on the
   math; later it [reconciles](../CONTEXT.md) to the server's `ActionConfirm`. Drift past the 4-unit
   epsilon (`prediction.gd` `server_position_epsilon`) smooth-corrects; jumps past the 150-unit
   teleport threshold (`prediction.gd` `teleport_threshold`) hard-warp.
 - Every [Remote entity](../CONTEXT.md) is **interpolated**, never predicted — drawn from buffered
   Snapshots at a fixed [Render delay](../CONTEXT.md) of `REMOTE_ENTITY_RENDER_DELAY_TICKS = 2`
-  (`client/scripts/shared/game_constants.gd`, applied in `interpolation_controller.gd`) ≈ 66.7 ms
+  (`client/scripts/data/game_constants.gd`, applied in `interpolation_controller.gd`) ≈ 66.7 ms
   behind the server tick. The delay adapts within `[1, 3]` ticks under jitter.
 
 Persistence is split: all gameplay state is **in-memory and server-authoritative**; the **Go API**
@@ -47,14 +47,14 @@ they are named with the [glossary](../CONTEXT.md) terms ([Tick](../CONTEXT.md) �
 | Loop | Where | Driver | Rate | What it does |
 |---|---|---|---|---|
 | **Server Tick** | `rust/server/src/main.rs`, `world.rs::tick` | fixed 30 Hz accumulator over non-blocking ENet `host.service()` | **30 Hz** (33.3 ms) | advance the authoritative simulation one Tick |
-| **Server Snapshot** | `rust/server/src/world.rs` (`snapshot_accumulator`), `broadcast.rs` | second accumulator gated on the Tick | **30 Hz live** (matches tick; see note) | build + send per-peer `Snapshot` |
+| **Server Snapshot** | `rust/server/src/sim/world.rs` (`snapshot_accumulator`), `broadcast.rs` | second accumulator gated on the Tick | **30 Hz live** (matches tick; see note) | build + send per-peer `Snapshot` |
 | **Client predict + interpolate** | `prediction.gd::_physics_process`, `interpolation_controller.gd` | `_physics_process` | **30 Hz** (33.3 ms) | predict Local player, interpolate Remote entities, send `PlayerInput` |
 
 ### 1. Server Tick — 30 Hz, single-threaded synchronous
 
 The main thread **is** the tick thread (`rust/server/src/main.rs`): a fixed 30 Hz accumulator loop
 over a non-blocking `host.service()` — there is no game-engine frame loop. Each Tick, in order
-(`rust/server/src/world.rs::tick`): drain `host.service()` → decode and route → apply inputs (per-
+(`rust/server/src/sim/world.rs::tick`): drain `host.service()` → decode and route → apply inputs (per-
 player latched flags, `_pending_dash`, stale-input timeout) → step players through
 `sim_core::step_player` → monster AI (`monster.rs`) → record monster position history (lag-comp
 ring) → projectile + collision pass (`projectile.rs`, `combat.rs`, two-netcode model) → deaths /
@@ -67,7 +67,7 @@ blocking the tick.
 ### 2. Server Snapshot — decoupled from the Tick by an accumulator
 
 Snapshot bandwidth is **decoupled** from the Tick by a second accumulator
-(`rust/server/src/world.rs`: `snapshot_accumulator += tick_dt`, fire when `>= snapshot_interval`).
+(`rust/server/src/sim/world.rs`: `snapshot_accumulator += tick_dt`, fire when `>= snapshot_interval`).
 A Tick only sets `snapshot_due` when enough wall time has elapsed at `snapshot_rate_hz`; events
 (`GameEvent`) still fire every Tick — only continuous state is rate-limited.
 
@@ -99,7 +99,7 @@ All three loops ride **ENet over UDP** ([ADR 0003](../adr/0003-enet-udp-transpor
 WebSocket/TCP, and **not** Godot High-Level Multiplayer (`MultiplayerSynchronizer` /
 `ENetMultiplayerPeer`). The server uses pure-Rust `rusty_enet` (pinned `=0.4.0`); the client uses
 Godot's native low-level `ENetConnection` + `ENetPacketPeer`
-(`client/autoload/transport/enet_transport.gd`), wire-compatible with `rusty_enet`. Three channels,
+(`client/scripts/network/transport/enet_transport.gd`), wire-compatible with `rusty_enet`. Three channels,
 each matched to its traffic — see [the packet map](#the-packet-map) below. ENet's native
 keepalive / RTT / timeout **replaces the old application HEARTBEAT**; the clock-sync payload
 interpolation needs (`server_ms`) rides **every** `Snapshot` instead. Deep dive:

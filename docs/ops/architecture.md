@@ -159,12 +159,12 @@ bandwidth).
 | Monster | 2 | 30000–39999 |
 | World-effect entity (healthorbs, ability effects) | 3 | 40000–49999 |
 
-**Per tick** (`rust/server/src/world.rs` drives it): drain `host.service()` → decode and route
+**Per tick** (`rust/server/src/sim/world.rs` drives it): drain `host.service()` → decode and route
 (`rust/protocol/`) → apply inputs → step players through `sim_core::step_player` → monster AI
-(`rust/server/src/monster.rs`) → record monster position history (lag-comp ring, ≥ 6 ticks) →
-projectile + collision pass (`rust/server/src/projectile.rs`, `combat.rs`) → deaths / respawns /
+(`rust/server/src/sim/monster.rs`) → record monster position history (lag-comp ring, ≥ 6 ticks) →
+projectile + collision pass (`rust/server/src/sim/projectile.rs`, `combat.rs`) → deaths / respawns /
 leaderboard → build per-peer snapshots (AoI grid + hysteresis, per-peer delta cache, byte budget —
-`rust/server/src/broadcast.rs`) → send confirms + events (`outbox.rs`) → `host.flush()` → sleep the
+`rust/server/src/net/broadcast.rs`) → send confirms + events (`outbox.rs`) → `host.flush()` → sleep the
 remainder in short slices that keep ENet acks timely. Infrequent side I/O (Go API heartbeat,
 character persistence — `api_client.rs`, `progression_client.rs`) runs on a **separate thread** over
 `std::sync::mpsc`, never blocking the tick.
@@ -324,7 +324,7 @@ Bandwidth is the binding constraint, so this is where the design spends its effo
 2. **Quantization** — positions/velocities to `i16` at 0.1-unit precision; angles ×100; resources to
    `u8`. (See [transport](#transport--wire-protocol).)
 3. **Interest management (AoI)** — only entities inside a player's Area of Interest are sent, via an
-   AoI grid with hysteresis (`rust/server/src/broadcast.rs`,
+   AoI grid with hysteresis (`rust/server/src/net/broadcast.rs`,
    [`../netcode/interest-mgmt-aoi.md`](../netcode/interest-mgmt-aoi.md)).
 4. **Delta compression** — per-peer delta caches send only changed fields against an **acked
    baseline** (5-bit per-entity change mask); periodic baselines (100-tick interval, 30-tick resend).

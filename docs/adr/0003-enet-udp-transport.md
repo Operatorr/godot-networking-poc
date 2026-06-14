@@ -1,7 +1,7 @@
 # ADR 0003 — ENet-over-UDP datagram transport (supersedes 0001's substrate)
 
 **Status:** Implemented — 2026-06-11 (Rust port). The client side is
-`client/autoload/transport/enet_transport.gd` (3 raw channels over `ENetConnection`); the server
+`client/scripts/network/transport/enet_transport.gd` (3 raw channels over `ENetConnection`); the server
 side is the Rust `omega-server` binary (`rust/server`, `rusty_enet`). Supersedes
 [ADR 0001](0001-websocket-tcp-transport.md) on the transport substrate. One consequence below
 was later amended: the port redesigned the **wire format too** — see

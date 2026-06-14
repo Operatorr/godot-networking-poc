@@ -97,7 +97,7 @@ its Ed25519 seed (`OMEGA_TICKET_PRIVKEY`), and returns the 86-byte blob base64-e
 `api/internal/auth/ticket.go` (signer + region map), `api/internal/handlers/ticket.go` (endpoint),
 `api/cmd/gen_ticket_key` (keypair generator). The exact byte layout is locked to the verifier by a
 shared cross-language test vector (`api/internal/auth/ticket_test.go` ⇄
-`rust/server/src/auth.rs::go_cross_language_ticket_vector`). **Not yet built:** the *client* fetch
+`rust/server/src/net/auth.rs::go_cross_language_ticket_vector`). **Not yet built:** the *client* fetch
 flow (M3) — `network_manager.gd` still presents an empty ticket — so player-facing deploys run
 `--allow-unsigned-tickets` until that lands.
 

@@ -9,7 +9,7 @@ status-tagged so we build the right amount for a netcode POC and no more.
 
 > **Two homes, one catalogue (post-Rust-port).** Authority moved off GDScript. The only
 > authoritative server is the Rust **`omega-server`** (`rust/server/`, single-threaded 30 Hz tick).
-> Monster *definitions, AI, spawning, and id allocation* live in **`rust/server/src/monster.rs`**.
+> Monster *definitions, AI, spawning, and id allocation* live in **`rust/server/src/sim/monster.rs`**.
 > The Godot client keeps a **data-driven catalogue** under `client/data/monsters/*.json`, loaded by
 > **`MonsterDatabase`** into **`MonsterDefinition`**, but it consumes that catalogue only for
 > **rendering** (sprite colours, display name) and for the standalone **offline-sandbox** AI — never
@@ -29,7 +29,7 @@ The authoritative half is Rust; the client half is render-only.
 ```
 SERVER (authoritative)                          CLIENT (render-only)
 ─────────────────────────────────────          ──────────────────────────────────────
-rust/server/src/monster.rs                      client/data/monsters/<id>.json
+rust/server/src/sim/monster.rs                      client/data/monsters/<id>.json
   static MonsterDefinition  (TOXIC_SLIME,         + index.json manifest
                              TARGET_DUMMY)              │
   definition(type_id) → &'static def                   ▼
@@ -62,10 +62,10 @@ On the server there is **one** `MonsterState` and **one** `MonsterAi`. Monsters 
 
 | Pattern | How it shows up here | Where |
 |---|---|---|
-| **Prototype / data-driven** | Stats/perception/combat/movement are fields on a definition, not hardcode. Server: `&'static MonsterDefinition`. Client: `MonsterDefinition` parsed from JSON. | `rust/server/src/monster.rs`, `client/data/monsters/*.json` |
-| **Registry / lookup** | Server `definition(type_id)` resolves id→def (unknown→toxic_slime). Client `MonsterDatabase` loads the catalogue and resolves id→def. | `rust/server/src/monster.rs`, `shared/monster/monster_database.gd` |
-| **Spawn director** | `MonsterManager.spawn_monster()` allocates an id + tracks state; `MonsterSpawner` is the 3-layer placement director. | `rust/server/src/monster.rs` |
-| **Component-ish composition** | One `MonsterState` + one `MonsterAi` parameterised by the definition's fields rather than a class per monster. | `rust/server/src/monster.rs` |
+| **Prototype / data-driven** | Stats/perception/combat/movement are fields on a definition, not hardcode. Server: `&'static MonsterDefinition`. Client: `MonsterDefinition` parsed from JSON. | `rust/server/src/sim/monster.rs`, `client/data/monsters/*.json` |
+| **Registry / lookup** | Server `definition(type_id)` resolves id→def (unknown→toxic_slime). Client `MonsterDatabase` loads the catalogue and resolves id→def. | `rust/server/src/sim/monster.rs`, `shared/monster/monster_database.gd` |
+| **Spawn director** | `MonsterManager.spawn_monster()` allocates an id + tracks state; `MonsterSpawner` is the 3-layer placement director. | `rust/server/src/sim/monster.rs` |
+| **Component-ish composition** | One `MonsterState` + one `MonsterAi` parameterised by the definition's fields rather than a class per monster. | `rust/server/src/sim/monster.rs` |
 | **Server-authoritative AI** | Every monster decision runs on the server tick; clients only render. | see [`monsters-ai.md`](monsters-ai.md) |
 
 ## The shipped monsters (exactly two)
@@ -88,7 +88,7 @@ nothing today.
 To add a **behaviourally-distinct, server-driven** monster you must touch both sides:
 
 1. **Server behaviour (Rust).** Add a `static FOO: MonsterDefinition = …` in
-   `rust/server/src/monster.rs` and a match arm in `definition()` so `"foo"` resolves to it. If it
+   `rust/server/src/sim/monster.rs` and a match arm in `definition()` so `"foo"` resolves to it. If it
    needs new behaviour (anything other than the `ranged_kiter` FSM or the `stationary_dummy`
    short-circuit) you must also implement a new `ai_profile` branch in `MonsterAi` — the profile
    string alone does nothing. Rebuild the server (`./scripts/build_server.sh`).
@@ -127,7 +127,7 @@ To render multiple archetypes, add a 1-byte archetype id to the monster record:
 
 ## The definition schema
 
-The **server** definition (`rust/server/src/monster.rs`, `struct MonsterDefinition`) carries only
+The **server** definition (`rust/server/src/sim/monster.rs`, `struct MonsterDefinition`) carries only
 the fields the AI/combat actually consume. The **client** definition
 (`shared/monster/monster_definition.gd`, parsed by `MonsterDefinition.from_dict()`) is a superset:
 it adds render/designer fields and falls back field-by-field to the matching `GameConstants.MONSTER_*`
@@ -162,7 +162,7 @@ default, so a partial JSON still yields a valid, behaviour-preserving monster.
 | `abilities` / `loot` / `spawn` / `networking` | object/array | preserved verbatim | — | **client documentation only** (server ignores) |
 
 > **Coupling note — projectile damage.** Monster shots still apply a **flat constant**, not the
-> per-type `projectile_damage`. On hit, `combat::apply_player_hit` (`rust/server/src/combat.rs`)
+> per-type `projectile_damage`. On hit, `combat::apply_player_hit` (`rust/server/src/sim/combat.rs`)
 > selects damage by **owner-id range**: an owner id `>= 30000` (a monster) applies
 > `MONSTER_PROJECTILE_DAMAGE`; otherwise `PLAYER_PROJECTILE_DAMAGE`. Projectiles don't carry
 > per-source basic-attack damage for the PvE branch yet, so the JSON `combat.projectile_damage` is
@@ -274,7 +274,7 @@ Networking:  server_authoritative · replicated[] · client_predicted  (descript
 - **Can fail:** per-type damage not wired for the PvE branch (documented coupling); `MonsterSpawner`
   hardcodes `toxic_slime`; no hard leash / navmesh (documented limits); non-implemented `ai_profile`s
   silently run as `ranged_kiter`.
-- **Tested:** `rust/server/src/monster.rs` has unit tests for firing/ids/damage/spawn-visibility/dummy
+- **Tested:** `rust/server/src/sim/monster.rs` has unit tests for firing/ids/damage/spawn-visibility/dummy
   behaviour (`cargo test --workspace`); the client catalogue compiles under
   `godot --headless --editor --quit`. Behaviour was preserved across the port by construction.
 
@@ -285,5 +285,5 @@ Networking:  server_authoritative · replicated[] · client_predicted  (descript
 - [`../server/design.md`](../server/design.md) — server architecture & rationale (tick, shared sim, transport).
 - [`../gdd/MONSTERS.md`](../gdd/MONSTERS.md) — the 95-monster design roster (aspirational; most profiles unimplemented).
 - [`../CONTEXT.md`](../CONTEXT.md) — glossary (Tick, Remote entity, Snapshot, Game event).
-- `rust/server/src/monster.rs` — `MonsterDefinition` / `MonsterManager` / `MonsterAi` / `MonsterSpawner`.
+- `rust/server/src/sim/monster.rs` — `MonsterDefinition` / `MonsterManager` / `MonsterAi` / `MonsterSpawner`.
 - `client/data/monsters/toxic_slime.json` — the reviewable client data sheet.

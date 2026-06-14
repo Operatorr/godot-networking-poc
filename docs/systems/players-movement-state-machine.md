@@ -11,15 +11,15 @@ multiplier) with a real state machine plus two resources (stamina, mana) and per
 The **canonical definition lives in Rust**: `MovementSm` in `rust/sim_core/src/movement.rs`. It is
 run **identically** by
 
-- the authoritative server — `PlayerState::step` (`rust/server/src/player.rs`) calls
+- the authoritative server — `PlayerState::step` (`rust/server/src/sim/player.rs`) calls
   `sim_core::step_movement` (`rust/sim_core/src/step.rs`), which calls `MovementSm::tick`; and
 - the **client prediction** — the local player's predictor drives the **same compiled crate** through
   the `PredictionSim` GDExtension (`rust/client_ext/src/lib.rs`, owned by
-  `client/scripts/client/prediction.gd`). Prediction cannot diverge from the server because it is the
+  `client/scripts/network/prediction.gd`). Prediction cannot diverge from the server because it is the
   *same code*; the position-reconciliation path (snapshot vs. predicted) corrects any residual.
 
 The GDScript `MovementStateMachine`
-(`client/scripts/shared/player/movement_state_machine.gd`) is a **line-by-line mirror** of the Rust
+(`client/scripts/entities/player/movement_state_machine.gd`) is a **line-by-line mirror** of the Rust
 SM, but it is **not** the online predictor. It is used in two narrower roles:
 
 1. **Offline mover** (Practice / Sandbox / Sanctuary, `Player.prediction_owns_movement = false`):
@@ -58,14 +58,14 @@ enum MoveState { Idle, Walking, Sprinting, Dashing, KnockedBack, Stunned, Abilit
 a *held-input* directional dash (along move-dir, or aim-dir when standing still), invulnerable, up to
 `charge_max_distance`. It is purely directional (no target lookup) so the client predicts it; on the
 **natural** end (RMB release or max-distance) the SM sets `charge_just_ended`, and the server spawns
-the AOE blast (`rust/server/src/world.rs` `process_charge_blasts`). Server-side enemy contact ends it
+the AOE blast (`rust/server/src/sim/world.rs` `process_charge_blasts`). Server-side enemy contact ends it
 via `end_charge()` (server pairs its own blast); stun/teleport clear the charge **without** a blast.
 
 **Daze is a timer, not a state.** `apply_daze(duration)` locks out sprint and dash and ends any
 in-progress sprint; walking, knockback, and ability/charge velocities proceed normally. It coexists
 with KnockedBack — the usual companion on a hit. Re-application **extends, never shortens**
 (`daze_time_left.max(duration)`). Applied server-side when a player is **hit while Sprinting**
-(`rust/server/src/combat.rs` `apply_player_hit` — `was_sprinting` → `apply_daze(PLAYER_DAZE_DURATION)`);
+(`rust/server/src/sim/combat.rs` `apply_player_hit` — `was_sprinting` → `apply_daze(PLAYER_DAZE_DURATION)`);
 replicated via the `DAZED` entity flag (bit 8; entity flags are u16 since protocol v2). The client
 slaves its predicted daze to that flag — apply on the rising edge, `clear_daze()` on the falling edge
 (`prediction.gd` `_update_own_flags`) — and shows the `DazeIndicator` circling-stars visual above the
@@ -100,7 +100,7 @@ agree by construction (they are read-checked against each other).
 load and each PROGRESS event), via `set_base_speed` and `set_ability_config(cost, cooldown,
 charge_speed, charge_max_distance)`. Identical values both sides keep prediction in lockstep, and
 they survive `reset()` (they belong to the character, not the life). Per-class stats live in
-`rust/server/src/ability.rs` (`effective_base_speed`, `stats_for_class`); only Warrior (Charge,
+`rust/server/src/sim/ability.rs` (`effective_base_speed`, `stats_for_class`); only Warrior (Charge,
 `charge_speed = 720`), Rogue, and Mage are in pre-alpha scope.
 
 **Triggers.** Dash is **edge-triggered** on `dash` (Spacebar): the client latches the press and sets
@@ -130,7 +130,7 @@ inputs (force, durations, resource sets, ability config) so a corrupt value cann
 
 Movement state is replicated to remote viewers via entity flags — `DASHING` (bit 6; **also set while
 Charging**), `KNOCKED_BACK` (bit 7), `STUNNED` (bit 4), `DAZED` (bit 8), and `STEALTH` (bit 9,
-protocol v4, Rogue) — set in `PlayerState::update_entity_flags` (`rust/server/src/player.rs`).
+protocol v4, Rogue) — set in `PlayerState::update_entity_flags` (`rust/server/src/sim/player.rs`).
 Charging also forces `INVULNERABLE` (bit 3). Stamina/mana are an **owner-only** sync riding the
 ~30 Hz `ActionConfirm` (type 66, ch0; two trailing `u8` resource bytes quantized `clamp(round(v),
 0, 255)`), applied via `MovementSm::set_resources` (epsilon-gated). See

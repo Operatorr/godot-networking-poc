@@ -32,16 +32,16 @@ headless server is retired and being deleted — do not cite `client/scripts/ser
 | --- | --- | --- | --- | --- | --- |
 | **Tick rate** (sim) | ≥20 Hz under load | ≥30 Hz sustained | ≥30 Hz (`SERVER_FPS_MIN`, `rust/load_test/src/metrics.rs`) | **30 Hz** — `SERVER_TICK_RATE` (`rust/sim_core/src/constants.rs`), single synchronous tick loop in `rust/server/src/main.rs` over `rusty_enet` | Code beats the 20 Hz POC floor; matches eng + the load-test gate. No captured number at scale yet; 60 Hz trial gated (perf-notes). |
 | **Snapshot rate** (Snapshot send) | not specified separately | 20 Hz default | — (gate is on tick rate, not snapshot rate) | **30 Hz LIVE** — `snapshot_rate_hz=30` in `deployment/server_config.{arena,sanctuary}.json`; `snapshot_rate_hz_raw=0` default ⇒ tick-rate fallback (`Config::snapshot_rate_hz`, `rust/server/src/config.rs`) | Matches the 30 Hz tick. The 30-vs-60 tick/snapshot trial is gated in [`perf-notes/tick-rate-30-vs-60.md`](perf-notes/tick-rate-30-vs-60.md) (results PENDING). |
-| **Tick time, avg** | <50 ms frame time | <8 ms at target load | reported, not asserted (`server_avg_tick_time_ms`, `rust/load_test/src/metrics.rs`) | — `avg_tick_time_ms_x100` over last 30 ticks (`MetricsCollector::build_packet`, `rust/server/src/metrics.rs`); also a Prometheus `tick_duration_ms` histogram + `avg_tick_time_ms` gauge | Measured, not captured at scale. POC's 50 ms is 6× looser than eng's 8 ms. Load test prints avg/max but does not gate on either. |
-| **Tick time, p95** | (none) | <16 ms at target load | not asserted | **not in the wire packet** — only avg + max in `ServerMetrics`; a full `tick_duration_ms` **histogram** does exist in Prometheus (`rust/server/src/metrics.rs`), so p50/p95/p99 are scrapeable there even though they never hit the wire | No percentile on the `SERVER_METRICS` wire / load-test report; query Prometheus for them. No over-budget tick count. |
-| **Tick time, max** | (none) | <25 ms outside startup | reported, not asserted (`server_max_tick_time_ms`) | — `max_tick_time_ms_x100` over the last 30 ticks (`rust/server/src/metrics.rs`) | 30-tick window only (`METRICS_SAMPLE_SIZE`); transient spikes outside it are lost from the wire field (the Prometheus histogram still catches them). |
-| **Bandwidth / player** | **<2 KB/s** | <5 KB/s | **<5 KB/s** (`BANDWIDTH_PER_PLAYER_MAX_KBPS`, asserted) | — per-peer **byte budget** derived from the client's advertised `bandwidth_budget_bps` (in `ConnectAuth`): `clamp(advertised_bps / snapshot_rate, 256, max_snapshot_bytes)` (`World::handle_connect_auth`, `rust/server/src/world.rs`; floor `MIN_SNAPSHOT_FLOOR=256`, ceiling `max_snapshot_bytes=1200`). At the 1200 B cap × 30 Hz that is **36 KB/s** before AoI/delta culling; measured avg is `avg_bandwidth_per_client` (`rust/server/src/metrics.rs`). | **Drift:** POC table says 2 KB/s; eng + the load-test gate align on **5 KB/s** — the gate is the one that runs. |
+| **Tick time, avg** | <50 ms frame time | <8 ms at target load | reported, not asserted (`server_avg_tick_time_ms`, `rust/load_test/src/metrics.rs`) | — `avg_tick_time_ms_x100` over last 30 ticks (`MetricsCollector::build_packet`, `rust/server/src/net/metrics.rs`); also a Prometheus `tick_duration_ms` histogram + `avg_tick_time_ms` gauge | Measured, not captured at scale. POC's 50 ms is 6× looser than eng's 8 ms. Load test prints avg/max but does not gate on either. |
+| **Tick time, p95** | (none) | <16 ms at target load | not asserted | **not in the wire packet** — only avg + max in `ServerMetrics`; a full `tick_duration_ms` **histogram** does exist in Prometheus (`rust/server/src/net/metrics.rs`), so p50/p95/p99 are scrapeable there even though they never hit the wire | No percentile on the `SERVER_METRICS` wire / load-test report; query Prometheus for them. No over-budget tick count. |
+| **Tick time, max** | (none) | <25 ms outside startup | reported, not asserted (`server_max_tick_time_ms`) | — `max_tick_time_ms_x100` over the last 30 ticks (`rust/server/src/net/metrics.rs`) | 30-tick window only (`METRICS_SAMPLE_SIZE`); transient spikes outside it are lost from the wire field (the Prometheus histogram still catches them). |
+| **Bandwidth / player** | **<2 KB/s** | <5 KB/s | **<5 KB/s** (`BANDWIDTH_PER_PLAYER_MAX_KBPS`, asserted) | — per-peer **byte budget** derived from the client's advertised `bandwidth_budget_bps` (in `ConnectAuth`): `clamp(advertised_bps / snapshot_rate, 256, max_snapshot_bytes)` (`World::handle_connect_auth`, `rust/server/src/sim/world.rs`; floor `MIN_SNAPSHOT_FLOOR=256`, ceiling `max_snapshot_bytes=1200`). At the 1200 B cap × 30 Hz that is **36 KB/s** before AoI/delta culling; measured avg is `avg_bandwidth_per_client` (`rust/server/src/net/metrics.rs`). | **Drift:** POC table says 2 KB/s; eng + the load-test gate align on **5 KB/s** — the gate is the one that runs. |
 | **Latency p95** | <150 ms same-region | <150 ms (avg <100) | **<150 ms p95 + <100 ms avg** (`LATENCY_P95_MAX_MS` / `LATENCY_AVG_MAX_MS`, asserted) | **measured client-side** by the swarm as **ENet-native RTT** (`rust/load_test/src/metrics.rs`); no server-side RTT histogram (the app HEARTBEAT echo died with the WebSocket protocol — clock sync now rides `Snapshot.server_ms`) | Aligned target; latency is gated, but only from the load-test client. No server-side per-peer RTT distribution. |
 | **Packet loss** | (none) | (none) | **<2 %** (`PACKET_LOSS_MAX_PCT`, asserted) | **measured client-side** as ENet's mean loss ratio (`enet_packet_loss`, `rust/load_test/src/metrics.rs`) — replaced the old snapshot-tick-gap estimate | Gated by the swarm; no server-side counterpart. |
 | **Crash rate** | (none) | (none) | **<5 %** (`CRASH_RATE_MAX_PCT`, asserted) | bots that never reached Running or were dropped unexpectedly, over all bots (`Aggregated::crash_rate_pct`, `rust/load_test/src/metrics.rs`) | Lumps connect-time timeouts with mid-run drops (documented bias in the source). |
 | **CPU / player** | **<0.5%** vs **<1%** | (via tick-time budget) | not measured | **not measured** — no per-player CPU attribution; inferred only from tick time | **Drift:** POC table says 0.5%, the old per-player-cost table said 1%. No CPU/player metric exists. |
 | **Memory / player** | <5 MB | (none) | not measured | **not measured** — no heap/player metric | No mem-per-player instrumentation. |
-| **Max players** | 500–1000 / server | (release gate) | swarm `--bots N` drives it; no in-binary cap asserted | **`max_players` = 100** (`Config` default + `deployment/server_config.{arena,sanctuary}.json`, `rust/server/src/config.rs`) | Shipped cap is 100; the 500–1000 goal is unproven. The old u8 entity-count wire cap (255/packet) is **gone** — `entity_count` is `u16` (`Snapshot` header, `../server/contract.md`; `ServerMetrics.entity_count`, `rust/server/src/metrics.rs`). |
+| **Max players** | 500–1000 / server | (release gate) | swarm `--bots N` drives it; no in-binary cap asserted | **`max_players` = 100** (`Config` default + `deployment/server_config.{arena,sanctuary}.json`, `rust/server/src/config.rs`) | Shipped cap is 100; the 500–1000 goal is unproven. The old u8 entity-count wire cap (255/packet) is **gone** — `entity_count` is `u16` (`Snapshot` header, `../server/contract.md`; `ServerMetrics.entity_count`, `rust/server/src/net/metrics.rs`). |
 | **Render delay** (remote) | (none) | ~100 ms suggested | — | **66.7 ms** — 2 ticks @30 Hz (`REMOTE_ENTITY_RENDER_DELAY_TICKS=2`, `rust/sim_core/src/constants.rs`) | Below the ~100 ms the plan argues for, but with snapshot rate == tick rate (33.3 ms interval) 2 ticks absorbs ~2 missed snapshots. |
 
 ## Doc drift, called out explicitly
@@ -64,7 +64,7 @@ columns as ground truth; treat the others as aspirational and stale:
 
 ## What the server's MetricsCollector measures today
 
-`MetricsCollector` (`rust/server/src/metrics.rs`) builds the **`ServerMetrics` packet at 1 Hz** (type 68,
+`MetricsCollector` (`rust/server/src/net/metrics.rs`) builds the **`ServerMetrics` packet at 1 Hz** (type 68,
 ch1 reliable — see [`../server/contract.md`](../server/contract.md)) and mirrors a subset into
 Prometheus gauges/histograms exported on `127.0.0.1:<metrics_port>` (arena `:9100`, sanctuary `:9101`,
 loopback-only, scraped over an SSH tunnel):
@@ -75,7 +75,7 @@ loopback-only, scraped over an SSH tunnel):
 | `player_count` / `entity_count` | per build (`build_packet`) | `u16` each (the old u8 entity cap is gone); `entity_count` excludes players, for GDScript parity. |
 | `total_bytes_sent` / `total_bytes_received` | `record_sent` / `record_received` | cumulative `u32` (wraps at 4 GB on the wire). |
 | `avg_bandwidth_per_client` | per-peer byte delta ÷ elapsed ÷ peers | a **rate** (bytes/sec); avg across peers, not a distribution. |
-| `sched_entities_deferred` / `sched_max_queue_age_ticks` / `sched_peers_at_budget_pct` / `sched_peers_evaluated` / `sched_snapshot_overflow` | `broadcast::TickDiagnostics` (`rust/server/src/broadcast.rs`) | the byte-budget scheduler diagnostics — on the `SERVER_METRICS` wire and re-exported to the client HUD. |
+| `sched_entities_deferred` / `sched_max_queue_age_ticks` / `sched_peers_at_budget_pct` / `sched_peers_evaluated` / `sched_snapshot_overflow` | `broadcast::TickDiagnostics` (`rust/server/src/net/broadcast.rs`) | the byte-budget scheduler diagnostics — on the `SERVER_METRICS` wire and re-exported to the client HUD. |
 
 Prometheus also exports `players_online`, `entities`, `avg_tick_time_ms`,
 `avg_bandwidth_per_client_bytes`, and `snapshot_entities_deferred` gauges plus the `tick_duration_ms`
@@ -84,19 +84,19 @@ histogram (`MetricsCollector::record_tick_time` / `build_packet`).
 ## The byte-budget scheduler
 
 The per-snapshot byte budget is the thing that keeps ch0 datagrams under the MTU and bounds bandwidth.
-It is enforced by the priority scheduler in `rust/server/src/broadcast.rs`
+It is enforced by the priority scheduler in `rust/server/src/net/broadcast.rs`
 (`BroadcastService` / `schedule`):
 
 - Each peer gets a per-tick byte budget = `clamp(advertised_bandwidth_bps / snapshot_rate, 256, 1200)`,
   derived at join from the client's `ConnectAuth.bandwidth_budget_bps` (`World::handle_connect_auth`,
-  `rust/server/src/world.rs`; defaults `default/min/max_client_bandwidth_bps` = 120k/24k/200k bps in
+  `rust/server/src/sim/world.rs`; defaults `default/min/max_client_bandwidth_bps` = 120k/24k/200k bps in
   `rust/server/src/config.rs`).
 - Entity records are admitted greedily in priority order; pinned items (the player's own entity)
   bypass the budget; smaller items can still fit after a larger one is rejected (no early break).
 - **Baselines are exempt** from the budget — they ride ch1 reliable and may exceed the MTU
   (fragmentation is fine there). The server only emits deltas against an **acked** baseline, so no
   delta can reference a baseline the client doesn't hold. Baseline interval 100 ticks, resend 30 ticks
-  (`DELTA_FULL_STATE_INTERVAL`, `rust/server/src/broadcast.rs`; see [`../server/contract.md`](../server/contract.md)).
+  (`DELTA_FULL_STATE_INTERVAL`, `rust/server/src/net/broadcast.rs`; see [`../server/contract.md`](../server/contract.md)).
 - Diagnostics (`entities_deferred_per_tick`, `max_queue_age_ticks`, `peers_at_budget_pct`,
   `peers_evaluated`, `snapshot_count_overflow`) are populated per tick and ride the `SERVER_METRICS`
   packet → load-test report + client HUD, so deferral / queue-age / peers-at-budget are observable at load.
@@ -131,7 +131,7 @@ in source); the server-reported `avg_tick_time_ms` is the authoritative figure, 
 
 - **Client:** the load-test bots measure ENet RTT, packet loss, and observed entity distance; the human
   client shows the `SERVER_METRICS` channel breakdown + scheduler diagnostics in the HUD.
-- **Server:** owns the metrics above via `MetricsCollector` (`rust/server/src/metrics.rs`), sampled at
+- **Server:** owns the metrics above via `MetricsCollector` (`rust/server/src/net/metrics.rs`), sampled at
   1 Hz onto the `SERVER_METRICS` packet and into Prometheus.
 - **Predicted:** nothing here — budgets are observations, not gameplay state.
 - **Replicated:** the metric subset is broadcast to clients in `SERVER_METRICS` (ch1).

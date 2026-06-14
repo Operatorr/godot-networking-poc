@@ -19,24 +19,24 @@ GDScript source is recoverable from git history (it lived under
 
 | Former GDScript file (`client/scripts/server/`) | Responsibility | Rust owner (`rust/`) |
 | --- | --- | --- |
-| `server_main.gd` | Top-level tick loop (`_process_server_tick`), input/shoot processing, move confirms, projectile spawn + lag-comp, respawn, `LOCAL_HIT_REPORT` validation, region heartbeat, metrics, shutdown | `server/src/world.rs` (tick order) + `server/src/main.rs` (30 Hz accumulator + ENet service loop / dispatch); heartbeat → `server/src/api_client.rs` |
-| `player_manager.gd` | Player registry: add/remove/auth, entity-id allocation, round-robin spawns, input queue, position-history for PvP lag comp, heartbeat timeouts | `server/src/player.rs` (`PlayerManager`) |
-| `player_state.gd` | Authoritative per-player state + one-tick `step()` (movement via shared SM, shoot rising-edge, position validation, damage/death/respawn/invuln, flags) | `server/src/player.rs` (`PlayerState`); movement math in `sim_core` |
-| `monster_manager.gd` | Monster registry: spawn (factory), id allocation (30000–39999), queries, position-history for player-projectile lag comp, cleanup, state collection | `server/src/monster.rs` (`MonsterManager`) |
-| `monster_ai.gd` | 4-state AI (IDLE/CHASE/ATTACK/FLEE): targeting, steering+avoidance, kiting/strafe, predictive aim, projectile spawn; difficulty-lerped from definition | `server/src/monster.rs` (`MonsterAi`); RNG → `server/src/rng.rs` (PCG32) |
-| `monster_factory.gd` | Archetype id + pos → configured `MonsterState` via `MonsterDatabase` | folded into `server/src/monster.rs` (no separate factory) |
-| `monster_spawner.gd` | Three-layer spawn director (anchors + encounter pressure + regional grid) with visibility/overlap/bounds validation | `server/src/monster.rs` (`MonsterSpawner`) |
-| `monster_state.gd` | Per-monster state: archetype + definition, health, AI fields, `take_damage`, cooldowns, `to_entity_data` | `server/src/monster.rs` (`MonsterState` + `MonsterDefinition`) |
-| `projectile_manager.gd` | Projectile registry + integration; id range (10000–29999); two swept lag-compensated spatial-grid collision passes (vs monsters PvE, vs players PvP) | `server/src/projectile.rs` (`ProjectileManager`); hit math in `sim_core::hit` |
-| `projectile_state.gd` | Per-projectile state: pos/prev/dir/speed, distance/boundary/obstacle checks, spawn-tick + rewind-tick accessors, owner classification, `to_entity_data` | `server/src/projectile.rs` (`ProjectileState`) |
-| `server_collision_handler.gd` | Applies confirmed hits: player damage + knockback, DAMAGE/KILL/KILL_PVP broadcasts, monster damage + kill attribution + leaderboard | `server/src/combat.rs` (incl. the D11 lenient backstop) |
-| `server_broadcast_service.gd` | Snapshot/broadcast pipeline: per-tick spatial grid, AoI filter + hysteresis + LOD, per-peer delta caches, byte-budget scheduler, baselines, PLAYER_INFO/leaderboard | `server/src/broadcast.rs` (`BroadcastService`) |
-| `delta_state_cache.gd` | Per-client last-sent-state cache; delta-mask calc, baseline interval/ack/resend, stale-entity despawn deltas | folded into `server/src/broadcast.rs` |
-| `snapshot_scheduler.gd` | Per-peer priority queue for delta-entity selection under a byte budget; encoded-size estimator | folded into `server/src/broadcast.rs` |
-| `spatial_grid.gd` | Uniform spatial-hash broad-phase (insert + 3×3 neighbourhood + radius queries) | folded into `server/src/broadcast.rs` (AoI) + inline in `projectile.rs` (collision) |
-| `leaderboard_manager.gd` | In-memory PvP leaderboard (POC-only, no persistence) | `server/src/leaderboard.rs` (persistence belongs to the Go API, ADR 0005) |
+| `server_main.gd` | Top-level tick loop (`_process_server_tick`), input/shoot processing, move confirms, projectile spawn + lag-comp, respawn, `LOCAL_HIT_REPORT` validation, region heartbeat, metrics, shutdown | `server/src/sim/world.rs` (tick order) + `server/src/main.rs` (30 Hz accumulator + ENet service loop / dispatch); heartbeat → `server/src/net/api_client.rs` |
+| `player_manager.gd` | Player registry: add/remove/auth, entity-id allocation, round-robin spawns, input queue, position-history for PvP lag comp, heartbeat timeouts | `server/src/sim/player.rs` (`PlayerManager`) |
+| `player_state.gd` | Authoritative per-player state + one-tick `step()` (movement via shared SM, shoot rising-edge, position validation, damage/death/respawn/invuln, flags) | `server/src/sim/player.rs` (`PlayerState`); movement math in `sim_core` |
+| `monster_manager.gd` | Monster registry: spawn (factory), id allocation (30000–39999), queries, position-history for player-projectile lag comp, cleanup, state collection | `server/src/sim/monster.rs` (`MonsterManager`) |
+| `monster_ai.gd` | 4-state AI (IDLE/CHASE/ATTACK/FLEE): targeting, steering+avoidance, kiting/strafe, predictive aim, projectile spawn; difficulty-lerped from definition | `server/src/sim/monster.rs` (`MonsterAi`); RNG → `server/src/sim/rng.rs` (PCG32) |
+| `monster_factory.gd` | Archetype id + pos → configured `MonsterState` via `MonsterDatabase` | folded into `server/src/sim/monster.rs` (no separate factory) |
+| `monster_spawner.gd` | Three-layer spawn director (anchors + encounter pressure + regional grid) with visibility/overlap/bounds validation | `server/src/sim/monster.rs` (`MonsterSpawner`) |
+| `monster_state.gd` | Per-monster state: archetype + definition, health, AI fields, `take_damage`, cooldowns, `to_entity_data` | `server/src/sim/monster.rs` (`MonsterState` + `MonsterDefinition`) |
+| `projectile_manager.gd` | Projectile registry + integration; id range (10000–29999); two swept lag-compensated spatial-grid collision passes (vs monsters PvE, vs players PvP) | `server/src/sim/projectile.rs` (`ProjectileManager`); hit math in `sim_core::hit` |
+| `projectile_state.gd` | Per-projectile state: pos/prev/dir/speed, distance/boundary/obstacle checks, spawn-tick + rewind-tick accessors, owner classification, `to_entity_data` | `server/src/sim/projectile.rs` (`ProjectileState`) |
+| `server_collision_handler.gd` | Applies confirmed hits: player damage + knockback, DAMAGE/KILL/KILL_PVP broadcasts, monster damage + kill attribution + leaderboard | `server/src/sim/combat.rs` (incl. the D11 lenient backstop) |
+| `server_broadcast_service.gd` | Snapshot/broadcast pipeline: per-tick spatial grid, AoI filter + hysteresis + LOD, per-peer delta caches, byte-budget scheduler, baselines, PLAYER_INFO/leaderboard | `server/src/net/broadcast.rs` (`BroadcastService`) |
+| `delta_state_cache.gd` | Per-client last-sent-state cache; delta-mask calc, baseline interval/ack/resend, stale-entity despawn deltas | folded into `server/src/net/broadcast.rs` |
+| `snapshot_scheduler.gd` | Per-peer priority queue for delta-entity selection under a byte budget; encoded-size estimator | folded into `server/src/net/broadcast.rs` |
+| `spatial_grid.gd` | Uniform spatial-hash broad-phase (insert + 3×3 neighbourhood + radius queries) | folded into `server/src/net/broadcast.rs` (AoI) + inline in `projectile.rs` (collision) |
+| `leaderboard_manager.gd` | In-memory PvP leaderboard (POC-only, no persistence) | `server/src/sim/leaderboard.rs` (persistence belongs to the Go API, ADR 0005) |
 | `server_config.gd` | JSON config loader (user:// → res:// → defaults) + env overrides | `server/src/config.rs`; live configs are `deployment/server_config.{arena,sanctuary}.json` |
-| `server_metrics.gd` | Tick-time/player/entity/byte metrics → `SERVER_METRICS` payload | `server/src/metrics.rs` (+ Prometheus gauges :9100/:9101) |
+| `server_metrics.gd` | Tick-time/player/entity/byte metrics → `SERVER_METRICS` payload | `server/src/net/metrics.rs` (+ Prometheus gauges :9100/:9101) |
 | `scenes/server/server_main.tscn` | Headless entry scene hosting `server_main.gd` | none — the Rust server is a plain binary, not a Godot scene |
 
 ## Why it was safe to delete

@@ -30,7 +30,7 @@ server decides.**
 A **lenient backstop** guards the client-authoritative path against grief: the server only
 overrides a missing self-report on a *blatant* overlap (true 24 u overlap, grace ≥ 15 ticks). It is
 deliberately forgiving so legitimate dodges are never punished. See the hit-authority invariants in
-[`../server/contract.md`](../server/contract.md) and `rust/server/src/combat.rs`
+[`../server/contract.md`](../server/contract.md) and `rust/server/src/sim/combat.rs`
 (`apply_local_hit_report` / `apply_monster_damage`, owner-id range selects the path:
 `owner_id >= 30000` is monster-owned and skipped in the server's player-collision pass).
 
@@ -96,7 +96,7 @@ cap, `GloryFor(50, 0) = floor(244900 / 100) = 2449` (see `progression_test.go`).
 PvE is **not** a free-for-all "client authoritative" mode. It uses the two-netcode model above:
 your dodges of monster bullets are client-authoritative + server-validated; your damage to monsters
 is server-authoritative and lag-compensated. EXP grants are server-authoritative
-(`grant_kill_experience` in `rust/server/src/combat.rs`).
+(`grant_kill_experience` in `rust/server/src/sim/combat.rs`).
 
 ---
 

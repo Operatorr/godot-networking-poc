@@ -17,10 +17,10 @@ owns it, so you can reason about every authoritative or UI state change in one p
 
 | Machine | Enum / values | Owner | Where |
 |---|---|---|---|
-| Player life | `LifeState` Alive / Dead / Invulnerable | **Server (Rust)** | `rust/server/src/player.rs` |
-| Player animation (movement-derived) | `anim` IDLE / WALK / RUN / ATTACK / HIT / DEATH / SPAWN | Server (derived), replicated | `rust/protocol/src/types.rs` (`mod anim`), derived in `rust/server/src/player.rs` |
+| Player life | `LifeState` Alive / Dead / Invulnerable | **Server (Rust)** | `rust/server/src/sim/player.rs` |
+| Player animation (movement-derived) | `anim` IDLE / WALK / RUN / ATTACK / HIT / DEATH / SPAWN | Server (derived), replicated | `rust/protocol/src/types.rs` (`mod anim`), derived in `rust/server/src/sim/player.rs` |
 | Player movement | `MoveState` Idle / Walking / Sprinting / Dashing / KnockedBack / Stunned / AbilityMovement / Charging | **Shared sim** (`rust/sim_core`): server-authoritative + client-predicted | `rust/sim_core/src/movement.rs` |
-| Monster AI | `AiState` Idle / Chase / Attack / Flee | **Server (Rust)** | `rust/server/src/monster.rs` |
+| Monster AI | `AiState` Idle / Chase / Attack / Flee | **Server (Rust)** | `rust/server/src/sim/monster.rs` |
 | Game / scene state | `GameState` INITIALIZING / MAIN_MENU / LOADING / IN_ARENA / PAUSED / EXITING | Client | `client/autoload/game_manager.gd`, `client/autoload/scene_manager.gd` |
 | Connection lifecycle | `ConnectionState` DISCONNECTED / CONNECTING / CONNECTED / RECONNECTING / ERROR | Client | `client/autoload/network_manager.gd` |
 
@@ -34,7 +34,7 @@ prediction cannot diverge by construction.
 ## 1. Player life — `LifeState` (server-authoritative)
 
 `enum LifeState { Alive, Dead, Invulnerable }` on the Rust `PlayerState`
-(`rust/server/src/player.rs`). One per connected player, owned by the server. The client never
+(`rust/server/src/sim/player.rs`). One per connected player, owned by the server. The client never
 sets it; it only *reflects* it via the `INVULNERABLE` / `ALIVE` bits in each entity's 16-bit
 `entity_flags` field in the Snapshot (`rust/protocol/src/types.rs`, `mod entity_flags`).
 
@@ -77,7 +77,7 @@ Details:
 separate controller — it is *derived* every tick from the player's movement and input, then
 replicated in the Snapshot's per-entity `anim` field.
 
-Server precedence, top-down, in `PlayerState::update_animation_state` (`rust/server/src/player.rs`):
+Server precedence, top-down, in `PlayerState::update_animation_state` (`rust/server/src/sim/player.rs`):
 
 | Result | Condition |
 |---|---|
@@ -89,7 +89,7 @@ Server precedence, top-down, in `PlayerState::update_animation_state` (`rust/ser
 
 HIT and SPAWN are set imperatively elsewhere, not by this derivation: HIT on a non-fatal
 `take_damage` (`player.rs`), SPAWN by `reset_for_respawn`. Monsters reuse the same enum but only
-ever emit IDLE / WALK / ATTACK (`rust/server/src/monster.rs` `update_monster` animation sync;
+ever emit IDLE / WALK / ATTACK (`rust/server/src/sim/monster.rs` `update_monster` animation sync;
 HIT/DEATH are set in `MonsterState::take_damage`). The client reads `anim` purely for visuals
 (remote-entity animation); it is never predicted.
 
@@ -153,7 +153,7 @@ detail — numbers, signals, reconciliation caveat, status effects — lives in
 
 ## 4. Monster AI — `AiState` (server-authoritative)
 
-`enum AiState { Idle, Chase, Attack, Flee }` (`rust/server/src/monster.rs`). One per monster,
+`enum AiState { Idle, Chase, Attack, Flee }` (`rust/server/src/sim/monster.rs`). One per monster,
 evaluated each tick by `MonsterAi::update_monster` → `match monster.ai_state`. Transitions funnel
 through `transition`, which is a no-op on same-state and resets per-state flags. Full behavior —
 target scoring, kiting, predictive aim, the three-layer spawn director — is documented in

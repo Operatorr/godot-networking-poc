@@ -37,7 +37,7 @@ and retreats to its preferred distance.
 `archetype`: `ranged_grunt` · `tier`: `1` · `level`: `1` · `ai_profile`: `ranged_kiter` ·
 `signature_ability`: `toxic_spit` — slow poison projectile.
 
-| Stat              | Value     | Source (`rust/server/src/monster.rs` → `TOXIC_SLIME`)      |
+| Stat              | Value     | Source (`rust/server/src/sim/monster.rs` → `TOXIC_SLIME`)      |
 | ----------------- | --------- | ---------------------------------------------------------- |
 | `max_health`      | 50        |                                                            |
 | `move_speed`      | 120       |                                                            |

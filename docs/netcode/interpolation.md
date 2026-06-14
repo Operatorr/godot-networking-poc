@@ -11,7 +11,7 @@ gone (both controller and buffer now seed from `GameConstants.SERVER_TICK_INTERV
 > are felt together but fixed independently.
 
 This is a **client-only** concern. The authoritative Rust `omega-server`
-(`rust/server/src/broadcast.rs`) emits `Snapshot` packets (type 65) and never interpolates; the Godot
+(`rust/server/src/net/broadcast.rs`) emits `Snapshot` packets (type 65) and never interpolates; the Godot
 client buffers them and blends. The retired GDScript headless server played no part in this path and
 is being deleted — do not cite `client/scripts/server/*.gd`.
 
@@ -25,7 +25,7 @@ blending buffered Snapshots a fixed amount of server time in the past.
 
 ## Where the Snapshots come from
 
-The server builds per-peer delta Snapshots each 30 Hz tick (`rust/server/src/broadcast.rs`: AoI grid
+The server builds per-peer delta Snapshots each 30 Hz tick (`rust/server/src/net/broadcast.rs`: AoI grid
 + hysteresis, DeltaStateCache, per-peer byte budget) and sends them on **ch0**
 (unreliable-sequenced); periodic full-state **baselines** ride **ch1** (reliable-ordered). Wire format
 is the hand-rolled bit-packed `Snapshot` (`rust/protocol/src/snapshot.rs`, PROTOCOL_VERSION=4) — see
@@ -149,7 +149,7 @@ the server can clear its resend timer (server cadence: 100-tick baseline interva
 ## The eight questions
 
 - **Client:** all of it — buffering, Render delay, continuous-timeline blend, extrapolate/freeze, despawn.
-- **Server:** none here; `rust/server/src/broadcast.rs` only emits `Snapshot`s (ch0 deltas / ch1 baselines) that feed the buffers.
+- **Server:** none here; `rust/server/src/net/broadcast.rs` only emits `Snapshot`s (ch0 deltas / ch1 baselines) that feed the buffers.
 - **Predicted:** nothing — Remote entities are never predicted (Local player is, via the shared `sim_core` crate through `PredictionSim`, elsewhere).
 - **Replicated:** position (interpolated), animation/flags (snapped to latest), via Snapshots.
 - **Persisted:** nothing — buffers are in-memory `RefCounted` rings, cleared on disconnect. Durable state lives in the Go API (Postgres/Redis), not here.

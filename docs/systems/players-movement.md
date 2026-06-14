@@ -16,7 +16,7 @@ mover of the networked Local player.
 > (`rust/server/`), a single-threaded synchronous 30 Hz tick over `rusty_enet`. The legacy
 > GDScript headless server is retired (NetworkManager refuses server mode); the scripts under
 > `client/scripts/server/` are parity-only ground truth and do **not** run. Movement authority
-> lives in `rust/server/src/player.rs`; the shared per-step integration lives in
+> lives in `rust/server/src/sim/player.rs`; the shared per-step integration lives in
 > `rust/sim_core/src/step.rs`.
 
 ## What a player is
@@ -26,13 +26,13 @@ There are two visual classes:
 
 | Class | Script | Moved by | Collision | Input |
 |---|---|---|---|---|
-| Local player | `Player` (`client/scripts/shared/player/player.gd`) | `PredictionController` (sole owner) | layer 1 / mask 6 (`player.tscn:58-59`; mask 6 = Walls + Monsters) | yes — predicted |
+| Local player | `Player` (`client/scripts/entities/player/player.gd`) | `PredictionController` (sole owner) | layer 1 / mask 6 (`player.tscn:58-59`; mask 6 = Walls + Monsters) | yes — predicted |
 | Remote entity (player) | `RemotePlayer` (`remote_player.gd`) | `InterpolationController` | layer 1 / mask 4 (`remote_player.tscn:55-56`) | none |
 
 `RemotePlayer` runs **no** `_physics_process` and processes no input; its position is written by
 interpolation and its animation/flags come straight from Snapshot data via `update_from_network()`.
 
-On the **server** a player is a `PlayerState` (`rust/server/src/player.rs`): an `entity_id` in
+On the **server** a player is a `PlayerState` (`rust/server/src/sim/player.rs`): an `entity_id` in
 **1–999** (`PLAYER_ENTITY_ID_MAX`, recycled within range), a `position`/`velocity`, an `aim_angle`,
 a `MovementSm` (the shared movement state machine), HP, and the per-class progression hydrated from
 the Go API. Client collision *layers* are cosmetic only — the server's collision is the analytic
@@ -46,13 +46,13 @@ states. See [`players-movement-state-machine.md`](players-movement-state-machine
 
 The shared per-step integration is one function — `step_movement()`
 (`rust/sim_core/src/step.rs`) — called identically by the server's `PlayerState::step`
-(`rust/server/src/player.rs`) and by the client predictor (`PredictionSim::step`, driven from
+(`rust/server/src/sim/player.rs`) and by the client predictor (`PredictionSim::step`, driven from
 `prediction.gd::_apply_local_prediction`). One step is: **SM tick → integrate velocity → analytic
 obstacle mover → recompute realized velocity**.
 
 | Quantity | Value | Source |
 |---|---|---|
-| Base speed | per-class, level-scaled (≈195–215 u/s at level 1) | `ability::effective_base_speed` (`rust/server/src/ability.rs`); mirrored in `prediction.gd` `CLASS_ABILITY_CONFIG` |
+| Base speed | per-class, level-scaled (≈195–215 u/s at level 1) | `ability::effective_base_speed` (`rust/server/src/sim/ability.rs`); mirrored in `prediction.gd` `CLASS_ABILITY_CONFIG` |
 | Sprint | gated by stamina + exhaustion + daze | `MovementSm` (`rust/sim_core/src/movement.rs`) |
 | Dash / Warrior Charge / Rogue Shadowstep | dash 720 u/s; Charge 720 u/s × 420 u; blink to cursor | `MovementSm`; class config pushed via `set_ability_config` |
 | Direction | normalized WASD vector | `movement_direction()` (`rust/sim_core/src/step.rs`); client mirror `prediction.gd::_get_direction_from_flags` |
@@ -96,7 +96,7 @@ Do not confuse them:
   [`players-movement-state-machine.md`](players-movement-state-machine.md).
 
 For a Remote entity the animation state and the DASHING / KNOCKED_BACK / STUNNED / DAZED / STEALTH
-**entity flags** arrive over the wire (`rust/server/src/player.rs::update_entity_flags`) and are
+**entity flags** arrive over the wire (`rust/server/src/sim/player.rs::update_entity_flags`) and are
 applied in `remote_player._update_animation()`.
 
 ### Directional sprites — facing follows movement, not aim
@@ -110,7 +110,7 @@ shooting), but the artwork is counter-rotated and the row tracks motion. The loc
 
 ## HP (server-authoritative)
 
-On the server, HP is `PlayerState.health` / `max_health` (`rust/server/src/player.rs`): level-scaled
+On the server, HP is `PlayerState.health` / `max_health` (`rust/server/src/sim/player.rs`): level-scaled
 max via `apply_class_and_level`, `take_damage` clamps to 0 and one-shot `mark_dead`, smooth
 `update_health_regen`. On the client, `HPComponent` (`hp_component.gd`) is a **display/reconciliation
 mirror only** — `set_hp()` is the authoritative path written from server `GameEvent`s and Snapshot
@@ -121,7 +121,7 @@ keep replicating (animation DEATH, flags == VISIBLE) and are not despawned.
 
 The Local player is simulated immediately on input, before the server confirms — see
 [`../netcode/client-prediction.md`](../netcode/client-prediction.md) for the full loop. In brief
-(`client/scripts/client/prediction.gd`):
+(`client/scripts/network/prediction.gd`):
 
 - Input is captured every Frame and **sent at 30 Hz** inside `_physics_process`
   (`INPUT_SEND_INTERVAL = SERVER_TICK_INTERVAL`). Each send carries WASD/action flags, aim angle,
@@ -155,7 +155,7 @@ stealth flash or dim the sprite.
 ## Server authority & validation (movement)
 
 Per tick the server drains each authenticated player's input queue (`ingest_input`), runs exactly
-one `step` (`rust/server/src/player.rs`), and records an 8-tick position history for lag
+one `step` (`rust/server/src/sim/player.rs`), and records an 8-tick position history for lag
 compensation. Ingest details: dead players discard input; SHOOT *rising edges* queue pending shots;
 DASH latches across same-tick overwrites; the last packet's flags persist; flags zero out after
 `STALE_INPUT_TICK_LIMIT = 6` ticks of silence. The input queue is capped at

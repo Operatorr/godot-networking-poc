@@ -4,7 +4,7 @@
 > system exists in code today.** There is no item drop, item definition, inventory, equipment, or
 > item-granted spell in the authoritative Rust server (`rust/server/`) or the Go API (`api/`).
 > The only "drops" the live server produces are **health orbs** rolled on monster kill
-> (`rust/server/src/combat.rs`), which are world-effect entities, not lootable items. Treat
+> (`rust/server/src/sim/combat.rs`), which are world-effect entities, not lootable items. Treat
 > everything below as a spec to build against, not as built behaviour. The legacy GDScript
 > `loot_table.gd` / `item_factory.gd` / `loot_tables.json` names in the old GDD describe the
 > retired design and are **not** live code.
@@ -26,7 +26,7 @@ When built, loot is **server-authoritative**, consistent with the governing rule
 requests, the server decides."** Item generation and drops must be rolled on the omega-server (the
 single authoritative instance) on monster death, alongside the existing XP/health-orb rolls in the
 PvE collision pass (`apply_monster_damage` / `grant_kill_experience` in
-`rust/server/src/combat.rs`). Durable item ownership (inventory/equipment) would be persisted by
+`rust/server/src/sim/combat.rs`). Durable item ownership (inventory/equipment) would be persisted by
 the Go API (Postgres), mirroring how characters/Glory are persisted today; in-world dropped items
 are server-authoritative + in-memory until picked up. Clients never roll their own drops.
 

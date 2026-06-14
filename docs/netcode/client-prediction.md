@@ -14,7 +14,7 @@ to the server later. Every **Remote entity** is interpolated instead, never pred
 client reconciles *against* is the Rust `omega-server` — see [`server-tick-broadcast.md`](server-tick-broadcast.md)
 and the wire contract in [`../server/contract.md`](../server/contract.md).
 
-The prediction loop lives in the **prediction controller** (`client/scripts/client/prediction.gd`,
+The prediction loop lives in the **prediction controller** (`client/scripts/network/prediction.gd`,
 `class_name PredictionController`; slated to move under `client/scripts/network/` later — described
 here by role). It is attached as a child of the Local player node and initialised by `setup()` once
 Authority sync lands (entity id from `AuthResult`, or the PLAYER_INFO broadcast).
@@ -63,7 +63,7 @@ world-space cursor (`_get_cursor_world`) is also sent, for the server's cursor-t
 
 Movement is **single-owner**: the predictor is the sole integrator of the Local player. `Player.gd`
 sets `prediction_owns_movement = true` for the networked Local player and **skips its own
-`move_and_slide()`** (`client/scripts/shared/player/player.gd`), so the old "steering boat"
+`move_and_slide()`** (`client/scripts/entities/player/player.gd`), so the old "steering boat"
 double-integration is gone — see [`../systems/players-movement.md`](../systems/players-movement.md).
 
 ## Prediction (Step 2)
