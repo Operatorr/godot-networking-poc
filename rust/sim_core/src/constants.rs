@@ -74,21 +74,24 @@ pub const MAP_MIN: Vec2 = Vec2::new(-1000.0, -1000.0);
 pub const MAP_MAX: Vec2 = Vec2::new(1000.0, 1000.0);
 
 // ── Sanctuary instance geometry ─────────────────────────────────────────────
-/// The town (`sanctuary.gd` TOWN_RECT) spans ±1856 — far larger than the Arena's ±1000 — so a
-/// Sanctuary instance widens the sim bounds to match and runs with NO obstacles (walk-through
-/// buildings). Applied via `arena::set_world_geometry`.
-pub const SANCTUARY_MAP_MIN: Vec2 = Vec2::new(-1856.0, -1856.0);
-pub const SANCTUARY_MAP_MAX: Vec2 = Vec2::new(1856.0, 1856.0);
+/// The redesigned town (`sanctuary.gd` / `SanctuaryTownWorld` TOWN_RECT) spans the dense walled
+/// pilgrim city: x ∈ ±3328, y ∈ ±3072 (6656 × 6144 px) — far larger than the Arena's ±1000. A
+/// Sanctuary instance widens the sim bounds to match so the whole city is walkable, and runs with
+/// NO obstacles (walk-through buildings; movement stays server-authoritative). Applied via
+/// `arena::set_world_geometry`. Keep these in lockstep with the client's `_world_geometry()`.
+pub const SANCTUARY_MAP_MIN: Vec2 = Vec2::new(-3328.0, -3072.0);
+pub const SANCTUARY_MAP_MAX: Vec2 = Vec2::new(3328.0, 3072.0);
 
-/// Player spawn anchors for a Sanctuary instance — along the Grand Avenue just north of the south
-/// portal dais, so players arrive in the town centre facing the Arena Portal.
+/// Player spawn anchors for a Sanctuary instance — the West Gate Refuge yard (grid x≈-78, y≈-4),
+/// so players arrive through the damaged west gate into the refugee yard, not a clean central
+/// plaza (redesign spec §9 "West Gate Refuge"). Matches `SanctuaryTownWorld.SPAWN_POINTS`.
 pub const SANCTUARY_PLAYER_SPAWNS: [Vec2; 6] = [
-    Vec2::new(0.0, 640.0),
-    Vec2::new(-140.0, 720.0),
-    Vec2::new(140.0, 720.0),
-    Vec2::new(-200.0, 520.0),
-    Vec2::new(200.0, 520.0),
-    Vec2::new(0.0, 820.0),
+    Vec2::new(-2496.0, -128.0),
+    Vec2::new(-2560.0, -224.0),
+    Vec2::new(-2432.0, -32.0),
+    Vec2::new(-2336.0, -160.0),
+    Vec2::new(-2624.0, 64.0),
+    Vec2::new(-2368.0, 128.0),
 ];
 
 // ── Projectiles ─────────────────────────────────────────────────────────────

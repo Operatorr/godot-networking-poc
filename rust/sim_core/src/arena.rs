@@ -434,20 +434,24 @@ mod tests {
         // Honor the set-once contract on this thread; the value equals the Arena default.
         init_arena();
         assert_eq!(world_geometry(), ARENA_GEOMETRY);
-        // Sanctuary: ±1856 town bounds, no obstacles.
+        // Sanctuary: x ∈ ±3328, y ∈ ±3072 town bounds, no obstacles.
         set_world_geometry(
-            Vec2::new(-1856.0, -1856.0),
-            Vec2::new(1856.0, 1856.0),
+            Vec2::new(-3328.0, -3072.0),
+            Vec2::new(3328.0, 3072.0),
             false,
         );
         // Bounds clamp at the wider extent (a position the Arena would have clamped to ±1000).
         assert_eq!(
-            clamp_to_bounds(Vec2::new(-1500.0, 1500.0)),
-            Vec2::new(-1500.0, 1500.0)
+            clamp_to_bounds(Vec2::new(-3000.0, 3000.0)),
+            Vec2::new(-3000.0, 3000.0)
         );
         assert_eq!(
-            clamp_to_bounds(Vec2::new(-3000.0, 0.0)),
-            Vec2::new(-1856.0, 0.0)
+            clamp_to_bounds(Vec2::new(-4000.0, 0.0)),
+            Vec2::new(-3328.0, 0.0)
+        );
+        assert_eq!(
+            clamp_to_bounds(Vec2::new(0.0, 4000.0)),
+            Vec2::new(0.0, 3072.0)
         );
         // The center north pillar no longer blocks: a move straight through it succeeds.
         assert!(!circle_intersects_obstacle(Vec2::new(0.0, -100.0), 16.0));

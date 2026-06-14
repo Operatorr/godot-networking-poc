@@ -68,7 +68,7 @@ Collision against the **map bounds and arena obstacles** is analytic, not physic
 `move_with_obstacle_collision()` (`rust/sim_core/src/arena.rs`) clamps to bounds and slides
 axis-separated. Because both server and client call the *same compiled* `sim_core`, the server, the
 prediction step, and the reconciliation replay integrate identically — the world geometry is set
-per-instance (Arena ±1000 with obstacles; Sanctuary ±1856, no obstacles) via
+per-instance (Arena ±1000 with obstacles; Sanctuary ±3328×±3072, no obstacles) via
 `arena::set_world_geometry`, pushed into the client sim before the first predicted step
 (`arena_base.gd`).
 

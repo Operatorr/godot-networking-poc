@@ -532,7 +532,7 @@ impl PredictionSim {
     }
 
     /// Set the connected instance's world geometry so prediction matches the server (Arena =
-    /// ±1000 + obstacles; Sanctuary = ±1856, no obstacles).
+    /// ±1000 + obstacles; Sanctuary = ±3328×±3072, no obstacles).
     ///
     /// **Thread contract (call once, on the sim thread):** despite taking `&self`, this mutates
     /// `sim_core`'s thread-local world geometry — it is process/thread-global state, not per

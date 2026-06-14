@@ -109,7 +109,7 @@ fn main() {
     }
 
     // Apply this instance's world geometry ONCE, on the tick thread (this thread), before the sim
-    // runs. Arena = ±1000 + 16 pillars; Sanctuary = ±1856 walk-through. The client sets the same
+    // runs. Arena = ±1000 + 16 pillars; Sanctuary = ±3328×±3072 walk-through. The client sets the same
     // geometry on scene entry so prediction matches.
     if config.is_sanctuary() {
         sim_core::set_world_geometry(
@@ -117,7 +117,7 @@ fn main() {
             sim_core::constants::SANCTUARY_MAP_MAX,
             false,
         );
-        info!("instance mode: SANCTUARY — no monsters, PvP off, ±1856 walk-through town");
+        info!("instance mode: SANCTUARY — no monsters, PvP off, ±3328×±3072 walk-through town");
     } else {
         sim_core::set_world_geometry(
             sim_core::constants::MAP_MIN,

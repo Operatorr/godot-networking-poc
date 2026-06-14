@@ -38,7 +38,7 @@ boundary: a NaN/Inf position/dir/delta falls back to ZERO / the fixed tick inter
 corrupting the node transform (`PredictionSim::step`, `rust/client_ext/src/lib.rs`).
 
 The connected instance's world geometry is pushed in once on scene entry via
-`set_world_geometry(min, max, obstacles_enabled)` (Arena ±1000 + obstacles, Sanctuary ±1856 no
+`set_world_geometry(min, max, obstacles_enabled)` (Arena ±1000 + obstacles, Sanctuary ±3328×±3072 no
 obstacles) so the predicted mover collides identically to the server. Per-class ability tuning and
 base move speed are pushed via `set_ability_config` / `set_base_speed` from `CLASS_ABILITY_CONFIG`
 (`prediction.gd`), so a predicted Warrior Charge / Rogue Shadowstep matches the authoritative cast.

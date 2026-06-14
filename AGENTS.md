@@ -41,10 +41,14 @@ Don't re-derive what's already written there; read it, then go deep where needed
     npc, portal. `scripts/data/` — definitions/, validators/, loaders, `game_constants`.
   - `scripts/systems/` — combat/, spawning/, visuals/, audio/, progression/, inventory/, loot/.
   - `scripts/ui/` (hud/, menus/, dialogs/, helpers/), `scripts/core/` (game modes),
-    `scripts/factories/`, `scripts/levels/`, `scripts/utils/`.
+    `scripts/factories/`, `scripts/levels/` (incl. `town/` — the Sanctuary is a thin networked
+    shell `sanctuary.gd` over `town/sanctuary_town_world.gd`, a code-generated grim placeholder city
+    drawing ~90 prop kinds via `town/sanctuary_props.gd`; layout = `docs/design/sanctuary-layout.md`),
+    `scripts/utils/`.
   - `scenes/` — `entities/`, `levels/` (arena/, hub/, offline/, pve/, biomes/), `ui/`, `test/`.
   - `data/` — JSON content (classes/, monsters/, balance/, loot/, items/, spells/, projectiles/,
-    world/, schemas/); `bin/` — built GDExtension (`omega_client_ext.gdextension`).
+    world/, schemas/); `bin/` — built GDExtension (`omega_client_ext.gdextension`);
+    `assets/shaders/town/` — town wind-sway + additive glow shaders.
 - `api/` — Go backend: JWT auth, characters, leaderboard, regions. PostgreSQL + Redis.
 - `deployment/` — **native** deploy (no Docker — [ADR 0007](docs/adr/0007-native-systemd-deployment.md)):
   systemd units (`systemd/`), per-instance configs (`server_config.{arena,sanctuary}.json`), env
@@ -125,7 +129,9 @@ OMEGA_SERVER=<droplet-ip>:8081 ./scripts/run_load_test.sh --scenario baseline   
 ## Invariants (hold today; enforce in review)
 
 - Entity id ranges: **players 1–999, projectiles 10000–29999, monsters 30000–39999**.
-- Arena bounds: `(-1000,-1000)..(1000,1000)`; boundary walls at ±1005.
+- Arena bounds: `(-1000,-1000)..(1000,1000)`; boundary walls at ±1005. Sanctuary bounds (walk-through,
+  no obstacles): `(-3328,-3072)..(3328,3072)` — `SANCTUARY_MAP_MIN/MAX` in `rust/sim_core/src/constants.rs`
+  must stay in lockstep with the client's `sanctuary.gd` `_world_geometry()` / `SanctuaryTownWorld.TOWN_RECT`.
 - Wire format: `[u8 type][payload]` over ENet (no length field — datagram boundaries);
   positions quantized to 0.1 unit (truncate toward zero). 3 channels: ch0 snapshots/confirms
   (unreliable sequenced), ch1 reliable (+ baselines), ch2 input. Unreliable payloads < 1200 B.
