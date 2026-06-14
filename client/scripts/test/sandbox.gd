@@ -5,9 +5,9 @@
 ## Fully client-authoritative — no NetworkManager or server.
 extends OfflineArena
 
-const KILL_FEED_PATH := "res://scripts/client/hud/kill_feed.gd"
-const MINIMAP_PATH := "res://scripts/client/hud/minimap.gd"
-const LEADERBOARD_PATH := "res://scripts/client/hud/leaderboard.gd"
+const KILL_FEED_PATH := "res://scripts/ui/hud/kill_feed.gd"
+const MINIMAP_PATH := "res://scripts/ui/hud/minimap.gd"
+const LEADERBOARD_PATH := "res://scripts/ui/hud/leaderboard.gd"
 const OFFLINE_MONSTER_SCENE := "res://scenes/shared/monster/offline_monster.tscn"
 
 const TOXIC_SLIME_SPAWN_DISTANCE := 280.0

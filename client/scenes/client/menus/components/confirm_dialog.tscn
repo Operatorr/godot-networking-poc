@@ -1,6 +1,6 @@
 [gd_scene load_steps=2 format=3 uid="uid://c2confirm_dialog"]
 
-[ext_resource type="Script" path="res://scripts/client/ui/confirm_dialog.gd" id="1_script"]
+[ext_resource type="Script" path="res://scripts/ui/dialogs/confirm_dialog.gd" id="1_script"]
 
 [node name="ConfirmDialog" type="PopupPanel"]
 title = "Confirm"

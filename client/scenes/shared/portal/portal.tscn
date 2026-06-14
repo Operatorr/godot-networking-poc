@@ -1,6 +1,6 @@
 [gd_scene load_steps=3 format=3]
 
-[ext_resource type="Script" path="res://scripts/shared/portal.gd" id="1_portal"]
+[ext_resource type="Script" path="res://scripts/entities/portal.gd" id="1_portal"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_trigger"]
 radius = 64.0

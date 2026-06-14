@@ -1,7 +1,7 @@
 [gd_scene load_steps=5 format=3]
 
-[ext_resource type="Script" path="res://scripts/shared/monster/offline_monster.gd" id="1_offline_monster"]
-[ext_resource type="Script" path="res://scripts/shared/projectile/projectile_pool.gd" id="2_projectile_pool"]
+[ext_resource type="Script" path="res://scripts/entities/enemies/offline_monster.gd" id="1_offline_monster"]
+[ext_resource type="Script" path="res://scripts/systems/spawning/projectile_pool.gd" id="2_projectile_pool"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_offline"]
 radius = 16.0

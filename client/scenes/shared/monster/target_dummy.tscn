@@ -1,6 +1,6 @@
 [gd_scene load_steps=5 format=3]
 
-[ext_resource type="Script" path="res://scripts/shared/monster/target_dummy.gd" id="1_target_dummy"]
+[ext_resource type="Script" path="res://scripts/entities/enemies/target_dummy.gd" id="1_target_dummy"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_target"]
 radius = 18.0

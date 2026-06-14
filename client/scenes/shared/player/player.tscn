@@ -1,8 +1,8 @@
 [gd_scene load_steps=8 format=3 uid="uid://cvn8xq3pywbpm"]
 
-[ext_resource type="Script" path="res://scripts/shared/player/player.gd" id="1_player"]
-[ext_resource type="Script" path="res://scripts/shared/player/hp_component.gd" id="2_hp_component"]
-[ext_resource type="Script" path="res://scripts/shared/projectile/projectile_pool.gd" id="3_projectile_pool"]
+[ext_resource type="Script" path="res://scripts/entities/player/player.gd" id="1_player"]
+[ext_resource type="Script" path="res://scripts/entities/player/hp_component.gd" id="2_hp_component"]
+[ext_resource type="Script" path="res://scripts/systems/spawning/projectile_pool.gd" id="3_projectile_pool"]
 [ext_resource type="PackedScene" uid="uid://bw7qkh5xmvqjl" path="res://scenes/shared/player/debug_overlay.tscn" id="4_debug_overlay"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_1"]

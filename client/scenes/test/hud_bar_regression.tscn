@@ -3,7 +3,7 @@
 [sub_resource type="GDScript" id="GDScript_hud_bar_regression"]
 script/source = "extends Node
 
-const HPBar := preload(\"res://scripts/client/hud/hp_bar.gd\")
+const HPBar := preload(\"res://scripts/ui/hud/hp_bar.gd\")
 
 
 func _ready() -> void:

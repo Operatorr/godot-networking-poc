@@ -1,6 +1,6 @@
 [gd_scene load_steps=6 format=3 uid="uid://c1arena_base01"]
 
-[ext_resource type="Script" path="res://scripts/shared/arena_base.gd" id="1_arena"]
+[ext_resource type="Script" path="res://scripts/levels/arena_base.gd" id="1_arena"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_top"]
 size = Vector2(2020, 10)

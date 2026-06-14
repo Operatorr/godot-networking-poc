@@ -7,7 +7,7 @@ script/source = "## PlayerTest - Test scene for player character
 ## Press Space to apply 25 damage, R to reset player
 extends Node2D
 
-const PlayerScript := preload(\"res://scripts/shared/player/player.gd\")
+const PlayerScript := preload(\"res://scripts/entities/player/player.gd\")
 
 
 func _input(event: InputEvent) -> void:
