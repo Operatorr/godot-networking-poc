@@ -312,7 +312,7 @@ fn main() {
                     region_id: region.clone(),
                     active_players: world.players.player_count(),
                     max_players,
-                    websocket_url: advertise_url.clone(),
+                    connect_url: advertise_url.clone(),
                     status: "online".into(),
                 });
             }

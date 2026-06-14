@@ -77,8 +77,8 @@ type Store interface {
 	List(kind Kind) ([]Definition, error)
 	// Get returns one definition by kind + id.
 	Get(kind Kind, id string) (Definition, error)
-	// Upsert creates or updates a draft definition. editorID records the acting
-	// user (content_definitions.updated_by); pass 0 when unknown (stored NULL).
+	// Upsert creates or updates a definition, honoring def.Draft. editorID records
+	// the acting user (content_definitions.updated_by); pass 0 when unknown (NULL).
 	Upsert(def Definition, editorID int) error
 	// Remove deletes a definition by kind + id. Deleting a missing record is a
 	// no-op success (idempotent delete).

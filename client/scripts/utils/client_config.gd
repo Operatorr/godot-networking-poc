@@ -5,7 +5,9 @@ extends RefCounted
 
 ## Default configuration values
 const DEFAULTS := {
-	"api_base_url": "http://localhost:8080",
+	"api_base_url": "https://omega.marrowtech.app",
+	"use_local_api": false,
+	"local_api_base_url": "http://localhost:8080",
 	"api_timeout_seconds": 10.0,
 	"debug_logging": true,
 	"projectile_sync_debug_logging": true
@@ -19,8 +21,23 @@ const CONFIG_PATH_RES := "res://data/config/client_config.json"
 var _config: Dictionary = {}
 
 ## Client settings
+
+## Resolved API base URL. Flip `use_local_api` to true in client_config.json to point the
+## client at the local Go API (`local_api_base_url`) instead of `api_base_url` (production) —
+## a one-line toggle for local testing, no need to edit/restore the prod URL.
 var api_base_url: String:
-	get: return _config.get("api_base_url", DEFAULTS.api_base_url)
+	get:
+		if use_local_api:
+			return _config.get("local_api_base_url", DEFAULTS.local_api_base_url)
+		return _config.get("api_base_url", DEFAULTS.api_base_url)
+
+## Toggle: when true, api_base_url resolves to local_api_base_url.
+var use_local_api: bool:
+	get: return _config.get("use_local_api", DEFAULTS.use_local_api)
+
+## The local API address used when use_local_api is true.
+var local_api_base_url: String:
+	get: return _config.get("local_api_base_url", DEFAULTS.local_api_base_url)
 
 var api_timeout_seconds: float:
 	get: return _config.get("api_timeout_seconds", DEFAULTS.api_timeout_seconds)
@@ -102,7 +119,7 @@ func get_config() -> Dictionary:
 ## Print current configuration
 func print_config() -> void:
 	print("[ClientConfig] Current configuration:")
-	print("  api_base_url: %s" % api_base_url)
+	print("  api_base_url: %s  (use_local_api: %s)" % [api_base_url, str(use_local_api)])
 	print("  api_timeout_seconds: %.1fs" % api_timeout_seconds)
 	print("  debug_logging: %s" % str(debug_logging))
 	print("  projectile_sync_debug_logging: %s" % str(projectile_sync_debug_logging))

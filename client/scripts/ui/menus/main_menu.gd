@@ -376,12 +376,14 @@ func _populate_region_dropdown() -> void:
 func _populate_default_regions() -> void:
 	regions.clear()
 
+	# Offline fallback shown only when the /api/regions fetch fails. connect_url is a bare
+	# host:port (ENet/UDP); these are placeholders, so all but Local are marked offline.
 	var default_regions := [
-		{"id": "local", "name": "Local", "websocket_url": "ws://localhost:8081", "status": "online", "active_players": 0, "max_players": RegionInfo.DEFAULT_MAX_PLAYERS},
-		{"id": "us-west", "name": "US West", "websocket_url": "ws://us-west.omegagame.io:9001", "status": "offline", "active_players": 0, "max_players": RegionInfo.DEFAULT_MAX_PLAYERS},
-		{"id": "us-east", "name": "US East", "websocket_url": "ws://localhost:8081", "status": "offline", "active_players": 0, "max_players": RegionInfo.DEFAULT_MAX_PLAYERS},
-		{"id": "europe", "name": "Europe", "websocket_url": "ws://localhost:8082", "status": "offline", "active_players": 0, "max_players": RegionInfo.DEFAULT_MAX_PLAYERS},
-		{"id": "asia", "name": "Asia", "websocket_url": "ws://localhost:8083", "status": "offline", "active_players": 0, "max_players": RegionInfo.DEFAULT_MAX_PLAYERS}
+		{"id": "local", "name": "Local", "connect_url": "localhost:8081", "status": "online", "active_players": 0, "max_players": RegionInfo.DEFAULT_MAX_PLAYERS},
+		{"id": "us-west", "name": "US West", "connect_url": "", "status": "offline", "active_players": 0, "max_players": RegionInfo.DEFAULT_MAX_PLAYERS},
+		{"id": "us-east", "name": "US East", "connect_url": "", "status": "offline", "active_players": 0, "max_players": RegionInfo.DEFAULT_MAX_PLAYERS},
+		{"id": "europe", "name": "Europe", "connect_url": "", "status": "offline", "active_players": 0, "max_players": RegionInfo.DEFAULT_MAX_PLAYERS},
+		{"id": "asia", "name": "Asia", "connect_url": "", "status": "offline", "active_players": 0, "max_players": RegionInfo.DEFAULT_MAX_PLAYERS}
 	]
 
 	for data in default_regions:
@@ -522,14 +524,14 @@ func _on_enter_world_pressed() -> void:
 	# Entering the world now joins the NETWORKED Sanctuary instance (the region host on the
 	# Sanctuary port, 8082). The Arena portal in town later disconnects and dials the same
 	# region's Arena instance (8081), so stash the region URL where Portal looks for it.
-	GameManager.player_data["selected_region_url"] = region.websocket_url
+	GameManager.player_data["selected_region_url"] = region.connect_url
 	preferences.save()
 
 	enter_world_button.disabled = true
 	_is_connecting = true
 	_update_status("Connecting to the Sanctuary...")
 
-	var sanctuary_url := NetworkManager.sanctuary_url_for_region(region.websocket_url)
+	var sanctuary_url := NetworkManager.sanctuary_url_for_region(region.connect_url)
 	print("[MainMenu] Connecting to Sanctuary instance %s (region %s)" % [sanctuary_url, region.name])
 
 	var connected: bool = await _connect_and_wait(sanctuary_url)

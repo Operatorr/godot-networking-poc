@@ -13,9 +13,9 @@ pub struct RegionStatus {
     pub region_id: String,
     pub active_players: usize,
     pub max_players: usize,
-    /// Kept under its legacy JSON name for Go-API compatibility; carries the configured
-    /// advertise URL (empty = the API substitutes its static per-region default).
-    pub websocket_url: String,
+    /// The configured advertise URL — a bare host:port for the ENet/UDP game server
+    /// (empty = the API substitutes its static per-region default).
+    pub connect_url: String,
     pub status: String,
 }
 

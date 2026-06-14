@@ -94,6 +94,7 @@ for the map; this page is the **catalogue** with verification status. Terms are 
 | [`systems/offline-modes.md`](systems/offline-modes.md) | Implemented | Practice & Offline Sandbox — client-authoritative test scenes (no server) on a shared `OfflineArena`. |
 | [`systems/arena-visuals.md`](systems/arena-visuals.md) | Implemented | Generated class/monster/projectile spritesheets (PixelLab), `SheetLibrary` loader, arena props, class identity on the wire (protocol v3), random bot classes. |
 | [`systems/bot-ai.md`](systems/bot-ai.md) | Retired | Python bot-swarm tactical AI (removed); live harness is `rust/load_test/` (simplified strategy port). |
+| [`client/error-codes.md`](client/error-codes.md) | Implemented | Catalogue of user-facing client error codes (e.g. `(Error 47)` = API TLS handshake failure). |
 
 ## Art & design direction
 
@@ -123,6 +124,7 @@ for the map; this page is the **catalogue** with verification status. Terms are 
 |---|---|---|
 | [`ops/architecture.md`](ops/architecture.md) | Active | Top-level system architecture (what the pieces are, how they talk) & POC success criteria. Rewritten post-Rust-port. |
 | [`ops/infrastructure.md`](ops/infrastructure.md) | Reference | Single-droplet as-built reality (Phase 1) + scaling Vision (Phases 2–3, not built). Native systemd deploy: [ADR 0007](adr/0007-native-systemd-deployment.md) + [`deployment/DEPLOYMENT.md`](../deployment/DEPLOYMENT.md). |
+| [`ops/multi-region.md`](ops/multi-region.md) | Implemented mechanism · operator guide | Running game servers in multiple regions (e.g. Frankfurt + Singapore): one global API/DB control plane, per-region UDP game servers + Sanctuary, region select → heartbeat-advertised connect address. |
 
 ## Project conventions & reference material
 

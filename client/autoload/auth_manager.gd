@@ -349,7 +349,8 @@ func _format_request_result_error(action: String, result: int) -> String:
 		HTTPRequest.RESULT_TIMEOUT:
 			return "The API server at %s did not respond in time. Make sure it is running, then try again." % api_base_url
 		HTTPRequest.RESULT_TLS_HANDSHAKE_ERROR:
-			return "Could not establish a secure connection to the API server."
+			# See docs/client/error-codes.md
+			return "Could not establish a secure connection to the API server. (Error 47)"
 		_:
 			return "%s request failed. Error code: %d" % [action.capitalize(), result]
 

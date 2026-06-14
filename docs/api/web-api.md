@@ -76,7 +76,7 @@ status. Success bodies are documented per endpoint. All bodies are `application/
 | `POST` | `/api/character/sacrifice` | Bearer | trade character for Glory |
 | `DELETE` | `/api/character` | Bearer | delete the user's character |
 | `GET`  | `/api/regions` | public | list online game regions |
-| `POST` | `/api/regions/select` | Bearer | select a region (returns its WS URL) |
+| `POST` | `/api/regions/select` | Bearer | select a region (returns its connect address) |
 | `GET`  | `/api/leaderboard` | public | ranked players |
 
 ### POST /api/auth/register
@@ -172,14 +172,16 @@ Deletes the user's character (no Glory). Leaderboard/session rows cascade-delete
 
 ### GET /api/regions
 Returns the regions that currently have a **live game server** (fresh heartbeat). May be an
-empty list if none is running.
+empty list if none is running. `connect_url` is a bare `host:port` for the ENet/UDP game
+server (no scheme/TLS; ADR 0003), sourced from the server's heartbeat `advertise_url` or the
+`REGION_<ID>_URL` env fallback. See [`../ops/multi-region.md`](../ops/multi-region.md).
 ```json
-{ "regions": [ { "id": "asia", "display_name": "Asia", "websocket_url": "ws://asia.omegagame.io:9001", "status": "online", "active_players": 12, "max_players": 200, "latency_estimate": "< 50ms" } ] }
+{ "regions": [ { "id": "asia", "display_name": "Asia", "connect_url": "sgp.omega.marrowtech.app:8081", "status": "online", "active_players": 12, "max_players": 200, "latency_estimate": "< 80ms" } ] }
 ```
 
 ### POST /api/regions/select  *(Bearer)*
 **Request** `{ "region_id": "asia" }` (valid ids: `local`, `asia`, `europe`, `us-west`).
-**Response `200 OK`** `{ "message": "Region selected successfully", "region": { … }, "websocket_url": "…" }`.
+**Response `200 OK`** `{ "message": "Region selected successfully", "region": { … }, "connect_url": "…" }`.
 **Errors:** `400` invalid region · `401` · `503` region unavailable or full.
 
 ### GET /api/leaderboard
@@ -224,7 +226,7 @@ Public ranked list for a rankings page.
 | `experience` | int | in-level XP; server-authoritative |
 | `created_at` | string (RFC3339) | |
 
-**Region** — `id`, `display_name`, `websocket_url`, `status`, `active_players`, `max_players`,
+**Region** — `id`, `display_name`, `connect_url`, `status`, `active_players`, `max_players`,
 `latency_estimate`.
 
 **Leaderboard entry** — `rank`, `character_name`, `username`, `region`, `pvp_kills`,
