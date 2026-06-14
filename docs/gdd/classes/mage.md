@@ -2,10 +2,10 @@
 
 **Status:** Implemented (2026-06-13). A glass-cannon caster — lowest HP, the largest flavor Mana pool,
 the highest primary damage, and a long-range burst-AOE Class ability. Numbers mirror
-[`mage.json`](../../client/data/classes/mage.json) and the Rust server constants.
+[`mage.json`](../../../client/data/classes/mage.json) and the Rust server constants.
 
-> Vocabulary: [`../CONTEXT.md`](../CONTEXT.md). Stat scaling: [`../systems/PROGRESSION.md`](../systems/PROGRESSION.md).
-> The ability system: [`../systems/abilities.md`](../systems/abilities.md).
+> Vocabulary: [`../CONTEXT.md`](../../CONTEXT.md). Stat scaling: [`../systems/PROGRESSION.md`](../../systems/PROGRESSION.md).
+> The ability system: [`../systems/abilities.md`](../../systems/abilities.md).
 
 ## Base stats & per-level scaling
 
@@ -58,4 +58,4 @@ only an `ABILITY_EFFECT` VFX event marks the explosion. All damage is server-sid
 
 ## See also
 
-- [`index.md`](index.md) · [`../systems/abilities.md`](../systems/abilities.md) · [`../CONTEXT.md`](../CONTEXT.md)
+- [`index.md`](index.md) · [`../systems/abilities.md`](../../systems/abilities.md) · [`../CONTEXT.md`](../../CONTEXT.md)

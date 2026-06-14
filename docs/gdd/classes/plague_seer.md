@@ -2,10 +2,10 @@
 
 **Status:** Implemented (2026-06-13). An area-denial caster — modest HP, the second-largest flavor
 Mana pool, and a placed damage-over-time zone for grinding down groups. Numbers mirror
-[`plague_seer.json`](../../client/data/classes/plague_seer.json) and the Rust server constants.
+[`plague_seer.json`](../../../client/data/classes/plague_seer.json) and the Rust server constants.
 
-> Vocabulary: [`../CONTEXT.md`](../CONTEXT.md). Stat scaling: [`../systems/PROGRESSION.md`](../systems/PROGRESSION.md).
-> The ability system: [`../systems/abilities.md`](../systems/abilities.md).
+> Vocabulary: [`../CONTEXT.md`](../../CONTEXT.md). Stat scaling: [`../systems/PROGRESSION.md`](../../systems/PROGRESSION.md).
+> The ability system: [`../systems/abilities.md`](../../systems/abilities.md).
 
 ## Base stats & per-level scaling
 
@@ -60,4 +60,4 @@ of 12 (`dps`) prorated over the tick. The zone expires after 5 s. All damage is 
 
 ## See also
 
-- [`index.md`](index.md) · [`../systems/abilities.md`](../systems/abilities.md) · [`../CONTEXT.md`](../CONTEXT.md)
+- [`index.md`](index.md) · [`../systems/abilities.md`](../../systems/abilities.md) · [`../CONTEXT.md`](../../CONTEXT.md)

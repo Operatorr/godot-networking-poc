@@ -2,11 +2,11 @@
 
 **Status:** Implemented (2026-06-13). The tankiest Class — highest HP, smallest flavor Mana pool, and
 a gap-closing **Charge** Class ability that is a *predicted movement* (invulnerable while dashing)
-ending in an AOE blast. Numbers mirror [`warrior.json`](../../client/data/classes/warrior.json) and the
+ending in an AOE blast. Numbers mirror [`warrior.json`](../../../client/data/classes/warrior.json) and the
 Rust server constants.
 
-> Vocabulary: [`../CONTEXT.md`](../CONTEXT.md). Stat scaling: [`../systems/PROGRESSION.md`](../systems/PROGRESSION.md).
-> The ability system: [`../systems/abilities.md`](../systems/abilities.md).
+> Vocabulary: [`../CONTEXT.md`](../../CONTEXT.md). Stat scaling: [`../systems/PROGRESSION.md`](../../systems/PROGRESSION.md).
+> The ability system: [`../systems/abilities.md`](../../systems/abilities.md).
 
 ## Base stats & per-level scaling
 
@@ -66,4 +66,4 @@ and starts the cooldown. Invulnerability and damage are server-authoritative; th
 
 ## See also
 
-- [`index.md`](index.md) · [`../systems/abilities.md`](../systems/abilities.md) · [`../systems/players-movement.md`](../systems/players-movement.md) · [`../CONTEXT.md`](../CONTEXT.md)
+- [`index.md`](index.md) · [`../systems/abilities.md`](../../systems/abilities.md) · [`../systems/players-movement.md`](../../systems/players-movement.md) · [`../CONTEXT.md`](../../CONTEXT.md)

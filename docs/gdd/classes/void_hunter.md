@@ -2,10 +2,10 @@
 
 **Status:** Implemented (2026-06-13). A mobile ranged skirmisher — fast, fragile, highest primary
 damage of the projectile Classes, with a burst-spread Class ability. Numbers mirror
-[`void_hunter.json`](../../client/data/classes/void_hunter.json) and the Rust server constants.
+[`void_hunter.json`](../../../client/data/classes/void_hunter.json) and the Rust server constants.
 
-> Vocabulary: [`../CONTEXT.md`](../CONTEXT.md). Stat scaling: [`../systems/PROGRESSION.md`](../systems/PROGRESSION.md).
-> The ability system: [`../systems/abilities.md`](../systems/abilities.md).
+> Vocabulary: [`../CONTEXT.md`](../../CONTEXT.md). Stat scaling: [`../systems/PROGRESSION.md`](../../systems/PROGRESSION.md).
+> The ability system: [`../systems/abilities.md`](../../systems/abilities.md).
 
 ## Base stats & per-level scaling
 
@@ -59,4 +59,4 @@ server-authoritative collision pass.
 
 ## See also
 
-- [`index.md`](index.md) · [`../systems/abilities.md`](../systems/abilities.md) · [`../CONTEXT.md`](../CONTEXT.md)
+- [`index.md`](index.md) · [`../systems/abilities.md`](../../systems/abilities.md) · [`../CONTEXT.md`](../../CONTEXT.md)

@@ -2,10 +2,10 @@
 
 **Status:** Implemented (2026-06-13). The frontline Class — high HP, average everything else, and a
 defensive-zone Class ability (orbiting orbs that punish anything that closes in). Numbers mirror
-[`zealot.json`](../../client/data/classes/zealot.json) and the Rust server constants (the authority).
+[`zealot.json`](../../../client/data/classes/zealot.json) and the Rust server constants (the authority).
 
-> Vocabulary: [`../CONTEXT.md`](../CONTEXT.md). Stat scaling: [`../systems/PROGRESSION.md`](../systems/PROGRESSION.md).
-> The ability system: [`../systems/abilities.md`](../systems/abilities.md).
+> Vocabulary: [`../CONTEXT.md`](../../CONTEXT.md). Stat scaling: [`../systems/PROGRESSION.md`](../../systems/PROGRESSION.md).
+> The ability system: [`../systems/abilities.md`](../../systems/abilities.md).
 
 ## Base stats & per-level scaling
 
@@ -66,4 +66,4 @@ resolution is server-side.
 
 ## See also
 
-- [`index.md`](index.md) · [`../systems/abilities.md`](../systems/abilities.md) · [`../CONTEXT.md`](../CONTEXT.md)
+- [`index.md`](index.md) · [`../systems/abilities.md`](../../systems/abilities.md) · [`../CONTEXT.md`](../../CONTEXT.md)

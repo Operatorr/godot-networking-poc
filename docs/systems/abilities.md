@@ -2,7 +2,7 @@
 
 **Status:** Implemented (2026-06-13). Every Class has one **Class ability** bound to the right mouse
 button, paid for in **Mana**, on its own cooldown. This doc is the system-level home; per-Class
-parameters and behavior live in [`../classes/`](../classes/index.md). The wire additions this system
+parameters and behavior live in [`../classes/`](../gdd/classes/index.md). The wire additions this system
 introduced bumped the protocol to **v4** — see [`../server/contract.md`](../server/contract.md).
 
 > Vocabulary follows [`../CONTEXT.md`](../CONTEXT.md) ("Classes & abilities", "Combat & survival"):
@@ -109,7 +109,7 @@ replicated; the client renders its own translucency from it.
 
 ## See also
 
-- [`../classes/index.md`](../classes/index.md) — the seven Classes and their per-ability parameters.
+- [`../classes/index.md`](../gdd/classes/index.md) — the seven Classes and their per-ability parameters.
 - [`PROGRESSION.md`](PROGRESSION.md) — levels, per-level scaling, Mana regen, XP→Glory.
 - [`players-movement.md`](players-movement.md) · [`players-movement-state-machine.md`](players-movement-state-machine.md) — the movement SM the two movement abilities extend.
 - [`combat-hits.md`](combat-hits.md) — the projectile/hit machinery Multishot and primaries share.

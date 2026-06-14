@@ -182,8 +182,8 @@ what's solved.
 | Client/server teleport-threshold parity | `interpolation_controller.gd` ← `GameConstants.TELEPORT_THRESHOLD` | Phase 1 |
 | Decoupled Snapshot rate *knob* | `ServerConfig.snapshot_rate_hz` | Phase 1 (value is #3) |
 | Priority/budget Snapshot scheduler (built & wired) | `snapshot_scheduler.gd`, `server_broadcast_service.gd` | Phase 2 (diagnostics = #15) |
-| Server walked 1/3 client speed (persistent-input model) | `player_state.gd` ingest/step, `player_manager.gd` | `../../DESYNC_PLAN.md` Fix A |
-| Ghost player (Local player never learned its id) | auth defer + `PLAYER_INFO` force-sync, `arena_base.gd` | `../../DESYNC_PLAN.md` Fix B/C |
+| Server walked 1/3 client speed (persistent-input model) | `player_state.gd` ingest/step, `player_manager.gd` | legacy desync plan Fix A (historical; see git history) |
+| Ghost player (Local player never learned its id) | auth defer + `PLAYER_INFO` force-sync, `arena_base.gd` | legacy desync plan Fix B/C (historical; see git history) |
 
 ---
 
@@ -205,4 +205,4 @@ what's solved.
 - [`../../netcode/client-prediction.md`](../../netcode/client-prediction.md) · [`../../netcode/interpolation.md`](../../netcode/interpolation.md) · [`../../netcode/server-tick-broadcast.md`](../../netcode/server-tick-broadcast.md)
 - [`../../netcode/interest-mgmt-aoi.md`](../../netcode/interest-mgmt-aoi.md) · [`../../netcode/wire-protocol.md`](../../netcode/wire-protocol.md) · [`../../netcode/transport-websocket.md`](../../netcode/transport-websocket.md)
 - [`../../systems/combat-hits.md`](../../systems/combat-hits.md) · [`../../systems/players-movement.md`](../../systems/players-movement.md)
-- Detailed source plans (superseded by this ordering): [`../../../plans/NETWORK_PERFORMANCE_UPGRADES.md`](../../../plans/NETWORK_PERFORMANCE_UPGRADES.md) · [`../../../plans/CODEX_NETWORK_PERFORMANCE_UPGRADES.md`](../../../plans/CODEX_NETWORK_PERFORMANCE_UPGRADES.md) · [`../../../plans/RECOMMENDATIONS.md`](../../../plans/RECOMMENDATIONS.md) · [`../../DESYNC_PLAN.md`](../../DESYNC_PLAN.md)
+- Detailed source plans (superseded by this ordering): [`../../../plans/NETWORK_PERFORMANCE_UPGRADES.md`](../../../plans/NETWORK_PERFORMANCE_UPGRADES.md) · [`../../../plans/CODEX_NETWORK_PERFORMANCE_UPGRADES.md`](../../../plans/CODEX_NETWORK_PERFORMANCE_UPGRADES.md) · [`../../../plans/RECOMMENDATIONS.md`](../../../plans/RECOMMENDATIONS.md) · the legacy desync plan (historical; see git history)

@@ -3,10 +3,10 @@
 **Status:** Implemented (2026-06-13). The fastest, most fragile Class — a hit-and-run assassin whose
 **Shadowstep** Class ability either blinks to a target for a big hitscan or, with no target, grants
 **Stealth**. The blink is *predicted movement*. Numbers mirror
-[`rogue.json`](../../client/data/classes/rogue.json) and the Rust server constants.
+[`rogue.json`](../../../client/data/classes/rogue.json) and the Rust server constants.
 
-> Vocabulary: [`../CONTEXT.md`](../CONTEXT.md). Stat scaling: [`../systems/PROGRESSION.md`](../systems/PROGRESSION.md).
-> The ability system: [`../systems/abilities.md`](../systems/abilities.md).
+> Vocabulary: [`../CONTEXT.md`](../../CONTEXT.md). Stat scaling: [`../systems/PROGRESSION.md`](../../systems/PROGRESSION.md).
+> The ability system: [`../systems/abilities.md`](../../systems/abilities.md).
 
 ## Base stats & per-level scaling
 
@@ -70,4 +70,4 @@ server-authoritative.
 
 ## See also
 
-- [`index.md`](index.md) · [`../systems/abilities.md`](../systems/abilities.md) · [`../systems/players-movement.md`](../systems/players-movement.md) · [`../CONTEXT.md`](../CONTEXT.md)
+- [`index.md`](index.md) · [`../systems/abilities.md`](../../systems/abilities.md) · [`../systems/players-movement.md`](../../systems/players-movement.md) · [`../CONTEXT.md`](../../CONTEXT.md)

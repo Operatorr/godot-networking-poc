@@ -2,7 +2,7 @@
 
 **Status:** Implemented (2026-06-13). Defeating monsters grants **experience**; accumulated XP
 raises the player's **level**, which now **scales gameplay stats** (HP, move speed, and primary
-damage all grow per level — see [`../classes/index.md`](../classes/index.md)). Progression is now
+damage all grow per level — see [`../classes/index.md`](../gdd/classes/index.md)). Progression is now
 **server/API-authoritative**: the server owns each player's level and XP in the live sim, hydrates
 them from the Go API on join, and writes them back. The client is **display-only**.
 
@@ -59,7 +59,7 @@ keeps only the event whose `source_id` is its own.
 
 Level is no longer cosmetic. A stat at level `L` is `base + per_lvl * (L - 1)`, applied **on the
 server** when XP crosses a level boundary (and on hydrate at join). Three stats scale, per Class
-(full table in [`../classes/index.md`](../classes/index.md)):
+(full table in [`../classes/index.md`](../gdd/classes/index.md)):
 
 - **HP** — `max_hp` grows; the live HP cap rises on level-up (current HP is not topped up).
 - **Move speed** — feeds the `sim_core` ground speed; the new value rides the wire so the client
@@ -143,13 +143,13 @@ ends it. See [`../adr/0006-softcore-hardcore-glory-economy.md`](../adr/0006-soft
 - **No per-kill persistence:** the server checkpoints XP on a timer / transition / death, so a crash
   can lose a few seconds of progress (the Glory conversion itself is atomic and safe).
 - **Monster roster:** only the Toxic Slime grants XP today (20). Higher tiers should set
-  proportionally larger `xp_reward` as they are implemented — see [`MONSTERS.md`](MONSTERS.md).
+  proportionally larger `xp_reward` as they are implemented — see [`MONSTERS.md`](../gdd/MONSTERS.md).
 - **Ability scaling:** Class abilities are fixed per Class today; per-level or skill-tree ability
   scaling is future work (Class Trainer spells, ADR 0005's "widen the payload later").
 
 ## See also
 
-- [`../classes/index.md`](../classes/index.md) — per-Class base stats and the per-level scaling table.
+- [`../classes/index.md`](../gdd/classes/index.md) — per-Class base stats and the per-level scaling table.
 - [`abilities.md`](abilities.md) — Class abilities, Mana, the 8/s regen sink.
 - [`../adr/0006-softcore-hardcore-glory-economy.md`](../adr/0006-softcore-hardcore-glory-economy.md) — Softcore/Hardcore + Glory.
 - [`../adr/0005-permadeath-persistence-model.md`](../adr/0005-permadeath-persistence-model.md) — hydrate-on-join + death-as-save.

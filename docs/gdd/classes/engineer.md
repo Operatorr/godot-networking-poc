@@ -2,10 +2,10 @@
 
 **Status:** Implemented (2026-06-13). A zone-control Class — average durability, the largest flavor
 Mana pool, and a placed proximity-mine Class ability for denying ground. Numbers mirror
-[`engineer.json`](../../client/data/classes/engineer.json) and the Rust server constants.
+[`engineer.json`](../../../client/data/classes/engineer.json) and the Rust server constants.
 
-> Vocabulary: [`../CONTEXT.md`](../CONTEXT.md). Stat scaling: [`../systems/PROGRESSION.md`](../systems/PROGRESSION.md).
-> The ability system: [`../systems/abilities.md`](../systems/abilities.md).
+> Vocabulary: [`../CONTEXT.md`](../../CONTEXT.md). Stat scaling: [`../systems/PROGRESSION.md`](../../systems/PROGRESSION.md).
+> The ability system: [`../systems/abilities.md`](../../systems/abilities.md).
 
 ## Base stats & per-level scaling
 
@@ -62,4 +62,4 @@ every monster within 120 (`blast_radius`) — an AOE — and despawns. If untrig
 
 ## See also
 
-- [`index.md`](index.md) · [`../systems/abilities.md`](../systems/abilities.md) · [`../CONTEXT.md`](../CONTEXT.md)
+- [`index.md`](index.md) · [`../systems/abilities.md`](../../systems/abilities.md) · [`../CONTEXT.md`](../../CONTEXT.md)

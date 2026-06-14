@@ -52,7 +52,7 @@ and retreats to its preferred distance.
 a fresh character from level 1 to level 2; thereafter the curve scales so a same-level
 monster is ~10 kills per level, which makes farming low-tier slimes at a high level
 intentionally slow. Higher-tier monsters set a proportionally larger `xp_reward`. See
-[`PROGRESSION.md`](PROGRESSION.md) for the full curve and radius-sharing rules.
+[`PROGRESSION.md`](../systems/PROGRESSION.md) for the full curve and radius-sharing rules.
 
 ---
 

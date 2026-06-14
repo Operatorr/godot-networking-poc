@@ -170,7 +170,7 @@ Env: `OMEGA_TICKET_PRIVKEY` (api.env, 32-byte hex seed) ⇄ `OMEGA_TICKET_PUBKEY
 generate a pair with `go run ./cmd/gen_ticket_key`.
 
 > The full HTTP/JSON surface of the Go API (auth, characters, regions, leaderboard) — as
-> consumed by web/CMS clients — is documented in [`../api/cms-api.md`](../api/cms-api.md).
+> consumed by web/CMS clients — is documented in [`../api/web-api.md`](../api/web-api.md).
 > This section covers only the game-connect ticket the Rust server verifies.
 
 ### AuthResult (type 64, ch1)

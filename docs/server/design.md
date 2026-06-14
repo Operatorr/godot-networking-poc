@@ -200,7 +200,7 @@ shutdown sends reasoned disconnects. Deployment, units, and config files:
 ## See also
 
 - [`contract.md`](contract.md) — workspace, wire format, numerics, crate APIs (as built).
-- [`../ARCHITECTURE.md`](../ARCHITECTURE.md) — top-level system architecture + POC success criteria.
+- [`../ops/architecture.md`](../ops/architecture.md) — top-level system architecture + POC success criteria.
 - [`../adr/0003-enet-udp-transport.md`](../adr/0003-enet-udp-transport.md) ·
   [`0004`](../adr/0004-schema-driven-wire-protocol.md) ·
   [`0005`](../adr/0005-permadeath-persistence-model.md) ·

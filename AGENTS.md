@@ -44,7 +44,7 @@ Don't re-derive what's already written there; read it, then go deep where needed
 
 - [`docs/CONTEXT.md`](docs/CONTEXT.md) — glossary. **Use these exact terms** (Tick ≠ Frame ≠ Snapshot).
 - [`docs/index.md`](docs/index.md) — full doc catalogue with verification status.
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — top-level system architecture + POC success criteria.
+- [`docs/ops/architecture.md`](docs/ops/architecture.md) — top-level system architecture + POC success criteria.
 - **[`docs/server/`](docs/server/) — the game server (current core):**
   - `design.md` — architecture & rationale (transport, shared sim, tick, auth, persistence, hits).
   - `contract.md` — workspace/crate APIs, channel plan, wire format, numerics policy, as built.

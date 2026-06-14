@@ -1,33 +1,42 @@
 # Netcode overview — authority model, loops, packet map
 
-**Status:** Implemented (verified 2026-06-03 against code)
+**Status:** Implemented (verified 2026-06-14 against `rust/`)
 
-> The map of the netcode subtree. It fixes the **authority model**, the **three loops**, and the
-> **packet map** once, so the deep docs don't each re-derive them. When you need a mechanism in
-> detail, jump from the [where to go next](#where-to-go-next) index — don't expand it here.
+> The map of the netcode subtree, post Rust-port. It fixes the **authority model**, the **three
+> loops**, and the **packet map** once, so the deep docs don't each re-derive them. The
+> authoritative server is now the Rust **`omega-server`** binary (`rust/server/`) over ENet/UDP,
+> running the shared **`sim_core`** crate; the legacy Godot headless server is retired. When you
+> need a mechanism in detail, jump from the [where to go next](#where-to-go-next) index — and for
+> the as-built wire format, go straight to [`../server/contract.md`](../server/contract.md).
 
 ## Authority model — "the client requests, the server decides"
 
-This is an [Authoritative server](../CONTEXT.md): one Godot 4.6 headless process is the single
-source of truth for all gameplay. The client sends *intent* (`PLAYER_INPUT`); the server runs the
-simulation, decides outcomes, and streams back authoritative state (`STATE_UPDATE`) and one-shot
-[Game events](../CONTEXT.md) (`GAME_EVENT`). Nothing a client claims about position, hits, or kills
-is trusted.
+This is an [Authoritative server](../CONTEXT.md): one **`omega-server` process is one instance**
+([`../server/design.md`](../server/design.md)) and is the single source of truth for all gameplay.
+The client sends *intent* (`PlayerInput`); the server runs the simulation, decides outcomes, and
+streams back authoritative state (`Snapshot`) and one-shot [Game events](../CONTEXT.md)
+(`GameEvent`). Nothing a client claims about position, hits, or kills is trusted. The retired
+GDScript server (`client/scripts/server/*.gd`) is kept only as parity ground truth and is being
+deleted — do not cite it as live code.
 
 Two client-side techniques hide the round-trip without surrendering authority:
 
 - The [Local player](../CONTEXT.md) is **predicted** — the client simulates its own input
-  immediately (`prediction.gd:142,162`) and later [reconciles](../CONTEXT.md) to the server
-  (`prediction.gd:171` acks; replay of unacked inputs). Drift past the 4-unit epsilon
-  (`prediction.gd:30`) snaps `predicted_position`; bigger jumps past the 150-unit teleport
-  threshold (`prediction.gd:28`) hard-warp.
+  immediately through the **same compiled `sim_core` crate** the server runs, exposed to GDScript
+  as `PredictionSim` (`client/scripts/client/prediction.gd`; the `client_ext` GDExtension). Because
+  client and server execute literally the same movement code, prediction cannot diverge on the
+  math; later it [reconciles](../CONTEXT.md) to the server's `ActionConfirm`. Drift past the 4-unit
+  epsilon (`prediction.gd` `server_position_epsilon`) smooth-corrects; jumps past the 150-unit
+  teleport threshold (`prediction.gd` `teleport_threshold`) hard-warp.
 - Every [Remote entity](../CONTEXT.md) is **interpolated**, never predicted — drawn from buffered
   Snapshots at a fixed [Render delay](../CONTEXT.md) of `REMOTE_ENTITY_RENDER_DELAY_TICKS = 2`
-  (`game_constants.gd:20`, applied at `interpolation_controller.gd:186`) = 66.7 ms behind the
-  server tick.
+  (`client/scripts/shared/game_constants.gd`, applied in `interpolation_controller.gd`) ≈ 66.7 ms
+  behind the server tick. The delay adapts within `[1, 3]` ticks under jitter.
 
-Persistence is split: all gameplay state is **in-memory and server-authoritative**; the Go API
-owns only account / character / leaderboard / region data.
+Persistence is split: all gameplay state is **in-memory and server-authoritative**; the **Go API**
+(`api/`, Postgres + Redis) owns all durable state — accounts, characters, leaderboard, regions, and
+Glory. Auth is an **Ed25519 session ticket** minted by the Go API and **verified locally** by the
+server (dev default `--allow-unsigned-tickets`); see [`../server/design.md`](../server/design.md).
 
 ## The three loops
 
@@ -37,111 +46,150 @@ they are named with the [glossary](../CONTEXT.md) terms ([Tick](../CONTEXT.md) �
 
 | Loop | Where | Driver | Rate | What it does |
 |---|---|---|---|---|
-| **Server Tick** | `server_main.gd:170-182` | manual accumulator in `_process` | **30 Hz** (33.3 ms) | advance the authoritative simulation one Tick |
-| **Server Snapshot** | `server_main.gd:207-218,249-253` | second accumulator gated on the Tick | **20 Hz live** (50 ms) | broadcast `STATE_UPDATE` per player |
-| **Client predict + interpolate** | `prediction.gd:142`, `interpolation_controller.gd` | `_physics_process` | **30 Hz** (33.3 ms) | predict Local player, interpolate Remote entities, send `PLAYER_INPUT` |
+| **Server Tick** | `rust/server/src/main.rs`, `world.rs::tick` | fixed 30 Hz accumulator over non-blocking ENet `host.service()` | **30 Hz** (33.3 ms) | advance the authoritative simulation one Tick |
+| **Server Snapshot** | `rust/server/src/world.rs` (`snapshot_accumulator`), `broadcast.rs` | second accumulator gated on the Tick | **30 Hz live** (matches tick; see note) | build + send per-peer `Snapshot` |
+| **Client predict + interpolate** | `prediction.gd::_physics_process`, `interpolation_controller.gd` | `_physics_process` | **30 Hz** (33.3 ms) | predict Local player, interpolate Remote entities, send `PlayerInput` |
 
-### 1. Server Tick — 30 Hz, in `_process` (not `_physics_process`)
+### 1. Server Tick — 30 Hz, single-threaded synchronous
 
-The simulation steps on a **manual accumulator inside `Node._process`** (`server_main.gd:177-182`):
-`tick_timer += delta`, then `while tick_timer >= 1/tick_rate: _process_server_tick()`. There is
-**no** `Engine.max_fps` cap and it does **not** use `_physics_process`. Each Tick (in order,
-`server_main.gd:230-256`): drain client inputs → update state → monster AI → record monster
-position snapshot (for PvE rewind) → collisions → *conditionally* broadcast → cleanup. `tick_rate`
-is 30 (`data/config/server_config.json:9`).
+The main thread **is** the tick thread (`rust/server/src/main.rs`): a fixed 30 Hz accumulator loop
+over a non-blocking `host.service()` — there is no game-engine frame loop. Each Tick, in order
+(`rust/server/src/world.rs::tick`): drain `host.service()` → decode and route → apply inputs (per-
+player latched flags, `_pending_dash`, stale-input timeout) → step players through
+`sim_core::step_player` → monster AI (`monster.rs`) → record monster position history (lag-comp
+ring) → projectile + collision pass (`projectile.rs`, `combat.rs`, two-netcode model) → deaths /
+respawns / leaderboard → build per-peer Snapshots → send confirms + events → `host.flush()` → sleep
+the remainder in short slices that keep ENet acks timely. `tick_rate` is **30**
+(`rust/server/src/config.rs`; `deployment/server_config.{arena,sanctuary}.json`). Infrequent side
+I/O (Go API region heartbeat, persistence) runs on a separate thread over `std::sync::mpsc`, never
+blocking the tick.
 
-### 2. Server Snapshot — 20 Hz live, decoupled from the Tick
+### 2. Server Snapshot — decoupled from the Tick by an accumulator
 
 Snapshot bandwidth is **decoupled** from the Tick by a second accumulator
-(`server_main.gd:207-218`): a Tick only sets `snapshot_due` when enough wall time has elapsed at
-`snapshot_rate_hz`, and `broadcast_state_updates` runs only on those Ticks (`server_main.gd:249`).
-Events (`GAME_EVENT`) still fire every Tick — only continuous state is rate-limited.
+(`rust/server/src/world.rs`: `snapshot_accumulator += tick_dt`, fire when `>= snapshot_interval`).
+A Tick only sets `snapshot_due` when enough wall time has elapsed at `snapshot_rate_hz`; events
+(`GameEvent`) still fire every Tick — only continuous state is rate-limited.
 
-> **Config discrepancy — flag this.** `ServerConfig` *defaults* `snapshot_rate_hz = 0`, which falls
-> back to the Tick rate (30 Hz) (`server_config.gd:88-93`). But the loaded
-> `data/config/server_config.json:10` sets `snapshot_rate_hz = 20`, and **the JSON wins at
-> runtime** → the **live Snapshot rate is 20 Hz (50 ms)**, not 30. Several client-side constants
-> still assume 20 Hz from before the Tick rate moved to 30 (see
-> [`smoothness-render.md`](smoothness-render.md) and the interpolation doc); the stale comments
-> (`interpolation_controller.gd:9,75`) say "20Hz/100ms" and should be read as historical.
+> **Live rate is 30 Hz, not 20.** The config default `snapshot_rate_hz = 0` falls back to the tick
+> rate (`config.rs::snapshot_rate_hz` → `tick_rate`), and the deployed
+> `deployment/server_config.{arena,sanctuary}.json` set `snapshot_rate_hz = 30`. So the live
+> Snapshot rate equals the Tick rate at **30 Hz (33.3 ms)**. Older client constants and comments
+> that assume a 20 Hz / 50 ms snapshot interval are historical (WebSocket-era); read them as such
+> and cross-check [`smoothness-render.md`](smoothness-render.md) and
+> [`interpolation.md`](interpolation.md).
 
 ### 3. Client predict + interpolate — 30 Hz, in `_physics_process`
 
-The client's gameplay loop runs in `_physics_process` (`prediction.gd:142`): capture input flags,
-apply local prediction, smooth any active correction, and send `PLAYER_INPUT` on the server-tick
-cadence (`INPUT_SEND_INTERVAL = SERVER_TICK_INTERVAL`, `prediction.gd:71`; sent at
-`prediction.gd:170-172`). 8-bit wrapping sequence numbers and a 256-entry replay buffer
-(`prediction.gd:21,57`) bound reconciliation. `InterpolationController._physics_process` advances
-every Remote entity toward `render_tick = server_tick − 2` (`interpolation_controller.gd:186`).
+The client's gameplay loop runs in `_physics_process` (`prediction.gd`): capture input flags, run
+local prediction through `PredictionSim` (the shared `sim_core`), smooth any active correction, and
+send `PlayerInput` on the server-tick cadence (`INPUT_SEND_INTERVAL = SERVER_TICK_INTERVAL`). An
+8-bit wrapping sequence and a replay buffer bound reconciliation; the codec lives in `ProtocolCodec`
+(`client_ext`). `InterpolationController._physics_process` advances every Remote entity toward
+`render_tick = server_tick − render_delay` (`interpolation_controller.gd`).
 
-> **Frame ≠ Tick.** Both gameplay loops above write node positions only in `_physics_process` at
-> 30 Hz, while the GPU draws Frames far more often. Built-in physics interpolation is off, so motion
-> *steps* at 30 Hz regardless of FPS — the "looks like 30 fps at 100 fps" bug, owned by
+> **Frame ≠ Tick.** Both client gameplay loops write node positions in `_physics_process` at 30 Hz,
+> while the GPU draws Frames far more often. Render smoothness is decoupled from FPS via Godot's
+> `physics_interpolation` plus discontinuity resets — owned by
 > [`smoothness-render.md`](smoothness-render.md).
 
 ### Transport note
 
-All three loops ride **WebSocket over TCP** both directions (`network_manager.gd:49,144,182`
-server via `TCPServer` + `WebSocketPeer.accept_stream`; `network_manager.gd:295-298` client via
-`connect_to_url` + TLS). Sockets are **polled once per render Frame** in `_process`
-(`network_manager.gd:167-171,190,235`), *not* on the Tick. The server coalesces a Tick's per-peer
-packets into one `BATCH` frame flushed at end-of-Tick (`server_main.gd:227-228,258-259`); the
-client sends one `ws.send` per message. Deep dive: the transport doc (Planned).
+All three loops ride **ENet over UDP** ([ADR 0003](../adr/0003-enet-udp-transport.md)) — **not**
+WebSocket/TCP, and **not** Godot High-Level Multiplayer (`MultiplayerSynchronizer` /
+`ENetMultiplayerPeer`). The server uses pure-Rust `rusty_enet` (pinned `=0.4.0`); the client uses
+Godot's native low-level `ENetConnection` + `ENetPacketPeer`
+(`client/autoload/transport/enet_transport.gd`), wire-compatible with `rusty_enet`. Three channels,
+each matched to its traffic — see [the packet map](#the-packet-map) below. ENet's native
+keepalive / RTT / timeout **replaces the old application HEARTBEAT**; the clock-sync payload
+interpolation needs (`server_ms`) rides **every** `Snapshot` instead. Deep dive:
+[`../server/contract.md`](../server/contract.md) (the transport-websocket doc is a retired stub).
 
 ## The packet map
 
-One byte of header type selects the message. The wire header is `[u8 type][u16 length]`
-(`packet_types.gd:7`); `MAX_PACKET_SIZE = 65535` (`packet_types.gd:10`). The `MessageType` enum is
-defined identically in `packet_types.gd:13-25` (`Type`) and mirrored in `network_manager.gd:16-28`
-(`MessageType`) — keep them in lockstep.
+The wire format is a hand-rolled **bit-packed protocol crate** (`rust/protocol/`) — no codegen,
+no length field. Every packet is `[u8 type][payload]`; ENet preserves datagram boundaries.
+Multi-byte integers are little-endian; bit-level fields pack LSB-first. `PROTOCOL_VERSION = 4`
+rides the ENet connect `data: u32` and is re-checked in `ConnectAuth`. The full as-built spec
+(field layouts, quantization, the Snapshot delta/baseline bitstream) lives in
+[`../server/contract.md`](../server/contract.md) — this is only the map.
+
+**Three channels** (`rust/protocol/src/lib.rs`: `CH_SNAPSHOT`, `CH_RELIABLE`, `CH_INPUT`):
+
+| Ch | ENet mode | Carries |
+|---|---|---|
+| 0 | unreliable **sequenced** | `Snapshot` deltas, `ActionConfirm` — newest wins; a dropped one is superseded, never retransmitted |
+| 1 | **reliable** ordered | `AuthResult`, `GameEvent`, `ServerMetrics`, **baseline `Snapshot`s** (S→C); `ConnectAuth`, `BaselineAck`, `RequestFullState`, `RespawnRequest`, `LocalHitReport` (C→S) |
+| 2 | unreliable **sequenced** | `PlayerInput` — the client replays unacked inputs anyway, so loss self-heals |
+
+**Packet type ids** (`rust/protocol/src/types.rs`; direction enforced at decode):
 
 | # | Name | Direction | Carries | Notes |
 |---|---|---|---|---|
-| 1 | `PLAYER_INPUT` | client → server | input flags + aim + 8-bit sequence | intent only; sampled & sent at 30 Hz (`prediction.gd:170`) |
-| 2 | `STATE_UPDATE` | server → client | [Snapshot](../CONTEXT.md): entity positions / anim / flags | delta-encoded vs a [Baseline](../CONTEXT.md); forced full state every 100 ticks (`packet_types.gd:78`); 20 Hz live |
-| 3 | `GAME_EVENT` | server → client | one-shot [Game event](../CONTEXT.md) (damage, kill, respawn, `PLAYER_INFO`, projectile fired…) | sub-types in `GameEventType` (`packet_types.gd:81-94`); fires every Tick, not rate-limited |
-| 4 | `HEARTBEAT` | bidirectional | keep-alive + `server_ms` for clock sync | 1 Hz; 5 s timeout; client echoes (`network_manager.gd:494-501`) |
-| 5 | `ACTION_CONFIRM` | server → client | authoritative move confirm / correction (sequence + position + tick) | drives [Reconciliation](../CONTEXT.md) (`server_main.gd:310-320`) |
-| 6 | `CONNECT_AUTH` | client → server | auth handshake (JWT from the Go API) | the "AUTH/CONNECT" message; sent on connect (`network_manager.gd:398`) |
-| 7 | `DISCONNECT` | client → server | clean disconnect + reason code | `DisconnectReason` enum (`packet_types.gd:97-104`) |
-| 8 | `REQUEST_FULL_STATE` | client → server | ask for a fresh full-state [Baseline](../CONTEXT.md) | recovery when delta reconstruction fails (TASK-021) |
-| 9 | `RESPAWN_REQUEST` | client → server | request respawn after death | server validates life-state |
-| 10 | `SERVER_METRICS` | server → client | tick time / bandwidth / player count | 1 Hz diagnostics (`server_main.gd:194`) |
-| 11 | `BATCH` | server → client | N inner packets in one WS frame | per-peer coalescing wrapper (TASK-066, `network_manager.gd:617`) |
+| 1 | `ConnectAuth` | client → server | version + ticket + name/color + class + character_id + bandwidth budget | the auth handshake; ch1 |
+| 2 | `PlayerInput` | client → server | input flags + aim + predicted pos/vel + cursor + 8-bit seq | intent only; 22 B (protocol v4); 30 Hz on ch2 |
+| 3 | `BaselineAck` | client → server | acked baseline tick | ch1; enables delta-vs-baseline |
+| 4 | `RequestFullState` | client → server | (empty) | recovery when delta reconstruction fails |
+| 5 | `RespawnRequest` | client → server | (empty) | server validates life-state |
+| 6 | `LocalHitReport` | client → server | projectile id | client-authoritative monster→player hit report |
+| 64 | `AuthResult` | server → client | result code + entity_id + server_tick + tick_rate | fast-paths Authority sync |
+| 65 | `Snapshot` | server → client | [Snapshot](../CONTEXT.md): per-entity pos/anim/flags + `server_tick` + **`server_ms`** | delta vs an acked [Baseline](../CONTEXT.md), forced full state every 100 ticks; deltas ch0, baselines ch1 |
+| 66 | `ActionConfirm` | server → client | move confirm/correction (seq + pos + tick + stamina + mana) | drives [Reconciliation](../CONTEXT.md) |
+| 67 | `GameEvent` | server → client | one-shot [Game event](../CONTEXT.md) (DAMAGE, KILL, RESPAWN, PLAYER_INFO, PROJECTILE_FIRED, PICKUP, ABILITY_EFFECT, PROGRESS, EXP_GAIN, LEADERBOARD_UPDATE…) | ch1; fires every Tick, not rate-limited |
+| 68 | `ServerMetrics` | server → client | tick time / bandwidth / player count | 1 Hz diagnostics, ch1 |
 
-The four message types the spec calls out — `AUTH/CONNECT` (= `CONNECT_AUTH`, 6), `PLAYER_INPUT`
-(1), `STATE_UPDATE` (2), `GAME_EVENT` (3), `ACTION_CONFIRM` (5), `HEARTBEAT` (4), `DISCONNECT` (7),
-`REQUEST_FULL_STATE` (8) — are all present above; there is **no** standalone `AUTH` or `CONNECT`
-message, only the combined `CONNECT_AUTH`.
+There is **no** standalone HEARTBEAT, BATCH, or length-prefixed header anymore: keepalive/RTT is
+ENet-native, clock-sync (`server_ms`) rides every `Snapshot`, and disconnect uses **native ENet
+disconnect** with the reason in `data: u32` (no packet).
+
+**Typed entity id** (bit-packed inside `Snapshot`, `rust/protocol/src/snapshot.rs`):
+`[2-bit kind][offset]` — kind 0 player (id 1–999), kind 1 projectile (10000–29999), kind 2 monster
+(30000–39999), **kind 3 world effect** (protocol v4; 40000–49999, e.g. Healthorbs / lingering
+ability effects).
 
 ## Where to go next
 
 The deep docs own the mechanisms; this overview only points at them.
 
-- [`latency-budget.md`](latency-budget.md) — **start here.** Every millisecond of perceived delay, accounted with `file:line`. *(live)*
-- [`smoothness-render.md`](smoothness-render.md) — the "30 fps at 100 fps" stepping bug and its fix. *(live)*
-- `client-prediction.md` — Local player prediction + reconciliation internals (sequence/replay/correction lerp). *(Planned)*
-- `interpolation.md` — Remote entity interpolation, the 2-tick Render delay, state buffer, extrapolation/freeze. *(Planned)*
-- `server-tick-broadcast.md` — the Tick loop, the decoupled Snapshot cadence, per-player broadcast. *(Planned)*
-- `interest-mgmt-aoi.md` — [AoI](../CONTEXT.md) filtering, LOD, the per-peer snapshot byte budget / scheduler. *(Planned)*
-- `wire-protocol.md` — header, quantization, delta masks, the u8 entity-count cap. *(Planned)*
-- `transport-websocket.md` — WebSocket/TCP, polling cadence, batching, head-of-line blocking. *(Planned)*
-- `performance-budgets.md` — POC targets vs measured numbers. *(Planned)*
-- [`../ARCHITECTURE.md`](../ARCHITECTURE.md) — top-level system architecture + POC success criteria.
+- [`latency-budget.md`](latency-budget.md) — **start here.** Every millisecond of perceived delay accounted. *(verified)*
+- [`smoothness-render.md`](smoothness-render.md) — FPS-independent render smoothness (physics interpolation + resets). *(fix applied)*
+- [`client-prediction.md`](client-prediction.md) — Local player prediction + reconciliation (the `PredictionSim`/`sim_core` path, sequence/replay/correction). *(partial)*
+- [`interpolation.md`](interpolation.md) — Remote entity interpolation, the 2-tick Render delay, state buffer, extrapolation/freeze. *(partial)*
+- [`server-tick-broadcast.md`](server-tick-broadcast.md) — the 30 Hz Tick loop, the decoupled Snapshot accumulator, per-player broadcast. *(implemented)*
+- [`interest-mgmt-aoi.md`](interest-mgmt-aoi.md) — [AoI](../CONTEXT.md) filtering with hysteresis, the per-peer snapshot byte budget / scheduler. *(implemented)*
+- [`hit-authority-model.md`](hit-authority-model.md) — the two-netcode hit model (monster→player client-auth + lenient backstop; PvP / player→monster server-auth + lag-comp). *(partial)*
+- [`performance-budgets.md`](performance-budgets.md) — POC targets vs measured numbers. *(reference)*
+- [`../server/design.md`](../server/design.md) — the game server: transport, shared sim, tick, auth, persistence, hits — the *why*.
+- [`../server/contract.md`](../server/contract.md) — the as-built wire format, crate APIs, numerics, channels — the spec. *(supersedes the retired `wire-protocol.md` / `transport-websocket.md` stubs)*
+- [`../ops/architecture.md`](../ops/architecture.md) — top-level system architecture + POC success criteria.
 - [`../CONTEXT.md`](../CONTEXT.md) — glossary; the canonical terms used throughout this doc.
 
 ## The eight questions
 
-- **Client:** samples input, predicts the Local player, interpolates Remote entities, renders, and talks WebSocket — all in `_physics_process`/`_process`.
-- **Server:** the authority — runs the 30 Hz Tick, resolves movement/collisions/combat, and emits `STATE_UPDATE` (20 Hz) + `GAME_EVENT`.
-- **Predicted:** only the Local player (`prediction.gd`); Remote entities are never predicted.
-- **Replicated:** all entity state via delta `STATE_UPDATE` Snapshots against a 100-tick Baseline; discrete outcomes via `GAME_EVENT`.
-- **Persisted:** nothing in the sim — gameplay state is in-memory; the Go API persists account/character/leaderboard/region only.
-- **Validated:** server re-simulates every input and corrects via `ACTION_CONFIRM`; positions, hits, and kills are server-decided, never client-claimed.
-- **Can fail:** the 20 Hz JSON Snapshot rate diverging from the 30 Hz default; stale 20 Hz client constants; TCP head-of-line blocking stalling all state on one lost segment.
-- **Tested:** offline `sandbox.tscn` and the full-stack `net_smoke.tscn` smoke scene plus the Rust `omega-load-test` bot swarm (`./scripts/run_load_test.sh`); no automated test asserts the loop rates today.
+- **Client (Godot):** samples input, predicts the Local player via the shared `sim_core`
+  (`PredictionSim`), interpolates Remote entities, renders, and talks native ENet — all in
+  `_physics_process`/`_process`.
+- **Server (Rust):** the authority — `omega-server` runs the single-threaded 30 Hz Tick over
+  `rusty_enet`, resolves movement/collisions/combat with the same `sim_core`, and emits `Snapshot`
+  + `GameEvent`. One process = one instance (Arena `:8081`, Sanctuary `:8082`).
+- **Predicted:** only the Local player (`sim_core` via `PredictionSim`); Remote entities are never
+  predicted. The only predicted *ability* movement is Warrior Charge and Rogue Shadowstep's blink.
+- **Replicated:** all entity state via delta `Snapshot`s against a 100-tick Baseline; discrete
+  outcomes via `GameEvent` — all through the shared `protocol` crate.
+- **Persisted:** nothing in the sim — gameplay state is in-memory; the Go API persists
+  account / character / leaderboard / region (and Glory) only. Death is a transactional API save.
+- **Validated:** Ed25519 ticket verified locally; movement re-simulated and corrected via
+  `ActionConfirm`; PvP / player→monster hits lag-compensated (8-tick history) and server-decided;
+  monster→player reports plausibility-gated with a lenient blatant-overlap backstop.
+- **Can fail:** a lost ch0 snapshot (superseded by design); a death-write failure (idempotent
+  retry / in-memory dead flag holds); an unreachable UDP port; the mitigated monster-hit
+  never-report hole.
+- **Tested:** `sim_core` + `protocol` property tests; the full-stack `net_smoke.tscn` smoke scene;
+  the Rust `omega-load-test` bot swarm at 500–1000 (`./scripts/run_load_test.sh`); permadeath
+  integrity tests. No automated test asserts the loop rates today.
 
 ## See also
 
-- [`latency-budget.md`](latency-budget.md) · [`smoothness-render.md`](smoothness-render.md)
-- [`../CONTEXT.md`](../CONTEXT.md) · [`../ARCHITECTURE.md`](../ARCHITECTURE.md) · [`../../AGENTS.md`](../../AGENTS.md)
+- [`../server/design.md`](../server/design.md) · [`../server/contract.md`](../server/contract.md)
+- [`latency-budget.md`](latency-budget.md) · [`smoothness-render.md`](smoothness-render.md) · [`hit-authority-model.md`](hit-authority-model.md)
+- [`../CONTEXT.md`](../CONTEXT.md) · [`../ops/architecture.md`](../ops/architecture.md) · [`../../AGENTS.md`](../../AGENTS.md)

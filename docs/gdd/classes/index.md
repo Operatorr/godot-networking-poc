@@ -7,15 +7,15 @@ This is to LIMIT SCOPE and reduce the amount of work for pre-alpha version!!!
 
 **Status:** Implemented (2026-06-13). A player picks one of **seven Classes** at character creation.
 Each Class has its own base stats, **per-level stat scaling**, and a unique **Class ability** bound
-to the right mouse button and paid for in **Mana**. Vocabulary follows [`../CONTEXT.md`](../CONTEXT.md)
+to the right mouse button and paid for in **Mana**. Vocabulary follows [`../CONTEXT.md`](../../CONTEXT.md)
 ("Classes & abilities"): the **Class ability** is the RMB active, distinct from the shared primary
 attack (LMB).
 
 > **Single source of truth for numbers.** Every value on this page is mirrored in
 > `client/data/classes/<id>.json` (consumed by the Godot client) and the Rust server constants
 > (the authority). When they disagree, the **Rust server wins** — fix the doc and the JSON.
-> Stat scaling is defined per [`../systems/PROGRESSION.md`](../systems/PROGRESSION.md); the ability
-> system as a whole is documented in [`../systems/abilities.md`](../systems/abilities.md).
+> Stat scaling is defined per [`../systems/PROGRESSION.md`](../../systems/PROGRESSION.md); the ability
+> system as a whole is documented in [`../systems/abilities.md`](../../systems/abilities.md).
 
 ## Class enum order
 
@@ -23,13 +23,13 @@ The `class` byte on the wire (ConnectAuth / PLAYER_INFO, protocol v3+) and the J
 
 | id  | Class       | File                                                             | Page                             |
 | --- | ----------- | ---------------------------------------------------------------- | -------------------------------- |
-| 0   | Zealot      | [`zealot.json`](../../client/data/classes/zealot.json)           | [zealot.md](zealot.md)           |
-| 1   | Void Hunter | [`void_hunter.json`](../../client/data/classes/void_hunter.json) | [void_hunter.md](void_hunter.md) |
-| 2   | Engineer    | [`engineer.json`](../../client/data/classes/engineer.json)       | [engineer.md](engineer.md)       |
-| 3   | Plague Seer | [`plague_seer.json`](../../client/data/classes/plague_seer.json) | [plague_seer.md](plague_seer.md) |
-| 4   | Warrior     | [`warrior.json`](../../client/data/classes/warrior.json)         | [warrior.md](warrior.md)         |
-| 5   | Rogue       | [`rogue.json`](../../client/data/classes/rogue.json)             | [rogue.md](rogue.md)             |
-| 6   | Mage        | [`mage.json`](../../client/data/classes/mage.json)               | [mage.md](mage.md)               |
+| 0   | Zealot      | [`zealot.json`](../../../client/data/classes/zealot.json)           | [zealot.md](zealot.md)           |
+| 1   | Void Hunter | [`void_hunter.json`](../../../client/data/classes/void_hunter.json) | [void_hunter.md](void_hunter.md) |
+| 2   | Engineer    | [`engineer.json`](../../../client/data/classes/engineer.json)       | [engineer.md](engineer.md)       |
+| 3   | Plague Seer | [`plague_seer.json`](../../../client/data/classes/plague_seer.json) | [plague_seer.md](plague_seer.md) |
+| 4   | Warrior     | [`warrior.json`](../../../client/data/classes/warrior.json)         | [warrior.md](warrior.md)         |
+| 5   | Rogue       | [`rogue.json`](../../../client/data/classes/rogue.json)             | [rogue.md](rogue.md)             |
+| 6   | Mage        | [`mage.json`](../../../client/data/classes/mage.json)               | [mage.md](mage.md)               |
 
 The server clamps an out-of-range `class` byte to `0` (Zealot) on join.
 
@@ -69,8 +69,8 @@ the server and replicated via the `ABILITY_EFFECT` event.
 
 ## See also
 
-- [`../systems/abilities.md`](../systems/abilities.md) — the RMB ability system (input, wire, dispatch, effects).
-- [`../systems/PROGRESSION.md`](../systems/PROGRESSION.md) — levels, per-level scaling, XP→Glory, max level 50.
-- [`../systems/players-movement.md`](../systems/players-movement.md) — movement, prediction, Mana/stamina resources.
-- [`../adr/0006-softcore-hardcore-glory-economy.md`](../adr/0006-softcore-hardcore-glory-economy.md) — Softcore/Hardcore + Glory.
-- [`../CONTEXT.md`](../CONTEXT.md) — glossary ("Classes & abilities", "Combat & survival").
+- [`../systems/abilities.md`](../../systems/abilities.md) — the RMB ability system (input, wire, dispatch, effects).
+- [`../systems/PROGRESSION.md`](../../systems/PROGRESSION.md) — levels, per-level scaling, XP→Glory, max level 50.
+- [`../systems/players-movement.md`](../../systems/players-movement.md) — movement, prediction, Mana/stamina resources.
+- [`../adr/0006-softcore-hardcore-glory-economy.md`](../../adr/0006-softcore-hardcore-glory-economy.md) — Softcore/Hardcore + Glory.
+- [`../CONTEXT.md`](../../CONTEXT.md) — glossary ("Classes & abilities", "Combat & survival").
