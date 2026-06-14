@@ -5,22 +5,17 @@
 //! ticks (extraction rust-stack §1); messages are processed in arrival order between ticks,
 //! matching the GDScript's frame-loop handler semantics.
 
-mod ability;
-mod api_client;
-mod auth;
-mod broadcast;
-mod combat;
 mod config;
-mod leaderboard;
-mod metrics;
-mod monster;
-mod outbox;
-mod player;
-mod progression_client;
-mod projectile;
-mod rng;
-mod world;
-mod world_entity;
+mod net;
+mod sim;
+
+// The sim/ and net/ subdirectories group the subsystems physically; the rest of the
+// crate still refers to them flat (crate::player, crate::broadcast, …) via these
+// re-exports, so module moves don't churn every `crate::…` path.
+pub(crate) use net::{api_client, auth, broadcast, metrics, outbox, progression_client};
+pub(crate) use sim::{
+    ability, combat, leaderboard, monster, player, projectile, rng, world, world_entity,
+};
 
 use config::ServerConfig;
 use outbox::{Outbox, Target};
