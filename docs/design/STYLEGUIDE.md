@@ -1154,23 +1154,7 @@ Iron Slate, Abyss Black, Tarnished Gold, Bone White, Rust Red.
 
 ---
 
-# 9. Sprite Generation Prompt Pattern
-
-Use this pattern when generating individual sprites:
-
-```text
-Pixel art sprite for Omega Realm, a brutal top-down multiplayer shooter set in a dying grimdark cosmic-horror world. Asset: [ASSET NAME]. Top-down readable game sprite, dark gothic-industrial design, oppressive black and iron palette, rusted red and dried blood accents, tarnished gold details, bone-white highlights, eldritch violet/void-blue corruption glow where appropriate. Strong silhouette, crisp pixel clusters, transparent background, game-ready sprite, no soft painterly rendering.
-```
-
-## Example
-
-```text
-Pixel art sprite for Omega Realm, a brutal top-down multiplayer shooter set in a dying grimdark cosmic-horror world. Asset: Zealot player class idle sprite. Heavy gothic armor, skull helmet, red-black torn tabard, tarnished gold holy trim, rusted mace, bone charms, battle-worn metal. Top-down readable game sprite, strong square silhouette, crisp pixel clusters, transparent background, game-ready sprite, no soft painterly rendering.
-```
-
----
-
-# 10. Quality Checklist
+# 9. Quality Checklist
 
 Before accepting any sprite, check:
 

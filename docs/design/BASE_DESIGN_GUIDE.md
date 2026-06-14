@@ -58,4 +58,24 @@ This is a Pixelart game
 
 ## Important: 3/4 Top Down Oblique Perspective
 
-Like Hammerwatch or Heroes of Hammerwatch.
+# Color Palette
+
+The palette should feel oppressive and ancient, with muted grimdark base colors punctured by unnatural eldritch highlights.
+
+| Color Name         |       HEX | Usage                                                       |
+| ------------------ | --------: | ----------------------------------------------------------- |
+| Abyss Black        | `#050706` | Primary background, deepest shadows, void interiors         |
+| Ash Grey           | `#555852` | Dust, ash, worn stone, muted highlights                     |
+| Iron Slate         | `#252928` | Dark metal, armor plates, panel frames                      |
+| Blood Brown        | `#4A1512` | Dried blood, old gore, stained cloth                        |
+| Rust Red           | `#8A261F` | Fresh damage, rust, warning UI accents                      |
+| Dark Umber         | `#3A211A` | Mud, leather, old wood, deep environmental shadows          |
+| Tarnished Gold     | `#9B7428` | Relics, holy trim, medals, elite accents                    |
+| Bone White         | `#D8D0BC` | Skulls, teeth, parchment, high-value readability highlights |
+| Flesh Taupe        | `#7A6253` | Mutated flesh, skin, worn cloth, organic props              |
+| Sulfur Yellow      | `#C69A2E` | Firelight, muzzle flash, toxic glow, divine decay           |
+| Void Violet        | `#5B3A8E` | Primary eldritch glow, void energy                          |
+| Eldritch Purple    | `#2B183D` | Deep corruption shadows, rift interiors                     |
+| Corruption Magenta | `#8A2D55` | Veins, cursed highlights, spell cores                       |
+| Void Blue          | `#1D3557` | Cold cosmic energy, star spawn highlights                   |
+| Soul Teal          | `#1C6C73` | Ghostly magic, spirit effects, rare UI accents              |

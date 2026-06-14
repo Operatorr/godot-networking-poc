@@ -69,3 +69,6 @@ client/bin/windows/*.dll
 
 # Compiled Go API binary (built by scripts/build_api.sh)
 api/bin/
+
+# CMS Website
+/web
