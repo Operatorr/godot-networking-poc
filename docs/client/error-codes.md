@@ -9,7 +9,7 @@ code never changes meaning. Pick the next free number when adding one.
 
 | Code | Where | Meaning | Likely cause / fix |
 |------|-------|---------|--------------------|
-| 47 | Login / API request ([`auth_manager.gd`](../../client/autoload/auth_manager.gd) `_format_request_result_error`) | TLS handshake with the API server failed — the request never reached the application layer. | The client is pointed at an HTTPS endpoint whose certificate could not be negotiated. Check `api_base_url` in `client_config.json` (override via `user://client_config.json`). For local dev this should be `http://localhost:8080`, not the production HTTPS host. |
+| 47 | Login / API request ([`auth_manager.gd`](../../client/autoload/auth_manager.gd) `_format_request_result_error`) | TLS handshake with the API server failed — the request never reached the application layer. | The client is pointed at an HTTPS endpoint whose certificate could not be negotiated. For local dev, flip `"use_local_api": true` in `client_config.json` to target the local Go API (`local_api_base_url`, default `http://localhost:8080`) instead of the production HTTPS host. |
 
 ## Adding a code
 
