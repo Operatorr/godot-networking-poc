@@ -1,48 +1,46 @@
-## MinimapControl - Top-right minimap showing entity positions
-## Uses _draw() for manual rendering of arena, players, and monsters
+## Minimap - top-right minimap.
+##
+## Authored as scenes/ui/hud/minimap.tscn. The world backdrop is a STATIC texture of the whole level
+## terrain, rendered once by a WorldMapView (scripts/ui/hud/world_map_view.gd) and handed in via
+## set_world_map(). Each frame the minimap draws that texture under a world→minimap transform centred
+## on the local player (so it pans/follows) — clipped to the frame — then overlays coloured dots from
+## groups. No per-frame world rendering: drawing one (clipped) texture + a few dots is cheap.
+## Dots: monsters=red, NPCs=green, other players=red+purple border, local player=green marker,
+## landmarks (e.g. the Arena Portal)=yellow.
+class_name Minimap
 extends Control
 
-
 const MINIMAP_SIZE := 180.0
-const MAP_PADDING := 18.0
-const VISION_RADIUS := 500.0
-const BG_COLOR := Color(0.1, 0.1, 0.12, 0.8)
-const SELF_COLOR := Color(0.2, 0.9, 0.3)
-const PLAYER_COLOR := Color(0.9, 0.2, 0.2)
-const MONSTER_COLOR := Color(0.9, 0.6, 0.1)
-const OBSTACLE_COLOR := Color(0.25, 0.1, 0.15, 0.8)
-const FRAME_TEXTURE := preload("res://assets/ui/hud/player_minimap_frame.png")
+## Keep dots inside the decorative frame border.
+const EDGE_MARGIN := 16.0
 
-## References set by arena_base
-var interpolation_controller: Node = null
+const BG_COLOR := Color(0.05, 0.05, 0.07, 0.85)
+const MONSTER_COLOR := Color(0.9, 0.2, 0.2)
+const NPC_COLOR := Color(0.3, 0.9, 0.4)
+const REMOTE_PLAYER_COLOR := Color(0.9, 0.2, 0.2)
+const REMOTE_PLAYER_BORDER := Color(0.6, 0.25, 0.95)
+const LOCAL_PLAYER_COLOR := Color(0.3, 0.95, 0.4)
+const LOCAL_PLAYER_BORDER := Color(1.0, 1.0, 1.0, 0.9)
+const LANDMARK_COLOR := Color(1.0, 0.85, 0.2)
+
+## Set by the level (the dot frame-of-reference + the pan centre).
 var local_player: Node2D = null
 
-var _arena_min: Vector2 = GameConstants.MAP_MIN
-var _arena_max: Vector2 = GameConstants.MAP_MAX
-var _frame: TextureRect = null
+var _map_texture: Texture2D = null
+var _map_bounds: Rect2 = Rect2()
 
 
 func _ready() -> void:
-	# Position top-right
-	anchor_left = 1.0
-	anchor_right = 1.0
-	anchor_top = 0.0
-	anchor_bottom = 0.0
-	offset_left = -MINIMAP_SIZE - 20
-	offset_right = -20
-	offset_top = 20
-	offset_bottom = 20 + MINIMAP_SIZE
-	custom_minimum_size = Vector2(MINIMAP_SIZE, MINIMAP_SIZE)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	clip_contents = true  # the whole-level texture is drawn oversized and clipped to the frame
+	set_process(true)
 
-	_frame = TextureRect.new()
-	_frame.texture = FRAME_TEXTURE
-	_frame.position = Vector2.ZERO
-	_frame.size = Vector2(MINIMAP_SIZE, MINIMAP_SIZE)
-	_frame.stretch_mode = TextureRect.STRETCH_SCALE
-	_frame.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_frame)
+
+## Hand in the static whole-level terrain texture and the world bounds it covers.
+func set_world_map(texture: Texture2D, bounds: Rect2) -> void:
+	_map_texture = texture
+	_map_bounds = bounds
+	queue_redraw()
 
 
 func _process(_delta: float) -> void:
@@ -50,60 +48,44 @@ func _process(_delta: float) -> void:
 
 
 func _draw() -> void:
-	var map_rect := _get_map_rect()
-
-	# Background
-	draw_rect(map_rect, BG_COLOR, true)
-
-	# Draw obstacles
-	for obs: Rect2 in GameConstants.ARENA_OBSTACLES:
-		var map_pos := _world_to_minimap(obs.position)
-		var arena_size := _arena_max - _arena_min
-		var map_size := obs.size / arena_size * map_rect.size
-		draw_rect(Rect2(map_pos, map_size), OBSTACLE_COLOR, true)
+	var rect := Rect2(Vector2.ZERO, Vector2(MINIMAP_SIZE, MINIMAP_SIZE))
+	draw_rect(rect, BG_COLOR, true)
 
 	if local_player == null or not is_instance_valid(local_player):
 		return
 
-	var player_pos := local_player.position
+	var player_world: Vector2 = local_player.global_position
+	var zoom := GameConstants.MINIMAP_ZOOM
+	var mc := rect.size * 0.5
 
-	# Draw self (green dot, always center-ish based on world pos)
-	var self_map_pos := _world_to_minimap(player_pos)
-	draw_circle(self_map_pos, 4.0, SELF_COLOR)
+	# Draw the whole static map texture under the world→minimap transform (clipped to the frame):
+	# a world point W maps to mc + (W - player_world) * zoom, so the player sits at the centre.
+	if _map_texture != null and _map_bounds.size.x > 0.0 and _map_bounds.size.y > 0.0:
+		var dest_pos := mc + (_map_bounds.position - player_world) * zoom
+		draw_texture_rect(_map_texture, Rect2(dest_pos, _map_bounds.size * zoom), false)
 
-	if interpolation_controller == null:
-		return
+	var max_r := MINIMAP_SIZE * 0.5 - EDGE_MARGIN
+	_draw_dots("minimap_monster", player_world, zoom, mc, max_r, MONSTER_COLOR, 3.0, false, Color(0, 0, 0, 0))
+	_draw_dots("minimap_npc", player_world, zoom, mc, max_r, NPC_COLOR, 3.0, false, Color(0, 0, 0, 0))
+	_draw_dots("minimap_player_remote", player_world, zoom, mc, max_r, REMOTE_PLAYER_COLOR, 3.0, false, REMOTE_PLAYER_BORDER)
+	# Landmarks clamp to the rim so they stay findable when off the visible window.
+	_draw_dots("minimap_landmark", player_world, zoom, mc, max_r, LANDMARK_COLOR, 3.5, true, Color(0, 0, 0, 0))
+	# Draw the local player last so it sits on top.
+	_draw_dots("minimap_player_local", player_world, zoom, mc, max_r, LOCAL_PLAYER_COLOR, 4.0, false, LOCAL_PLAYER_BORDER)
 
-	# Draw other entities from interpolation controller
-	var entities: Dictionary = interpolation_controller.entity_last_states
-	for entity_id: int in entities:
-		var entity_data: Dictionary = entities[entity_id]
-		var pos: Vector2 = entity_data.get("position", Vector2.ZERO)
-		var entity_type: int = entity_data.get("entity_type", 0)
 
-		# Skip if too far
-		if pos.distance_to(player_pos) > VISION_RADIUS:
+func _draw_dots(group: String, center_world: Vector2, zoom: float, mc: Vector2, max_r: float,
+		color: Color, radius: float, clamp_to_edge: bool, border: Color) -> void:
+	for node in get_tree().get_nodes_in_group(group):
+		if not (node is Node2D) or not is_instance_valid(node):
 			continue
-
-		# Skip local player (already drawn)
-		if entity_id == GameManager.get_local_player_entity_id():
-			continue
-
-		var map_pos := _world_to_minimap(pos)
-
-		match entity_type:
-			PacketTypes.EntityType.PLAYER:
-				draw_circle(map_pos, 3.0, PLAYER_COLOR)
-			PacketTypes.EntityType.MONSTER:
-				draw_circle(map_pos, 3.0, MONSTER_COLOR)
-
-
-func _world_to_minimap(world_pos: Vector2) -> Vector2:
-	var arena_size := _arena_max - _arena_min
-	var normalized := (world_pos - _arena_min) / arena_size
-	return _get_map_rect().position + normalized * _get_map_rect().size
-
-
-func _get_map_rect() -> Rect2:
-	var padding := Vector2(MAP_PADDING, MAP_PADDING)
-	return Rect2(padding, Vector2(MINIMAP_SIZE, MINIMAP_SIZE) - padding * 2.0)
+		var p := mc + ((node as Node2D).global_position - center_world) * zoom
+		var off := p - mc
+		if off.length() > max_r:
+			if clamp_to_edge:
+				p = mc + off.normalized() * max_r
+			else:
+				continue
+		if border.a > 0.0:
+			draw_circle(p, radius + 1.5, border)
+		draw_circle(p, radius, color)

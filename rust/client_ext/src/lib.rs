@@ -508,6 +508,13 @@ impl PredictionSim {
         self.sm.set_base_speed(base_speed);
     }
 
+    /// Per-class stamina regen (u/s). Client sets the SAME value the server uses so prediction
+    /// matches (e.g. the Mage regenerates slower than Warrior/Rogue).
+    #[func]
+    fn set_stamina_regen(&mut self, stamina_regen: f64) {
+        self.sm.set_stamina_regen(stamina_regen);
+    }
+
     /// End an in-progress charge — slaved to the server's charge-ended signal (Warrior).
     #[func]
     fn end_charge(&mut self) {

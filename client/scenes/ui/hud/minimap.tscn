@@ -1,0 +1,24 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/hud/minimap.gd" id="1_minimap"]
+[ext_resource type="Texture2D" path="res://assets/ui/hud/player_minimap_frame.png" id="2_frame"]
+
+[node name="Minimap" type="Control"]
+clip_contents = true
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -200.0
+offset_top = 20.0
+offset_right = -20.0
+offset_bottom = 200.0
+mouse_filter = 2
+script = ExtResource("1_minimap")
+
+[node name="Frame" type="TextureRect" parent="."]
+texture_filter = 1
+offset_right = 180.0
+offset_bottom = 180.0
+mouse_filter = 2
+texture = ExtResource("2_frame")
+expand_mode = 1
+stretch_mode = 0

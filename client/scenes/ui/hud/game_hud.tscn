@@ -1,0 +1,45 @@
+[gd_scene load_steps=15 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/hud/game_hud.gd" id="1_hud"]
+[ext_resource type="PackedScene" path="res://scenes/ui/hud/health_bar.tscn" id="2_health"]
+[ext_resource type="PackedScene" path="res://scenes/ui/hud/mana_bar.tscn" id="3_mana"]
+[ext_resource type="PackedScene" path="res://scenes/ui/hud/stamina_bar.tscn" id="4_stamina"]
+[ext_resource type="PackedScene" path="res://scenes/ui/hud/ability_bar.tscn" id="5_ability"]
+[ext_resource type="PackedScene" path="res://scenes/ui/hud/experience_bar.tscn" id="6_xp"]
+[ext_resource type="PackedScene" path="res://scenes/ui/hud/minimap.tscn" id="7_minimap"]
+[ext_resource type="PackedScene" path="res://scenes/ui/hud/kill_feed.tscn" id="8_killfeed"]
+[ext_resource type="PackedScene" path="res://scenes/ui/hud/leaderboard.tscn" id="9_leaderboard"]
+[ext_resource type="PackedScene" path="res://scenes/ui/hud/server_status.tscn" id="10_status"]
+[ext_resource type="PackedScene" path="res://scenes/ui/hud/death_screen.tscn" id="11_death"]
+[ext_resource type="PackedScene" path="res://scenes/ui/hud/pause_menu.tscn" id="12_pause"]
+[ext_resource type="PackedScene" path="res://scenes/ui/hud/connection_lost_overlay.tscn" id="13_conn"]
+[ext_resource type="PackedScene" path="res://scenes/ui/hud/map_overlay.tscn" id="14_map"]
+
+[node name="GameHud" type="CanvasLayer"]
+script = ExtResource("1_hud")
+
+[node name="HealthBar" parent="." instance=ExtResource("2_health")]
+
+[node name="ManaBar" parent="." instance=ExtResource("3_mana")]
+
+[node name="StaminaBar" parent="." instance=ExtResource("4_stamina")]
+
+[node name="AbilityBar" parent="." instance=ExtResource("5_ability")]
+
+[node name="ExperienceBar" parent="." instance=ExtResource("6_xp")]
+
+[node name="Minimap" parent="." instance=ExtResource("7_minimap")]
+
+[node name="KillFeed" parent="." instance=ExtResource("8_killfeed")]
+
+[node name="Leaderboard" parent="." instance=ExtResource("9_leaderboard")]
+
+[node name="ServerStatus" parent="." instance=ExtResource("10_status")]
+
+[node name="MapOverlay" parent="." instance=ExtResource("14_map")]
+
+[node name="DeathScreen" parent="." instance=ExtResource("11_death")]
+
+[node name="PauseMenu" parent="." instance=ExtResource("12_pause")]
+
+[node name="ConnectionLostOverlay" parent="." instance=ExtResource("13_conn")]

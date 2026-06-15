@@ -556,6 +556,8 @@ func _build_ground_layer() -> void:
 	ground.name = "Ground"
 	ground.z_index = -20
 	ground.z_as_relative = false
+	# Show the town ground/roads as the minimap backdrop (terrain whitelist — see GameConstants).
+	ground.visibility_layer = GameConstants.MINIMAP_TERRAIN_VISIBILITY
 	ground.town_rect = TOWN_RECT
 	ground.cells = _ground
 	ground.stairs = _stair_cells
@@ -580,6 +582,8 @@ func _build_wall_visuals() -> void:
 	layer.name = "WallVisuals"
 	layer.z_index = -8
 	layer.z_as_relative = false
+	# Town ramparts read as walls on the minimap (terrain whitelist — see GameConstants).
+	layer.visibility_layer = GameConstants.MINIMAP_TERRAIN_VISIBILITY
 	layer.records = records
 	add_child(layer)
 	layer.queue_redraw()

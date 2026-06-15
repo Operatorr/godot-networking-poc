@@ -37,8 +37,8 @@
 			"predicted": false,
 			"mana_cost": 40,
 			"cooldown": 6.0,
-			"params": { "damage": 55, "radius": 120 },
-			"one_liner": "Instant AOE explosion at the cursor, 55 in radius 120."
+			"params": { "damage": 55, "radius": 144 },
+			"one_liner": "Instant AOE explosion at the cursor, 55 in radius 144."
 		},
 
 		"0": {

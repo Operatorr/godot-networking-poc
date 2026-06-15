@@ -34,6 +34,7 @@ var _hit_flash_tween: Tween = null
 
 func _ready() -> void:
 	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
+	add_to_group("minimap_monster")  # red dot on the minimap
 
 	# Pull appearance + HP from the data-driven monster definition. The wire does
 	# not yet carry a per-monster archetype, so all monsters render as the default

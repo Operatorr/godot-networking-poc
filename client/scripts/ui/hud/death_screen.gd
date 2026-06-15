@@ -1,100 +1,32 @@
-## DeathScreen - Death overlay with killer info.
+## DeathScreen - death overlay with killer info.
 ## Softcore: manual respawn countdown ("Press Space to respawn").
 ## Hardcore (permadeath): the server has already converted XP→Glory and deleted the
 ## character, so instead of a countdown we show "Your Glory will be remembered" and a
 ## "Back to Main Menu" button (no respawn).
+##
+## Authored as scenes/ui/hud/death_screen.tscn (full-rect overlay; title/killer/countdown/
+## glory labels + a centered menu button).
 extends Control
 
 signal respawn_requested
 signal main_menu_requested
 
-
-## Sulfur-yellow used for the hardcore epitaph (RAL 1016 sulfur yellow).
-const SULFUR_YELLOW := Color(0.906, 0.835, 0.137)
-
-var _killer_label: Label = null
-var _countdown_label: Label = null
-var _glory_label: Label = null
-var _menu_button: Button = null
 var _countdown_timer: float = 0.0
 var _countdown_active: bool = false
 var _respawn_ready: bool = false
 
+@onready var _killer_label: Label = $Center/VBox/KillerLabel
+@onready var _countdown_label: Label = $Center/VBox/CountdownLabel
+@onready var _glory_label: Label = $Center/VBox/GloryLabel
+@onready var _menu_button: Button = $Center/VBox/ButtonHolder/MenuButton
+
 
 func _ready() -> void:
-	_build_ui()
 	visible = false
 	# Consume mouse events when visible
 	mouse_filter = Control.MOUSE_FILTER_STOP
-
-
-func _build_ui() -> void:
-	# Full-screen semi-transparent background
-	var bg := ColorRect.new()
-	bg.color = Color(0.08, 0.0, 0.0, 0.85)
-	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	bg.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(bg)
-
-	# Center container
-	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(center)
-
-	var vbox := VBoxContainer.new()
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 20)
-	center.add_child(vbox)
-
-	# "YOU DIED" title
-	var title := Label.new()
-	title.text = "YOU DIED"
-	title.add_theme_font_size_override("font_size", 64)
-	title.add_theme_color_override("font_color", Color(1.0, 0.0, 0.0))
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(title)
-
-	# Killer info
-	_killer_label = Label.new()
-	_killer_label.text = ""
-	_killer_label.add_theme_font_size_override("font_size", 20)
-	_killer_label.add_theme_color_override("font_color", Color(0.8, 0.8, 0.8))
-	_killer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(_killer_label)
-
-	# Countdown label
-	_countdown_label = Label.new()
-	_countdown_label.text = ""
-	_countdown_label.add_theme_font_size_override("font_size", 28)
-	_countdown_label.add_theme_color_override("font_color", Color(0.9, 0.5, 0.5))
-	_countdown_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(_countdown_label)
-
-	# Hardcore epitaph (hidden for softcore deaths).
-	_glory_label = Label.new()
-	_glory_label.text = "Your Glory will be remembered"
-	_glory_label.add_theme_font_size_override("font_size", 28)
-	_glory_label.add_theme_color_override("font_color", SULFUR_YELLOW)
-	_glory_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_glory_label.visible = false
-	vbox.add_child(_glory_label)
-
-	# Spacer
-	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(0, 10)
-	vbox.add_child(spacer)
-
-	# "Back to Main Menu" button (hardcore only; hidden for softcore deaths).
-	_menu_button = Button.new()
-	_menu_button.text = "Back to Main Menu"
-	_menu_button.add_theme_font_size_override("font_size", 22)
-	_menu_button.custom_minimum_size = Vector2(260, 48)
-	_menu_button.visible = false
+	set_process(false)
 	_menu_button.pressed.connect(_on_menu_button_pressed)
-	# Keep the button centered within the (full-width) VBox.
-	var button_holder := CenterContainer.new()
-	button_holder.add_child(_menu_button)
-	vbox.add_child(button_holder)
 
 
 func _process(delta: float) -> void:
@@ -106,6 +38,7 @@ func _process(delta: float) -> void:
 		_respawn_ready = true
 		_countdown_label.text = "Press Space to respawn"
 		_countdown_label.modulate.a = 1.0
+		set_process(false)
 	else:
 		var secs := ceili(_countdown_timer)
 		_countdown_label.text = "Respawn in %d..." % secs
@@ -144,6 +77,7 @@ func show_death(killer_entity_id: int) -> void:
 	_countdown_label.text = "Respawn in %d..." % ceili(_countdown_timer)
 	_countdown_label.modulate.a = 1.0
 	visible = true
+	set_process(true)
 
 
 ## Show the hardcore permadeath screen: no respawn — the character is gone and its XP
@@ -154,6 +88,7 @@ func show_death_hardcore(killer_entity_id: int) -> void:
 	# No countdown / respawn for permadeath.
 	_countdown_active = false
 	_respawn_ready = false
+	set_process(false)
 	_countdown_label.visible = false
 
 	_glory_label.visible = true
@@ -178,11 +113,12 @@ func _on_menu_button_pressed() -> void:
 	main_menu_requested.emit()
 
 
-## Hide death screen
+## Hide death screen.
 func hide_death() -> void:
 	_countdown_active = false
 	_respawn_ready = false
 	_countdown_timer = 0.0
+	set_process(false)
 	if _countdown_label:
 		_countdown_label.text = ""
 		_countdown_label.modulate.a = 1.0

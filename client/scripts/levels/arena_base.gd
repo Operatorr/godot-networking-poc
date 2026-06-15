@@ -15,17 +15,9 @@ const TILE_ATLAS_COLUMNS := 3
 const ENVIRONMENT_COLLISION_LAYER := 8
 const TILEMAP_Z_INDEX := -10
 
-## HUD script paths (loaded at runtime to avoid server-mode issues)
-const DEATH_SCREEN_PATH := "res://scripts/ui/hud/death_screen.gd"
-const KILL_FEED_PATH := "res://scripts/ui/hud/kill_feed.gd"
-const MINIMAP_PATH := "res://scripts/ui/hud/minimap.gd"
-const LEADERBOARD_PATH := "res://scripts/ui/hud/leaderboard.gd"
-const SERVER_STATUS_PATH := "res://scripts/ui/hud/server_status.gd"
-const PAUSE_MENU_PATH := "res://scripts/ui/hud/pause_menu.gd"
-const CONNECTION_LOST_PATH := "res://scripts/ui/hud/connection_lost_overlay.gd"
-## Preloaded so the class resolves during headless startup (per AGENTS.md), named
-## exactly like the class it loads.
-const ExperienceBar := preload("res://scripts/ui/hud/experience_bar.gd")
+## The shared HUD scene. Loaded at runtime (never preloaded / ext-referenced by a level scene)
+## so the client-only HUD scripts stay out of the headless parse graph — see game_hud.gd.
+const GAME_HUD_PATH := "res://scenes/ui/hud/game_hud.tscn"
 
 ## Arena dimensions from GameConstants
 var arena_min: Vector2 = GameConstants.MAP_MIN
@@ -61,7 +53,9 @@ var camera: Camera2D = null
 ## Screen effects (null in server mode)
 var screen_effects: ScreenEffects = null
 
-## HUD components (null in server mode)
+## The shared HUD (null in server mode). Instanced in _setup_hud(); the refs below mirror its
+## widgets so the existing per-widget code in this script keeps working unchanged.
+var hud: GameHud = null
 var death_screen: Control = null
 var hp_bar: Control = null
 var stamina_bar: Control = null
@@ -107,6 +101,10 @@ const KILL_STREAK_WINDOW := 5.0  # Seconds between kills to count as streak
 
 func _ready() -> void:
 	is_server = OS.has_feature("dedicated_server") or DisplayServer.get_name() == "headless"
+
+	# The arena floor _draw()n by this node shows in BOTH the main view and the minimap
+	# (terrain whitelist — see GameConstants / scripts/ui/hud/minimap.gd).
+	visibility_layer = GameConstants.MINIMAP_TERRAIN_VISIBILITY
 
 	_build_level_environment()
 	_rebuild_spawn_markers()
@@ -340,81 +338,43 @@ func _spawn_local_player(entity_container: Node2D) -> void:
 	print("[ArenaBase] Local player spawned pending authoritative server state")
 
 
-## Set up HUD components on the HUDLayer
+## Instance the shared HUD (a CanvasLayer named "HUDLayer") and wire it up. The per-widget
+## refs mirror hud.* so the rest of this script keeps working unchanged.
 func _setup_hud() -> void:
-	var hud_layer := get_hud_layer()
-	if hud_layer == null:
-		push_error("[ArenaBase] HUDLayer not found!")
-		return
+	hud = load(GAME_HUD_PATH).instantiate()
+	hud.name = "HUDLayer"
+	add_child(hud)
 
-	# HP / Stamina / Mana bar group (bottom-center). Shared layout via BottomBars so
-	# the networked arena and the offline modes can't drift apart.
-	var bars := BottomBars.create(hud_layer)
-	hp_bar = bars["hp"]
-	stamina_bar = bars["stamina"]
-	ability_slots = bars["ability_slots"]
-	mana_bar = bars["mana"]
+	hp_bar = hud.health_bar
+	stamina_bar = hud.stamina_bar
+	ability_slots = hud.ability_bar
+	mana_bar = hud.mana_bar
+	kill_feed = hud.kill_feed
+	minimap = hud.minimap
+	leaderboard = hud.leaderboard
+	server_status = hud.server_status
+	death_screen = hud.death_screen
+	pause_menu = hud.pause_menu
+	connection_lost_overlay = hud.connection_lost_overlay
 
-	# Level / XP bar (top-center) — fed by EXP_GAIN events via GameManager.
-	var xp_bar := ExperienceBar.new()
-	xp_bar.name = "ExperienceBar"
-	hud_layer.add_child(xp_bar)
+	# Minimap/map follow the local player; render the level's static world-map texture once.
+	hud.set_minimap_player(local_player)
+	hud.setup_world_map(get_map_bounds())
 
-	# Kill Feed (top right, below minimap)
-	kill_feed = _create_hud_component(KILL_FEED_PATH, "KillFeed")
-	hud_layer.add_child(kill_feed)
+	# The overlay widgets re-emit their actions through the HUD, so connect once here.
+	hud.respawn_requested.connect(_on_respawn_requested)
+	hud.main_menu_requested.connect(_on_main_menu_requested)
+	hud.leave_arena_requested.connect(_on_leave_arena)
+	hud.reconnect_failed.connect(_on_reconnect_failed)
 
-	# Minimap (top right)
-	minimap = _create_hud_component(MINIMAP_PATH, "Minimap")
-	hud_layer.add_child(minimap)
-	# Wire minimap references after it's in tree
-	minimap.interpolation_controller = interpolation_controller
-	minimap.local_player = local_player
-
-	# Leaderboard (top left)
-	leaderboard = _create_hud_component(LEADERBOARD_PATH, "Leaderboard")
-	hud_layer.add_child(leaderboard)
-
-	# Server Status (bottom left)
-	server_status = _create_hud_component(SERVER_STATUS_PATH, "ServerStatus")
-	hud_layer.add_child(server_status)
-
-	# Death Screen (full overlay, hidden by default)
-	death_screen = _create_hud_component(DEATH_SCREEN_PATH, "DeathScreen")
-	death_screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	hud_layer.add_child(death_screen)
-	if death_screen.has_signal("respawn_requested"):
-		death_screen.connect("respawn_requested", Callable(self, "_on_respawn_requested"))
-	if death_screen.has_signal("main_menu_requested"):
-		death_screen.connect("main_menu_requested", Callable(self, "_on_main_menu_requested"))
-
-	# Pause Menu (full overlay, hidden by default)
-	pause_menu = _create_hud_component(PAUSE_MENU_PATH, "PauseMenu")
-	pause_menu.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	hud_layer.add_child(pause_menu)
 	pause_menu.set_leave_button_text("RETURN TO SANCTUARY")
-	pause_menu.leave_arena_requested.connect(_on_leave_arena)
 	# While the pause overlay is open, suppress input so clicking its buttons (a left
 	# click = the shoot action) doesn't fire a shot through the PredictionController.
 	pause_menu.visibility_changed.connect(_on_pause_menu_visibility_changed)
 
-	# Connection Lost Overlay (full overlay, hidden by default)
-	connection_lost_overlay = _create_hud_component(CONNECTION_LOST_PATH, "ConnectionLost")
-	connection_lost_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	hud_layer.add_child(connection_lost_overlay)
-	connection_lost_overlay.reconnect_failed.connect(_on_reconnect_failed)
-
 	_connect_local_hp_bar()
 
 	print("[ArenaBase] HUD setup complete")
-
-
-## Helper to create a HUD component from script path
-func _create_hud_component(script_path: String, node_name: String) -> Control:
-	var node := Control.new()
-	node.set_script(load(script_path))
-	node.name = node_name
-	return node
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -558,6 +518,12 @@ func _handle_ability_effect_event(data: Dictionary) -> void:
 	vfx.max_radius = maxf(radius, 8.0)
 	vfx.position = position
 	_add_effect_to_arena(vfx)
+
+	# Mageblast (effect_id 0) plays its arcane detonation SFX.
+	if effect_id == 0:
+		var audio := _get_audio_manager()
+		if audio != null:
+			audio.play_sfx("mageblast", AudioManager.AudioCategory.SFX_PLAYER)
 
 
 ## Handle PLAYER_INFO event - detect our own entity ID
@@ -1426,6 +1392,9 @@ func _build_arena_props() -> void:
 		existing.queue_free()
 	var container := Node2D.new()
 	container.name = "Props"
+	# Carry the minimap bit on the container too: the minimap viewport culls a whole subtree if
+	# an ancestor's visibility_layer misses its cull mask, which would hide the prop sprites.
+	container.visibility_layer = GameConstants.MINIMAP_TERRAIN_VISIBILITY
 	# Same z as entities, but ordered BEFORE EntityContainer in the tree so
 	# props render above the _draw() floor yet under all dynamic entities.
 	# (A negative z_index would put them under the parent's own _draw().)
@@ -1447,6 +1416,7 @@ func _build_arena_props() -> void:
 			continue
 		var sprite := Sprite2D.new()
 		sprite.texture = texture
+		sprite.visibility_layer = GameConstants.MINIMAP_TERRAIN_VISIBILITY
 		var pos: Vector2 = prop["pos"]
 		if not bool(info.get("flat", false)):
 			# Plant the artwork's base on the position (sprites are centered).
@@ -1467,6 +1437,7 @@ func _setup_arena_tilemap() -> void:
 
 	tilemap.position = GameConstants.MAP_MIN
 	tilemap.z_index = TILEMAP_Z_INDEX
+	tilemap.visibility_layer = GameConstants.MINIMAP_TERRAIN_VISIBILITY
 	tilemap.collision_enabled = true
 	tilemap.tile_set = _create_arena_tileset()
 	tilemap.clear()
@@ -1619,6 +1590,12 @@ func get_entity_container() -> Node2D:
 ## Get the HUD layer for adding UI elements
 func get_hud_layer() -> CanvasLayer:
 	return get_node_or_null("HUDLayer")
+
+
+## World-space bounds of this level, used to frame the static minimap/map texture. Defaults to the
+## Arena play-field; the Sanctuary overrides this with the full walkable town rect.
+func get_map_bounds() -> Rect2:
+	return Rect2(arena_min, arena_max - arena_min)
 
 
 ## Draw arena floor and grid

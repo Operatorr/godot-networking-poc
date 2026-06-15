@@ -186,6 +186,7 @@ impl PlayerState {
         let s = ability::stats_for_class(self.player_class);
         self.movement_sm
             .set_base_speed(ability::effective_base_speed(self.player_class, self.level));
+        self.movement_sm.set_stamina_regen(s.stamina_regen_per_sec);
         self.movement_sm.set_ability_config(
             s.ability_mana,
             s.ability_cooldown,

@@ -10,8 +10,9 @@
 		"move_speed_per_level": 0.5,
 		"mana_max": 100,
 		"mana_pool": 130,
-		"mana_regen_per_sec": 8.0,
+		"mana_regen_per_sec": 2.0,
 		"stamina_max": 100,
+		"stamina_regen_per_sec": 14.0,
 		"hitbox_radius": 16
 	},
 
@@ -28,7 +29,7 @@
 		"type": "aoe_explosion",
 		"mana_cost": 40,
 		"cooldown": 6.0,
-		"radius": 120.0,
+		"radius": 144.0,
 		"damage": 55,
 		"max_cast_range": 600.0
 	},

@@ -11,8 +11,9 @@
 			"move_speed_base": "number", "move_speed_per_level": "number",
 			"mana_max": "int (100 for all classes — gameplay pool)",
 			"mana_pool": "int (flavor figure, not gameplay)",
-			"mana_regen_per_sec": "number (8.0 for all)",
+			"mana_regen_per_sec": "number (2.0 for all)",
 			"stamina_max": "int (100 for all)",
+			"stamina_regen_per_sec": "number (20.0 for all; Mage 14.0)",
 			"hitbox_radius": "number"
 		},
 		"primary": {

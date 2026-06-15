@@ -161,6 +161,7 @@ func _generate_procedural_audio() -> void:
 	audio_library["sfx_player"]["player_kill"] = sfx["player_kill"]
 	audio_library["sfx_player"]["level_up"] = sfx["level_up"]
 	audio_library["sfx_player"]["projectile_impact"] = sfx["projectile_impact"]
+	audio_library["sfx_player"]["mageblast"] = sfx["mageblast"]
 	audio_library["sfx_player"]["footstep_l"] = sfx["footstep_l"]
 	audio_library["sfx_player"]["footstep_r"] = sfx["footstep_r"]
 	audio_library["sfx_monster"]["monster_shoot"] = sfx["monster_shoot"]

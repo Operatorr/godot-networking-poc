@@ -1,45 +1,25 @@
-## AbilitySlots - bottom HUD placeholder spell slots with cooldown overlays.
+## AbilityBar - bottom HUD placeholder spell slots with cooldown overlays.
 ##
-## The SPACE slot is wired to the local MovementStateMachine dash cooldown. Other
-## slots are visual placeholders until their abilities exist.
+## Authored as scenes/ui/hud/ability_bar.tscn (root anchored bottom-center with six key
+## Labels). The slot frames, the radial cooldown wedges, and the usable-ability glyphs are
+## drawn in _draw() (they're tightly coupled cooldown VFX). The SPACE slot shows the local
+## MovementStateMachine dash cooldown and the RMB slot the class ability cooldown (both timers
+## are owned by the Rust sim online and mirrored into the SM); slots 2-5 are visual placeholders.
+class_name AbilityBar
 extends Control
-
 
 const SLOT_SIZE := 36.0
 const SLOT_GAP := 4.0
 const SLOT_COUNT := 6
-const TOTAL_WIDTH := SLOT_SIZE * SLOT_COUNT + SLOT_GAP * (SLOT_COUNT - 1)
 const FRAME_TEXTURE := preload("res://assets/ui/hud/player_ability_slot_frame.png")
-
-const SLOTS := [
-	{"label": "SPACE", "action": "dash"},
-	{"label": "RMB", "action": "ability"},
-	{"label": "1", "action": ""},
-	{"label": "2", "action": ""},
-	{"label": "3", "action": ""},
-	{"label": "4", "action": ""},
-]
-
-var offset_x: float = -TOTAL_WIDTH / 2.0
-var offset_y: float = -66.0
 
 var _movement_sm: MovementStateMachine = null
 var _was_cooling_down: bool = false
 
 
 func _ready() -> void:
-	anchor_left = 0.5
-	anchor_right = 0.5
-	anchor_top = 1.0
-	anchor_bottom = 1.0
-	offset_left = offset_x
-	offset_top = offset_y
-	offset_right = offset_x + TOTAL_WIDTH
-	offset_bottom = offset_y + SLOT_SIZE
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-
-	_build_slots()
 	set_process(true)
 
 
@@ -50,7 +30,11 @@ func bind_movement_state_machine(sm: MovementStateMachine) -> void:
 
 
 func _process(_delta: float) -> void:
-	var is_cooling_down := _movement_sm != null and _movement_sm.get_dash_cooldown_remaining() > 0.0
+	# Redraw while EITHER the dash (SPACE) or the RMB ability is cooling down — and for one frame
+	# after it clears so the final wedge is erased.
+	var is_cooling_down := _movement_sm != null \
+		and (_movement_sm.get_dash_cooldown_remaining() > 0.0 \
+			or _movement_sm.get_ability_cooldown_remaining() > 0.0)
 	if is_cooling_down or _was_cooling_down:
 		queue_redraw()
 	_was_cooling_down = is_cooling_down
@@ -66,33 +50,20 @@ func _draw() -> void:
 
 	if _movement_sm == null:
 		return
-	var remaining := _movement_sm.get_dash_cooldown_remaining()
-	if remaining <= 0.0:
-		return
-	var ratio := clampf(remaining / GameConstants.PLAYER_DASH_COOLDOWN, 0.0, 1.0)
-	_draw_cooldown_wedge(_slot_rect(0), ratio)
 
+	# SPACE (dash) cooldown wedge.
+	var dash_remaining := _movement_sm.get_dash_cooldown_remaining()
+	if dash_remaining > 0.0:
+		var dash_ratio := clampf(dash_remaining / GameConstants.PLAYER_DASH_COOLDOWN, 0.0, 1.0)
+		_draw_cooldown_wedge(_slot_rect(0), dash_ratio)
 
-func _build_slots() -> void:
-	for index in range(SLOT_COUNT):
-		var slot_rect := _slot_rect(index)
-
-		var key_label := Label.new()
-		key_label.text = SLOTS[index]["label"]
-		# Span the FULL slot width and center (the old +1px inset read as right-shifted on
-		# the wide "SPACE" label). clip_text keeps a long key from spilling past the frame.
-		key_label.clip_text = true
-		key_label.position = slot_rect.position + Vector2(0.0, SLOT_SIZE - 14.0)
-		key_label.size = Vector2(SLOT_SIZE, 12.0)
-		key_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		key_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		key_label.add_theme_font_size_override("font_size", 8)
-		key_label.add_theme_color_override("font_color", Color(0.86, 0.82, 0.72, 1.0))
-		key_label.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.9))
-		key_label.add_theme_constant_override("shadow_offset_x", 1)
-		key_label.add_theme_constant_override("shadow_offset_y", 1)
-		key_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		add_child(key_label)
+	# RMB (class ability) cooldown wedge. The per-class cooldown max lives on the SM (set by the
+	# owner offline, mirrored from the Rust sim online); guard against a zero/unset max.
+	var ability_remaining := _movement_sm.get_ability_cooldown_remaining()
+	var ability_max := _movement_sm.ability_cooldown_max
+	if ability_remaining > 0.0 and ability_max > 0.0:
+		var ability_ratio := clampf(ability_remaining / ability_max, 0.0, 1.0)
+		_draw_cooldown_wedge(_slot_rect(1), ability_ratio)
 
 
 func _slot_rect(index: int) -> Rect2:
@@ -120,8 +91,11 @@ func _draw_cooldown_wedge(slot_rect: Rect2, ratio: float) -> void:
 func _draw_slot_icon(index: int, kind: String) -> void:
 	var c := _slot_rect(index).get_center() - Vector2(0.0, 4.0)  # sit above the key label
 	var col := Color(0.95, 0.88, 0.55, 0.95)
-	if kind == "dash" and _movement_sm != null and _movement_sm.get_dash_cooldown_remaining() > 0.0:
-		col.a = 0.30
+	if _movement_sm != null:
+		if kind == "dash" and _movement_sm.get_dash_cooldown_remaining() > 0.0:
+			col.a = 0.30
+		elif kind == "ability" and _movement_sm.get_ability_cooldown_remaining() > 0.0:
+			col.a = 0.30
 	match kind:
 		"dash":
 			# Double chevron » (a "dash forward" cue): two right-pointing triangles.

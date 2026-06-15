@@ -170,6 +170,14 @@ client/
 > `entities/ levels/ ui/ test/` scene layout above; `data/` carries `classes/ config/ monsters/
 > balance/ loot/ items/ spells/ projectiles/ world/ schemas/ definitions/`. A few **intentional
 > deviations** from the idealized tree:
+> - **HUD scenes:** the in-game HUD is `scenes/ui/hud/game_hud.tscn` composing one editable scene per
+>   widget (`health_bar`, `mana_bar`, `stamina_bar`, `ability_bar`, `experience_bar`, `minimap`,
+>   `kill_feed`, `leaderboard`, `server_status`, `death_screen`, `pause_menu`, `settings_menu`,
+>   `connection_lost_overlay`); levels instantiate it instead of building the HUD in GDScript. The
+>   minimap renders the level terrain once into `scenes/ui/hud/world_map_view.tscn`. `scenes/ui/inventory/`
+>   holds unwired scaffolds (`inventory_panel`, `equipment_panel`, `item_slot`, `item_tooltip`).
+>   `damage_numbers.tscn` from the GDD list is still the `effects/damage_number.gd` path (a documented
+>   next step), and `base_world.tscn` for the biomes is not built yet.
 > - `autoload/auth_manager.gd` keeps its name (the `AuthManager` autoload singleton is referenced
 >   everywhere; renaming the singleton was deemed not worth the churn). `event_bus.gd` is added as
 >   the `EventBus` autoload.

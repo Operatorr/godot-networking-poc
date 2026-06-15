@@ -40,6 +40,9 @@ pub const PLAYER_DAZE_DURATION: f64 = 1.5;
 // ── Stamina / mana ──────────────────────────────────────────────────────────
 pub const PLAYER_STAMINA_MAX: f64 = 100.0;
 pub const PLAYER_STAMINA_DRAIN_PER_SEC: f64 = 35.0;
+/// Default stamina regen. Per-class overrides are applied via `MovementSm::set_stamina_regen`
+/// (server + client prediction) — e.g. the Mage regenerates slower than Warrior/Rogue. A
+/// default-constructed SM (tests, bots) uses this value.
 pub const PLAYER_STAMINA_REGEN_PER_SEC: f64 = 20.0;
 /// Legacy minimum-to-sprint threshold. The exhaustion model lets stamina deplete fully
 /// instead (sprint allowed while `stamina > 0` and not exhausted), so this is retained only
@@ -49,10 +52,11 @@ pub const PLAYER_STAMINA_SPRINT_MIN: f64 = 5.0;
 /// paused for this long (the HUD blinks the stamina bar during it).
 pub const PLAYER_STAMINA_EXHAUST_DURATION: f64 = 3.0;
 pub const PLAYER_MANA_MAX: f64 = 100.0;
-/// Mana regen, nerfed 20% (was 10.0) to make the new RMB class abilities a real resource cost.
+/// Mana regen, cut 75% (was 8.0) so RMB class abilities are a real resource cost — mana is now
+/// a scarce, deliberately-spent pool rather than a near-free trickle.
 /// Mirrored in `client/scripts/shared/game_constants.gd` — both run the shared MovementSm, so
 /// they MUST match or mana prediction desyncs.
-pub const PLAYER_MANA_REGEN_PER_SEC: f64 = 8.0;
+pub const PLAYER_MANA_REGEN_PER_SEC: f64 = 2.0;
 /// Default ability mana cost (the SM falls back to this until a class config is applied; the
 /// real per-class costs live in the class data and are pushed in via `set_ability_config`).
 pub const PLAYER_MANA_ABILITY_COST: f64 = 25.0;

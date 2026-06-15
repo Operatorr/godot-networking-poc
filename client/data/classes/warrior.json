@@ -10,8 +10,9 @@
 		"move_speed_per_level": 0.6,
 		"mana_max": 100,
 		"mana_pool": 90,
-		"mana_regen_per_sec": 8.0,
+		"mana_regen_per_sec": 2.0,
 		"stamina_max": 100,
+		"stamina_regen_per_sec": 20.0,
 		"hitbox_radius": 16
 	},
 

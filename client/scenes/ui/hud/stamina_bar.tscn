@@ -1,0 +1,41 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/hud/resource_bar.gd" id="1_resource"]
+[ext_resource type="Texture2D" path="res://assets/ui/hud/player_stamina_bar_track.png" id="2_track"]
+[ext_resource type="Texture2D" path="res://assets/ui/hud/player_stamina_bar_fill.png" id="3_fill"]
+[ext_resource type="Texture2D" path="res://assets/ui/hud/player_stamina_bar_frame.png" id="4_frame"]
+
+[node name="StaminaBar" type="Control"]
+anchor_left = 0.5
+anchor_right = 0.5
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = -118.0
+offset_top = -90.0
+offset_right = 118.0
+offset_bottom = -72.0
+mouse_filter = 2
+script = ExtResource("1_resource")
+
+[node name="Fill" type="TextureProgressBar" parent="."]
+texture_filter = 1
+offset_left = 6.0
+offset_top = 5.0
+offset_right = 226.0
+offset_bottom = 13.0
+mouse_filter = 2
+max_value = 1.0
+step = 0.0
+value = 1.0
+fill_mode = 0
+texture_under = ExtResource("2_track")
+texture_progress = ExtResource("3_fill")
+
+[node name="Frame" type="TextureRect" parent="."]
+texture_filter = 1
+offset_right = 236.0
+offset_bottom = 18.0
+mouse_filter = 2
+texture = ExtResource("4_frame")
+expand_mode = 1
+stretch_mode = 0

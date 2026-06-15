@@ -1,6 +1,7 @@
 # UI, HUD & menus
 
-**Status:** Implemented (verified 2026-06-03 against code).
+**Status:** Implemented (verified 2026-06-15 against code; HUD refactored from procedural GDScript
+into one reusable `game_hud.tscn` composed of per-widget scenes).
 
 A catalogue of the client-side presentation layer: the pre-game menu flow, the in-Arena HUD, and
 the combat effects. **All of this is client-only** — none of it runs on the headless server, and
@@ -42,19 +43,28 @@ login_screen ──login ok──▶ has character? ──no──▶ character_
 
 ## In-Arena HUD
 
-The HUD lives on an `HUDLayer` (`CanvasLayer`) built by `arena_base.gd._setup_hud` (`:243-293`) in
-client mode only. Each widget is `extends Control` and builds its own sub-tree in `_ready`.
+The HUD is a single reusable scene — `scenes/ui/hud/game_hud.tscn` (`GameHud`, a `CanvasLayer`) —
+that composes one editable `.tscn` per widget. Every world (Arena, Sanctuary, the offline modes)
+instantiates it the same way: `arena_base.gd._setup_hud` / `offline_arena.gd._setup_hud` call
+`load(GAME_HUD_PATH).instantiate()`, name it `HUDLayer` (so `get_hud_layer()` keeps working), and
+talk to its typed widget refs (`hud.health_bar`, `hud.kill_feed`, …) plus four re-emitted signals
+(`respawn_requested`, `main_menu_requested`, `leave_arena_requested`, `reconnect_failed`). `@export`
+toggles (`show_leaderboard` / `show_server_status` / `show_kill_feed`) let the offline modes hide the
+networked-only widgets. Each widget is its own scene under `scenes/ui/hud/` with the script on the
+root and `@onready` node refs — no procedural `_build_ui()`.
 
 | Widget | Script | Shows / does | Anchor |
 | --- | --- | --- | --- |
-| HP bar | `hud/hp_bar.gd` | current/max HP, colour-graded green→yellow→red, damage flash 0.3 s; width/offset configurable so it sits in the left slot. | bottom-centre, **left slot** |
-| Mana bar | `hud/stat_bar.gd` | current/max mana (blue), driven by `movement_sm.mana_changed`. | bottom-centre, **right slot** |
-| Stamina bar | `hud/stat_bar.gd` | sprint stamina (thin, spans HP+Mana width), driven by `movement_sm.stamina_changed`. | bottom-centre, **above HP/Mana** |
-<!-- All three bar tracks/frames use `TextureRect` with `expand_mode = EXPAND_IGNORE_SIZE` + `STRETCH_SCALE` so the 256-px-wide track sprite scales down to the inset fill rect instead of forcing its native width and overflowing the frame. -->
+| HP bar | `hud/health_bar.gd` (`health_bar.tscn`) | current/max HP, colour-graded green→yellow→red via `tint_progress`, damage flash 0.3 s. | bottom-centre, **left slot** |
+| Mana bar | `hud/resource_bar.gd` (`mana_bar.tscn`) | current/max mana, driven by `movement_sm.mana_changed`. | bottom-centre, **right slot** |
+| Stamina bar | `hud/resource_bar.gd` (`stamina_bar.tscn`) | sprint stamina (thin, spans the ability-bar width), driven by `movement_sm.stamina_changed`; frame flashes red when exhausted. | bottom-centre, **above the ability bar** |
+| Ability bar | `hud/ability_bar.gd` (`ability_bar.tscn`) | six slot frames + key labels; the SPACE slot draws a radial dash-cooldown wedge and the RMB slot a class-ability-cooldown wedge from `movement_sm` (both timers are owned by the Rust sim online and mirrored into the SM via `set_predicted_cooldowns`; offline the SM ticks them itself). | bottom-centre, **between HP & Mana** |
+<!-- The bars are now `TextureProgressBar` (texture_under = track, texture_progress = fill, fill_mode = left-to-right) sized to the trough inset, with the frame sprite as a sibling overlay. The HP colour grade / damage flash drive `tint_progress`; the stamina exhaustion blink drives the frame node's `modulate`. -->
 <!-- Camera-zoom and sprint footsteps key off `Player.is_sprinting()` (sprint held AND moving AND not exhausted/dazed AND stamina > 0), NOT the raw `sprint` action, so both stop the instant the sim refuses to sprint. -->
 
 | Level / XP bar | `hud/experience_bar.gd` | `Lv N — exp / next` + progress fill; driven by `GameManager.experience_updated`, flashes on level-up. Shown in the Arena **and** offline hubs. See [`PROGRESSION.md`](PROGRESSION.md). | top-centre |
-| Minimap | `hud/minimap.gd` | `_draw()` of arena, obstacles, self (green), players (red), monsters (orange) within 500 u (`:6-13,68-88`); reads `interpolation_controller.entity_last_states`. | top-right |
+| Minimap | `hud/minimap.gd` (`minimap.tscn`) | top-down view of the **real world**: the level terrain is rendered **once** into a static texture by `WorldMapView` (`hud/world_map_view.gd`, terrain-only via the visibility-layer whitelist); the minimap **pans a clipped window** of it centred on the player and overlays group dots — monsters red, NPCs green, other players red+purple, local player green marker, landmarks (Arena Portal) yellow. No per-frame world render. See [`minimap.md`](minimap.md). | top-right |
+| Map overlay | `hud/map_overlay.gd` (`map_overlay.tscn`) | Diablo-style fullscreen, semi-transparent map toggled by **M** (`toggle_map`, rebindable); shows the **whole** static `WorldMapView` texture aspect-fit + dots. Non-blocking (game keeps running), no viewport/render of its own. See [`minimap.md`](minimap.md). | full-rect overlay |
 | Kill feed | `hud/kill_feed.gd` | last 3 "X eliminated Y" lines, each fades after 3 s (`:6-7,52`). | top-right, under minimap |
 | Leaderboard | `hud/leaderboard.gd` | top 3 by PvP kills, **Tab** expands to top 10 (`:6-7,79-83`); highlights Local player + flash on kill (`:162-185`). | top-left |
 | Server status | `hud/server_status.gd` | player/monster counts, ping (colour-coded), FPS; refreshes every 1 s (`:13,68-94`); reads `NetworkManager.get_stats()`. | bottom-left |
@@ -63,25 +73,24 @@ client mode only. Each widget is `extends Control` and builds its own sub-tree i
 | Settings menu | `hud/settings_menu.gd` | volume sliders + fullscreen/VSync toggles (persisted to `GameManager.settings`) + a **Keyboard Controls** page that lists/rebinds actions via `InputMap`, persisting to `user://preferences.json` (`UserPreferences.keybinds`, applied at startup). | child of pause menu |
 | Connection-lost overlay | `hud/connection_lost_overlay.gd` | "CONNECTION LOST" + reconnect status; after 15 s emits `reconnect_failed` → return to menu (`:7,55-63`). | full-rect overlay |
 
-### The server-safe HUD-creation pattern
+### The server-safe HUD pattern
 
-The Arena scene exports to **both** client and headless server. A HUD `Control` script referencing
-client-only globals would fail to parse during headless startup, so `arena_base.gd` never names the
-classes or `preload`s the scenes. Instead it stores **string paths** (`arena_base.gd:16-23`) and
-instantiates lazily:
+`arena_base.tscn` can be parsed by headless tooling, and the HUD scripts reference client-only
+autoloads (`NetworkManager`, `GameManager`). To keep the HUD scene out of any headless instantiation
+path, `game_hud.tscn` is **never** `[ext_resource]`-referenced or `preload`ed by a level scene — the
+levels load it at runtime inside the **client-only** `_setup_hud()`:
 
 ```gdscript
-func _create_hud_component(script_path: String, node_name: String) -> Control:
-    var node := Control.new()
-    node.set_script(load(script_path))   # runtime load(), never preload
-    node.name = node_name
-    return node
+const GAME_HUD_PATH := "res://scenes/ui/hud/game_hud.tscn"
+hud = load(GAME_HUD_PATH).instantiate()   # runtime load(), never preload
+hud.name = "HUDLayer"
+add_child(hud)
 ```
 
-(`arena_base.gd:296-301`.) Components are typed as plain `Control` (`:55-62`); wiring is done via
-`has_method`/`has_signal` guards and duck-typed property assignment (e.g. minimap refs at `:261-262`,
-death-screen signal at `:276-277`). On the server, `_setup_hud` is never reached, so none of these
-scripts ever load.
+`_setup_hud` runs only from `_setup_client` (client mode), so on the server the HUD scene is never
+instantiated and its widget `_ready`s never run. The level then reads typed widget refs off `hud`
+(`hud.health_bar`, `hud.death_screen`, …) and connects the four re-emitted signals — no
+`has_method`/`has_signal` guards needed.
 
 ## Effects (combat juice)
 
@@ -102,8 +111,8 @@ cosmetic, auto-freeing.
 - **Replicated:** HUD values arrive via `STATE_UPDATE` (HP, positions) and `GAME_EVENT` (kills, death) and are merely displayed.
 - **Persisted:** `user://preferences.json` (region, player colour, **keyboard rebinds**) and in-session `GameManager.settings`; accounts/characters (incl. class, **level + experience**) persist via the Go API.
 - **Validated:** client-side input only — name regex/length (`character_creation.gd:72-94`); the server re-decides all gameplay.
-- **Can fail:** missing `has_method`/`has_signal` guard would crash headless startup; stale `EntityNameCache` shows blank killer/feed names; region fetch failure falls back to defaults (`main_menu.gd:244`).
-- **Tested:** manual/visual only — no automated UI tests. Sandbox scenes use inline overlays because `arena_base.tscn` can't load in test scenes (see `MEMORY.md`).
+- **Can fail:** `[ext_resource]`-referencing `game_hud.tscn` from a level scene would pull the client-only HUD scripts into the headless parse graph (so it's always `load()`ed at runtime); stale `EntityNameCache` shows blank killer/feed names; region fetch failure falls back to defaults (`main_menu.gd:244`).
+- **Tested:** `scenes/test/hud_bar_regression.tscn` exercises the health bar (instantiates `health_bar.tscn`, asserts the fill ratio); otherwise manual/visual. The offline Sandbox now reuses the shared `GameHud` (kill feed / leaderboard / minimap / death screen) instead of bespoke overlays.
 
 ## See also
 
@@ -111,4 +120,4 @@ cosmetic, auto-freeing.
 - [`combat-hits.md`](combat-hits.md) — Game events that drive kill feed, damage numbers, screen effects
 - [`audio.md`](audio.md) — button/combat sounds triggered alongside this UI
 - [`../netcode/smoothness-render.md`](../netcode/smoothness-render.md) — why the FPS counter (server status) can read 100 while motion looks like 30
-- [`../netcode/interpolation.md`](../netcode/interpolation.md) — the `entity_last_states` buffer the minimap reads
+- [`minimap.md`](minimap.md) — the shared-`World2D` SubViewport minimap + group-driven dots

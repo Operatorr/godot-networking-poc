@@ -87,9 +87,9 @@ agree by construction (they are read-checked against each other).
 | Knockback decay / end / base force | `PLAYER_KNOCKBACK_DECAY` / `_END_SPEED` / `_BASE_FORCE` | 9.0 / 12 u/s / 450 |
 | Per-projectile knockback force | `PLAYER/MONSTER_PROJECTILE_KNOCKBACK_FORCE` | 450 (per-projectile so weapons can vary) |
 | Daze duration (hit while sprinting) | `PLAYER_DAZE_DURATION` | 1.5 s |
-| Stamina max / drain / regen | `PLAYER_STAMINA_*` | 100 / 35 ps / 20 ps |
+| Stamina max / drain / regen | `PLAYER_STAMINA_*` | 100 / 35 ps / 20 ps (per-class override via `set_stamina_regen`; Mage 14 ps) |
 | Sprint-exhaustion lockout | `PLAYER_STAMINA_EXHAUST_DURATION` | 3.0 s (no sprint, no regen) |
-| Mana max / regen / default ability cost | `PLAYER_MANA_*` | 100 / 8 ps / 25 |
+| Mana max / regen / default ability cost | `PLAYER_MANA_*` | 100 / 2 ps / 25 |
 | Speed-mult clamp (Haste/Slow) | `PLAYER_SPEED_MULT_MIN/MAX` | 0.25 … 2.5 |
 
 **Stamina model (changed):** sprint drains to **0**, not to a 5-stamina floor; reaching 0 triggers a

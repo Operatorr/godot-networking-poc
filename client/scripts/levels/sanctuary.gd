@@ -49,22 +49,20 @@ func _build_level_environment() -> void:
 	# Suppress the inherited dark arena floor; the town paints its own ground layer.
 	_draws_arena_floor = false
 
-	# ArenaBase needs these by name and the bare sanctuary.tscn has neither.
+	# ArenaBase needs the EntityContainer by name and the bare sanctuary.tscn lacks it.
+	# The HUDLayer is the shared GameHud, instanced later in _setup_hud — not created here.
 	if get_node_or_null("EntityContainer") == null:
 		var entities := Node2D.new()
 		entities.name = "EntityContainer"
 		add_child(entities)
-	if get_node_or_null("HUDLayer") == null:
-		var hud := CanvasLayer.new()
-		hud.name = "HUDLayer"
-		add_child(hud)
 
 	_town = SanctuaryTownWorldScript.new()
 	_town.name = "TownWorld"
+	# The minimap viewport culls a whole subtree if an ANCESTOR's visibility_layer misses its
+	# cull mask, so the town root must carry the minimap bit for its ground/wall layers to show.
+	_town.visibility_layer = GameConstants.MINIMAP_TERRAIN_VISIBILITY
 	add_child(_town)
 	_town.build()
-
-	_build_safe_zone_badge()
 
 
 ## Sanctuary world geometry: the full town is walkable (±3328 × ±3072), NO obstacles. Pushed into
@@ -75,6 +73,11 @@ func _world_geometry() -> Array:
 	return [r.position, r.position + r.size, false]
 
 
+## The minimap/map frame the WHOLE walkable town, not the ±1000 arena default.
+func get_map_bounds() -> Rect2:
+	return SanctuaryTownWorldScript.TOWN_RECT
+
+
 ## Runs at the end of _setup_client (client only): HUD, camera, prediction and entity container now
 ## exist. Build the kept-art NPCs (the priest opens the sacrifice flow) and the functional Arena
 ## portal here, and retarget the pause menu's "leave" to the main menu.
@@ -82,6 +85,8 @@ func _after_client_setup() -> void:
 	if _town:
 		_town.build_npcs(_town, NPC_SCENE, NPC_TEXTURE_DIR, _on_npc_interacted)
 		_town.build_arena_portal(_town, PORTAL_SCENE, TOWN_TEXTURE_DIR)
+	# The HUD now exists (instanced in _setup_hud); add the Sanctuary overlay labels onto it.
+	_build_safe_zone_badge()
 	if pause_menu:
 		pause_menu.set_leave_button_text("EXIT TO MENU")
 

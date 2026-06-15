@@ -15,9 +15,9 @@ class_name OfflineArena
 extends Node2D
 
 const PLAYER_SCENE_PATH := "res://scenes/entities/player/player.tscn"
-const PAUSE_MENU_PATH := "res://scripts/ui/hud/pause_menu.gd"
-## Preloaded so the class resolves during headless startup (per AGENTS.md).
-const ExperienceBar := preload("res://scripts/ui/hud/experience_bar.gd")
+## The shared HUD scene. Loaded at runtime (never preloaded) so client-only HUD scripts stay
+## out of the headless parse graph — see scripts/ui/hud/game_hud.gd.
+const GAME_HUD_PATH := "res://scenes/ui/hud/game_hud.tscn"
 
 const ENVIRONMENT_COLLISION_LAYER := 8
 ## Camera jump beyond this (player teleport/respawn) snaps instead of interpolating.
@@ -35,6 +35,9 @@ var border_width: float = 4.0
 # --- Runtime --------------------------------------------------------------------
 var local_player: Player = null
 var camera: Camera2D = null
+## The shared HUD (a CanvasLayer named "HUDLayer"); hud_layer mirrors it for subclasses that
+## add their own labels to the HUD. The per-widget refs below point at hud.* widgets.
+var hud: GameHud = null
 var hud_layer: CanvasLayer = null
 var hp_bar: Control = null
 var stamina_bar: Control = null
@@ -48,6 +51,9 @@ var _is_leaving: bool = false
 
 func _ready() -> void:
 	_configure()
+	# The floor/grid this node _draw()s shows in BOTH the main view and the minimap
+	# (terrain whitelist — see GameConstants / scripts/ui/hud/minimap.gd).
+	visibility_layer = GameConstants.MINIMAP_TERRAIN_VISIBILITY
 	GameManager.change_state(GameManager.GameState.IN_ARENA)
 	_build_boundaries()
 	_spawn_player()
@@ -128,6 +134,11 @@ func _process_extra(_delta: float) -> void:
 ## World position the local player spawns at. Defaults to the room center.
 func _get_spawn_position() -> Vector2:
 	return arena_rect.get_center()
+
+
+## World-space bounds for the minimap/map texture (the offline room rect).
+func get_map_bounds() -> Rect2:
+	return arena_rect
 
 
 # =============================================================================
@@ -215,32 +226,35 @@ func _setup_camera() -> void:
 
 
 func _setup_hud() -> void:
-	hud_layer = CanvasLayer.new()
-	hud_layer.name = "HUDLayer"
-	add_child(hud_layer)
+	hud = load(GAME_HUD_PATH).instantiate()
+	hud.name = "HUDLayer"
+	# Offline modes have no server/leaderboard/scheduler metrics; bars / XP / minimap / pause stay.
+	hud.show_leaderboard = false
+	hud.show_server_status = false
+	hud.show_kill_feed = false
+	add_child(hud)
+	hud_layer = hud
 
-	# HP / Stamina / Mana bar group — shared layout with the networked arena.
-	var bars := BottomBars.create(hud_layer)
-	hp_bar = bars["hp"]
-	stamina_bar = bars["stamina"]
-	ability_slots = bars["ability_slots"]
-	mana_bar = bars["mana"]
+	hp_bar = hud.health_bar
+	stamina_bar = hud.stamina_bar
+	ability_slots = hud.ability_bar
+	mana_bar = hud.mana_bar
+	pause_menu = hud.pause_menu
+
 	if ability_slots and local_player and local_player.movement_sm:
 		ability_slots.bind_movement_state_machine(local_player.movement_sm)
 
-	# Level / XP bar (top-center). Offline hubs grant no XP but still show the level.
-	var xp_bar := ExperienceBar.new()
-	xp_bar.name = "ExperienceBar"
-	hud_layer.add_child(xp_bar)
+	# Minimap/map follow the local player; render the static world-map texture once (offline
+	# terrain is this level's _draw()).
+	hud.set_minimap_player(local_player)
+	hud.setup_world_map(get_map_bounds())
+
 	if local_player and local_player.hp_component:
 		hp_bar.update_hp(local_player.hp_component.current_hp, local_player.hp_component.max_hp)
 
-	pause_menu = _create_hud_component(PAUSE_MENU_PATH, "PauseMenu")
-	pause_menu.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	hud_layer.add_child(pause_menu)
 	# Offline hubs (Sanctuary/Practice) have no arena/server to leave — exit to the menu.
 	pause_menu.set_leave_button_text("EXIT TO MENU")
-	pause_menu.leave_arena_requested.connect(_leave)
+	hud.leave_arena_requested.connect(_leave)
 	# Disable the local player's input while paused so clicking pause buttons (left
 	# click = the shoot action) doesn't spawn a projectile offline.
 	pause_menu.visibility_changed.connect(_on_pause_menu_visibility_changed)
@@ -254,13 +268,6 @@ func _on_pause_menu_visibility_changed() -> void:
 		if not paused and local_player.action_state == Player.ActionState.DEAD:
 			return
 		local_player.set_input_enabled(not paused)
-
-
-func _create_hud_component(script_path: String, node_name: String) -> Control:
-	var node := Control.new()
-	node.set_script(load(script_path))
-	node.name = node_name
-	return node
 
 
 # =============================================================================
