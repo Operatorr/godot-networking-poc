@@ -10,6 +10,7 @@ var is_server: bool = false
 const SCENE_MAIN = "res://scenes/main.tscn"
 const SCENE_LOGIN = "res://scenes/ui/menus/login_screen.tscn"
 const SCENE_MAIN_MENU = "res://scenes/ui/menus/main_menu.tscn"
+const SCENE_SETTINGS = "res://scenes/ui/menus/settings_screen.tscn"
 const SCENE_CHARACTER_CREATION = "res://scenes/ui/menus/character_creation.tscn"
 const SCENE_LOADING = "res://scenes/ui/menus/loading_screen.tscn"
 const SCENE_ARENA = "res://scenes/levels/arena/arena_base.tscn"
@@ -23,6 +24,7 @@ enum SceneName {
 	MAIN,
 	LOGIN,
 	MAIN_MENU,
+	SETTINGS,
 	CHARACTER_CREATION,
 	LOADING,
 	ARENA,
@@ -329,6 +331,8 @@ func _get_scene_path(scene_name: SceneName) -> String:
 			return SCENE_LOGIN
 		SceneName.MAIN_MENU:
 			return SCENE_MAIN_MENU
+		SceneName.SETTINGS:
+			return SCENE_SETTINGS
 		SceneName.CHARACTER_CREATION:
 			return SCENE_CHARACTER_CREATION
 		SceneName.LOADING:
@@ -357,7 +361,7 @@ func _update_game_state_for_scene(scene_name: SceneName) -> void:
 		return
 
 	match scene_name:
-		SceneName.LOGIN, SceneName.MAIN_MENU, SceneName.CHARACTER_CREATION:
+		SceneName.LOGIN, SceneName.MAIN_MENU, SceneName.SETTINGS, SceneName.CHARACTER_CREATION:
 			game_mgr.change_state(game_mgr.GameState.MAIN_MENU)
 		SceneName.LOADING:
 			game_mgr.change_state(game_mgr.GameState.LOADING)
@@ -397,6 +401,10 @@ func goto_main_menu() -> void:
 ## Go to character creation
 func goto_character_creation() -> void:
 	change_scene(SceneName.CHARACTER_CREATION, false)
+
+## Go to the standalone Settings screen (Audio / Video / Controls tabs)
+func goto_settings() -> void:
+	change_scene(SceneName.SETTINGS, false)
 
 ## Go to arena (with loading screen)
 func goto_arena() -> void:

@@ -81,8 +81,31 @@ func (h *CharacterHandler) GetCharacter(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Fetch account-wide Glory (best-effort: default to 0 if the user row is
+	// missing rather than failing the whole request).
+	var glory int
+	if err := h.db.QueryRow(`SELECT glory FROM users WHERE id = $1`, claims.UserID).Scan(&glory); err != nil {
+		glory = 0
+	}
+
+	// Marshal the character to a generic map so we can add the top-level
+	// "glory" field without changing the existing character fields.
+	characterJSON, err := json.Marshal(character)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to encode character"})
+		return
+	}
+	var response map[string]interface{}
+	if err := json.Unmarshal(characterJSON, &response); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to encode character"})
+		return
+	}
+	response["glory"] = glory
+
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(character)
+	json.NewEncoder(w).Encode(response)
 }
 
 // CreateCharacter creates a new character for the authenticated user
@@ -131,7 +154,10 @@ func (h *CharacterHandler) CreateCharacter(w http.ResponseWriter, r *http.Reques
 	if err == nil {
 		// Character exists
 		w.WriteHeader(http.StatusConflict)
-		json.NewEncoder(w).Encode(ErrorResponse{Error: "User already has a character"})
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "User already has a character",
+			"code":  "character_exists",
+		})
 		return
 	} else if err != sql.ErrNoRows {
 		// Database error
@@ -179,7 +205,10 @@ func (h *CharacterHandler) CreateCharacter(w http.ResponseWriter, r *http.Reques
 			}
 			if strings.Contains(err.Error(), "characters_user_id_key") {
 				w.WriteHeader(http.StatusConflict)
-				json.NewEncoder(w).Encode(ErrorResponse{Error: "User already has a character"})
+				json.NewEncoder(w).Encode(map[string]string{
+					"error": "User already has a character",
+					"code":  "character_exists",
+				})
 				return
 			}
 		}

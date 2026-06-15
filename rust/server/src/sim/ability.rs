@@ -62,6 +62,9 @@ pub struct ClassStats {
     pub charge_speed: f64,
     /// Charge max distance (Warrior).
     pub charge_distance: f64,
+    /// Total mana a FULL charge drains over its distance (Warrior), beyond the activation cost.
+    /// The charge ends early (blast) if mana runs out first. 0 for non-charge classes.
+    pub charge_mana_drain: f64,
     /// Multishot projectile count (Void Hunter), else 0.
     pub multishot_count: u32,
     /// Multishot spread (radians, total cone) and pierce target cap.
@@ -119,6 +122,7 @@ const ZEALOT: ClassStats = ClassStats {
     ability_cast_range: 0.0,
     charge_speed: 0.0,
     charge_distance: 0.0,
+    charge_mana_drain: 0.0,
     multishot_count: 0,
     multishot_spread: 0.0,
     multishot_pierce: 0,
@@ -141,6 +145,7 @@ const VOID_HUNTER: ClassStats = ClassStats {
     ability_cast_range: 0.0,
     charge_speed: 0.0,
     charge_distance: 0.0,
+    charge_mana_drain: 0.0,
     multishot_count: 5,
     multishot_spread: 0.488_692, // 28° total cone
     multishot_pierce: 4,
@@ -163,6 +168,7 @@ const ENGINEER: ClassStats = ClassStats {
     ability_cast_range: 0.0,
     charge_speed: 0.0,
     charge_distance: 0.0,
+    charge_mana_drain: 0.0,
     multishot_count: 0,
     multishot_spread: 0.0,
     multishot_pierce: 0,
@@ -185,6 +191,7 @@ const PLAGUE_SEER: ClassStats = ClassStats {
     ability_cast_range: 500.0,
     charge_speed: 0.0,
     charge_distance: 0.0,
+    charge_mana_drain: 0.0,
     multishot_count: 0,
     multishot_spread: 0.0,
     multishot_pierce: 0,
@@ -199,14 +206,17 @@ const WARRIOR: ClassStats = ClassStats {
     speed_per_level: 0.6,
     base_damage: 25.0,
     damage_per_level: 2.5,
-    ability_mana: 40.0,
-    ability_cooldown: 9.0,
+    ability_mana: 30.0, // activation cost (the charge then drains more per unit — see below)
+    ability_cooldown: 4.5, // halved from 9.0
     ability_damage: 50, // blast damage
     ability_radius: 120.0,
     ability_duration: 0.0,
     ability_cast_range: 0.0,
     charge_speed: 720.0,
-    charge_distance: 420.0,
+    charge_distance: 945.0, // steerable charge — follows the cursor; +50% range over the old 630
+    // Mana drained over the DRAINING portion of a full charge (the first 40% is drain-free — the
+    // activation always buys a minimum charge). ~40 total with the 30 activation cost.
+    charge_mana_drain: 10.0,
     multishot_count: 0,
     multishot_spread: 0.0,
     multishot_pierce: 0,
@@ -229,6 +239,7 @@ const ROGUE: ClassStats = ClassStats {
     ability_cast_range: 0.0,
     charge_speed: 0.0,
     charge_distance: 0.0,
+    charge_mana_drain: 0.0,
     multishot_count: 0,
     multishot_spread: 0.0,
     multishot_pierce: 0,
@@ -251,6 +262,7 @@ const MAGE: ClassStats = ClassStats {
     ability_cast_range: 600.0,
     charge_speed: 0.0,
     charge_distance: 0.0,
+    charge_mana_drain: 0.0,
     multishot_count: 0,
     multishot_spread: 0.0,
     multishot_pierce: 0,

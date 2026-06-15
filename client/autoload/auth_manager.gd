@@ -21,6 +21,10 @@ signal logout_completed()
 signal token_refreshed(new_token: String)
 signal auth_state_changed(new_state: AuthState)
 
+## Emitted when refresh_character() finishes re-syncing /api/character/me into GameManager.
+## `has_character` is true if the account currently has a (living) character server-side.
+signal character_refreshed(has_character: bool)
+
 ## API server configuration (loaded from client_config.json)
 var api_base_url: String = "http://localhost:8080"
 var api_timeout: float = 10.0
@@ -475,7 +479,9 @@ func _extract_user_data(data: Dictionary) -> Dictionary:
 		"user_id": _variant_to_string(data.get("user_id", user.get("id", ""))),
 		"username": _variant_to_string(data.get("username", user.get("username", ""))),
 		"character_id": _variant_to_string(data.get("character_id", "")),
-		"character_name": _variant_to_string(data.get("character_name", ""))
+		"character_name": _variant_to_string(data.get("character_name", "")),
+		# Account-wide Glory (shown on the main menu). Login returns it on the user object.
+		"glory": int(user.get("glory", data.get("glory", 0)))
 	}
 
 
@@ -562,6 +568,67 @@ func _complete_login(user_data: Dictionary) -> void:
 	print("[AuthManager] Login successful for user: %s" % user_data.get("username", "unknown"))
 	_change_state(AuthState.LOGGED_IN)
 	login_successful.emit(user_data)
+
+
+## Re-fetch the authoritative character + account state from /api/character/me on demand and
+## merge it into GameManager, WITHOUT a full re-login. Use it to re-confirm DB state — e.g. on
+## returning to the main menu after a hardcore permadeath (so the deleted character and the
+## newly-credited Glory show correctly), and to self-heal the create flow's stale 409. Emits
+## character_refreshed(has_character) when done (always exactly once).
+func refresh_character() -> void:
+	if is_server or jwt_token.is_empty():
+		character_refreshed.emit(_game_manager_has_character())
+		return
+
+	var req := _create_http_request()
+	req.request_completed.connect(_on_refresh_character_completed.bind(req), CONNECT_ONE_SHOT)
+	var error := req.request(
+		api_base_url + "/api/character/me",
+		[get_auth_header()],
+		HTTPClient.METHOD_GET
+	)
+	if error != OK:
+		push_warning("[AuthManager] refresh_character request failed: %d" % error)
+		req.queue_free()
+		character_refreshed.emit(_game_manager_has_character())
+
+
+func _on_refresh_character_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray, req: HTTPRequest) -> void:
+	req.queue_free()
+	var game_mgr = get_tree().root.get_node_or_null("GameManager")
+
+	if result == HTTPRequest.RESULT_SUCCESS and response_code == 200:
+		var json := JSON.new()
+		if json.parse(body.get_string_from_utf8()) == OK and json.data is Dictionary:
+			var character: Dictionary = json.data
+			var update: Dictionary = {}
+			_merge_character_data(update, character)
+			if character.has("glory"):
+				update["glory"] = int(character.get("glory", 0))
+			if game_mgr and not update.is_empty():
+				game_mgr.set_player_data(update)
+			character_refreshed.emit(_game_manager_has_character())
+			return
+		push_warning("[AuthManager] Failed to parse refresh_character response")
+	elif response_code == 404:
+		# No character server-side (e.g. a hardcore permadeath delete has committed). Clear the
+		# stale local character so callers see the true state instead of a phantom character.
+		if game_mgr:
+			game_mgr.set_player_data({"character_id": "", "character_name": ""})
+			if game_mgr.has_method("reset_progression"):
+				game_mgr.reset_progression()
+		character_refreshed.emit(false)
+		return
+	elif result == HTTPRequest.RESULT_SUCCESS:
+		push_warning("[AuthManager] refresh_character returned status: %d" % response_code)
+
+	# Network/parse error: fall back to whatever we currently believe.
+	character_refreshed.emit(_game_manager_has_character())
+
+
+func _game_manager_has_character() -> bool:
+	var game_mgr = get_tree().root.get_node_or_null("GameManager")
+	return game_mgr != null and game_mgr.has_character()
 
 
 func _variant_to_string(value: Variant) -> String:

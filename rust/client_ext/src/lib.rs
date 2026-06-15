@@ -502,6 +502,14 @@ impl PredictionSim {
             .set_ability_config(cost, cooldown, charge_speed, charge_max_distance);
     }
 
+    /// Total mana a FULL Warrior charge drains over its distance (beyond the activation cost). The
+    /// client sets the SAME value the server uses so the predicted charge ends on mana depletion in
+    /// lockstep. Mirror of `MovementSm::set_charge_mana_drain`.
+    #[func]
+    fn set_charge_mana_drain(&mut self, drain: f64) {
+        self.sm.set_charge_mana_drain(drain);
+    }
+
     /// Per-class+level base move speed (the client adopts the authoritative value from PROGRESS).
     #[func]
     fn set_base_speed(&mut self, base_speed: f64) {

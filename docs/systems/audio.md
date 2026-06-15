@@ -52,8 +52,15 @@ pool, or `pool[0]` (interrupting it) when all are busy (`audio_manager.gd:305-31
 
 ## The sound library
 
-Generated once in `_generate_procedural_audio` (`audio_manager.gd:151-182`). 13 SFX from
-`ProceduralAudio.generate_all_sounds` (`procedural_audio.gd:11-37`) plus 2 music tracks:
+Generated once in `_generate_procedural_audio` (`audio_manager.gd:151-182`). SFX from
+`ProceduralAudio.generate_all_sounds` (incl. the three **ability** cues — `mageblast` for the
+Mage, `go_invisible` for the Rogue's Shadowstep, `charge` for the Warrior's Charge blast) plus
+2 music tracks. Ability cues fire from `arena_base._handle_ability_effect_event` keyed on the
+`ABILITY_EFFECT` `effect_id` (0 mageblast, 1 charge), and `go_invisible` fires on the local
+player's STEALTH flag rising edge in `_sync_local_player_state`. The **looping** `charge_loop`
+rumble plays *while* the Warrior is charging — `AudioManager.play_charge_loop()` /
+`stop_charge_loop()` on a dedicated `AudioStreamPlayer`, driven by the predicted charge edges in
+`prediction.gd._drive_charge_loop_sfx` (charge-specific, so the regular dash doesn't trigger it):
 
 | Key | Category | Generator | Length |
 |---|---|---|---|
@@ -63,6 +70,8 @@ Generated once in `_generate_procedural_audio` (`audio_manager.gd:151-182`). 13 
 | `player_death` | `sfx_player` | `:178` | 350 ms |
 | `player_kill` | `sfx_player` | `:200` | 180 ms |
 | `projectile_impact` | `sfx_player` | `:301` | 30 ms |
+| `mageblast` / `go_invisible` / `charge` | `sfx_player` | `_gen_mageblast` / `_gen_go_invisible` / `_gen_charge` | 280 / 320 / 340 ms |
+| `charge_loop` (looped) | `sfx_player` | `_gen_charge_loop` (LOOP_FORWARD) | 0.4 s loop |
 | `footstep_l` / `footstep_r` | `sfx_player` | `:318` | 20 ms |
 | `monster_shoot` | `sfx_monster` | `:220` | 60 ms |
 | `monster_hit` | `sfx_monster` | `:236` | 50 ms |

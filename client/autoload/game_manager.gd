@@ -35,6 +35,11 @@ const XP_FIRST_LEVEL := 100   ## Level 1 -> 2 == 5 Toxic Slimes (20 XP each)
 const XP_LEVEL_SLOPE := 200   ## Level L -> L+1 for L >= 2 == 10 same-level mobs
 const MAX_PLAYER_LEVEL := 50
 
+## Glory = floor(total lifetime XP / GLORY_XP_DIVISOR). Mirrors the Go API + Rust server
+## (api/internal/progression/progression.go, rust/sim_core/src/progression.rs) so the client
+## can display the EXACT Glory the server credits on a hardcore death without a wire field.
+const GLORY_XP_DIVISOR := 100
+
 ## Current game state
 var current_state: GameState = GameState.INITIALIZING
 
@@ -53,14 +58,20 @@ var player_data: Dictionary = {
 	"character_mode": "softcore"  ## "softcore" (respawn) or "hardcore" (permadeath on death)
 }
 
-## Game settings
+## Game settings.
+## window_mode: "windowed_fullscreen" (borderless, covers the screen — the default launch mode)
+## or "windowed" (a small centered window). The Settings → Video tab toggles it. Replaces the
+## old boolean "fullscreen" key (migrated away in _load_settings).
 var settings: Dictionary = {
 	"master_volume": 1.0,
 	"music_volume": 0.8,
 	"sfx_volume": 1.0,
-	"fullscreen": false,
+	"window_mode": "windowed_fullscreen",
 	"vsync": true
 }
+
+## Window size used for the "windowed" (small) mode. Centered on the current screen.
+const WINDOWED_SMALL_SIZE := Vector2i(1280, 720)
 
 ## Statistics tracking
 var session_stats: Dictionary = {
@@ -204,6 +215,9 @@ func update_setting(setting_name: String, value) -> void:
 		settings[setting_name] = value
 		settings_changed.emit()
 		_apply_setting(setting_name, value)
+		# Persist immediately so the choice (e.g. window_mode) survives a relaunch — the
+		# Exit button quits without going through the EXITING state's save.
+		_save_settings()
 		print("[GameManager] Setting updated - %s: %s" % [setting_name, str(value)])
 
 ## Apply individual setting
@@ -213,11 +227,8 @@ func _apply_setting(setting_name: String, value) -> void:
 		return
 
 	match setting_name:
-		"fullscreen":
-			if value:
-				DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
-			else:
-				DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+		"window_mode":
+			_apply_window_mode(str(value))
 		"vsync":
 			if value:
 				DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED)
@@ -226,6 +237,23 @@ func _apply_setting(setting_name: String, value) -> void:
 		"master_volume", "music_volume", "sfx_volume":
 			# AudioManager will listen to settings_changed signal
 			pass
+
+
+## Apply the window mode. "windowed_fullscreen" = borderless windowed-fullscreen (Godot's
+## WINDOW_MODE_FULLSCREEN, the default launch mode); anything else = a small centered window.
+func _apply_window_mode(mode: String) -> void:
+	if is_server:
+		return
+	if mode == "windowed_fullscreen":
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+		return
+	# "windowed" (small): un-fullscreen, size, and center on the current screen.
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+	DisplayServer.window_set_size(WINDOWED_SMALL_SIZE)
+	var screen := DisplayServer.window_get_current_screen()
+	var screen_pos := DisplayServer.screen_get_position(screen)
+	var screen_size := DisplayServer.screen_get_size(screen)
+	DisplayServer.window_set_position(screen_pos + (screen_size - WINDOWED_SMALL_SIZE) / 2)
 
 ## Load settings from file
 func _load_settings() -> void:
@@ -242,6 +270,13 @@ func _load_settings() -> void:
 					settings.merge(loaded_settings, true)
 					print("[GameManager] Settings loaded")
 			file.close()
+
+	# Migrate the legacy boolean "fullscreen" key away. The launch default is now
+	# windowed-fullscreen; drop the old key so it can't force the small window at boot.
+	if settings.has("fullscreen"):
+		if not settings.has("window_mode") or str(settings.get("window_mode")) == "":
+			settings["window_mode"] = "windowed_fullscreen"
+		settings.erase("fullscreen")
 
 	# Apply all loaded settings
 	for setting_name in settings:
@@ -265,7 +300,10 @@ func is_authenticated() -> bool:
 func has_character() -> bool:
 	return not player_data.character_name.is_empty()
 
-## Clear player data (logout)
+## Clear player data (logout / leaving a character). Account-scoped values that outlive a
+## single character — selected region, player color, and account Glory — are preserved so the
+## menu still shows them (Glory survives a hardcore permadeath, where the character is gone but
+## the account keeps the Glory it earned).
 func clear_player_data() -> void:
 	player_data = {
 		"character_name": "",
@@ -278,7 +316,8 @@ func clear_player_data() -> void:
 		"player_level": 1,
 		"player_experience": 0,
 		"player_move_speed": 0,
-		"character_mode": "softcore"
+		"character_mode": "softcore",
+		"glory": int(player_data.get("glory", 0))
 	}
 	player_data_updated.emit()
 	print("[GameManager] Player data cleared")
@@ -315,6 +354,24 @@ func xp_to_next_level(level: int) -> int:
 	if level <= 1:
 		return XP_FIRST_LEVEL
 	return XP_LEVEL_SLOPE * level
+
+
+## Total lifetime XP a character at (level, experience) has earned: the sum of every prior
+## level's cost (capped at MAX_PLAYER_LEVEL) plus the current in-level progress. Mirrors Go
+## progression.TotalLifetimeXP exactly (loop l = 1 ..< min(level, MAX_PLAYER_LEVEL)).
+func total_lifetime_xp(level: int, experience: int) -> int:
+	var total := maxi(0, experience)
+	var l := 1
+	while l < level and l < MAX_PLAYER_LEVEL:
+		total += xp_to_next_level(l)
+		l += 1
+	return total
+
+
+## Glory the server credits this character on a hardcore death: floor(total lifetime XP / 100).
+## Read from the current authoritative level/experience (kept in sync by PROGRESS events).
+func glory_for_death() -> int:
+	return total_lifetime_xp(get_player_level(), get_player_experience()) / GLORY_XP_DIVISOR
 
 
 func get_player_level() -> int:

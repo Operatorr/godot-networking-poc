@@ -57,22 +57,32 @@ Multishot spawns ordinary projectiles (band 10000–29999).
 | Engineer | Mine | spawned `mine` entity | no | spawn, arm, proximity trigger, AOE blast |
 | Zealot | Spinning Bibles | spawned `bible` entities | no | spawn, orbit, sweep + re-hit gating |
 | Void Hunter | Multishot | projectile spread (10000–29999) | no | spawn spread, piercing hits |
-| Warrior | Charge | **movement** (`AbilityMovement`) | **yes** (motion) | invulnerability, distance cap, blast |
-| Rogue | Shadowstep | **movement** (blink) or Stealth | **yes** (blink motion) | target pick, hitscan, `STEALTH` flag |
+| Warrior | Charge | **steerable movement** (`Charging`, follows cursor) | **yes** (motion + mana drain) | invulnerability, distance cap (945), mana drain, blast |
+| Rogue | Shadowstep | **teleport** (always) + landing AOE + Stealth | **no** (server snaps) | target pick, teleport, landing AOE, `STEALTH` flag |
 
-**The prediction rule.** Only the two **movement** abilities are predicted, and only their *motion*:
-Warrior Charge and Rogue Shadowstep's blink run through the shared `sim_core` `AbilityMovement` state,
-so the client predicts the dash/teleport with zero divergence from the server. Everything
+**The prediction rule.** Only **Warrior Charge** is predicted, and only its *motion*: Charge runs
+through the shared `sim_core` `Charging` state (`tick_charging`), which **steers toward the cursor**
+each tick (re-aims along `aim_dir`, refusing near-reversals) up to `max_distance` (945). The first 40%
+(`CHARGE_MIN_DISTANCE_FRACTION`) is **drain-free** — the activation guarantees that minimum charge —
+then it **drains mana per unit** beyond it (ending early with a blast if mana runs out). The client
+predicts the steering and the mana-bounded end with zero divergence from the server. **Rogue Shadowstep is _not_ predicted** — the teleport is fully
+server-authoritative and the client snaps to the corrected position on the next snapshot. Everything
 else — all damage, every spawn, invulnerability, target selection, Stealth — is decided by the server
 and learned by the client through `ABILITY_EFFECT`, replicated entity flags, or the effect entities.
 
 ## Stealth (entity flag bit 9)
 
-Rogue Shadowstep with no target sets the **`STEALTH`** entity flag (16-bit entity flags, bit 9 — the
-first of the reserved bits 9–15 to be used; bit 8 is `DAZED`). A stealthed player is **invisible to
-AI targeting**: monster and bot AI drop aggro and will not re-acquire while the flag is set. Stealth
-runs 5 s and **breaks early** the moment the Rogue deals damage. The flag is server-owned and
-replicated; the client renders its own translucency from it.
+**Every** Rogue Shadowstep cast sets the **`STEALTH`** entity flag (16-bit entity flags, bit 9 — the
+first of the reserved bits 9–15 to be used; bit 8 is `DAZED`) **after** the landing strike — the
+assassin strikes, then vanishes. A stealthed player is **invisible to AI targeting**: monster and bot
+AI drop aggro and will not re-acquire while the flag is set. Stealth runs its full 5 s and **no longer
+breaks** when the Rogue deals damage. The flag is server-owned and replicated; the client renders its
+own translucency from it.
+
+**Load-test bots honor Stealth.** The `omega-load-test` swarm
+(`rust/load_test/src/behavior.rs::pick_target`) excludes `STEALTH`-flagged entities from both its
+sticky-target re-validation and its nearest-candidate search, so bots drop a stealthed player and
+never re-acquire it — matching the server monster AI, which already skipped `STEALTH` targets.
 
 ## Cooldown & Mana accounting
 
@@ -86,13 +96,14 @@ replicated; the client renders its own translucency from it.
 
 ## The eight questions
 
-- **Client:** samples the RMB ability flag + cursor into `PlayerInput`; predicts only the two movement
-  abilities' motion via `sim_core`; renders ability VFX from `ABILITY_EFFECT`, world-effect entities,
-  and replicated flags (`STEALTH`, `INVULNERABLE`); shows Mana/cooldown on the HUD.
+- **Client:** samples the RMB ability flag + cursor into `PlayerInput`; predicts only Warrior Charge
+  motion via `sim_core` (Shadowstep is server-authoritative — the client snaps); renders ability VFX
+  from `ABILITY_EFFECT`, world-effect entities, and replicated flags (`STEALTH`, `INVULNERABLE`);
+  shows Mana/cooldown on the HUD.
 - **Server:** authoritative for all ability outcomes — Mana/cooldown gating, target selection, spawns,
   AOE/DoT/hitscan damage, invulnerability, Stealth, and world-effect entity lifetimes.
-- **Predicted:** Warrior Charge motion and Rogue Shadowstep blink motion only (shared `sim_core`); no
-  ability damage, spawn, or status is predicted.
+- **Predicted:** Warrior Charge motion only (shared `sim_core`); Rogue Shadowstep is **not** predicted
+  (the server teleports and the client snaps); no ability damage, spawn, or status is predicted.
 - **Replicated:** `ABILITY_EFFECT` events (`effect_id, x, y, radius`); world-effect entities (kind 3,
   band 40000–49999) in the snapshot stream; `STEALTH`/`INVULNERABLE` entity flags; Mana via
   `ActionConfirm`; `PICKUP {kind, amount}` for Healthorb heals.

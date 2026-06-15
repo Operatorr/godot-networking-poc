@@ -30,11 +30,14 @@ const CHARACTER_PREVIEW_SPRITE_PX := 128.0
 @onready var delete_button: Button = $CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer/DeleteButton
 @onready var region_dropdown: OptionButton = $CenterContainer/VBoxContainer/RegionDropdown
 @onready var enter_world_button: Button = $CenterContainer/VBoxContainer/EnterWorldButton
+@onready var enter_arena_button: Button = $CenterContainer/VBoxContainer/EnterArenaButton
 @onready var practice_button: Button = $BottomLeftActions/PracticeButton
 @onready var offline_sandbox_button: Button = $BottomLeftActions/OfflineSandboxButton
+@onready var settings_button: Button = $CenterContainer/VBoxContainer/SettingsButton
 @onready var logout_button: Button = $CenterContainer/VBoxContainer/LogoutButton
 @onready var exit_button: Button = $CenterContainer/VBoxContainer/ExitButton
 @onready var status_label: Label = $CenterContainer/VBoxContainer/StatusLabel
+@onready var glory_label: Label = $CenterContainer/VBoxContainer/GloryLabel
 @onready var error_dialog: PopupPanel = $ErrorDialog
 
 ## Looping run-cycle preview of the player's character, shown left of the color picker.
@@ -70,8 +73,10 @@ func _ready() -> void:
 
 	# Connect UI signals
 	enter_world_button.pressed.connect(_on_enter_world_pressed)
+	enter_arena_button.pressed.connect(_on_enter_arena_pressed)
 	practice_button.pressed.connect(_on_practice_pressed)
 	offline_sandbox_button.pressed.connect(_on_offline_sandbox_pressed)
+	settings_button.pressed.connect(_on_settings_pressed)
 	logout_button.pressed.connect(_on_logout_pressed)
 	exit_button.pressed.connect(_on_exit_pressed)
 	region_dropdown.item_selected.connect(_on_region_selected)
@@ -89,6 +94,7 @@ func _ready() -> void:
 
 	# Connect AuthManager signals
 	AuthManager.logout_completed.connect(_on_logout_completed)
+	AuthManager.character_refreshed.connect(_on_character_refreshed)
 
 	# Load user preferences
 	preferences = UserPreferences.load_preferences()
@@ -104,18 +110,21 @@ func _ready() -> void:
 	# Update UI
 	_update_character_display()
 	_toggle_enter_world_visibility()
+	_update_glory_display()
 
 	# Fetch regions from API
 	_fetch_regions()
+
+	# Re-confirm authoritative character + Glory from the API. This keeps the menu honest after
+	# an async hardcore permadeath (deleted character, freshly-credited Glory) without needing a
+	# re-login, and prevents the stale "create character" path. Updates the UI when it lands.
+	AuthManager.refresh_character()
 
 	# Setup button audio
 	_setup_button_audio()
 
 	# Start background music
 	AudioManager.play_music("menu_bgm")
-
-	# Update status
-	_update_status("Ready")
 
 	print("[MainMenu] Ready")
 
@@ -175,7 +184,7 @@ func _apply_dark_theme() -> void:
 	if status_label:
 		status_label.add_theme_color_override("font_color", Color.WHITE)
 
-	MenuButtonHelper.apply_to_buttons([enter_world_button, practice_button, offline_sandbox_button, logout_button, exit_button])
+	MenuButtonHelper.apply_to_buttons([enter_world_button, enter_arena_button, practice_button, offline_sandbox_button, settings_button, logout_button, exit_button])
 
 
 ## Update character display panel
@@ -289,9 +298,25 @@ func _on_create_character_pressed() -> void:
 	SceneManager.goto_character_creation()
 
 
-## Enable Enter World only when a character exists (kept visible but disabled otherwise).
+## Enable Enter World / Enter Arena only when a character exists (kept visible but disabled
+## otherwise — both routes drop the player into a live, server-authoritative session).
 func _toggle_enter_world_visibility() -> void:
-	enter_world_button.disabled = not GameManager.has_character()
+	var has_character := GameManager.has_character()
+	enter_world_button.disabled = not has_character
+	enter_arena_button.disabled = not has_character
+
+
+## Refresh the account Glory shown at the top of the menu from the cached player data.
+func _update_glory_display() -> void:
+	if glory_label:
+		glory_label.text = "Glory: %d" % int(GameManager.get_player_data().get("glory", 0))
+
+
+## AuthManager finished re-syncing /api/character/me — reflect the true character + Glory state.
+func _on_character_refreshed(_has_character: bool) -> void:
+	_update_character_display()
+	_toggle_enter_world_visibility()
+	_update_glory_display()
 
 
 ## Fetch available regions from API
@@ -549,6 +574,72 @@ func _on_enter_world_pressed() -> void:
 	SceneManager.goto_sanctuary()
 
 
+## Handle Enter Arena: skip the Sanctuary and dial the region's ARENA instance (port 8081)
+## directly, then load the arena scene. Mirrors _on_enter_world_pressed but targets the Arena
+## URL and goto_arena(); the region URL is still stashed so the in-arena "return to Sanctuary"
+## route knows where to go.
+func _on_enter_arena_pressed() -> void:
+	if _is_connecting:
+		return
+
+	var region := _selected_region_or_error()
+	if region == null:
+		return
+
+	GameManager.player_data["selected_region_url"] = region.connect_url
+	preferences.save()
+
+	enter_world_button.disabled = true
+	enter_arena_button.disabled = true
+	_is_connecting = true
+	_update_status("Connecting to the Arena...")
+
+	var arena_url := NetworkManager.arena_url_for_region(region.connect_url)
+	print("[MainMenu] Connecting to Arena instance %s (region %s)" % [arena_url, region.name])
+
+	var connected: bool = await _connect_and_wait(arena_url)
+	_is_connecting = false
+	if not connected:
+		enter_world_button.disabled = false
+		enter_arena_button.disabled = false
+		_update_status("Could not reach the Arena")
+		return
+
+	_update_status("Entering the Arena...")
+	enter_world_button.disabled = false
+	enter_arena_button.disabled = false
+	SceneManager.goto_arena()
+
+
+## Resolve the currently selected, available region, surfacing the same errors as Enter World.
+## Returns null (after showing an error dialog) when no valid region is selected.
+func _selected_region_or_error() -> RegionInfo:
+	if regions.is_empty():
+		_show_error("Connection Error", "No regions available. Please try again later.")
+		return null
+
+	var selected_index := region_dropdown.selected
+	if selected_index < 0 or selected_index >= region_dropdown.get_item_count():
+		_show_error("Connection Error", "Please select a region.")
+		return null
+
+	var region_index := region_dropdown.get_item_id(selected_index)
+	if region_index < 0 or region_index >= regions.size():
+		_show_error("Connection Error", "Please select a region.")
+		return null
+
+	var region := regions[region_index]
+	if not region.is_available():
+		_show_error("Region Unavailable", "The selected region is currently unavailable.")
+		return null
+	return region
+
+
+## Open the standalone Settings screen (Audio / Video / Controls).
+func _on_settings_pressed() -> void:
+	SceneManager.goto_settings()
+
+
 ## Dial a game-server instance and await the link opening, mirroring Portal._connect_to_destination_instance.
 ## Returns true once NetworkManager reports the connection is open, false on error/timeout.
 func _connect_and_wait(url: String) -> bool:
@@ -674,8 +765,10 @@ func _update_status(text: String) -> void:
 func _setup_button_audio() -> void:
 	var buttons: Array[Button] = [
 		enter_world_button,
+		enter_arena_button,
 		practice_button,
 		offline_sandbox_button,
+		settings_button,
 		logout_button,
 		exit_button
 	]

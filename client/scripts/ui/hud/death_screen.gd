@@ -15,6 +15,10 @@ var _countdown_timer: float = 0.0
 var _countdown_active: bool = false
 var _respawn_ready: bool = false
 
+## Base line shown on the hardcore (permadeath) screen; the converted-Glory line is appended
+## beneath it when an amount is supplied.
+const GLORY_BASE_TEXT := "Your Glory will be remembered"
+
 @onready var _killer_label: Label = $Center/VBox/KillerLabel
 @onready var _countdown_label: Label = $Center/VBox/CountdownLabel
 @onready var _glory_label: Label = $Center/VBox/GloryLabel
@@ -82,7 +86,8 @@ func show_death(killer_entity_id: int) -> void:
 
 ## Show the hardcore permadeath screen: no respawn — the character is gone and its XP
 ## has already been converted to Glory server-side. Offers a single route back to the menu.
-func show_death_hardcore(killer_entity_id: int) -> void:
+## `glory` is the total Glory the death converted (>= 0 shows the amount; < 0 omits it).
+func show_death_hardcore(killer_entity_id: int, glory: int = -1) -> void:
 	_set_killer_text(killer_entity_id)
 
 	# No countdown / respawn for permadeath.
@@ -91,6 +96,10 @@ func show_death_hardcore(killer_entity_id: int) -> void:
 	set_process(false)
 	_countdown_label.visible = false
 
+	if glory >= 0:
+		_glory_label.text = "%s\n+%d Glory earned" % [GLORY_BASE_TEXT, glory]
+	else:
+		_glory_label.text = GLORY_BASE_TEXT
 	_glory_label.visible = true
 	_menu_button.visible = true
 	_menu_button.grab_focus()
@@ -125,6 +134,7 @@ func hide_death() -> void:
 		_countdown_label.visible = true
 	if _glory_label:
 		_glory_label.visible = false
+		_glory_label.text = GLORY_BASE_TEXT
 	if _menu_button:
 		_menu_button.visible = false
 		_menu_button.disabled = false

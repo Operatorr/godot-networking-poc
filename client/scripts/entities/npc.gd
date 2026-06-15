@@ -104,8 +104,8 @@ func _open_dialog() -> void:
 	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
 	panel.offset_left = -320.0
 	panel.offset_right = 320.0
-	panel.offset_top = -190.0
-	panel.offset_bottom = -50.0
+	panel.offset_top = -290.0
+	panel.offset_bottom = -150.0
 	_dialog_layer.add_child(panel)
 
 	var vbox := VBoxContainer.new()

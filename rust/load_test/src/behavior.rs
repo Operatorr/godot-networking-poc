@@ -254,7 +254,10 @@ impl BehaviorState {
     fn pick_target(&self, view: &View) -> Option<u16> {
         if let Some(id) = self.target {
             if let Some(e) = view.entities.get(&id) {
-                if e.flags & entity_flags::ALIVE != 0 && dist(view.pos, e.pos) <= TARGET_MAX_RANGE {
+                if e.flags & entity_flags::ALIVE != 0
+                    && e.flags & entity_flags::STEALTH == 0
+                    && dist(view.pos, e.pos) <= TARGET_MAX_RANGE
+                {
                     return Some(id);
                 }
             }
@@ -263,7 +266,10 @@ impl BehaviorState {
             view.entities
                 .iter()
                 .filter(|(id, e)| {
-                    pred(**id) && **id != view.my_id && e.flags & entity_flags::ALIVE != 0
+                    pred(**id)
+                        && **id != view.my_id
+                        && e.flags & entity_flags::ALIVE != 0
+                        && e.flags & entity_flags::STEALTH == 0
                 })
                 .map(|(id, e)| (*id, dist(view.pos, e.pos)))
                 .filter(|(_, d)| *d <= TARGET_MAX_RANGE)
@@ -465,6 +471,50 @@ mod tests {
         );
         // Aim roughly toward +x (monster sits due east).
         assert!(d.aim_angle.abs() < 0.6, "aim {} not eastish", d.aim_angle);
+    }
+
+    #[test]
+    fn strategy_ignores_stealthed_player() {
+        // A single ALIVE+STEALTH player sits at point-blank range. Bots must NOT acquire or shoot
+        // it — the assassin is invisible (mirrors the server monster AI, which also skips STEALTH).
+        let mut entities = HashMap::new();
+        entities.insert(
+            7,
+            KnownEntity {
+                pos: (700.0, 0.0),
+                vel: (0.0, 0.0),
+                anim: 0,
+                flags: entity_flags::ALIVE | entity_flags::STEALTH,
+                last_tick: 1,
+            },
+        );
+        let owners = HashMap::new();
+        let mut b = BehaviorState::new(BehaviorKind::Strategy, 1.0);
+        // pick_target must find nobody.
+        assert_eq!(b.pick_target(&empty_view(&entities, &owners)), None);
+        // And with only a stealthed target around, the strategy bot never shoots.
+        let mut rng = Pcg32::new(7);
+        for _ in 0..50 {
+            let d = b.decide(&empty_view(&entities, &owners), &mut rng, 100.0);
+            assert_eq!(
+                d.flags & input_flags::SHOOT,
+                0,
+                "must not shoot a stealthed player"
+            );
+        }
+
+        // Once the player drops STEALTH it is acquired again.
+        entities.insert(
+            7,
+            KnownEntity {
+                pos: (700.0, 0.0),
+                vel: (0.0, 0.0),
+                anim: 0,
+                flags: entity_flags::ALIVE,
+                last_tick: 1,
+            },
+        );
+        assert_eq!(b.pick_target(&empty_view(&entities, &owners)), Some(7));
     }
 
     #[test]

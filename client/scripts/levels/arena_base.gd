@@ -42,6 +42,11 @@ var is_server: bool = false
 ## ground/decor layers and must not have the dark arena grid/border drawn over them.
 var _draws_arena_floor: bool = true
 
+## When false, _draw() skips the opaque FLOOR_COLOR fill (but still paints the vein grid,
+## obstacles, and border on top). Set false by _build_arena_floor_decor() once the sprite-based
+## ground layer is in place, so the textured floor shows through the grimdark overlay.
+var _paint_solid_floor: bool = true
+
 ## Client-only components (null in server mode)
 var local_player: Player = null
 var prediction_controller: PredictionController = null
@@ -125,6 +130,7 @@ func _ready() -> void:
 func _build_level_environment() -> void:
 	_setup_arena_tilemap()
 	if not is_server:
+		_build_arena_floor_decor()
 		_build_arena_props()
 
 
@@ -519,11 +525,15 @@ func _handle_ability_effect_event(data: Dictionary) -> void:
 	vfx.position = position
 	_add_effect_to_arena(vfx)
 
-	# Mageblast (effect_id 0) plays its arcane detonation SFX.
+	# Ability SFX: Mageblast (0) arcane detonation, Warrior Charge blast (1) heavy slam.
 	if effect_id == 0:
 		var audio := _get_audio_manager()
 		if audio != null:
 			audio.play_sfx("mageblast", AudioManager.AudioCategory.SFX_PLAYER)
+	elif effect_id == 1:
+		var audio := _get_audio_manager()
+		if audio != null:
+			audio.play_sfx("charge", AudioManager.AudioCategory.SFX_PLAYER)
 
 
 ## Handle PLAYER_INFO event - detect our own entity ID
@@ -666,6 +676,15 @@ func _sync_local_player_state(entity_data: Dictionary) -> void:
 	var is_invulnerable := (flags & PacketTypes.ENTITY_FLAG_INVULNERABLE) != 0
 	var is_stealthed := (flags & PacketTypes.ENTITY_FLAG_STEALTH) != 0
 	_is_invulnerable = is_invulnerable
+
+	# Play the "go invisible" cue once, on the frame the local player turns stealthed
+	# (Shadowstep grants stealth on every cast). Falling edge just resets the latch.
+	if is_stealthed and not _local_stealthed:
+		var stealth_audio := _get_audio_manager()
+		if stealth_audio:
+			stealth_audio.play_go_invisible()
+	_local_stealthed = is_stealthed
+
 	if local_player.animated_sprite:
 		if is_stealthed:
 			if local_player.animated_sprite.modulate.a != 0.35:
@@ -707,6 +726,7 @@ func _handle_respawn_event(data: Dictionary) -> void:
 		_is_invulnerable = true
 		_last_killer_id = -1
 		_local_death_feedback_played = false
+		_local_stealthed = false
 		print("[ArenaBase] Local player respawned at %s" % respawn_pos)
 
 
@@ -789,7 +809,10 @@ func _play_local_death_feedback() -> void:
 			# auto-reconnecting into that kick — otherwise it re-auths and the server spawns us
 			# again in the background behind the death screen.
 			NetworkManager.suppress_auto_reconnect()
-			death_screen.show_death_hardcore(_last_killer_id)
+			# Show how much Glory the fallen hero converted. The client recomputes the exact
+			# value the Go API credited from the authoritative level/XP (shared curve+divisor),
+			# so no protocol change is needed (Glory stays off the game wire — ADR 0006).
+			death_screen.show_death_hardcore(_last_killer_id, GameManager.glory_for_death())
 		else:
 			death_screen.show_death(_last_killer_id)
 
@@ -979,6 +1002,10 @@ func _on_main_menu_requested() -> void:
 	if audio:
 		audio.stop_music()
 	NetworkManager.disconnect_from_server("Hardcore permadeath")
+	# Reflect the Glory this death converted in the cached account total so the menu shows the
+	# updated number. The server credited it, but /api/character/me can't return it once the
+	# character row is deleted — so fold the converted amount in here before clearing the run.
+	GameManager.player_data["glory"] = int(GameManager.get_player_data().get("glory", 0)) + GameManager.glory_for_death()
 	GameManager.clear_player_data()
 	SceneManager.goto_main_menu()
 
@@ -1015,6 +1042,10 @@ func _show_kill_notification(victim_name: String, title: String = "") -> void:
 ## Invulnerability shield circle - drawn as a child of local player
 var _shield_node: Node2D = null
 var _is_invulnerable: bool = false
+
+## Tracks the local player's STEALTH flag so the "go invisible" SFX fires once on the
+## rising edge (the frame stealth turns on), not every snapshot while stealthed.
+var _local_stealthed: bool = false
 
 func _update_invuln_shield() -> void:
 	if local_player == null or not is_instance_valid(local_player):
@@ -1290,6 +1321,15 @@ func on_scene_exit() -> void:
 
 const ARENA_PROP_TEXTURE_DIR := "res://assets/sprites/environment/arena/"
 
+## Sprite-based arena floor. `ground_stone1` is the seamless BASE tiled across the whole arena;
+## `ground_variation1/2` are DETAIL decals scattered on top (jittered so they don't grid-align).
+## `ground_darken` is intentionally unused (it reads as out-of-arena dark ground).
+## Drawn UNDER the obstacle/border _draw() overlay (z just above the TileMapLayer).
+const GROUND_BASE_FILE := "ground_stone1.png"
+const GROUND_DETAIL_FILES := ["ground_variation1.png", "ground_variation2.png"]
+## 250 divides the 2000-unit arena evenly (8x8), so the base tiles fill it with no overshoot.
+const GROUND_TILE_SIZE := 250.0
+
 ## kind -> {file, flat}. Standing props (flat=false) are bottom-planted on
 ## their position; flat props (decals, piles) center on it.
 const ARENA_PROP_SPRITES := {
@@ -1424,6 +1464,55 @@ func _build_arena_props() -> void:
 		sprite.position = pos
 		container.add_child(sprite)
 	print("[ArenaBase] Built %d arena props" % container.get_child_count())
+
+
+## Build the sprite-based ground floor: a deterministic mix of the stone/variation tiles over
+## the whole arena with the darken decal sparsely overlaid. Sits above the TileMapLayer and
+## below the parent's vein-grid/obstacle/border _draw(). Missing textures are skipped silently
+## (same graceful-fallback rule as _build_arena_props) — if no tiles load, the procedural floor
+## stays. Client-only (called from _build_level_environment's non-server branch).
+func _build_arena_floor_decor() -> void:
+	var existing := get_node_or_null("GroundDecor")
+	if existing:
+		existing.queue_free()
+
+	var base_path := ARENA_PROP_TEXTURE_DIR + GROUND_BASE_FILE
+	if not ResourceLoader.exists(base_path, "Texture2D"):
+		# No base ground art on this checkout — keep the procedural FLOOR_COLOR floor.
+		return
+	var base_tex: Texture2D = load(base_path)
+	if base_tex == null:
+		return
+
+	var details: Array[Texture2D] = []
+	for fname: String in GROUND_DETAIL_FILES:
+		var path := ARENA_PROP_TEXTURE_DIR + fname
+		if not ResourceLoader.exists(path, "Texture2D"):
+			continue
+		var tex: Texture2D = load(path)
+		if tex != null:
+			details.append(tex)
+
+	var layer := _GroundDecorLayer.new()
+	layer.name = "GroundDecor"
+	layer.arena_rect = Rect2(arena_min, arena_max - arena_min)
+	layer.base_tex = base_tex
+	layer.detail_texs = details
+	layer.tile = GROUND_TILE_SIZE
+	# Above the TileMapLayer (-10), below the parent node's own _draw() (z 0) so the obstacles
+	# / red border still read on top.
+	layer.z_index = TILEMAP_Z_INDEX + 1
+	layer.z_as_relative = false
+	# Carry the minimap terrain bit so the floor shows on the minimap like the old _draw() floor.
+	layer.visibility_layer = GameConstants.MINIMAP_TERRAIN_VISIBILITY
+	add_child(layer)
+	move_child(layer, 0)
+
+	# The sprites now provide the floor; stop the opaque FLOOR_COLOR fill + vein grid from
+	# hiding them (_draw() gates both on _paint_solid_floor).
+	_paint_solid_floor = false
+	queue_redraw()
+	print("[ArenaBase] Built sprite arena floor (stone base + %d detail decals)" % details.size())
 
 
 ## Set up the generated TileMapLayer backing the arena floor, walls, and obstacle cells.
@@ -1604,23 +1693,26 @@ func _draw() -> void:
 	if not _draws_arena_floor:
 		return
 
-	# Draw floor background
+	# When the sprite-based ground layer is present (_build_arena_floor_decor) we skip the opaque
+	# fill AND the vein grid / branches entirely — the floor texture is the look now. Only the
+	# obstacles + border draw on top. The procedural floor + grid is the fallback when no art loads.
 	var arena_rect := Rect2(arena_min, arena_max - arena_min)
-	draw_rect(arena_rect, FLOOR_COLOR, true)
+	if _paint_solid_floor:
+		draw_rect(arena_rect, FLOOR_COLOR, true)
 
-	# Draw vein grid lines (organic tissue feel)
-	var x := arena_min.x
-	while x <= arena_max.x:
-		draw_line(Vector2(x, arena_min.y), Vector2(x, arena_max.y), GRID_COLOR, 1.0)
-		x += GRID_CELL_SIZE
+		# Vein grid lines (organic tissue feel)
+		var x := arena_min.x
+		while x <= arena_max.x:
+			draw_line(Vector2(x, arena_min.y), Vector2(x, arena_max.y), GRID_COLOR, 1.0)
+			x += GRID_CELL_SIZE
 
-	var y := arena_min.y
-	while y <= arena_max.y:
-		draw_line(Vector2(arena_min.x, y), Vector2(arena_max.x, y), GRID_COLOR, 1.0)
-		y += GRID_CELL_SIZE
+		var y := arena_min.y
+		while y <= arena_max.y:
+			draw_line(Vector2(arena_min.x, y), Vector2(arena_max.x, y), GRID_COLOR, 1.0)
+			y += GRID_CELL_SIZE
 
-	# Draw branching veins from grid intersections
-	_draw_vein_branches()
+		# Branching veins from grid intersections
+		_draw_vein_branches()
 
 	# Draw obstacles
 	_draw_obstacles()
@@ -1713,6 +1805,52 @@ class _TextFloater extends Node2D:
 		c.a = alpha
 		draw_string(font, Vector2(1, 1), _text, HORIZONTAL_ALIGNMENT_CENTER, -1, 16, Color(0, 0, 0, alpha * 0.6))
 		draw_string(font, Vector2.ZERO, _text, HORIZONTAL_ALIGNMENT_CENTER, -1, 16, c)
+
+
+## Sprite-based arena ground floor. Tiles `base_tex` (the stone base) across `arena_rect`, then
+## scatters `detail_texs` (the variation decals) on top at jittered positions so they read as
+## ground detail rather than a grid. Drawn once on demand (queue_redraw), so the per-cell loop
+## cost is paid only when the arena builds. Cosmetic only — the server sim knows nothing about it.
+class _GroundDecorLayer extends Node2D:
+	var arena_rect: Rect2 = Rect2()
+	var base_tex: Texture2D = null
+	var detail_texs: Array[Texture2D] = []
+	var tile: float = 250.0
+
+	func _draw() -> void:
+		if base_tex == null or tile <= 0.0:
+			return
+		# 1) Tile the seamless stone base across the whole arena.
+		var y := arena_rect.position.y
+		while y < arena_rect.end.y:
+			var x := arena_rect.position.x
+			while x < arena_rect.end.x:
+				draw_texture_rect(base_tex, Rect2(Vector2(x, y), Vector2(tile, tile)), false)
+				x += tile
+			y += tile
+		# 2) Scatter the detail decals on top — ~45% of cells, jittered off the grid so they
+		#    don't line up. Deterministic (hash of cell) so the floor looks identical every build.
+		if detail_texs.is_empty():
+			return
+		var row := 0
+		y = arena_rect.position.y
+		while y < arena_rect.end.y:
+			var col := 0
+			var x := arena_rect.position.x
+			while x < arena_rect.end.x:
+				var h := posmod(row * 73 + col * 137, 100)
+				if h < 45:
+					var tex: Texture2D = detail_texs[posmod(row * 19 + col * 11, detail_texs.size())]
+					var size := tex.get_size()
+					# Jitter up to ~±70px so the decals don't grid-align with the base tiles.
+					var jx := float(posmod(h * 7, 140)) - 70.0
+					var jy := float(posmod(h * 13, 140)) - 70.0
+					var pos := Vector2(x + (tile - size.x) * 0.5 + jx, y + (tile - size.y) * 0.5 + jy)
+					draw_texture_rect(tex, Rect2(pos, size), false)
+				x += tile
+				col += 1
+			y += tile
+			row += 1
 
 
 ## Transient expanding-ring/burst VFX for an ABILITY_EFFECT event. Styled by effect_id and

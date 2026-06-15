@@ -193,6 +193,7 @@ impl PlayerState {
             s.charge_speed,
             s.charge_distance,
         );
+        self.movement_sm.set_charge_mana_drain(s.charge_mana_drain);
     }
 
     /// Class+level-scaled primary-attack damage (used at projectile spawn).
@@ -238,7 +239,10 @@ impl PlayerState {
         self.stealth_timer > 0.0
     }
 
-    /// Stealth ends early when the Rogue deals damage (cast/shoot) — call on any offensive action.
+    /// Force-clear Stealth immediately. Shadowstep no longer breaks stealth on cast/shoot (the
+    /// Rogue stays vanished for the full duration), so this currently has no live caller; kept as a
+    /// small API for any future "reveal" mechanic.
+    #[allow(dead_code)]
     pub fn break_stealth(&mut self) {
         self.stealth_timer = 0.0;
     }

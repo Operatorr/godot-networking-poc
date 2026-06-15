@@ -20,6 +20,12 @@ const NAME_PATTERN: String = "^[a-zA-Z0-9_]+$"
 ## Track creation state to prevent duplicate requests
 var is_creating: bool = false
 
+## Guards the one-shot self-heal retry when the API reports "User already has a character"
+## (HTTP 409 / code "character_exists"). This happens when a hardcore permadeath delete hasn't
+## committed yet by the time the player re-creates; we re-sync against /api/character/me and
+## retry once. Without the guard a persistent 409 would loop forever.
+var _conflict_retry_used: bool = false
+
 ## HTTP request for character creation
 var http_request: HTTPRequest
 
@@ -369,13 +375,55 @@ func _on_create_completed(result: int, response_code: int, _headers: PackedStrin
 
 		print("[CharacterCreation] Character created successfully: %s" % character_name)
 		_on_create_successful()
-	else:
-		# Error response
-		var error_message: String = "Character creation failed"
-		if json.data is Dictionary:
-			error_message = json.data.get("error", error_message)
-		print("[CharacterCreation] Creation failed: %s" % error_message)
-		_on_create_failed(error_message)
+		return
+
+	# Stale "User already has a character" after a hardcore permadeath: the server-side delete
+	# may not have committed yet (it runs async after the death kick). Re-confirm against the DB
+	# and either route to the surviving character or retry the create once.
+	if response_code == 409 and not _conflict_retry_used and _is_character_exists_conflict(json):
+		_conflict_retry_used = true
+		_resolve_create_conflict()
+		return
+
+	# Error response
+	var error_message: String = "Character creation failed"
+	if json.data is Dictionary:
+		error_message = json.data.get("error", error_message)
+	print("[CharacterCreation] Creation failed: %s" % error_message)
+	_on_create_failed(error_message)
+
+
+## True if the create response is the "user already has a character" conflict (matched by the
+## machine-readable code, with a fallback to the human string for older API builds).
+func _is_character_exists_conflict(json: JSON) -> bool:
+	if not (json.data is Dictionary):
+		return false
+	var data: Dictionary = json.data
+	if str(data.get("code", "")) == "character_exists":
+		return true
+	return str(data.get("error", "")).to_lower().contains("already has a character")
+
+
+## Self-heal the stale 409: re-sync /api/character/me, then either route to the surviving
+## character (the account really does have one) or retry the create once (the permadeath
+## delete has now committed, so the slot is free).
+func _resolve_create_conflict() -> void:
+	create_button.text = "Finalizing..."
+	create_button.disabled = true
+	is_creating = true
+
+	AuthManager.refresh_character()
+	var has_character: bool = await AuthManager.character_refreshed
+
+	if has_character:
+		print("[CharacterCreation] Account already has a character; returning to menu")
+		_on_create_successful()
+		return
+
+	# DB confirms no character — the permadeath delete committed. Retry the create once.
+	print("[CharacterCreation] Conflict cleared (no character server-side); retrying create")
+	is_creating = false
+	_on_create_pressed()
 
 
 ## Handle successful character creation

@@ -70,7 +70,12 @@ func _load_settings() -> void:
 	_master_slider.value = game_mgr.settings.get("master_volume", 1.0)
 	_music_slider.value = game_mgr.settings.get("music_volume", 0.8)
 	_sfx_slider.value = game_mgr.settings.get("sfx_volume", 1.0)
-	_fullscreen_check.button_pressed = game_mgr.settings.get("fullscreen", false)
+	# The "Fullscreen" toggle reflects window_mode (the launch-mode setting). Tolerate the
+	# legacy boolean "fullscreen" key for settings files written before the migration.
+	var mode := str(game_mgr.settings.get("window_mode", ""))
+	if mode == "":
+		mode = "windowed_fullscreen" if bool(game_mgr.settings.get("fullscreen", true)) else "windowed"
+	_fullscreen_check.button_pressed = mode == "windowed_fullscreen"
 	_vsync_check.button_pressed = game_mgr.settings.get("vsync", true)
 
 	# Connect slider changes after loading values (so loading doesn't re-apply audio).
@@ -101,8 +106,12 @@ func _on_sfx_changed(val: float) -> void:
 
 
 func _on_fullscreen_toggled(pressed: bool) -> void:
-	_update_setting("fullscreen", pressed)
-	if pressed:
+	# Route through GameManager so it stores window_mode AND applies it (windowed-fullscreen vs
+	# a small centered window) the same way the standalone Settings screen and boot do.
+	var game_mgr := _get_game_manager()
+	if game_mgr:
+		game_mgr.update_setting("window_mode", "windowed_fullscreen" if pressed else "windowed")
+	elif pressed:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 	else:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)

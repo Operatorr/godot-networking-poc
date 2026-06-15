@@ -107,23 +107,28 @@ var _sim: PredictionSim = PredictionSim.new()
 ## Per-class ability tuning pushed into PredictionSim.set_ability_config / set_base_speed /
 ## set_stamina_regen so the predicted ability cast/charge/stamina matches the server. Indexed by
 ## PacketTypes.PlayerClass (0..6): [mana_cost, cooldown, charge_speed, charge_max_distance,
-## base_move_speed, stamina_regen]. Only the Warrior (4) has charge_speed > 0 (⇒ Warrior charge in
-## the Rust sim); only the Mage (6) regenerates stamina slower. These mirror the values in
+## base_move_speed, stamina_regen, charge_mana_drain]. Only the Warrior (4) has charge_speed > 0
+## (⇒ Warrior charge in the Rust sim) and a charge_mana_drain (mana bled per unit travelled); only
+## the Mage (6) regenerates stamina slower. These mirror the values in
 ## client/data/classes/<class>.json (ability + stats.move_speed_base + stats.stamina_regen_per_sec).
 const CLASS_ABILITY_CONFIG := [
-	[35.0, 8.0, 0.0, 0.0, 195.0, 20.0],     # 0 Zealot
-	[30.0, 5.0, 0.0, 0.0, 205.0, 20.0],     # 1 Void Hunter
-	[35.0, 8.0, 0.0, 0.0, 195.0, 20.0],     # 2 Engineer
-	[35.0, 7.0, 0.0, 0.0, 195.0, 20.0],     # 3 Plague Seer
-	[40.0, 9.0, 720.0, 420.0, 200.0, 20.0], # 4 Warrior (charge)
-	[30.0, 10.0, 0.0, 0.0, 215.0, 20.0],    # 5 Rogue
-	[40.0, 6.0, 0.0, 0.0, 195.0, 14.0],     # 6 Mage (slower stamina regen)
+	[35.0, 8.0, 0.0, 0.0, 195.0, 20.0, 0.0],      # 0 Zealot
+	[30.0, 5.0, 0.0, 0.0, 205.0, 20.0, 0.0],      # 1 Void Hunter
+	[35.0, 8.0, 0.0, 0.0, 195.0, 20.0, 0.0],      # 2 Engineer
+	[35.0, 7.0, 0.0, 0.0, 195.0, 20.0, 0.0],      # 3 Plague Seer
+	[30.0, 4.5, 720.0, 945.0, 200.0, 20.0, 10.0], # 4 Warrior (steerable charge; 30 cast + 10 drain past a 40% drain-free minimum, 4.5s cd)
+	[30.0, 10.0, 0.0, 0.0, 215.0, 20.0, 0.0],     # 5 Rogue
+	[40.0, 6.0, 0.0, 0.0, 195.0, 14.0, 0.0],      # 6 Mage (slower stamina regen)
 ]
 
 ## Last seen state of our own DASHING entity flag, used to slave a Warrior charge end to
 ## the server. When the server clears DASHING but PredictionSim still thinks it is charging,
 ## we call end_charge() so the predicted charge releases exactly when the server's does.
 var _own_dashing: bool = false
+
+## Last seen predicted charge state, so the looping "while charging" rumble fires on the charge
+## edges (Warrior). Charge-specific — the regular dash is a different state, so it won't trigger.
+var _was_charging: bool = false
 #endregion
 
 
@@ -200,6 +205,8 @@ func _configure_ability_for_local_class() -> void:
 	var cfg: Array = CLASS_ABILITY_CONFIG[class_id]
 	if _sim.has_method("set_ability_config"):
 		_sim.set_ability_config(float(cfg[0]), float(cfg[1]), float(cfg[2]), float(cfg[3]))
+	if cfg.size() > 6 and _sim.has_method("set_charge_mana_drain"):
+		_sim.set_charge_mana_drain(float(cfg[6]))
 	if _sim.has_method("set_base_speed"):
 		_sim.set_base_speed(float(cfg[4]))
 	if _sim.has_method("set_stamina_regen"):
@@ -214,6 +221,13 @@ func _configure_ability_for_local_class() -> void:
 
 #region Main Loop
 func _physics_process(delta: float) -> void:
+	# Drive the looping Warrior-charge rumble from the predicted charge state. Evaluated up front
+	# (before the early-returns) so it also stops on disconnect / inactive / death / freed player.
+	_drive_charge_loop_sfx(
+		player_node != null and NetworkManager.is_server_connected() and is_active()
+		and _sim != null and _sim.has_method("is_charging") and _sim.is_charging()
+	)
+
 	if player_node == null:
 		return
 
@@ -694,6 +708,25 @@ func _update_own_charge(flags: int) -> void:
 	if not dashing and _sim.has_method("is_charging") and _sim.is_charging():
 		if _sim.has_method("end_charge"):
 			_sim.end_charge()
+
+
+## Start/stop the looping "while charging" rumble on the predicted charge edges.
+func _drive_charge_loop_sfx(charging: bool) -> void:
+	if charging == _was_charging:
+		return
+	_was_charging = charging
+	if charging:
+		AudioManager.play_charge_loop()
+	else:
+		AudioManager.stop_charge_loop()
+
+
+## Safety: stop the charge rumble if the controller is freed mid-charge (scene change), since
+## _physics_process won't run to clear it (the AudioManager autoload outlives this node).
+func _exit_tree() -> void:
+	if _was_charging:
+		AudioManager.stop_charge_loop()
+		_was_charging = false
 
 
 func _process_own_state_update(entity_data: Dictionary) -> void:
