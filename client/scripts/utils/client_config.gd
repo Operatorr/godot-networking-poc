@@ -5,7 +5,7 @@ extends RefCounted
 
 ## Default configuration values
 const DEFAULTS := {
-	"api_base_url": "https://omega.marrowtech.app",
+	"api_base_url": "https://gsapi.marrowtech.app",
 	"use_local_api": false,
 	"local_api_base_url": "http://localhost:8080",
 	"api_timeout_seconds": 10.0,
@@ -22,20 +22,26 @@ var _config: Dictionary = {}
 
 ## Client settings
 
-## Resolved API base URL. Flip `use_local_api` to true in client_config.json to point the
-## client at the local Go API (`local_api_base_url`) instead of `api_base_url` (production) —
-## a one-line toggle for local testing, no need to edit/restore the prod URL.
+## Resolved API base URL honouring the `use_local_api` config seed. The runtime switch is the
+## per-user `UserPreferences.use_local_api` toggle (Login screen → "Use local server"), which
+## AuthManager applies on top of this; `use_local_api` in client_config.json only seeds that
+## toggle's first-run default. Prefer `production_api_base_url` / `local_api_base_url` when you
+## want a specific endpoint regardless of the seed.
 var api_base_url: String:
 	get:
 		if use_local_api:
-			return _config.get("local_api_base_url", DEFAULTS.local_api_base_url)
-		return _config.get("api_base_url", DEFAULTS.api_base_url)
+			return local_api_base_url
+		return production_api_base_url
 
-## Toggle: when true, api_base_url resolves to local_api_base_url.
+## The production API address, ignoring the local-API toggle.
+var production_api_base_url: String:
+	get: return _config.get("api_base_url", DEFAULTS.api_base_url)
+
+## First-run default for the per-user local-API toggle (overridden at runtime by UserPreferences).
 var use_local_api: bool:
 	get: return _config.get("use_local_api", DEFAULTS.use_local_api)
 
-## The local API address used when use_local_api is true.
+## The local API address used when the local-API toggle is on.
 var local_api_base_url: String:
 	get: return _config.get("local_api_base_url", DEFAULTS.local_api_base_url)
 

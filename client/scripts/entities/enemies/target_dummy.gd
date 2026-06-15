@@ -25,6 +25,7 @@ func _ready() -> void:
 	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
 	add_to_group("enemies")
 	add_to_group("target_dummies")
+	add_to_group("minimap_monster")  # red dot on the minimap
 
 	definition = MonsterDatabase.get_shared().get_definition(definition_id)
 	max_hp = definition.max_health

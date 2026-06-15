@@ -5,7 +5,7 @@
   "tick_rate": 30,
   "max_players": 100,
   "region": "Asia",
-  "advertise_url": "omega.marrowtech.app:8082",
+  "advertise_url": "gsapi.marrowtech.app:8082",
   "debug_logging": false,
   "heartbeat_timeout_seconds": 5.0,
   "api_server_url": "http://localhost:8080",

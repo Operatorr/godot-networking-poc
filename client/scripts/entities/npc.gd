@@ -33,6 +33,7 @@ var _dialog_layer: CanvasLayer = null
 
 
 func _ready() -> void:
+	add_to_group("minimap_npc")  # green dot on the minimap
 	_name_label.text = npc_name
 	_prompt_label.visible = false
 	_interact_area.body_entered.connect(_on_body_entered)

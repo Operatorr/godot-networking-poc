@@ -1526,7 +1526,10 @@ mod tests {
         // well outside the ±800 arena ring (redesign spec §9). All anchors sit at x < -2000.
         let id = join(&mut world, 1, "Townie");
         let pos = world.players.get_by_entity_id(id).unwrap().position;
-        assert!(pos.x < -2000.0, "spawned at the west gate refuge, got {pos:?}");
+        assert!(
+            pos.x < -2000.0,
+            "spawned at the west gate refuge, got {pos:?}"
+        );
         // No monsters ever spawn, even over a long run that fills the arena.
         let mut outbox = Outbox::new();
         for t in 0..600 {

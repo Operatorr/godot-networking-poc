@@ -49,7 +49,7 @@ Race to level cap. Then the real game begins: hunting rare gear, consuming perma
 ## Visual Identity
 
 - **Color Palette:** Oppressive blacks, dried blood browns, rusted iron reds, tarnished gold, and cold bone white—punctuated by the sickening glow of eldritch corruption in violets and void-blues
-- **Environment:** Brutalist Gothic cathedrals crumbling under centuries of endless war. Industrial hellscapes of iron and ash. Skull-adorned monuments to forgotten martyrs. Dimensional wounds leaking impossible geometries into a world already drowning in misery
+- **Environment:** Brutalist fantasy cathedrals crumbling under centuries of endless war. Industrial hellscapes of iron and ash. Skull-adorned monuments to forgotten martyrs. Dimensional wounds leaking impossible geometries into a world already drowning in misery
 - **Enemies:** Corrupted warriors fused eternally to their armor. Daemon-touched abominations that shatter sanity on sight. Shambling masses of the once-faithful. Cosmic entities so vast and indifferent that humanity is merely an afterthought in their unknowable designs
 - **Effects:** Weighty, punishing impacts—blood sprays, bone shatters, the grinding of metal against metal. Eldritch magic tears reality itself, leaving wounds in the air that whisper of extinction
 - **Atmosphere:** Perpetual twilight. Ash falls like snow. Every surface tells a story of suffering—prayer scrolls nailed to walls, bodies left where they fell, icons defaced by madness. Hope is a fading memory. Faith is the only weapon left. Mercy is weaknes

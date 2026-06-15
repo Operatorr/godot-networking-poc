@@ -33,7 +33,7 @@ player ↔ the Singapore droplet, never via Frankfurt.
 ```
                        ┌────────────────────────────────────────────────┐
    Client ─── HTTPS ──▶│  Droplet A — Frankfurt  (CONTROL PLANE, global)  │
-  (api_base_url =      │   • Go API   api.omega.marrowtech.app:443        │
+  (api_base_url =      │   • Go API   api.gsapi.marrowtech.app:443        │
    one address)        │   • PostgreSQL + Redis                           │◀──┐
                        │   • omega-server (region=europe) :8081 / :8082   │   │  heartbeat (2s)
                        └────────────────────────────────────────────────┘   │  + ticket verify
@@ -45,7 +45,7 @@ player ↔ the Singapore droplet, never via Frankfurt.
    Client ─── UDP ────▶│  Droplet B — Singapore  (GAME PLANE only)        │───┘
   (after selecting     │   • omega-server (region=asia) :8081 / :8082     │
    "Asia" in the menu) │     api_server_url → Frankfurt API (public)      │
-                       │     advertise_url  → sgp.omega.marrowtech.app    │
+                       │     advertise_url  → sgp.gsapi.marrowtech.app    │
                        └────────────────────────────────────────────────┘
 ```
 
@@ -95,7 +95,7 @@ requirement for the POC.
 - `"region"` — `"europe"` on Frankfurt, `"asia"` on Singapore (valid ids: `local`, `asia`,
   `europe`, `us-west`; the heartbeat lower-cases it).
 - `"advertise_url"` — that droplet's **public** `host:port`, e.g.
-  `fra.omega.marrowtech.app:8081` / `sgp.omega.marrowtech.app:8081`. This is the authoritative
+  `fra.gsapi.marrowtech.app:8081` / `sgp.gsapi.marrowtech.app:8081`. This is the authoritative
   source of the connect address.
 - `"api_server_url"` — the **public** Frankfurt API URL (the default `http://localhost:8080` is
   only correct on the droplet co-located with the API).

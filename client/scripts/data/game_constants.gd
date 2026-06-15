@@ -148,9 +148,10 @@ const PLAYER_STAMINA_EXHAUST_DURATION := 3.0
 ## Maximum mana pool.
 const PLAYER_MANA_MAX := 100.0
 
-## Mana regenerated per second. MUST match the Rust sim_core constant (8.0) or
-## ability-cost prediction desyncs from the authoritative server.
-const PLAYER_MANA_REGEN_PER_SEC := 8.0
+## Mana regenerated per second. MUST match the Rust sim_core constant (2.0) or
+## ability-cost prediction desyncs from the authoritative server. Cut 75% (was 8.0) so RMB
+## class abilities are a real resource cost.
+const PLAYER_MANA_REGEN_PER_SEC := 2.0
 
 ## Mana consumed by a single ability use (gates the ability input).
 const PLAYER_MANA_ABILITY_COST := 25.0
@@ -179,6 +180,27 @@ const CAMERA_ZOOM_SPRINT := Vector2(1.35, 1.35)
 
 ## Lerp rate (per second) used to ease between default and sprint zoom.
 const CAMERA_ZOOM_SPEED := 3.0
+
+
+# =============================================================================
+# MINIMAP
+# Single source of truth for the minimap's terrain whitelist. The level terrain is rendered ONCE
+# into a static texture by a WorldMapView SubViewport (scripts/ui/hud/world_map_view.gd) that
+# renders ONLY canvas items whose visibility_layer includes MINIMAP_TERRAIN_BIT, so dynamic entity
+# sprites (default layer 1 only) never appear there and are drawn as dots instead
+# (scripts/ui/hud/minimap.gd, map_overlay.gd). Terrain CanvasItems set
+# visibility_layer = MINIMAP_TERRAIN_VISIBILITY (= main layer 1 | the minimap bit).
+
+## Visibility-layer bit the world-map SubViewport renders (its canvas_cull_mask).
+const MINIMAP_TERRAIN_BIT := 2
+
+## visibility_layer terrain CanvasItems use so they show in BOTH the main view and the
+## minimap (bit 1 = the default main-view layer, plus the minimap bit).
+const MINIMAP_TERRAIN_VISIBILITY := 1 | MINIMAP_TERRAIN_BIT
+
+## World→minimap pixel scale: the HUD minimap shows MINIMAP_SIZE / MINIMAP_ZOOM world units across,
+## panned to keep the local player centred (scripts/ui/hud/minimap.gd).
+const MINIMAP_ZOOM := 0.08
 
 
 # =============================================================================

@@ -1,0 +1,51 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/hud/health_bar.gd" id="1_health"]
+[ext_resource type="Texture2D" path="res://assets/ui/hud/player_health_bar_track.png" id="2_track"]
+[ext_resource type="Texture2D" path="res://assets/ui/hud/player_health_bar_fill.png" id="3_fill"]
+[ext_resource type="Texture2D" path="res://assets/ui/hud/player_health_bar_frame.png" id="4_frame"]
+
+[node name="HealthBar" type="Control"]
+anchor_left = 0.5
+anchor_right = 0.5
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = -426.0
+offset_top = -66.0
+offset_right = -126.0
+offset_bottom = -30.0
+mouse_filter = 2
+script = ExtResource("1_health")
+
+[node name="Fill" type="TextureProgressBar" parent="."]
+texture_filter = 1
+offset_left = 40.0
+offset_top = 9.0
+offset_right = 278.0
+offset_bottom = 27.0
+mouse_filter = 2
+max_value = 1.0
+step = 0.0
+value = 1.0
+fill_mode = 0
+texture_under = ExtResource("2_track")
+texture_progress = ExtResource("3_fill")
+
+[node name="Frame" type="TextureRect" parent="."]
+texture_filter = 1
+offset_right = 300.0
+offset_bottom = 36.0
+mouse_filter = 2
+texture = ExtResource("4_frame")
+expand_mode = 1
+stretch_mode = 0
+
+[node name="Label" type="Label" parent="."]
+offset_right = 300.0
+offset_bottom = 36.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 14
+text = "100 / 100 HP"
+horizontal_alignment = 1
+vertical_alignment = 1

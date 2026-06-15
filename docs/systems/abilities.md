@@ -76,12 +76,13 @@ replicated; the client renders its own translucency from it.
 
 ## Cooldown & Mana accounting
 
-- **Mana** regenerates at **8/s** for every Class (`mana_max` 100), down 20% from the pre-ability
-  10/s — abilities are the new Mana sink, so regen was nerfed to keep cast cadence meaningful.
+- **Mana** regenerates at **2/s** for every Class (`mana_max` 100), cut 75% from the earlier 8/s —
+  abilities are the Mana sink, so regen is kept low enough that casts are a real resource decision.
   Mana is Session-ephemeral (resets full on entry), server-authoritative, and surfaced to the client
   in `ActionConfirm` (the `mana` byte) and the HUD bar.
 - **Cooldowns** are per-ability (5–10 s), server-tracked per player, and started only on a successful
-  cast. The client mirrors the cooldown for HUD readout but never gates the cast itself.
+  cast. The client mirrors the cooldown for HUD readout (the ability bar draws a clockwise wedge over
+  the SPACE/dash and RMB/ability slots) but never gates the cast itself online.
 
 ## The eight questions
 

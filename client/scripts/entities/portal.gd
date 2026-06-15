@@ -49,6 +49,7 @@ var _has_visual := false
 
 
 func _ready() -> void:
+	add_to_group("minimap_landmark")  # yellow dot on the minimap (e.g. the Arena Portal)
 	_name_label.text = portal_name
 	_prompt_label.visible = false
 	body_entered.connect(_on_body_entered)

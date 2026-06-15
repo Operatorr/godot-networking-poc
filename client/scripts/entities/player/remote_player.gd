@@ -46,6 +46,8 @@ var _daze_indicator: DazeIndicator = null
 
 func _ready() -> void:
 	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
+	# Minimap: other players are red dots with a purple border (see minimap.gd).
+	add_to_group("minimap_player_remote")
 	_daze_indicator = DazeIndicator.new()
 	add_child(_daze_indicator)
 	_apply_sprite_frames()

@@ -1,7 +1,8 @@
-## LeaderboardCompact - Top-left leaderboard
-## Shows top 3 by default, expands to top 10 when Tab held
+## Leaderboard - top-left compact leaderboard (top 3, expands to top 10 while Tab held).
+##
+## Authored as scenes/ui/hud/leaderboard.tscn (Panel + VBox with a Title, a separator, and
+## ten pre-authored Entry labels). update_entries() refreshes from server data.
 extends Control
-
 
 const COMPACT_COUNT := 3
 const EXPANDED_COUNT := 10
@@ -9,70 +10,21 @@ const FLASH_DURATION := 1.5
 
 var _entries: Array[Dictionary] = []  # {entity_id: int, pvp_kills: int}
 var _labels: Array[Label] = []
-var _title_label: Label = null
-var _vbox: VBoxContainer = null
 var _is_expanded: bool = false
 var _flash_entity_id: int = -1
 var _flash_tween: Tween = null
 var _last_signature: String = ""
 
+@onready var _title_label: Label = $Panel/VBox/Title
+@onready var _vbox: VBoxContainer = $Panel/VBox
+
 
 func _ready() -> void:
-	_build_ui()
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-
-
-func _build_ui() -> void:
-	# Position top-left
-	anchor_left = 0.0
-	anchor_right = 0.0
-	anchor_top = 0.0
-	anchor_bottom = 0.0
-	offset_left = 20
-	offset_right = 250
-	offset_top = 20
-	offset_bottom = 400
-
-	var panel := PanelContainer.new()
-	panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-	panel.size = Vector2(230, 0)
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.08, 0.08, 0.1, 0.8)
-	style.corner_radius_top_left = 4
-	style.corner_radius_top_right = 4
-	style.corner_radius_bottom_left = 4
-	style.corner_radius_bottom_right = 4
-	style.content_margin_left = 10
-	style.content_margin_right = 10
-	style.content_margin_top = 8
-	style.content_margin_bottom = 8
-	panel.add_theme_stylebox_override("panel", style)
-	add_child(panel)
-
-	_vbox = VBoxContainer.new()
-	_vbox.add_theme_constant_override("separation", 2)
-	panel.add_child(_vbox)
-
-	# Title
-	_title_label = Label.new()
-	_title_label.text = "LEADERBOARD"
-	_title_label.add_theme_font_size_override("font_size", 12)
-	_title_label.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
-	_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_vbox.add_child(_title_label)
-
-	# Separator
-	var sep := HSeparator.new()
-	_vbox.add_child(sep)
-
-	# Pre-create labels (10 max)
 	for i in EXPANDED_COUNT:
-		var label := Label.new()
-		label.add_theme_font_size_override("font_size", 14)
-		label.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9))
-		_vbox.add_child(label)
-		_labels.append(label)
-
+		var entry := _vbox.get_node_or_null("Entry%d" % i) as Label
+		if entry != null:
+			_labels.append(entry)
 	_refresh_display()
 
 
@@ -83,7 +35,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_refresh_display()
 
 
-## Update leaderboard entries from server data
+## Update leaderboard entries from server data.
 func update_entries(entries: Array) -> void:
 	var sanitized := _sanitize_entries(entries)
 	var signature := _make_signature(sanitized)
@@ -169,7 +121,7 @@ func _refresh_display() -> void:
 			_labels[i].visible = false
 
 
-## Briefly flash/highlight a player's name in the leaderboard
+## Briefly flash/highlight a player's name in the leaderboard.
 func flash_player(entity_id: int) -> void:
 	_flash_entity_id = entity_id
 	_refresh_display()

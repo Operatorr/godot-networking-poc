@@ -51,6 +51,9 @@ pub struct MovementSm {
     charge_speed: f64,
     /// Max charge distance (units) before the charge ends on its own.
     charge_max_distance: f64,
+    /// Per-class stamina regen (u/s) while not sprinting/exhausted. Defaults to the global
+    /// PLAYER_STAMINA_REGEN_PER_SEC; e.g. the Mage sets a lower value.
+    stamina_regen: f64,
     // ── Ability runtime state ──
     ability_cooldown_left: f64,
     /// Sprint-exhaustion lockout: while > 0, sprint is refused and stamina regen is paused.
@@ -93,6 +96,7 @@ impl MovementSm {
             ability_cooldown_max: 0.0,
             charge_speed: 0.0,
             charge_max_distance: 0.0,
+            stamina_regen: PLAYER_STAMINA_REGEN_PER_SEC,
             ability_cooldown_left: 0.0,
             exhaust_time_left: 0.0,
             ability_fired: false,
@@ -134,6 +138,15 @@ impl MovementSm {
             return;
         }
         self.base_speed = base_speed.max(0.0);
+    }
+
+    /// Set the per-class stamina regen (u/s). Set once when the class is known (server on join;
+    /// client prediction on class load) so both sides agree. A non-finite value is ignored.
+    pub fn set_stamina_regen(&mut self, stamina_regen: f64) {
+        if !stamina_regen.is_finite() {
+            return;
+        }
+        self.stamina_regen = stamina_regen.max(0.0);
     }
 
     /// Advance one simulation step and return the velocity to integrate this step.
@@ -307,8 +320,7 @@ impl MovementSm {
                 self.exhaust_time_left = PLAYER_STAMINA_EXHAUST_DURATION;
             }
         } else {
-            self.stamina =
-                (self.stamina + PLAYER_STAMINA_REGEN_PER_SEC * delta).min(PLAYER_STAMINA_MAX);
+            self.stamina = (self.stamina + self.stamina_regen * delta).min(PLAYER_STAMINA_MAX);
         }
     }
 
@@ -541,12 +553,14 @@ impl MovementSm {
         let ability_cooldown_max = self.ability_cooldown_max;
         let charge_speed = self.charge_speed;
         let charge_max_distance = self.charge_max_distance;
+        let stamina_regen = self.stamina_regen;
         *self = Self::new();
         self.base_speed = base_speed;
         self.ability_cost = ability_cost;
         self.ability_cooldown_max = ability_cooldown_max;
         self.charge_speed = charge_speed;
         self.charge_max_distance = charge_max_distance;
+        self.stamina_regen = stamina_regen;
     }
 
     // ── Queries ─────────────────────────────────────────────────────────────
@@ -828,6 +842,31 @@ mod tests {
         // Held (no edge) ⇒ no second spend.
         sm.tick(DT, Vec2::ZERO, false, false, true, false, RIGHT);
         assert!(sm.mana() > 74.9);
+    }
+
+    #[test]
+    fn per_class_stamina_regen_overrides_default_and_survives_reset() {
+        let mut sm = MovementSm::new();
+        sm.set_stamina_regen(14.0); // Mage: below the global 20.0
+        sm.set_resources(50.0, 100.0);
+        // Idle (not sprinting) ⇒ regen at the configured 14 u/s.
+        let before = sm.stamina();
+        idle_tick(&mut sm);
+        let regened = sm.stamina() - before;
+        assert!(
+            (regened - 14.0 * DT).abs() < 1e-6,
+            "expected 14 u/s regen, got {} u/s",
+            regened / DT
+        );
+        // Per-class config is preserved across a respawn reset.
+        sm.reset();
+        sm.set_resources(50.0, 100.0);
+        let before = sm.stamina();
+        idle_tick(&mut sm);
+        assert!(
+            ((sm.stamina() - before) - 14.0 * DT).abs() < 1e-6,
+            "reset must preserve the per-class stamina regen"
+        );
     }
 
     #[test]

@@ -45,6 +45,8 @@ pub struct ClassStats {
     pub speed_per_level: f64,
     pub base_damage: f64,
     pub damage_per_level: f64,
+    /// Stamina regen (u/s) while not sprinting. Mage is deliberately lower than Warrior/Rogue.
+    pub stamina_regen_per_sec: f64,
     // ── RMB ability ──
     pub ability_mana: f64,
     pub ability_cooldown: f64,
@@ -102,6 +104,7 @@ pub fn effective_primary_damage(class: u8, level: u16) -> i32 {
 
 const ZEALOT: ClassStats = ClassStats {
     kind: AbilityKind::SpinningBibles,
+    stamina_regen_per_sec: 20.0,
     base_hp: 120.0,
     hp_per_level: 8.0,
     base_speed: 195.0,
@@ -123,6 +126,7 @@ const ZEALOT: ClassStats = ClassStats {
 
 const VOID_HUNTER: ClassStats = ClassStats {
     kind: AbilityKind::Multishot,
+    stamina_regen_per_sec: 20.0,
     base_hp: 90.0,
     hp_per_level: 5.0,
     base_speed: 205.0,
@@ -144,6 +148,7 @@ const VOID_HUNTER: ClassStats = ClassStats {
 
 const ENGINEER: ClassStats = ClassStats {
     kind: AbilityKind::Mine,
+    stamina_regen_per_sec: 20.0,
     base_hp: 100.0,
     hp_per_level: 6.0,
     base_speed: 195.0,
@@ -165,6 +170,7 @@ const ENGINEER: ClassStats = ClassStats {
 
 const PLAGUE_SEER: ClassStats = ClassStats {
     kind: AbilityKind::PlagueZone,
+    stamina_regen_per_sec: 20.0,
     base_hp: 95.0,
     hp_per_level: 5.0,
     base_speed: 195.0,
@@ -186,6 +192,7 @@ const PLAGUE_SEER: ClassStats = ClassStats {
 
 const WARRIOR: ClassStats = ClassStats {
     kind: AbilityKind::Charge,
+    stamina_regen_per_sec: 20.0,
     base_hp: 130.0,
     hp_per_level: 9.0,
     base_speed: 200.0,
@@ -207,6 +214,7 @@ const WARRIOR: ClassStats = ClassStats {
 
 const ROGUE: ClassStats = ClassStats {
     kind: AbilityKind::Shadowstep,
+    stamina_regen_per_sec: 20.0,
     base_hp: 85.0,
     hp_per_level: 4.0,
     base_speed: 215.0,
@@ -228,6 +236,7 @@ const ROGUE: ClassStats = ClassStats {
 
 const MAGE: ClassStats = ClassStats {
     kind: AbilityKind::Mageblast,
+    stamina_regen_per_sec: 14.0, // 30% below Warrior/Rogue — Mage relies on mana, not stamina
     base_hp: 80.0,
     hp_per_level: 4.0,
     base_speed: 195.0,
@@ -237,7 +246,7 @@ const MAGE: ClassStats = ClassStats {
     ability_mana: 40.0,
     ability_cooldown: 6.0,
     ability_damage: 55,
-    ability_radius: 120.0,
+    ability_radius: 144.0, // +20% blast radius
     ability_duration: 0.0,
     ability_cast_range: 600.0,
     charge_speed: 0.0,

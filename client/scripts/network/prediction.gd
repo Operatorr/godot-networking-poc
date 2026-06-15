@@ -104,19 +104,20 @@ var _own_dazed: bool = false
 ## construction. Owns the movement state machine (dash/sprint/knockback timers, stamina/mana).
 var _sim: PredictionSim = PredictionSim.new()
 
-## Per-class ability tuning pushed into PredictionSim.set_ability_config so the predicted
-## ability cast/charge matches the server. Indexed by PacketTypes.PlayerClass (0..6):
-## [mana_cost, cooldown, charge_speed, charge_max_distance, base_move_speed]. Only the
-## Warrior (4) has charge_speed > 0 (⇒ Warrior charge in the Rust sim). These mirror the
-## values in client/data/classes/<class>.json (ability + stats.move_speed_base) exactly.
+## Per-class ability tuning pushed into PredictionSim.set_ability_config / set_base_speed /
+## set_stamina_regen so the predicted ability cast/charge/stamina matches the server. Indexed by
+## PacketTypes.PlayerClass (0..6): [mana_cost, cooldown, charge_speed, charge_max_distance,
+## base_move_speed, stamina_regen]. Only the Warrior (4) has charge_speed > 0 (⇒ Warrior charge in
+## the Rust sim); only the Mage (6) regenerates stamina slower. These mirror the values in
+## client/data/classes/<class>.json (ability + stats.move_speed_base + stats.stamina_regen_per_sec).
 const CLASS_ABILITY_CONFIG := [
-	[35.0, 8.0, 0.0, 0.0, 195.0],     # 0 Zealot
-	[30.0, 5.0, 0.0, 0.0, 205.0],     # 1 Void Hunter
-	[35.0, 8.0, 0.0, 0.0, 195.0],     # 2 Engineer
-	[35.0, 7.0, 0.0, 0.0, 195.0],     # 3 Plague Seer
-	[40.0, 9.0, 720.0, 420.0, 200.0], # 4 Warrior (charge)
-	[30.0, 10.0, 0.0, 0.0, 215.0],    # 5 Rogue
-	[40.0, 6.0, 0.0, 0.0, 195.0],     # 6 Mage
+	[35.0, 8.0, 0.0, 0.0, 195.0, 20.0],     # 0 Zealot
+	[30.0, 5.0, 0.0, 0.0, 205.0, 20.0],     # 1 Void Hunter
+	[35.0, 8.0, 0.0, 0.0, 195.0, 20.0],     # 2 Engineer
+	[35.0, 7.0, 0.0, 0.0, 195.0, 20.0],     # 3 Plague Seer
+	[40.0, 9.0, 720.0, 420.0, 200.0, 20.0], # 4 Warrior (charge)
+	[30.0, 10.0, 0.0, 0.0, 215.0, 20.0],    # 5 Rogue
+	[40.0, 6.0, 0.0, 0.0, 195.0, 14.0],     # 6 Mage (slower stamina regen)
 ]
 
 ## Last seen state of our own DASHING entity flag, used to slave a Warrior charge end to
@@ -201,6 +202,13 @@ func _configure_ability_for_local_class() -> void:
 		_sim.set_ability_config(float(cfg[0]), float(cfg[1]), float(cfg[2]), float(cfg[3]))
 	if _sim.has_method("set_base_speed"):
 		_sim.set_base_speed(float(cfg[4]))
+	if _sim.has_method("set_stamina_regen"):
+		_sim.set_stamina_regen(float(cfg[5]))
+	# Mirror the ability cooldown MAX into the GDScript SM so the HUD ability bar can compute the
+	# RMB wedge ratio online (the Rust sim owns the live countdown, pushed each step into the SM).
+	var sm := _get_movement_sm()
+	if sm != null:
+		sm.ability_cooldown_max = float(cfg[1])
 #endregion
 
 
@@ -413,6 +421,12 @@ func _apply_local_prediction(input_flags: int, delta: float) -> void:
 		# owns the lockout; the SM here only relays the edge to the HUD).
 		if sm.has_method("set_exhausted_state"):
 			sm.set_exhausted_state(bool(result.get("exhausted", false)))
+		# Mirror the dash + RMB-ability cooldown timers (the Rust sim owns them online) so the HUD
+		# ability bar draws both slot wedges. Without this the GDScript SM's timers stay 0 online.
+		if sm.has_method("set_predicted_cooldowns"):
+			sm.set_predicted_cooldowns(
+				float(result.get("dash_cooldown", 0.0)),
+				float(result.get("ability_cooldown", 0.0)))
 
 	# Update visual position (unless correcting)
 	_update_player_visual()

@@ -32,6 +32,7 @@ const BUTTON_STATE_COLORS := {
 @onready var login_button: Button = $CenterContainer/VBoxContainer/LoginButton
 @onready var create_account_button: Button = $CenterContainer/VBoxContainer/CreateAccountButton
 @onready var forgot_password_button: Button = $CenterContainer/VBoxContainer/ForgotPasswordButton
+@onready var local_server_check: CheckButton = $CenterContainer/VBoxContainer/LocalServerCheck
 @onready var error_dialog: PopupPanel = $ErrorDialog
 
 ## Track login state to prevent duplicate requests
@@ -47,6 +48,10 @@ func _ready() -> void:
 	login_button.pressed.connect(_on_login_pressed)
 	create_account_button.pressed.connect(_on_create_account_pressed)
 	forgot_password_button.pressed.connect(_on_forgot_password_pressed)
+
+	# API target toggle: reflect the current resolved target, then switch + persist on change.
+	local_server_check.button_pressed = AuthManager.is_using_local_api()
+	local_server_check.toggled.connect(_on_local_server_toggled)
 
 	# Connect AuthManager signals
 	AuthManager.login_successful.connect(_on_login_successful)
@@ -223,6 +228,14 @@ func _prefill_test_credentials() -> void:
 	username_input.text = config.username
 	password_input.text = config.password
 	print("[LoginScreen] Prefilled test credentials for user: %s" % config.username)
+
+
+## Switch the auth/account API between the local Go server and production, persisting the choice.
+## A logged-in session is tied to the old server, so log out to force re-auth against the new one.
+func _on_local_server_toggled(pressed: bool) -> void:
+	AuthManager.set_use_local_api(pressed)
+	if AuthManager.is_logged_in():
+		AuthManager.logout()
 
 
 ## Handle login button press

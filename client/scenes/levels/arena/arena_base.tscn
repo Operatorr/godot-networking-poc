@@ -112,5 +112,3 @@ shape = SubResource("RectangleShape2D_left")
 [node name="RightWall" type="CollisionShape2D" parent="Boundaries"]
 position = Vector2(1005, 0)
 shape = SubResource("RectangleShape2D_right")
-
-[node name="HUDLayer" type="CanvasLayer" parent="."]

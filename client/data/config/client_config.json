@@ -1,5 +1,5 @@
 {
-  "api_base_url": "https://omega.marrowtech.app",
+  "api_base_url": "https://gsapi.marrowtech.app",
   "use_local_api": false,
   "local_api_base_url": "http://localhost:8080",
   "api_timeout_seconds": 10.0,

@@ -16,8 +16,9 @@ A stat at level `L` is `base + per_lvl * (L - 1)`; max level **50**.
 | HP | 80 | +4 | 276 |
 | Move speed | 195 | +0.5 | 219.5 |
 | Mana max | 100 | — (flavor pool 130) | 100 |
-| Mana regen | 8 /s | — | 8 /s |
+| Mana regen | 2 /s | — | 2 /s |
 | Stamina max | 100 | — | 100 |
+| Stamina regen | 14 /s | — | 14 /s (30% below Warrior/Rogue's 20/s) |
 | Hitbox radius | 16 | — | 16 |
 
 ## Primary attack (LMB)
@@ -36,19 +37,19 @@ An **instant AOE explosion** at the cursor — no travel time, big single burst.
 |---|---|
 | `mana_cost` | 40 |
 | `cooldown` | 6 s |
-| `radius` | 120 |
+| `radius` | 144 |
 | `damage` | 55 |
 | `max_cast_range` | 600 |
 
 **Behavior.** On cast the server validates Mana/cooldown, deducts Mana, clamps the cursor target to
 `max_cast_range` (600) of the caster, and resolves an instant AOE at that point: every monster within
-120 (`radius`) takes 55 (`damage`) in a single burst. There is no projectile and no lingering entity —
+144 (`radius`) takes 55 (`damage`) in a single burst. There is no projectile and no lingering entity —
 only an `ABILITY_EFFECT` VFX event marks the explosion. All damage is server-side.
 
 ### The eight questions (this ability)
 
 - **Client:** sends the ability flag + cursor; renders the explosion from the `ABILITY_EFFECT` event.
-- **Server:** authoritative — validates Mana/cooldown, clamps the target to range, applies the instant 55 AOE within radius 120.
+- **Server:** authoritative — validates Mana/cooldown, clamps the target to range, applies the instant 55 AOE within radius 144.
 - **Predicted:** nothing — the explosion is instant and server-resolved; only the Mage's own movement is predicted.
 - **Replicated:** an `ABILITY_EFFECT` event carrying the blast center + radius (no persistent entity).
 - **Persisted:** nothing — the blast is a one-shot.

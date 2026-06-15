@@ -67,9 +67,18 @@ var mana: float = GameConstants.PLAYER_MANA_MAX
 ## per-class config); defaults to the legacy flat cost.
 var ability_cost: float = GameConstants.PLAYER_MANA_ABILITY_COST
 
+## RMB ability cooldown (seconds). The owner sets this per class; 0 = no cooldown. The HUD
+## ability bar reads it (with get_ability_cooldown_remaining) to draw the RMB slot's wedge.
+var ability_cooldown_max: float = 0.0
+
+## Per-class stamina regen (u/s) while not sprinting. The owner sets this per class (offline
+## parity with the Rust sim's set_stamina_regen); e.g. the Mage regenerates slower.
+var stamina_regen: float = GameConstants.PLAYER_STAMINA_REGEN_PER_SEC
+
 # Timers (seconds), decremented maxf(0.0, x - delta).
 var _dash_time_left: float = 0.0
 var _dash_cooldown_left: float = 0.0   ## START-relative (begins when the dash begins)
+var _ability_cooldown_left: float = 0.0  ## START-relative (begins when the RMB ability fires)
 var _stun_time_left: float = 0.0
 var _daze_time_left: float = 0.0       ## Daze is a timer, not a state: coexists with KNOCKED_BACK
 var _exhaust_time_left: float = 0.0    ## Sprint-exhaustion lockout (no sprint, no regen, bar blinks)
@@ -114,7 +123,13 @@ func tick(delta: float, move_dir: Vector2, sprint_held: bool, dash_held: bool,
 	if dash_edge:
 		try_dash(move_dir, aim_dir)
 	if ability_edge:
-		if try_use_mana(ability_cost):
+		# Gate on cooldown then mana (mirrors the Rust sim's ability edge), and start the
+		# cooldown only when the cast actually paid its cost. NOTE: this offline SM is HUD-parity
+		# only — it does NOT implement the Rust charge-direction gate (Rust refuses + spends
+		# nothing for a charge class when move/aim are both zero). The Warrior charge runs only
+		# online via the Rust PredictionSim, so the gap is dormant; revisit if offline gains charge.
+		if _ability_cooldown_left <= 0.0 and try_use_mana(ability_cost):
+			_ability_cooldown_left = ability_cooldown_max
 			ability_triggered.emit()
 	if attacking and state == State.SPRINTING:
 		end_sprint()
@@ -169,6 +184,7 @@ func _tick_knockback(delta: float) -> Vector2:
 func _update_timers(delta: float) -> void:
 	_dash_time_left = maxf(0.0, _dash_time_left - delta)
 	_dash_cooldown_left = maxf(0.0, _dash_cooldown_left - delta)
+	_ability_cooldown_left = maxf(0.0, _ability_cooldown_left - delta)
 	if _daze_time_left > 0.0:
 		_daze_time_left = maxf(0.0, _daze_time_left - delta)
 		if _daze_time_left <= 0.0:
@@ -194,7 +210,7 @@ func _update_stamina(delta: float) -> void:
 			exhausted_changed.emit(true)
 	else:
 		stamina = minf(GameConstants.PLAYER_STAMINA_MAX,
-			stamina + GameConstants.PLAYER_STAMINA_REGEN_PER_SEC * delta)
+			stamina + stamina_regen * delta)
 	if not is_equal_approx(before, stamina):
 		stamina_changed.emit(stamina, GameConstants.PLAYER_STAMINA_MAX)
 
@@ -408,6 +424,18 @@ func get_dash_cooldown_remaining() -> float:
 	return _dash_cooldown_left
 
 
+func get_ability_cooldown_remaining() -> float:
+	return _ability_cooldown_left
+
+
+## Online mirror: the Rust PredictionSim owns the dash/ability cooldown timers (this SM's tick()
+## isn't driven for the local player online), so the PredictionController pushes them here each
+## step so the HUD ability bar can draw both slot wedges identically online and offline.
+func set_predicted_cooldowns(dash_remaining: float, ability_remaining: float) -> void:
+	_dash_cooldown_left = maxf(0.0, dash_remaining)
+	_ability_cooldown_left = maxf(0.0, ability_remaining)
+
+
 func get_dash_time_remaining() -> float:
 	return _dash_time_left
 
@@ -468,6 +496,7 @@ func reset() -> void:
 	mana = GameConstants.PLAYER_MANA_MAX
 	_dash_time_left = 0.0
 	_dash_cooldown_left = 0.0
+	_ability_cooldown_left = 0.0
 	_stun_time_left = 0.0
 	_daze_time_left = 0.0
 	if _exhaust_time_left > 0.0:

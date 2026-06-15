@@ -5,9 +5,6 @@
 ## Fully client-authoritative — no NetworkManager or server.
 extends OfflineArena
 
-const KILL_FEED_PATH := "res://scripts/ui/hud/kill_feed.gd"
-const MINIMAP_PATH := "res://scripts/ui/hud/minimap.gd"
-const LEADERBOARD_PATH := "res://scripts/ui/hud/leaderboard.gd"
 const OFFLINE_MONSTER_SCENE := "res://scenes/entities/enemies/offline_monster.tscn"
 
 const TOXIC_SLIME_SPAWN_DISTANCE := 280.0
@@ -15,7 +12,6 @@ const TOXIC_SLIME_SPAWN_DISTANCE := 280.0
 var kill_feed: Control = null
 var minimap: Control = null
 var leaderboard: Control = null
-var death_overlay: Control = null
 var controls_label: Label = null
 var spawn_slime_button: Button = null
 
@@ -85,75 +81,15 @@ func _unhandled_input(event: InputEvent) -> void:
 # =============================================================================
 
 func _setup_extra_hud() -> void:
-	kill_feed = _create_hud_component(KILL_FEED_PATH, "KillFeed")
-	hud_layer.add_child(kill_feed)
-
-	minimap = _create_hud_component(MINIMAP_PATH, "Minimap")
-	hud_layer.add_child(minimap)
-	minimap.interpolation_controller = null
-	minimap.local_player = local_player
-
-	leaderboard = _create_hud_component(LEADERBOARD_PATH, "Leaderboard")
-	hud_layer.add_child(leaderboard)
-
-	_build_death_overlay()
-
-
-func _build_death_overlay() -> void:
-	death_overlay = Control.new()
-	death_overlay.name = "SandboxDeathScreen"
-	death_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	death_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
-	death_overlay.visible = false
-
-	var bg := ColorRect.new()
-	bg.color = Color(0.08, 0.0, 0.0, 0.85)
-	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	bg.mouse_filter = Control.MOUSE_FILTER_STOP
-	death_overlay.add_child(bg)
-
-	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	death_overlay.add_child(center)
-
-	var vbox := VBoxContainer.new()
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 20)
-	center.add_child(vbox)
-
-	var title := Label.new()
-	title.text = "YOU DIED"
-	title.add_theme_font_size_override("font_size", 64)
-	title.add_theme_color_override("font_color", Color(1.0, 0.0, 0.0))
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(title)
-
-	var subtitle := Label.new()
-	subtitle.text = "(Sandbox Mode)"
-	subtitle.add_theme_font_size_override("font_size", 20)
-	subtitle.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
-	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(subtitle)
-
-	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(0, 20)
-	vbox.add_child(spacer)
-
-	var respawn_btn := Button.new()
-	respawn_btn.text = "RESPAWN"
-	respawn_btn.custom_minimum_size = Vector2(200, 50)
-	respawn_btn.add_theme_font_size_override("font_size", 24)
-	respawn_btn.pressed.connect(_respawn_player)
-	vbox.add_child(respawn_btn)
-
-	var hint := Label.new()
-	hint.text = "or press 3"
-	hint.add_theme_font_size_override("font_size", 14)
-	hint.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5))
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(hint)
-
-	hud_layer.add_child(death_overlay)
+	# Reuse the shared HUD's kill feed / leaderboard (the offline base hides them — show them
+	# here) plus the minimap, and the shared death screen instead of a bespoke overlay.
+	kill_feed = hud.kill_feed
+	minimap = hud.minimap
+	leaderboard = hud.leaderboard
+	kill_feed.visible = true
+	leaderboard.visible = true
+	# Space on the death screen respawns; key 3 / the death-screen flow respawn too.
+	hud.respawn_requested.connect(_respawn_player)
 
 
 func _setup_test_overlay() -> void:
@@ -240,8 +176,8 @@ func _respawn_player() -> void:
 		camera.position = local_player.position
 		camera.reset_physics_interpolation()
 
-	if death_overlay:
-		death_overlay.visible = false
+	if hud and hud.death_screen:
+		hud.death_screen.hide_death()
 
 	print("[Sandbox] Respawned at %s" % local_player.position)
 
@@ -339,8 +275,8 @@ func _on_slime_killed(slime: OfflineMonster) -> void:
 
 
 func _show_death() -> void:
-	if death_overlay:
-		death_overlay.visible = true
+	if hud and hud.death_screen:
+		hud.death_screen.show_death(-1)
 
 
 func _update_controls_label() -> void:

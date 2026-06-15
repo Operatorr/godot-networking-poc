@@ -105,6 +105,13 @@ const HIT_ANIM_SECONDS := 0.25
 ## parity with client/data/classes/*.json and the Rust sim's per-class config.
 const _ABILITY_MANA_COST := [35.0, 30.0, 35.0, 35.0, 40.0, 30.0, 40.0]
 
+## Per-class RMB ability cooldown (s), same index. Offline parity with the Rust ClassStats /
+## prediction.gd CLASS_ABILITY_CONFIG; drives the HUD ability-bar RMB cooldown wedge offline.
+const _ABILITY_COOLDOWN := [8.0, 5.0, 8.0, 7.0, 9.0, 10.0, 6.0]
+
+## Per-class stamina regen (u/s) while not sprinting, same index. Mage (6) regenerates slower.
+const _STAMINA_REGEN := [20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 14.0]
+
 ## Reference to HP component
 @onready var hp_component: HPComponent = $HPComponent
 
@@ -119,6 +126,9 @@ const _ABILITY_MANA_COST := [35.0, 30.0, 35.0, 35.0, 40.0, 30.0, 40.0]
 
 
 func _ready() -> void:
+	# Shown on the minimap as the local-player marker (see scripts/ui/hud/minimap.gd).
+	add_to_group("minimap_player_local")
+
 	# Guard against a silent desync: the per-class cost table must have exactly one entry
 	# per PacketTypes.PlayerClass, so adding a class can't index past the end (or alias).
 	# CLASS_DISPLAY_NAMES is the canonical one-per-class list (PlayerClass enum mirror).
@@ -150,9 +160,12 @@ func _ready() -> void:
 	movement_sm = MovementStateMachine.new()
 	movement_sm.daze_started.connect(func(_duration: float) -> void: set_dazed(true))
 	movement_sm.daze_ended.connect(func() -> void: set_dazed(false))
-	# Per-class ability mana cost + offline RMB preview (Sanctuary/practice). Online the Rust sim
-	# owns this and the real effect arrives as a server ABILITY_EFFECT.
-	movement_sm.ability_cost = _ability_mana_cost_for_class(_get_configured_player_class())
+	# Per-class ability cost/cooldown + stamina regen + offline RMB preview (Sanctuary/practice).
+	# Online the Rust sim owns these and the real effect arrives as a server ABILITY_EFFECT.
+	var configured_class := _get_configured_player_class()
+	movement_sm.ability_cost = _ability_mana_cost_for_class(configured_class)
+	movement_sm.ability_cooldown_max = _ability_cooldown_for_class(configured_class)
+	movement_sm.stamina_regen = _stamina_regen_for_class(configured_class)
 	movement_sm.ability_triggered.connect(_on_offline_ability_triggered)
 
 	_daze_indicator = DazeIndicator.new()
@@ -316,6 +329,18 @@ func _ability_mana_cost_for_class(class_id: int) -> float:
 	if class_id >= 0 and class_id < _ABILITY_MANA_COST.size():
 		return _ABILITY_MANA_COST[class_id]
 	return GameConstants.PLAYER_MANA_ABILITY_COST
+
+
+func _ability_cooldown_for_class(class_id: int) -> float:
+	if class_id >= 0 and class_id < _ABILITY_COOLDOWN.size():
+		return _ABILITY_COOLDOWN[class_id]
+	return 0.0
+
+
+func _stamina_regen_for_class(class_id: int) -> float:
+	if class_id >= 0 and class_id < _STAMINA_REGEN.size():
+		return _STAMINA_REGEN[class_id]
+	return GameConstants.PLAYER_STAMINA_REGEN_PER_SEC
 
 
 ## Offline RMB preview: the GDScript SM (offline mover) fired an ability and paid the mana cost.

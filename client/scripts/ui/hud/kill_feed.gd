@@ -1,35 +1,19 @@
-## KillFeedControl - Displays recent kill messages
-## Shows last 3 kills, messages fade after 3 seconds
+## KillFeed - displays recent kill messages (last 3, fading after 3 seconds).
+##
+## Authored as scenes/ui/hud/kill_feed.tscn (top-right Control + VBox). Rows are created
+## dynamically per kill (they're data-driven), appended to the authored $VBox.
 extends Control
-
 
 const MAX_MESSAGES := 3
 const FADE_DURATION := 3.0
 
 var _messages: Array[Dictionary] = []  # {text: String, timestamp: float, label: Label}
-var _vbox: VBoxContainer = null
+
+@onready var _vbox: VBoxContainer = $VBox
 
 
 func _ready() -> void:
-	_build_ui()
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-
-
-func _build_ui() -> void:
-	# Position top-right, below minimap (minimap is 180px + 20 margin)
-	anchor_left = 1.0
-	anchor_right = 1.0
-	anchor_top = 0.0
-	anchor_bottom = 0.0
-	offset_left = -320
-	offset_right = -20
-	offset_top = 210
-	offset_bottom = 310
-
-	_vbox = VBoxContainer.new()
-	_vbox.add_theme_constant_override("separation", 4)
-	_vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(_vbox)
 
 
 func _process(_delta: float) -> void:
@@ -48,7 +32,7 @@ func _process(_delta: float) -> void:
 			i += 1
 
 
-## Add a kill message to the feed
+## Add a kill message to the feed.
 func add_kill(killer_name: String, victim_name: String) -> void:
 	# Remove oldest if at capacity
 	if _messages.size() >= MAX_MESSAGES:

@@ -30,6 +30,7 @@ static func generate_all_sounds() -> Dictionary:
 
 	# Combat sounds
 	sounds["projectile_impact"] = _gen_projectile_impact()
+	sounds["mageblast"] = _gen_mageblast()
 
 	# Movement sounds
 	sounds["footstep_l"] = _gen_footstep(0)
@@ -339,6 +340,32 @@ static func _gen_projectile_impact() -> AudioStreamWAV:
 		# Wet pop
 		var pop := _sine(t * 350.0) * env * 0.3
 		samples[i] = crack + pop
+	return _samples_to_wav(samples)
+
+
+## Mage RMB Mageblast — an arcane AOE detonation: a low impact boom under a bright crackling
+## shimmer, with a downward magical whoosh. ~0.28 s.
+static func _gen_mageblast() -> AudioStreamWAV:
+	var num_samples := int(SAMPLE_RATE * 0.28)
+	var samples := PackedFloat32Array()
+	samples.resize(num_samples)
+	var crackle_state := 0.0  # running state of the filtered-noise crackle voice
+	for i in range(num_samples):
+		var t := float(i) / SAMPLE_RATE
+		# Sharp attack, long-ish exponential tail.
+		var env := exp(-t * 11.0)
+		# Low detonation boom: a sine sweeping from ~140 Hz down to ~60 Hz.
+		var boom_freq := 140.0 - 80.0 * clampf(t / 0.28, 0.0, 1.0)
+		var boom := _sine(t * boom_freq) * 0.55
+		# Bright arcane shimmer: detuned high sines, fast-decaying.
+		var shimmer_env := exp(-t * 26.0)
+		var shimmer_tone := (_sine(t * 880.0) + _sine(t * 1320.0) * 0.6) * 0.22 * shimmer_env
+		# Crackling magic: filtered noise sparkle riding the shimmer.
+		crackle_state = _noise_filtered(crackle_state, 0.35)
+		var crackle := crackle_state * 0.30 * shimmer_env
+		# Downward whoosh tail (descending saw) for the dissipating energy.
+		var whoosh := _saw(t * (320.0 - 220.0 * clampf(t / 0.28, 0.0, 1.0))) * 0.12 * env
+		samples[i] = (boom * env) + shimmer_tone + crackle + whoosh
 	return _samples_to_wav(samples)
 
 

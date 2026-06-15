@@ -1,21 +1,22 @@
-## ServerStatusControl - Bottom-left server status display
-## Shows player count, ping, FPS, and server info
+## ServerStatus - bottom-left server status display (players, monsters, ping, FPS, scheduler).
+##
+## Authored as scenes/ui/hud/server_status.tscn (a VBox of fixed Labels). Polls
+## NetworkManager.get_stats() once a second and surfaces SERVER_METRICS scheduler diagnostics.
 extends Control
-
-
-var _ping_label: Label = null
-var _fps_label: Label = null
-var _player_count_label: Label = null
-var _monster_count_label: Label = null
-var _warning_label: Label = null
-var _sched_label: Label = null
-var _update_timer: float = 0.0
 
 const UPDATE_INTERVAL := 1.0
 
+var _update_timer: float = 0.0
+
+@onready var _player_count_label: Label = $VBox/PlayerCount
+@onready var _monster_count_label: Label = $VBox/MonsterCount
+@onready var _ping_label: Label = $VBox/Ping
+@onready var _fps_label: Label = $VBox/FPS
+@onready var _sched_label: Label = $VBox/Sched
+@onready var _warning_label: Label = $VBox/Warning
+
 
 func _ready() -> void:
-	_build_ui()
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	# Surface SERVER_METRICS scheduler diagnostics (§8.2). This is the only
 	# client consumer of SERVER_METRICS today.
@@ -23,65 +24,11 @@ func _ready() -> void:
 		NetworkManager.server_message_received.connect(_on_server_message)
 
 
-func _build_ui() -> void:
-	# Position bottom-left
-	anchor_left = 0.0
-	anchor_right = 0.0
-	anchor_top = 1.0
-	anchor_bottom = 1.0
-	offset_left = 20
-	offset_right = 320
-	offset_top = -136
-	offset_bottom = -20
-
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 2)
-	add_child(vbox)
-
-	_player_count_label = Label.new()
-	_player_count_label.add_theme_font_size_override("font_size", 12)
-	_player_count_label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
-	_player_count_label.text = "Players: --/--"
-	vbox.add_child(_player_count_label)
-
-	_monster_count_label = Label.new()
-	_monster_count_label.add_theme_font_size_override("font_size", 12)
-	_monster_count_label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
-	_monster_count_label.text = "Monsters: --/--"
-	vbox.add_child(_monster_count_label)
-
-	_ping_label = Label.new()
-	_ping_label.add_theme_font_size_override("font_size", 12)
-	_ping_label.add_theme_color_override("font_color", Color(0.4, 0.9, 0.4))
-	_ping_label.text = "Ping: --ms"
-	vbox.add_child(_ping_label)
-
-	_fps_label = Label.new()
-	_fps_label.add_theme_font_size_override("font_size", 12)
-	_fps_label.add_theme_color_override("font_color", Color(0.4, 0.9, 0.4))
-	_fps_label.text = "FPS: --"
-	vbox.add_child(_fps_label)
-
-	_sched_label = Label.new()
-	_sched_label.add_theme_font_size_override("font_size", 12)
-	_sched_label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
-	_sched_label.text = "Sched: --"
-	vbox.add_child(_sched_label)
-
-	_warning_label = Label.new()
-	_warning_label.add_theme_font_size_override("font_size", 12)
-	_warning_label.add_theme_color_override("font_color", Color(1.0, 0.3, 0.3))
-	_warning_label.text = ""
-	_warning_label.visible = false
-	vbox.add_child(_warning_label)
-
-
 func _process(delta: float) -> void:
 	_update_timer += delta
 	if _update_timer < UPDATE_INTERVAL:
 		return
 	_update_timer = 0.0
-
 	_update_display()
 
 

@@ -17,8 +17,9 @@ A stat at level `L` is `base + per_lvl * (L - 1)`; max level **50**.
 | HP | 130 | +9 | 571 |
 | Move speed | 200 | +0.6 | 229.4 |
 | Mana max | 100 | — (flavor pool 90) | 100 |
-| Mana regen | 8 /s | — | 8 /s |
+| Mana regen | 2 /s | — | 2 /s |
 | Stamina max | 100 | — | 100 |
+| Stamina regen | 20 /s | — | 20 /s |
 | Hitbox radius | 16 | — | 16 |
 
 ## Primary attack (LMB)

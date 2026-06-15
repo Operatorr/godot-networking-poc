@@ -1,23 +1,24 @@
 ## ExperienceBar - top-center HUD element showing the player's level and XP progress.
 ##
-## Driven by GameManager.experience_updated. XP is granted server-side (EXP_GAIN events,
-## one per nearby player when a monster dies) and accounted client-side by GameManager,
-## which owns the level curve and account persistence. See docs/systems/PROGRESSION.md.
+## Authored as scenes/ui/hud/experience_bar.tscn (Level label + ProgressBar). Driven by
+## GameManager.experience_updated. XP is granted server-side (EXP_GAIN events, one per nearby
+## player when a monster dies) and accounted client-side by GameManager, which owns the level
+## curve and account persistence. See docs/systems/PROGRESSION.md.
 class_name ExperienceBar
 extends Control
 
 const LEVEL_UP_FLASH_DURATION := 1.0
-const FILL_COLOR := Color("5b3a8e")  # Void Violet
 const LEVEL_UP_COLOR := Color(1.0, 0.92, 0.4)
 
-var _level_label: Label = null
-var _progress: ProgressBar = null
 var _flash_timer: float = 0.0
+
+@onready var _level_label: Label = $VBox/LevelLabel
+@onready var _progress: ProgressBar = $VBox/ProgressBar
 
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_build_ui()
+	set_process(false)
 
 	if GameManager.has_signal("experience_updated"):
 		GameManager.experience_updated.connect(_on_experience_updated)
@@ -27,49 +28,9 @@ func _ready() -> void:
 	_refresh(level, GameManager.get_player_experience(), GameManager.xp_to_next_level(level), false)
 
 
-func _build_ui() -> void:
-	# Top-center, just below the screen edge.
-	set_anchors_preset(Control.PRESET_CENTER_TOP)
-	custom_minimum_size = Vector2(340, 40)
-	offset_left = -170.0
-	offset_right = 170.0
-	offset_top = 14.0
-	offset_bottom = 54.0
-
-	var vbox := VBoxContainer.new()
-	vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	vbox.add_theme_constant_override("separation", 2)
-	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(vbox)
-
-	_level_label = Label.new()
-	_level_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_level_label.add_theme_font_size_override("font_size", 16)
-	_level_label.add_theme_color_override("font_color", Color.WHITE)
-	_level_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
-	_level_label.add_theme_constant_override("outline_size", 4)
-	_level_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vbox.add_child(_level_label)
-
-	_progress = ProgressBar.new()
-	_progress.custom_minimum_size = Vector2(340, 12)
-	_progress.show_percentage = false
-	_progress.min_value = 0.0
-	_progress.max_value = 100.0
-	_progress.value = 0.0
-	_progress.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var fill := StyleBoxFlat.new()
-	fill.bg_color = FILL_COLOR
-	fill.corner_radius_top_left = 3
-	fill.corner_radius_top_right = 3
-	fill.corner_radius_bottom_left = 3
-	fill.corner_radius_bottom_right = 3
-	_progress.add_theme_stylebox_override("fill", fill)
-	vbox.add_child(_progress)
-
-
 func _process(delta: float) -> void:
 	if _flash_timer <= 0.0:
+		set_process(false)
 		return
 	_flash_timer = maxf(0.0, _flash_timer - delta)
 	if _level_label:
@@ -97,6 +58,7 @@ func _refresh(level: int, experience: int, xp_to_next: int, leveled_up: bool) ->
 			_level_label.text = "Lv %d   MAX" % level
 	if leveled_up:
 		_flash_timer = LEVEL_UP_FLASH_DURATION
+		set_process(true)
 		_play_level_up_effect(level)
 
 

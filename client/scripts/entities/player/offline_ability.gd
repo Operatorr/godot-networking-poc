@@ -23,7 +23,8 @@ static func play(world: Node, player: Node2D, class_id: int, cursor: Vector2) ->
 			# 3 spinning "bibles" orbiting the player (Vampire-Survivors feel).
 			player.add_child(_make_orbit(3, 80.0, BIBLE_DURATION, Color(0.97, 0.9, 0.55)))
 		PacketTypes.PlayerClass.MAGE:
-			world.add_child(_make_burst(cursor, 120.0, 0.45, Color(0.55, 0.78, 1.0)))
+			world.add_child(_make_burst(cursor, 144.0, 0.45, Color(0.55, 0.78, 1.0)))
+			_play_mageblast_sfx(player)
 		PacketTypes.PlayerClass.VOID_HUNTER:
 			var dir := _dir(ppos, cursor)
 			world.add_child(_make_spread(ppos, dir, 5, deg_to_rad(28.0), 360.0, Color(0.72, 0.97, 0.8)))
@@ -40,6 +41,16 @@ static func play(world: Node, player: Node2D, class_id: int, cursor: Vector2) ->
 				player.apply_stealth_preview(STEALTH_DURATION)
 		_:
 			world.add_child(_make_burst(cursor, 90.0, 0.4, Color.WHITE))
+
+
+## Play the Mageblast detonation SFX via the AudioManager autoload (offline preview parity with
+## the online ABILITY_EFFECT path). Resolved through the tree so this stays a pure static helper.
+static func _play_mageblast_sfx(node: Node) -> void:
+	if node == null or not is_instance_valid(node):
+		return
+	var audio := node.get_tree().root.get_node_or_null("AudioManager")
+	if audio != null and audio.has_method("play_sfx"):
+		audio.play_sfx("mageblast", AudioManager.AudioCategory.SFX_PLAYER)
 
 
 static func _dir(from: Vector2, to: Vector2) -> Vector2:
