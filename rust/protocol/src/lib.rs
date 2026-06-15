@@ -21,7 +21,10 @@ pub mod types;
 pub use bits::{BitReader, BitWriter};
 pub use client::{ClientPacket, ConnectAuth, PlayerInput, Ticket, TICKET_PAYLOAD_LEN};
 pub use error::DecodeError;
-pub use quant::{dequant_angle, dequant_coord, quant_angle, quant_coord, quant_resource};
+pub use quant::{
+    dequant_angle, dequant_cooldown, dequant_coord, quant_angle, quant_cooldown, quant_coord,
+    quant_resource,
+};
 pub use server::{
     ActionConfirm, AuthOk, AuthResult, GameEvent, GameEventData, ServerMetrics, ServerPacket,
 };

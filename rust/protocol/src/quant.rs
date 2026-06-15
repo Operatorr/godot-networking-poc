@@ -36,6 +36,19 @@ pub fn quant_resource(v: f64) -> u8 {
     v.round().clamp(0.0, 255.0) as u8
 }
 
+/// Dash/ability cooldown timers on the wire (ActionConfirm): **deciseconds**,
+/// `clamp(round(seconds*10), 0, 255)` → 0..25.5 s at 0.1-s resolution. Covers every cooldown
+/// (dash 5.5 s, abilities ≤ 10 s) with headroom. Same round-half-away/NaN⇒0 policy as
+/// `quant_resource`; the client's reconciliation epsilon sits far above the 0.1-s quant step so
+/// quantization can never false-trip a correction.
+pub fn quant_cooldown(seconds: f64) -> u8 {
+    (seconds * 10.0).round().clamp(0.0, 255.0) as u8
+}
+
+pub fn dequant_cooldown(q: u8) -> f64 {
+    q as f64 / 10.0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -84,6 +97,19 @@ mod tests {
         assert_eq!(quant_resource(99.5), 100);
         assert_eq!(quant_resource(-1.0), 0);
         assert_eq!(quant_resource(300.0), 255);
+    }
+
+    #[test]
+    fn cooldown_round_trip_and_pinned() {
+        // Deciseconds: exact at the 0.1-s grid, clamps and floors like quant_resource.
+        assert_eq!(quant_cooldown(5.5), 55);
+        assert_eq!(quant_cooldown(10.0), 100);
+        assert_eq!(quant_cooldown(0.0), 0);
+        assert_eq!(quant_cooldown(-1.0), 0); // negatives floor to 0
+        assert_eq!(quant_cooldown(300.0), 255); // clamps to u8 max (25.5 s)
+        assert_eq!(quant_cooldown(f64::NAN), 0); // NaN ⇒ 0 (saturating `as u8`)
+        assert!((dequant_cooldown(quant_cooldown(5.5)) - 5.5).abs() < 0.05);
+        assert!((dequant_cooldown(quant_cooldown(7.3)) - 7.3).abs() < 0.05);
     }
 
     #[test]

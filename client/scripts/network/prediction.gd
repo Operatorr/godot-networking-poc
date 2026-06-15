@@ -77,6 +77,14 @@ var last_server_tick: int = 0
 var input_send_timer: float = 0.0
 const INPUT_SEND_INTERVAL: float = GameConstants.SERVER_TICK_INTERVAL
 
+## Only snap the predicted dash/RMB-ability cooldown to the server's authoritative value when
+## they diverge by more than this (seconds). The predicted cooldown is committed at press time,
+## so it normally runs ~RTT ahead of the value the server reports back; this threshold sits well
+## above typical RTT so that benign offset never jitters the HUD, while a genuine desync — a
+## refused / lost / cooldown-boundary dash leaves a multi-second gap — is pulled back into phase
+## within ~1 RTT. See _handle_action_confirm.
+const COOLDOWN_RECONCILE_EPSILON: float = 0.75
+
 ## Current frame's accumulated input flags
 var current_input_flags: int = 0
 
@@ -143,9 +151,16 @@ class InputSnapshot:
 	var aim_angle: float = 0.0
 	var delta: float = 0.0
 	var timestamp: float = 0.0
+	## Predicted dash / RMB-ability cooldown (seconds) at the moment this input was sent. The
+	## ActionConfirm for this sequence reports the server's authoritative cooldown for the SAME
+	## input, so the owner can detect a desync per-sequence (see _handle_action_confirm) without a
+	## stale in-flight confirm cancelling a freshly-predicted cooldown.
+	var dash_cooldown: float = 0.0
+	var ability_cooldown: float = 0.0
 
 	static func create(seq: int, flags: int, pos_before: Vector2, pos_after: Vector2,
-					   vel: Vector2, angle: float, dt: float) -> InputSnapshot:
+					   vel: Vector2, angle: float, dt: float,
+					   dash_cd: float = 0.0, ability_cd: float = 0.0) -> InputSnapshot:
 		var snapshot := InputSnapshot.new()
 		snapshot.sequence = seq
 		snapshot.input_flags = flags
@@ -154,6 +169,8 @@ class InputSnapshot:
 		snapshot.velocity = vel
 		snapshot.aim_angle = angle
 		snapshot.delta = dt
+		snapshot.dash_cooldown = dash_cd
+		snapshot.ability_cooldown = ability_cd
 		snapshot.timestamp = Time.get_ticks_msec() / 1000.0
 		return snapshot
 #endregion
@@ -544,6 +561,10 @@ func _send_input_to_server() -> void:
 	# one authoritative tick, so replay uses the same interval. The stateless ground
 	# model runs through the same Rust mover the server uses.
 	var replay: Dictionary = _sim.replay_step(predicted_position, current_input_flags, INPUT_SEND_INTERVAL)
+	# Record the PREDICTED cooldowns alongside the input so the ActionConfirm for this sequence can
+	# be compared against what we predicted at this exact point (see _handle_action_confirm).
+	var snap_dash_cd := _sim.dash_cooldown_remaining() if _sim.has_method("dash_cooldown_remaining") else 0.0
+	var snap_ability_cd := _sim.ability_cooldown_remaining() if _sim.has_method("ability_cooldown_remaining") else 0.0
 	var snapshot := InputSnapshot.create(
 		seq,
 		current_input_flags,
@@ -551,7 +572,9 @@ func _send_input_to_server() -> void:
 		replay["position"],
 		replay["velocity"],
 		aim_angle,
-		INPUT_SEND_INTERVAL
+		INPUT_SEND_INTERVAL,
+		snap_dash_cd,
+		snap_ability_cd
 	)
 	_store_input(snapshot)
 
@@ -625,6 +648,21 @@ func _handle_action_confirm(data: Dictionary) -> void:
 		if sm != null:
 			sm.set_resources(_sim.stamina(), _sim.mana())
 
+	# Reconcile the predicted dash + RMB-ability cooldowns against the server's authoritative ones,
+	# which ride along on this confirm. The cooldowns are committed locally on the PREDICTED
+	# dash/cast, so without this they drift permanently out of phase whenever the server refuses /
+	# never receives a dash, or it's fired at the cooldown boundary (the server's cooldown lags the
+	# client's by ~RTT). Symptom: the HUD shows a cooldown the server isn't enforcing — you lunge a
+	# couple units, snap back, and the dash never lands — then a later press "while on cooldown"
+	# actually dashes because the server cleared its timer long ago.
+	#
+	# Compared PER-SEQUENCE (not against the live cooldown): the confirm reports the server's
+	# cooldown for the input it's acking, so we diff it against what we PREDICTED when we sent that
+	# same input (input_buffer snapshot). This is essential — confirms still in flight for inputs
+	# sent BEFORE a dash legitimately read cooldown 0 on the server, and diffing those against the
+	# live (just-started) cooldown would cancel a correct prediction for ~1 RTT on every dash.
+	_reconcile_cooldowns(sequence, data)
+
 	# Update tracking
 	last_ack_sequence = sequence
 	last_server_tick = server_tick
@@ -640,6 +678,45 @@ func _handle_action_confirm(data: Dictionary) -> void:
 			_reconcile(sequence, corrected_position)
 		else:
 			_prune_acknowledged_inputs()
+
+
+## Pull the predicted dash + RMB-ability cooldowns back into phase with the server's authoritative
+## values for the acked input (`sequence`). For each, diff the server's value against what we
+## predicted when we SENT that input (the per-sequence snapshot). A gap beyond the reconcile
+## epsilon is a genuine desync; we shift the LIVE cooldown by that gap (so the ~RTT of real time
+## that elapsed since the send cancels out exactly) and propagate the same shift to the snapshots
+## of inputs still in flight, so the rest of that batch — which recorded the pre-correction
+## prediction — doesn't re-apply the correction. No-op (the common case) when they already agree.
+func _reconcile_cooldowns(sequence: int, data: Dictionary) -> void:
+	if not input_buffer.has(sequence):
+		return
+	var snap: InputSnapshot = input_buffer[sequence]
+	if data.has("dash_cooldown") and _sim.has_method("set_dash_cooldown") \
+			and _sim.has_method("dash_cooldown_remaining"):
+		var gap := float(data.get("dash_cooldown", 0.0)) - snap.dash_cooldown
+		if absf(gap) > COOLDOWN_RECONCILE_EPSILON:
+			_sim.set_dash_cooldown(maxf(0.0, _sim.dash_cooldown_remaining() + gap))
+			_shift_buffered_cooldowns(sequence, gap, true)
+	if data.has("ability_cooldown") and _sim.has_method("set_ability_cooldown") \
+			and _sim.has_method("ability_cooldown_remaining"):
+		var gap_ability := float(data.get("ability_cooldown", 0.0)) - snap.ability_cooldown
+		if absf(gap_ability) > COOLDOWN_RECONCILE_EPSILON:
+			_sim.set_ability_cooldown(maxf(0.0, _sim.ability_cooldown_remaining() + gap_ability))
+			_shift_buffered_cooldowns(sequence, gap_ability, false)
+
+
+## Apply a cooldown phase correction to every still-in-flight input snapshot (sequence AFTER
+## `acked`) so the remaining confirms in this batch — which recorded the pre-correction prediction
+## — compare against the corrected baseline and don't double-apply the same shift.
+func _shift_buffered_cooldowns(acked: int, delta: float, is_dash: bool) -> void:
+	for seq: int in input_buffer.keys():
+		if not _sequence_less_than(acked, seq):
+			continue
+		var snap: InputSnapshot = input_buffer[seq]
+		if is_dash:
+			snap.dash_cooldown = maxf(0.0, snap.dash_cooldown + delta)
+		else:
+			snap.ability_cooldown = maxf(0.0, snap.ability_cooldown + delta)
 
 
 func _handle_state_update(data: Dictionary) -> void:

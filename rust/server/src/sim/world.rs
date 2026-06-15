@@ -447,13 +447,23 @@ impl World {
                 );
             }
             // Send the LIVE post-ability position so a Rogue shadowstep teleport (which moves the
-            // player after the movement step) reconciles to the corrected spot. mana is also
-            // re-read live so an ability cast this tick reflects in the bar immediately.
-            let (pos, mana) = self
+            // player after the movement step) reconciles to the corrected spot. mana + the dash /
+            // ability cooldowns are also re-read live so an ability cast this tick reflects in the
+            // bar immediately and the owner can reconcile its PREDICTED cooldowns against the
+            // authoritative ones (otherwise a refused / lost / boundary-timed dash drifts them
+            // permanently out of phase — the dash-desync bug).
+            let (pos, mana, dash_cd, ability_cd) = self
                 .players
                 .get(r.peer)
-                .map(|p| (p.position, protocol::quant_resource(p.movement_sm.mana())))
-                .unwrap_or((r.position, r.mana));
+                .map(|p| {
+                    (
+                        p.position,
+                        protocol::quant_resource(p.movement_sm.mana()),
+                        protocol::quant_cooldown(p.movement_sm.dash_cooldown_remaining()),
+                        protocol::quant_cooldown(p.movement_sm.ability_cooldown_remaining()),
+                    )
+                })
+                .unwrap_or((r.position, r.mana, 0, 0));
             outbox.send(
                 r.peer,
                 ServerPacket::ActionConfirm(ActionConfirm {
@@ -468,6 +478,8 @@ impl World {
                     server_tick: (self.tick_count & 0xFFFF) as u16,
                     stamina: r.stamina,
                     mana,
+                    dash_cooldown: dash_cd,
+                    ability_cooldown: ability_cd,
                 }),
             );
         }

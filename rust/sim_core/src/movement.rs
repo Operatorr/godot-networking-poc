@@ -582,6 +582,28 @@ impl MovementSm {
         }
     }
 
+    /// Authoritatively set the dash cooldown (server → owner via ActionConfirm). The cooldown is
+    /// committed locally on the PREDICTED dash, so the client and server can fall out of phase
+    /// whenever they disagree about whether a dash happened (a refused, lost, or
+    /// cooldown-boundary-timed dash). Reconciling against the server's value heals that drift;
+    /// without it the desync is permanent until respawn. Non-finite is ignored; negatives floor
+    /// to 0. Decrement-only timer, so this is the only external writer besides `try_dash`.
+    pub fn set_dash_cooldown(&mut self, cooldown: f64) {
+        if !cooldown.is_finite() {
+            return;
+        }
+        self.dash_cooldown_left = cooldown.max(0.0);
+    }
+
+    /// Authoritatively set the RMB-ability cooldown (server → owner via ActionConfirm). Same
+    /// rationale as [`set_dash_cooldown`]: the cooldown is committed on the PREDICTED cast.
+    pub fn set_ability_cooldown(&mut self, cooldown: f64) {
+        if !cooldown.is_finite() {
+            return;
+        }
+        self.ability_cooldown_left = cooldown.max(0.0);
+    }
+
     /// End an in-progress Charge (release / max-distance / server-side enemy contact). Idempotent.
     pub fn end_charge(&mut self) {
         if self.state != MoveState::Charging {
@@ -934,6 +956,28 @@ mod tests {
         sm.set_resources(-50.0, 500.0);
         assert_eq!(sm.stamina(), 0.0);
         assert_eq!(sm.mana(), 100.0);
+    }
+
+    #[test]
+    fn set_cooldowns_reconcile_and_floor() {
+        let mut sm = MovementSm::new();
+        // Server-authoritative correction of a desynced predicted cooldown.
+        sm.set_dash_cooldown(3.25);
+        assert!((sm.dash_cooldown_remaining() - 3.25).abs() < 1e-9);
+        sm.set_ability_cooldown(7.0);
+        assert!((sm.ability_cooldown_remaining() - 7.0).abs() < 1e-9);
+        // Negatives floor to 0 (e.g. server reports "ready"); non-finite is ignored.
+        sm.set_dash_cooldown(-1.0);
+        assert_eq!(sm.dash_cooldown_remaining(), 0.0);
+        sm.set_ability_cooldown(2.0);
+        sm.set_ability_cooldown(f64::NAN);
+        assert!((sm.ability_cooldown_remaining() - 2.0).abs() < 1e-9);
+        // A reconciled dash cooldown still gates try_dash exactly like a self-started one.
+        sm.set_dash_cooldown(1.0);
+        assert!(
+            !sm.try_dash(RIGHT, Vec2::ZERO),
+            "reconciled cooldown blocks dash"
+        );
     }
 
     #[test]

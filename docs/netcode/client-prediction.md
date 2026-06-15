@@ -110,10 +110,12 @@ Two server messages drive correction (`_on_server_message`, decoded by
 `ProtocolCodec.decode_server_packet` into the legacy dict shapes):
 
 - **`ACTION_CONFIRM`** — per-input ack carrying `sequence_number`, `corrected_position`, `result_code`,
-  and the authoritative `stamina` / `mana` (`_handle_action_confirm`). Updates `last_ack_sequence`
-  and feeds stamina/mana into the sim via `PredictionSim.set_resources`. If the server flags a
-  non-`SUCCESS` result, or the predicted position has drifted past the epsilon, it reconciles.
-  Wire: ActionConfirm (type 66, ch0), [`../server/contract.md`](../server/contract.md) §ActionConfirm.
+  the authoritative `stamina` / `mana`, and the authoritative `dash_cooldown` / `ability_cooldown`
+  (`_handle_action_confirm`). Updates `last_ack_sequence`, feeds stamina/mana into the sim via
+  `PredictionSim.set_resources`, and **reconciles the predicted dash + RMB cooldowns** (below). If the
+  server flags a non-`SUCCESS` result, or the predicted position has drifted past the epsilon, it
+  reconciles position too. Wire: ActionConfirm (type 66, ch0),
+  [`../server/contract.md`](../server/contract.md) §ActionConfirm.
 - **`STATE_UPDATE`** (the Snapshot) — the Local player's own entity record inside a Snapshot
   (`_handle_state_update` → `_process_own_state_update`). If there are no unacked inputs it snaps
   directly (`_apply_authoritative_position_without_replay`); otherwise it reconciles on drift. The
@@ -151,6 +153,39 @@ plain WASD movement the replay model and the full `step_movement` produce identi
 the crate asserts in tests (`replay_matches_walk_prediction_for_plain_movement`, `replay_never_dashes`
 in `rust/sim_core/src/step.rs`).
 
+### Cooldown reconciliation (dash / RMB ability)
+
+The dash and RMB-ability **cooldowns** are committed by *prediction*: `try_dash` /
+`try_activate_ability` set `dash_cooldown_left` / `ability_cooldown_left` the instant the client
+predicts the dash/cast, and the HUD shows that *predicted* timer (mirrored from the `step` result
+into the GDScript SM via `set_predicted_cooldowns`). The server decides the action independently with
+its **own** cooldown, which starts ~½ RTT later.
+
+Because the dash bit rides **one** unreliable input packet (latched on press, cleared after a single
+send — `prediction.gd` `_dash_latched`), the two cooldowns drift permanently out of phase whenever
+they disagree about whether a dash happened: a **lost** dash packet (the server never dashes, the
+client did), or a **cooldown-boundary** press (the client predicts a dash the instant its HUD bar
+empties, but the server's lagging cooldown hasn't cleared, so the server *refuses* — yet the client
+has already started a fresh full cooldown). Symptom: you lunge a couple units, snap back, and the dash
+never lands; then a later press *"while still on cooldown"* dashes, because the server cleared its
+timer long ago. Nothing used to correct this — only position/stamina/mana were reconciled.
+
+**Fix:** the ActionConfirm carries the server's authoritative `dash_cooldown` / `ability_cooldown`
+(deciseconds), and `_handle_action_confirm` → `_reconcile_cooldowns` pulls the predicted cooldowns
+back into phase via `PredictionSim.set_dash_cooldown` / `set_ability_cooldown`. The comparison is
+**per-sequence, not against the live cooldown**: the confirm reports the server's cooldown for the
+input it is *acking*, so it is diffed against what the client *predicted when it sent that same input*
+(recorded per-sequence on the `InputSnapshot`). This is essential — a confirm still in flight for an
+input sent **before** a dash legitimately reads cooldown 0 on the server, and diffing that against the
+live (just-started) cooldown would cancel a correct prediction for ~1 RTT on *every* dash. A gap beyond
+`COOLDOWN_RECONCILE_EPSILON` (= **0.75 s**, above typical RTT + the 0.1-s quant step, so a benign
+offset never corrects) is a genuine desync: the live cooldown is shifted by that gap (the elapsed real
+time since the send cancels out exactly), and the same shift is propagated to the still-in-flight
+snapshots so the rest of that batch doesn't double-apply it. Heals within ~1 RTT. The setters floor
+negatives to 0 and ignore non-finite (`MovementSm::set_dash_cooldown` / `set_ability_cooldown`,
+`set_cooldowns_reconcile_and_floor` test) — the only *external* writers of those decrement-only timers
+besides `try_dash` / `try_activate_ability`.
+
 ### Smoothing the correction
 
 The reconcile updates the logical `predicted_position` instantly, but the visible node is eased so
@@ -174,7 +209,7 @@ buffer, slams position, snaps the node, and resets physics interpolation — no 
 - **Replicated:** the Local player's authoritative position arrives via Snapshot/ack and overrides prediction on drift; daze and charge-end are slaved to the server's entity flags.
 - **Persisted:** nothing — prediction is transient client state. The Go API persists only account/character/leaderboard/progression, never live position (server-authoritative + in-memory).
 - **Validated:** server-side. The client requests; the server decides and answers with `ACTION_CONFIRM` (incl. authoritative stamina/mana). The client only corrects toward that answer.
-- **Can fail:** packet loss past the 256-deep buffer; a large unacked server-side knockback before reconcile (heals on snap+replay); replay can only mismatch if the buffered flags/delta differ from what the server applied — the movement *code* cannot diverge (one compiled crate).
+- **Can fail:** packet loss past the 256-deep buffer; a large unacked server-side knockback before reconcile (heals on snap+replay); a predicted dash/cast the server refuses or never receives (the dash bit rides one unreliable packet) — heals via cooldown reconciliation within ~1 RTT; replay can only mismatch if the buffered flags/delta differ from what the server applied — the movement *code* cannot diverge (one compiled crate).
 - **Tested:** `sim_core` movement/replay parity is unit-tested in Rust (`rust/sim_core/src/step.rs`); the end-to-end reconcile loop is exercised via the live arena and the `omega-load-test` bot swarm, plus the net smoke scene.
 
 ## See also
