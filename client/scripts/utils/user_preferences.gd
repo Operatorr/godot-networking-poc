@@ -9,6 +9,12 @@ const DEFAULT_PLAYER_COLOR: Color = Color(0.27, 0.53, 1.0)
 var selected_region: String = "local"  ## Default to local development server
 var player_color: Color = DEFAULT_PLAYER_COLOR
 
+## When true, the client talks to the local Go API (ClientConfig.local_api_base_url) instead of
+## production. Runtime switch surfaced as the Login screen's "Use local server" checkbox; persisted
+## here so the choice survives restarts. Defaults to false (production); seeded from
+## client_config.json's `use_local_api` on first run by whoever loads this (see AuthManager).
+var use_local_api: bool = false
+
 ## Custom keyboard rebinds: action_name -> physical_keycode (int). Empty = project
 ## defaults. Applied to the InputMap at startup via apply_keybinds(); edited from the
 ## Settings → Keyboard Controls page.
@@ -34,6 +40,7 @@ static func load_preferences() -> UserPreferences:
 		prefs.selected_region = json.data.get("selected_region", "local")
 		prefs.player_color = _color_from_data(json.data.get("player_color", DEFAULT_PLAYER_COLOR))
 		prefs.keybinds = _keybinds_from_data(json.data.get("keybinds", {}))
+		prefs.use_local_api = bool(json.data.get("use_local_api", false))
 		print("[UserPreferences] Loaded preferences: region=%s color=%s" % [prefs.selected_region, prefs.player_color])
 	else:
 		push_warning("[UserPreferences] Failed to parse preferences file")
@@ -55,7 +62,8 @@ func save() -> void:
 			clampi(roundi(player_color.g * 255.0), 0, 255),
 			clampi(roundi(player_color.b * 255.0), 0, 255)
 		],
-		"keybinds": keybinds.duplicate()
+		"keybinds": keybinds.duplicate(),
+		"use_local_api": use_local_api
 	}
 
 	file.store_string(JSON.stringify(data, "\t"))

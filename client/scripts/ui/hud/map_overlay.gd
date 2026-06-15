@@ -15,13 +15,12 @@ const MAP_FRAME := Color(0.6, 0.55, 0.42, 0.5)
 const EMPTY_BG := Color(0.05, 0.05, 0.07, 0.85)
 const MONSTER_COLOR := Color(0.9, 0.2, 0.2)
 const NPC_COLOR := Color(0.3, 0.9, 0.4)
+## Intentionally the same red as MONSTER_COLOR — remote players are distinguished by the purple border.
 const REMOTE_PLAYER_COLOR := Color(0.9, 0.2, 0.2)
 const REMOTE_PLAYER_BORDER := Color(0.6, 0.25, 0.95)
 const LOCAL_PLAYER_COLOR := Color(0.3, 0.95, 0.4)
 const LOCAL_PLAYER_BORDER := Color(1, 1, 1, 0.9)
 const LANDMARK_COLOR := Color(1.0, 0.85, 0.2)
-
-var local_player: Node2D = null
 
 var _map_texture: Texture2D = null
 var _map_bounds: Rect2 = Rect2()

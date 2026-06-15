@@ -194,7 +194,7 @@ func _on_sacrifice_completed(result: int, response_code: int, _headers: PackedSt
 # =============================================================================
 
 func _build_safe_zone_badge() -> void:
-	# HUDLayer is created in _build_level_environment before this runs (networked base owns it).
+	# HUDLayer is created in _setup_hud before _after_client_setup runs (networked base owns it).
 	var hud := get_hud_layer()
 	if hud == null:
 		return

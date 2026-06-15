@@ -349,7 +349,7 @@ static func _gen_mageblast() -> AudioStreamWAV:
 	var num_samples := int(SAMPLE_RATE * 0.28)
 	var samples := PackedFloat32Array()
 	samples.resize(num_samples)
-	var shimmer := 0.0
+	var crackle_state := 0.0  # running state of the filtered-noise crackle voice
 	for i in range(num_samples):
 		var t := float(i) / SAMPLE_RATE
 		# Sharp attack, long-ish exponential tail.
@@ -361,8 +361,8 @@ static func _gen_mageblast() -> AudioStreamWAV:
 		var shimmer_env := exp(-t * 26.0)
 		var shimmer_tone := (_sine(t * 880.0) + _sine(t * 1320.0) * 0.6) * 0.22 * shimmer_env
 		# Crackling magic: filtered noise sparkle riding the shimmer.
-		shimmer = _noise_filtered(shimmer, 0.35)
-		var crackle := shimmer * 0.30 * shimmer_env
+		crackle_state = _noise_filtered(crackle_state, 0.35)
+		var crackle := crackle_state * 0.30 * shimmer_env
 		# Downward whoosh tail (descending saw) for the dissipating energy.
 		var whoosh := _saw(t * (320.0 - 220.0 * clampf(t / 0.28, 0.0, 1.0))) * 0.12 * env
 		samples[i] = (boom * env) + shimmer_tone + crackle + whoosh

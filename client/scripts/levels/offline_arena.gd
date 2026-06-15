@@ -41,7 +41,7 @@ var hud: GameHud = null
 var hud_layer: CanvasLayer = null
 var hp_bar: Control = null
 var stamina_bar: Control = null
-var ability_slots: Control = null
+var ability_bar: Control = null
 var mana_bar: Control = null
 var pause_menu: Control = null
 
@@ -237,19 +237,19 @@ func _setup_hud() -> void:
 
 	hp_bar = hud.health_bar
 	stamina_bar = hud.stamina_bar
-	ability_slots = hud.ability_bar
+	ability_bar = hud.ability_bar
 	mana_bar = hud.mana_bar
 	pause_menu = hud.pause_menu
 
-	if ability_slots and local_player and local_player.movement_sm:
-		ability_slots.bind_movement_state_machine(local_player.movement_sm)
+	if ability_bar and local_player and local_player.movement_sm:
+		ability_bar.bind_movement_state_machine(local_player.movement_sm)
 
 	# Minimap/map follow the local player; render the static world-map texture once (offline
 	# terrain is this level's _draw()).
 	hud.set_minimap_player(local_player)
 	hud.setup_world_map(get_map_bounds())
 
-	if local_player and local_player.hp_component:
+	if hp_bar and local_player and local_player.hp_component:
 		hp_bar.update_hp(local_player.hp_component.current_hp, local_player.hp_component.max_hp)
 
 	# Offline hubs (Sanctuary/Practice) have no arena/server to leave — exit to the menu.

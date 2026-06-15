@@ -54,7 +54,7 @@ pub const PLAYER_STAMINA_EXHAUST_DURATION: f64 = 3.0;
 pub const PLAYER_MANA_MAX: f64 = 100.0;
 /// Mana regen, cut 75% (was 8.0) so RMB class abilities are a real resource cost — mana is now
 /// a scarce, deliberately-spent pool rather than a near-free trickle.
-/// Mirrored in `client/scripts/shared/game_constants.gd` — both run the shared MovementSm, so
+/// Mirrored in `client/scripts/data/game_constants.gd` — both run the shared MovementSm, so
 /// they MUST match or mana prediction desyncs.
 pub const PLAYER_MANA_REGEN_PER_SEC: f64 = 2.0;
 /// Default ability mana cost (the SM falls back to this until a class config is applied; the

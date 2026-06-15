@@ -35,7 +35,8 @@ func configure(bounds: Rect2) -> void:
 	_camera.global_position = bounds.get_center()
 	# Camera2D shows viewport_size / zoom world units; we want exactly bounds.size to fill it.
 	_camera.zoom = Vector2(float(size.x) / bounds.size.x, float(size.y) / bounds.size.y)
-	_camera.make_current()
+	# No make_current(): a Camera2D parented under a SubViewport is automatically that
+	# viewport's current camera, and the World2D is shared with the main viewport.
 	_render_once_deferred()
 
 
@@ -43,4 +44,7 @@ func _render_once_deferred() -> void:
 	# Wait for the terrain's queued _draw() to execute, then capture a single frame.
 	await get_tree().process_frame
 	await get_tree().process_frame
+	# The level may have been torn down during the two-frame wait (fast scene swap / test exit).
+	if not is_inside_tree():
+		return
 	render_target_update_mode = SubViewport.UPDATE_ONCE

@@ -39,6 +39,9 @@ func update_hp(current: int, max_hp: int) -> void:
 
 
 func _process(delta: float) -> void:
+	if _fill == null:
+		set_process(false)
+		return
 	if _flash_timer <= 0.0:
 		return
 	_flash_timer -= delta

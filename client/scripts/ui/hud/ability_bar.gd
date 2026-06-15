@@ -8,6 +8,9 @@
 class_name AbilityBar
 extends Control
 
+# NOTE: the Key0..Key5 labels in ability_bar.tscn are positioned with a fixed x-stride that MUST
+# equal SLOT_SIZE + SLOT_GAP (= 40px) so each key glyph lines up under its drawn slot frame. Keep
+# the scene offsets and these constants in lockstep.
 const SLOT_SIZE := 36.0
 const SLOT_GAP := 4.0
 const SLOT_COUNT := 6
@@ -87,7 +90,7 @@ func _draw_cooldown_wedge(slot_rect: Rect2, ratio: float) -> void:
 	draw_colored_polygon(points, Color(0.0, 0.0, 0.0, 0.55))
 
 
-## Draw a small usable-ability glyph in a slot (dimmed while the dash is cooling down).
+## Draw a small usable-ability glyph in a slot (dimmed while the corresponding ability is cooling down).
 func _draw_slot_icon(index: int, kind: String) -> void:
 	var c := _slot_rect(index).get_center() - Vector2(0.0, 4.0)  # sit above the key label
 	var col := Color(0.95, 0.88, 0.55, 0.95)

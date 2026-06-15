@@ -148,23 +148,23 @@ over HTTPS.
 
 > **Prerequisite:** a DNS `A`/`AAAA` record for the domain must already point at this droplet —
 > Caddy proves domain control to Let's Encrypt over ports 80/443. The shipped default domain is
-> `omega.marrowtech.app` (see [`Caddyfile`](Caddyfile)); override with `OMEGA_API_DOMAIN`.
+> `gsapi.marrowtech.app` (see [`Caddyfile`](Caddyfile)); override with `OMEGA_API_DOMAIN`.
 
 ```bash
 # [laptop]
 ssh deploy@<droplet-ip>                                  # → now on the server
-# [server] — default domain (omega.marrowtech.app):
+# [server] — default domain (gsapi.marrowtech.app):
 cd ~/omega-realm && sudo bash deployment/setup_tls.sh
 #   …or a different domain:
 #   sudo OMEGA_API_DOMAIN=api.example.com bash deployment/setup_tls.sh
 exit                                                     # → back on your laptop
 # [laptop] — verify the cert + proxy:
-curl https://omega.marrowtech.app/health                 # → {"status":"healthy",...}
+curl https://gsapi.marrowtech.app/health                 # → {"status":"healthy",...}
 ```
 
 Then point API consumers at `https://<domain>` (no `:8080`):
-- **Game client** — `client/data/config/client_config.json` → `"api_base_url": "https://omega.marrowtech.app"` (already set in-repo; rebuild/redistribute the client).
-- **CMS website** — `API_BASE_URL=https://omega.marrowtech.app` (server-side env; see [`docs/api/cms-api.md`](../docs/api/cms-api.md)).
+- **Game client** — `client/data/config/client_config.json` → `"api_base_url": "https://gsapi.marrowtech.app"` (already set in-repo; rebuild/redistribute the client).
+- **CMS website** — `API_BASE_URL=https://gsapi.marrowtech.app` (server-side env; see [`docs/api/cms-api.md`](../docs/api/cms-api.md)).
 
 > **Alternative (zero server-side TLS):** front the droplet with Cloudflare's proxy (orange-cloud
 > the DNS record, SSL mode Full). Then you can skip Caddy — but still close 8080 to the public and

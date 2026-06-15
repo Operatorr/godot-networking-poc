@@ -24,7 +24,7 @@ login_screen ──login ok──▶ has character? ──no──▶ character_
 
 | Screen | Script | Does |
 | --- | --- | --- |
-| Login | `login_screen.gd` | Username/password → `AuthManager.login` (JWT); auto-login on saved token (`:201`); always routes to the **main menu** (the menu handles the no-character case). Themed art/font, button audio. |
+| Login | `login_screen.gd` | Username/password → `AuthManager.login` (JWT); auto-login on saved token (`:201`); always routes to the **main menu** (the menu handles the no-character case). Themed art/font, button audio. A **"Use local server (dev)"** checkbox switches the auth/account API between production (`ClientConfig.production_api_base_url`) and the local Go API (`local_api_base_url`) via `AuthManager.set_use_local_api`, persisting the choice to `UserPreferences.use_local_api` (logs out any active session so the next login re-auths against the new server). |
 | Character creation | `character_creation.gd` | Validates name (3–16 chars, `^[a-zA-Z0-9_]+$`, `:9-11`); a **class picker** (looping south-facing run-cycle preview from `SheetLibrary.class_frames` + 7 class buttons) sets the class sent in `POST /api/character/create`; stores name+class in `GameManager`, → main menu. **Back to Main Menu** returns without logging out (non-destructive cancel). |
 | Main menu | `main_menu.gd` | **With a character** — character card: a looping **run-cycle preview** of the character (south-facing `run_0` from `SheetLibrary.class_frames`, tinted to match) sits left of the player-colour picker; the colour picker (tints the class sprite — see [`players-movement.md`](players-movement.md)) live-updates the preview tint; class label, and a **Delete** button on the right (`DELETE /api/character` after a confirm → swaps the card for the Create Character button, stays on the menu). **Without a character** — the card is replaced by a **Create Character** button (`→ goto_character_creation`) and **Enter World is disabled**. Region dropdown from `GET /api/regions`; **Enter World** stashes the region URL and `SceneManager.goto_sanctuary()` (the town hub; its Arena portal dials the server). |
 | Loading | `loading_screen.gd` | "ENTERING THE ARENA" overlay with pulsing glow + animated dots; shown/hidden by `SceneManager._show_loading_screen` (`scene_manager.gd:240-271`) during transitions. |
@@ -39,7 +39,7 @@ login_screen ──login ok──▶ has character? ──no──▶ character_
 | `ui/menu_button_helper.gd` | Applies the shared `StyleBoxTexture` button art + sizing to a button list. |
 | `ui/menu_font_helper.gd` | Recursively applies `CormorantUnicase-Bold` to every `Control` in a tree (`:7-25`). |
 | `region_info.gd` | Region DTO (`from_dict`, `is_available`, `get_display_text`) backing the dropdown. |
-| `user_preferences.gd` | `RefCounted`, persists selected region + player colour to `user://preferences.json` (`:6`). The **only** client-side persistence here. |
+| `user_preferences.gd` | `RefCounted`, persists selected region + player colour + keybinds + the **local-API toggle** (`use_local_api`) to `user://preferences.json` (`:6`). The **only** client-side persistence here. |
 
 ## In-Arena HUD
 
@@ -109,7 +109,7 @@ cosmetic, auto-freeing.
 - **Server:** nothing; the headless export never loads these scripts (`_setup_hud` is client-only).
 - **Predicted:** nothing — the HUD reflects already-decided state (HP, kills, ping), never forecasts.
 - **Replicated:** HUD values arrive via `STATE_UPDATE` (HP, positions) and `GAME_EVENT` (kills, death) and are merely displayed.
-- **Persisted:** `user://preferences.json` (region, player colour, **keyboard rebinds**) and in-session `GameManager.settings`; accounts/characters (incl. class, **level + experience**) persist via the Go API.
+- **Persisted:** `user://preferences.json` (region, player colour, **keyboard rebinds**, **local-API toggle**) and in-session `GameManager.settings`; accounts/characters (incl. class, **level + experience**) persist via the Go API.
 - **Validated:** client-side input only — name regex/length (`character_creation.gd:72-94`); the server re-decides all gameplay.
 - **Can fail:** `[ext_resource]`-referencing `game_hud.tscn` from a level scene would pull the client-only HUD scripts into the headless parse graph (so it's always `load()`ed at runtime); stale `EntityNameCache` shows blank killer/feed names; region fetch failure falls back to defaults (`main_menu.gd:244`).
 - **Tested:** `scenes/test/hud_bar_regression.tscn` exercises the health bar (instantiates `health_bar.tscn`, asserts the fill ratio); otherwise manual/visual. The offline Sandbox now reuses the shared `GameHud` (kill feed / leaderboard / minimap / death screen) instead of bespoke overlays.

@@ -12,10 +12,10 @@
 # `deployment/setup_tls.sh` installs Caddy, copies this file to /etc/caddy/Caddyfile,
 # and pins OMEGA_API_DOMAIN into the caddy service environment.
 #
-# The domain defaults to omega.marrowtech.app; override by setting OMEGA_API_DOMAIN
+# The domain defaults to gsapi.marrowtech.app; override by setting OMEGA_API_DOMAIN
 # in the caddy service environment (setup_tls.sh writes a systemd drop-in for this).
 
-{$OMEGA_API_DOMAIN:omega.marrowtech.app} {
+{$OMEGA_API_DOMAIN:gsapi.marrowtech.app} {
 	# Compress responses (the CMS reads JSON; cheap win).
 	encode zstd gzip
 

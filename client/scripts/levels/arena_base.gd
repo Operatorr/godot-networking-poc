@@ -59,7 +59,7 @@ var hud: GameHud = null
 var death_screen: Control = null
 var hp_bar: Control = null
 var stamina_bar: Control = null
-var ability_slots: Control = null
+var ability_bar: Control = null
 var mana_bar: Control = null
 var kill_feed: Control = null
 var minimap: Control = null
@@ -347,7 +347,7 @@ func _setup_hud() -> void:
 
 	hp_bar = hud.health_bar
 	stamina_bar = hud.stamina_bar
-	ability_slots = hud.ability_bar
+	ability_bar = hud.ability_bar
 	mana_bar = hud.mana_bar
 	kill_feed = hud.kill_feed
 	minimap = hud.minimap
@@ -1163,8 +1163,8 @@ func _connect_local_resource_bars() -> void:
 	if mana_bar != null and not sm.mana_changed.is_connected(_on_local_mana_changed):
 		sm.mana_changed.connect(_on_local_mana_changed)
 		mana_bar.update_value(sm.mana, GameConstants.PLAYER_MANA_MAX)
-	if ability_slots != null:
-		ability_slots.bind_movement_state_machine(sm)
+	if ability_bar != null:
+		ability_bar.bind_movement_state_machine(sm)
 
 
 func _on_local_stamina_changed(current: float, maximum: float) -> void:

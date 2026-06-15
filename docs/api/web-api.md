@@ -27,7 +27,7 @@ endpoints, or middleware running on Vercel), not from browser JavaScript. Why:
 The API process serves **plain HTTP** on `:8080`. In production it must sit behind **TLS** —
 the game client and the website both send passwords/JWTs, which must not travel in cleartext.
 The deployment puts **Caddy** in front (automatic Let's Encrypt) so the public URL is
-`https://omega.marrowtech.app`, proxying to the API on localhost. See
+`https://gsapi.marrowtech.app`, proxying to the API on localhost. See
 [`deployment/DEPLOYMENT.md` → Step 4](../../deployment/DEPLOYMENT.md). Point the CMS at the
 **HTTPS** URL, never `http://…:8080`.
 
@@ -35,7 +35,7 @@ The deployment puts **Caddy** in front (automatic Let's Encrypt) so the public U
 | Environment | Base URL |
 |---|---|
 | Local dev | `http://localhost:8080` |
-| Production | `https://omega.marrowtech.app` (TLS via Caddy) |
+| Production | `https://gsapi.marrowtech.app` (TLS via Caddy) |
 
 Health check (unauthenticated): `GET /health` → `{ "status": "healthy", "time": "<RFC3339>" }`.
 
@@ -176,7 +176,7 @@ empty list if none is running. `connect_url` is a bare `host:port` for the ENet/
 server (no scheme/TLS; ADR 0003), sourced from the server's heartbeat `advertise_url` or the
 `REGION_<ID>_URL` env fallback. See [`../ops/multi-region.md`](../ops/multi-region.md).
 ```json
-{ "regions": [ { "id": "asia", "display_name": "Asia", "connect_url": "sgp.omega.marrowtech.app:8081", "status": "online", "active_players": 12, "max_players": 200, "latency_estimate": "< 80ms" } ] }
+{ "regions": [ { "id": "asia", "display_name": "Asia", "connect_url": "sgp.gsapi.marrowtech.app:8081", "status": "online", "active_players": 12, "max_players": 200, "latency_estimate": "< 80ms" } ] }
 ```
 
 ### POST /api/regions/select  *(Bearer)*
@@ -256,7 +256,7 @@ nothing the CMS needs. Listed so they're not mistaken for website endpoints:
 
 `.env`
 ```
-API_BASE_URL=https://omega.marrowtech.app   # local: http://localhost:8080
+API_BASE_URL=https://gsapi.marrowtech.app   # local: http://localhost:8080
 ```
 
 `src/lib/omega-api.ts` — a tiny typed server-side client:

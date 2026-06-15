@@ -124,7 +124,10 @@ func tick(delta: float, move_dir: Vector2, sprint_held: bool, dash_held: bool,
 		try_dash(move_dir, aim_dir)
 	if ability_edge:
 		# Gate on cooldown then mana (mirrors the Rust sim's ability edge), and start the
-		# cooldown only when the cast actually paid its cost.
+		# cooldown only when the cast actually paid its cost. NOTE: this offline SM is HUD-parity
+		# only — it does NOT implement the Rust charge-direction gate (Rust refuses + spends
+		# nothing for a charge class when move/aim are both zero). The Warrior charge runs only
+		# online via the Rust PredictionSim, so the gap is dormant; revisit if offline gains charge.
 		if _ability_cooldown_left <= 0.0 and try_use_mana(ability_cost):
 			_ability_cooldown_left = ability_cooldown_max
 			ability_triggered.emit()

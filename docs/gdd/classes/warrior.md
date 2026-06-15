@@ -19,6 +19,7 @@ A stat at level `L` is `base + per_lvl * (L - 1)`; max level **50**.
 | Mana max | 100 | — (flavor pool 90) | 100 |
 | Mana regen | 2 /s | — | 2 /s |
 | Stamina max | 100 | — | 100 |
+| Stamina regen | 20 /s | — | 20 /s |
 | Hitbox radius | 16 | — | 16 |
 
 ## Primary attack (LMB)

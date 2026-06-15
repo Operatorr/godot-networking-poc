@@ -21,7 +21,7 @@ set -euo pipefail
 
 DEPLOY_USER="deploy"
 REPO_DIR="/home/${DEPLOY_USER}/omega-realm"
-DOMAIN="${OMEGA_API_DOMAIN:-omega.marrowtech.app}"
+DOMAIN="${OMEGA_API_DOMAIN:-gsapi.marrowtech.app}"
 
 log() { printf '\n\033[1;32m==> %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m[warn]\033[0m %s\n' "$*"; }

@@ -17,23 +17,32 @@ const EDGE_MARGIN := 16.0
 const BG_COLOR := Color(0.05, 0.05, 0.07, 0.85)
 const MONSTER_COLOR := Color(0.9, 0.2, 0.2)
 const NPC_COLOR := Color(0.3, 0.9, 0.4)
+## Intentionally the same red as MONSTER_COLOR — remote players are distinguished by the purple border.
 const REMOTE_PLAYER_COLOR := Color(0.9, 0.2, 0.2)
 const REMOTE_PLAYER_BORDER := Color(0.6, 0.25, 0.95)
 const LOCAL_PLAYER_COLOR := Color(0.3, 0.95, 0.4)
 const LOCAL_PLAYER_BORDER := Color(1.0, 1.0, 1.0, 0.9)
 const LANDMARK_COLOR := Color(1.0, 0.85, 0.2)
 
+## Redraw cadence (Hz). Entity dots only move at the server tick rate and the player sits dead
+## centre, so refreshing the pan/dots ~30×/s is smooth enough — no need to scan the entity groups
+## and rebuild the draw every render frame (which on a high-refresh display is pure waste).
+const REDRAW_HZ := 30.0
+
 ## Set by the level (the dot frame-of-reference + the pan centre).
 var local_player: Node2D = null
 
 var _map_texture: Texture2D = null
 var _map_bounds: Rect2 = Rect2()
+var _redraw_accum: float = 0.0
 
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	clip_contents = true  # the whole-level texture is drawn oversized and clipped to the frame
-	set_process(true)
+	# Only scan/redraw while actually on screen (offline modes can hide the minimap).
+	visibility_changed.connect(func() -> void: set_process(is_visible_in_tree()))
+	set_process(is_visible_in_tree())
 
 
 ## Hand in the static whole-level terrain texture and the world bounds it covers.
@@ -43,7 +52,11 @@ func set_world_map(texture: Texture2D, bounds: Rect2) -> void:
 	queue_redraw()
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	_redraw_accum += delta
+	if _redraw_accum < 1.0 / REDRAW_HZ:
+		return
+	_redraw_accum = 0.0
 	queue_redraw()
 
 

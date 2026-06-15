@@ -28,6 +28,10 @@ var api_timeout: float = 10.0
 ## Client configuration
 var _client_config: ClientConfig = null
 
+## Whether the client is targeting the local Go API instead of production. Persisted in
+## UserPreferences and toggled at runtime from the Login screen ("Use local server").
+var _use_local_api: bool = false
+
 ## Authentication state
 var current_state: AuthState = AuthState.LOGGED_OUT
 var jwt_token: String = ""
@@ -50,8 +54,15 @@ func _ready() -> void:
 
 	# Load client configuration
 	_client_config = ClientConfig.new()
-	api_base_url = _client_config.api_base_url
 	api_timeout = _client_config.api_timeout_seconds
+
+	# Resolve the API target. The per-user toggle (Login screen) wins once it has been saved;
+	# on first run (no preferences file yet) we seed it from client_config.json's use_local_api.
+	if FileAccess.file_exists(UserPreferences.SAVE_PATH):
+		_use_local_api = UserPreferences.load_preferences().use_local_api
+	else:
+		_use_local_api = _client_config.use_local_api
+	api_base_url = _resolve_api_base_url()
 
 	if _client_config.debug_logging:
 		_client_config.print_config()
@@ -411,6 +422,32 @@ func _clear_saved_token() -> void:
 func set_api_url(url: String) -> void:
 	api_base_url = url
 	print("[AuthManager] API URL set to: %s" % url)
+
+
+## Resolve the auth/account API base URL from the local-API toggle + loaded config.
+func _resolve_api_base_url() -> String:
+	if _client_config == null:
+		return api_base_url
+	return _client_config.local_api_base_url if _use_local_api else _client_config.production_api_base_url
+
+
+## Is the client currently targeting the local Go API?
+func is_using_local_api() -> bool:
+	return _use_local_api
+
+
+## Switch the API target between local and production at runtime and persist the choice.
+## Surfaced as the Login screen's "Use local server" checkbox. No-op on the dedicated server.
+func set_use_local_api(enabled: bool) -> void:
+	if is_server or enabled == _use_local_api:
+		return
+	_use_local_api = enabled
+	api_base_url = _resolve_api_base_url()
+	var prefs := UserPreferences.load_preferences()
+	prefs.use_local_api = enabled
+	prefs.save()
+	print("[AuthManager] API target switched to %s (%s)" % [
+		"LOCAL" if enabled else "PRODUCTION", api_base_url])
 
 
 func _is_test_scene() -> bool:

@@ -22,7 +22,9 @@ var _last_signature: String = ""
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for i in EXPANDED_COUNT:
-		_labels.append(_vbox.get_node("Entry%d" % i) as Label)
+		var entry := _vbox.get_node_or_null("Entry%d" % i) as Label
+		if entry != null:
+			_labels.append(entry)
 	_refresh_display()
 
 

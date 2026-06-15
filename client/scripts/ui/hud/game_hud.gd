@@ -65,11 +65,10 @@ func bind_movement_state_machine(sm: MovementStateMachine) -> void:
 
 
 ## Set the local player as the minimap's follow centre + the dot frame-of-reference. Safe with null.
+## (The fullscreen MapOverlay frames the whole level by bounds, so it needs no follow target.)
 func set_minimap_player(player: Node2D) -> void:
 	if minimap != null:
 		minimap.local_player = player
-	if map_overlay != null:
-		map_overlay.local_player = player
 
 
 ## Render the level's static terrain once (framing `bounds`) and hand the texture to the minimap +
