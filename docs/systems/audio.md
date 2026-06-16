@@ -16,10 +16,9 @@ are no SFX asset files in the repo. SFX waveforms come from `ProceduralAudio`, a
 `RefCounted` of math (`procedural_audio.gd:4`).
 
 The two **music** tracks are the exception: `_generate_procedural_audio` calls
-`ProceduralAudio.generate_music()` (`audio_manager.gd:171`) but then immediately **overwrites**
-both library entries with preloaded WAV assets — `MAIN_MENU_MUSIC` /
-`ARENA_GAMEPLAY_MUSIC` (`audio_manager.gd:10-11, 179-180`). So at runtime music is asset-backed,
-not procedural. See [Inconsistencies](#inconsistencies-found).
+`ProceduralAudio.generate_music()` but then immediately **overwrites** both library entries with
+preloaded WAV assets — the `MAIN_MENU_MUSIC` / `ARENA_GAMEPLAY_MUSIC` consts. So at runtime music
+is asset-backed, not procedural. See [Inconsistencies](#inconsistencies-found).
 
 ## Server vs client
 
@@ -52,32 +51,35 @@ pool, or `pool[0]` (interrupting it) when all are busy (`audio_manager.gd:305-31
 
 ## The sound library
 
-Generated once in `_generate_procedural_audio` (`audio_manager.gd:151-182`). SFX from
-`ProceduralAudio.generate_all_sounds` (incl. the three **ability** cues — `mageblast` for the
-Mage, `go_invisible` for the Rogue's Shadowstep, `charge` for the Warrior's Charge blast) plus
-2 music tracks. Ability cues fire from `arena_base._handle_ability_effect_event` keyed on the
+Generated once in `AudioManager._generate_procedural_audio`. SFX from
+`ProceduralAudio.generate_all_sounds` (incl. the `level_up` ding fired by `play_level_up`, and the
+three **ability** cues — `mageblast` for the Mage, `go_invisible` for the Rogue's Shadowstep,
+`charge` for the Warrior's Charge blast) plus 2 music tracks. Ability cues fire from `arena_base._handle_ability_effect_event` keyed on the
 `ABILITY_EFFECT` `effect_id` (0 mageblast, 1 charge), and `go_invisible` fires on the local
 player's STEALTH flag rising edge in `_sync_local_player_state`. The **looping** `charge_loop`
 rumble plays *while* the Warrior is charging — `AudioManager.play_charge_loop()` /
 `stop_charge_loop()` on a dedicated `AudioStreamPlayer`, driven by the predicted charge edges in
-`prediction.gd._drive_charge_loop_sfx` (charge-specific, so the regular dash doesn't trigger it):
+`prediction.gd._drive_charge_loop_sfx` (charge-specific, so the regular dash doesn't trigger it).
+
+The full SFX library (generator + length per key):
 
 | Key | Category | Generator | Length |
 |---|---|---|---|
-| `button_hover` / `button_click` | `sfx_ui` | `procedural_audio.gd:114, 125` | 15 / 35 ms |
-| `player_shoot` | `sfx_player` | `:141` | 70 ms |
-| `player_hit` | `sfx_player` | `:159` | 60 ms |
-| `player_death` | `sfx_player` | `:178` | 350 ms |
-| `player_kill` | `sfx_player` | `:200` | 180 ms |
-| `projectile_impact` | `sfx_player` | `:301` | 30 ms |
+| `button_hover` / `button_click` | `sfx_ui` | `_gen_button_hover` / `_gen_button_click` | 15 / 35 ms |
+| `player_shoot` | `sfx_player` | `_gen_player_shoot` | 70 ms |
+| `player_hit` | `sfx_player` | `_gen_player_hit` | 60 ms |
+| `player_death` | `sfx_player` | `_gen_player_death` | 350 ms |
+| `player_kill` | `sfx_player` | `_gen_player_kill` | 180 ms |
+| `level_up` | `sfx_player` | `_gen_level_up` (ascending C-major arpeggio) | 700 ms |
+| `projectile_impact` | `sfx_player` | `_gen_projectile_impact` | 30 ms |
 | `mageblast` / `go_invisible` / `charge` | `sfx_player` | `_gen_mageblast` / `_gen_go_invisible` / `_gen_charge` | 280 / 320 / 340 ms |
 | `charge_loop` (looped) | `sfx_player` | `_gen_charge_loop` (LOOP_FORWARD) | 0.4 s loop |
-| `footstep_l` / `footstep_r` | `sfx_player` | `:318` | 20 ms |
-| `monster_shoot` | `sfx_monster` | `:220` | 60 ms |
-| `monster_hit` | `sfx_monster` | `:236` | 50 ms |
-| `monster_death` | `sfx_monster` | `:253` | 250 ms |
-| `monster_spawn` | `sfx_monster` | `:276` | 150 ms |
-| `menu_bgm` / `arena_ambience` | `music` | asset WAV (see above) | 4 s / 8 s loop |
+| `footstep_l` / `footstep_r` | `sfx_player` | `_gen_footstep` | 20 ms |
+| `monster_shoot` | `sfx_monster` | `_gen_monster_shoot` | 60 ms |
+| `monster_hit` | `sfx_monster` | `_gen_monster_hit` | 50 ms |
+| `monster_death` | `sfx_monster` | `_gen_monster_death` | 250 ms |
+| `monster_spawn` | `sfx_monster` | `_gen_monster_spawn` | 150 ms |
+| `menu_bgm` / `arena_ambience` | `music` | asset WAV (see above; `_gen_menu_bgm` / `_gen_arena_ambience` discarded) | 4 s / 8 s loop |
 
 All synthesis is `static`, 22050 Hz, mono, 16-bit (`SAMPLE_RATE`/`MIX_RATE`, `:7-8`;
 `_samples_to_wav`, `:50-73`) — sine/square/saw/filtered-noise oscillators (`:78-91`) shaped by an
@@ -130,7 +132,7 @@ multipliers `menu_bgm_volume` / `arena_bgm_volume` (default 0.2) scale music dow
 
 - **Music is not procedural at runtime** despite the file/class naming. `generate_music()` is
   called and discarded; `audio_library["music"]` is replaced with preloaded asset WAVs
-  (`audio_manager.gd:171, 179-180`). The two WAVs (`assets/audio/music/main_menu.wav`,
+  (`MAIN_MENU_MUSIC` / `ARENA_GAMEPLAY_MUSIC` in `_generate_procedural_audio`). The two WAVs (`assets/audio/music/main_menu.wav`,
   `arena_gameplay.wav`) total ~68 MB and ship in the client export. The doc title says
   "procedural sound" — accurate for **SFX**, not music.
 - **Music player is on the `Master` bus, not the `Music` bus** (`audio_manager.gd:81`), so the

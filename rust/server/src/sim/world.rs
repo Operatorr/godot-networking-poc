@@ -844,13 +844,19 @@ impl World {
 
     /// Rogue Shadowstep — the assassin ALWAYS teleports, strikes, then vanishes:
     ///
-    /// 1. Find the nearest ALIVE character (monster or other player/bot) within `ability_radius` of
-    ///    the cursor. If one is found, land BEHIND it (opposite its facing — see `behind_offset`).
-    /// 2. If none is found, blink to the cursor clamped to `ROGUE_BLINK_RANGE` from the Rogue.
-    /// 3. On landing: zero velocity, interrupt to idle, set the new position.
-    /// 4. Deal `ability_damage` as a PvE-only AoE to monsters within `ROGUE_SHADOWSTEP_LANDING_RADIUS`
+    /// 1. Pick the target. A MONSTER is always preferred: find the nearest-to-cursor alive monster
+    ///    within `ability_radius` FIRST; only if NO monster is in range do we consider other
+    ///    players/bots. This stops an equidistant/closer player from stealing the lock-on and the
+    ///    landing AoE from whiffing every monster. Land BEHIND whichever target is chosen (opposite
+    ///    its facing — see `behind_offset`).
+    /// 2. If neither a monster nor a player is found, blink to the cursor clamped to
+    ///    `ROGUE_BLINK_RANGE` from the Rogue.
+    /// 3. The landing point is resolved against static obstacles (the same mover monsters use) so
+    ///    the Rogue never teleports into a wall.
+    /// 4. On landing: zero velocity, interrupt to idle, set the new position.
+    /// 5. Deal `ability_damage` as a PvE-only AoE to monsters within `ROGUE_SHADOWSTEP_LANDING_RADIUS`
     ///    of the landing point (the primary monster target is always inside this radius).
-    /// 5. Enter Stealth (vanish) and broadcast the SHADOWSTEP VFX at the landing position.
+    /// 6. Enter Stealth (vanish) and broadcast the SHADOWSTEP VFX at the landing position.
     ///
     /// The teleport is server-authoritative (the client reconciles to the corrected position).
     fn shadowstep(
@@ -864,12 +870,11 @@ impl World {
     ) {
         let search_r2 = stats.ability_radius * stats.ability_radius;
 
-        // Candidate = nearest-to-cursor alive character within the search radius, considering both
-        // monsters AND other players/bots (exclude the caster; entity-id ranges keep out
-        // projectiles/world entities). For each, capture (position, facing) so we can land behind.
+        // Target priority: a MONSTER always wins if any monster is in range. Find the nearest-to-
+        // cursor alive monster within the search radius FIRST; capture (position, facing) so we can
+        // land behind it.
         let mut best: Option<(Vec2, Vec2)> = None; // (target_pos, facing)
         let mut best_d2 = search_r2;
-
         for m in self.monsters.monsters.iter() {
             if !m.is_alive {
                 continue;
@@ -880,26 +885,39 @@ impl World {
                 best = Some((m.position, self.monster_facing(m)));
             }
         }
-        for p in self.players.players.iter() {
-            if p.entity_id == owner_id || !p.authenticated || !p.is_alive {
-                continue;
-            }
-            let d2 = p.position.distance_squared_to(cursor);
-            if d2 <= best_d2 {
-                best_d2 = d2;
-                best = Some((p.position, player_facing(p)));
+
+        // Only if NO monster was found in range do we consider other players/bots (exclude the
+        // caster; entity-id ranges keep out projectiles/world entities). Players require
+        // `authenticated` — they only exist as targetable entities once they've joined the world —
+        // whereas a spawned monster is targetable the moment it is alive (it has no auth concept).
+        if best.is_none() {
+            let mut best_player_d2 = search_r2;
+            for p in self.players.players.iter() {
+                if p.entity_id == owner_id || !p.authenticated || !p.is_alive {
+                    continue;
+                }
+                let d2 = p.position.distance_squared_to(cursor);
+                if d2 <= best_player_d2 {
+                    best_player_d2 = d2;
+                    best = Some((p.position, player_facing(p)));
+                }
             }
         }
 
-        let new_pos = if let Some((target_pos, facing)) = best {
+        let raw_pos = if let Some((target_pos, facing)) = best {
             // Land behind the target, one player+target radius away.
-            let radius = PLAYER_HITBOX_RADIUS + MONSTER_HITBOX_RADIUS;
-            let behind = behind_offset(target_pos, facing, orig_offset(pos, target_pos));
-            sim_core::arena::clamp_to_bounds(target_pos + behind * radius)
+            let land_offset = PLAYER_HITBOX_RADIUS + MONSTER_HITBOX_RADIUS;
+            let behind = behind_offset(facing, orig_offset(pos, target_pos));
+            sim_core::arena::clamp_to_bounds(target_pos + behind * land_offset)
         } else {
             // Empty ground: blink toward the cursor, capped at the blink range.
             sim_core::arena::clamp_to_bounds(clamp_cast_target(pos, cursor, ROGUE_BLINK_RANGE))
         };
+
+        // Resolve the landing against static obstacles (same mover the monster AI uses) so a blink
+        // that would end inside a wall is slid/pulled back to the nearest reachable point.
+        let new_pos =
+            sim_core::arena::move_with_obstacle_collision(pos, raw_pos, PLAYER_HITBOX_RADIUS);
 
         {
             let s = &mut self.players.players[i];
@@ -917,9 +935,21 @@ impl World {
             outbox,
         );
 
-        // The assassin vanishes AFTER striking.
+        // The assassin vanishes AFTER striking. Stealth is INTENTIONALLY permanent for its full
+        // duration: it is NOT broken by casting or shooting (the old `break_stealth` call was
+        // deliberately removed). The Rogue stays invisible until `update_stealth` runs out the timer.
         self.players.players[i].enter_stealth(stats.ability_duration);
-        self.broadcast_ability_effect(ability::effect::SHADOWSTEP, new_pos, 0, owner_id, outbox);
+        // Recompute the entity flags THIS tick so the STEALTH flag is in the snapshot immediately:
+        // shadowstep runs in `process_ability_activations`, AFTER `process_all_inputs` already
+        // rebuilt the flags, so without this the flag would be deferred one tick.
+        self.players.players[i].update_entity_flags();
+        self.broadcast_ability_effect(
+            ability::effect::SHADOWSTEP,
+            new_pos,
+            ROGUE_SHADOWSTEP_LANDING_RADIUS as u16,
+            owner_id,
+            outbox,
+        );
     }
 
     /// A monster's facing for Shadowstep "land behind" targeting: its attack/aim direction (toward
@@ -1243,8 +1273,7 @@ fn orig_offset(from: Vec2, mpos: Vec2) -> Vec2 {
 /// Unit direction from a target's center to the point BEHIND it for a Rogue landing.
 /// `facing` is the target's shoot/travel direction; "behind" is its opposite. When the target is
 /// idle (`facing ≈ 0`), fall back to `fallback_dir` (the direction back toward the Rogue's origin).
-/// `_target_pos` is unused today but kept for call-site clarity/future obstacle-aware landings.
-fn behind_offset(_target_pos: Vec2, facing: Vec2, fallback_dir: Vec2) -> Vec2 {
+fn behind_offset(facing: Vec2, fallback_dir: Vec2) -> Vec2 {
     if facing.length() > 1e-3 {
         (-facing).normalized()
     } else if fallback_dir.length() > 1e-3 {
@@ -1803,11 +1832,91 @@ mod tests {
             world.players.get(1).unwrap().is_stealthed(),
             "rogue must enter stealth after every cast"
         );
-        // The STEALTH entity flag lands on the next tick's flag rebuild and replicates.
-        world.tick(66, &mut outbox);
+        // shadowstep recomputes the flags on the casting tick, so the STEALTH flag is present in
+        // THIS tick's snapshot (no one-tick deferral).
         assert!(
             world.players.get(1).unwrap().entity_flags & entity_flags::STEALTH != 0,
-            "STEALTH flag must replicate"
+            "STEALTH flag must apply on the casting tick"
+        );
+    }
+
+    #[test]
+    fn rogue_prefers_monster_even_when_player_is_closer() {
+        // A monster IN RANGE always wins targeting over a player/bot, even one nearer the cursor.
+        // Otherwise the player would steal the lock-on and the landing AoE would whiff the monster.
+        let mut world = test_world();
+        world
+            .on_peer_connected(1, protocol::PROTOCOL_VERSION as u32)
+            .unwrap();
+        world
+            .on_peer_connected(2, protocol::PROTOCOL_VERSION as u32)
+            .unwrap();
+        let mut outbox = Outbox::new();
+        world.on_packet(1, auth_packet_with_class("Rogue", 5), 0, 0, &mut outbox);
+        world.on_packet(2, auth_packet_with_class("Warrior", 4), 0, 0, &mut outbox);
+        let ppos = world.players.get(1).unwrap().position;
+        // Cursor in open ground. A monster sits a bit FARTHER from the cursor than the bot, yet it
+        // must still be the chosen target (monster-first priority), so the Rogue lands behind the
+        // MONSTER and the AoE kills it.
+        let cursor = ppos + Vec2::new(300.0, 0.0);
+        let mpos = cursor + Vec2::new(40.0, 0.0); // 40 u from cursor (within the search radius)
+        let bpos = cursor + Vec2::new(10.0, 0.0); // 10 u from cursor (CLOSER than the monster)
+        world.players.get_mut(2).unwrap().position = bpos;
+        world.monsters.spawn_monster(mpos, "toxic_slime");
+        outbox.drain();
+        world.on_packet(1, cast_input(1, ppos, cursor), 0, 0, &mut outbox);
+        world.tick(33, &mut outbox);
+        let after = world.players.get(1).unwrap().position;
+        // Landed adjacent to the MONSTER (not the closer bot), and the AoE killed the slime.
+        assert!(
+            after.distance_to(mpos) <= PLAYER_HITBOX_RADIUS + MONSTER_HITBOX_RADIUS + 1.0,
+            "rogue should land behind the MONSTER, not the closer bot (landed {after:?}, monster {mpos:?}, bot {bpos:?})"
+        );
+        assert!(
+            !world.monsters.monsters.iter().any(|m| m.is_alive),
+            "the landing AoE should have killed the toxic slime"
+        );
+        // The bot, well outside the AoE, is unharmed.
+        assert!(world.players.get(2).unwrap().is_alive);
+    }
+
+    #[test]
+    fn rogue_landing_resolved_against_wall() {
+        // Targeting a monster pressed against an obstacle, the "behind" point would fall inside the
+        // wall; the obstacle-aware mover must keep the Rogue out of the obstacle while staying
+        // roughly behind the target.
+        let mut world = test_world();
+        world
+            .on_peer_connected(1, protocol::PROTOCOL_VERSION as u32)
+            .unwrap();
+        let mut outbox = Outbox::new();
+        world.on_packet(1, auth_packet_with_class("Rogue", 5), 0, 0, &mut outbox);
+        // Center north pillar spans x −20..20, y −200..−40 (expanded by 16 ⇒ x −36..36, y −216..−24).
+        // Put the Rogue down-left of the pillar and a −X-facing monster just left of the pillar:
+        // landing behind it (the +X side) lands INSIDE the expanded pillar, which the mover must
+        // resolve (here it slides along Y, the free axis).
+        world.players.get_mut(1).unwrap().position = Vec2::new(-300.0, -200.0);
+        let ppos = world.players.get(1).unwrap().position;
+        let mpos = Vec2::new(-30.0, -120.0); // just left of the pillar, within search range of cursor
+        let mid = world
+            .monsters
+            .spawn_monster(mpos, "target_dummy")
+            .unwrap()
+            .entity_id;
+        world.monsters.get_mut(mid).unwrap().move_direction = Vec2::new(-1.0, 0.0); // faces −X ⇒ behind is +X (into the pillar)
+        outbox.drain();
+        world.on_packet(1, cast_input(1, ppos, mpos), 0, 0, &mut outbox);
+        world.tick(33, &mut outbox);
+        let after = world.players.get(1).unwrap().position;
+        // The mover must not leave the Rogue inside the (expanded) pillar.
+        assert!(
+            !sim_core::arena::circle_intersects_obstacle(after, PLAYER_HITBOX_RADIUS),
+            "landing must be resolved out of the obstacle (landed {after:?})"
+        );
+        // Still teleported away from the origin (didn't freeze in place).
+        assert!(
+            after.distance_to(ppos) > 1.0,
+            "rogue should still teleport toward the target (landed {after:?}, origin {ppos:?})"
         );
     }
 }

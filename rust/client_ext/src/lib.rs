@@ -512,6 +512,8 @@ impl PredictionSim {
     /// Total mana a FULL Warrior charge drains over its distance (beyond the activation cost). The
     /// client sets the SAME value the server uses so the predicted charge ends on mana depletion in
     /// lockstep. Mirror of `MovementSm::set_charge_mana_drain`.
+    /// If this method is missing (stale extension binary), `prediction.gd` emits a warning so the
+    /// resulting client/server lockstep mismatch is surfaced rather than silently swallowed.
     #[func]
     fn set_charge_mana_drain(&mut self, drain: f64) {
         self.sm.set_charge_mana_drain(drain);

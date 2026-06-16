@@ -1,55 +1,55 @@
 {
-  "id": "warrior",
-  "display_name": "Warrior",
-  "role": "melee_bruiser",
+	"id": "warrior",
+	"display_name": "Warrior",
+	"role": "melee_bruiser",
 
-  "stats": {
-    "hp_base": 130,
-    "hp_per_level": 9,
-    "move_speed_base": 200.0,
-    "move_speed_per_level": 0.6,
-    "mana_max": 100,
-    "mana_pool": 90,
-    "mana_regen_per_sec": 2.0,
-    "stamina_max": 100,
-    "stamina_regen_per_sec": 20.0,
-    "hitbox_radius": 16
-  },
+	"stats": {
+		"hp_base": 130,
+		"hp_per_level": 9,
+		"move_speed_base": 200.0,
+		"move_speed_per_level": 0.6,
+		"mana_max": 100,
+		"mana_pool": 90,
+		"mana_regen_per_sec": 2.0,
+		"stamina_max": 100,
+		"stamina_regen_per_sec": 20.0,
+		"hitbox_radius": 16
+	},
 
-  "primary": {
-    "damage_base": 25,
-    "damage_per_level": 2.5,
-    "cooldown": 0.3,
-    "projectile_speed": 400.0
-  },
+	"primary": {
+		"damage_base": 25,
+		"damage_per_level": 2.5,
+		"cooldown": 0.3,
+		"projectile_speed": 400.0
+	},
 
-  "ability": {
-    "id": "charge",
-    "name": "Charge",
-    "type": "movement_steer_blast",
-    "mana_cost": 30,
-    "charge_mana_drain": 10,
-    "cooldown": 4.5,
-    "charge_speed": 720.0,
-    "max_distance": 945.0,
-    "steers_toward_cursor": true,
-    "blast_radius": 120.0,
-    "blast_damage": 50,
-    "invulnerable_while_charging": true
-  },
+	"ability": {
+		"id": "charge",
+		"name": "Charge",
+		"type": "movement_steer_blast",
+		"mana_cost": 30,
+		"charge_mana_drain": 10,
+		"cooldown": 4.5,
+		"charge_speed": 720.0,
+		"max_distance": 945.0,
+		"steers_toward_cursor": true,
+		"blast_radius": 120.0,
+		"blast_damage": 50,
+		"invulnerable_while_charging": true
+	},
 
-  "appearance": {
-    "sprite_dir": "warrior"
-  },
+	"appearance": {
+		"sprite_dir": "warrior"
+	},
 
-  "networking": {
-    "server_authoritative": true,
-    "predicted": [
-      "position",
-      "velocity",
-      "primary_attack_aim",
-      "charge_movement"
-    ],
-    "replicated": ["position", "animation", "flags", "ability_effect"]
-  }
+	"networking": {
+		"server_authoritative": true,
+		"predicted": [
+			"position",
+			"velocity",
+			"primary_attack_aim",
+			"charge_movement"
+		],
+		"replicated": ["position", "animation", "flags", "ability_effect"]
+	}
 }

@@ -60,6 +60,10 @@ pub const PLAYER_MANA_REGEN_PER_SEC: f64 = 2.0;
 /// Default ability mana cost (the SM falls back to this until a class config is applied; the
 /// real per-class costs live in the class data and are pushed in via `set_ability_config`).
 pub const PLAYER_MANA_ABILITY_COST: f64 = 25.0;
+/// Fraction of a Warrior charge's max distance that is GUARANTEED drain-free: the activation cost
+/// always buys at least this much charge, so a low-mana cast still delivers a real gap-close
+/// instead of fizzling. Mana only drains over the remaining `(1 - fraction)` of the distance.
+pub const CHARGE_MIN_DISTANCE_FRACTION: f64 = 0.4;
 
 // ── Status-effect speed modifier bounds ─────────────────────────────────────
 pub const PLAYER_SPEED_MULT_MIN: f64 = 0.25;

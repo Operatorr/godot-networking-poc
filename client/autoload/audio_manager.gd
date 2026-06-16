@@ -39,6 +39,7 @@ var music_player: AudioStreamPlayer = null
 var ui_sfx_players: Array[AudioStreamPlayer] = []
 var combat_sfx_players: Array[AudioStreamPlayer] = []
 ## Dedicated player for sustained/looping ability sounds (e.g. the Warrior charge rumble).
+## Exactly one driver (scripts/network/prediction.gd) owns its start/stop lifecycle.
 var _charge_loop_player: AudioStreamPlayer = null
 
 ## Current music state
@@ -375,15 +376,15 @@ func play_projectile_impact() -> void:
 func play_go_invisible() -> void:
 	play_sfx("go_invisible", AudioCategory.SFX_PLAYER)
 
-## Play the Warrior "charge" (Charge RMB impact) sound
-func play_charge() -> void:
-	play_sfx("charge", AudioCategory.SFX_PLAYER)
-
-## Start the looping "while charging" rumble (Warrior Charge). Idempotent — safe to call each tick.
+## Start the looping "while charging" rumble (Warrior Charge). Idempotent; called on
+## charge start/stop edges by the prediction controller (not every tick). The WAV is
+## LOOP_FORWARD, so the stream loops on its own once started.
 func play_charge_loop() -> void:
 	if is_server or _charge_loop_player == null or _charge_loop_player.playing:
 		return
-	var stream: AudioStream = audio_library.get("sfx_player", {}).get("charge_loop", null)
+	if not audio_library.has("sfx_player") or not audio_library["sfx_player"].has("charge_loop"):
+		return
+	var stream: AudioStream = audio_library["sfx_player"]["charge_loop"]
 	if stream == null:
 		return
 	_charge_loop_player.stream = stream

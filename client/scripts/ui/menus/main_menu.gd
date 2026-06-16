@@ -54,6 +54,15 @@ var _region_fetch_in_flight: bool = false
 var _region_refresh_timer: float = 0.0
 var _is_deleting: bool = false
 
+## Which route the last connect attempt took, so error-dialog retry re-dials the right instance
+## (Arena vs Sanctuary) instead of always routing to the Sanctuary.
+var _last_connect_was_arena: bool = false
+
+## True between firing AuthManager.refresh_character() and its character_refreshed landing.
+## While set, the Glory label renders a neutral placeholder to avoid showing a stale value
+## that snaps to the authoritative one a frame later.
+var _character_refresh_pending: bool = false
+
 ## Reusable confirm dialog for character deletion (created on demand). Untyped because
 ## ConfirmDialog has no class_name (loaded via the scene) — methods resolve dynamically.
 var _delete_confirm = null
@@ -108,9 +117,7 @@ func _ready() -> void:
 	_build_create_character_button()
 
 	# Update UI
-	_update_character_display()
-	_toggle_enter_world_visibility()
-	_update_glory_display()
+	_refresh_menu_state()
 
 	# Fetch regions from API
 	_fetch_regions()
@@ -118,6 +125,9 @@ func _ready() -> void:
 	# Re-confirm authoritative character + Glory from the API. This keeps the menu honest after
 	# an async hardcore permadeath (deleted character, freshly-credited Glory) without needing a
 	# re-login, and prevents the stale "create character" path. Updates the UI when it lands.
+	# Mark the refresh pending so Glory renders a neutral placeholder until it resolves.
+	_character_refresh_pending = true
+	_update_glory_display()
 	AuthManager.refresh_character()
 
 	# Setup button audio
@@ -184,7 +194,10 @@ func _apply_dark_theme() -> void:
 	if status_label:
 		status_label.add_theme_color_override("font_color", Color.WHITE)
 
-	MenuButtonHelper.apply_to_buttons([enter_world_button, enter_arena_button, practice_button, offline_sandbox_button, settings_button, logout_button, exit_button])
+	MenuButtonHelper.apply_to_buttons([
+		enter_world_button, enter_arena_button, practice_button,
+		offline_sandbox_button, settings_button, logout_button, exit_button
+	])
 
 
 ## Update character display panel
@@ -306,17 +319,55 @@ func _toggle_enter_world_visibility() -> void:
 	enter_arena_button.disabled = not has_character
 
 
-## Refresh the account Glory shown at the top of the menu from the cached player data.
+## Re-enable BOTH world-entry buttons after a connect attempt settles (success, failure, or
+## error). Centralized so the success/failure paths and _on_connection_error agree on which
+## buttons exist, and so a failed Arena dial doesn't leave Enter Arena stuck disabled.
+func _set_entry_buttons_disabled(disabled: bool) -> void:
+	enter_world_button.disabled = disabled
+	enter_arena_button.disabled = disabled
+
+
+## Refresh the account Glory shown at the top of the menu from the cached player data. While a
+## character refresh is in flight, show a neutral placeholder so a stale value doesn't flicker
+## before the authoritative one lands.
 func _update_glory_display() -> void:
-	if glory_label:
-		glory_label.text = "Glory: %d" % int(GameManager.get_player_data().get("glory", 0))
+	if not glory_label:
+		return
+	if _character_refresh_pending:
+		glory_label.text = "Glory: --"
+		return
+	glory_label.text = "Glory: %s" % _format_thousands(int(GameManager.get_player_data().get("glory", 0)))
+
+
+## Format an integer with thousands separators (e.g. 12345 -> "12,345").
+func _format_thousands(value: int) -> String:
+	var digits := str(absi(value))
+	var grouped := ""
+	var count := 0
+	for i in range(digits.length() - 1, -1, -1):
+		grouped = digits[i] + grouped
+		count += 1
+		if count % 3 == 0 and i > 0:
+			grouped = "," + grouped
+	return ("-" + grouped) if value < 0 else grouped
+
+
+## Apply the current character + Glory state to the menu UI. Shared by _ready() and the
+## character_refreshed handler so the initial render and re-syncs can't drift apart.
+func _refresh_menu_state() -> void:
+	_update_character_display()
+	_toggle_enter_world_visibility()
+	_update_glory_display()
 
 
 ## AuthManager finished re-syncing /api/character/me — reflect the true character + Glory state.
 func _on_character_refreshed(_has_character: bool) -> void:
-	_update_character_display()
-	_toggle_enter_world_visibility()
-	_update_glory_display()
+	# An in-flight refresh can resolve during teardown (the signal is connected persistently);
+	# bail if we're no longer in the tree to avoid touching freed/queued nodes.
+	if not is_inside_tree():
+		return
+	_character_refresh_pending = false
+	_refresh_menu_state()
 
 
 ## Fetch available regions from API
@@ -522,93 +573,66 @@ func _on_delete_failed(message: String) -> void:
 	_show_error("Delete Failed", message, false)
 
 
-## Handle Enter World button press
+## Handle Enter World button press: join the NETWORKED Sanctuary instance (Sanctuary port, 8082).
+## The Arena portal in town later disconnects and dials the same region's Arena instance (8081),
+## so the region URL is stashed in _begin_connect where Portal looks for it.
 func _on_enter_world_pressed() -> void:
-	if _is_connecting:
-		return
-
-	if regions.is_empty():
-		_show_error("Connection Error", "No regions available. Please try again later.")
-		return
-
-	var selected_index := region_dropdown.selected
-	if selected_index < 0 or selected_index >= region_dropdown.get_item_count():
-		_show_error("Connection Error", "Please select a region.")
-		return
-
-	var region_index := region_dropdown.get_item_id(selected_index)
-	if region_index < 0 or region_index >= regions.size():
-		_show_error("Connection Error", "Please select a region.")
-		return
-
-	var region := regions[region_index]
-	if not region.is_available():
-		_show_error("Region Unavailable", "The selected region is currently unavailable.")
-		return
-
-	# Entering the world now joins the NETWORKED Sanctuary instance (the region host on the
-	# Sanctuary port, 8082). The Arena portal in town later disconnects and dials the same
-	# region's Arena instance (8081), so stash the region URL where Portal looks for it.
-	GameManager.player_data["selected_region_url"] = region.connect_url
-	preferences.save()
-
-	enter_world_button.disabled = true
-	_is_connecting = true
-	_update_status("Connecting to the Sanctuary...")
-
-	var sanctuary_url := NetworkManager.sanctuary_url_for_region(region.connect_url)
-	print("[MainMenu] Connecting to Sanctuary instance %s (region %s)" % [sanctuary_url, region.name])
-
-	var connected: bool = await _connect_and_wait(sanctuary_url)
-	_is_connecting = false
-	if not connected:
-		# NetworkManager emits connection_error on a failed dial, which _on_connection_error
-		# turns into the error dialog + button re-enable; just reset the status here so the
-		# two paths don't stack duplicate dialogs.
-		enter_world_button.disabled = false
-		_update_status("Could not reach the Sanctuary")
-		return
-
-	_update_status("Entering the Sanctuary...")
-	enter_world_button.disabled = false
-	SceneManager.goto_sanctuary()
-
-
-## Handle Enter Arena: skip the Sanctuary and dial the region's ARENA instance (port 8081)
-## directly, then load the arena scene. Mirrors _on_enter_world_pressed but targets the Arena
-## URL and goto_arena(); the region URL is still stashed so the in-arena "return to Sanctuary"
-## route knows where to go.
-func _on_enter_arena_pressed() -> void:
-	if _is_connecting:
-		return
-
+	_last_connect_was_arena = false
 	var region := _selected_region_or_error()
 	if region == null:
 		return
+	await _begin_connect(
+		region,
+		NetworkManager.sanctuary_url_for_region(region.connect_url),
+		"Sanctuary",
+		SceneManager.goto_sanctuary
+	)
+
+
+## Handle Enter Arena: skip the Sanctuary and dial the region's ARENA instance (port 8081)
+## directly, then load the arena scene. Mirrors Enter World but targets the Arena URL and
+## goto_arena(); the region URL is still stashed so the in-arena "return to Sanctuary" route
+## knows where to go.
+func _on_enter_arena_pressed() -> void:
+	_last_connect_was_arena = true
+	var region := _selected_region_or_error()
+	if region == null:
+		return
+	await _begin_connect(
+		region,
+		NetworkManager.arena_url_for_region(region.connect_url),
+		"Arena",
+		SceneManager.goto_arena
+	)
+
+
+## Shared connect choreography for both world-entry routes: stash the region URL, disable the
+## entry buttons, dial the target instance, await the link, then either re-enable on failure or
+## navigate via goto_callable on success. A failed dial leaves the error dialog to
+## _on_connection_error; this only resets status so the two paths don't stack dialogs.
+func _begin_connect(region: RegionInfo, target_url: String, label: String, goto_callable: Callable) -> void:
+	if _is_connecting:
+		return
 
 	GameManager.player_data["selected_region_url"] = region.connect_url
 	preferences.save()
 
-	enter_world_button.disabled = true
-	enter_arena_button.disabled = true
+	_set_entry_buttons_disabled(true)
 	_is_connecting = true
-	_update_status("Connecting to the Arena...")
+	_update_status("Connecting to the %s..." % label)
 
-	var arena_url := NetworkManager.arena_url_for_region(region.connect_url)
-	print("[MainMenu] Connecting to Arena instance %s (region %s)" % [arena_url, region.name])
+	print("[MainMenu] Connecting to %s instance %s (region %s)" % [label, target_url, region.name])
 
-	var connected: bool = await _connect_and_wait(arena_url)
+	var connected: bool = await _connect_and_wait(target_url)
 	_is_connecting = false
 	if not connected:
-		enter_world_button.disabled = false
-		enter_arena_button.disabled = false
-		_update_status("Could not reach the Arena")
+		_set_entry_buttons_disabled(false)
+		_update_status("Could not reach the %s" % label)
 		return
 
-	_update_status("Entering the Arena...")
-	enter_world_button.disabled = false
-	enter_arena_button.disabled = false
-	SceneManager.goto_arena()
+	_update_status("Entering the %s..." % label)
+	_set_entry_buttons_disabled(false)
+	goto_callable.call()
 
 
 ## Resolve the currently selected, available region, surfacing the same errors as Enter World.
@@ -700,7 +724,7 @@ func _on_offline_sandbox_pressed() -> void:
 func _on_connected_to_server() -> void:
 	print("[MainMenu] Connected to server")
 	_is_connecting = false
-	enter_world_button.disabled = false
+	_set_entry_buttons_disabled(false)
 	_update_status("Connected!")
 
 
@@ -708,7 +732,7 @@ func _on_connected_to_server() -> void:
 func _on_disconnected_from_server(reason: String) -> void:
 	print("[MainMenu] Disconnected from server: %s" % reason)
 	_is_connecting = false
-	enter_world_button.disabled = false
+	_set_entry_buttons_disabled(false)
 	_update_status("Disconnected")
 
 
@@ -716,7 +740,7 @@ func _on_disconnected_from_server(reason: String) -> void:
 func _on_connection_error(error: String) -> void:
 	print("[MainMenu] Connection error: %s" % error)
 	_is_connecting = false
-	enter_world_button.disabled = false
+	_set_entry_buttons_disabled(false)
 	_update_status("Connection failed")
 	_show_error("Connection Error", error, true)
 
@@ -746,9 +770,13 @@ func _show_error(title: String, message: String, allow_retry: bool = false) -> v
 	error_dialog.show_error(title, message, allow_retry)
 
 
-## Handle error dialog retry
+## Handle error dialog retry: re-dial whichever route last failed (Arena vs Sanctuary) instead
+## of always routing to the Sanctuary.
 func _on_error_retry() -> void:
-	_on_enter_world_pressed()
+	if _last_connect_was_arena:
+		_on_enter_arena_pressed()
+	else:
+		_on_enter_world_pressed()
 
 
 ## Handle error dialog close
@@ -777,6 +805,9 @@ func _setup_button_audio() -> void:
 		button.pressed.connect(func(): AudioManager.play_button_click())
 
 
-## Called when scene is about to exit
+## Called when scene is about to exit. Drop the persistent AuthManager hookup so an in-flight
+## character refresh resolving during teardown can't fire _on_character_refreshed against a
+## node that's leaving the tree.
 func on_scene_exit() -> void:
-	pass
+	if AuthManager.character_refreshed.is_connected(_on_character_refreshed):
+		AuthManager.character_refreshed.disconnect(_on_character_refreshed)

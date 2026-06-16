@@ -4,8 +4,9 @@
 ## node-path couplings:
 ##   • Audio   — Master / Music / SFX volume sliders, the same settings the in-game pause menu
 ##               exposes (wired through GameManager.update_setting → AudioManager).
-##   • Video   — a "Windowed Fullscreen" toggle (on = windowed-fullscreen launch, off = small
-##               window) plus a VSync toggle.
+##   • Video   — a "Windowed Fullscreen" toggle (on = borderless windowed-fullscreen, off = a
+##               small window) plus a VSync toggle. Each toggle applies immediately and is
+##               remembered for next launch.
 ##   • Controls — a read-only listing of every game control and its current binding.
 ## A Back button returns to the main menu. See docs/systems/UI-HUD.md.
 extends Control
@@ -32,14 +33,14 @@ const CONTROL_ROWS := [
 	["exit_to_menu", "Exit to Menu"],
 ]
 
-var _master_value: Label = null
-var _music_value: Label = null
-var _sfx_value: Label = null
-
+var _back_button: Button = null
 
 func _ready() -> void:
 	_build_ui()
 	MenuFontHelper.apply_to_tree(self)
+	# Seed focus so keyboard/controller navigation works on this fullscreen menu.
+	if is_instance_valid(_back_button):
+		_back_button.grab_focus()
 
 
 # =============================================================================
@@ -81,11 +82,12 @@ func _build_ui() -> void:
 	back.custom_minimum_size = Vector2(320, 64)
 	back.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	back.add_theme_font_size_override("font_size", 20)
+	# Play the click SFX inside the handler, before navigation tears down the scene.
 	back.pressed.connect(_on_back_pressed)
 	back.mouse_entered.connect(func(): AudioManager.play_button_hover())
-	back.pressed.connect(func(): AudioManager.play_button_click())
 	col.add_child(back)
 	MenuButtonHelper.apply_to_buttons([back])
+	_back_button = back
 
 
 # =============================================================================
@@ -101,14 +103,16 @@ func _build_audio_tab() -> Control:
 	vbox.add_theme_constant_override("separation", 18)
 	page.add_child(vbox)
 
-	_master_value = _add_volume_row(vbox, "Master Volume", _current_setting("master_volume", 1.0), _on_master_changed)
-	_music_value = _add_volume_row(vbox, "Music Volume", _current_setting("music_volume", 0.8), _on_music_changed)
-	_sfx_value = _add_volume_row(vbox, "SFX Volume", _current_setting("sfx_volume", 1.0), _on_sfx_changed)
+	_add_volume_row(vbox, "Master Volume", _current_setting("master_volume", 1.0), _on_master_changed)
+	_add_volume_row(vbox, "Music Volume", _current_setting("music_volume", 0.8), _on_music_changed)
+	_add_volume_row(vbox, "SFX Volume", _current_setting("sfx_volume", 1.0), _on_sfx_changed)
 	return page
 
 
-## Build one labelled volume slider row and return its live percentage Label.
-func _add_volume_row(parent: VBoxContainer, label_text: String, value: float, on_changed: Callable) -> Label:
+## Build one labelled volume slider row with a live percentage label.
+func _add_volume_row(
+		parent: VBoxContainer, label_text: String, value: float, on_changed: Callable
+) -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
 	parent.add_child(row)
@@ -136,19 +140,18 @@ func _add_volume_row(parent: VBoxContainer, label_text: String, value: float, on
 
 	slider.value_changed.connect(func(v: float): value_label.text = "%d%%" % int(round(v * 100.0)))
 	slider.value_changed.connect(on_changed)
-	return value_label
 
 
 func _on_master_changed(v: float) -> void:
-	_apply_setting("master_volume", v)
+	_persist_setting("master_volume", v)
 
 
 func _on_music_changed(v: float) -> void:
-	_apply_setting("music_volume", v)
+	_persist_setting("music_volume", v)
 
 
 func _on_sfx_changed(v: float) -> void:
-	_apply_setting("sfx_volume", v)
+	_persist_setting("sfx_volume", v)
 
 
 # =============================================================================
@@ -172,7 +175,7 @@ func _build_video_tab() -> Control:
 
 	var fullscreen_check := CheckButton.new()
 	fullscreen_check.text = "Windowed Fullscreen"
-	fullscreen_check.tooltip_text = "On: launch in borderless windowed-fullscreen. Off: a small window."
+	fullscreen_check.tooltip_text = "On: borderless windowed-fullscreen. Off: a small window."
 	fullscreen_check.add_theme_font_size_override("font_size", 18)
 	fullscreen_check.button_pressed = _current_window_mode() == "windowed_fullscreen"
 	fullscreen_check.toggled.connect(_on_windowed_fullscreen_toggled)
@@ -189,11 +192,11 @@ func _build_video_tab() -> Control:
 
 
 func _on_windowed_fullscreen_toggled(pressed: bool) -> void:
-	_apply_setting("window_mode", "windowed_fullscreen" if pressed else "windowed")
+	_persist_setting("window_mode", "windowed_fullscreen" if pressed else "windowed")
 
 
 func _on_vsync_toggled(pressed: bool) -> void:
-	_apply_setting("vsync", pressed)
+	_persist_setting("vsync", pressed)
 
 
 # =============================================================================
@@ -302,12 +305,13 @@ func _current_window_mode() -> String:
 	return "windowed_fullscreen"
 
 
-## Persist + apply a setting through GameManager (which emits settings_changed so AudioManager
-## re-applies volumes, and runs _apply_setting for window_mode / vsync).
-func _apply_setting(key: String, value: Variant) -> void:
+## Persist + apply a setting through GameManager.update_setting (which stores it, applies it, and
+## emits settings_changed so AudioManager re-applies volumes and window_mode / vsync take effect).
+func _persist_setting(key: String, value: Variant) -> void:
 	if GameManager:
 		GameManager.update_setting(key, value)
 
 
 func _on_back_pressed() -> void:
+	AudioManager.play_button_click()
 	SceneManager.goto_main_menu()

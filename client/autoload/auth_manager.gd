@@ -480,7 +480,8 @@ func _extract_user_data(data: Dictionary) -> Dictionary:
 		"username": _variant_to_string(data.get("username", user.get("username", ""))),
 		"character_id": _variant_to_string(data.get("character_id", "")),
 		"character_name": _variant_to_string(data.get("character_name", "")),
-		# Account-wide Glory (shown on the main menu). Login returns it on the user object.
+		# Account-wide Glory (shown on the main menu). Login/refresh responses carry it on the
+		# user object; defaults to 0 otherwise.
 		"glory": int(user.get("glory", data.get("glory", 0)))
 	}
 
@@ -602,32 +603,37 @@ func _on_refresh_character_completed(result: int, response_code: int, _headers: 
 		if json.parse(body.get_string_from_utf8()) == OK and json.data is Dictionary:
 			var character: Dictionary = json.data
 			var update: Dictionary = {}
+			# _merge_character_data only writes character_id/name when the server returned
+			# non-empty values, so an empty 200 body leaves them untouched. Merge first, then
+			# let _game_manager_has_character() report the truth from the freshly-merged data.
 			_merge_character_data(update, character)
 			if character.has("glory"):
 				update["glory"] = int(character.get("glory", 0))
 			if game_mgr and not update.is_empty():
 				game_mgr.set_player_data(update)
-			character_refreshed.emit(_game_manager_has_character())
+			character_refreshed.emit(_node_has_character(game_mgr))
 			return
 		push_warning("[AuthManager] Failed to parse refresh_character response")
-	elif response_code == 404:
-		# No character server-side (e.g. a hardcore permadeath delete has committed). Clear the
-		# stale local character so callers see the true state instead of a phantom character.
+	elif result == HTTPRequest.RESULT_SUCCESS and response_code == 404:
+		# Confirmed 404 (transport succeeded): no character server-side, e.g. a hardcore
+		# permadeath delete has committed. Clear the stale local character so callers see the
+		# true state instead of a phantom character; region/color/glory are preserved.
 		if game_mgr:
-			game_mgr.set_player_data({"character_id": "", "character_name": ""})
-			if game_mgr.has_method("reset_progression"):
-				game_mgr.reset_progression()
+			game_mgr.clear_player_data()
 		character_refreshed.emit(false)
 		return
 	elif result == HTTPRequest.RESULT_SUCCESS:
 		push_warning("[AuthManager] refresh_character returned status: %d" % response_code)
 
 	# Network/parse error: fall back to whatever we currently believe.
-	character_refreshed.emit(_game_manager_has_character())
+	character_refreshed.emit(_node_has_character(game_mgr))
 
 
 func _game_manager_has_character() -> bool:
-	var game_mgr = get_tree().root.get_node_or_null("GameManager")
+	return _node_has_character(get_tree().root.get_node_or_null("GameManager"))
+
+
+func _node_has_character(game_mgr) -> bool:
 	return game_mgr != null and game_mgr.has_character()
 
 

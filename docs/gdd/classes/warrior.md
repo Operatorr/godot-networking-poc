@@ -5,7 +5,7 @@ a gap-closing **Charge** Class ability that is a _predicted movement_ (invulnera
 ending in an AOE blast. Numbers mirror [`warrior.json`](../../../client/data/classes/warrior.json) and the
 Rust server constants.
 
-> Vocabulary: [`../CONTEXT.md`](../../CONTEXT.md). Stat scaling: [`../systems/PROGRESSION.md`](../../systems/PROGRESSION.md).
+> Vocabulary: [`../../CONTEXT.md`](../../CONTEXT.md). Stat scaling: [`../systems/PROGRESSION.md`](../../systems/PROGRESSION.md).
 > The ability system: [`../systems/abilities.md`](../../systems/abilities.md).
 
 ## Base stats & per-level scaling
@@ -80,7 +80,7 @@ SFX fires on the `CHARGE_BLAST` effect when it connects.
 
 - **Client:** holds the ability flag + cursor in `PlayerInput`; **predicts the dash motion** via `sim_core`; renders the `INVULNERABLE` flash and the blast `ABILITY_EFFECT`.
 - **Server:** authoritative — validates Mana/cooldown, runs the identical charge motion, holds invulnerability, caps distance, fires the AOE blast (50 in radius 120) on end/contact.
-- **Predicted:** the Warrior's **charge movement** (same `sim_core` motion the server runs — zero divergence by construction); **not** the invulnerability or the blast damage.
+- **Predicted:** the Warrior's **steerable charge movement** and the **mana drain / early charge end** (same `sim_core` motion the server runs — zero divergence by construction); **not** the invulnerability or the blast damage.
 - **Replicated:** position (charge motion is in the normal player snapshot), the `INVULNERABLE` entity flag, and an `ABILITY_EFFECT` event for the blast.
 - **Persisted:** nothing — the charge state is Session-ephemeral.
 - **Validated:** Mana ≥ cost and cooldown elapsed, server-side; the server caps the dash distance even if the client over-predicts.

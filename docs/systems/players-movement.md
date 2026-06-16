@@ -54,7 +54,7 @@ obstacle mover → recompute realized velocity**.
 |---|---|---|
 | Base speed | per-class, level-scaled (≈195–215 u/s at level 1) | `ability::effective_base_speed` (`rust/server/src/sim/ability.rs`); mirrored in `prediction.gd` `CLASS_ABILITY_CONFIG` |
 | Sprint | gated by stamina + exhaustion + daze | `MovementSm` (`rust/sim_core/src/movement.rs`) |
-| Dash / Warrior Charge / Rogue Shadowstep | dash 720 u/s; Charge 720 u/s × 420 u; blink to cursor | `MovementSm`; class config pushed via `set_ability_config` |
+| Dash / Warrior Charge / Rogue Shadowstep | dash 720 u/s; Charge 720 u/s × 945 u, steerable (follows the cursor) and draining Mana per unit travelled (`set_charge_mana_drain`); blink to cursor | `MovementSm`; class config pushed via `set_ability_config` |
 | Direction | normalized WASD vector | `movement_direction()` (`rust/sim_core/src/step.rs`); client mirror `prediction.gd::_get_direction_from_flags` |
 | Hitbox radius | `PLAYER_HITBOX_RADIUS` 16 | `rust/sim_core/src/constants.rs` |
 

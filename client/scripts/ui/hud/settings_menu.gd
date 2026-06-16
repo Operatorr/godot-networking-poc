@@ -75,8 +75,11 @@ func _load_settings() -> void:
 	var mode := str(game_mgr.settings.get("window_mode", ""))
 	if mode == "":
 		mode = "windowed_fullscreen" if bool(game_mgr.settings.get("fullscreen", true)) else "windowed"
-	_fullscreen_check.button_pressed = mode == "windowed_fullscreen"
-	_vsync_check.button_pressed = game_mgr.settings.get("vsync", true)
+	# Use the no-signal setters so loading these toggles doesn't fire toggled -> re-apply
+	# the window mode / vsync and write to disk on every open (the sliders avoid this by
+	# connecting their value_changed handlers below, after their values are set).
+	_fullscreen_check.set_pressed_no_signal(mode == "windowed_fullscreen")
+	_vsync_check.set_pressed_no_signal(game_mgr.settings.get("vsync", true))
 
 	# Connect slider changes after loading values (so loading doesn't re-apply audio).
 	_master_slider.value_changed.connect(_on_master_changed)
@@ -106,6 +109,10 @@ func _on_sfx_changed(val: float) -> void:
 
 
 func _on_fullscreen_toggled(pressed: bool) -> void:
+	# Deliberate asymmetry: fullscreen persists IMMEDIATELY via GameManager.update_setting
+	# (which writes to disk), because a window-mode flip is disruptive enough to be worth
+	# remembering even if the user never confirms. Volume and vsync instead use the in-memory
+	# _update_setting helper and rely on GameManager flushing settings on close/quit.
 	# Route through GameManager so it stores window_mode AND applies it (windowed-fullscreen vs
 	# a small centered window) the same way the standalone Settings screen and boot do.
 	var game_mgr := _get_game_manager()

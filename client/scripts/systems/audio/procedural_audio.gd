@@ -414,7 +414,8 @@ static func _gen_charge() -> AudioStreamWAV:
 		# Hard attack, long heavy tail.
 		var env := exp(-t * 8.0)
 		# Deep impact boom sweeping down — the body of the slam.
-		var boom := _sine(t * lerpf(180.0, 50.0, frac)) * 0.6
+		# (0.5, not 0.6: leaves headroom so the in-phase attack peak stays under 1.0.)
+		var boom := _sine(t * lerpf(180.0, 50.0, frac)) * 0.5
 		# Gritty metallic crunch (filtered noise) — armour grinding on impact.
 		crunch_state = _noise_filtered(crunch_state, 0.4)
 		var crunch := crunch_state * 0.32 * exp(-t * 14.0)
@@ -428,8 +429,10 @@ static func _gen_charge() -> AudioStreamWAV:
 
 ## Warrior Charge LOOP — a low, continuous engine-like rumble played WHILE charging (looped on a
 ## dedicated AudioStreamPlayer; started/stopped by the prediction controller on charge edges).
-## Seamless loop: every component frequency completes whole cycles over the 0.4 s loop (multiples
-## of 1/0.4 = 2.5 Hz), and the grit is kept low so its wrap is inaudible. Sits low under the action.
+## Seamless loop: tonal voices must use frequencies that are integer multiples of 1/loop_dur so
+## each completes whole cycles and meets itself at the wrap. The grit is a random walk that can't
+## wrap cleanly, so it is windowed to zero at the loop boundaries (and kept low). Sits low under
+## the action. (Grit RNG is unseeded, so the texture varies per generation — acceptable here.)
 static func _gen_charge_loop() -> AudioStreamWAV:
 	var loop_dur := 0.4
 	var num_samples := int(SAMPLE_RATE * loop_dur)
@@ -438,13 +441,17 @@ static func _gen_charge_loop() -> AudioStreamWAV:
 	var grit_state := 0.0
 	for i in range(num_samples):
 		var t := float(i) / SAMPLE_RATE
-		# Low rumble: a sub + low body + a menacing fifth, all whole-cycle over the loop.
-		var sub := _sine(t * 40.0) * 0.45    # 16 cycles
-		var body := _sine(t * 55.0) * 0.30   # 22 cycles
-		var fifth := _sine(t * 82.5) * 0.12  # 33 cycles
+		# Low rumble: a sub + low body + a menacing fifth. Each frequency is an integer multiple
+		# of 1/loop_dur (2.5 Hz), so they complete whole cycles and wrap seamlessly.
+		var sub := _sine(t * 40.0) * 0.45
+		var body := _sine(t * 55.0) * 0.30
+		var fifth := _sine(t * 82.5) * 0.12
 		# Gritty filtered-noise texture under a slow whole-cycle tremolo (5 Hz = 2 cycles).
+		# Windowed to zero at both loop ends (half-sine over the loop) so its non-periodic wrap
+		# is silent and start/end meet cleanly.
 		grit_state = _noise_filtered(grit_state, 0.25)
-		var grit := grit_state * 0.18 * (0.6 + 0.4 * _sine(t * 5.0))
+		var grit_window := _sine(0.5 * (t / loop_dur))  # sin(pi * t/loop_dur): 0 at both ends
+		var grit := grit_state * 0.18 * (0.6 + 0.4 * _sine(t * 5.0)) * grit_window
 		samples[i] = (sub + body + fifth) * 0.7 + grit
 	return _samples_to_wav(samples, AudioStreamWAV.LOOP_FORWARD)
 

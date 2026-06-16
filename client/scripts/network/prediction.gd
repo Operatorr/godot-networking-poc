@@ -112,6 +112,10 @@ var _own_dazed: bool = false
 ## construction. Owns the movement state machine (dash/sprint/knockback timers, stamina/mana).
 var _sim: PredictionSim = PredictionSim.new()
 
+## Cached capability flag for _sim.has_method("is_charging") so the per-tick charge-loop SFX
+## driver doesn't probe the GDExtension every physics frame. Set when the sim is configured.
+var _sim_has_is_charging := false
+
 ## Per-class ability tuning pushed into PredictionSim.set_ability_config / set_base_speed /
 ## set_stamina_regen so the predicted ability cast/charge/stamina matches the server. Indexed by
 ## PacketTypes.PlayerClass (0..6): [mana_cost, cooldown, charge_speed, charge_max_distance,
@@ -124,7 +128,7 @@ const CLASS_ABILITY_CONFIG := [
 	[30.0, 5.0, 0.0, 0.0, 205.0, 20.0, 0.0],      # 1 Void Hunter
 	[35.0, 8.0, 0.0, 0.0, 195.0, 20.0, 0.0],      # 2 Engineer
 	[35.0, 7.0, 0.0, 0.0, 195.0, 20.0, 0.0],      # 3 Plague Seer
-	[30.0, 4.5, 720.0, 945.0, 200.0, 20.0, 10.0], # 4 Warrior (steerable charge; 30 cast + 10 drain past a 40% drain-free minimum, 4.5s cd)
+	[30.0, 4.5, 720.0, 945.0, 200.0, 20.0, 10.0], # 4 Warrior (steerable charge; 30 activation + 10 mana spread over the draining (post-40%) distance; ~40 total; 4.5s cd)
 	[30.0, 10.0, 0.0, 0.0, 215.0, 20.0, 0.0],     # 5 Rogue
 	[40.0, 6.0, 0.0, 0.0, 195.0, 14.0, 0.0],      # 6 Mage (slower stamina regen)
 ]
@@ -136,6 +140,8 @@ var _own_dashing: bool = false
 
 ## Last seen predicted charge state, so the looping "while charging" rumble fires on the charge
 ## edges (Warrior). Charge-specific — the regular dash is a different state, so it won't trigger.
+## Distinct from _own_dashing, which edges on the server's DASHING flag (covering the plain dash
+## too) to slave the charge END to the server; this one edges on the predicted is_charging state.
 var _was_charging: bool = false
 #endregion
 
@@ -220,10 +226,18 @@ func _configure_ability_for_local_class() -> void:
 	var class_id := int(GameManager.player_data.get("player_class", PacketTypes.PlayerClass.ZEALOT))
 	class_id = clampi(class_id, 0, CLASS_ABILITY_CONFIG.size() - 1)
 	var cfg: Array = CLASS_ABILITY_CONFIG[class_id]
+	# Cache the is_charging capability once; the per-tick charge-loop SFX driver reads the bool
+	# instead of probing the GDExtension every physics frame.
+	_sim_has_is_charging = _sim.has_method("is_charging")
 	if _sim.has_method("set_ability_config"):
 		_sim.set_ability_config(float(cfg[0]), float(cfg[1]), float(cfg[2]), float(cfg[3]))
-	if cfg.size() > 6 and _sim.has_method("set_charge_mana_drain"):
+	# cfg[6] (charge_mana_drain) is only nonzero for the Warrior. has_method guards a stale
+	# GDExtension binary; warn loudly when the config needs the drain but the sim can't take it,
+	# so the silent Warrior-charge divergence is surfaced rather than mispredicted in silence.
+	if _sim.has_method("set_charge_mana_drain"):
 		_sim.set_charge_mana_drain(float(cfg[6]))
+	elif cfg[6] > 0.0:
+		push_warning("[Prediction] PredictionSim lacks set_charge_mana_drain; Warrior charge will mispredict - rebuild client_ext")
 	if _sim.has_method("set_base_speed"):
 		_sim.set_base_speed(float(cfg[4]))
 	if _sim.has_method("set_stamina_regen"):
@@ -240,10 +254,10 @@ func _configure_ability_for_local_class() -> void:
 func _physics_process(delta: float) -> void:
 	# Drive the looping Warrior-charge rumble from the predicted charge state. Evaluated up front
 	# (before the early-returns) so it also stops on disconnect / inactive / death / freed player.
-	_drive_charge_loop_sfx(
-		player_node != null and NetworkManager.is_server_connected() and is_active()
-		and _sim != null and _sim.has_method("is_charging") and _sim.is_charging()
-	)
+	# Cheap guards first; the actual sim probe (is_charging) runs last and only when reachable.
+	var charging := player_node != null and NetworkManager.is_server_connected() and is_active() \
+		and _sim != null and _sim_has_is_charging and _sim.is_charging()
+	_drive_charge_loop_sfx(charging)
 
 	if player_node == null:
 		return

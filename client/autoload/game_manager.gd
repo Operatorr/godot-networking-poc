@@ -55,13 +55,15 @@ var player_data: Dictionary = {
 	"player_level": 1,
 	"player_experience": 0,
 	"player_move_speed": 0,  ## Effective base move speed from the latest PROGRESS event (0 = unknown)
-	"character_mode": "softcore"  ## "softcore" (respawn) or "hardcore" (permadeath on death)
+	"character_mode": "softcore",  ## "softcore" (respawn) or "hardcore" (permadeath on death)
+	"glory": 0  ## Account-scoped Glory (survives a hardcore permadeath); kept consistent with clear_player_data
 }
 
 ## Game settings.
-## window_mode: "windowed_fullscreen" (borderless, covers the screen — the default launch mode)
-## or "windowed" (a small centered window). The Settings → Video tab toggles it. Replaces the
-## old boolean "fullscreen" key (migrated away in _load_settings).
+## window_mode: "windowed_fullscreen" (Godot 4's WINDOW_MODE_FULLSCREEN — borderless,
+## non-exclusive fullscreen that covers the screen; the default launch mode) or "windowed"
+## (a small centered window). The Settings → Video tab toggles it. Replaces the old boolean
+## "fullscreen" key (migrated away in _load_settings).
 var settings: Dictionary = {
 	"master_volume": 1.0,
 	"music_volume": 0.8,
@@ -90,6 +92,14 @@ var local_player_entity_id: int = -1
 
 ## Guards the one-time physics-tick alignment below so it never re-applies.
 var _physics_tick_rate_applied: bool = false
+
+## Debounced settings save: update_setting() sets _settings_save_pending and (re)starts a short
+## one-shot timer instead of writing to disk on every change (e.g. each volume-slider step).
+## When the timer fires, _flush_settings_save() does one write. Window_mode/vsync persist the
+## same way — the timer always fires before the app can quit normally (and EXITING force-flushes).
+const SETTINGS_SAVE_DEBOUNCE := 0.5
+var _settings_save_pending: bool = false
+var _settings_save_timer: SceneTreeTimer = null
 
 ## Progression is now server-authoritative (Rust server + Go API persist it). The
 ## client no longer PATCHes /api/character with level/XP, so there is no dirty state
@@ -181,6 +191,8 @@ func _on_enter_loading() -> void:
 ## Called when exiting game
 func _on_enter_exiting() -> void:
 	print("[GameManager] Exiting game...")
+	# Force-flush any debounced save so a last-moment change isn't lost on quit.
+	_settings_save_pending = false
 	_save_settings()
 
 ## Set player data
@@ -215,10 +227,31 @@ func update_setting(setting_name: String, value) -> void:
 		settings[setting_name] = value
 		settings_changed.emit()
 		_apply_setting(setting_name, value)
-		# Persist immediately so the choice (e.g. window_mode) survives a relaunch — the
-		# Exit button quits without going through the EXITING state's save.
-		_save_settings()
+		# Persist on a short debounce so a rapid stream of changes (e.g. a dragged volume
+		# slider) doesn't write to disk on every step. window_mode/vsync persist the same
+		# way; the timer fires well before a normal quit (EXITING also force-flushes).
+		_schedule_settings_save()
 		print("[GameManager] Setting updated - %s: %s" % [setting_name, str(value)])
+	else:
+		push_warning("[GameManager] update_setting: unknown setting '%s' (ignored)" % setting_name)
+
+## Mark settings dirty and (re)start the debounce timer so the next quiet window triggers one
+## save. Restarting on each call coalesces a burst of updates into a single disk write.
+func _schedule_settings_save() -> void:
+	_settings_save_pending = true
+	if _settings_save_timer != null and _settings_save_timer.time_left > 0.0:
+		# A timer is already counting down; let it keep running rather than spawning another.
+		return
+	_settings_save_timer = get_tree().create_timer(SETTINGS_SAVE_DEBOUNCE)
+	_settings_save_timer.timeout.connect(_flush_settings_save)
+
+## Write settings to disk once if a save is pending. Called when the debounce timer fires.
+func _flush_settings_save() -> void:
+	_settings_save_timer = null
+	if not _settings_save_pending:
+		return
+	_settings_save_pending = false
+	_save_settings()
 
 ## Apply individual setting
 func _apply_setting(setting_name: String, value) -> void:
@@ -239,21 +272,28 @@ func _apply_setting(setting_name: String, value) -> void:
 			pass
 
 
-## Apply the window mode. "windowed_fullscreen" = borderless windowed-fullscreen (Godot's
-## WINDOW_MODE_FULLSCREEN, the default launch mode); anything else = a small centered window.
+## Apply the window mode. "windowed_fullscreen" = Godot 4's WINDOW_MODE_FULLSCREEN — borderless,
+## non-exclusive windowed-fullscreen (the default launch mode); anything else = a small centered
+## window.
 func _apply_window_mode(mode: String) -> void:
+	# Independent entry point (also called per-setting from _apply_setting), so it keeps its
+	# own server guard even though the only current caller already short-circuits servers.
 	if is_server:
 		return
 	if mode == "windowed_fullscreen":
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 		return
-	# "windowed" (small): un-fullscreen, size, and center on the current screen.
+	# "windowed" (small): un-fullscreen, size, and center on the current screen. Clamp the size
+	# to the screen and the centering offset to be non-negative so a screen smaller than
+	# WINDOWED_SMALL_SIZE doesn't push the window partly off-screen.
 	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
-	DisplayServer.window_set_size(WINDOWED_SMALL_SIZE)
 	var screen := DisplayServer.window_get_current_screen()
 	var screen_pos := DisplayServer.screen_get_position(screen)
 	var screen_size := DisplayServer.screen_get_size(screen)
-	DisplayServer.window_set_position(screen_pos + (screen_size - WINDOWED_SMALL_SIZE) / 2)
+	var window_size := screen_size.min(WINDOWED_SMALL_SIZE)
+	DisplayServer.window_set_size(window_size)
+	var offset := Vector2i(maxi(0, screen_size.x - window_size.x), maxi(0, screen_size.y - window_size.y)) / 2
+	DisplayServer.window_set_position(screen_pos + offset)
 
 ## Load settings from file
 func _load_settings() -> void:
@@ -271,11 +311,12 @@ func _load_settings() -> void:
 					print("[GameManager] Settings loaded")
 			file.close()
 
-	# Migrate the legacy boolean "fullscreen" key away. The launch default is now
-	# windowed-fullscreen; drop the old key so it can't force the small window at boot.
+	# Migrate the legacy boolean "fullscreen" key away, honoring its old VALUE: a true
+	# bool maps to windowed-fullscreen, false to the small window. Only seeds window_mode
+	# when it's missing/empty, then drops the old key so it can't force a mode at boot.
 	if settings.has("fullscreen"):
 		if not settings.has("window_mode") or str(settings.get("window_mode")) == "":
-			settings["window_mode"] = "windowed_fullscreen"
+			settings["window_mode"] = "windowed_fullscreen" if bool(settings.get("fullscreen", false)) else "windowed"
 		settings.erase("fullscreen")
 
 	# Apply all loaded settings
@@ -301,15 +342,17 @@ func has_character() -> bool:
 	return not player_data.character_name.is_empty()
 
 ## Clear player data (logout / leaving a character). Account-scoped values that outlive a
-## single character — selected region, player color, and account Glory — are preserved so the
-## menu still shows them (Glory survives a hardcore permadeath, where the character is gone but
-## the account keeps the Glory it earned).
+## single character — selected region, the dynamically-set region connect URL, player color,
+## and account Glory — are preserved so the menu still shows them and post-logout connect URLs
+## survive (Glory survives a hardcore permadeath, where the character is gone but the account
+## keeps the Glory it earned).
 func clear_player_data() -> void:
 	player_data = {
 		"character_name": "",
 		"character_id": "",
 		"user_id": "",
 		"selected_region": player_data.get("selected_region", "Asia"),
+		"selected_region_url": player_data.get("selected_region_url", ""),
 		"session_id": "",
 		"player_color": player_data.get("player_color", Color(0.27, 0.53, 1.0)),
 		"player_class": 0,
@@ -358,17 +401,17 @@ func xp_to_next_level(level: int) -> int:
 
 ## Total lifetime XP a character at (level, experience) has earned: the sum of every prior
 ## level's cost (capped at MAX_PLAYER_LEVEL) plus the current in-level progress. Mirrors Go
-## progression.TotalLifetimeXP exactly (loop l = 1 ..< min(level, MAX_PLAYER_LEVEL)).
+## progression.TotalLifetimeXP exactly (loop lvl = 1 ..< min(level, MAX_PLAYER_LEVEL)).
 func total_lifetime_xp(level: int, experience: int) -> int:
 	var total := maxi(0, experience)
-	var l := 1
-	while l < level and l < MAX_PLAYER_LEVEL:
-		total += xp_to_next_level(l)
-		l += 1
+	var lvl := 1
+	while lvl < level and lvl < MAX_PLAYER_LEVEL:
+		total += xp_to_next_level(lvl)
+		lvl += 1
 	return total
 
 
-## Glory the server credits this character on a hardcore death: floor(total lifetime XP / 100).
+## Glory the server credits this character on a hardcore death: floor(total lifetime XP / GLORY_XP_DIVISOR).
 ## Read from the current authoritative level/experience (kept in sync by PROGRESS events).
 func glory_for_death() -> int:
 	return total_lifetime_xp(get_player_level(), get_player_experience()) / GLORY_XP_DIVISOR

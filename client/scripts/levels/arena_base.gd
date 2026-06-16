@@ -42,9 +42,10 @@ var is_server: bool = false
 ## ground/decor layers and must not have the dark arena grid/border drawn over them.
 var _draws_arena_floor: bool = true
 
-## When false, _draw() skips the opaque FLOOR_COLOR fill (but still paints the vein grid,
-## obstacles, and border on top). Set false by _build_arena_floor_decor() once the sprite-based
-## ground layer is in place, so the textured floor shows through the grimdark overlay.
+## When false, _draw() skips the opaque FLOOR_COLOR fill AND the vein grid + branches (the
+## sprite ground layer is the look now); only obstacles + border still draw on top. Set false by
+## _build_arena_floor_decor() once the sprite-based ground layer is in place, so the textured
+## floor shows through the grimdark overlay.
 var _paint_solid_floor: bool = true
 
 ## Client-only components (null in server mode)
@@ -80,6 +81,9 @@ var _local_death_feedback_played: bool = false
 ## XP→Glory, deletes the character, then kicks us; this flag both selects the permadeath
 ## death screen and suppresses the reconnect overlay for that expected disconnect.
 var _hardcore_death: bool = false
+## Glory this death converts, snapshotted at death time so the death screen and the later
+## main-menu fold-in show the SAME number even if a late PROGRESS event changes level/XP after.
+var _death_glory: int = 0
 
 ## Cached AudioManager reference (lazy-initialized)
 var _cached_audio_manager: Node = null
@@ -517,15 +521,18 @@ func _handle_pickup_event(data: Dictionary) -> void:
 func _handle_ability_effect_event(data: Dictionary) -> void:
 	var event_data: Dictionary = data.get("event_data", {})
 	var effect_id := int(event_data.get("effect_id", 0))
-	var position: Vector2 = event_data.get("position", Vector2.ZERO)
+	var world_pos: Vector2 = event_data.get("position", Vector2.ZERO)
 	var radius := float(event_data.get("radius", 60))
 	var vfx := _AbilityEffectVfx.new()
 	vfx.effect_id = effect_id
 	vfx.max_radius = maxf(radius, 8.0)
-	vfx.position = position
+	vfx.position = world_pos
 	_add_effect_to_arena(vfx)
 
 	# Ability SFX: Mageblast (0) arcane detonation, Warrior Charge blast (1) heavy slam.
+	# Effects 2 (mine detonation) and 3 (shadowstep) are intentionally silent here: the mine
+	# has no dedicated detonation SFX, and shadowstep's audio cue is the separate "go invisible"
+	# stealth sound played on the STEALTH flag rising edge (see _sync_local_player_state).
 	if effect_id == 0:
 		var audio := _get_audio_manager()
 		if audio != null:
@@ -812,7 +819,10 @@ func _play_local_death_feedback() -> void:
 			# Show how much Glory the fallen hero converted. The client recomputes the exact
 			# value the Go API credited from the authoritative level/XP (shared curve+divisor),
 			# so no protocol change is needed (Glory stays off the game wire — ADR 0006).
-			death_screen.show_death_hardcore(_last_killer_id, GameManager.glory_for_death())
+			# Snapshot it once here so the menu fold-in (_on_main_menu_requested) reuses the same
+			# number — a late PROGRESS event can't make the two readings diverge.
+			_death_glory = GameManager.glory_for_death()
+			death_screen.show_death_hardcore(_last_killer_id, _death_glory)
 		else:
 			death_screen.show_death(_last_killer_id)
 
@@ -1005,7 +1015,7 @@ func _on_main_menu_requested() -> void:
 	# Reflect the Glory this death converted in the cached account total so the menu shows the
 	# updated number. The server credited it, but /api/character/me can't return it once the
 	# character row is deleted — so fold the converted amount in here before clearing the run.
-	GameManager.player_data["glory"] = int(GameManager.get_player_data().get("glory", 0)) + GameManager.glory_for_death()
+	GameManager.player_data["glory"] = int(GameManager.get_player_data().get("glory", 0)) + _death_glory
 	GameManager.clear_player_data()
 	SceneManager.goto_main_menu()
 
@@ -1427,9 +1437,12 @@ const ARENA_PROPS: Array[Dictionary] = [
 ## (same graceful-fallback rule as sanctuary.gd) so the arena keeps working
 ## on checkouts without the generated art.
 func _build_arena_props() -> void:
+	# Free the old node IMMEDIATELY (not deferred queue_free) so a same-frame rebuild can't
+	# add a second child with the same name before the queued free runs.
 	var existing := get_node_or_null("Props")
 	if existing:
-		existing.queue_free()
+		remove_child(existing)
+		existing.free()
 	var container := Node2D.new()
 	container.name = "Props"
 	# Carry the minimap bit on the container too: the minimap viewport culls a whole subtree if
@@ -1472,9 +1485,12 @@ func _build_arena_props() -> void:
 ## (same graceful-fallback rule as _build_arena_props) — if no tiles load, the procedural floor
 ## stays. Client-only (called from _build_level_environment's non-server branch).
 func _build_arena_floor_decor() -> void:
+	# Free the old node IMMEDIATELY (not deferred queue_free) so a same-frame rebuild can't
+	# add a second child with the same name before the queued free runs.
 	var existing := get_node_or_null("GroundDecor")
 	if existing:
-		existing.queue_free()
+		remove_child(existing)
+		existing.free()
 
 	var base_path := ARENA_PROP_TEXTURE_DIR + GROUND_BASE_FILE
 	if not ResourceLoader.exists(base_path, "Texture2D"):

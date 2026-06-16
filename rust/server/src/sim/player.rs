@@ -239,14 +239,6 @@ impl PlayerState {
         self.stealth_timer > 0.0
     }
 
-    /// Force-clear Stealth immediately. Shadowstep no longer breaks stealth on cast/shoot (the
-    /// Rogue stays vanished for the full duration), so this currently has no live caller; kept as a
-    /// small API for any future "reveal" mechanic.
-    #[allow(dead_code)]
-    pub fn break_stealth(&mut self) {
-        self.stealth_timer = 0.0;
-    }
-
     pub fn update_stealth(&mut self, delta: f64) {
         if self.stealth_timer > 0.0 {
             self.stealth_timer = (self.stealth_timer - delta).max(0.0);
