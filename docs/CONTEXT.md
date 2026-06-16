@@ -188,8 +188,9 @@ invulnerable, ending in an AOE blast on contact or at maximum distance.
 _Avoid_: rush, dash (reserve "dash" for the shared sprint-dash movement state), bull-rush.
 
 **Shadowstep**:
-The Rogue's Class ability — a blink to the nearest monster near the cursor with a big hitscan hit,
-or, if no monster is in range, entering **Stealth** instead.
+The Rogue's Class ability — always blinks (behind the nearest monster near the cursor, or, if none,
+the nearest player; else toward the cursor clamped to the blink range) and always enters **Stealth**,
+dealing AOE damage to monsters on landing.
 _Avoid_: teleport, blink (that's the movement half only), vanish.
 
 ## Combat & survival
@@ -201,8 +202,8 @@ _Avoid_: splash, blast radius (that's one parameter of an AOE), area damage.
 
 **Stealth**:
 A temporary state in which an entity is invisible to AI targeting — monsters and bots drop aggro
-and will not acquire it. Today only the Rogue's Shadowstep grants it; it breaks early when the
-Rogue deals damage.
+and will not acquire it. Today only the Rogue's Shadowstep grants it; it persists for its full
+duration and is not broken by casting or shooting.
 _Avoid_: invisibility (Stealth is an AI-targeting state, not a render effect), cloak, hidden.
 
 **Healthorb**:

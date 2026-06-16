@@ -32,6 +32,11 @@ static func generate_all_sounds() -> Dictionary:
 	sounds["projectile_impact"] = _gen_projectile_impact()
 	sounds["mageblast"] = _gen_mageblast()
 
+	# Ability sounds
+	sounds["go_invisible"] = _gen_go_invisible()
+	sounds["charge"] = _gen_charge()
+	sounds["charge_loop"] = _gen_charge_loop()
+
 	# Movement sounds
 	sounds["footstep_l"] = _gen_footstep(0)
 	sounds["footstep_r"] = _gen_footstep(1)
@@ -367,6 +372,88 @@ static func _gen_mageblast() -> AudioStreamWAV:
 		var whoosh := _saw(t * (320.0 - 220.0 * clampf(t / 0.28, 0.0, 1.0))) * 0.12 * env
 		samples[i] = (boom * env) + shimmer_tone + crackle + whoosh
 	return _samples_to_wav(samples)
+
+
+## Rogue Shadowstep "go invisible" — a soft, airy vanish: a quick descending whoosh with a
+## breathy filtered-noise swish under a fast-fading high shimmer, as the body fades from view.
+## Deliberately quieter and less percussive than mageblast so it reads as "disappearing". ~0.32 s.
+static func _gen_go_invisible() -> AudioStreamWAV:
+	var num_samples := int(SAMPLE_RATE * 0.32)
+	var samples := PackedFloat32Array()
+	samples.resize(num_samples)
+	var swish_state := 0.0  # running state of the breathy filtered-noise voice
+	for i in range(num_samples):
+		var t := float(i) / SAMPLE_RATE
+		var frac := clampf(t / 0.32, 0.0, 1.0)
+		# Overall soft attack, gentle exponential tail.
+		var env := exp(-t * 7.0)
+		# Descending whoosh: a sine sweeping down from ~620 Hz to ~180 Hz (the "fwip" of fading out).
+		var whoosh_freq := lerpf(620.0, 180.0, frac)
+		var whoosh := _sine(t * whoosh_freq) * 0.32
+		# Breathy swish: filtered noise that thins out as it fades (airy, not gritty).
+		swish_state = _noise_filtered(swish_state, 0.18)
+		var swish := swish_state * 0.18 * exp(-t * 10.0)
+		# High arcane shimmer dropping in pitch, fast decay — the sparkle of going translucent.
+		var shimmer_env := exp(-t * 18.0)
+		var shimmer := _sine(t * lerpf(2200.0, 1400.0, frac)) * 0.10 * shimmer_env
+		samples[i] = (whoosh + swish) * env + shimmer
+	return _samples_to_wav(samples)
+
+
+## Warrior Charge (RMB) impact — a heavy armoured slam: a deep boom dropping from ~180 Hz to
+## ~50 Hz under a gritty metallic crunch and a short clang, the weight of a charge connecting.
+## Fires on the CHARGE_BLAST ability effect. ~0.34 s.
+static func _gen_charge() -> AudioStreamWAV:
+	var num_samples := int(SAMPLE_RATE * 0.34)
+	var samples := PackedFloat32Array()
+	samples.resize(num_samples)
+	var crunch_state := 0.0  # running state of the gritty filtered-noise crunch voice
+	for i in range(num_samples):
+		var t := float(i) / SAMPLE_RATE
+		var frac := clampf(t / 0.34, 0.0, 1.0)
+		# Hard attack, long heavy tail.
+		var env := exp(-t * 8.0)
+		# Deep impact boom sweeping down — the body of the slam.
+		# (0.5, not 0.6: leaves headroom so the in-phase attack peak stays under 1.0.)
+		var boom := _sine(t * lerpf(180.0, 50.0, frac)) * 0.5
+		# Gritty metallic crunch (filtered noise) — armour grinding on impact.
+		crunch_state = _noise_filtered(crunch_state, 0.4)
+		var crunch := crunch_state * 0.32 * exp(-t * 14.0)
+		# Short metallic clang overtone at the strike.
+		var clang := _sine(t * 540.0) * exp(-t * 22.0) * 0.18
+		# Sub rumble for weight.
+		var rumble := _sine(t * 38.0) * env * 0.22
+		samples[i] = (boom + rumble) * env + crunch + clang
+	return _samples_to_wav(samples)
+
+
+## Warrior Charge LOOP — a low, continuous engine-like rumble played WHILE charging (looped on a
+## dedicated AudioStreamPlayer; started/stopped by the prediction controller on charge edges).
+## Seamless loop: tonal voices must use frequencies that are integer multiples of 1/loop_dur so
+## each completes whole cycles and meets itself at the wrap. The grit is a random walk that can't
+## wrap cleanly, so it is windowed to zero at the loop boundaries (and kept low). Sits low under
+## the action. (Grit RNG is unseeded, so the texture varies per generation — acceptable here.)
+static func _gen_charge_loop() -> AudioStreamWAV:
+	var loop_dur := 0.4
+	var num_samples := int(SAMPLE_RATE * loop_dur)
+	var samples := PackedFloat32Array()
+	samples.resize(num_samples)
+	var grit_state := 0.0
+	for i in range(num_samples):
+		var t := float(i) / SAMPLE_RATE
+		# Low rumble: a sub + low body + a menacing fifth. Each frequency is an integer multiple
+		# of 1/loop_dur (2.5 Hz), so they complete whole cycles and wrap seamlessly.
+		var sub := _sine(t * 40.0) * 0.45
+		var body := _sine(t * 55.0) * 0.30
+		var fifth := _sine(t * 82.5) * 0.12
+		# Gritty filtered-noise texture under a slow whole-cycle tremolo (5 Hz = 2 cycles).
+		# Windowed to zero at both loop ends (half-sine over the loop) so its non-periodic wrap
+		# is silent and start/end meet cleanly.
+		grit_state = _noise_filtered(grit_state, 0.25)
+		var grit_window := _sine(0.5 * (t / loop_dur))  # sin(pi * t/loop_dur): 0 at both ends
+		var grit := grit_state * 0.18 * (0.6 + 0.4 * _sine(t * 5.0)) * grit_window
+		samples[i] = (sub + body + fifth) * 0.7 + grit
+	return _samples_to_wav(samples, AudioStreamWAV.LOOP_FORWARD)
 
 
 # ─── MOVEMENT SOUNDS ───

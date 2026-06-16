@@ -64,8 +64,8 @@ the server and replicated via the `ABILITY_EFFECT` event.
 | Void Hunter | **Multishot**       | 30   | 5 s      | 5 piercing projectiles (pierce 4) in a 28° spread, 18 each.                |
 | Engineer    | **Mine**            | 35   | 8 s      | Drop a proximity mine; arms in 0.5 s, blasts for 60 in radius 120.         |
 | Plague Seer | **Plague Zone**     | 35   | 7 s      | A DoT AOE at the cursor for 5 s, 12 dps, radius 100.                       |
-| Warrior     | **Charge**          | 40   | 9 s      | Hold to dash (invulnerable); AOE blast (50) on contact or at max distance. |
-| Rogue       | **Shadowstep**      | 30   | 10 s     | Blink to the nearest monster for an 85 hitscan, or go Stealth 5 s if none. |
+| Warrior     | **Charge**          | 40   | 4.5 s    | Hold to dash (invulnerable), **steerable** — follows the cursor; drains Mana per unit travelled; AOE blast (50) on contact or at max distance. |
+| Rogue       | **Shadowstep**      | 30   | 10 s     | Always teleports (behind the nearest monster/player near the cursor, else toward the cursor), strikes with a landing AOE, and always enters Stealth. |
 | Mage        | **Mageblast**       | 40   | 6 s      | Instant AOE explosion at the cursor, 55 in radius 144.                     |
 
 ## See also

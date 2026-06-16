@@ -159,7 +159,7 @@ layout_mode = 2
 [node name="FullscreenCheck" type="CheckButton" parent="Panel/VBox"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
-text = "Fullscreen"
+text = "Windowed Fullscreen"
 
 [node name="VsyncCheck" type="CheckButton" parent="Panel/VBox"]
 layout_mode = 2

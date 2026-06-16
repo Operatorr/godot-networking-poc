@@ -299,6 +299,13 @@ impl ProtocolCodec {
                 out.set("server_tick", c.server_tick as i64);
                 out.set("stamina", c.stamina as i64);
                 out.set("mana", c.mana as i64);
+                // Dequantized to seconds so GDScript reconciliation compares against the predicted
+                // cooldown directly (PredictionSim cooldowns are in seconds).
+                out.set("dash_cooldown", protocol::dequant_cooldown(c.dash_cooldown));
+                out.set(
+                    "ability_cooldown",
+                    protocol::dequant_cooldown(c.ability_cooldown),
+                );
             }
             ServerPacket::GameEvent(e) => {
                 out.set("type", MSG_GAME_EVENT);
@@ -502,6 +509,16 @@ impl PredictionSim {
             .set_ability_config(cost, cooldown, charge_speed, charge_max_distance);
     }
 
+    /// Total mana a FULL Warrior charge drains over its distance (beyond the activation cost). The
+    /// client sets the SAME value the server uses so the predicted charge ends on mana depletion in
+    /// lockstep. Mirror of `MovementSm::set_charge_mana_drain`.
+    /// If this method is missing (stale extension binary), `prediction.gd` emits a warning so the
+    /// resulting client/server lockstep mismatch is surfaced rather than silently swallowed.
+    #[func]
+    fn set_charge_mana_drain(&mut self, drain: f64) {
+        self.sm.set_charge_mana_drain(drain);
+    }
+
     /// Per-class+level base move speed (the client adopts the authoritative value from PROGRESS).
     #[func]
     fn set_base_speed(&mut self, base_speed: f64) {
@@ -558,6 +575,25 @@ impl PredictionSim {
     #[func]
     fn ability_cooldown_remaining(&self) -> f64 {
         self.sm.ability_cooldown_remaining()
+    }
+
+    #[func]
+    fn dash_cooldown_remaining(&self) -> f64 {
+        self.sm.dash_cooldown_remaining()
+    }
+
+    /// Authoritative dash/ability cooldown correction from ActionConfirm — the owner reconciles
+    /// its PREDICTED cooldown against the server's so a refused / lost / boundary-timed dash or
+    /// cast can't drift the timers permanently out of phase. Floors negatives to 0; ignores
+    /// non-finite (clamped inside sim_core so client and server agree).
+    #[func]
+    fn set_dash_cooldown(&mut self, cooldown: f64) {
+        self.sm.set_dash_cooldown(cooldown);
+    }
+
+    #[func]
+    fn set_ability_cooldown(&mut self, cooldown: f64) {
+        self.sm.set_ability_cooldown(cooldown);
     }
 
     /// Reconciliation replay step — the deliberately-stateless ground-speed model (sprint

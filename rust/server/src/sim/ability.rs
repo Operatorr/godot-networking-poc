@@ -21,7 +21,8 @@ pub enum AbilityKind {
     PlagueZone,
     /// Warrior — Charge (predicted movement + invuln) then an AOE blast.
     Charge,
-    /// Rogue — Shadowstep to the nearest monster near the cursor, else Stealth.
+    /// Rogue — Shadowstep to the nearest alive character (monster preferred, else player) near
+    /// the cursor; always teleports + always stealths; AoE strike on landing.
     Shadowstep,
 }
 
@@ -50,7 +51,7 @@ pub struct ClassStats {
     // ── RMB ability ──
     pub ability_mana: f64,
     pub ability_cooldown: f64,
-    /// Generic ability magnitude (per-hit / blast / hitscan / dps depending on kind).
+    /// Generic ability magnitude (per-hit / blast / AOE / dps depending on kind).
     pub ability_damage: i32,
     /// Generic ability radius (blast / zone / orbit / search depending on kind).
     pub ability_radius: f32,
@@ -62,6 +63,9 @@ pub struct ClassStats {
     pub charge_speed: f64,
     /// Charge max distance (Warrior).
     pub charge_distance: f64,
+    /// Total mana a FULL charge drains over its distance (Warrior), beyond the activation cost.
+    /// The charge ends early (blast) if mana runs out first. 0 for non-charge classes.
+    pub charge_mana_drain: f64,
     /// Multishot projectile count (Void Hunter), else 0.
     pub multishot_count: u32,
     /// Multishot spread (radians, total cone) and pierce target cap.
@@ -119,6 +123,7 @@ const ZEALOT: ClassStats = ClassStats {
     ability_cast_range: 0.0,
     charge_speed: 0.0,
     charge_distance: 0.0,
+    charge_mana_drain: 0.0,
     multishot_count: 0,
     multishot_spread: 0.0,
     multishot_pierce: 0,
@@ -141,6 +146,7 @@ const VOID_HUNTER: ClassStats = ClassStats {
     ability_cast_range: 0.0,
     charge_speed: 0.0,
     charge_distance: 0.0,
+    charge_mana_drain: 0.0,
     multishot_count: 5,
     multishot_spread: 0.488_692, // 28° total cone
     multishot_pierce: 4,
@@ -163,6 +169,7 @@ const ENGINEER: ClassStats = ClassStats {
     ability_cast_range: 0.0,
     charge_speed: 0.0,
     charge_distance: 0.0,
+    charge_mana_drain: 0.0,
     multishot_count: 0,
     multishot_spread: 0.0,
     multishot_pierce: 0,
@@ -185,11 +192,15 @@ const PLAGUE_SEER: ClassStats = ClassStats {
     ability_cast_range: 500.0,
     charge_speed: 0.0,
     charge_distance: 0.0,
+    charge_mana_drain: 0.0,
     multishot_count: 0,
     multishot_spread: 0.0,
     multishot_pierce: 0,
 };
 
+// Warrior tuning is duplicated across three sources that MUST stay in lockstep: this block,
+// the client's CLASS_ABILITY_CONFIG in `client/scripts/network/prediction.gd`, and
+// `client/data/classes/warrior.json`. (A cross-language CI parity check is deferred.)
 const WARRIOR: ClassStats = ClassStats {
     kind: AbilityKind::Charge,
     stamina_regen_per_sec: 20.0,
@@ -199,14 +210,17 @@ const WARRIOR: ClassStats = ClassStats {
     speed_per_level: 0.6,
     base_damage: 25.0,
     damage_per_level: 2.5,
-    ability_mana: 40.0,
-    ability_cooldown: 9.0,
+    ability_mana: 30.0, // activation cost (the charge then drains more per unit — see below)
+    ability_cooldown: 4.5,
     ability_damage: 50, // blast damage
     ability_radius: 120.0,
     ability_duration: 0.0,
     ability_cast_range: 0.0,
     charge_speed: 720.0,
-    charge_distance: 420.0,
+    charge_distance: 945.0, // steerable charge — follows the cursor
+    // Mana drained over the DRAINING portion of a full charge (the first 40% is drain-free — the
+    // activation always buys a minimum charge). ~40 total with the 30 activation cost.
+    charge_mana_drain: 10.0,
     multishot_count: 0,
     multishot_spread: 0.0,
     multishot_pierce: 0,
@@ -223,12 +237,13 @@ const ROGUE: ClassStats = ClassStats {
     damage_per_level: 2.0,
     ability_mana: 30.0,
     ability_cooldown: 10.0,
-    ability_damage: 85,    // hitscan damage
+    ability_damage: 85,    // AoE landing damage
     ability_radius: 160.0, // cursor search radius
     ability_duration: 5.0, // stealth duration
     ability_cast_range: 0.0,
     charge_speed: 0.0,
     charge_distance: 0.0,
+    charge_mana_drain: 0.0,
     multishot_count: 0,
     multishot_spread: 0.0,
     multishot_pierce: 0,
@@ -251,6 +266,7 @@ const MAGE: ClassStats = ClassStats {
     ability_cast_range: 600.0,
     charge_speed: 0.0,
     charge_distance: 0.0,
+    charge_mana_drain: 0.0,
     multishot_count: 0,
     multishot_spread: 0.0,
     multishot_pierce: 0,

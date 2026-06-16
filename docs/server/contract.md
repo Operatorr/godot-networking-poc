@@ -131,10 +131,14 @@ the Class ability (point-target Mageblast/Plague Zone clamp to `max_cast_range`;
 Shadowstep searches near it; movement Charge uses it for direction). One of the `input_flags` bits is
 the RMB **ability-held** flag. See [`../systems/abilities.md`](../systems/abilities.md).
 
-### ActionConfirm (type 66, ch0) — 12 B
+### ActionConfirm (type 66, ch0) — 14 B
 
-`[u8 type][u8 seq][u8 action][s16 qx][s16 qy][u8 result][u16 server_tick][u8 stamina][u8 mana]`
-(stamina/mana = `clamp(round(v), 0, 255)`).
+`[u8 type][u8 seq][u8 action][s16 qx][s16 qy][u8 result][u16 server_tick][u8 stamina][u8 mana][u8 dash_cd][u8 ability_cd]`
+(stamina/mana = `clamp(round(v), 0, 255)`; dash/ability cooldown = `clamp(round(seconds×10), 0, 255)`
+**deciseconds**, 0.1-s resolution up to 25.5 s). The owner reconciles its **predicted** dash + RMB
+cooldowns against these authoritative values (epsilon-gated) so a refused / lost / cooldown-boundary
+dash can't drift the client's cooldown permanently out of phase with the server — see
+[`../netcode/client-prediction.md`](../netcode/client-prediction.md).
 
 ### ConnectAuth (type 1, ch1)
 
@@ -259,6 +263,7 @@ impl MovementSm {
     pub fn apply_knockback(&mut self, dir: Vec2, force: f64, multiplier: f64);
     pub fn end_sprint(&mut self); pub fn apply_stun(&mut self, d: f64);
     pub fn set_resources(&mut self, stamina: f64, mana: f64); pub fn reset(&mut self);
+    pub fn set_dash_cooldown(&mut self, s: f64); pub fn set_ability_cooldown(&mut self, s: f64); // authoritative reconcile
     pub fn ground_speed(&self, sprinting: bool) -> f32;
     // queries: state(), stamina(), mana(), dash_cooldown_remaining(), is_input_locked(), …
 }
@@ -288,8 +293,10 @@ intra-tick order (timers → stamina(previous state) → mana → edges → acti
   animation_state/flags/delta_mask`). One boundary call per packet.
 - `PredictionSim` (RefCounted): wraps a `MovementSm`; `step(delta, position, move_dir, sprint,
   dash, ability, attacking, aim_dir) -> Dictionary {position, velocity, state, stamina, mana,
-  dash_cooldown, moving}`; `replay_step(position, input_flags, delta) -> Dictionary`
-  (reconciliation replay); `set_resources(stamina, mana)`, `reset()`, plus query/config helpers
+  dash_cooldown, ability_cooldown, moving}`; `replay_step(position, input_flags, delta) -> Dictionary`
+  (reconciliation replay); `set_resources(stamina, mana)`, `set_dash_cooldown(s)` /
+  `set_ability_cooldown(s)` + `dash_cooldown_remaining()` / `ability_cooldown_remaining()`
+  (ActionConfirm cooldown reconciliation), `reset()`, plus query/config helpers
   (`stamina()`, `mana()`, `movement_state()`, `set_world_geometry(...)`, `set_ability_config(...)`,
   daze/charge helpers).
 - `SimHit` (RefCounted): the static hit predicates shared with the server — `swept_hit(self_pos,

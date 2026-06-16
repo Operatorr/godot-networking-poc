@@ -35,6 +35,11 @@ pub struct ActionConfirm {
     pub server_tick: u16,
     pub stamina: u8,
     pub mana: u8,
+    /// Authoritative dash + RMB-ability cooldowns (deciseconds; `quant_cooldown`). The owner
+    /// reconciles its PREDICTED cooldowns against these so a refused / lost / cooldown-boundary
+    /// dash or cast can't leave the client's cooldown permanently out of phase with the server.
+    pub dash_cooldown: u8,
+    pub ability_cooldown: u8,
 }
 
 /// GAME_EVENT — common head + per-type tail, identical semantics to today (extraction §4.15).
@@ -212,6 +217,8 @@ impl ServerPacket {
                 w.write_u16(c.server_tick);
                 w.write_u8(c.stamina);
                 w.write_u8(c.mana);
+                w.write_u8(c.dash_cooldown);
+                w.write_u8(c.ability_cooldown);
             }
             ServerPacket::GameEvent(e) => {
                 // The decoder picks the data layout from event_type; a mismatched variant
@@ -351,6 +358,8 @@ impl ServerPacket {
                 server_tick: r.read_u16()?,
                 stamina: r.read_u8()?,
                 mana: r.read_u8()?,
+                dash_cooldown: r.read_u8()?,
+                ability_cooldown: r.read_u8()?,
             }),
             server_type::GAME_EVENT => {
                 let event_type = r.read_u8()?;
@@ -505,12 +514,16 @@ mod tests {
             server_tick: 60000,
             stamina: 73,
             mana: 100,
+            dash_cooldown: 55,
+            ability_cooldown: 100,
         });
         match rt(p) {
             ServerPacket::ActionConfirm(c) => {
                 assert_eq!(c.sequence, 200);
                 assert!((c.position.0 + 450.5).abs() < 0.1);
                 assert_eq!(c.stamina, 73);
+                assert_eq!(c.dash_cooldown, 55);
+                assert_eq!(c.ability_cooldown, 100);
             }
             other => panic!("wrong: {other:?}"),
         }

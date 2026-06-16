@@ -26,13 +26,15 @@
 	"ability": {
 		"id": "shadowstep",
 		"name": "Shadowstep",
-		"type": "movement_blink_or_stealth",
+		"type": "movement_blink_strike_stealth",
 		"mana_cost": 30,
 		"cooldown": 10.0,
 		"cursor_search_radius": 160.0,
-		"hitscan_damage": 85,
+		"blink_range": 450.0,
+		"landing_aoe_radius": 100.0,
+		"landing_aoe_damage": 85,
 		"stealth_duration": 5.0,
-		"stealth_breaks_on_damage_dealt": true
+		"stealth_breaks_on_damage_dealt": false
 	},
 
 	"appearance": {
@@ -41,7 +43,7 @@
 
 	"networking": {
 		"server_authoritative": true,
-		"predicted": ["position", "velocity", "primary_attack_aim", "blink_movement"],
+		"predicted": ["position", "velocity", "primary_attack_aim"],
 		"replicated": ["position", "animation", "flags", "ability_effect", "stealth_flag"]
 	}
 }

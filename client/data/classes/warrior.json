@@ -26,11 +26,13 @@
 	"ability": {
 		"id": "charge",
 		"name": "Charge",
-		"type": "movement_dash_blast",
-		"mana_cost": 40,
-		"cooldown": 9.0,
+		"type": "movement_steer_blast",
+		"mana_cost": 30,
+		"charge_mana_drain": 10,
+		"cooldown": 4.5,
 		"charge_speed": 720.0,
-		"max_distance": 420.0,
+		"max_distance": 945.0,
+		"steers_toward_cursor": true,
 		"blast_radius": 120.0,
 		"blast_damage": 50,
 		"invulnerable_while_charging": true
@@ -42,7 +44,12 @@
 
 	"networking": {
 		"server_authoritative": true,
-		"predicted": ["position", "velocity", "primary_attack_aim", "charge_movement"],
+		"predicted": [
+			"position",
+			"velocity",
+			"primary_attack_aim",
+			"charge_movement"
+		],
 		"replicated": ["position", "animation", "flags", "ability_effect"]
 	}
 }

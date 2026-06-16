@@ -51,6 +51,11 @@ pub struct MovementSm {
     charge_speed: f64,
     /// Max charge distance (units) before the charge ends on its own.
     charge_max_distance: f64,
+    /// Mana drained over a FULL charge: approximately `charge_mana_drain`, spread over the
+    /// remaining (draining) distance — the realized total is approximate because the final partial
+    /// step still deducts a full tick. The charge ends early — firing the blast — if mana runs out
+    /// before the distance cap. 0 = no drain.
+    charge_mana_drain: f64,
     /// Per-class stamina regen (u/s) while not sprinting/exhausted. Defaults to the global
     /// PLAYER_STAMINA_REGEN_PER_SEC; e.g. the Mage sets a lower value.
     stamina_regen: f64,
@@ -96,6 +101,7 @@ impl MovementSm {
             ability_cooldown_max: 0.0,
             charge_speed: 0.0,
             charge_max_distance: 0.0,
+            charge_mana_drain: 0.0,
             stamina_regen: PLAYER_STAMINA_REGEN_PER_SEC,
             ability_cooldown_left: 0.0,
             exhaust_time_left: 0.0,
@@ -130,6 +136,16 @@ impl MovementSm {
         self.ability_cooldown_max = cooldown.max(0.0);
         self.charge_speed = charge_speed.max(0.0);
         self.charge_max_distance = charge_max_distance.max(0.0);
+    }
+
+    /// Set the total mana a FULL charge drains (spread per unit travelled), beyond the activation
+    /// `ability_cost`. The charge ends early (firing the blast) if mana runs out first. Set once
+    /// per class on both sides so prediction stays in lockstep. Non-finite is ignored.
+    pub fn set_charge_mana_drain(&mut self, drain: f64) {
+        if !drain.is_finite() {
+            return;
+        }
+        self.charge_mana_drain = drain.max(0.0);
     }
 
     /// Set the per-class+level base ground speed (replaces the global PLAYER_SPEED default).
@@ -194,7 +210,7 @@ impl MovementSm {
             MoveState::KnockedBack => self.tick_knockback(delta),
             MoveState::Stunned => Vec2::ZERO,
             MoveState::AbilityMovement => self.ability_velocity,
-            MoveState::Charging => self.tick_charging(delta, ability_held),
+            MoveState::Charging => self.tick_charging(delta, ability_held, aim_dir),
         }
     }
 
@@ -238,19 +254,59 @@ impl MovementSm {
         self.transition_to(MoveState::Charging);
     }
 
-    fn tick_charging(&mut self, delta: f64, ability_held: bool) -> Vec2 {
-        // End NATURALLY on release or once the max distance is spent — flag the blast. (Enemy
-        // contact ends it server-side via `end_charge`, which the server pairs with its own blast;
-        // stun/teleport clear the charge without a blast.)
-        if !ability_held || self.charge_distance_left <= 0.0 {
+    /// Steerable charge: each tick re-aims the charge toward the live cursor direction (`aim_dir`)
+    /// so the Warrior follows the mouse and can turn around corners, up to `charge_max_distance`.
+    /// Ends NATURALLY on release or once the max distance is spent — flag the blast. (Enemy contact
+    /// ends it server-side via `end_charge`, which the server pairs with its own blast; stun/teleport
+    /// clear the charge without a blast.) Turns sharper than ~105 degrees are refused (the charge
+    /// coasts straight) so reaching/overshooting the cursor doesn't flip-flop the heading.
+    fn tick_charging(&mut self, delta: f64, ability_held: bool, aim_dir: Vec2) -> Vec2 {
+        // The first CHARGE_MIN_DISTANCE_FRACTION of the distance is GUARANTEED (no mana drain) — the
+        // activation cost always buys that minimum charge. Beyond it, mana drains per unit travelled,
+        // with `charge_mana_drain` spread over the remaining (draining) distance. The charge ends —
+        // firing the blast — on release, max distance, OR running out of mana in the draining zone.
+        let traveled = self.charge_max_distance - self.charge_distance_left;
+        let free_distance = self.charge_max_distance * CHARGE_MIN_DISTANCE_FRACTION;
+        let drainable = (self.charge_max_distance - free_distance).max(1.0);
+        let step_drain = if self.charge_mana_drain > 0.0 && traveled >= free_distance {
+            self.charge_speed * delta * (self.charge_mana_drain / drainable)
+        } else {
+            0.0
+        };
+        let out_of_mana = step_drain > 0.0 && self.mana < step_drain;
+        if !ability_held || self.charge_distance_left <= 0.0 || out_of_mana {
+            if out_of_mana {
+                self.mana = 0.0;
+            }
             self.charge_velocity = Vec2::ZERO;
             self.charge_distance_left = 0.0;
             self.charge_just_ended = true;
             self.transition_to(MoveState::Idle);
             return Vec2::ZERO;
         }
-        self.charge_distance_left =
-            (self.charge_distance_left - self.charge_velocity.length() as f64 * delta).max(0.0);
+        self.mana = (self.mana - step_drain).max(0.0);
+        let speed = self.charge_speed as f32;
+        let current = if self.charge_velocity != Vec2::ZERO {
+            self.charge_velocity.normalized()
+        } else {
+            Vec2::ZERO
+        };
+        // Steer toward the cursor. Keep the current heading if the aim is absent or would demand a
+        // turn sharper than ~105 degrees, so overshooting the cursor coasts straight instead of
+        // oscillating.
+        let mut dir = if aim_dir != Vec2::ZERO {
+            aim_dir.normalized()
+        } else {
+            current
+        };
+        if current != Vec2::ZERO && dir.dot(current) < -0.25 {
+            dir = current;
+        }
+        if dir == Vec2::ZERO {
+            dir = current;
+        }
+        self.charge_velocity = dir * speed;
+        self.charge_distance_left = (self.charge_distance_left - speed as f64 * delta).max(0.0);
         self.charge_velocity
     }
 
@@ -325,7 +381,8 @@ impl MovementSm {
     }
 
     fn update_mana(&mut self, delta: f64) {
-        if self.mana >= PLAYER_MANA_MAX {
+        // Mana does not regenerate while charging — the charge actively drains it (tick_charging).
+        if self.state == MoveState::Charging || self.mana >= PLAYER_MANA_MAX {
             return;
         }
         self.mana = (self.mana + PLAYER_MANA_REGEN_PER_SEC * delta).min(PLAYER_MANA_MAX);
@@ -523,6 +580,28 @@ impl MovementSm {
         }
     }
 
+    /// Authoritatively set the dash cooldown (server → owner via ActionConfirm). The cooldown is
+    /// committed locally on the PREDICTED dash, so the client and server can fall out of phase
+    /// whenever they disagree about whether a dash happened (a refused, lost, or
+    /// cooldown-boundary-timed dash). Reconciling against the server's value heals that drift;
+    /// without it the desync is permanent until respawn. Non-finite is ignored; negatives floor
+    /// to 0. Decrement-only timer, so this is the only external writer besides `try_dash`.
+    pub fn set_dash_cooldown(&mut self, cooldown: f64) {
+        if !cooldown.is_finite() {
+            return;
+        }
+        self.dash_cooldown_left = cooldown.max(0.0);
+    }
+
+    /// Authoritatively set the RMB-ability cooldown (server → owner via ActionConfirm). Same
+    /// rationale as [`set_dash_cooldown`]: the cooldown is committed on the PREDICTED cast.
+    pub fn set_ability_cooldown(&mut self, cooldown: f64) {
+        if !cooldown.is_finite() {
+            return;
+        }
+        self.ability_cooldown_left = cooldown.max(0.0);
+    }
+
     /// End an in-progress Charge (release / max-distance / server-side enemy contact). Idempotent.
     pub fn end_charge(&mut self) {
         if self.state != MoveState::Charging {
@@ -553,6 +632,7 @@ impl MovementSm {
         let ability_cooldown_max = self.ability_cooldown_max;
         let charge_speed = self.charge_speed;
         let charge_max_distance = self.charge_max_distance;
+        let charge_mana_drain = self.charge_mana_drain;
         let stamina_regen = self.stamina_regen;
         *self = Self::new();
         self.base_speed = base_speed;
@@ -560,6 +640,7 @@ impl MovementSm {
         self.ability_cooldown_max = ability_cooldown_max;
         self.charge_speed = charge_speed;
         self.charge_max_distance = charge_max_distance;
+        self.charge_mana_drain = charge_mana_drain;
         self.stamina_regen = stamina_regen;
     }
 
@@ -878,6 +959,28 @@ mod tests {
     }
 
     #[test]
+    fn set_cooldowns_reconcile_and_floor() {
+        let mut sm = MovementSm::new();
+        // Server-authoritative correction of a desynced predicted cooldown.
+        sm.set_dash_cooldown(3.25);
+        assert!((sm.dash_cooldown_remaining() - 3.25).abs() < 1e-9);
+        sm.set_ability_cooldown(7.0);
+        assert!((sm.ability_cooldown_remaining() - 7.0).abs() < 1e-9);
+        // Negatives floor to 0 (e.g. server reports "ready"); non-finite is ignored.
+        sm.set_dash_cooldown(-1.0);
+        assert_eq!(sm.dash_cooldown_remaining(), 0.0);
+        sm.set_ability_cooldown(2.0);
+        sm.set_ability_cooldown(f64::NAN);
+        assert!((sm.ability_cooldown_remaining() - 2.0).abs() < 1e-9);
+        // A reconciled dash cooldown still gates try_dash exactly like a self-started one.
+        sm.set_dash_cooldown(1.0);
+        assert!(
+            !sm.try_dash(RIGHT, Vec2::ZERO),
+            "reconciled cooldown blocks dash"
+        );
+    }
+
+    #[test]
     fn non_finite_setters_are_noops_and_never_poison_state() {
         let mut sm = MovementSm::new();
         let stamina0 = sm.stamina();
@@ -971,6 +1074,181 @@ mod tests {
         let v2 = sm.tick(DT, Vec2::ZERO, false, false, false, false, RIGHT);
         assert_eq!(v2, Vec2::ZERO);
         assert_eq!(sm.state(), MoveState::Idle);
+    }
+
+    #[test]
+    fn charge_steers_toward_changing_aim() {
+        let mut sm = MovementSm::new();
+        sm.set_ability_config(40.0, 9.0, 720.0, 630.0);
+        // Start the charge aiming RIGHT.
+        let v0 = sm.tick(DT, Vec2::ZERO, false, false, true, false, RIGHT);
+        assert!(
+            v0.x > 700.0 && v0.y.abs() < 1.0,
+            "charge starts toward the aim (+X): {v0:?}"
+        );
+        // Hold RMB and re-aim straight UP — the charge must steer to follow the cursor.
+        let up = Vec2::new(0.0, -1.0);
+        let v1 = sm.tick(DT, Vec2::ZERO, false, false, true, false, up);
+        assert!(sm.is_charging());
+        assert!(
+            v1.y < -700.0 && v1.x.abs() < 1.0,
+            "charge steers toward the new aim (up): {v1:?}"
+        );
+        assert!(
+            (v1.length() - 720.0).abs() < 0.5,
+            "speed preserved while steering: {}",
+            v1.length()
+        );
+    }
+
+    #[test]
+    fn charge_refuses_instant_reversal() {
+        let mut sm = MovementSm::new();
+        sm.set_ability_config(40.0, 9.0, 720.0, 630.0);
+        // Charge RIGHT, then flip the aim to LEFT (an overshoot). Turns sharper than ~105 degrees
+        // are refused, so the heading must NOT reverse — it coasts straight (+X) at full speed.
+        sm.tick(DT, Vec2::ZERO, false, false, true, false, RIGHT);
+        let left = Vec2::new(-1.0, 0.0);
+        let v = sm.tick(DT, Vec2::ZERO, false, false, true, false, left);
+        assert!(
+            v.x > 700.0,
+            "a sharp aim flip is refused — the charge coasts straight (+X): {v:?}"
+        );
+        assert!(
+            (v.length() - 720.0).abs() < 0.5,
+            "speed is preserved after the refused reversal: {}",
+            v.length()
+        );
+        // A clean ~90 degree turn (dot 0.0, well above the -0.25 cutoff) IS followed — this pins
+        // that only turns sharper than ~105 degrees are refused.
+        let up = Vec2::new(0.0, -1.0);
+        let v2 = sm.tick(DT, Vec2::ZERO, false, false, true, false, up);
+        assert!(
+            v2.y < -700.0 && v2.x.abs() < 1.0,
+            "a ~90 degree turn is followed (steers to the new aim): {v2:?}"
+        );
+    }
+
+    #[test]
+    fn charge_drains_mana_over_full_distance() {
+        let mut sm = MovementSm::new();
+        // Activation 30, no cooldown, 720 u/s over 945 u, draining 20 mana across the full charge.
+        sm.set_ability_config(30.0, 0.0, 720.0, 945.0);
+        sm.set_charge_mana_drain(20.0);
+        assert!((sm.mana() - 100.0).abs() < 0.1);
+        // Activation tick: spend ~30 (100 -> ~70) and enter the charge.
+        sm.tick(DT, Vec2::ZERO, false, false, true, false, RIGHT);
+        assert!(sm.is_charging());
+        assert!(
+            (sm.mana() - 70.0).abs() < 2.0,
+            "activation costs ~30: {}",
+            sm.mana()
+        );
+        // Hold RMB to charge the full distance; no regen while charging, drains ~20 more (-> ~50).
+        for _ in 0..80 {
+            sm.tick(DT, Vec2::ZERO, false, false, true, false, RIGHT);
+            if !sm.is_charging() {
+                break;
+            }
+        }
+        assert_eq!(
+            sm.state(),
+            MoveState::Idle,
+            "charge ends at the distance cap"
+        );
+        assert!(
+            (sm.mana() - 50.0).abs() < 3.0,
+            "a full charge totals ~50 mana (30 + ~20 drain): {}",
+            sm.mana()
+        );
+    }
+
+    #[test]
+    fn charge_mana_drain_survives_reset() {
+        let mut sm = MovementSm::new();
+        // Same tuning as charge_drains_mana_over_full_distance, but reset() BEFORE the charge:
+        // 720 u/s over 945 u, draining 20 mana across the full charge. reset() must preserve the
+        // charge_mana_drain config (fails without the reset() snapshot/restore fix).
+        sm.set_ability_config(30.0, 0.0, 720.0, 945.0);
+        sm.set_charge_mana_drain(20.0);
+        sm.reset();
+        assert!((sm.mana() - 100.0).abs() < 0.1);
+        // Activation tick: spend ~30 (100 -> ~70) and enter the charge.
+        sm.tick(DT, Vec2::ZERO, false, false, true, false, RIGHT);
+        assert!(sm.is_charging());
+        assert!(
+            (sm.mana() - 70.0).abs() < 2.0,
+            "activation costs ~30: {}",
+            sm.mana()
+        );
+        // Hold RMB to charge the full distance; no regen while charging, drains ~20 more (-> ~50).
+        for _ in 0..80 {
+            sm.tick(DT, Vec2::ZERO, false, false, true, false, RIGHT);
+            if !sm.is_charging() {
+                break;
+            }
+        }
+        assert_eq!(
+            sm.state(),
+            MoveState::Idle,
+            "charge ends at the distance cap"
+        );
+        assert!(
+            (sm.mana() - 50.0).abs() < 3.0,
+            "reset must preserve charge_mana_drain: a full charge totals ~50 mana (30 + ~20 drain): {}",
+            sm.mana()
+        );
+    }
+
+    #[test]
+    fn charge_ends_and_blasts_when_mana_runs_out() {
+        let mut sm = MovementSm::new();
+        // A deliberately huge drain so the full distance can't be afforded — the charge must end
+        // EARLY (firing the blast) when mana hits 0, well before the distance cap.
+        sm.set_ability_config(30.0, 0.0, 720.0, 945.0);
+        sm.set_charge_mana_drain(500.0);
+        sm.tick(DT, Vec2::ZERO, false, false, true, false, RIGHT); // 100 -> ~70, charging
+        assert!(sm.is_charging());
+        let mut ended_with_blast = false;
+        for _ in 0..80 {
+            sm.tick(DT, Vec2::ZERO, false, false, true, false, RIGHT);
+            if sm.charge_ended_this_tick() {
+                ended_with_blast = true;
+            }
+            if !sm.is_charging() {
+                break;
+            }
+        }
+        assert!(
+            ended_with_blast,
+            "running out of mana ends the charge with a blast"
+        );
+        assert_eq!(sm.state(), MoveState::Idle);
+        assert!(sm.mana() <= 0.5, "mana drained to 0: {}", sm.mana());
+    }
+
+    #[test]
+    fn charge_guarantees_minimum_before_drain() {
+        let mut sm = MovementSm::new();
+        // A huge drain would empty mana instantly IF it drained from the start — but the first
+        // CHARGE_MIN_DISTANCE_FRACTION of the distance is drain-free, so the charge must still run
+        // through that guaranteed minimum before mana can end it (no "spent 30 for nothing").
+        sm.set_ability_config(30.0, 0.0, 720.0, 945.0);
+        sm.set_charge_mana_drain(500.0);
+        let mut charging_ticks = 0;
+        for _ in 0..80 {
+            sm.tick(DT, Vec2::ZERO, false, false, true, false, RIGHT);
+            if sm.is_charging() {
+                charging_ticks += 1;
+            } else {
+                break;
+            }
+        }
+        // Free distance = 945 * 0.4 = 378 u; at 720 u/s that is ~15.75 ticks of guaranteed charge.
+        assert!(
+            charging_ticks >= 14,
+            "activation guarantees a minimum charge before drain can end it (ticks {charging_ticks})"
+        );
     }
 
     #[test]

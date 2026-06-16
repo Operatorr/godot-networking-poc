@@ -77,6 +77,14 @@ var last_server_tick: int = 0
 var input_send_timer: float = 0.0
 const INPUT_SEND_INTERVAL: float = GameConstants.SERVER_TICK_INTERVAL
 
+## Only snap the predicted dash/RMB-ability cooldown to the server's authoritative value when
+## they diverge by more than this (seconds). The predicted cooldown is committed at press time,
+## so it normally runs ~RTT ahead of the value the server reports back; this threshold sits well
+## above typical RTT so that benign offset never jitters the HUD, while a genuine desync — a
+## refused / lost / cooldown-boundary dash leaves a multi-second gap — is pulled back into phase
+## within ~1 RTT. See _handle_action_confirm.
+const COOLDOWN_RECONCILE_EPSILON: float = 0.75
+
 ## Current frame's accumulated input flags
 var current_input_flags: int = 0
 
@@ -104,26 +112,37 @@ var _own_dazed: bool = false
 ## construction. Owns the movement state machine (dash/sprint/knockback timers, stamina/mana).
 var _sim: PredictionSim = PredictionSim.new()
 
+## Cached capability flag for _sim.has_method("is_charging") so the per-tick charge-loop SFX
+## driver doesn't probe the GDExtension every physics frame. Set when the sim is configured.
+var _sim_has_is_charging := false
+
 ## Per-class ability tuning pushed into PredictionSim.set_ability_config / set_base_speed /
 ## set_stamina_regen so the predicted ability cast/charge/stamina matches the server. Indexed by
 ## PacketTypes.PlayerClass (0..6): [mana_cost, cooldown, charge_speed, charge_max_distance,
-## base_move_speed, stamina_regen]. Only the Warrior (4) has charge_speed > 0 (⇒ Warrior charge in
-## the Rust sim); only the Mage (6) regenerates stamina slower. These mirror the values in
+## base_move_speed, stamina_regen, charge_mana_drain]. Only the Warrior (4) has charge_speed > 0
+## (⇒ Warrior charge in the Rust sim) and a charge_mana_drain (mana bled per unit travelled); only
+## the Mage (6) regenerates stamina slower. These mirror the values in
 ## client/data/classes/<class>.json (ability + stats.move_speed_base + stats.stamina_regen_per_sec).
 const CLASS_ABILITY_CONFIG := [
-	[35.0, 8.0, 0.0, 0.0, 195.0, 20.0],     # 0 Zealot
-	[30.0, 5.0, 0.0, 0.0, 205.0, 20.0],     # 1 Void Hunter
-	[35.0, 8.0, 0.0, 0.0, 195.0, 20.0],     # 2 Engineer
-	[35.0, 7.0, 0.0, 0.0, 195.0, 20.0],     # 3 Plague Seer
-	[40.0, 9.0, 720.0, 420.0, 200.0, 20.0], # 4 Warrior (charge)
-	[30.0, 10.0, 0.0, 0.0, 215.0, 20.0],    # 5 Rogue
-	[40.0, 6.0, 0.0, 0.0, 195.0, 14.0],     # 6 Mage (slower stamina regen)
+	[35.0, 8.0, 0.0, 0.0, 195.0, 20.0, 0.0],      # 0 Zealot
+	[30.0, 5.0, 0.0, 0.0, 205.0, 20.0, 0.0],      # 1 Void Hunter
+	[35.0, 8.0, 0.0, 0.0, 195.0, 20.0, 0.0],      # 2 Engineer
+	[35.0, 7.0, 0.0, 0.0, 195.0, 20.0, 0.0],      # 3 Plague Seer
+	[30.0, 4.5, 720.0, 945.0, 200.0, 20.0, 10.0], # 4 Warrior (steerable charge; 30 activation + 10 mana spread over the draining (post-40%) distance; ~40 total; 4.5s cd)
+	[30.0, 10.0, 0.0, 0.0, 215.0, 20.0, 0.0],     # 5 Rogue
+	[40.0, 6.0, 0.0, 0.0, 195.0, 14.0, 0.0],      # 6 Mage (slower stamina regen)
 ]
 
 ## Last seen state of our own DASHING entity flag, used to slave a Warrior charge end to
 ## the server. When the server clears DASHING but PredictionSim still thinks it is charging,
 ## we call end_charge() so the predicted charge releases exactly when the server's does.
 var _own_dashing: bool = false
+
+## Last seen predicted charge state, so the looping "while charging" rumble fires on the charge
+## edges (Warrior). Charge-specific — the regular dash is a different state, so it won't trigger.
+## Distinct from _own_dashing, which edges on the server's DASHING flag (covering the plain dash
+## too) to slave the charge END to the server; this one edges on the predicted is_charging state.
+var _was_charging: bool = false
 #endregion
 
 
@@ -138,9 +157,16 @@ class InputSnapshot:
 	var aim_angle: float = 0.0
 	var delta: float = 0.0
 	var timestamp: float = 0.0
+	## Predicted dash / RMB-ability cooldown (seconds) at the moment this input was sent. The
+	## ActionConfirm for this sequence reports the server's authoritative cooldown for the SAME
+	## input, so the owner can detect a desync per-sequence (see _handle_action_confirm) without a
+	## stale in-flight confirm cancelling a freshly-predicted cooldown.
+	var dash_cooldown: float = 0.0
+	var ability_cooldown: float = 0.0
 
 	static func create(seq: int, flags: int, pos_before: Vector2, pos_after: Vector2,
-					   vel: Vector2, angle: float, dt: float) -> InputSnapshot:
+					   vel: Vector2, angle: float, dt: float,
+					   dash_cd: float = 0.0, ability_cd: float = 0.0) -> InputSnapshot:
 		var snapshot := InputSnapshot.new()
 		snapshot.sequence = seq
 		snapshot.input_flags = flags
@@ -149,6 +175,8 @@ class InputSnapshot:
 		snapshot.velocity = vel
 		snapshot.aim_angle = angle
 		snapshot.delta = dt
+		snapshot.dash_cooldown = dash_cd
+		snapshot.ability_cooldown = ability_cd
 		snapshot.timestamp = Time.get_ticks_msec() / 1000.0
 		return snapshot
 #endregion
@@ -198,8 +226,18 @@ func _configure_ability_for_local_class() -> void:
 	var class_id := int(GameManager.player_data.get("player_class", PacketTypes.PlayerClass.ZEALOT))
 	class_id = clampi(class_id, 0, CLASS_ABILITY_CONFIG.size() - 1)
 	var cfg: Array = CLASS_ABILITY_CONFIG[class_id]
+	# Cache the is_charging capability once; the per-tick charge-loop SFX driver reads the bool
+	# instead of probing the GDExtension every physics frame.
+	_sim_has_is_charging = _sim.has_method("is_charging")
 	if _sim.has_method("set_ability_config"):
 		_sim.set_ability_config(float(cfg[0]), float(cfg[1]), float(cfg[2]), float(cfg[3]))
+	# cfg[6] (charge_mana_drain) is only nonzero for the Warrior. has_method guards a stale
+	# GDExtension binary; warn loudly when the config needs the drain but the sim can't take it,
+	# so the silent Warrior-charge divergence is surfaced rather than mispredicted in silence.
+	if _sim.has_method("set_charge_mana_drain"):
+		_sim.set_charge_mana_drain(float(cfg[6]))
+	elif cfg[6] > 0.0:
+		push_warning("[Prediction] PredictionSim lacks set_charge_mana_drain; Warrior charge will mispredict - rebuild client_ext")
 	if _sim.has_method("set_base_speed"):
 		_sim.set_base_speed(float(cfg[4]))
 	if _sim.has_method("set_stamina_regen"):
@@ -214,6 +252,13 @@ func _configure_ability_for_local_class() -> void:
 
 #region Main Loop
 func _physics_process(delta: float) -> void:
+	# Drive the looping Warrior-charge rumble from the predicted charge state. Evaluated up front
+	# (before the early-returns) so it also stops on disconnect / inactive / death / freed player.
+	# Cheap guards first; the actual sim probe (is_charging) runs last and only when reachable.
+	var charging := player_node != null and NetworkManager.is_server_connected() and is_active() \
+		and _sim != null and _sim_has_is_charging and _sim.is_charging()
+	_drive_charge_loop_sfx(charging)
+
 	if player_node == null:
 		return
 
@@ -530,6 +575,10 @@ func _send_input_to_server() -> void:
 	# one authoritative tick, so replay uses the same interval. The stateless ground
 	# model runs through the same Rust mover the server uses.
 	var replay: Dictionary = _sim.replay_step(predicted_position, current_input_flags, INPUT_SEND_INTERVAL)
+	# Record the PREDICTED cooldowns alongside the input so the ActionConfirm for this sequence can
+	# be compared against what we predicted at this exact point (see _handle_action_confirm).
+	var snap_dash_cd := _sim.dash_cooldown_remaining() if _sim.has_method("dash_cooldown_remaining") else 0.0
+	var snap_ability_cd := _sim.ability_cooldown_remaining() if _sim.has_method("ability_cooldown_remaining") else 0.0
 	var snapshot := InputSnapshot.create(
 		seq,
 		current_input_flags,
@@ -537,7 +586,9 @@ func _send_input_to_server() -> void:
 		replay["position"],
 		replay["velocity"],
 		aim_angle,
-		INPUT_SEND_INTERVAL
+		INPUT_SEND_INTERVAL,
+		snap_dash_cd,
+		snap_ability_cd
 	)
 	_store_input(snapshot)
 
@@ -611,6 +662,21 @@ func _handle_action_confirm(data: Dictionary) -> void:
 		if sm != null:
 			sm.set_resources(_sim.stamina(), _sim.mana())
 
+	# Reconcile the predicted dash + RMB-ability cooldowns against the server's authoritative ones,
+	# which ride along on this confirm. The cooldowns are committed locally on the PREDICTED
+	# dash/cast, so without this they drift permanently out of phase whenever the server refuses /
+	# never receives a dash, or it's fired at the cooldown boundary (the server's cooldown lags the
+	# client's by ~RTT). Symptom: the HUD shows a cooldown the server isn't enforcing — you lunge a
+	# couple units, snap back, and the dash never lands — then a later press "while on cooldown"
+	# actually dashes because the server cleared its timer long ago.
+	#
+	# Compared PER-SEQUENCE (not against the live cooldown): the confirm reports the server's
+	# cooldown for the input it's acking, so we diff it against what we PREDICTED when we sent that
+	# same input (input_buffer snapshot). This is essential — confirms still in flight for inputs
+	# sent BEFORE a dash legitimately read cooldown 0 on the server, and diffing those against the
+	# live (just-started) cooldown would cancel a correct prediction for ~1 RTT on every dash.
+	_reconcile_cooldowns(sequence, data)
+
 	# Update tracking
 	last_ack_sequence = sequence
 	last_server_tick = server_tick
@@ -626,6 +692,45 @@ func _handle_action_confirm(data: Dictionary) -> void:
 			_reconcile(sequence, corrected_position)
 		else:
 			_prune_acknowledged_inputs()
+
+
+## Pull the predicted dash + RMB-ability cooldowns back into phase with the server's authoritative
+## values for the acked input (`sequence`). For each, diff the server's value against what we
+## predicted when we SENT that input (the per-sequence snapshot). A gap beyond the reconcile
+## epsilon is a genuine desync; we shift the LIVE cooldown by that gap (so the ~RTT of real time
+## that elapsed since the send cancels out exactly) and propagate the same shift to the snapshots
+## of inputs still in flight, so the rest of that batch — which recorded the pre-correction
+## prediction — doesn't re-apply the correction. No-op (the common case) when they already agree.
+func _reconcile_cooldowns(sequence: int, data: Dictionary) -> void:
+	if not input_buffer.has(sequence):
+		return
+	var snap: InputSnapshot = input_buffer[sequence]
+	if data.has("dash_cooldown") and _sim.has_method("set_dash_cooldown") \
+			and _sim.has_method("dash_cooldown_remaining"):
+		var gap := float(data.get("dash_cooldown", 0.0)) - snap.dash_cooldown
+		if absf(gap) > COOLDOWN_RECONCILE_EPSILON:
+			_sim.set_dash_cooldown(maxf(0.0, _sim.dash_cooldown_remaining() + gap))
+			_shift_buffered_cooldowns(sequence, gap, true)
+	if data.has("ability_cooldown") and _sim.has_method("set_ability_cooldown") \
+			and _sim.has_method("ability_cooldown_remaining"):
+		var gap_ability := float(data.get("ability_cooldown", 0.0)) - snap.ability_cooldown
+		if absf(gap_ability) > COOLDOWN_RECONCILE_EPSILON:
+			_sim.set_ability_cooldown(maxf(0.0, _sim.ability_cooldown_remaining() + gap_ability))
+			_shift_buffered_cooldowns(sequence, gap_ability, false)
+
+
+## Apply a cooldown phase correction to every still-in-flight input snapshot (sequence AFTER
+## `acked`) so the remaining confirms in this batch — which recorded the pre-correction prediction
+## — compare against the corrected baseline and don't double-apply the same shift.
+func _shift_buffered_cooldowns(acked: int, delta: float, is_dash: bool) -> void:
+	for seq: int in input_buffer.keys():
+		if not _sequence_less_than(acked, seq):
+			continue
+		var snap: InputSnapshot = input_buffer[seq]
+		if is_dash:
+			snap.dash_cooldown = maxf(0.0, snap.dash_cooldown + delta)
+		else:
+			snap.ability_cooldown = maxf(0.0, snap.ability_cooldown + delta)
 
 
 func _handle_state_update(data: Dictionary) -> void:
@@ -694,6 +799,25 @@ func _update_own_charge(flags: int) -> void:
 	if not dashing and _sim.has_method("is_charging") and _sim.is_charging():
 		if _sim.has_method("end_charge"):
 			_sim.end_charge()
+
+
+## Start/stop the looping "while charging" rumble on the predicted charge edges.
+func _drive_charge_loop_sfx(charging: bool) -> void:
+	if charging == _was_charging:
+		return
+	_was_charging = charging
+	if charging:
+		AudioManager.play_charge_loop()
+	else:
+		AudioManager.stop_charge_loop()
+
+
+## Safety: stop the charge rumble if the controller is freed mid-charge (scene change), since
+## _physics_process won't run to clear it (the AudioManager autoload outlives this node).
+func _exit_tree() -> void:
+	if _was_charging:
+		AudioManager.stop_charge_loop()
+		_was_charging = false
 
 
 func _process_own_state_update(entity_data: Dictionary) -> void:

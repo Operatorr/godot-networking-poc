@@ -193,6 +193,7 @@ impl PlayerState {
             s.charge_speed,
             s.charge_distance,
         );
+        self.movement_sm.set_charge_mana_drain(s.charge_mana_drain);
     }
 
     /// Class+level-scaled primary-attack damage (used at projectile spawn).
@@ -236,11 +237,6 @@ impl PlayerState {
 
     pub fn is_stealthed(&self) -> bool {
         self.stealth_timer > 0.0
-    }
-
-    /// Stealth ends early when the Rogue deals damage (cast/shoot) — call on any offensive action.
-    pub fn break_stealth(&mut self) {
-        self.stealth_timer = 0.0;
     }
 
     pub fn update_stealth(&mut self, delta: f64) {

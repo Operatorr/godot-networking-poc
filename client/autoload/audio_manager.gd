@@ -38,6 +38,9 @@ var arena_bgm_volume: float = 0.2
 var music_player: AudioStreamPlayer = null
 var ui_sfx_players: Array[AudioStreamPlayer] = []
 var combat_sfx_players: Array[AudioStreamPlayer] = []
+## Dedicated player for sustained/looping ability sounds (e.g. the Warrior charge rumble).
+## Exactly one driver (scripts/network/prediction.gd) owns its start/stop lifecycle.
+var _charge_loop_player: AudioStreamPlayer = null
 
 ## Current music state
 var current_music_track: String = ""
@@ -94,6 +97,11 @@ func _ready() -> void:
 		player.bus = SFX_BUS
 		add_child(player)
 		combat_sfx_players.append(player)
+
+	# Dedicated looping player for sustained ability sounds (Warrior charge rumble).
+	_charge_loop_player = AudioStreamPlayer.new()
+	_charge_loop_player.bus = SFX_BUS
+	add_child(_charge_loop_player)
 
 	# Generate all sounds procedurally
 	_generate_procedural_audio()
@@ -162,6 +170,9 @@ func _generate_procedural_audio() -> void:
 	audio_library["sfx_player"]["level_up"] = sfx["level_up"]
 	audio_library["sfx_player"]["projectile_impact"] = sfx["projectile_impact"]
 	audio_library["sfx_player"]["mageblast"] = sfx["mageblast"]
+	audio_library["sfx_player"]["go_invisible"] = sfx["go_invisible"]
+	audio_library["sfx_player"]["charge"] = sfx["charge"]
+	audio_library["sfx_player"]["charge_loop"] = sfx["charge_loop"]
 	audio_library["sfx_player"]["footstep_l"] = sfx["footstep_l"]
 	audio_library["sfx_player"]["footstep_r"] = sfx["footstep_r"]
 	audio_library["sfx_monster"]["monster_shoot"] = sfx["monster_shoot"]
@@ -360,6 +371,29 @@ func play_monster_death() -> void:
 ## Play projectile impact sound
 func play_projectile_impact() -> void:
 	play_sfx("projectile_impact", AudioCategory.SFX_COMBAT)
+
+## Play the Rogue "go invisible" (Shadowstep stealth) sound
+func play_go_invisible() -> void:
+	play_sfx("go_invisible", AudioCategory.SFX_PLAYER)
+
+## Start the looping "while charging" rumble (Warrior Charge). Idempotent; called on
+## charge start/stop edges by the prediction controller (not every tick). The WAV is
+## LOOP_FORWARD, so the stream loops on its own once started.
+func play_charge_loop() -> void:
+	if is_server or _charge_loop_player == null or _charge_loop_player.playing:
+		return
+	if not audio_library.has("sfx_player") or not audio_library["sfx_player"].has("charge_loop"):
+		return
+	var stream: AudioStream = audio_library["sfx_player"]["charge_loop"]
+	if stream == null:
+		return
+	_charge_loop_player.stream = stream
+	_charge_loop_player.play()
+
+## Stop the looping charge rumble. Idempotent.
+func stop_charge_loop() -> void:
+	if _charge_loop_player != null and _charge_loop_player.playing:
+		_charge_loop_player.stop()
 
 ## Play footstep sound (alternates L/R)
 func play_footstep() -> void:

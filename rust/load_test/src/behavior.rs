@@ -110,6 +110,10 @@ const COMBAT_DIRS: [u16; 5] = [
 // Strategy constants (ported values).
 const SPRINT_STAMINA_FLOOR: f64 = 25.0;
 const DASH_COOLDOWN_S: f64 = 5.5;
+// Conservative self-throttle for RMB ability casts (Warrior Charge / Rogue Shadowstep). Longer
+// than DASH so the swarm exercises abilities without spamming; the real cooldown + mana gate lives
+// in `sim_core` / the server, where a refused cast costs nothing, so this only needs to be lenient.
+const ABILITY_COOLDOWN_S: f64 = 6.0;
 const TARGET_MAX_RANGE: f32 = 1250.0; // 1.25 × AoI radius
 const PROJECTILE_SPEED: f32 = 400.0;
 const DODGE_RADIUS: f32 = 220.0;
@@ -123,6 +127,7 @@ pub struct BehaviorState {
     cached: Decision,
     next_decision_at: f64,
     last_dash_at: f64,
+    last_ability_at: f64,
     target: Option<u16>,
 }
 
@@ -135,6 +140,7 @@ impl BehaviorState {
             cached: Decision::IDLE,
             next_decision_at: 0.0,
             last_dash_at: f64::NEG_INFINITY,
+            last_ability_at: f64::NEG_INFINITY,
             target: None,
         }
     }
@@ -186,10 +192,11 @@ impl BehaviorState {
 
     fn strategy(&mut self, view: &View, rng: &mut Pcg32, now: f64) -> Decision {
         // Reaction-time cache: expert (1.0) re-decides every 40 ms, novice (0.0) every 500 ms.
-        // DASH is edge-triggered, so it is stripped from the cache after the first replay.
+        // DASH and ABILITY are edge-triggered, so they are stripped from the cache after the first
+        // replay.
         if now < self.next_decision_at {
             let out = self.cached;
-            self.cached.flags &= !input_flags::DASH;
+            self.cached.flags &= !(input_flags::DASH | input_flags::ABILITY);
             return out;
         }
         let d = self.difficulty;
@@ -244,8 +251,24 @@ impl BehaviorState {
             self.last_dash_at = now;
         }
 
+        // Ability (RMB): conservative, edge-triggered cast so the swarm exercises Warrior Charge /
+        // Rogue Shadowstep. Only fire when we are actually engaging a target in shoot range (the
+        // SHOOT flag is set by `engage` exactly then), and only occasionally, throttled by our own
+        // cooldown like DASH. The real cooldown + mana gate lives server-side, where a refused cast
+        // costs nothing, so this self-throttle just needs to keep casts sparse.
+        let ability_chance = 0.04 + 0.10 * d;
+        if self.target.is_some()
+            && decision.flags & input_flags::SHOOT != 0
+            && now - self.last_ability_at >= ABILITY_COOLDOWN_S
+            && rng.randf() < ability_chance
+        {
+            decision.flags |= input_flags::ABILITY;
+            self.last_ability_at = now;
+        }
+
         self.cached = decision;
-        self.cached.flags &= !input_flags::DASH;
+        // DASH and ABILITY are edge-triggered; strip them so cached replays don't re-hold them.
+        self.cached.flags &= !(input_flags::DASH | input_flags::ABILITY);
         decision
     }
 
@@ -254,7 +277,10 @@ impl BehaviorState {
     fn pick_target(&self, view: &View) -> Option<u16> {
         if let Some(id) = self.target {
             if let Some(e) = view.entities.get(&id) {
-                if e.flags & entity_flags::ALIVE != 0 && dist(view.pos, e.pos) <= TARGET_MAX_RANGE {
+                if e.flags & entity_flags::ALIVE != 0
+                    && e.flags & entity_flags::STEALTH == 0
+                    && dist(view.pos, e.pos) <= TARGET_MAX_RANGE
+                {
                     return Some(id);
                 }
             }
@@ -263,7 +289,10 @@ impl BehaviorState {
             view.entities
                 .iter()
                 .filter(|(id, e)| {
-                    pred(**id) && **id != view.my_id && e.flags & entity_flags::ALIVE != 0
+                    pred(**id)
+                        && **id != view.my_id
+                        && e.flags & entity_flags::ALIVE != 0
+                        && e.flags & entity_flags::STEALTH == 0
                 })
                 .map(|(id, e)| (*id, dist(view.pos, e.pos)))
                 .filter(|(_, d)| *d <= TARGET_MAX_RANGE)
@@ -465,6 +494,61 @@ mod tests {
         );
         // Aim roughly toward +x (monster sits due east).
         assert!(d.aim_angle.abs() < 0.6, "aim {} not eastish", d.aim_angle);
+    }
+
+    #[test]
+    fn strategy_ignores_stealthed_player() {
+        // A single ALIVE+STEALTH player sits within targeting range. Bots must NOT acquire or shoot
+        // it — the assassin is invisible (mirrors the server monster AI, which also skips STEALTH).
+        let mut entities = HashMap::new();
+        entities.insert(
+            7,
+            KnownEntity {
+                pos: (700.0, 0.0),
+                vel: (0.0, 0.0),
+                anim: 0,
+                flags: entity_flags::ALIVE | entity_flags::STEALTH,
+                last_tick: 1,
+            },
+        );
+        let owners = HashMap::new();
+        let mut b = BehaviorState::new(BehaviorKind::Strategy, 1.0);
+        // pick_target must find nobody.
+        assert_eq!(b.pick_target(&empty_view(&entities, &owners)), None);
+        // And with only a stealthed target around, the strategy bot never shoots.
+        let mut rng = Pcg32::new(7);
+        for _ in 0..50 {
+            let d = b.decide(&empty_view(&entities, &owners), &mut rng, 100.0);
+            assert_eq!(
+                d.flags & input_flags::SHOOT,
+                0,
+                "must not shoot a stealthed player"
+            );
+        }
+
+        // Once the player drops STEALTH it is acquired again.
+        entities.insert(
+            7,
+            KnownEntity {
+                pos: (700.0, 0.0),
+                vel: (0.0, 0.0),
+                anim: 0,
+                flags: entity_flags::ALIVE,
+                last_tick: 1,
+            },
+        );
+        assert_eq!(b.pick_target(&empty_view(&entities, &owners)), Some(7));
+        // …and the bot now actually engages it: 200 u away is inside shoot range, so a fresh
+        // decision must SHOOT (advance `now` past the reaction cache to force a re-decide).
+        let mut now = 200.0;
+        let shot = (0..50).any(|_| {
+            now += 1.0;
+            b.decide(&empty_view(&entities, &owners), &mut rng, now)
+                .flags
+                & input_flags::SHOOT
+                != 0
+        });
+        assert!(shot, "should shoot a de-stealthed player in range");
     }
 
     #[test]

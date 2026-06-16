@@ -20,6 +20,12 @@ const NAME_PATTERN: String = "^[a-zA-Z0-9_]+$"
 ## Track creation state to prevent duplicate requests
 var is_creating: bool = false
 
+## Guards the one-shot self-heal retry when the API reports "User already has a character"
+## (HTTP 409 / code "character_exists"). This happens when a hardcore permadeath delete hasn't
+## committed yet by the time the player re-creates; we re-sync against /api/character/me and
+## retry once. Without the guard a persistent 409 would loop forever.
+var _conflict_retry_used: bool = false
+
 ## HTTP request for character creation
 var http_request: HTTPRequest
 
@@ -136,10 +142,15 @@ func _on_name_text_changed(new_text: String) -> void:
 	_validate_name(new_text)
 
 
-## Handle create button press
-func _on_create_pressed() -> void:
+## Handle create button press. `user_initiated` is true for genuine user presses (button /
+## Enter / error-dialog retry) and false for the internal stale-409 self-heal retry — only a
+## fresh user-initiated create re-arms the one-shot self-heal, so a persistent 409 can't loop.
+func _on_create_pressed(user_initiated: bool = true) -> void:
 	if is_creating:
 		return
+
+	if user_initiated:
+		_conflict_retry_used = false
 
 	var character_name := name_input.text.strip_edges()
 
@@ -369,13 +380,93 @@ func _on_create_completed(result: int, response_code: int, _headers: PackedStrin
 
 		print("[CharacterCreation] Character created successfully: %s" % character_name)
 		_on_create_successful()
-	else:
-		# Error response
-		var error_message: String = "Character creation failed"
-		if json.data is Dictionary:
-			error_message = json.data.get("error", error_message)
-		print("[CharacterCreation] Creation failed: %s" % error_message)
-		_on_create_failed(error_message)
+		return
+
+	# Stale "User already has a character" after a hardcore permadeath: the server-side delete
+	# may not have committed yet (it runs async after the death kick). Re-confirm against the DB
+	# and either route to the surviving character or retry the create once.
+	if response_code == 409 and not _conflict_retry_used and _is_character_exists_conflict(json):
+		_conflict_retry_used = true
+		_resolve_create_conflict()
+		return
+
+	# Error response
+	var error_message: String = "Character creation failed"
+	if json.data is Dictionary:
+		error_message = json.data.get("error", error_message)
+	print("[CharacterCreation] Creation failed: %s" % error_message)
+	_on_create_failed(error_message)
+
+
+## True if the create response is the "user already has a character" conflict (matched by the
+## machine-readable code, with a fallback to the human string for older API builds).
+func _is_character_exists_conflict(json: JSON) -> bool:
+	if not (json.data is Dictionary):
+		return false
+	var data: Dictionary = json.data
+	if str(data.get("code", "")) == "character_exists":
+		return true
+	return str(data.get("error", "")).to_lower().contains("already has a character")
+
+
+## How long to wait for the refresh_character round-trip before giving up (seconds), so a
+## stalled /api/character/me request can't pin the create button in "Finalizing..." forever.
+const CONFLICT_REFRESH_TIMEOUT_SEC: float = 10.0
+
+
+## Self-heal the stale 409: re-sync /api/character/me, then either route to the surviving
+## character (the account really does have one) or retry the create once (the permadeath
+## delete has now committed, so the slot is free). The 404 branch of refresh_character also
+## clears the stale local character data so we observe the true server-side state.
+func _resolve_create_conflict() -> void:
+	create_button.text = "Finalizing..."
+	create_button.disabled = true
+	is_creating = true
+
+	AuthManager.refresh_character()
+
+	# Race the signal against a timeout so a stalled request can't hang the button forever.
+	var timer := get_tree().create_timer(CONFLICT_REFRESH_TIMEOUT_SEC)
+	var resolved := {"done": false, "has_character": false}
+	var on_refreshed := func(has_character: bool) -> void:
+		if resolved["done"]:
+			return
+		resolved["done"] = true
+		resolved["has_character"] = has_character
+	AuthManager.character_refreshed.connect(on_refreshed, CONNECT_ONE_SHOT)
+
+	while not resolved["done"] and timer.time_left > 0.0:
+		await get_tree().process_frame
+
+	# The user may have left this screen during the round-trip — bail before touching nodes.
+	if not is_inside_tree():
+		return
+
+	if not resolved["done"]:
+		# Timed out: re-enable the create button and surface a connection-style error.
+		if AuthManager.character_refreshed.is_connected(on_refreshed):
+			AuthManager.character_refreshed.disconnect(on_refreshed)
+		is_creating = false
+		create_button.disabled = false
+		create_button.text = "Create Character"
+		print("[CharacterCreation] Conflict resolution timed out")
+		_on_create_failed("Network error: Timed out confirming character status")
+		return
+
+	if resolved["has_character"]:
+		# The account really does have a character — surface a brief note so the typed-name
+		# request isn't silently discarded before we route back to the menu.
+		print("[CharacterCreation] Account already has a character; returning to menu")
+		validation_label.text = "You already have a character - returning to menu"
+		validation_label.add_theme_color_override("font_color", Color.YELLOW)
+		_on_create_successful()
+		return
+
+	# DB confirms no character — the permadeath delete committed. Retry the create once.
+	# Internal retry: don't re-arm the self-heal (keeps the 409 recovery strictly one-shot).
+	print("[CharacterCreation] Conflict cleared (no character server-side); retrying create")
+	is_creating = false
+	_on_create_pressed(false)
 
 
 ## Handle successful character creation

@@ -58,6 +58,13 @@ text = "OMEGA REALM"
 horizontal_alignment = 1
 vertical_alignment = 1
 
+[node name="GloryLabel" type="Label" parent="CenterContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.906, 0.835, 0.137, 1)
+theme_override_font_sizes/font_size = 22
+text = "Glory: 0"
+horizontal_alignment = 1
+
 [node name="HSeparator" type="HSeparator" parent="CenterContainer/VBoxContainer"]
 layout_mode = 2
 
@@ -85,15 +92,15 @@ layout_mode = 2
 size_flags_horizontal = 3
 alignment = 1
 
-[node name="CharacterLabel" type="Label" parent="CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer/CharacterInfo"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
-text = "Character"
-
 [node name="CharacterNameLabel" type="Label" parent="CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer/CharacterInfo"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "Player Name"
+
+[node name="CharacterLabel" type="Label" parent="CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer/CharacterInfo"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+text = "Character"
 
 [node name="DeleteButton" type="Button" parent="CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer"]
 custom_minimum_size = Vector2(120, 56)
@@ -112,7 +119,7 @@ layout_mode = 2
 text = "Select Region"
 
 [node name="RegionDropdown" type="OptionButton" parent="CenterContainer/VBoxContainer"]
-custom_minimum_size = Vector2(300, 40)
+custom_minimum_size = Vector2(320, 40)
 layout_mode = 2
 size_flags_horizontal = 4
 
@@ -126,14 +133,27 @@ size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 20
 text = "Enter World"
 
+[node name="EnterArenaButton" type="Button" parent="CenterContainer/VBoxContainer"]
+custom_minimum_size = Vector2(320, 72)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 20
+text = "Enter Arena"
+
 [node name="StatusLabel" type="Label" parent="CenterContainer/VBoxContainer"]
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 1, 1, 1)
-text = "Ready"
+text = ""
 horizontal_alignment = 1
 
 [node name="HSeparator4" type="HSeparator" parent="CenterContainer/VBoxContainer"]
 layout_mode = 2
+
+[node name="SettingsButton" type="Button" parent="CenterContainer/VBoxContainer"]
+custom_minimum_size = Vector2(320, 72)
+layout_mode = 2
+size_flags_horizontal = 4
+text = "Settings"
 
 [node name="LogoutButton" type="Button" parent="CenterContainer/VBoxContainer"]
 custom_minimum_size = Vector2(320, 72)

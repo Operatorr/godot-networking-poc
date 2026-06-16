@@ -49,6 +49,31 @@ the generated assets are missing, so a checkout without the art keeps working.
   `godot --path client res://scenes/test/arena_visual_smoke.tscn
   --write-movie /tmp/shots/visual.png --fixed-fps 10 --quit-after 16`.
 
+## Sprite ground floor (Implemented 2026-06-16)
+
+The Arena floor is a sprite layer in `client/assets/sprites/environment/arena/`:
+`ground_stone1.png` is the seamless **base** tiled across the whole arena, and
+`ground_variation1.png` / `ground_variation2.png` are **detail decals** scattered on top.
+(`ground_darken.png` is intentionally **unused** — it reads as out-of-arena dark ground.)
+[`arena_base.gd`](../../client/scripts/levels/arena_base.gd) `_build_arena_floor_decor()`
+loads them (same `ResourceLoader.exists` + graceful-skip rule as the props) and adds a
+`_GroundDecorLayer` (Node2D) named **"GroundDecor"** whose `_draw()` tiles the base at
+`GROUND_TILE_SIZE = 250` (250 divides the 2000-unit arena into an exact 8×8 grid, no
+overshoot past the ±1005 walls) then scatters the detail decals over ~45% of cells, jittered
+±70px so they don't grid-align. It carries `MINIMAP_TERRAIN_VISIBILITY` so the floor still
+appears on the minimap.
+
+- **z-order:** `z_index = TILEMAP_Z_INDEX + 1` (= −9), `z_as_relative = false`. So it draws
+  above the collision/minimap `TileMapLayer` (−10) and **below** the node's own `_draw()`
+  (z 0), which paints only the obstacles + red border on top. On success
+  `_build_arena_floor_decor()` sets `_paint_solid_floor = false`, which makes `_draw()` skip
+  the opaque `FLOOR_COLOR` fill **and the vein grid** — the texture is the floor now (no grid).
+- **Fallback:** if the base texture doesn't load (a checkout without the art), the layer is
+  not added, `_paint_solid_floor` stays true, and the old procedural `FLOOR_COLOR` floor +
+  vein grid is drawn as before.
+- **Scope:** Arena only. The Sanctuary overrides `_build_level_environment()` (and sets
+  `_draws_arena_floor = false`), so it never builds this layer — it paints its own town ground.
+
 ## Sheet format (the contract between the art pipeline and the client)
 
 A *sheet asset* is a directory of `<anim>.png` grids plus a `meta.json`:
