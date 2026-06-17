@@ -39,6 +39,7 @@ const CLASS_KEYS := [
 const PLAYERS_DIR := "res://assets/sprites/players"
 const MONSTERS_DIR := "res://assets/sprites/monsters"
 const PROJECTILES_DIR := "res://assets/sprites/projectiles"
+const EFFECTS_DIR := "res://assets/sprites/effects"
 
 ## Class sheets are authored at different source canvas sizes (bot classes 92px,
 ## the Zealot 128px). Every class sprite is scaled so its canvas height maps to
@@ -115,6 +116,13 @@ static func projectile_frames(class_id: int) -> SpriteFrames:
 
 static func monster_projectile_frames(monster_key: String) -> SpriteFrames:
 	return load_sheet("%s/%s" % [PROJECTILES_DIR, monster_key], {})
+
+
+## SpriteFrames for a transient ability/impact effect sheet (non-directional,
+## one-shot "blast" animation). Returns null when the sheet is absent so callers
+## (BlastEffect) can fall back to a procedural ring. e.g. "charge_blast", "mageblast".
+static func effect_frames(effect_key: String) -> SpriteFrames:
+	return load_sheet("%s/%s" % [EFFECTS_DIR, effect_key], {})
 
 
 ## Some generated projectile art points 45 degrees up-right instead of right

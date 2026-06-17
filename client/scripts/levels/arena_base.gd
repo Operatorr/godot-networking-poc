@@ -530,10 +530,17 @@ func _handle_ability_effect_event(data: Dictionary) -> void:
 	var effect_id := int(event_data.get("effect_id", 0))
 	var world_pos: Vector2 = event_data.get("position", Vector2.ZERO)
 	var radius := float(event_data.get("radius", 60))
-	var vfx := _AbilityEffectVfx.new()
-	vfx.effect_id = effect_id
-	vfx.max_radius = maxf(radius, 8.0)
-	vfx.position = world_pos
+	# Mageblast (0) and Charge blast (1) play assembled sprite animations; mine (2)
+	# and shadowstep (3) have no bespoke art yet, so BlastEffect renders its ring
+	# fallback for them (and for 0/1 too until their sheets are assembled).
+	var key := ""
+	match effect_id:
+		0: key = "mageblast"
+		1: key = "charge_blast"
+	var vfx := BlastEffect.create(
+		key, world_pos, maxf(radius, 8.0),
+		_ability_fill_color(effect_id), _ability_ring_color(effect_id)
+	)
 	_add_effect_to_arena(vfx)
 
 	# Ability SFX: Mageblast (0) arcane detonation, Warrior Charge blast (1) heavy slam.
@@ -1893,50 +1900,22 @@ class _GroundDecorLayer extends Node2D:
 			row += 1
 
 
-## Transient expanding-ring/burst VFX for an ABILITY_EFFECT event. Styled by effect_id and
-## sized by the event radius; self-frees after ~0.4s. Pure cosmetics, no logic.
-class _AbilityEffectVfx extends Node2D:
-	const DURATION := 0.4
+## Fill / ring tint for an ABILITY_EFFECT by effect_id, handed to BlastEffect for
+## its procedural-ring fallback (and as the flash tint). Sprite-backed effects
+## ignore these. 0 mageblast, 1 charge_blast, 2 mine_detonation, 3 shadowstep_blink.
+func _ability_fill_color(effect_id: int) -> Color:
+	match effect_id:
+		0: return Color(0.5, 0.7, 1.0)   # mageblast — blue/white
+		1: return Color(1.0, 0.6, 0.2)   # charge_blast — orange
+		2: return Color(1.0, 0.25, 0.15) # mine_detonation — red
+		3: return Color(0.6, 0.3, 0.85)  # shadowstep — purple
+		_: return Color(0.8, 0.8, 0.8)
 
-	## 0 mageblast, 1 charge_blast, 2 mine_detonation, 3 shadowstep_blink.
-	var effect_id: int = 0
-	var max_radius: float = 60.0
-	var _timer: float = 0.0
 
-	func _process(delta: float) -> void:
-		_timer += delta
-		if _timer >= DURATION:
-			queue_free()
-			return
-		queue_redraw()
-
-	func _draw() -> void:
-		var t: float = clampf(_timer / DURATION, 0.0, 1.0)
-		var alpha := 1.0 - t
-		var radius := max_radius * (0.2 + 0.8 * t)
-		var fill := _fill_color()
-		var ring := _ring_color()
-		fill.a = 0.30 * alpha
-		ring.a = 0.9 * alpha
-		draw_circle(Vector2.ZERO, radius, fill)
-		draw_arc(Vector2.ZERO, radius, 0.0, TAU, 48, ring, 3.0)
-		# A second, brighter inner ring for punch.
-		var inner := ring
-		inner.a = 0.5 * alpha
-		draw_arc(Vector2.ZERO, radius * 0.6, 0.0, TAU, 36, inner, 2.0)
-
-	func _fill_color() -> Color:
-		match effect_id:
-			0: return Color(0.5, 0.7, 1.0)   # mageblast — blue/white
-			1: return Color(1.0, 0.6, 0.2)   # charge_blast — orange
-			2: return Color(1.0, 0.25, 0.15) # mine_detonation — red
-			3: return Color(0.6, 0.3, 0.85)  # shadowstep — purple
-			_: return Color(0.8, 0.8, 0.8)
-
-	func _ring_color() -> Color:
-		match effect_id:
-			0: return Color(0.85, 0.95, 1.0)
-			1: return Color(1.0, 0.8, 0.4)
-			2: return Color(1.0, 0.5, 0.3)
-			3: return Color(0.8, 0.5, 1.0)
-			_: return Color(1.0, 1.0, 1.0)
+func _ability_ring_color(effect_id: int) -> Color:
+	match effect_id:
+		0: return Color(0.85, 0.95, 1.0)
+		1: return Color(1.0, 0.8, 0.4)
+		2: return Color(1.0, 0.5, 0.3)
+		3: return Color(0.8, 0.5, 1.0)
+		_: return Color(1.0, 1.0, 1.0)

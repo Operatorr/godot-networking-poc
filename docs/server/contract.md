@@ -196,7 +196,8 @@ KILL/KILL_PVP none; RESPAWN `[s16 qx][s16 qy]`; PLAYER_INFO
 (class since protocol v3 — server-clamped to 0..=6, see ConnectAuth; `level` since protocol v6 —
 server-authoritative, broadcast to **all** clients so any client can show a player's level, e.g. the
 leaderboard, and re-sent on hydrate completion + level-up so observers stay fresh);
-LEADERBOARD_UPDATE `[u8 n]{n × [u16 id][u16 kills]}`; PROJECTILE_FIRED
+LEADERBOARD_UPDATE `[u8 n]{n × [u16 id][u16 kills][u16 deaths]}` (`deaths` since protocol v7 — the
+HUD shows a Kills:Deaths ratio; ranking is still by kills); PROJECTILE_FIRED
 `[s16 qx][s16 qy][u16 fire_tick]` with target_id = projectile id (**non-zero for monster shots** —
 hit-authority invariant); EXP_GAIN=13 `[u16 amount]` with source_id = the player who earned it (one event
 per nearby player when a monster dies — the HUD "+XP" pop only; progression itself is now
@@ -204,7 +205,7 @@ server-authoritative, see [`../systems/PROGRESSION.md`](../systems/PROGRESSION.m
 
 **Protocol v4 additions:**
 - **PICKUP=6** now carries `[u8 kind][u16 amount]` (was empty) — `kind` identifies the picked-up
-  world effect (e.g. Healthorb), `amount` the magnitude (Healthorb heals +5 HP); target_id = the
+  world effect (e.g. Healthorb), `amount` the magnitude (Healthorb heals +25 HP); target_id = the
   picked-up entity. Server-authoritative pickup.
 - **ABILITY_EFFECT=14** `[u16 effect_id][s16 qx][s16 qy][u16 radius]` with source_id = the casting
   player — a one-shot VFX/SFX cue for a Class ability (blast/cast/hitscan center + radius). All
@@ -229,6 +230,16 @@ the owner's current HP. HP is not in snapshots, so the owner's HUD bar was a dis
 that couldn't see server-side regen and diverged from the authoritative `health`; the owner now
 reconciles it against this field, exactly like stamina/mana. Death stays server-authoritative (the
 reliable KILL/KILL_PVP event), so the client never infers death from this value.
+
+## Protocol v7 — deaths in LEADERBOARD_UPDATE (Kills:Deaths)
+
+`PROTOCOL_VERSION` advances to **7**: each `LEADERBOARD_UPDATE` row gains a trailing `[u16 deaths]`
+(+2 B/row), so the HUD leaderboard shows a **Kills:Deaths** ratio instead of bare kills. The Rust
+in-memory `Leaderboard` already tracked deaths (incremented on every PvP kill); they were simply never
+serialized — `top_n` now returns `(entity_id, pvp_kills, deaths)`. **Ranking is unchanged** (still
+kills DESC, entity-id ASC tiebreak); deaths only ride along for display. This is the in-session board
+(ephemeral, forgotten on disconnect — ADR 0005); persistent career K/D would be a separate Go-API/Redis
+path (the schema exists, but no gameplay stats are reported to the API today).
 
 ## Protocol v6 — per-player level in PLAYER_INFO
 
@@ -255,7 +266,7 @@ above:
 | `STEALTH` flag | 16-bit entity_flags | **bit 9** (invisible to AI targeting; Rogue Shadowstep) |
 | `ABILITY_EFFECT=14` | `GameEvent` (type 67) | new: `[u16 effect_id][s16 qx][s16 qy][u16 radius]` (ability VFX cue) |
 | `PROGRESS=15` | `GameEvent` (type 67) | new: `[u16 level][u32 experience][s16 move_speed_q]` (authoritative progression push) |
-| `PICKUP=6` payload | `GameEvent` (type 67) | now `[u8 kind][u16 amount]` (was empty) — Healthorb +5 HP etc. |
+| `PICKUP=6` payload | `GameEvent` (type 67) | now `[u8 kind][u16 amount]` (was empty) — Healthorb +25 HP etc. |
 
 Lockstep client/server deploy as always (DIY versioning): a v3↔v4 mismatch is refused at the
 handshake (`ConnectAuth` re-check). The new fields are all server-authoritative in effect — abilities,

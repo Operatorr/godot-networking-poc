@@ -107,7 +107,9 @@ pub enum GameEventData {
         level: u16,
     },
     Leaderboard {
-        entries: Vec<(u16, u16)>,
+        /// `(entity_id, pvp_kills, deaths)` per ranked player. Ranking is by kills (the server
+        /// `top_n` order); deaths ride along so the HUD can show a Kills:Deaths ratio.
+        entries: Vec<(u16, u16, u16)>,
     },
     /// `target_id` of the enclosing event is the projectile id — MUST be non-zero for monster
     /// shots (D11 carried-forward invariant).
@@ -281,9 +283,10 @@ impl ServerPacket {
                     GameEventData::Leaderboard { entries } => {
                         let n = entries.len().min(10);
                         w.write_u8(n as u8);
-                        for (id, kills) in entries.iter().take(n) {
+                        for (id, kills, deaths) in entries.iter().take(n) {
                             w.write_u16(*id);
                             w.write_u16(*kills);
+                            w.write_u16(*deaths);
                         }
                     }
                     GameEventData::ProjectileFired { x, y, fire_tick } => {
@@ -408,7 +411,7 @@ impl ServerPacket {
                         }
                         let mut entries = Vec::with_capacity(n);
                         for _ in 0..n {
-                            entries.push((r.read_u16()?, r.read_u16()?));
+                            entries.push((r.read_u16()?, r.read_u16()?, r.read_u16()?));
                         }
                         GameEventData::Leaderboard { entries }
                     }
@@ -589,7 +592,7 @@ mod tests {
                 source_id: 0,
                 target_id: 0,
                 data: GameEventData::Leaderboard {
-                    entries: vec![(1, 5), (2, 3), (7, 1)],
+                    entries: vec![(1, 5, 2), (2, 3, 4), (7, 1, 0)],
                 },
             },
             GameEvent {

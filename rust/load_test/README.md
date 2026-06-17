@@ -47,6 +47,22 @@ target selection, orbit-at-preferred-range, intercept aim with difficulty-scaled
 error, projectile dodging, stamina-gated sprint, and cooldown dash are kept; the old A*
 waypoint hunt and flank planner are not.
 
+Two survival overlays layer on top of the `strategy` movement (both purely geometric — they
+add no RNG draws, so bot runs stay reproducible):
+
+- **Defensive orb-seek** — below **60% HP**, a bot detours to the nearest **Healthorb** within
+  800 u while it keeps fighting: aim + fire stay on the engaged target and the dodge overlay
+  still wins on movement, so the bot grabs the heal *while* shooting and dodging. HP comes from
+  `ActionConfirm.health` (the only HP on the wire); orbs are already in the AoI entity map.
+- **Daze-aware braking** — an incoming shot inside 100 u and still closing is a near-certain hit,
+  so the bot drops **sprint** for that frame. A hit taken while sprinting Dazes (sprint/dash
+  lock + 30% slow, 1.5 s); taken while walking it does not — so braking mirrors a real player.
+
+Projectile dodging and the braking above react to **every** incoming shot the bot didn't fire —
+monster, enemy player, *and* other bots — learned from `PROJECTILE_FIRED` (which carries each
+shot's id + owner). The bot's own shots are excluded so it never dodges its own fire. (Earlier the
+swarm only dodged monster bullets, so a human attacker found bots easy to hit in PvP.)
+
 ## Player classes & RMB abilities
 
 Bots only spawn as the three **playable** classes — **Warrior (4)**, **Rogue (5)**, **Mage

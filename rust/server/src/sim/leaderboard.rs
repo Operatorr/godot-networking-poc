@@ -5,8 +5,7 @@
 struct Entry {
     entity_id: u16,
     pvp_kills: u16,
-    /// Tracked but never serialized (parity with the GDScript).
-    #[allow(dead_code)]
+    /// Serialized alongside kills since protocol v7 so the HUD can show a Kills:Deaths ratio.
     deaths: u16,
 }
 
@@ -57,8 +56,9 @@ impl Leaderboard {
         self.entries.last_mut().unwrap()
     }
 
-    /// Kills DESC, entity_id ASC tiebreak — a strict total order.
-    pub fn top_n(&self, count: usize) -> Vec<(u16, u16)> {
+    /// Kills DESC, entity_id ASC tiebreak — a strict total order. Returns
+    /// `(entity_id, pvp_kills, deaths)`; ranking is by kills, deaths ride along for the HUD's K:D.
+    pub fn top_n(&self, count: usize) -> Vec<(u16, u16, u16)> {
         let mut sorted: Vec<&Entry> = self.entries.iter().collect();
         sorted.sort_by(|a, b| {
             b.pvp_kills
@@ -68,7 +68,7 @@ impl Leaderboard {
         sorted
             .into_iter()
             .take(count)
-            .map(|e| (e.entity_id, e.pvp_kills))
+            .map(|e| (e.entity_id, e.pvp_kills, e.deaths))
             .collect()
     }
 
@@ -94,9 +94,9 @@ mod tests {
         lb.record_pvp_kill(3, 5);
         let top = lb.top_n(10);
         assert_eq!(top.len(), 10);
-        assert_eq!(top[0], (5, 2));
-        assert_eq!(top[1], (3, 1));
-        assert_eq!(top[2], (1, 0)); // ties broken by entity_id ascending
+        assert_eq!(top[0], (5, 2, 1)); // 2 kills, died once (to player 3)
+        assert_eq!(top[1], (3, 1, 0));
+        assert_eq!(top[2], (1, 0, 1)); // ties broken by entity_id ascending; player 1 died once
     }
 
     #[test]
@@ -105,7 +105,7 @@ mod tests {
         lb.register_player(1);
         lb.record_pvp_kill(1, 2);
         lb.remove_player(1);
-        assert!(lb.top_n(10).iter().all(|(id, _)| *id != 1));
+        assert!(lb.top_n(10).iter().all(|(id, _, _)| *id != 1));
     }
 
     #[test]
@@ -113,6 +113,6 @@ mod tests {
         let mut lb = Leaderboard::new();
         lb.register_player(1);
         lb.record_pvp_kill(1, 1);
-        assert_eq!(lb.top_n(1)[0], (1, 0));
+        assert_eq!(lb.top_n(1)[0], (1, 0, 0));
     }
 }

@@ -33,7 +33,10 @@ pub use types::*;
 
 /// Bumped on every wire-format change; checked at handshake (ENet connect `data` low byte and
 /// the `ConnectAuth` packet). Client and server refuse mismatched versions (D7).
-pub const PROTOCOL_VERSION: u8 = 6; // v6: PlayerInfo.level (+2B) — server broadcasts each player's
+pub const PROTOCOL_VERSION: u8 = 7; // v7: LEADERBOARD_UPDATE entries gain a trailing `deaths` u16 per
+                                    // row (+2B/row) so the HUD can show a Kills:Deaths ratio; ranking
+                                    // is still by kills. Deaths were already tracked in-memory.
+                                    // (v6: PlayerInfo.level (+2B) — server broadcasts each player's
                                     // level to ALL clients (leaderboard shows class+level), re-sent
                                     // on hydrate + level-up; owner still also gets owner-only Progress.
                                     // (v5: ActionConfirm.health (+2B) — authoritative HP for the

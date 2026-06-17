@@ -4,6 +4,10 @@
 class_name PredictionController
 extends Node
 
+## Preloaded so the GDExtension/headless class cache can't fail to resolve the
+## global class during startup (repo convention: const named exactly like the class).
+const ChargeTrail := preload("res://scripts/entities/world_effects/charge_trail.gd")
+
 
 #region Signals
 ## Emitted when a server correction is applied
@@ -161,6 +165,10 @@ var _own_dashing: bool = false
 ## Distinct from _own_dashing, which edges on the server's DASHING flag (covering the plain dash
 ## too) to slave the charge END to the server; this one edges on the predicted is_charging state.
 var _was_charging: bool = false
+
+## Active shader-driven charge trail (Warrior), parented to the player while charging.
+## Created on the charge rising edge and released (faded out) on the falling edge.
+var _charge_trail: ChargeTrail = null
 #endregion
 
 
@@ -279,6 +287,7 @@ func _physics_process(delta: float) -> void:
 	var charging := player_node != null and NetworkManager.is_server_connected() and is_active() \
 		and _sim != null and _sim_has_is_charging and _sim.is_charging()
 	_drive_charge_loop_sfx(charging)
+	_drive_charge_trail(charging)
 
 	if player_node == null:
 		return
@@ -921,12 +930,28 @@ func _drive_charge_loop_sfx(charging: bool) -> void:
 		AudioManager.stop_charge_loop()
 
 
+## Attach/release the shader-driven charge trail (Warrior) on the charge edges.
+## Edge-detected via _charge_trail's existence so it mirrors the charge-loop SFX.
+func _drive_charge_trail(charging: bool) -> void:
+	if charging:
+		if _charge_trail == null and player_node != null and is_instance_valid(player_node):
+			_charge_trail = ChargeTrail.create()
+			player_node.add_child(_charge_trail)
+	elif _charge_trail != null:
+		if is_instance_valid(_charge_trail):
+			_charge_trail.finish()  # stop emitting; self-frees once embers fade
+		_charge_trail = null
+
+
 ## Safety: stop the charge rumble if the controller is freed mid-charge (scene change), since
 ## _physics_process won't run to clear it (the AudioManager autoload outlives this node).
 func _exit_tree() -> void:
 	if _was_charging:
 		AudioManager.stop_charge_loop()
 		_was_charging = false
+	if _charge_trail != null and is_instance_valid(_charge_trail):
+		_charge_trail.finish()
+	_charge_trail = null
 
 
 func _process_own_state_update(entity_data: Dictionary) -> void:

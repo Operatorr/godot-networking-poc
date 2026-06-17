@@ -78,6 +78,12 @@ steering motion and mana drain are shared.
 `stop_charge_loop`, driven by the predicted charge edges in `prediction.gd`), and the `charge` impact
 SFX fires on the `CHARGE_BLAST` effect when it connects.
 
+**VFX.** The blast plays a generated orange fiery-nova sprite animation (`charge_blast`) via
+`BlastEffect`, and a **shader-driven GPU particle trail** (`ChargeTrail`) streams orange embers
+behind the Warrior while charging (created on the same predicted charge edges as the rumble). Both
+are render-only; see
+[`arena-visuals.md`](../../systems/arena-visuals.md#ability-blast-effects--charge-trail-implemented-2026-06-17).
+
 ### The eight questions (this ability)
 
 - **Client:** holds the ability flag + cursor in `PlayerInput`; **predicts the dash motion** via `sim_core`; renders the `INVULNERABLE` flash and the blast `ABILITY_EFFECT`.

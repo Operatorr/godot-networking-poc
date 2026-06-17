@@ -2,11 +2,13 @@
 ##
 ## Authored as scenes/ui/hud/leaderboard.tscn (Panel + VBox with a Title and a separator); the
 ## ten entry rows are built in code (_build_rows). Each row is
-##   [class icon] Name - Class {level} ........... {kills, right-aligned}
+##   [class icon] Name - Class {level} ........... {kills:deaths, right-aligned}
 ## with the "Name - Class {level}" text tinted by the class's identity color (PacketTypes.CLASS_COLORS,
 ## WoW-inspired). The local player and a recent killer/victim are cued by a row-background tint so the
-## class color on the text is preserved. update_entries() refreshes from server leaderboard data; class,
-## level and icon are joined per entity from EntityNameCache (populated by PLAYER_INFO, protocol v6+).
+## class color on the text is preserved. Ranking is by kills (the server's top_n order); the right
+## column shows the Kills:Deaths ratio (deaths ride the LEADERBOARD_UPDATE entries, protocol v7+).
+## update_entries() refreshes from server leaderboard data; class, level and icon are joined per entity
+## from EntityNameCache (populated by PLAYER_INFO, protocol v6+).
 extends Control
 
 const COMPACT_COUNT := 5
@@ -80,7 +82,7 @@ func _build_rows() -> void:
 		row.add_child(info)
 
 		var kills := Label.new()
-		kills.custom_minimum_size = Vector2(34, 0)
+		kills.custom_minimum_size = Vector2(50, 0)  # fits a "K:D" pair, e.g. "127:99"
 		kills.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		kills.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		kills.add_theme_font_size_override("font_size", 14)
@@ -124,11 +126,13 @@ func _sanitize_entries(entries: Array) -> Array[Dictionary]:
 			continue
 
 		var kills := clampi(int(raw_entry.get("pvp_kills", 0)), 0, 65535)
+		var deaths := clampi(int(raw_entry.get("deaths", 0)), 0, 65535)
 		var existing: Dictionary = by_entity_id.get(entity_id, {})
 		if existing.is_empty() or kills > int(existing.get("pvp_kills", 0)):
 			by_entity_id[entity_id] = {
 				"entity_id": entity_id,
-				"pvp_kills": kills
+				"pvp_kills": kills,
+				"deaths": deaths
 			}
 
 	var sanitized: Array[Dictionary] = []
@@ -152,9 +156,10 @@ func _sanitize_entries(entries: Array) -> Array[Dictionary]:
 func _make_signature(entries: Array[Dictionary]) -> String:
 	var parts: PackedStringArray = []
 	for entry in entries:
-		parts.append("%d:%d" % [
+		parts.append("%d:%d:%d" % [
 			int(entry.get("entity_id", 0)),
-			int(entry.get("pvp_kills", 0))
+			int(entry.get("pvp_kills", 0)),
+			int(entry.get("deaths", 0))
 		])
 	return "|".join(parts)
 
@@ -169,6 +174,7 @@ func _refresh_display() -> void:
 			var entry: Dictionary = _entries[i]
 			var entity_id: int = entry.get("entity_id", 0)
 			var kills: int = entry.get("pvp_kills", 0)
+			var deaths: int = entry.get("deaths", 0)
 			var player_name := EntityNameCache.get_entity_name(entity_id)
 			var cls_id := EntityNameCache.get_entity_class(entity_id)
 			var level := EntityNameCache.get_entity_level(entity_id)
@@ -178,7 +184,7 @@ func _refresh_display() -> void:
 			info.add_theme_color_override("font_color", PacketTypes.class_color(cls_id))
 
 			var kills_label: Label = row["kills"]
-			kills_label.text = str(kills)
+			kills_label.text = "%d:%d" % [kills, deaths]
 
 			var icon: TextureRect = row["icon"]
 			icon.texture = _icon_for_class(cls_id)

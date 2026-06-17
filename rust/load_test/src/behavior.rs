@@ -6,7 +6,10 @@
 //! lives in git history before the Rust port).
 
 use crate::rng::Pcg32;
-use protocol::types::{entity_flags, input_flags, MONSTER_ID_END, MONSTER_ID_START, PLAYER_ID_MAX};
+use protocol::types::{
+    entity_flags, input_flags, world_effect, world_effect_subtype_for_id, MONSTER_ID_END,
+    MONSTER_ID_START, PLAYER_ID_MAX,
+};
 use std::collections::HashMap;
 
 /// Last-known wire state of one replicated entity, maintained by the bot from snapshots.
@@ -25,6 +28,9 @@ pub struct View<'a> {
     pub my_id: u16,
     pub pos: (f32, f32),
     pub stamina: f64,
+    /// Own HP as a fraction of max (1.0 = full). Drives the defensive orb-seek; the bot's only HP
+    /// source is `ActionConfirm.health`, so this is `health / max_health_seen`.
+    pub hp_fraction: f64,
     pub entities: &'a HashMap<u16, KnownEntity>,
     /// projectile id -> owner entity id, learned from PROJECTILE_FIRED events.
     pub projectile_owners: &'a HashMap<u16, u16>,
@@ -135,6 +141,16 @@ const CHARGE_HOLD_S: f64 = 1.35;
 const TARGET_MAX_RANGE: f32 = 1250.0; // 1.25 × AoI radius
 const PROJECTILE_SPEED: f32 = 400.0;
 const DODGE_RADIUS: f32 = 220.0;
+// Defensive orb-seek: a bot below this HP fraction detours to the nearest Healthorb within
+// ORB_SEEK_RADIUS while it keeps fighting (aim + SHOOT stay on the engaged target, dodge still
+// overrides movement). Healthorbs are world-effect entities (id band 40000–42499) that already
+// arrive in the AoI entity map, so this only reads state the bot already has.
+const ORB_SEEK_HP_FRACTION: f64 = 0.60;
+const ORB_SEEK_RADIUS: f32 = 800.0;
+// A monster shot inside this radius and still closing is treated as a near-certain hit: the bot
+// stops SPRINTING so the hit lands while WALKING. A sprint-hit Daze (sprint/dash lock + 30% slow
+// for 1.5 s) is worse than the hit, so a real player would brake — this mirrors that.
+const IMMINENT_HIT_RADIUS: f32 = 100.0;
 // Python thresholded a normalized axis to ±1 above 35/speed (= 35/200).
 const AXIS_THRESHOLD: f32 = 0.175;
 
@@ -246,17 +262,35 @@ impl BehaviorState {
             Some((id, t)) => self.engage(view, rng, now, id, t),
         };
 
-        // Projectile dodge overlay: steer perpendicular to the closest incoming monster shot.
+        // Defensive orb-seek overlay: when hurt below the HP floor and a Healthorb is within reach,
+        // steer toward the nearest orb while KEEPING the engage aim + SHOOT — the bot chases the
+        // heal and keeps firing at its target (or moves to the orb regardless when it has no
+        // target). Movement only; the dodge overlay below still wins when a shot is incoming, so
+        // the bot grabs the orb *while* dodging. Purely geometric (no RNG) — draw order unchanged.
+        if view.hp_fraction < ORB_SEEK_HP_FRACTION {
+            if let Some((ox, oy)) = nearest_healthorb(view) {
+                let (dx, dy) = (ox - view.pos.0, oy - view.pos.1);
+                decision.flags =
+                    (decision.flags & !MOVE_MASK) | flags_from_dir(dx, dy, AXIS_THRESHOLD);
+            }
+        }
+
+        // Projectile dodge overlay: steer perpendicular to the closest incoming shot — from a
+        // monster, an enemy player, or another bot (anything not our own). Also flag a near-certain
+        // *imminent* hit (very close + still closing) so the sprint gate can drop SPRINT — a hit
+        // taken WALKING does not Daze, one taken SPRINTING does.
         let mut dodging = false;
-        if let Some((px, py, pvx, pvy)) = nearest_monster_projectile(view) {
+        let mut imminent_hit = false;
+        if let Some((px, py, pvx, pvy)) = nearest_incoming_projectile(view) {
             let (rx, ry) = (view.pos.0 - px, view.pos.1 - py);
-            if rx * rx + ry * ry < DODGE_RADIUS * DODGE_RADIUS {
+            let dist2 = rx * rx + ry * ry;
+            if dist2 < DODGE_RADIUS * DODGE_RADIUS {
                 dodging = true;
                 let speed = (pvx * pvx + pvy * pvy).sqrt();
                 let (fx, fy) = if speed > 1.0 {
                     (pvx / speed, pvy / speed)
                 } else {
-                    let len = (rx * rx + ry * ry).sqrt().max(1.0);
+                    let len = dist2.sqrt().max(1.0);
                     (-rx / len, -ry / len)
                 };
                 // Perpendicular, picking the side that moves away from the shot's path.
@@ -268,12 +302,20 @@ impl BehaviorState {
                 decision.flags =
                     (decision.flags & !MOVE_MASK) | flags_from_dir(perp_x, perp_y, AXIS_THRESHOLD);
             }
+            // Inside the imminent radius and still closing (the shot's velocity points toward the
+            // bot, `v · (bot − shot) > 0`): an unavoidable hit, so brake out of the sprint.
+            if dist2 < IMMINENT_HIT_RADIUS * IMMINENT_HIT_RADIUS && pvx * rx + pvy * ry > 0.0 {
+                imminent_hit = true;
+            }
         }
 
-        // Sprint while repositioning or dodging, gated on the stamina meter like a human would.
+        // Sprint while repositioning or dodging, gated on the stamina meter like a human would —
+        // but NEVER into a near-certain hit: braking avoids the sprint-hit Daze, which costs more
+        // than the hit. (Daze keys off the SPRINTING state at the instant of impact — combat.rs.)
         if (dodging || decision.flags & MOVE_MASK != 0)
             && view.stamina > SPRINT_STAMINA_FLOOR
             && (dodging || d >= 0.6)
+            && !imminent_hit
         {
             decision.flags |= input_flags::SPRINT;
         }
@@ -461,10 +503,25 @@ fn flags_from_dir(dx: f32, dy: f32, threshold: f32) -> u16 {
     f
 }
 
-fn nearest_monster_projectile(view: &View) -> Option<(f32, f32, f32, f32)> {
+/// Nearest Healthorb (world-effect subtype 0) within `ORB_SEEK_RADIUS`, or `None`. Orbs are static,
+/// so only the position is returned. They live in the AoI entity map keyed by id (band 40000–42499).
+fn nearest_healthorb(view: &View) -> Option<(f32, f32)> {
+    view.entities
+        .iter()
+        .filter(|(id, _)| world_effect_subtype_for_id(**id) == Some(world_effect::HEALTHORB))
+        .map(|(_, e)| (dist(view.pos, e.pos), e.pos))
+        .filter(|(d, _)| *d <= ORB_SEEK_RADIUS)
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, pos)| pos)
+}
+
+/// Nearest incoming projectile NOT owned by this bot — monster, enemy player, or other bot — as
+/// `(x, y, vx, vy)`. Owners are learned from `PROJECTILE_FIRED`; the bot's own shots are excluded
+/// so it never dodges its own fire.
+fn nearest_incoming_projectile(view: &View) -> Option<(f32, f32, f32, f32)> {
     view.projectile_owners
         .iter()
-        .filter(|(_, owner)| **owner >= MONSTER_ID_START)
+        .filter(|(_, owner)| **owner != view.my_id)
         .filter_map(|(pid, _)| view.entities.get(pid))
         .map(|e| (dist(view.pos, e.pos), e))
         .min_by(|a, b| a.0.total_cmp(&b.0))
@@ -479,10 +536,19 @@ mod tests {
         entities: &'a HashMap<u16, KnownEntity>,
         owners: &'a HashMap<u16, u16>,
     ) -> View<'a> {
+        view_with_hp(entities, owners, 1.0)
+    }
+
+    fn view_with_hp<'a>(
+        entities: &'a HashMap<u16, KnownEntity>,
+        owners: &'a HashMap<u16, u16>,
+        hp_fraction: f64,
+    ) -> View<'a> {
         View {
             my_id: 1,
             pos: (500.0, 0.0),
             stamina: 100.0,
+            hp_fraction,
             entities,
             projectile_owners: owners,
         }
@@ -712,6 +778,178 @@ mod tests {
         assert_eq!(
             second.flags & input_flags::DASH & first.flags,
             second.flags & input_flags::DASH
+        );
+    }
+
+    /// A Healthorb due south of the bot, well inside the seek range.
+    fn orb_south() -> (u16, KnownEntity) {
+        (
+            world_effect::band_start(world_effect::HEALTHORB), // 40000
+            KnownEntity {
+                pos: (500.0, 300.0),
+                vel: (0.0, 0.0),
+                anim: 0,
+                flags: entity_flags::ALIVE,
+                last_tick: 1,
+            },
+        )
+    }
+
+    #[test]
+    fn hurt_bot_seeks_healthorb_while_still_shooting() {
+        // 40% HP + a monster 200 u east + an orb 300 u south: the bot steers toward the orb
+        // (south) instead of the engage back-off (west), yet keeps firing at the monster (east).
+        let mut entities = lone_monster_east();
+        let (orb_id, orb) = orb_south();
+        entities.insert(orb_id, orb);
+        let owners = HashMap::new();
+        let mut b = BehaviorState::new(BehaviorKind::Strategy, 1.0, CLASS_MAGE);
+        let mut rng = Pcg32::new(31);
+        let d = b.decide(&view_with_hp(&entities, &owners, 0.40), &mut rng, 100.0);
+        assert_ne!(
+            d.flags & input_flags::MOVE_DOWN,
+            0,
+            "should steer toward the orb (south)"
+        );
+        assert_eq!(
+            d.flags & input_flags::MOVE_LEFT,
+            0,
+            "orb-seek replaces the engage back-off"
+        );
+        assert_ne!(
+            d.flags & input_flags::SHOOT,
+            0,
+            "keeps firing at the target while seeking the orb"
+        );
+        assert!(d.aim_angle.abs() < 0.6, "aim {} not eastish", d.aim_angle);
+    }
+
+    #[test]
+    fn healthy_bot_ignores_healthorb() {
+        // Same scene at full HP: no detour — the bot engages normally (backs off west from the
+        // 200 u monster) and never heads south toward the orb.
+        let mut entities = lone_monster_east();
+        let (orb_id, orb) = orb_south();
+        entities.insert(orb_id, orb);
+        let owners = HashMap::new();
+        let mut b = BehaviorState::new(BehaviorKind::Strategy, 1.0, CLASS_MAGE);
+        let mut rng = Pcg32::new(32);
+        let d = b.decide(&view_with_hp(&entities, &owners, 1.0), &mut rng, 100.0);
+        assert_eq!(
+            d.flags & input_flags::MOVE_DOWN,
+            0,
+            "a healthy bot must not chase the orb"
+        );
+        assert_ne!(
+            d.flags & input_flags::MOVE_LEFT,
+            0,
+            "engages normally (backs off west)"
+        );
+    }
+
+    fn closing_monster_shot(pos: (f32, f32)) -> (HashMap<u16, KnownEntity>, HashMap<u16, u16>) {
+        let mut entities = HashMap::new();
+        entities.insert(
+            10001,
+            KnownEntity {
+                pos,
+                vel: (-400.0, 0.0), // heading due west, into a bot sitting at (500, 0)
+                anim: 0,
+                flags: entity_flags::ALIVE,
+                last_tick: 1,
+            },
+        );
+        let mut owners = HashMap::new();
+        owners.insert(10001u16, 30000u16); // projectile owned by a monster
+        (entities, owners)
+    }
+
+    #[test]
+    fn imminent_monster_shot_brakes_sprint() {
+        // A monster shot right on top of the bot and still closing is a near-certain hit: the bot
+        // must NOT sprint (a sprint-hit would Daze it), though it still dodges (moves).
+        let (entities, owners) = closing_monster_shot((560.0, 0.0)); // 60 u east → imminent
+        let mut b = BehaviorState::new(BehaviorKind::Strategy, 1.0, CLASS_MAGE);
+        let mut rng = Pcg32::new(21);
+        let d = b.decide(&view_with_hp(&entities, &owners, 1.0), &mut rng, 100.0);
+        assert_ne!(d.flags & MOVE_MASK, 0, "should still dodge the shot");
+        assert_eq!(
+            d.flags & input_flags::SPRINT,
+            0,
+            "must brake — never sprint into a near-certain hit"
+        );
+
+        // The same shot still a bit away (inside dodge range, outside imminent range) keeps the
+        // sprint on: escape while there is still room.
+        let (far, owners) = closing_monster_shot((700.0, 0.0)); // 200 u east → not yet imminent
+        let mut b2 = BehaviorState::new(BehaviorKind::Strategy, 1.0, CLASS_MAGE);
+        let mut rng2 = Pcg32::new(22);
+        let d2 = b2.decide(&view_with_hp(&far, &owners, 1.0), &mut rng2, 100.0);
+        assert_ne!(
+            d2.flags & input_flags::SPRINT,
+            0,
+            "should sprint to escape a not-yet-imminent shot"
+        );
+    }
+
+    #[test]
+    fn dodges_player_projectile_not_just_monster() {
+        // A shot owned by a *player* (id 7), 120 u east and closing. Monster-only dodging ignored
+        // this (the "easy to hit the bot" playtest bug); now the bot dodges PvP fire too — the
+        // shot heads due west, so the perpendicular evade is due north (MOVE_UP).
+        let mut entities = HashMap::new();
+        entities.insert(
+            12345, // projectile-band id
+            KnownEntity {
+                pos: (620.0, 0.0),
+                vel: (-400.0, 0.0),
+                anim: 0,
+                flags: entity_flags::ALIVE,
+                last_tick: 1,
+            },
+        );
+        let mut owners = HashMap::new();
+        owners.insert(12345u16, 7u16); // owned by player 7, not a monster
+        let mut b = BehaviorState::new(BehaviorKind::Strategy, 1.0, CLASS_MAGE);
+        let mut rng = Pcg32::new(41);
+        let d = b.decide(&view_with_hp(&entities, &owners, 1.0), &mut rng, 100.0);
+        assert_ne!(
+            d.flags & input_flags::MOVE_UP,
+            0,
+            "should dodge a player's projectile (perpendicular = north)"
+        );
+    }
+
+    #[test]
+    fn ignores_own_projectile() {
+        // The bot's own shot must never trigger a dodge. It engages a monster 200 u east (backs
+        // off west) with its OWN projectile 150 u south: movement stays the engage back-off (west)
+        // and does NOT steer east as a dodge of that shot would.
+        let mut entities = lone_monster_east(); // monster 30001 at (700, 0)
+        entities.insert(
+            12345,
+            KnownEntity {
+                pos: (500.0, 150.0),
+                vel: (0.0, -400.0),
+                anim: 0,
+                flags: entity_flags::ALIVE,
+                last_tick: 1,
+            },
+        );
+        let mut owners = HashMap::new();
+        owners.insert(12345u16, 1u16); // my_id == 1 → our own shot
+        let mut b = BehaviorState::new(BehaviorKind::Strategy, 1.0, CLASS_MAGE);
+        let mut rng = Pcg32::new(42);
+        let d = b.decide(&view_with_hp(&entities, &owners, 1.0), &mut rng, 100.0);
+        assert_ne!(
+            d.flags & input_flags::MOVE_LEFT,
+            0,
+            "engages normally — does not dodge its own shot"
+        );
+        assert_eq!(
+            d.flags & input_flags::MOVE_RIGHT,
+            0,
+            "must not dodge its own projectile"
         );
     }
 }

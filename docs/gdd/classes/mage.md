@@ -59,7 +59,7 @@ can gain Daze/slow/burn/etc. by listing them — see [`../systems/abilities.md`]
 
 ### The eight questions (this ability)
 
-- **Client:** sends the ability flag + cursor; renders the explosion from the `ABILITY_EFFECT` event; shows the Daze star-indicator from the replicated `DAZED` flag.
+- **Client:** sends the ability flag + cursor; renders the explosion from the `ABILITY_EFFECT` event as a generated cyan arcane-burst sprite (`mageblast`) via `BlastEffect` (ring fallback when the art is missing — see [`../systems/arena-visuals.md`](../../systems/arena-visuals.md#ability-blast-effects--charge-trail-implemented-2026-06-17)); shows the Daze star-indicator from the replicated `DAZED` flag.
 - **Server:** authoritative — validates Mana/cooldown, clamps the target to range, applies the instant 55 AOE to monsters and (PvP) to other players in radius, dazing the players hit.
 - **Predicted:** nothing — the explosion is instant and server-resolved; only the Mage's own movement is predicted. A victim's client slaves its local Daze to the server's `DAZED` flag edge.
 - **Replicated:** an `ABILITY_EFFECT` event (blast center + radius), per-victim `DAMAGE`, and the `DAZED` entity flag on each dazed player. No persistent entity.

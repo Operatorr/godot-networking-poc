@@ -84,6 +84,12 @@ pub struct Bot {
     /// needs a snapshot to re-evaluate around the new position, and stale far entities would
     /// otherwise log as false cull violations.
     aoi_grace_until: f64,
+    /// Own authoritative HP, learned from `ActionConfirm.health` (the only HP source on the wire —
+    /// snapshots carry no HP). `max_health` is the running max ever seen (full on spawn, so it
+    /// converges to the true class/level max); together they give the HP fraction the strategy AI
+    /// uses to decide whether to break off and grab a Healthorb.
+    health: u16,
+    max_health: u16,
 }
 
 impl Bot {
@@ -164,6 +170,8 @@ impl Bot {
             dead_since: None,
             last_respawn_request_at: f64::NEG_INFINITY,
             pos_synced: false,
+            health: 0,
+            max_health: 0,
             aoi_grace_until: 0.0,
         })
     }
@@ -315,14 +323,22 @@ impl Bot {
                 self.pos = Vec2::new(c.position.0, c.position.1);
                 self.pos_synced = true;
                 self.sm.set_resources(c.stamina as f64, c.mana as f64);
+                // Track HP for the strategy AI's orb-seek decision. max_health is the running max
+                // (HP is full on spawn/respawn, so this latches the true class/level max).
+                self.health = c.health;
+                self.max_health = self.max_health.max(c.health);
             }
             ServerPacket::GameEvent(e) => {
                 self.metrics.game_events_received += 1;
                 use protocol::types::game_event_type as t;
                 match e.event_type {
                     t::PROJECTILE_FIRED => {
-                        // target_id = projectile id (non-zero for monster shots — D11).
-                        if e.source_id >= MONSTER_ID_START && e.target_id != 0 {
+                        // target_id = projectile id, source_id = its owner. Record EVERY shot —
+                        // monster, player, AND other bots — so the strategy AI can dodge incoming
+                        // PvP fire, not just monster bullets. (`scan_for_monster_hits` re-filters to
+                        // monster owners for client-authoritative PvE hit reports; PvP hits are
+                        // server-authoritative and must never be self-reported.)
+                        if e.target_id != 0 {
                             self.projectile_owners.insert(e.target_id, e.source_id);
                         }
                     }
@@ -338,6 +354,7 @@ impl Bot {
                         self.dead_since = None;
                         self.sm.reset();
                         self.vel = Vec2::ZERO;
+                        self.health = self.max_health; // respawn restores full HP
                         self.aoi_grace_until = now + 1.0;
                     }
                     _ => {}
@@ -462,10 +479,18 @@ impl Bot {
             // Keep sending zero-input frames while dead, like an idle client.
         } else {
             let decision = {
+                // HP fraction for the orb-seek decision; treat "unknown HP" (no confirm yet) as
+                // full so a fresh bot never thinks it is hurt before its first ActionConfirm.
+                let hp_fraction = if self.max_health > 0 {
+                    self.health as f64 / self.max_health as f64
+                } else {
+                    1.0
+                };
                 let view = View {
                     my_id: self.entity_id,
                     pos: (self.pos.x, self.pos.y),
                     stamina: self.sm.stamina(),
+                    hp_fraction,
                     entities: &self.entities,
                     projectile_owners: &self.projectile_owners,
                 };

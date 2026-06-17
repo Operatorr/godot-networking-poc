@@ -359,10 +359,11 @@ impl ProtocolCodec {
                     }
                     protocol::GameEventData::Leaderboard { entries } => {
                         let mut arr = VarArray::new();
-                        for (entity_id, pvp_kills) in entries {
+                        for (entity_id, pvp_kills, deaths) in entries {
                             let mut row = VarDictionary::new();
                             row.set("entity_id", entity_id as i64);
                             row.set("pvp_kills", pvp_kills as i64);
+                            row.set("deaths", deaths as i64);
                             arr.push(&row.to_variant());
                         }
                         data.set("entries", &arr);

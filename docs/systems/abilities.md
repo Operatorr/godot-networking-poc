@@ -26,7 +26,11 @@ introduced bumped the protocol to **v4** — see [`../server/contract.md`](../se
    movement state.
 4. **Replication.** The server broadcasts an **`ABILITY_EFFECT`** game event (`effect_id, x, y,
    radius`) so clients can play the VFX/SFX, plus — for abilities that leave a lingering entity — the
-   world-effect entity itself in the snapshot stream.
+   world-effect entity itself in the snapshot stream. Client-side, `effect_id` 0 (Mageblast) and 1
+   (Charge blast) play generated **sprite** detonations via `BlastEffect` (a ring fallback when the
+   art is missing); the Warrior's Charge additionally streams a shader-driven GPU particle trail
+   while dashing (`ChargeTrail`). Both are render-only — see
+   [`arena-visuals.md`](arena-visuals.md#ability-blast-effects--charge-trail-implemented-2026-06-17).
 
 ## World-effect entities (kind 3, id band 40000–49999)
 
@@ -35,7 +39,7 @@ protocol v4), with their own id band **40000–49999** partitioned into 2500-id 
 
 | Sub-band | Subtype | Source ability | Lifetime behavior |
 |---|---|---|---|
-| 40000–42499 | `0` healthorb | monster death drop (not an ability) | walk-over pickup heals +5 HP |
+| 40000–42499 | `0` healthorb | monster death drop (not an ability) | walk-over pickup heals +25 HP |
 | 42500–44999 | `1` mine | Engineer — Mine | arms (0.5 s), proximity-triggers, AOE blast, expires at 30 s |
 | 45000–47499 | `2` dot-zone | Plague Seer — Plague Zone | DoT 12/s within radius for 5 s |
 | 47500–49999 | `3` bible | Zealot — Spinning Bibles | 3 orbs orbit the caster for 5 s, sweep-damage |
@@ -45,7 +49,7 @@ Mageblast and Multishot leave **no** world-effect entity — Mageblast is instan
 Multishot spawns ordinary projectiles (band 10000–29999).
 
 > **Healthorb** is listed here because it shares the world-effect entity kind, but it is **not** an
-> ability — it is a monster-death drop (50% chance) that heals **+5 HP** (clamped to max) on walk-over.
+> ability — it is a monster-death drop (50% chance) that heals **+25 HP** (clamped to max) on walk-over.
 > Pickup is server-authoritative and reported via the `PICKUP` event (now carrying `{kind, amount}`).
 
 ## Abilities by effect shape

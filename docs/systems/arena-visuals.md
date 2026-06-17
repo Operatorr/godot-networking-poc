@@ -83,6 +83,8 @@ client/assets/sprites/players/<class_key>/   zealot, void_hunter, engineer,
                                              plague_seer, warrior, rogue, mage
 client/assets/sprites/monsters/toxic_slime/
 client/assets/sprites/projectiles/<class_key|slime>/
+client/assets/sprites/effects/<effect_key>/  charge_blast, mageblast (1-direction,
+                                             one-shot "blast" anim — see below)
 client/assets/sprites/environment/arena/<prop>.png   (plain single sprites)
 ```
 
@@ -109,7 +111,50 @@ client/assets/sprites/environment/arena/<prop>.png   (plain single sprites)
 
 Animation sets as generated: **zealot** (the player) idle/run/sprint/dash/
 attack/hit/death; **bot classes** idle/run/death; **toxic_slime**
-idle/walk/attack/death; every projectile has a looping `fly`.
+idle/walk/attack/death; every projectile has a looping `fly`; **effects**
+(`charge_blast`, `mageblast`) have a one-shot `blast` (see the ability section
+below).
+
+## Ability blast effects + charge trail (Implemented 2026-06-17)
+
+Ability detonations now play generated sprite animations, and the Warrior's
+Charge streams a shader-driven particle trail while dashing. Both are **render
+only** — the server still owns all damage and fires the authoritative
+`ABILITY_EFFECT` event (`effect_id, x, y, radius`); see
+[`abilities.md`](abilities.md).
+
+- **Blast sprites.** `client/assets/sprites/effects/<key>/` holds a 1-direction
+  sheet with a single one-shot `blast` animation (13 frames @ 26 fps, 128px
+  canvas, `loop=false`), assembled by the same pipeline as the other sheets.
+  Keys: **`charge_blast`** (Warrior, orange fiery nova) and **`mageblast`**
+  (Mage, cyan arcane burst). `SheetLibrary.effect_frames(key)` loads them.
+- **`BlastEffect`** ([`blast_effect.gd`](../../client/scripts/entities/world_effects/blast_effect.gd))
+  is the playback node: it plays the `blast` animation once, scaled so the art
+  covers the blast radius (`SPRITE_COVER` overshoot), and self-frees on
+  `animation_finished`. **Fallback:** when the sheet is absent it draws the old
+  procedural expanding twin-ring (tinted by the caller), so a checkout without
+  the art — or a not-yet-arted effect id (mine/shadowstep) — still renders.
+  Used by both the online path
+  ([`arena_base.gd`](../../client/scripts/levels/arena_base.gd)
+  `_handle_ability_effect_event`, `effect_id` 0→`mageblast`, 1→`charge_blast`)
+  and the offline RMB preview
+  ([`offline_ability.gd`](../../client/scripts/entities/player/offline_ability.gd)).
+- **`ChargeTrail`** ([`charge_trail.gd`](../../client/scripts/entities/world_effects/charge_trail.gd))
+  is a `GPUParticles2D` whose **process pass is a custom particle shader**
+  ([`assets/shaders/effects/charge_trail.gdshader`](../../client/assets/shaders/effects/charge_trail.gdshader)),
+  rendered additively (`blend_add`). With `local_coords = false` the embers are
+  left behind in world space as the Warrior dashes; each frame the node pushes
+  the live charge direction into the shader's `flow_dir` (derived from its own
+  world motion) so the embers sweep into a comet tail, fading hot-white → orange
+  → dark over their life. It is created/destroyed on the **predicted charge
+  edges** in [`prediction.gd`](../../client/scripts/network/prediction.gd)
+  (`_drive_charge_trail`, mirroring the charge-loop SFX), parented to the player
+  at `z_index = -1` (behind the sprite). Local-player, online only — that is
+  where the real charge motion lives.
+- **Tested:** `scenes/test/vfx_smoke.tscn` plays both blasts on a loop and sweeps
+  a `ChargeTrail` across the frame (no server needed). Capture with:
+  `godot --path client res://scenes/test/vfx_smoke.tscn --write-movie
+  /tmp/shots/vfx.png --fixed-fps 12 --quit-after 22`.
 
 ## Class identity on the wire (protocol v3)
 
