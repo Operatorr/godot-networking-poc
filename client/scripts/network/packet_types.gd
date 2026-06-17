@@ -157,7 +157,7 @@ const ENTITY_FLAG_VISIBLE := 1 << 5
 const ENTITY_FLAG_DASHING := 1 << 6       ## Movement SM is in the DASHING state
 const ENTITY_FLAG_KNOCKED_BACK := 1 << 7  ## Movement SM is in the KNOCKED_BACK state
 const ENTITY_FLAG_DAZED := 1 << 8         ## Daze timer active (sprint/dash locked out)
-const ENTITY_FLAG_STEALTH := 1 << 9       ## Rogue stealth active (dim the sprite when set)
+const ENTITY_FLAG_STEALTH := 1 << 9       ## Rogue stealth: local player dims, others hide fully
 
 ## Delta compression mask bits (TASK-021)
 ## Used in STATE_UPDATE packets to indicate which fields changed

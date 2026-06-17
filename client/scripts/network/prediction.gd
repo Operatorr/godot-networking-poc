@@ -662,6 +662,18 @@ func _handle_action_confirm(data: Dictionary) -> void:
 		if sm != null:
 			sm.set_resources(_sim.stamina(), _sim.mana())
 
+	# Authoritative current HP for the HUD bar. The bar is a display mirror (start full, minus
+	# DAMAGE, plus PICKUP heals) that can't see server-side regen, so it drifts low; this snaps it
+	# back to the server's value. ONLY while alive — death is server-authoritative (the reliable
+	# KILL/KILL_PVP event drives it, see arena_base._enter_local_death), so a 0 here must not
+	# trigger the client death path. set_hp clamps to the class+level max_hp (which matches the
+	# server's max_health).
+	if data.has("health") and player_node != null and "hp_component" in player_node:
+		var hp := int(data.get("health", 0))
+		var hp_comp = player_node.hp_component
+		if hp > 0 and hp_comp != null:
+			hp_comp.set_hp(hp)
+
 	# Reconcile the predicted dash + RMB-ability cooldowns against the server's authoritative ones,
 	# which ride along on this confirm. The cooldowns are committed locally on the PREDICTED
 	# dash/cast, so without this they drift permanently out of phase whenever the server refuses /

@@ -117,6 +117,23 @@ mirror only** — `set_hp()` is the authoritative path written from server `Game
 flags; the client never decides its own death. Death sets the entity's ALIVE flag off; dead players
 keep replicating (animation DEATH, flags == VISIBLE) and are not despawned.
 
+The death transition + respawn countdown on the client (`arena_base.gd::_enter_local_death`) is driven
+**only** by server-authoritative signals — the reliable `KILL` / `KILL_PVP` event (exact server
+timing), with the ALIVE-flag snapshot as a backstop — **never** by the client's predicted HP reaching
+0. Letting predicted HP trigger death would start the respawn countdown before the server agreed the
+player was dead, and the server would then reject the respawn (`is_alive` still true) until its real
+HP drained — the "stuck on Respawning…" hang.
+
+The HUD HP bar's **cap** is class+level-scaled to match the server's `max_health`: `Player`
+mirrors the Rust `ClassStats` (`_HP_BASE` / `_HP_PER_LEVEL`) and computes
+`max_hp = base + per_level·(level−1)` (`apply_level_scaled_max_hp`, applied at spawn and on every
+`PROGRESS` event; a level-up fills to the new max, matching the server's full HP+mana restore). HP
+itself is not carried in snapshots, so the bar's *current* value is reconciled the same way as
+stamina/mana: `ActionConfirm` carries the owner's authoritative `health` (protocol v5), and
+`prediction.gd::_handle_action_confirm` snaps `hp_component` to it each confirm — keeping the bar in
+step with server-side regen and any damage the delta tracking missed. The reconciliation is gated to
+**alive only** (`health > 0`); death never comes from HP, only the reliable KILL/KILL_PVP event.
+
 ## Local player: predicted
 
 The Local player is simulated immediately on input, before the server confirms — see

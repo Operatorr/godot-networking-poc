@@ -222,20 +222,28 @@ func _locomotion_base() -> String:
 func _update_flags(flags: int) -> void:
 	var is_alive := (flags & PacketTypes.ENTITY_FLAG_ALIVE) != 0
 	var is_invulnerable := (flags & PacketTypes.ENTITY_FLAG_INVULNERABLE) != 0
+	var is_stealthed := (flags & PacketTypes.ENTITY_FLAG_STEALTH) != 0
 
 	visible = (flags & PacketTypes.ENTITY_FLAG_VISIBLE) != 0
 	if collision_shape:
 		collision_shape.disabled = not is_alive
 
+	# A stealthed player is fully invisible to EVERYONE ELSE — only the local player sees their
+	# own stealth as a dim (handled in arena_base._sync_local_player_state). So hide the sprite,
+	# name label, and daze stars entirely here; revealing any of them would leak the position.
+	# This is purely cosmetic: their projectiles still render, and the server still resolves hits
+	# against them, so a stealthed player stays fully damageable.
 	if _daze_indicator:
-		_daze_indicator.set_active(is_alive and (flags & PacketTypes.ENTITY_FLAG_DAZED) != 0)
+		_daze_indicator.set_active(
+			is_alive and not is_stealthed and (flags & PacketTypes.ENTITY_FLAG_DAZED) != 0
+		)
+	if name_label:
+		name_label.visible = not is_stealthed and not character_name.is_empty()
 
-	# Visual feedback for invulnerability (flashing), then Rogue stealth dim. Stealth wins
-	# when both are set (a stealthed player reads as faded, not flashing).
-	var is_stealthed := (flags & PacketTypes.ENTITY_FLAG_STEALTH) != 0
+	# Stealth wins (fully hidden) over the invulnerability flash.
 	if animated_sprite:
 		if is_stealthed:
-			animated_sprite.modulate.a = 0.35
+			animated_sprite.modulate.a = 0.0
 		elif is_invulnerable:
 			animated_sprite.modulate.a = 0.5 + 0.5 * sin(Time.get_ticks_msec() / 100.0)
 		else:

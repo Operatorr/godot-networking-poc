@@ -74,17 +74,30 @@ pub const VALID_BEHAVIORS: &[&str] = &[
     "strategy",
 ];
 
-/// One input frame's worth of intent: full `input_flags` (movement + SHOOT/SPRINT/DASH) + aim.
+/// Player class ids that have a usable RMB ability. The load swarm only spawns these three
+/// (see `bot.rs`), so the strategy AI only needs to know about them. Warrior charges; Rogue and
+/// Mage cast an instant cursor-targeted ability.
+pub const CLASS_WARRIOR: u8 = 4;
+#[allow(dead_code)]
+pub const CLASS_ROGUE: u8 = 5;
+#[allow(dead_code)]
+pub const CLASS_MAGE: u8 = 6;
+
+/// One input frame's worth of intent: full `input_flags` (movement + SHOOT/SPRINT/DASH/ABILITY) +
+/// aim, plus the cursor world position for cursor-targeted ability casts (`None` ⇒ the bot's own
+/// position, the harmless default for non-casting frames).
 #[derive(Debug, Clone, Copy)]
 pub struct Decision {
     pub flags: u16,
     pub aim_angle: f32,
+    pub cursor: Option<(f32, f32)>,
 }
 
 impl Decision {
     const IDLE: Decision = Decision {
         flags: 0,
         aim_angle: 0.0,
+        cursor: None,
     };
 }
 
@@ -114,6 +127,11 @@ const DASH_COOLDOWN_S: f64 = 5.5;
 // than DASH so the swarm exercises abilities without spamming; the real cooldown + mana gate lives
 // in `sim_core` / the server, where a refused cast costs nothing, so this only needs to be lenient.
 const ABILITY_COOLDOWN_S: f64 = 6.0;
+// Keep the Warrior's ABILITY held this long after activation so the steerable charge actually
+// travels (charge_speed 720 u/s × max 945 u ≈ 1.31 s). Releasing immediately — as the old
+// edge-triggered cast did — ended the charge after a single tick (the "charges ~1 unit" bug). The
+// server ends the charge sooner on enemy contact / max distance, so a small margin is fine.
+const CHARGE_HOLD_S: f64 = 1.35;
 const TARGET_MAX_RANGE: f32 = 1250.0; // 1.25 × AoI radius
 const PROJECTILE_SPEED: f32 = 400.0;
 const DODGE_RADIUS: f32 = 220.0;
@@ -123,24 +141,31 @@ const AXIS_THRESHOLD: f32 = 0.175;
 pub struct BehaviorState {
     pub kind: BehaviorKind,
     difficulty: f64,
+    /// The bot's class — decides how the RMB ability is exercised (Warrior charge vs instant cast).
+    player_class: u8,
     dir_flags: u16,
     cached: Decision,
     next_decision_at: f64,
     last_dash_at: f64,
     last_ability_at: f64,
+    /// While `now < this`, the Warrior keeps the ABILITY flag HELD so the steerable charge runs to
+    /// completion (the server ends it on contact / max distance / release). 0 = not charging.
+    ability_hold_until: f64,
     target: Option<u16>,
 }
 
 impl BehaviorState {
-    pub fn new(kind: BehaviorKind, difficulty: f64) -> Self {
+    pub fn new(kind: BehaviorKind, difficulty: f64, player_class: u8) -> Self {
         Self {
             kind,
             difficulty: difficulty.clamp(0.0, 1.0),
+            player_class,
             dir_flags: 0,
             cached: Decision::IDLE,
             next_decision_at: 0.0,
             last_dash_at: f64::NEG_INFINITY,
             last_ability_at: f64::NEG_INFINITY,
+            ability_hold_until: f64::NEG_INFINITY,
             target: None,
         }
     }
@@ -169,6 +194,7 @@ impl BehaviorState {
         Decision {
             flags,
             aim_angle: rng.randf_range(-std::f64::consts::PI, std::f64::consts::PI) as f32,
+            cursor: None,
         }
     }
 
@@ -187,16 +213,27 @@ impl BehaviorState {
         Decision {
             flags,
             aim_angle: rng.randf_range(-std::f64::consts::PI, std::f64::consts::PI) as f32,
+            cursor: None,
         }
     }
 
     fn strategy(&mut self, view: &View, rng: &mut Pcg32, now: f64) -> Decision {
+        let mut decision = self.strategy_movement(view, rng, now);
+        // The RMB ability is handled OUTSIDE the reaction cache so the Warrior charge can be held
+        // for several ticks (see `apply_ability`); otherwise the cached-decision replays would drop
+        // the ABILITY flag and cut the charge short.
+        self.apply_ability(&mut decision, view, rng, now);
+        decision
+    }
+
+    /// Movement + primary fire + dodge/sprint/dash. The reaction cache lives here; the RMB ability
+    /// is layered on top by `apply_ability` every frame.
+    fn strategy_movement(&mut self, view: &View, rng: &mut Pcg32, now: f64) -> Decision {
         // Reaction-time cache: expert (1.0) re-decides every 40 ms, novice (0.0) every 500 ms.
-        // DASH and ABILITY are edge-triggered, so they are stripped from the cache after the first
-        // replay.
+        // DASH is edge-triggered, so it is stripped from the cache after the first replay.
         if now < self.next_decision_at {
             let out = self.cached;
-            self.cached.flags &= !(input_flags::DASH | input_flags::ABILITY);
+            self.cached.flags &= !input_flags::DASH;
             return out;
         }
         let d = self.difficulty;
@@ -251,25 +288,58 @@ impl BehaviorState {
             self.last_dash_at = now;
         }
 
-        // Ability (RMB): conservative, edge-triggered cast so the swarm exercises Warrior Charge /
-        // Rogue Shadowstep. Only fire when we are actually engaging a target in shoot range (the
-        // SHOOT flag is set by `engage` exactly then), and only occasionally, throttled by our own
-        // cooldown like DASH. The real cooldown + mana gate lives server-side, where a refused cast
-        // costs nothing, so this self-throttle just needs to keep casts sparse.
-        let ability_chance = 0.04 + 0.10 * d;
-        if self.target.is_some()
-            && decision.flags & input_flags::SHOOT != 0
-            && now - self.last_ability_at >= ABILITY_COOLDOWN_S
-            && rng.randf() < ability_chance
-        {
-            decision.flags |= input_flags::ABILITY;
-            self.last_ability_at = now;
+        self.cached = decision;
+        // DASH is edge-triggered; strip it so cached replays don't re-hold it. (ABILITY is added
+        // later by `apply_ability`, never stored in the cache.)
+        self.cached.flags &= !input_flags::DASH;
+        decision
+    }
+
+    /// Layer the RMB ability onto an already-decided movement frame. Runs every frame (not cached)
+    /// so the Warrior charge can stay held across ticks. Targets the live `self.target`:
+    ///
+    /// * **Warrior** (charge): on a fresh cast, aim straight at the target, clear the strafe so the
+    ///   charge launches toward it (the sim steers toward `aim_dir`), and HOLD ABILITY for
+    ///   `CHARGE_HOLD_S` so the charge runs its course. The previous code released after one tick,
+    ///   so the Warrior barely moved — the bug the user reported.
+    /// * **Rogue / Mage** (instant): a single-frame cast with the cursor set on the target so the
+    ///   blink / blast actually lands on them instead of the bot's own feet.
+    fn apply_ability(&mut self, decision: &mut Decision, view: &View, rng: &mut Pcg32, now: f64) {
+        let Some(target_id) = self.target else { return };
+        let Some(t) = view.entities.get(&target_id).copied() else {
+            return;
+        };
+        let aim_at_target =
+            ((t.pos.1 - view.pos.1) as f64).atan2((t.pos.0 - view.pos.0) as f64) as f32;
+
+        // Sustain an in-progress Warrior charge: keep ABILITY held and keep steering at the target.
+        if now < self.ability_hold_until {
+            decision.flags = (decision.flags & !MOVE_MASK) | input_flags::ABILITY;
+            decision.aim_angle = aim_at_target;
+            return;
         }
 
-        self.cached = decision;
-        // DASH and ABILITY are edge-triggered; strip them so cached replays don't re-hold them.
-        self.cached.flags &= !(input_flags::DASH | input_flags::ABILITY);
-        decision
+        // Start a new cast: only while engaging a target in shoot range, throttled by our own
+        // cooldown and an occasional roll (the server's real cooldown + mana gate is authoritative;
+        // a refused cast costs nothing, so this just keeps casts sparse).
+        let ability_chance = 0.04 + 0.10 * self.difficulty;
+        let ready = decision.flags & input_flags::SHOOT != 0
+            && now - self.last_ability_at >= ABILITY_COOLDOWN_S
+            && rng.randf() < ability_chance;
+        if !ready {
+            return;
+        }
+        self.last_ability_at = now;
+        if self.player_class == CLASS_WARRIOR {
+            // Launch the charge toward the target and hold it.
+            decision.flags = (decision.flags & !MOVE_MASK) | input_flags::ABILITY;
+            decision.aim_angle = aim_at_target;
+            self.ability_hold_until = now + CHARGE_HOLD_S;
+        } else {
+            // Instant cursor-targeted cast (Rogue Shadowstep / Mage Mageblast).
+            decision.flags |= input_flags::ABILITY;
+            decision.cursor = Some(t.pos);
+        }
     }
 
     /// Nearest alive monster within range wins; otherwise nearest other player. Sticky: the
@@ -353,6 +423,7 @@ impl BehaviorState {
         Decision {
             flags,
             aim_angle: aim as f32,
+            cursor: None,
         }
     }
 }
@@ -421,7 +492,7 @@ mod tests {
     fn idle_never_moves_or_shoots() {
         let entities = HashMap::new();
         let owners = HashMap::new();
-        let mut b = BehaviorState::new(BehaviorKind::Idle, 1.0);
+        let mut b = BehaviorState::new(BehaviorKind::Idle, 1.0, CLASS_MAGE);
         let mut rng = Pcg32::new(1);
         for _ in 0..100 {
             assert_eq!(
@@ -436,7 +507,7 @@ mod tests {
     fn movement_never_shoots() {
         let entities = HashMap::new();
         let owners = HashMap::new();
-        let mut b = BehaviorState::new(BehaviorKind::Movement, 1.0);
+        let mut b = BehaviorState::new(BehaviorKind::Movement, 1.0, CLASS_MAGE);
         let mut rng = Pcg32::new(2);
         for _ in 0..200 {
             let d = b.decide(&empty_view(&entities, &owners), &mut rng, 0.0);
@@ -448,7 +519,7 @@ mod tests {
     fn combat_always_shoots() {
         let entities = HashMap::new();
         let owners = HashMap::new();
-        let mut b = BehaviorState::new(BehaviorKind::Combat, 1.0);
+        let mut b = BehaviorState::new(BehaviorKind::Combat, 1.0, CLASS_MAGE);
         let mut rng = Pcg32::new(3);
         for _ in 0..50 {
             let d = b.decide(&empty_view(&entities, &owners), &mut rng, 0.0);
@@ -460,7 +531,7 @@ mod tests {
     fn clustered_converges_on_origin() {
         let entities = HashMap::new();
         let owners = HashMap::new();
-        let mut b = BehaviorState::new(BehaviorKind::Clustered, 1.0);
+        let mut b = BehaviorState::new(BehaviorKind::Clustered, 1.0, CLASS_MAGE);
         let mut rng = Pcg32::new(4);
         // From (500, 0) the bot must move left.
         let d = b.decide(&empty_view(&entities, &owners), &mut rng, 0.0);
@@ -482,7 +553,7 @@ mod tests {
             },
         );
         let owners = HashMap::new();
-        let mut b = BehaviorState::new(BehaviorKind::Strategy, 1.0);
+        let mut b = BehaviorState::new(BehaviorKind::Strategy, 1.0, CLASS_MAGE);
         let mut rng = Pcg32::new(5);
         // 200 u away from (500,0): inside shoot range, inside pref_min -> back off + shoot.
         let d = b.decide(&empty_view(&entities, &owners), &mut rng, 100.0);
@@ -512,7 +583,7 @@ mod tests {
             },
         );
         let owners = HashMap::new();
-        let mut b = BehaviorState::new(BehaviorKind::Strategy, 1.0);
+        let mut b = BehaviorState::new(BehaviorKind::Strategy, 1.0, CLASS_MAGE);
         // pick_target must find nobody.
         assert_eq!(b.pick_target(&empty_view(&entities, &owners)), None);
         // And with only a stealthed target around, the strategy bot never shoots.
@@ -551,11 +622,85 @@ mod tests {
         assert!(shot, "should shoot a de-stealthed player in range");
     }
 
+    /// A monster due east at 200 u — inside shoot range for the strategy AI.
+    fn lone_monster_east() -> HashMap<u16, KnownEntity> {
+        let mut entities = HashMap::new();
+        entities.insert(
+            30001,
+            KnownEntity {
+                pos: (700.0, 0.0),
+                vel: (0.0, 0.0),
+                anim: 0,
+                flags: entity_flags::ALIVE,
+                last_tick: 1,
+            },
+        );
+        entities
+    }
+
+    #[test]
+    fn warrior_holds_charge_and_steers_at_target() {
+        let entities = lone_monster_east();
+        let owners = HashMap::new();
+        let mut b = BehaviorState::new(BehaviorKind::Strategy, 1.0, CLASS_WARRIOR);
+        let mut rng = Pcg32::new(11);
+        // Advance frames until the Warrior begins a charge (gated by a cooldown + a random roll).
+        let mut now = 100.0;
+        let mut charging = false;
+        for _ in 0..1200 {
+            let d = b.decide(&empty_view(&entities, &owners), &mut rng, now);
+            if d.flags & input_flags::ABILITY != 0 {
+                // A charge clears the strafe and aims straight at the target (due east ≈ 0 rad).
+                assert_eq!(d.flags & MOVE_MASK, 0, "charge clears movement");
+                assert!(
+                    d.aim_angle.abs() < 0.2,
+                    "charge aims at target, got {}",
+                    d.aim_angle
+                );
+                charging = true;
+                break;
+            }
+            now += 1.0 / 30.0;
+        }
+        assert!(charging, "warrior should eventually start a charge");
+        // The next frame still HOLDS the ability — the charge is not released after one tick.
+        let next = b.decide(&empty_view(&entities, &owners), &mut rng, now + 1.0 / 30.0);
+        assert_ne!(
+            next.flags & input_flags::ABILITY,
+            0,
+            "the charge must stay held across ticks"
+        );
+        assert_eq!(next.flags & MOVE_MASK, 0);
+    }
+
+    #[test]
+    fn mage_cast_targets_the_cursor() {
+        let entities = lone_monster_east();
+        let owners = HashMap::new();
+        let mut b = BehaviorState::new(BehaviorKind::Strategy, 1.0, CLASS_MAGE);
+        let mut rng = Pcg32::new(13);
+        let mut now = 100.0;
+        let mut cast_cursor = None;
+        for _ in 0..1200 {
+            let d = b.decide(&empty_view(&entities, &owners), &mut rng, now);
+            if d.flags & input_flags::ABILITY != 0 {
+                cast_cursor = d.cursor;
+                break;
+            }
+            now += 1.0 / 30.0;
+        }
+        assert_eq!(
+            cast_cursor,
+            Some((700.0, 0.0)),
+            "a Mage cast must put the cursor on the target, not the bot's own position"
+        );
+    }
+
     #[test]
     fn strategy_caches_decisions_and_strips_dash_replays() {
         let entities = HashMap::new();
         let owners = HashMap::new();
-        let mut b = BehaviorState::new(BehaviorKind::Strategy, 1.0);
+        let mut b = BehaviorState::new(BehaviorKind::Strategy, 1.0, CLASS_MAGE);
         let mut rng = Pcg32::new(6);
         let first = b.decide(&empty_view(&entities, &owners), &mut rng, 0.0);
         // Within the reaction interval the cached decision replays, minus any DASH edge.

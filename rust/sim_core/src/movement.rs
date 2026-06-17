@@ -580,6 +580,12 @@ impl MovementSm {
         }
     }
 
+    /// Restore mana to full. Used on level-up (which also fully heals HP); stamina is untouched.
+    /// The owner learns the new value on the next ActionConfirm (which carries stamina + mana).
+    pub fn refill_mana(&mut self) {
+        self.mana = PLAYER_MANA_MAX;
+    }
+
     /// Authoritatively set the dash cooldown (server → owner via ActionConfirm). The cooldown is
     /// committed locally on the PREDICTED dash, so the client and server can fall out of phase
     /// whenever they disagree about whether a dash happened (a refused, lost, or

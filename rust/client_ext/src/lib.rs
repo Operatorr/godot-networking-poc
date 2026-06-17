@@ -299,6 +299,7 @@ impl ProtocolCodec {
                 out.set("server_tick", c.server_tick as i64);
                 out.set("stamina", c.stamina as i64);
                 out.set("mana", c.mana as i64);
+                out.set("health", c.health as i64);
                 // Dequantized to seconds so GDScript reconciliation compares against the predicted
                 // cooldown directly (PredictionSim cooldowns are in seconds).
                 out.set("dash_cooldown", protocol::dequant_cooldown(c.dash_cooldown));

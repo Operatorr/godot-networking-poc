@@ -50,12 +50,12 @@ players** while maintaining playable performance.
 
 ### Component Responsibilities
 
-| Component | Port | Responsibility |
-|-----------|------|----------------|
-| **Go API Server** | 8080 (TCP) | Authentication, user accounts, character data, leaderboards, persistence |
+| Component            | Port       | Responsibility                                                                                         |
+| -------------------- | ---------- | ------------------------------------------------------------------------------------------------------ |
+| **Go API Server**    | 8080 (TCP) | Authentication, user accounts, character data, leaderboards, persistence                               |
 | **Rust Game Server** | 8081 (UDP) | Real-time game state, movement, combat, monster AI, authoritative gameplay; Prometheus metrics on 9100 |
-| **PostgreSQL** | 5432 | Persistent data storage (accounts, characters, leaderboard) |
-| **Redis** | 6379 | Session caching, leaderboards, region status |
+| **PostgreSQL**       | 5432       | Persistent data storage (accounts, characters, leaderboard)                                            |
+| **Redis**            | 6379       | Session caching, leaderboards, region status                                                           |
 
 All gameplay state is server-authoritative and in-memory; only the Go API touches the
 databases. The client and server share the bit-packed wire protocol (`rust/protocol`) and the
@@ -66,29 +66,29 @@ GDExtension (`rust/client_ext`) — prediction and authority run the same code b
 
 ## Quick Commands
 
-| Action | Command |
-|--------|---------|
-| Start local stack (API + game server) | `./scripts/dev_local.sh` |
-| Start game server only | `./scripts/run_server.sh` |
-| Stop local stack | `Ctrl+C` in the `dev_local.sh` terminal |
-| Launch bots (gameplay) | `./scripts/run_load_test.sh --bots 2 --scenario strategy` |
-| Launch bots (load scenario) | `./scripts/run_load_test.sh --scenario baseline` |
-| Stop bots | `Ctrl+C` in the load test terminal |
+| Action                                | Command                                                   |
+| ------------------------------------- | --------------------------------------------------------- |
+| Start local stack (API + game server) | `./scripts/dev_local.sh`                                  |
+| Start game server only                | `./scripts/run_server.sh`                                 |
+| Stop local stack                      | `Ctrl+C` in the `dev_local.sh` terminal                   |
+| Launch bots (gameplay)                | `./scripts/run_load_test.sh --bots 3 --scenario strategy` |
+| Launch bots (load scenario)           | `./scripts/run_load_test.sh --scenario baseline`          |
+| Stop bots                             | `Ctrl+C` in the load test terminal                        |
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology | Version |
-|-------|------------|---------|
-| Game Engine (client) | Godot | 4.6 |
-| Client scripting | GDScript | - |
-| Game server / protocol / sim | Rust | stable |
-| Transport | ENet over UDP (`rusty_enet`) | =0.4.0 |
-| API Backend | Go | 1.24+ |
-| Database | PostgreSQL | 15+ |
-| Cache | Redis | 7+ |
-| Deployment | Native systemd (no Docker — [ADR 0007](docs/adr/0007-native-systemd-deployment.md)) | - |
+| Layer                        | Technology                                                                          | Version |
+| ---------------------------- | ----------------------------------------------------------------------------------- | ------- |
+| Game Engine (client)         | Godot                                                                               | 4.6     |
+| Client scripting             | GDScript                                                                            | -       |
+| Game server / protocol / sim | Rust                                                                                | stable  |
+| Transport                    | ENet over UDP (`rusty_enet`)                                                        | =0.4.0  |
+| API Backend                  | Go                                                                                  | 1.24+   |
+| Database                     | PostgreSQL                                                                          | 15+     |
+| Cache                        | Redis                                                                               | 7+      |
+| Deployment                   | Native systemd (no Docker — [ADR 0007](docs/adr/0007-native-systemd-deployment.md)) | -       |
 
 ---
 
@@ -330,12 +330,12 @@ cp deployment/deploy.env.example deployment/deploy.env
 # then edit deployment/deploy.env and set OMEGA_HOST=<your-droplet-ip>
 ```
 
-| Key | Required | Default | Meaning |
-|-----|:---:|---------|---------|
-| `OMEGA_HOST` | ✅ | — (script errors if unset) | Your server's IP / hostname |
-| `OMEGA_USER` | | `deploy` | SSH user on the server |
-| `OMEGA_BRANCH` | | `master` | Branch the server checks out |
-| `OMEGA_REPO_DIR` | | `/home/<user>/omega-realm` | Where the repo is cloned on the server |
+| Key              | Required | Default                    | Meaning                                |
+| ---------------- | :------: | -------------------------- | -------------------------------------- |
+| `OMEGA_HOST`     |    ✅    | — (script errors if unset) | Your server's IP / hostname            |
+| `OMEGA_USER`     |          | `deploy`                   | SSH user on the server                 |
+| `OMEGA_BRANCH`   |          | `master`                   | Branch the server checks out           |
+| `OMEGA_REPO_DIR` |          | `/home/<user>/omega-realm` | Where the repo is cloned on the server |
 
 A shell variable overrides the file for a one-off target, e.g.
 `OMEGA_HOST=1.2.3.4 ./scripts/deploy.sh status`.
@@ -433,19 +433,19 @@ Or update the OS, redeploy, and verify in one shot:
 
 Every command is `./scripts/deploy.sh <command>`, run from your **laptop**:
 
-| Command | What it does | On-server script |
-|---------|--------------|------------------|
-| `provision` | **First-time only.** Install toolchains/DB, clone repo, units, swap, sudoers | `provision_server.sh` |
-| *(none)* / `deploy` | Pull `master`, rebuild API + both game servers, restart, health-check | `server_update.sh` |
-| `all` | `os-update` → `deploy` → `health`, in one shot | `update_os.sh` → `server_update.sh` |
-| `os-update` | apt full-upgrade + autoremove + cleanup | `update_os.sh` |
-| `os-update --reboot` | …and reboot if the upgrade requires one | `update_os.sh` |
-| `os-update --release-upgrade` | Ubuntu version jump (snapshot the droplet first!) | `update_os.sh` |
-| `status` | `systemctl status` for all three services | — |
-| `logs` | Follow journald logs (api + arena + sanctuary) | — |
-| `health` | curl API `/health` + both metrics endpoints | — |
-| `restart` | Restart services without rebuilding | — |
-| `ssh` | Open an interactive shell on the box | — |
+| Command                       | What it does                                                                 | On-server script                    |
+| ----------------------------- | ---------------------------------------------------------------------------- | ----------------------------------- |
+| `provision`                   | **First-time only.** Install toolchains/DB, clone repo, units, swap, sudoers | `provision_server.sh`               |
+| _(none)_ / `deploy`           | Pull `master`, rebuild API + both game servers, restart, health-check        | `server_update.sh`                  |
+| `all`                         | `os-update` → `deploy` → `health`, in one shot                               | `update_os.sh` → `server_update.sh` |
+| `os-update`                   | apt full-upgrade + autoremove + cleanup                                      | `update_os.sh`                      |
+| `os-update --reboot`          | …and reboot if the upgrade requires one                                      | `update_os.sh`                      |
+| `os-update --release-upgrade` | Ubuntu version jump (snapshot the droplet first!)                            | `update_os.sh`                      |
+| `status`                      | `systemctl status` for all three services                                    | —                                   |
+| `logs`                        | Follow journald logs (api + arena + sanctuary)                               | —                                   |
+| `health`                      | curl API `/health` + both metrics endpoints                                  | —                                   |
+| `restart`                     | Restart services without rebuilding                                          | —                                   |
+| `ssh`                         | Open an interactive shell on the box                                         | —                                   |
 
 Deploy a different branch with `OMEGA_BRANCH=my-branch ./scripts/deploy.sh`.
 
@@ -460,13 +460,13 @@ verifies health in one go. If it reports a reboot is required, follow up with
 
 ### Deploy troubleshooting
 
-| Symptom | Cause / fix |
-|---------|-------------|
-| `cd: /home/deploy/omega-realm: No such file or directory` | The server was never provisioned. Run **Part A** (`./scripts/deploy.sh provision`). Don't `mkdir` the folder — provision clones it. |
-| `bash: deployment/...sh: No such file or directory` | The repo folder exists but is empty (e.g. you created it by hand). Run `./scripts/deploy.sh provision` — it clones into the empty folder. |
-| `OMEGA_HOST is not set` | You skipped Step 0 — create `deployment/deploy.env` and set `OMEGA_HOST`. |
-| API won't start / can't reach DB | The `omega` role password and `DB_PASSWORD` in `/etc/omega-realm/api.env` don't match (Step 3). |
-| Permission/sudo prompts on every deploy | `provision` installs a passwordless `systemctl` rule for the three services; if you see prompts, re-run `provision`. |
+| Symptom                                                   | Cause / fix                                                                                                                               |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `cd: /home/deploy/omega-realm: No such file or directory` | The server was never provisioned. Run **Part A** (`./scripts/deploy.sh provision`). Don't `mkdir` the folder — provision clones it.       |
+| `bash: deployment/...sh: No such file or directory`       | The repo folder exists but is empty (e.g. you created it by hand). Run `./scripts/deploy.sh provision` — it clones into the empty folder. |
+| `OMEGA_HOST is not set`                                   | You skipped Step 0 — create `deployment/deploy.env` and set `OMEGA_HOST`.                                                                 |
+| API won't start / can't reach DB                          | The `omega` role password and `DB_PASSWORD` in `/etc/omega-realm/api.env` don't match (Step 3).                                           |
+| Permission/sudo prompts on every deploy                   | `provision` installs a passwordless `systemctl` rule for the three services; if you see prompts, re-run `provision`.                      |
 
 ---
 
@@ -518,35 +518,36 @@ PostgreSQL:
 
 ### Test Scenes
 
-| Scene | Purpose |
-|-------|---------|
-| `client/scenes/test/player_test.tscn` | Simple player testing (no login required) |
+| Scene                                          | Purpose                                                              |
+| ---------------------------------------------- | -------------------------------------------------------------------- |
+| `client/scenes/test/player_test.tscn`          | Simple player testing (no login required)                            |
 | `client/scenes/test/login_character_test.tscn` | Headless integration test: login and verify character data is loaded |
-| `client/scenes/test/net_smoke.tscn` | End-to-end ENet smoke test against a running server |
-| `client/scenes/test/arena_client_smoke.tscn` | Arena client smoke scene |
-| `client/scenes/test/sandbox.tscn` | Offline sandbox |
+| `client/scenes/test/net_smoke.tscn`            | End-to-end ENet smoke test against a running server                  |
+| `client/scenes/test/arena_client_smoke.tscn`   | Arena client smoke scene                                             |
+| `client/scenes/test/sandbox.tscn`              | Offline sandbox                                                      |
 
 ---
 
 ## Game Controls
 
-| Input | Action |
-|-------|--------|
-| **W** | Move up |
-| **A** | Move left |
-| **S** | Move down |
-| **D** | Move right |
-| **W+D** | Move diagonally (normalized speed) |
-| **Shift** | Dash |
-| **Mouse** | Aim (character rotates toward cursor) |
-| **Left Click** | Shoot projectile |
-| **F3** | Toggle debug overlay |
-| **Space** | Apply 25 damage (test scenes only) |
-| **Escape** | Reset player (test scenes only) |
+| Input          | Action                                |
+| -------------- | ------------------------------------- |
+| **W**          | Move up                               |
+| **A**          | Move left                             |
+| **S**          | Move down                             |
+| **D**          | Move right                            |
+| **W+D**        | Move diagonally (normalized speed)    |
+| **Shift**      | Dash                                  |
+| **Mouse**      | Aim (character rotates toward cursor) |
+| **Left Click** | Shoot projectile                      |
+| **F3**         | Toggle debug overlay                  |
+| **Space**      | Apply 25 damage (test scenes only)    |
+| **Escape**     | Reset player (test scenes only)       |
 
 ### Debug Overlay (F3)
 
 Shows real-time information:
+
 - HP (current/max)
 - Position (X, Y)
 - State (IDLE/WALKING, NONE/ATTACKING/HIT/DEAD)
@@ -561,12 +562,12 @@ Shows real-time information:
 
 One file per concern — don't mix them:
 
-| File | Purpose | Template |
-|------|---------|----------|
-| `api/.env` | Local API runtime config: port, PostgreSQL, Redis, JWT. Read by the Go API and by `./scripts/dev_local.sh` / `./scripts/seed_test_user.sh`. | `api/.env.example` |
-| `.env.test` | Test login **only**: the seeded user's credentials plus the endpoints the smoke/login test scenes connect to. No DB/Redis config here. | `.env.test.example` |
-| `/etc/omega-realm/api.env` | **Production** API config on the server (secrets + DB/Redis), loaded by the `omega-api` systemd unit. Not in the repo. | `deployment/env/api.env.example` |
-| `/etc/omega-realm/server.env` | **Production** game-server env on the server (ticket policy), shared by both game units. | `deployment/env/server.env.example` |
+| File                          | Purpose                                                                                                                                     | Template                            |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| `api/.env`                    | Local API runtime config: port, PostgreSQL, Redis, JWT. Read by the Go API and by `./scripts/dev_local.sh` / `./scripts/seed_test_user.sh`. | `api/.env.example`                  |
+| `.env.test`                   | Test login **only**: the seeded user's credentials plus the endpoints the smoke/login test scenes connect to. No DB/Redis config here.      | `.env.test.example`                 |
+| `/etc/omega-realm/api.env`    | **Production** API config on the server (secrets + DB/Redis), loaded by the `omega-api` systemd unit. Not in the repo.                      | `deployment/env/api.env.example`    |
+| `/etc/omega-realm/server.env` | **Production** game-server env on the server (ticket policy), shared by both game units.                                                    | `deployment/env/server.env.example` |
 
 ### API Server (.env)
 
@@ -609,11 +610,11 @@ The client loads settings from `client/data/config/client_config.json`:
 }
 ```
 
-| Setting | Description | Default |
-|---------|-------------|---------|
-| `api_base_url` | URL of the Go API server (for auth and region list) | `http://localhost:8080` |
-| `api_timeout_seconds` | HTTP request timeout | `10.0` |
-| `debug_logging` | Enable verbose logging | `true` |
+| Setting               | Description                                         | Default                 |
+| --------------------- | --------------------------------------------------- | ----------------------- |
+| `api_base_url`        | URL of the Go API server (for auth and region list) | `http://localhost:8080` |
+| `api_timeout_seconds` | HTTP request timeout                                | `10.0`                  |
+| `debug_logging`       | Enable verbose logging                              | `true`                  |
 
 **Override at runtime:** Place a `client_config.json` in the user data directory (`user://client_config.json`) to override the embedded config without modifying the exported build.
 
@@ -625,28 +626,30 @@ passes `--config deployment/server_config.arena.json` (or `…sanctuary.json`) v
 units. Env overrides apply on top (CLI flag > env > config > default) — see
 `rust/server/src/config.rs` for the full key list. The most relevant keys:
 
-| Setting | Description | Default |
-|---------|-------------|---------|
-| `port` | UDP game port (ENet) | `8081` |
-| `tick_rate` | Server simulation tick rate (Hz) | `30` |
-| `max_players` | Maximum concurrent players | `100` |
-| `region` | Server region identifier | `local` |
-| `api_server_url` | URL of the Go API server (region heartbeat) | `http://localhost:8080` |
-| `metrics_port` | Prometheus exporter port (0 disables) | `9100` |
-| `allow_unsigned_tickets` | Dev mode: accept unsigned session tickets | `true` |
-| `aoi_radius` / `aoi_exit_radius` | Area-of-interest enter/exit radii | `1000` / `1100` |
-| `max_snapshot_bytes` | Unreliable snapshot budget per packet | `1200` |
+| Setting                          | Description                                 | Default                 |
+| -------------------------------- | ------------------------------------------- | ----------------------- |
+| `port`                           | UDP game port (ENet)                        | `8081`                  |
+| `tick_rate`                      | Server simulation tick rate (Hz)            | `30`                    |
+| `max_players`                    | Maximum concurrent players                  | `100`                   |
+| `region`                         | Server region identifier                    | `local`                 |
+| `api_server_url`                 | URL of the Go API server (region heartbeat) | `http://localhost:8080` |
+| `metrics_port`                   | Prometheus exporter port (0 disables)       | `9100`                  |
+| `allow_unsigned_tickets`         | Dev mode: accept unsigned session tickets   | `true`                  |
+| `aoi_radius` / `aoi_exit_radius` | Area-of-interest enter/exit radii           | `1000` / `1100`         |
+| `max_snapshot_bytes`             | Unreliable snapshot budget per packet       | `1200`                  |
 
 Production runs `--require-tickets` with `OMEGA_TICKET_PUBKEY` set (Ed25519).
 
 ### Godot Project Settings
 
 Key input actions defined in `project.godot`:
+
 - `move_up`, `move_down`, `move_left`, `move_right` - WASD movement
 - `shoot` - Left mouse button
 - `toggle_debug` - F3 key
 
 Collision layers:
+
 - Layer 1: Players
 - Layer 2: Monsters
 - Layer 3: Projectiles
@@ -656,14 +659,14 @@ Collision layers:
 
 ## Performance Targets
 
-| Metric | Target |
-|--------|--------|
-| Concurrent Players | 500-1000 per server |
-| Server Tick Rate | ≥20 Hz under load |
-| Per-Player Bandwidth | <2 KB/s average |
-| Latency (p95) | <150ms same-region |
-| CPU per Player | <0.5% |
-| Memory per Player | <5 MB |
+| Metric               | Target              |
+| -------------------- | ------------------- |
+| Concurrent Players   | 500-1000 per server |
+| Server Tick Rate     | ≥20 Hz under load   |
+| Per-Player Bandwidth | <2 KB/s average     |
+| Latency (p95)        | <150ms same-region  |
+| CPU per Player       | <0.5%               |
+| Memory per Player    | <5 MB               |
 
 ---
 
@@ -691,22 +694,22 @@ For more details, see the [LICENSE.md](LICENSE.md) file.
 The palette should feel oppressive and ancient — muted grimdark base colors punctured by
 unnatural eldritch highlights. Full styleguide: [`docs/design/STYLEGUIDE.md`](docs/design/STYLEGUIDE.md).
 
-| Color Name | HEX | Usage |
-| ---------- | --: | ----- |
-| Abyss Black | `#050706` | Primary background, deepest shadows, void interiors |
-| Ash Grey | `#555852` | Dust, ash, worn stone, muted highlights |
-| Iron Slate | `#252928` | Dark metal, armor plates, panel frames |
-| Blood Brown | `#4A1512` | Dried blood, old gore, stained cloth |
-| Rust Red | `#8A261F` | Fresh damage, rust, warning UI accents |
-| Dark Umber | `#3A211A` | Mud, leather, old wood, deep environmental shadows |
-| Tarnished Gold | `#9B7428` | Relics, holy trim, medals, elite accents |
-| Bone White | `#D8D0BC` | Skulls, teeth, parchment, high-value readability highlights |
-| Flesh Taupe | `#7A6253` | Mutated flesh, skin, worn cloth, organic props |
-| Sulfur Yellow | `#C69A2E` | Firelight, muzzle flash, toxic glow, divine decay |
-| Void Violet | `#5B3A8E` | Primary eldritch glow, void energy |
-| Eldritch Purple | `#2B183D` | Deep corruption shadows, rift interiors |
-| Corruption Magenta | `#8A2D55` | Veins, cursed highlights, spell cores |
-| Void Blue | `#1D3557` | Cold cosmic energy, star spawn highlights |
-| Soul Teal | `#1C6C73` | Ghostly magic, spirit effects, rare UI accents |
+| Color Name         |       HEX | Usage                                                       |
+| ------------------ | --------: | ----------------------------------------------------------- |
+| Abyss Black        | `#050706` | Primary background, deepest shadows, void interiors         |
+| Ash Grey           | `#555852` | Dust, ash, worn stone, muted highlights                     |
+| Iron Slate         | `#252928` | Dark metal, armor plates, panel frames                      |
+| Blood Brown        | `#4A1512` | Dried blood, old gore, stained cloth                        |
+| Rust Red           | `#8A261F` | Fresh damage, rust, warning UI accents                      |
+| Dark Umber         | `#3A211A` | Mud, leather, old wood, deep environmental shadows          |
+| Tarnished Gold     | `#9B7428` | Relics, holy trim, medals, elite accents                    |
+| Bone White         | `#D8D0BC` | Skulls, teeth, parchment, high-value readability highlights |
+| Flesh Taupe        | `#7A6253` | Mutated flesh, skin, worn cloth, organic props              |
+| Sulfur Yellow      | `#C69A2E` | Firelight, muzzle flash, toxic glow, divine decay           |
+| Void Violet        | `#5B3A8E` | Primary eldritch glow, void energy                          |
+| Eldritch Purple    | `#2B183D` | Deep corruption shadows, rift interiors                     |
+| Corruption Magenta | `#8A2D55` | Veins, cursed highlights, spell cores                       |
+| Void Blue          | `#1D3557` | Cold cosmic energy, star spawn highlights                   |
+| Soul Teal          | `#1C6C73` | Ghostly magic, spirit effects, rare UI accents              |
 
 **Last Updated:** June 2026

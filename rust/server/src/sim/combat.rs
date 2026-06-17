@@ -134,6 +134,15 @@ fn broadcast_player_kill(
         if killer_id == victim_id {
             return;
         }
+        // Capture the victim's death position + level before any mutation: the kill XP mirrors a
+        // monster kill (the victim is "worth" a monster of their level — see
+        // progression::xp_reward_for_level) and is shared by proximity to where they fell.
+        let Some((victim_pos, victim_level)) = players
+            .get_by_entity_id(victim_id)
+            .map(|v| (v.position, v.level))
+        else {
+            return;
+        };
         let killer_exists_authenticated = match players.get_by_entity_id(killer_id) {
             Some(k) if !k.authenticated => return, // unauthenticated killer suppresses the event
             Some(_) => true,
@@ -145,14 +154,18 @@ fn broadcast_player_kill(
             target_id: victim_id,
             data: GameEventData::None,
         }));
-        if !killer_exists_authenticated {
-            return;
+        if killer_exists_authenticated {
+            if let Some(killer) = players.get_by_entity_id_mut(killer_id) {
+                killer.pvp_kills += 1;
+            }
+            leaderboard.record_pvp_kill(killer_id, victim_id);
+            outbox.broadcast(leaderboard_event(leaderboard));
         }
-        if let Some(killer) = players.get_by_entity_id_mut(killer_id) {
-            killer.pvp_kills += 1;
-        }
-        leaderboard.record_pvp_kill(killer_id, victim_id);
-        outbox.broadcast(leaderboard_event(leaderboard));
+        // Award shared XP to every living player near the kill (the killer + any co-contributor),
+        // exactly like a monster kill. Granted even if the last-hit killer disconnected, so the
+        // other contributor in a brawl still gets credit.
+        let xp = progression::xp_reward_for_level(victim_level);
+        grant_shared_kill_experience(victim_pos, xp, players, outbox);
     } else {
         outbox.broadcast(ServerPacket::GameEvent(GameEvent {
             event_type: game_event_type::KILL,
@@ -262,18 +275,20 @@ pub fn apply_monster_damage(
             target_id: monster_id,
             data: GameEventData::None,
         }));
-        grant_kill_experience(monster_pos, xp_reward, players, outbox);
+        grant_shared_kill_experience(monster_pos, xp_reward, players, outbox);
         return Some(monster_pos);
     }
     None
 }
 
-/// Server-authoritative XP grant on a monster kill. Every alive, authenticated player within
-/// XP_SHARE_RADIUS gets the full reward (no split). The SERVER owns leveling now: it accumulates
-/// XP, resolves level-ups (recomputing class+level stats), marks progression dirty for the API
-/// write-back, and emits a PROGRESS event (authoritative HUD) plus a cosmetic EXP_GAIN floater.
-fn grant_kill_experience(
-    monster_pos: Vec2,
+/// Server-authoritative XP grant on a kill (monster OR player). Every alive, authenticated player
+/// within XP_SHARE_RADIUS of `death_pos` gets the full reward (no split) — so in a brawl every
+/// contributor in range is rewarded, exactly like a monster kill. The SERVER owns leveling now: it
+/// accumulates XP, resolves level-ups (recomputing class+level stats and fully restoring HP+mana),
+/// marks progression dirty for the API write-back, and emits a PROGRESS event (authoritative HUD)
+/// plus a cosmetic EXP_GAIN floater.
+fn grant_shared_kill_experience(
+    death_pos: Vec2,
     xp_reward: u32,
     players: &mut PlayerManager,
     outbox: &mut Outbox,
@@ -287,7 +302,7 @@ fn grant_kill_experience(
         if !player.authenticated || !player.is_alive {
             continue;
         }
-        if player.position.distance_squared_to(monster_pos) > radius_sq {
+        if player.position.distance_squared_to(death_pos) > radius_sq {
             continue;
         }
         // Cosmetic "+N" floater.
@@ -301,6 +316,10 @@ fn grant_kill_experience(
             progression::apply_experience(player.level, player.experience, xp_reward);
         if new_level != player.level {
             player.apply_class_and_level(player.player_class, new_level, new_xp);
+            // A level-up fully restores HP and mana. apply_class_and_level already raised the HP
+            // cap (and partially healed by the delta); top both off to full here.
+            player.health = player.max_health;
+            player.movement_sm.refill_mana();
         } else {
             player.experience = new_xp;
         }
@@ -937,6 +956,63 @@ mod tests {
                 ServerPacket::GameEvent(e) if e.event_type == game_event_type::DAMAGE
             )),
             "no DAMAGE event in the safe Sanctuary"
+        );
+    }
+
+    #[test]
+    fn pvp_kill_grants_shared_xp_by_victim_level() {
+        let (mut players, _projectiles, mut lb, mut outbox) = setup(); // adds authed peer 1
+        for peer in [2usize, 3, 4] {
+            players.add_player(peer).unwrap().authenticated = true;
+        }
+        // Killer (1) + near bystander (3) co-located with the victim (2); far bystander (4) well
+        // outside XP_SHARE_RADIUS.
+        for p in players.players.iter_mut() {
+            p.position = Vec2::ZERO;
+        }
+        let far_id = players.get(4).unwrap().entity_id;
+        players.get_by_entity_id_mut(far_id).unwrap().position = Vec2::new(5000.0, 0.0);
+
+        let killer_id = players.get(1).unwrap().entity_id;
+        let victim_id = players.get(2).unwrap().entity_id;
+        // Victim is level 3 → worth 132 XP (monster table); low HP so the hit kills.
+        {
+            let v = players.get_mut(2).unwrap();
+            v.apply_class_and_level(v.player_class, 3, 0);
+            v.health = 10;
+        }
+
+        apply_player_hit(
+            killer_id,
+            victim_id,
+            &mut players,
+            &mut lb,
+            &mut outbox,
+            None,
+        );
+
+        assert!(!players.get(2).unwrap().is_alive, "victim died");
+        assert_eq!(players.get(2).unwrap().level, 3, "victim level unchanged");
+        // 132 XP at level 1 → level 2 with 32 progress (100 to reach level 2).
+        let killer = players.get(1).unwrap();
+        assert_eq!(
+            (killer.level, killer.experience),
+            (2, 32),
+            "killer got full XP"
+        );
+        // Killer's level-up fully restores HP.
+        assert_eq!(killer.health, killer.max_health, "level-up refills HP");
+        let near = players.get(3).unwrap();
+        assert_eq!(
+            (near.level, near.experience),
+            (2, 32),
+            "co-contributor got full XP"
+        );
+        let far = players.get(4).unwrap();
+        assert_eq!(
+            (far.level, far.experience),
+            (1, 0),
+            "out-of-range player got no XP"
         );
     }
 

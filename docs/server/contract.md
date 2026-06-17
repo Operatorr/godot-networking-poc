@@ -131,10 +131,13 @@ the Class ability (point-target Mageblast/Plague Zone clamp to `max_cast_range`;
 Shadowstep searches near it; movement Charge uses it for direction). One of the `input_flags` bits is
 the RMB **ability-held** flag. See [`../systems/abilities.md`](../systems/abilities.md).
 
-### ActionConfirm (type 66, ch0) — 14 B
+### ActionConfirm (type 66, ch0) — 16 B (protocol v5 adds `health`)
 
-`[u8 type][u8 seq][u8 action][s16 qx][s16 qy][u8 result][u16 server_tick][u8 stamina][u8 mana][u8 dash_cd][u8 ability_cd]`
-(stamina/mana = `clamp(round(v), 0, 255)`; dash/ability cooldown = `clamp(round(seconds×10), 0, 255)`
+`[u8 type][u8 seq][u8 action][s16 qx][s16 qy][u8 result][u16 server_tick][u8 stamina][u8 mana][u8 dash_cd][u8 ability_cd][u16 health]`
+(stamina/mana = `clamp(round(v), 0, 255)`; dash/ability cooldown = `clamp(round(seconds×10), 0, 255)`;
+`health` = the owner's current HP, **un-quantized** `clamp(hp, 0, 65535)`. HP is not in snapshots,
+so the owner reconciles its display-only HUD bar against this — like stamina/mana — keeping it in
+step with server-side regen. The client never reads death from it; death is the reliable KILL event.
 **deciseconds**, 0.1-s resolution up to 25.5 s). The owner reconciles its **predicted** dash + RMB
 cooldowns against these authoritative values (epsilon-gated) so a refused / lost / cooldown-boundary
 dash can't drift the client's cooldown permanently out of phase with the server — see
@@ -217,9 +220,17 @@ server-authoritative, see [`../systems/PROGRESSION.md`](../systems/PROGRESSION.m
 ### BaselineAck (3): `[u8 type][u32 baseline_tick]` · RequestFullState (4) / RespawnRequest (5):
 `[u8 type]` · LocalHitReport (6): `[u8 type][u16 projectile_id]`
 
+## Protocol v5 — authoritative HP for the HUD bar
+
+`PROTOCOL_VERSION` advances to **5**: `ActionConfirm` gains a trailing `[u16 health]` (+2 B) carrying
+the owner's current HP. HP is not in snapshots, so the owner's HUD bar was a display-only delta mirror
+that couldn't see server-side regen and diverged from the authoritative `health`; the owner now
+reconciles it against this field, exactly like stamina/mana. Death stays server-authoritative (the
+reliable KILL/KILL_PVP event), so the client never infers death from this value.
+
 ## Protocol v4 — the Class-ability + server-authoritative-progression bump
 
-`PROTOCOL_VERSION` advances to **4** (v3 added the class byte; v4 adds the ability system and moves
+`PROTOCOL_VERSION` advanced to **4** (v3 added the class byte; v4 adds the ability system and moves
 progression server-side). The full delta versus v3, in one place — each is detailed in its section
 above:
 

@@ -76,8 +76,15 @@ and learned by the client through `ABILITY_EFFECT`, replicated entity flags, or 
 first of the reserved bits 9–15 to be used; bit 8 is `DAZED`) **after** the landing strike — the
 assassin strikes, then vanishes. A stealthed player is **invisible to AI targeting**: monster and bot
 AI drop aggro and will not re-acquire while the flag is set. Stealth runs its full 5 s and **no longer
-breaks** when the Rogue deals damage. The flag is server-owned and replicated; the client renders its
-own translucency from it.
+breaks** when the Rogue deals damage. The flag is server-owned and replicated.
+
+**Client rendering is point-of-view dependent.** The **local** player sees their *own* stealth as a
+translucent dim (`arena_base.gd::_sync_local_player_state`, alpha 0.35) so they can still play.
+**Every other** client renders a stealthed player as **fully hidden** — sprite, name label, and daze
+stars all suppressed (`remote_player.gd::_update_flags`, alpha 0). Stealth is cosmetic-only: the
+hidden player's **projectiles still render**, and the server still resolves hits against them, so a
+stealthed player stays fully damageable (collision is server-authoritative — see
+[`monsters-ai.md`](monsters-ai.md) "Stealth only affects targeting, not collision").
 
 **Load-test bots honor Stealth.** The `omega-load-test` swarm
 (`rust/load_test/src/behavior.rs::pick_target`) excludes `STEALTH`-flagged entities from both its

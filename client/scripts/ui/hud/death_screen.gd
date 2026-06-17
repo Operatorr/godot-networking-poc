@@ -15,6 +15,16 @@ var _countdown_timer: float = 0.0
 var _countdown_active: bool = false
 var _respawn_ready: bool = false
 
+## Once the player asks to respawn we keep re-sending the request on this interval until the
+## server confirms (a RESPAWN event triggers hide_death, which stops us). A single request can
+## lose a dead-heat with the server's respawn timer — especially on localhost, where the client
+## countdown and the server timer expire near-simultaneously — and the server silently drops an
+## early request, so without retrying the screen sticks on "Respawning..." forever. The load-test
+## bots already retry for the same reason.
+const RESPAWN_RETRY_INTERVAL := 0.5
+var _respawning: bool = false
+var _retry_timer: float = 0.0
+
 ## Base line shown on the hardcore (permadeath) screen; the converted-Glory line is appended
 ## beneath it when an amount is supplied.
 const GLORY_BASE_TEXT := "Your Glory will be remembered"
@@ -34,21 +44,25 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	if not _countdown_active:
-		return
-	_countdown_timer -= delta
-	if _countdown_timer <= 0.0:
-		_countdown_active = false
-		_respawn_ready = true
-		_countdown_label.text = "Press Space to respawn"
-		_countdown_label.modulate.a = 1.0
-		set_process(false)
-	else:
-		var secs := ceili(_countdown_timer)
-		_countdown_label.text = "Respawn in %d..." % secs
-		# Pulse effect
-		var pulse: float = 0.7 + 0.3 * absf(sin(Time.get_ticks_msec() / 200.0))
-		_countdown_label.modulate.a = pulse
+	if _countdown_active:
+		_countdown_timer -= delta
+		if _countdown_timer <= 0.0:
+			_countdown_active = false
+			_respawn_ready = true
+			_countdown_label.text = "Press Space to respawn"
+			_countdown_label.modulate.a = 1.0
+		else:
+			var secs := ceili(_countdown_timer)
+			_countdown_label.text = "Respawn in %d..." % secs
+			# Pulse effect
+			var pulse: float = 0.7 + 0.3 * absf(sin(Time.get_ticks_msec() / 200.0))
+			_countdown_label.modulate.a = pulse
+	elif _respawning:
+		# Keep asking until the server confirms (RESPAWN -> hide_death stops the retries).
+		_retry_timer -= delta
+		if _retry_timer <= 0.0:
+			_retry_timer = RESPAWN_RETRY_INTERVAL
+			respawn_requested.emit()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -60,6 +74,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			and not event.echo \
 			and event.physical_keycode == KEY_SPACE:
 		_respawn_ready = false
+		_respawning = true
+		_retry_timer = RESPAWN_RETRY_INTERVAL
 		_countdown_label.text = "Respawning..."
 		get_viewport().set_input_as_handled()
 		respawn_requested.emit()
@@ -78,6 +94,7 @@ func show_death(killer_entity_id: int) -> void:
 	_countdown_timer = GameConstants.RESPAWN_DELAY
 	_countdown_active = true
 	_respawn_ready = false
+	_respawning = false
 	_countdown_label.text = "Respawn in %d..." % ceili(_countdown_timer)
 	_countdown_label.modulate.a = 1.0
 	visible = true
@@ -93,6 +110,7 @@ func show_death_hardcore(killer_entity_id: int, glory: int = -1) -> void:
 	# No countdown / respawn for permadeath.
 	_countdown_active = false
 	_respawn_ready = false
+	_respawning = false
 	set_process(false)
 	_countdown_label.visible = false
 
@@ -126,6 +144,7 @@ func _on_menu_button_pressed() -> void:
 func hide_death() -> void:
 	_countdown_active = false
 	_respawn_ready = false
+	_respawning = false
 	_countdown_timer = 0.0
 	set_process(false)
 	if _countdown_label:

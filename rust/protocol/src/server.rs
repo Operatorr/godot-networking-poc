@@ -40,6 +40,10 @@ pub struct ActionConfirm {
     /// dash or cast can't leave the client's cooldown permanently out of phase with the server.
     pub dash_cooldown: u8,
     pub ability_cooldown: u8,
+    /// Authoritative current HP for the owner's HUD bar. HP is not carried in snapshots, so the
+    /// owner reconciles its display-only HP against this (like stamina/mana above) — keeping the
+    /// bar in step with server-side regen and any damage the client's delta tracking missed.
+    pub health: u16,
 }
 
 /// GAME_EVENT — common head + per-type tail, identical semantics to today (extraction §4.15).
@@ -219,6 +223,7 @@ impl ServerPacket {
                 w.write_u8(c.mana);
                 w.write_u8(c.dash_cooldown);
                 w.write_u8(c.ability_cooldown);
+                w.write_u16(c.health);
             }
             ServerPacket::GameEvent(e) => {
                 // The decoder picks the data layout from event_type; a mismatched variant
@@ -360,6 +365,7 @@ impl ServerPacket {
                 mana: r.read_u8()?,
                 dash_cooldown: r.read_u8()?,
                 ability_cooldown: r.read_u8()?,
+                health: r.read_u16()?,
             }),
             server_type::GAME_EVENT => {
                 let event_type = r.read_u8()?;
@@ -516,6 +522,7 @@ mod tests {
             mana: 100,
             dash_cooldown: 55,
             ability_cooldown: 100,
+            health: 437,
         });
         match rt(p) {
             ServerPacket::ActionConfirm(c) => {
@@ -524,6 +531,7 @@ mod tests {
                 assert_eq!(c.stamina, 73);
                 assert_eq!(c.dash_cooldown, 55);
                 assert_eq!(c.ability_cooldown, 100);
+                assert_eq!(c.health, 437);
             }
             other => panic!("wrong: {other:?}"),
         }

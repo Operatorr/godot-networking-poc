@@ -55,8 +55,8 @@ pub struct Bot {
     peer_key: usize,
     behavior: BehaviorState,
     rng: Pcg32,
-    /// Player class (0=Zealot … 6=Mage), picked uniformly at random once at construction and
-    /// sent in ConnectAuth — exercises the identity plumbing across the swarm.
+    /// Player class — one of Warrior(4)/Rogue(5)/Mage(6), assigned round-robin by bot id so a
+    /// swarm is split evenly across the three playable classes. Sent in ConnectAuth.
     player_class: u8,
     sm: MovementSm,
     pos: Vec2,
@@ -124,12 +124,16 @@ impl Bot {
         };
         // Reproducible per-bot stream when `--seed` is given (`seed ^ bot_id`, matching the rng
         // module contract); otherwise fall back to entropy for an unseeded run.
-        let mut rng = match seed {
+        let rng = match seed {
             Some(s) => Pcg32::new(s ^ id as u64),
             None => Pcg32::from_entropy(id as u64),
         };
-        let player_class = rng.rand_index(7) as u8; // uniform over the 7 classes (0=Zealot … 6=Mage)
-        debug!("bot {id} picked class {player_class}");
+        // Only the three playable classes are spawned, round-robin by bot id so a swarm is split
+        // evenly (3 bots → 1 Warrior, 1 Rogue, 1 Mage). The other classes are disabled, and an even
+        // split makes test runs reproducible and easy to read. ids: Warrior=4, Rogue=5, Mage=6.
+        const SPAWN_CLASSES: [u8; 3] = [4, 5, 6];
+        let player_class = SPAWN_CLASSES[(id as usize).wrapping_sub(1) % SPAWN_CLASSES.len()];
+        debug!("bot {id} assigned class {player_class}");
         Ok(Self {
             id,
             phase: Phase::Connecting,
@@ -137,7 +141,7 @@ impl Bot {
             entity_id: 0,
             host,
             peer_key,
-            behavior: BehaviorState::new(behavior, difficulty),
+            behavior: BehaviorState::new(behavior, difficulty, player_class),
             rng,
             player_class,
             sm: MovementSm::new(),
@@ -451,6 +455,8 @@ impl Bot {
         }
 
         let mut flags: u16 = 0;
+        // Cursor world position for cursor-targeted ability casts; `None` ⇒ the bot's own position.
+        let mut cursor: Option<(f32, f32)> = None;
         if self.dead_since.is_some() {
             self.maybe_request_respawn(now);
             // Keep sending zero-input frames while dead, like an idle client.
@@ -467,6 +473,7 @@ impl Bot {
             };
             flags = decision.flags;
             self.last_aim = decision.aim_angle;
+            cursor = decision.cursor;
             let aim = self.last_aim as f64;
             let aim_dir = Vec2::new(aim.cos() as f32, aim.sin() as f32);
             let result = step_movement(
@@ -491,7 +498,8 @@ impl Bot {
             aim_angle: self.last_aim,
             position: (self.pos.x, self.pos.y),
             velocity: (self.vel.x, self.vel.y),
-            cursor: (self.pos.x, self.pos.y), // bots aim from their own position
+            // Target world position for cursor-aimed casts (Rogue/Mage); own position otherwise.
+            cursor: cursor.unwrap_or((self.pos.x, self.pos.y)),
             client_render_tick: (self.metrics.last_server_tick & 0xFFFF) as u16,
             client_rtt_ms: self.last_rtt_ms.clamp(0.0, u16::MAX as f64) as u16,
         });

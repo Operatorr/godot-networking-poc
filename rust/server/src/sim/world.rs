@@ -452,7 +452,7 @@ impl World {
             // bar immediately and the owner can reconcile its PREDICTED cooldowns against the
             // authoritative ones (otherwise a refused / lost / boundary-timed dash drifts them
             // permanently out of phase — the dash-desync bug).
-            let (pos, mana, dash_cd, ability_cd) = self
+            let (pos, mana, dash_cd, ability_cd, health) = self
                 .players
                 .get(r.peer)
                 .map(|p| {
@@ -461,9 +461,10 @@ impl World {
                         protocol::quant_resource(p.movement_sm.mana()),
                         protocol::quant_cooldown(p.movement_sm.dash_cooldown_remaining()),
                         protocol::quant_cooldown(p.movement_sm.ability_cooldown_remaining()),
+                        p.health.clamp(0, u16::MAX as i32) as u16,
                     )
                 })
-                .unwrap_or((r.position, r.mana, 0, 0));
+                .unwrap_or((r.position, r.mana, 0, 0, 0));
             outbox.send(
                 r.peer,
                 ServerPacket::ActionConfirm(ActionConfirm {
@@ -480,6 +481,7 @@ impl World {
                     mana,
                     dash_cooldown: dash_cd,
                     ability_cooldown: ability_cd,
+                    health,
                 }),
             );
         }

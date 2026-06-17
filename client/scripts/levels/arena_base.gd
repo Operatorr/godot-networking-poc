@@ -478,9 +478,16 @@ func _handle_progress_event(data: Dictionary) -> void:
 	var level := int(event_data.get("level", 1))
 	var experience := int(event_data.get("experience", 0))
 	var move_speed := int(event_data.get("move_speed", 0))
+	var leveled_up := level > GameManager.get_player_level()
 	GameManager.set_progression(level, experience, move_speed)
 	if prediction_controller and move_speed > 0:
 		prediction_controller.set_base_speed(float(move_speed))
+	# Keep the HUD HP bar's cap in step with the server's class+level max_health (HP isn't carried
+	# in snapshots, so the client derives the cap). On a level-up the server fully restores HP +
+	# mana, so fill the bar to the new max here too; mana arrives on the next ActionConfirm. The
+	# server stays authoritative for the actual value.
+	if local_player and is_instance_valid(local_player):
+		local_player.apply_level_scaled_max_hp(level, leveled_up)
 
 
 ## Health pickup. Spawn a green "+amount" heal floater at the picked-up player's position and,
@@ -666,18 +673,10 @@ func _sync_local_player_state(entity_data: Dictionary) -> void:
 	var flags: int = entity_data.get("flags", 0)
 	var is_alive := (flags & PacketTypes.ENTITY_FLAG_ALIVE) != 0
 
-	# Sync alive state - detect death
+	# Server-authoritative death backstop: the reliable KILL/KILL_PVP event normally triggers the
+	# death first, but if that snapshot's flags delta is the signal we honor it here too (idempotent).
 	if not is_alive:
-		if local_player.action_state != Player.ActionState.DEAD:
-			local_player.action_state = Player.ActionState.DEAD
-			local_player.movement_state = Player.MovementState.IDLE
-			local_player.velocity = Vector2.ZERO
-			local_player.set_input_enabled(false)
-			if prediction_controller:
-				prediction_controller.set_prediction_enabled(false)
-			if local_player.hp_component:
-				local_player.hp_component.set_hp(0)
-		_play_local_death_feedback()
+		_enter_local_death(_last_killer_id)
 
 	# Sync invulnerability visual, then Rogue stealth dim. Stealth wins when both are set.
 	var is_invulnerable := (flags & PacketTypes.ENTITY_FLAG_INVULNERABLE) != 0
@@ -753,35 +752,50 @@ func _handle_damage_event(data: Dictionary) -> void:
 			_last_killer_id = source_id
 
 		if amount > 0 and local_player.hp_component:
-			var was_dead := local_player.hp_component.is_dead
+			# Display only: drive the HP bar from the applied delta. Death is SERVER-authoritative
+			# (the reliable KILL/KILL_PVP event + the ALIVE flag — see _enter_local_death). The
+			# client must NOT declare its own death from predicted HP: its flat 100 max-HP and the
+			# server's class+level-scaled max_health diverge, and server-side regen isn't
+			# replicated, so a client-predicted 0 would start the respawn countdown before the
+			# server agrees the player is dead — and the server then rejects the respawn until its
+			# real HP drains (the "stuck on Respawning…" hang).
 			local_player.hp_component.take_damage(amount)
-			var is_dead := local_player.hp_component.is_dead
 
-			if is_dead and not was_dead:
-				local_player.movement_state = Player.MovementState.IDLE
-				local_player.velocity = Vector2.ZERO
-				local_player.set_input_enabled(false)
-				if prediction_controller:
-					prediction_controller.set_prediction_enabled(false)
-				_play_local_death_feedback()
-			else:
-				# Play hit sound for local player taking damage
-				var audio := _get_audio_manager()
-				if audio:
-					audio.play_player_hit()
-
-			# Spawn damage number
+			# Hit feedback fires on every damage event; the death feedback is separate (it rides
+			# the authoritative kill signal, not this predicted HP).
+			var audio := _get_audio_manager()
+			if audio:
+				audio.play_player_hit()
 			_spawn_damage_number(amount, local_player.global_position, false)
+			if screen_effects:
+				screen_effects.shake(ScreenEffects.SHAKE_HIT)
+				screen_effects.flash_damage()
+			var sparks := ParticleEffects.create_hit_sparks(local_player.global_position)
+			_add_effect_to_arena(sparks)
 
-			if not is_dead:
-				# Screen shake + red flash on hit
-				if screen_effects:
-					screen_effects.shake(ScreenEffects.SHAKE_HIT)
-					screen_effects.flash_damage()
 
-				# Hit sparks at player position
-				var sparks := ParticleEffects.create_hit_sparks(local_player.global_position)
-				_add_effect_to_arena(sparks)
+## Server-authoritative local death transition. The client never declares its own death from
+## predicted HP (its max-HP and the server's diverge, and regen isn't replicated). This is driven
+## by the reliable KILL/KILL_PVP event (exact server timing) with the ALIVE-flag snapshot as a
+## backstop. Idempotent: re-entry while already dead is a no-op, so it's safe to call from every
+## path. Starting the respawn countdown only here keeps it in lockstep with the server's respawn
+## timer, so the respawn request isn't rejected for arriving early.
+func _enter_local_death(killer_id: int) -> void:
+	if local_player == null or not is_instance_valid(local_player):
+		return
+	if killer_id > 0:
+		_last_killer_id = killer_id
+	if local_player.action_state == Player.ActionState.DEAD:
+		return
+	local_player.action_state = Player.ActionState.DEAD
+	local_player.movement_state = Player.MovementState.IDLE
+	local_player.velocity = Vector2.ZERO
+	local_player.set_input_enabled(false)
+	if prediction_controller:
+		prediction_controller.set_prediction_enabled(false)
+	if local_player.hp_component:
+		local_player.hp_component.set_hp(0)
+	_play_local_death_feedback()
 
 
 ## Play local death audio, particles, screen effects, and UI exactly once.
@@ -935,6 +949,8 @@ func _handle_kill_pvp_event(data: Dictionary) -> void:
 
 	if victim_id == local_id:
 		GameManager.update_stat("deaths", 1)
+		# Authoritative death signal (reliable channel, exact server timing).
+		_enter_local_death(killer_id)
 
 
 ## Handle generic kill event (PvE)
@@ -954,6 +970,8 @@ func _handle_kill_event(data: Dictionary) -> void:
 	if killer_id >= GameConstants.MONSTER_ENTITY_ID_START and victim_id < GameConstants.MONSTER_ENTITY_ID_START:
 		if victim_id == local_id:
 			GameManager.update_stat("deaths", 1)
+			# Authoritative death signal (reliable channel, exact server timing).
+			_enter_local_death(killer_id)
 		if kill_feed:
 			var victim_name := EntityNameCache.get_entity_name(victim_id)
 			# Display name comes from the monster catalogue (data-driven). The wire

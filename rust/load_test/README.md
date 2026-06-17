@@ -47,6 +47,36 @@ target selection, orbit-at-preferred-range, intercept aim with difficulty-scaled
 error, projectile dodging, stamina-gated sprint, and cooldown dash are kept; the old A*
 waypoint hunt and flank planner are not.
 
+## Player classes & RMB abilities
+
+Bots only spawn as the three **playable** classes — **Warrior (4)**, **Rogue (5)**, **Mage
+(6)** — never the disabled ones. The class is assigned **round-robin by bot id** so a swarm
+splits evenly (3 bots → 1 Warrior, 1 Rogue, 1 Mage), which keeps test runs reproducible.
+Assignment is in `Bot::connect` (`bot.rs`).
+
+Only `strategy` bots use the **RMB ability** (the other behaviors have no target to aim it
+at). When a strategy bot is engaging a target in shoot range, it occasionally fires its
+ability (`behavior.rs` `apply_ability`):
+
+- **Warrior — Charge**: aims at the target, clears the strafe so the charge launches toward
+  it, and **holds** the ABILITY input for ~1.35 s so the steerable charge runs its course and
+  homes on the target. (Releasing after one tick — the old behavior — ended the charge
+  immediately, so the Warrior barely moved.)
+- **Rogue / Mage — instant cast**: a single-frame cast with the input `cursor` set to the
+  **target's** world position, so the Shadowstep / Mageblast lands on the target instead of
+  the bot's own feet.
+
+## Tuning bot difficulty (`--difficulty 0..1`, default 1.0)
+
+One knob scales how "expert" the strategy bots play; everything it touches lives in
+`behavior.rs`:
+
+- **Reaction time** — re-decide interval, 40 ms (1.0) → 500 ms (0.0).
+- **Aim accuracy** — gaussian aim error, 0 (1.0) → up to ~0.34 rad (0.0), also widening with
+  range.
+- **Preferred engagement range** — higher difficulty closes in tighter.
+- **Dash & RMB-ability frequency** — higher difficulty dashes and casts more often.
+
 ## Metrics & success criteria
 
 Success criteria are unchanged (avg latency < 100 ms, P95 < 150 ms, bandwidth < 5 KB/s per
