@@ -45,7 +45,15 @@ static func create(
 
 
 func _ready() -> void:
-	z_index = 40
+	# Render the detonation BELOW the player/entities (a charge blast goes off at
+	# the warrior's feet — keep the character visible on top, reading as a ground
+	# shockwave). z stays at 0 (NOT negative — that would drop it under the arena's
+	# own _draw() floor, see arena_base.gd); being first in the parent's children
+	# puts it under the (later-drawn) entities while staying above the floor.
+	z_index = 0
+	var parent := get_parent()
+	if parent != null:
+		parent.move_child(self, 0)
 	var frames: SpriteFrames = null
 	if not effect_key.is_empty():
 		frames = SheetLibrary.effect_frames(effect_key)

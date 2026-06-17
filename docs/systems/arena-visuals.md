@@ -151,10 +151,18 @@ only** — the server still owns all damage and fires the authoritative
   (`_drive_charge_trail`, mirroring the charge-loop SFX), parented to the player
   at `z_index = -1` (behind the sprite). Local-player, online only — that is
   where the real charge motion lives.
-- **Tested:** `scenes/test/vfx_smoke.tscn` plays both blasts on a loop and sweeps
-  a `ChargeTrail` across the frame (no server needed). Capture with:
-  `godot --path client res://scenes/test/vfx_smoke.tscn --write-movie
-  /tmp/shots/vfx.png --fixed-fps 12 --quit-after 22`.
+- **Tested:** `scenes/test/vfx_arena_smoke.tscn` sweeps a Warrior across the
+  **real arena floor** with a `ChargeTrail` attached and fires the charge blast
+  at its feet (no server needed) — it checks both the visuals *and the draw
+  order* (trail above the floor + behind the warrior; blast below the warrior).
+  Capture: `godot --path client res://scenes/test/vfx_arena_smoke.tscn
+  --write-movie /tmp/shots/arena.png --fixed-fps 12 --quit-after 40`.
+- **Draw order (important):** both the trail and the blast sit at **`z_index = 0`**
+  and rely on **tree order** for layering — the trail moves to the front of the
+  player's children (drawn *behind* the sprite), and the blast moves to the front
+  of the entity container (drawn *under* the entities). A **negative** z_index
+  would drop them under the arena's own `_draw()` floor and they would vanish
+  (the same gotcha noted for props in `arena_base.gd`).
 
 ## Class identity on the wire (protocol v3)
 

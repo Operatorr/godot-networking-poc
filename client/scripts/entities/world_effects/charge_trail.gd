@@ -33,9 +33,14 @@ static func create() -> ChargeTrail:
 
 
 func _ready() -> void:
-	# World-space embers (trail behind a moving emitter) drawn additively behind the sprite.
+	# World-space embers (trail behind a moving emitter), drawn additively.
 	local_coords = false
-	z_index = -1
+	# Stay at entity z (0), NOT negative: a negative z_index would drop the trail
+	# UNDER the arena's own _draw() floor (arena_base.gd warns about exactly this)
+	# and it would vanish. Instead we sit at z 0 (above the floor) and draw BEHIND
+	# the player's sprite via tree order — move to the front of the player's
+	# children below. (EntityContainer is not Y-sorted, so order wins.)
+	z_index = 0
 	z_as_relative = true
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR  # soft glow dot despite the pixel-art default
 	amount = PARTICLE_AMOUNT
@@ -54,6 +59,11 @@ func _ready() -> void:
 	var glow := CanvasItemMaterial.new()
 	glow.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
 	material = glow
+
+	# Draw behind the player's sprite (siblings share z 0; first child draws first).
+	var parent := get_parent()
+	if parent != null:
+		parent.move_child(self, 0)
 
 	set_physics_process(true)
 
