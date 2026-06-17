@@ -564,6 +564,17 @@ func set_dazed(active: bool) -> void:
 
 
 func _on_hp_component_died() -> void:
+	# Online, death is SERVER-authoritative: arena_base._enter_local_death (driven by the reliable
+	# KILL/KILL_PVP event) performs this transition. The networked HP bar is a display mirror that
+	# can momentarily read 0 — delta tracking racing the authoritative ActionConfirm reconcile, or
+	# missing server-side regen — while the server still has the player alive. Acting on that here
+	# would set action_state = DEAD (which _physics_process treats as "block all processing") and
+	# strand the player at 0 HP, unable to move, with no death screen. So defer to the server; the
+	# next confirm reconciles HP back up. Offline (sandbox/practice), the hp_component IS the
+	# authority, so keep the local death transition.
+	if prediction_owns_movement:
+		return
+
 	action_state = ActionState.DEAD
 	movement_state = MovementState.IDLE
 	velocity = Vector2.ZERO
