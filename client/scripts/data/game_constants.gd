@@ -120,6 +120,10 @@ const PLAYER_DAZE_DURATION := 1.5
 ## Ground-speed multiplier while dazed — a 30% slow, the CC component of the daze.
 const PLAYER_DAZE_SPEED_MULTIPLIER := 0.7
 
+## Level cap. Mirrors MAX_PLAYER_LEVEL in rust/sim_core/src/progression.rs; used to clamp client-side
+## class+level stat derivations (e.g. the HUD HP-bar cap) so they can't exceed the server's max.
+const MAX_PLAYER_LEVEL := 50
+
 
 # =============================================================================
 # STAMINA (sprint resource)

@@ -378,7 +378,10 @@ func _projectile_range_for_class(class_id: int) -> float:
 ## this is exact (no rounding ambiguity vs the server's round()).
 func _max_hp_for_class_level(class_id: int, level: int) -> int:
 	var idx := clampi(class_id, 0, _HP_BASE.size() - 1)
-	var lvl := maxi(level, 1)
+	# Clamp to [1, MAX_PLAYER_LEVEL] to match the server's scale_stat — the server caps level at 50
+	# before it reaches us, but mirroring the upper bound keeps the derived cap from ever exceeding
+	# the server's max_health if an out-of-range level slips through.
+	var lvl := clampi(level, 1, GameConstants.MAX_PLAYER_LEVEL)
 	return int(roundf(_HP_BASE[idx] + _HP_PER_LEVEL[idx] * float(lvl - 1)))
 
 

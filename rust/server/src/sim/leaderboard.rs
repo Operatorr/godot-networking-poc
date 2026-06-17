@@ -12,6 +12,9 @@ struct Entry {
 #[derive(Default)]
 pub struct Leaderboard {
     entries: Vec<Entry>,
+    /// Set by `record_pvp_kill`; lets the tick loop coalesce many kills in one tick (e.g. an AoE
+    /// wiping several players) into a single end-of-tick broadcast instead of one snapshot per kill.
+    dirty: bool,
 }
 
 impl Leaderboard {
@@ -42,6 +45,16 @@ impl Leaderboard {
         }
         self.find_or_create(killer_id).pvp_kills += 1;
         self.find_or_create(victim_id).deaths += 1;
+        self.dirty = true;
+    }
+
+    /// Returns whether the board changed since the last call and clears the flag — the tick loop
+    /// uses this to emit at most one leaderboard broadcast per tick regardless of how many kills
+    /// landed (an AoE multi-kill marks dirty once per victim but broadcasts only once).
+    pub fn take_dirty(&mut self) -> bool {
+        let was = self.dirty;
+        self.dirty = false;
+        was
     }
 
     fn find_or_create(&mut self, entity_id: u16) -> &mut Entry {

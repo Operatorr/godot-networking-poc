@@ -24,7 +24,7 @@ const BG_FLASH := Color(1.0, 0.85, 0.2, 0.30)
 ## Kill-count column color (gold), constant across rows.
 const KILLS_COLOR := Color(1.0, 0.86, 0.45)
 
-var _entries: Array[Dictionary] = []  # {entity_id: int, pvp_kills: int}
+var _entries: Array[Dictionary] = []  # {entity_id: int, pvp_kills: int, deaths: int}
 var _rows: Array[Dictionary] = []  # {panel, style, icon, info, kills}
 var _is_expanded: bool = false
 var _flash_entity_id: int = -1
@@ -82,9 +82,12 @@ func _build_rows() -> void:
 		row.add_child(info)
 
 		var kills := Label.new()
-		kills.custom_minimum_size = Vector2(50, 0)  # fits a "K:D" pair, e.g. "127:99"
+		# Min width for the "K:D" pair; typical counts fit, and the label trim-ellipsis-clips the
+		# pathological max ("65535:65535") rather than overflowing the row.
+		kills.custom_minimum_size = Vector2(50, 0)
 		kills.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		kills.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		kills.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		kills.add_theme_font_size_override("font_size", 14)
 		kills.add_theme_color_override("font_color", KILLS_COLOR)
 		row.add_child(kills)

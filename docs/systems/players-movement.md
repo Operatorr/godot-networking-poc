@@ -163,14 +163,19 @@ The Local player is simulated immediately on input, before the server confirms �
   advances its timers on neutral input, but its position output is ignored and both reconcile paths
   (Snapshot + `ActionConfirm`) skip input-replay. Without this the input-driven sim fought the
   server's knockback and the reconcile lerp chased a moving target — a visible twitch, worst exactly
-  when you steered against the knockback. A lost falling-edge flag is backstopped by a 0.75 s timer
-  (`KNOCKBACK_FOLLOW_MAX_SECONDS`); on resume the stale input buffer is dropped and prediction
-  restarts from the server's last position.
+  when you steered against the knockback. The KNOCKED_BACK flag is only sent on flag *edges*, so a
+  sustained/chained knockback exposes no per-tick re-affirmation; the follow is held by a comms-loss
+  ceiling (`KNOCKBACK_FOLLOW_MAX_SECONDS`, 4 s) that is **re-armed** by every update still flagging
+  knockback (the rising edge + each full-state baseline, ~3.3 s apart), so it only force-resumes if
+  flag deltas *and* baselines both stop. Normal release is the observed falling edge (including via
+  the next baseline); on resume the stale input buffer is dropped and prediction restarts from the
+  server's last position.
 
 Confirmations ride **ch0** as `ActionConfirm` (type 66): `[seq][action][s16 qx][s16 qy][result]
-[u16 server_tick][u8 stamina][u8 mana]` — see [`../server/contract.md`](../server/contract.md).
-Quantization is wire-frozen: positions ×10 truncate-toward-zero clamped to `i16`; stamina/mana ×255
-round-half-away clamped to `u8`.
+[u16 server_tick][u8 stamina][u8 mana][u8 dash_cd][u8 ability_cd][u16 health]` — see
+[`../server/contract.md`](../server/contract.md). Quantization is wire-frozen: positions ×10
+truncate-toward-zero clamped to `i16`; stamina/mana are `clamp(round(v), 0, 255)`; dash/ability
+cooldowns are `clamp(round(seconds×10), 0, 255)` (deciseconds); `health` is the raw `u16`.
 
 ## Remote players: interpolated
 

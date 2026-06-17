@@ -512,9 +512,9 @@ impl World {
         }
         self.process_hardcore_deaths();
         self.leaderboard_timer += tick_dt;
-        if self.leaderboard_timer >= LEADERBOARD_BROADCAST_INTERVAL {
+        let leaderboard_cadence_due = self.leaderboard_timer >= LEADERBOARD_BROADCAST_INTERVAL;
+        if leaderboard_cadence_due {
             self.leaderboard_timer = 0.0;
-            outbox.broadcast(combat::leaderboard_event(&self.leaderboard));
         }
 
         // 3. Monster AI (+ fire events: position (0,0), tick 0, non-zero projectile id — D11).
@@ -570,6 +570,14 @@ impl World {
         //     pickups). Damage funnels through the same monster-damage path; more kills can drop
         //     more orbs.
         self.tick_world_entities(tick_dt, outbox);
+
+        // 5d. Coalesced leaderboard broadcast: one snapshot per tick at most. Every kill path above
+        //     (collisions, D11 backstop, ability AoE, world entities) marks the board dirty rather
+        //     than broadcasting inline, so an AoE that wipes several players emits a single update.
+        //     Also fires on the periodic cadence so HUDs stay fresh even with no recent kills.
+        if leaderboard_cadence_due || self.leaderboard.take_dirty() {
+            outbox.broadcast(combat::leaderboard_event(&self.leaderboard));
+        }
 
         // 6. Snapshot broadcast.
         if snapshot_due {

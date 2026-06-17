@@ -486,6 +486,9 @@ func _handle_progress_event(data: Dictionary) -> void:
 	# in snapshots, so the client derives the cap). On a level-up the server fully restores HP +
 	# mana, so fill the bar to the new max here too; mana arrives on the next ActionConfirm. The
 	# server stays authoritative for the actual value.
+	# NOTE: `leveled_up` compares against the local (possibly stale) level, so on reconnect hydration
+	# of a wounded high-level character this reads true once and briefly fills the bar to full — the
+	# next STATE_UPDATE / ActionConfirm reconciles it. Display-only; the server owns the real HP.
 	if local_player and is_instance_valid(local_player):
 		local_player.apply_level_scaled_max_hp(level, leveled_up)
 
@@ -682,7 +685,10 @@ func _sync_local_player_state(entity_data: Dictionary) -> void:
 
 	# Server-authoritative death backstop: the reliable KILL/KILL_PVP event normally triggers the
 	# death first, but if that snapshot's flags delta is the signal we honor it here too (idempotent).
-	if not is_alive:
+	# Gated on authority-sync so a full-state snapshot arriving before we've adopted authority (e.g. a
+	# REQUEST_FULL_STATE reply that momentarily reports the entity not-yet-alive) can't pop a spurious
+	# death screen at join — once we own the player, a cleared ALIVE flag is a real death.
+	if not is_alive and _local_player_authority_synced:
 		_enter_local_death(_last_killer_id)
 
 	# Sync invulnerability visual, then Rogue stealth dim. Stealth wins when both are set.

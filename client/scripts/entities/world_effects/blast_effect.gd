@@ -65,6 +65,10 @@ func _ready() -> void:
 
 
 func _build_sprite(frames: SpriteFrames) -> void:
+	# Guarantee the one-shot self-free path: force the "blast" row non-looping so animation_finished
+	# always fires (the safety timer below only backstops a missed signal). These sheets are
+	# BlastEffect-only, so disabling loop on the shared SpriteFrames is safe and idempotent.
+	frames.set_animation_loop("blast", false)
 	var spr := AnimatedSprite2D.new()
 	spr.sprite_frames = frames
 	spr.animation = "blast"

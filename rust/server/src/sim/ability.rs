@@ -374,7 +374,13 @@ mod tests {
         for c in 0..7u8 {
             let effects = stats_for_class(c).ability_effects;
             if c == 6 {
-                assert_eq!(effects, &[StatusEffect::Daze { secs: 1.5 }], "mage dazes");
+                assert_eq!(
+                    effects,
+                    &[StatusEffect::Daze {
+                        secs: PLAYER_DAZE_DURATION
+                    }],
+                    "mage dazes"
+                );
             } else {
                 assert!(effects.is_empty(), "class {c} has no on-hit effect");
             }

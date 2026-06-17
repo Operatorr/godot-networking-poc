@@ -22,8 +22,12 @@ var _respawn_ready: bool = false
 ## early request, so without retrying the screen sticks on "Respawning..." forever. The load-test
 ## bots already retry for the same reason.
 const RESPAWN_RETRY_INTERVAL := 0.5
+## Cap the auto-retries (~10 s at the 0.5 s cadence) so a connection dropped after death doesn't
+## emit respawn_requested into a dead socket forever; past the cap we fall back to the manual prompt.
+const RESPAWN_MAX_RETRIES := 20
 var _respawning: bool = false
 var _retry_timer: float = 0.0
+var _retry_count: int = 0
 
 ## Base line shown on the hardcore (permadeath) screen; the converted-Glory line is appended
 ## beneath it when an amount is supplied.
@@ -58,11 +62,20 @@ func _process(delta: float) -> void:
 			var pulse: float = 0.7 + 0.3 * absf(sin(Time.get_ticks_msec() / 200.0))
 			_countdown_label.modulate.a = pulse
 	elif _respawning:
-		# Keep asking until the server confirms (RESPAWN -> hide_death stops the retries).
+		# Keep asking until the server confirms (RESPAWN -> hide_death stops the retries), but bound
+		# the attempts: if the connection dropped after death the server will never confirm, so past
+		# the cap we stop emitting and re-arm the manual prompt (the player can retry or leave).
 		_retry_timer -= delta
 		if _retry_timer <= 0.0:
 			_retry_timer = RESPAWN_RETRY_INTERVAL
-			respawn_requested.emit()
+			_retry_count += 1
+			if _retry_count > RESPAWN_MAX_RETRIES:
+				_respawning = false
+				_respawn_ready = true
+				_countdown_label.text = "Press Space to respawn"
+				_countdown_label.modulate.a = 1.0
+			else:
+				respawn_requested.emit()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -76,6 +89,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_respawn_ready = false
 		_respawning = true
 		_retry_timer = RESPAWN_RETRY_INTERVAL
+		_retry_count = 0
 		_countdown_label.text = "Respawning..."
 		get_viewport().set_input_as_handled()
 		respawn_requested.emit()
@@ -95,6 +109,7 @@ func show_death(killer_entity_id: int) -> void:
 	_countdown_active = true
 	_respawn_ready = false
 	_respawning = false
+	_retry_count = 0
 	_countdown_label.text = "Respawn in %d..." % ceili(_countdown_timer)
 	_countdown_label.modulate.a = 1.0
 	visible = true
@@ -145,6 +160,7 @@ func hide_death() -> void:
 	_countdown_active = false
 	_respawn_ready = false
 	_respawning = false
+	_retry_count = 0
 	_countdown_timer = 0.0
 	set_process(false)
 	if _countdown_label:

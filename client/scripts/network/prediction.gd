@@ -89,10 +89,14 @@ const INPUT_SEND_INTERVAL: float = GameConstants.SERVER_TICK_INTERVAL
 ## within ~1 RTT. See _handle_action_confirm.
 const COOLDOWN_RECONCILE_EPSILON: float = 0.75
 
-## Max time to follow the server through a knockback before force-resuming prediction. A backstop
-## for a lost KNOCKED_BACK falling-edge flag delta (a baseline or the next hit re-asserts it if the
-## server really is still knocking us back). Knockback decays in ~12 ticks (~0.4 s at 30 Hz).
-const KNOCKBACK_FOLLOW_MAX_SECONDS: float = 0.75
+## Comms-loss safety ceiling: max time to follow the server through a knockback before force-resuming
+## prediction. KNOCKED_BACK is only sent on flag *edges* (cached-vs-current delta), so a sustained or
+## chained knockback exposes no per-tick re-affirmation. The ceiling is re-armed by every update that
+## still shows the flag set (rising edge + each full-state baseline, sent every DELTA_FULL_STATE_INTERVAL
+## = 100 ticks ≈ 3.3 s), so it must outlast that interval — otherwise it force-resumes mid-knockback and
+## reintroduces the tug-of-war it exists to prevent. Genuine release is detected from the falling edge
+## (including via the next baseline); this ceiling only fires if flag deltas AND baselines both stop.
+const KNOCKBACK_FOLLOW_MAX_SECONDS: float = 4.0
 
 ## Current frame's accumulated input flags
 var current_input_flags: int = 0
@@ -126,7 +130,8 @@ var _own_knocked_back: bool = false
 ## follow target while knocked back.
 var _server_follow_position: Vector2 = Vector2.ZERO
 var _has_server_follow_position: bool = false
-## Counts down while following a knockback; force-resumes prediction at 0 (see KNOCKBACK_FOLLOW_MAX_SECONDS).
+## Comms-loss safety ceiling, re-armed by every update that still shows KNOCKED_BACK; force-resumes
+## prediction at 0 only if flag deltas AND baselines both stop (see KNOCKBACK_FOLLOW_MAX_SECONDS).
 var _knockback_follow_time_left: float = 0.0
 
 ## The shared Rust simulation core (migration-spec D5): prediction runs LITERALLY the same
@@ -539,9 +544,10 @@ func _follow_server_through_knockback(delta: float) -> void:
 				float(result.get("dash_cooldown", 0.0)),
 				float(result.get("ability_cooldown", 0.0)))
 
-	# Ease the predicted position toward the server's authoritative position.
+	# Ease the predicted position toward the server's authoritative position. Frame-rate-independent
+	# exponential smoothing (1 - e^(-k·dt)) so the convergence rate is identical at 60 and 144 FPS.
 	if _has_server_follow_position:
-		var t := clampf(interpolation_speed * delta, 0.0, 1.0)
+		var t := 1.0 - exp(-interpolation_speed * delta)
 		var before := predicted_position
 		predicted_position = predicted_position.lerp(_server_follow_position, t)
 		predicted_velocity = ((predicted_position - before) / delta) if delta > 0.0 else Vector2.ZERO
@@ -884,10 +890,15 @@ func _update_own_flags(flags: int) -> void:
 	if knocked_back != _own_knocked_back:
 		_own_knocked_back = knocked_back
 		if knocked_back:
-			is_correcting = false
-			_knockback_follow_time_left = KNOCKBACK_FOLLOW_MAX_SECONDS
+			is_correcting = false  # don't let an in-flight correction fight the follow
 		else:
 			_resume_prediction_after_knockback()
+	# Re-arm the comms-loss ceiling on every update that still shows the flag (rising edge + each
+	# baseline). Because the flag is not re-sent per tick, a sustained/chained knockback would otherwise
+	# expire the timer mid-knockback; refreshing it on baselines keeps the follow alive while the server
+	# really is still knocking us back, and the ceiling only matters once updates stop entirely.
+	if knocked_back:
+		_knockback_follow_time_left = KNOCKBACK_FOLLOW_MAX_SECONDS
 
 	var dazed := (flags & PacketTypes.ENTITY_FLAG_DAZED) != 0
 	if dazed == _own_dazed:
@@ -1101,9 +1112,10 @@ func _apply_smooth_correction(delta: float) -> void:
 	# Target is the current predicted position (moves each frame)
 	correction_target = predicted_position
 
-	# Exponential interpolation toward target
+	# Frame-rate-independent exponential interpolation toward target (1 - e^(-k·dt)): same convergence
+	# rate regardless of FPS, unlike the raw interpolation_speed * delta approximation.
 	var current_visual := player_node.position
-	var new_visual := current_visual.lerp(correction_target, interpolation_speed * delta)
+	var new_visual := current_visual.lerp(correction_target, 1.0 - exp(-interpolation_speed * delta))
 
 	# Check if close enough to stop correcting
 	var remaining := new_visual.distance_to(correction_target)

@@ -237,8 +237,7 @@ func _update_flags(flags: int) -> void:
 		_daze_indicator.set_active(
 			is_alive and not is_stealthed and (flags & PacketTypes.ENTITY_FLAG_DAZED) != 0
 		)
-	if name_label:
-		name_label.visible = not is_stealthed and not character_name.is_empty()
+	_refresh_name_label_visibility()
 
 	# Stealth wins (fully hidden) over the invulnerability flash.
 	if animated_sprite:
@@ -254,4 +253,18 @@ func _update_flags(flags: int) -> void:
 func _update_name_label() -> void:
 	if name_label:
 		name_label.text = character_name
-		name_label.visible = not character_name.is_empty()
+	_refresh_name_label_visibility()
+
+
+## True while the server has flagged this remote player stealthed — their sprite, name label, and
+## minimap dot all hide so the position can't leak (the server still resolves hits against them).
+func is_stealthed() -> bool:
+	return (current_flags & PacketTypes.ENTITY_FLAG_STEALTH) != 0
+
+
+## Single source of truth for the name label's visibility: shown only when named AND not stealthed.
+## Both the flags update and the name update route through here so a name refresh arriving mid-stealth
+## can't re-reveal a stealthed player's label.
+func _refresh_name_label_visibility() -> void:
+	if name_label:
+		name_label.visible = not is_stealthed() and not character_name.is_empty()

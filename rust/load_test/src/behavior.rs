@@ -133,11 +133,17 @@ const DASH_COOLDOWN_S: f64 = 5.5;
 // than DASH so the swarm exercises abilities without spamming; the real cooldown + mana gate lives
 // in `sim_core` / the server, where a refused cast costs nothing, so this only needs to be lenient.
 const ABILITY_COOLDOWN_S: f64 = 6.0;
-// Keep the Warrior's ABILITY held this long after activation so the steerable charge actually
-// travels (charge_speed 720 u/s × max 945 u ≈ 1.31 s). Releasing immediately — as the old
-// edge-triggered cast did — ended the charge after a single tick (the "charges ~1 unit" bug). The
-// server ends the charge sooner on enemy contact / max distance, so a small margin is fine.
-const CHARGE_HOLD_S: f64 = 1.35;
+// Warrior Charge stats — mirror of the server's CLASS_STATS / warrior.json. The load-test crate
+// links `sim_core` + `protocol` but NOT the server crate (where the per-class table lives), so these
+// are duplicated here; keep them in lockstep with warrior.json (`ability.charge_speed`/`max_distance`).
+const WARRIOR_CHARGE_SPEED: f64 = 720.0; // units/s
+const WARRIOR_CHARGE_DISTANCE: f64 = 945.0; // units
+const CHARGE_HOLD_MARGIN_S: f64 = 0.04; // small cushion over the exact travel time
+// Hold the Warrior's ABILITY for the full charge travel time (distance / speed) plus a cushion so
+// the steerable charge runs its course. Releasing immediately — as the old edge-triggered cast did —
+// ended the charge after a single tick (the "charges ~1 unit" bug). The server ends the charge sooner
+// on enemy contact / max distance, so erring long is harmless.
+const CHARGE_HOLD_S: f64 = WARRIOR_CHARGE_DISTANCE / WARRIOR_CHARGE_SPEED + CHARGE_HOLD_MARGIN_S; // ≈1.35 s
 const TARGET_MAX_RANGE: f32 = 1250.0; // 1.25 × AoI radius
 const PROJECTILE_SPEED: f32 = 400.0;
 const DODGE_RADIUS: f32 = 220.0;
@@ -165,7 +171,7 @@ pub struct BehaviorState {
     last_dash_at: f64,
     last_ability_at: f64,
     /// While `now < this`, the Warrior keeps the ABILITY flag HELD so the steerable charge runs to
-    /// completion (the server ends it on contact / max distance / release). 0 = not charging.
+    /// completion (the server ends it on contact / max distance / release). `NEG_INFINITY` = not charging.
     ability_hold_until: f64,
     target: Option<u16>,
 }

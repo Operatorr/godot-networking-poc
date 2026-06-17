@@ -108,6 +108,13 @@ pub fn apply_player_damage(
     outbox: &mut Outbox,
     impact: Option<HitImpact>,
 ) {
+    // Defense-in-depth: never let a source damage/daze/knockback itself. Callers already filter
+    // (AoE excludes the caster; projectiles can't target their owner), but enforcing it here keeps
+    // a future caller from silently enabling self-damage. Safe for PvE — monster owner ids are in a
+    // disjoint range (>= MONSTER_ENTITY_ID_START) and can never equal a player target id.
+    if owner_id == target_id {
+        return;
+    }
     let Some(target) = players.get_by_entity_id_mut(target_id) else {
         return;
     };
@@ -196,7 +203,8 @@ fn broadcast_player_kill(
                 killer.pvp_kills += 1;
             }
             leaderboard.record_pvp_kill(killer_id, victim_id);
-            outbox.broadcast(leaderboard_event(leaderboard));
+            // No inline broadcast: record_pvp_kill marks the board dirty and the tick loop flushes a
+            // single leaderboard snapshot at end-of-tick, coalescing AoE multi-kills (see World::tick).
         }
         // Award shared XP to every living player near the kill (the killer + any co-contributor),
         // exactly like a monster kill. Granted even if the last-hit killer disconnected, so the
@@ -334,6 +342,10 @@ fn grant_shared_kill_experience(
         return;
     }
     let radius_sq = XP_SHARE_RADIUS * XP_SHARE_RADIUS;
+    // The EXP_GAIN floater is a cosmetic u16 on the wire, so it SATURATES at 65535 — at high victim
+    // levels xp_reward_for_level exceeds that (e.g. ~108k at level 50) and the displayed "+N" caps out.
+    // The authoritative grant below uses the full u32 xp_reward, so leveling is unaffected; only the
+    // floater text is clamped. Widening the floater would require a wire-protocol bump.
     let amount = xp_reward.min(u16::MAX as u32) as u16;
     for player in players.players.iter_mut() {
         if !player.authenticated || !player.is_alive {

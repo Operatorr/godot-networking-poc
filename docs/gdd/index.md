@@ -294,7 +294,7 @@ characters, leaderboard) is owned by the Go API ([../api/web-api.md](../api/web-
   crate through the `client_ext` GDExtension (`ProtocolCodec` / `PredictionSim` / `SimHit`), so
   client prediction cannot diverge from the server by construction.
 - **Wire format:** hand-rolled bit-packed protocol crate `rust/protocol/`, `[u8 type][payload]`, no
-  length field (ENet preserves datagram boundaries), little-endian, `PROTOCOL_VERSION = 5`. As-built
+  length field (ENet preserves datagram boundaries), little-endian, `PROTOCOL_VERSION = 7`. As-built
   spec: [`../server/contract.md`](../server/contract.md).
 - **Auth:** Ed25519 session ticket minted by the Go API, verified locally by the server. Dev default
   is `--allow-unsigned-tickets`.

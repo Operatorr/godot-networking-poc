@@ -94,10 +94,8 @@ func _draw_dots(group: String, center_world: Vector2, zoom: float, mc: Vector2, 
 	for node in get_tree().get_nodes_in_group(group):
 		if not (node is Node2D) or not is_instance_valid(node):
 			continue
-		if hide_stealthed:
-			var node_flags: Variant = node.get("current_flags")
-			if node_flags != null and (int(node_flags) & PacketTypes.ENTITY_FLAG_STEALTH) != 0:
-				continue
+		if hide_stealthed and node is RemotePlayer and (node as RemotePlayer).is_stealthed():
+			continue
 		var p := mc + ((node as Node2D).global_position - center_world) * zoom
 		var off := p - mc
 		if off.length() > max_r:

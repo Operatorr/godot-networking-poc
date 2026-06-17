@@ -164,7 +164,8 @@ the next packet's flags plus reconciliation rather than retransmission.
   `KNOCKED_BACK` flag is set the local player **freezes prediction and follows the server position**
   (`prediction.gd::_follow_server_through_knockback`) — input-driven prediction and reconcile-replay
   are suppressed so the predicted sim can't fight the server's knockback (the cause of the old
-  knockback twitch); a 0.75 s backstop covers a lost falling-edge flag.
+  knockback twitch); a comms-loss ceiling (`KNOCKBACK_FOLLOW_MAX_SECONDS`, 4 s), re-armed by every
+  update still flagging knockback (rising edge + each baseline), covers a lost falling-edge flag.
 - **Replicated:** DASHING/KNOCKED_BACK/STUNNED/DAZED/STEALTH entity flags + INVULNERABLE during
   charge, to everyone; stamina/mana to the owner via `ActionConfirm`.
 - **Persisted:** none — all in-memory. Only account/character/progression persist (Go API,

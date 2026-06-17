@@ -231,16 +231,6 @@ that couldn't see server-side regen and diverged from the authoritative `health`
 reconciles it against this field, exactly like stamina/mana. Death stays server-authoritative (the
 reliable KILL/KILL_PVP event), so the client never infers death from this value.
 
-## Protocol v7 — deaths in LEADERBOARD_UPDATE (Kills:Deaths)
-
-`PROTOCOL_VERSION` advances to **7**: each `LEADERBOARD_UPDATE` row gains a trailing `[u16 deaths]`
-(+2 B/row), so the HUD leaderboard shows a **Kills:Deaths** ratio instead of bare kills. The Rust
-in-memory `Leaderboard` already tracked deaths (incremented on every PvP kill); they were simply never
-serialized — `top_n` now returns `(entity_id, pvp_kills, deaths)`. **Ranking is unchanged** (still
-kills DESC, entity-id ASC tiebreak); deaths only ride along for display. This is the in-session board
-(ephemeral, forgotten on disconnect — ADR 0005); persistent career K/D would be a separate Go-API/Redis
-path (the schema exists, but no gameplay stats are reported to the API today).
-
 ## Protocol v6 — per-player level in PLAYER_INFO
 
 `PROTOCOL_VERSION` advances to **6**: `PlayerInfo` (GameEvent type 67) gains a trailing `[u16 level]`
@@ -251,6 +241,16 @@ join-time broadcast carries the pre-hydrate default (1), the server **re-broadca
 when the async API hydrate lands and again on every level-up, so observers' values stay correct.
 `PROGRESS` is unchanged and still owner-only (it also carries XP + move-speed, which observers don't
 need). The client caches the broadcast level in `EntityNameCache` keyed by entity id.
+
+## Protocol v7 — deaths in LEADERBOARD_UPDATE (Kills:Deaths)
+
+`PROTOCOL_VERSION` advances to **7**: each `LEADERBOARD_UPDATE` row gains a trailing `[u16 deaths]`
+(+2 B/row), so the HUD leaderboard shows a **Kills:Deaths** ratio instead of bare kills. The Rust
+in-memory `Leaderboard` already tracked deaths (incremented on every PvP kill); they were simply never
+serialized — `top_n` now returns `(entity_id, pvp_kills, deaths)`. **Ranking is unchanged** (still
+kills DESC, entity-id ASC tiebreak); deaths only ride along for display. This is the in-session board
+(ephemeral, forgotten on disconnect — ADR 0005); persistent career K/D would be a separate Go-API/Redis
+path (the schema exists, but no gameplay stats are reported to the API today).
 
 ## Protocol v4 — the Class-ability + server-authoritative-progression bump
 

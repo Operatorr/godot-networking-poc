@@ -47,6 +47,41 @@ func _ready() -> void:
 	print("[vfx_arena] trail z=", _trail.z_index, " child_index=",
 		_warrior.get_children().find(_trail), " emitting=", _trail.emitting)
 
+	_validate()
+
+
+## Assert the VFX preconditions so this doubles as a CI smoke test (not just a capture harness):
+## on any failure it push_errors and exits non-zero, instead of silently exiting 0 under --quit-after.
+## On success it prints PASS and lets the capture continue. Kept assertion-only (no eyeballing needed).
+func _validate() -> void:
+	var failures: Array[String] = []
+	if not is_instance_valid(_warrior):
+		failures.append("warrior node missing")
+	if not is_instance_valid(_trail):
+		failures.append("charge trail missing")
+	if _container == null:
+		failures.append("entity container missing")
+	# The sprite-sheet path must resolve — else BlastEffect silently falls back to the procedural
+	# ring forever and a broken sheet import would never surface.
+	var frames := SheetLibrary.effect_frames("charge_blast")
+	if frames == null:
+		failures.append("SheetLibrary.effect_frames('charge_blast') returned null")
+	elif not frames.has_animation("blast"):
+		failures.append("charge_blast sheet has no 'blast' animation")
+	# A blast node must instantiate and self-attach without error.
+	var blast := BlastEffect.create(
+		"charge_blast", Vector2.ZERO, 120.0, Color.WHITE, Color.WHITE)
+	if not is_instance_valid(blast):
+		failures.append("BlastEffect.create returned an invalid node")
+	else:
+		blast.queue_free()
+	if failures.is_empty():
+		print("[vfx_arena] PASS — all VFX preconditions met")
+		return
+	for f in failures:
+		push_error("[vfx_arena] FAIL: " + f)
+	get_tree().quit(1)
+
 
 func _process(delta: float) -> void:
 	_t += delta

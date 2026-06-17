@@ -587,8 +587,9 @@ impl MovementSm {
         }
     }
 
-    /// Restore mana to full. Used on level-up (which also fully heals HP); stamina is untouched.
-    /// The owner learns the new value on the next ActionConfirm (which carries stamina + mana).
+    /// Restore mana to full. Called on level-up alongside the HP top-off (the HP heal lives in the
+    /// caller, `combat::grant_shared_kill_experience`, not here); stamina is untouched. The owner
+    /// learns the new value on the next ActionConfirm (which carries stamina + mana).
     pub fn refill_mana(&mut self) {
         self.mana = PLAYER_MANA_MAX;
     }
