@@ -101,6 +101,10 @@ pub enum GameEventData {
         color: (u8, u8, u8),
         /// Player class (0=Zealot … 6=Mage). Already server-clamped when broadcast.
         class: u8,
+        /// Server-authoritative character level (≥1). Broadcast to ALL clients (unlike `Progress`,
+        /// which is owner-only) so every client can show each player's level — e.g. the leaderboard.
+        /// Re-sent on hydrate completion and on level-up so observers stay fresh.
+        level: u16,
     },
     Leaderboard {
         entries: Vec<(u16, u16)>,
@@ -263,6 +267,7 @@ impl ServerPacket {
                         y,
                         color,
                         class,
+                        level,
                     } => {
                         w.write_str8(name);
                         w.write_i16(quant_coord(*x));
@@ -271,6 +276,7 @@ impl ServerPacket {
                         w.write_u8(color.1);
                         w.write_u8(color.2);
                         w.write_u8(*class);
+                        w.write_u16(*level);
                     }
                     GameEventData::Leaderboard { entries } => {
                         let n = entries.len().min(10);
@@ -393,6 +399,7 @@ impl ServerPacket {
                         y: dequant_coord(r.read_i16()?),
                         color: (r.read_u8()?, r.read_u8()?, r.read_u8()?),
                         class: r.read_u8()?,
+                        level: r.read_u16()?,
                     },
                     game_event_type::LEADERBOARD_UPDATE => {
                         let n = r.read_u8()? as usize;
@@ -574,6 +581,7 @@ mod tests {
                     y: -1.0,
                     color: (69, 135, 255),
                     class: 4,
+                    level: 37,
                 },
             },
             GameEvent {
@@ -638,14 +646,21 @@ mod tests {
                     match (&d.data, &e.data) {
                         (
                             GameEventData::PlayerInfo {
-                                name: a, class: ca, ..
+                                name: a,
+                                class: ca,
+                                level: la,
+                                ..
                             },
                             GameEventData::PlayerInfo {
-                                name: b, class: cb, ..
+                                name: b,
+                                class: cb,
+                                level: lb,
+                                ..
                             },
                         ) => {
                             assert_eq!(a, b);
                             assert_eq!(ca, cb);
+                            assert_eq!(la, lb);
                         }
                         (
                             GameEventData::Leaderboard { entries: a },
@@ -725,6 +740,7 @@ mod tests {
                 y: 0.0,
                 color: (1, 2, 3),
                 class: 255,
+                level: 1,
             },
         });
         match rt(p) {

@@ -33,7 +33,10 @@ pub use types::*;
 
 /// Bumped on every wire-format change; checked at handshake (ENet connect `data` low byte and
 /// the `ConnectAuth` packet). Client and server refuse mismatched versions (D7).
-pub const PROTOCOL_VERSION: u8 = 5; // v5: ActionConfirm.health (+2B) — authoritative HP for the
+pub const PROTOCOL_VERSION: u8 = 6; // v6: PlayerInfo.level (+2B) — server broadcasts each player's
+                                    // level to ALL clients (leaderboard shows class+level), re-sent
+                                    // on hydrate + level-up; owner still also gets owner-only Progress.
+                                    // (v5: ActionConfirm.health (+2B) — authoritative HP for the
                                     // owner's HUD bar (HP isn't in snapshots; reconciled like
                                     // stamina/mana so the bar tracks server-side regen)
                                     // (v4: PlayerInput.cursor (+4B) + ConnectAuth.character_id;

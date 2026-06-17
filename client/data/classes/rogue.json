@@ -20,7 +20,8 @@
 		"damage_base": 24,
 		"damage_per_level": 2,
 		"cooldown": 0.3,
-		"projectile_speed": 400.0
+		"projectile_speed": 400.0,
+		"projectile_max_distance": 560.0
 	},
 
 	"ability": {

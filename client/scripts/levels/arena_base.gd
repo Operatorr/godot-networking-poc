@@ -1247,6 +1247,11 @@ func _on_disconnected(_reason: String) -> void:
 	# is expected — keep the permadeath death screen up and don't offer to reconnect.
 	if _hardcore_death:
 		return
+	# Leaving for another instance (Sanctuary / menu / Arena portal, instance switch) tears the
+	# link down on purpose; the destination scene shows a loading screen, so this is not a
+	# failure. Only an actual transport-level drop should surface the reconnect overlay.
+	if NetworkManager.last_disconnect_expected:
+		return
 	if GameManager.current_state == GameManager.GameState.IN_ARENA:
 		if connection_lost_overlay:
 			connection_lost_overlay.show_overlay()
@@ -1309,7 +1314,8 @@ func _leave_arena() -> void:
 	NetworkManager.connect_to_server(sanctuary_url, AuthManager.get_token())
 	# Switch scenes immediately; the Sanctuary's _setup_client drives the handshake once the
 	# link opens (connect_to_server awaits the link internally and emits connected_to_server).
-	SceneManager.goto_sanctuary()
+	# The loading screen covers the reconnect + town build (no "connection lost" flash).
+	SceneManager.goto_sanctuary("RETURNING TO SANCTUARY")
 
 
 ## Called when exiting the arena scene

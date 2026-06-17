@@ -111,7 +111,9 @@ func _leave_arena() -> void:
 	GameManager.persist_progression()
 	NetworkManager.disconnect_from_server("Leave Sanctuary")
 	GameManager.change_state(GameManager.GameState.MAIN_MENU)
-	SceneManager.goto_main_menu()
+	# Loading screen covers the disconnect + menu rebuild so the player never sees the old
+	# town flash or a false "connection lost" overlay during the intentional exit.
+	SceneManager.goto_main_menu(true)
 
 
 # =============================================================================

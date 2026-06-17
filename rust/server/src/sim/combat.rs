@@ -2,6 +2,7 @@
 //! backstop — port of `server_collision_handler.gd` + `server_main.gd` hit handling
 //! (extraction combat §4.8–4.12, §4.16).
 
+use crate::ability::StatusEffect;
 use crate::leaderboard::Leaderboard;
 use crate::monster::MonsterManager;
 use crate::outbox::Outbox;
@@ -55,17 +56,53 @@ impl HitImpact {
     }
 }
 
-/// The shared damage path for every player hit (PvP collision, validated client report, and the
-/// backstop). Damage selected by owner-id range; DAMAGE broadcasts the APPLIED delta; zero
-/// applied (dead/invulnerable) ⇒ no event at all; knockback and daze only on survival.
-/// Knockback pushes along the projectile's TRAVEL direction (predictable "shot from the left ⇒
-/// thrown to the right"), not away from the impact point — the discrete-tick overlap test can
-/// place the impact point past the target's center, which made away-from-impact feel random.
-/// A target hit while SPRINTING is additionally dazed (sprint/dash locked out) for
-/// `PLAYER_DAZE_DURATION`.
+/// The shared damage path for every PROJECTILE player hit (PvP collision, validated client report,
+/// and the backstop). Damage is the flat per-source constant selected by owner-id range; a
+/// projectile carries no extra status effects beyond the sprint-hit daze, so it delegates to
+/// `apply_player_damage` with an empty effect list.
 pub fn apply_player_hit(
     owner_id: u16,
     target_id: u16,
+    players: &mut PlayerManager,
+    leaderboard: &mut Leaderboard,
+    outbox: &mut Outbox,
+    impact: Option<HitImpact>,
+) {
+    let damage = if owner_id >= MONSTER_ENTITY_ID_START {
+        MONSTER_PROJECTILE_DAMAGE
+    } else {
+        PLAYER_PROJECTILE_DAMAGE
+    };
+    apply_player_damage(
+        owner_id,
+        target_id,
+        damage,
+        &[],
+        players,
+        leaderboard,
+        outbox,
+        impact,
+    );
+}
+
+/// The shared damage core for every player hit — projectiles (via `apply_player_hit`) AND instant
+/// abilities that PvP (Mageblast). Applies `damage` from `owner_id`; DAMAGE broadcasts the APPLIED
+/// delta; zero applied (dead/invulnerable/unauthenticated) ⇒ no event at all; status effects,
+/// daze and knockback only on survival.
+///
+/// On survival, three things land in order: (1) the sprint-hit daze (any target caught SPRINTING),
+/// (2) every `StatusEffect` the source inflicts — the Strategy dispatch: one `match` arm per
+/// effect, so new effects on any spell/ability are added in exactly one place, (3) knockback if an
+/// `impact` is supplied. Knockback pushes along the projectile's TRAVEL direction (predictable
+/// "shot from the left ⇒ thrown to the right"), not away from the impact point — the discrete-tick
+/// overlap test can place the impact point past the target's center, which made away-from-impact
+/// feel random. AoE abilities pass `impact = None` (no knockback).
+#[allow(clippy::too_many_arguments)]
+pub fn apply_player_damage(
+    owner_id: u16,
+    target_id: u16,
+    damage: i32,
+    effects: &[StatusEffect],
     players: &mut PlayerManager,
     leaderboard: &mut Leaderboard,
     outbox: &mut Outbox,
@@ -77,11 +114,6 @@ pub fn apply_player_hit(
     if !target.authenticated {
         return;
     }
-    let damage = if owner_id >= MONSTER_ENTITY_ID_START {
-        MONSTER_PROJECTILE_DAMAGE
-    } else {
-        PLAYER_PROJECTILE_DAMAGE
-    };
     let was_sprinting = target.movement_sm.state() == MoveState::Sprinting;
     let previous = target.health;
     let killed = target.take_damage(damage, owner_id as i32);
@@ -92,6 +124,11 @@ pub fn apply_player_hit(
     if !killed {
         if was_sprinting {
             target.movement_sm.apply_daze(PLAYER_DAZE_DURATION);
+        }
+        for effect in effects {
+            match *effect {
+                StatusEffect::Daze { secs } => target.movement_sm.apply_daze(secs),
+            }
         }
         if let Some(impact) = impact {
             let knock_dir = if impact.direction != Vec2::ZERO && impact.direction.is_finite() {
@@ -314,7 +351,8 @@ fn grant_shared_kill_experience(
         }));
         let (new_level, new_xp) =
             progression::apply_experience(player.level, player.experience, xp_reward);
-        if new_level != player.level {
+        let leveled_up = new_level != player.level;
+        if leveled_up {
             player.apply_class_and_level(player.player_class, new_level, new_xp);
             // A level-up fully restores HP and mana. apply_class_and_level already raised the HP
             // cap (and partially healed by the delta); top both off to full here.
@@ -341,6 +379,18 @@ fn grant_shared_kill_experience(
                 },
             }),
         );
+        // Progress above is owner-only; on a level-up re-broadcast PLAYER_INFO so every other
+        // client's leaderboard shows this player's new level (identity fields are unchanged).
+        if leveled_up {
+            outbox.broadcast(crate::broadcast::player_info_event(
+                player.entity_id,
+                &player.character_name,
+                player.position,
+                player.player_color,
+                player.player_class,
+                player.level,
+            ));
+        }
     }
 }
 
@@ -885,6 +935,41 @@ mod tests {
         assert!(
             !players.players[1].movement_sm.is_dazed(),
             "walking target must NOT be dazed"
+        );
+    }
+
+    #[test]
+    fn ability_effect_dazes_walking_target_with_explicit_damage() {
+        // The Mageblast path: explicit ability damage + an unconditional Daze effect, on a target
+        // that is NOT sprinting (so the sprint-hit daze does not fire — only the effect does).
+        let (mut players, _projectiles, mut lb, mut outbox) = setup();
+        let id = players.players[0].entity_id;
+        let before = players.players[0].health;
+        assert_ne!(
+            players.players[0].movement_sm.state(),
+            MoveState::Sprinting,
+            "target must be walking for this test"
+        );
+        apply_player_damage(
+            2, // a player-owned source (no kill here, so owner lookup is irrelevant)
+            id,
+            55, // explicit ability damage, not the flat projectile constant
+            &[StatusEffect::Daze {
+                secs: PLAYER_DAZE_DURATION,
+            }],
+            &mut players,
+            &mut lb,
+            &mut outbox,
+            None, // AoE: no knockback impact
+        );
+        assert_eq!(
+            players.players[0].health,
+            before - 55,
+            "explicit ability damage is applied (not the flat constant)"
+        );
+        assert!(
+            players.players[0].movement_sm.is_dazed(),
+            "the Daze effect fires on a walking target"
         );
     }
 

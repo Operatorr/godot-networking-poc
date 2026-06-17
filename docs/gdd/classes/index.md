@@ -39,7 +39,10 @@ A stat at level `L` is `base + per_lvl * (L - 1)`; **max level is 50** (see PROG
 max is **100 for all** Classes (the listed Mana figure is the flavor `mana_pool`, not the gameplay
 `mana_max`); Mana regen is **2/s** for all; stamina max is **100** for all and stamina regen is
 **20/s** for all except the **Mage (14/s)**. Primary cooldown is **0.3 s** and projectile speed
-**400** for all Classes.
+**400** for all Classes. Primary **projectile reach** (travel distance before a shot despawns) is
+**800** units for all Classes **except the Warrior and Rogue at 560** — a deliberate 30% range cut
+so the Mage and the other ranged kits out-distance the two melee-leaning bruisers
+(`projectile_max_distance` in each class JSON / the Rust `ClassStats`).
 
 | Class       | HP base / +lvl | Move speed base / +lvl | Mana (flavor) | Primary dmg base / +lvl |
 | ----------- | -------------- | ---------------------- | ------------- | ----------------------- |
@@ -66,7 +69,7 @@ the server and replicated via the `ABILITY_EFFECT` event.
 | Plague Seer | **Plague Zone**     | 35   | 7 s      | A DoT AOE at the cursor for 5 s, 12 dps, radius 100.                       |
 | Warrior     | **Charge**          | 40   | 4.5 s    | Hold to dash (invulnerable), **steerable** — follows the cursor; drains Mana per unit travelled; AOE blast (50) on contact or at max distance. |
 | Rogue       | **Shadowstep**      | 30   | 10 s     | Always teleports (behind the nearest monster/player near the cursor, else toward the cursor), strikes with a landing AOE, and always enters Stealth. |
-| Mage        | **Mageblast**       | 40   | 6 s      | Instant AOE explosion at the cursor, 55 in radius 144.                     |
+| Mage        | **Mageblast**       | 40   | 6 s      | Instant AOE explosion at the cursor, 55 in radius 144. **In PvP it also damages and Dazes (sprint/dash lock, 1.5 s) every player caught in the blast** — the only ability that damages players today. |
 
 ## See also
 

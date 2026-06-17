@@ -28,7 +28,9 @@ A stat at level `L` is `base + per_lvl * (L - 1)`; max level **50**.
 | -------------- | ---- | --------- | ------ |
 | Primary damage | 25   | +2.5      | 147.5  |
 
-Cooldown 0.3 s, projectile speed 400 (shared).
+Cooldown 0.3 s, projectile speed 400 (shared). Projectile reach is **560** units — a deliberate
+30% cut below the 800 baseline (`projectile_max_distance`), so this melee bruiser must close in
+while the Mage and ranged kits poke from outside its range.
 
 ## Class ability (RMB) — Charge
 

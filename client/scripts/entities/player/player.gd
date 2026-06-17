@@ -112,6 +112,12 @@ const _ABILITY_COOLDOWN := [8.0, 5.0, 8.0, 7.0, 9.0, 10.0, 6.0]
 ## Per-class stamina regen (u/s) while not sprinting, same index. Mage (6) regenerates slower.
 const _STAMINA_REGEN := [20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 14.0]
 
+## Per-class primary-attack projectile travel distance (units), same index. Warrior (4) and Rogue
+## (5) are throttled to 70% reach so Mage and the ranged kits out-distance them. Offline parity
+## with the Rust ClassStats projectile_max_distance / client/data/classes/*.json; online the local
+## player does not spawn its own projectiles (they are server entities), so this is offline-only.
+const _PROJECTILE_RANGE := [800.0, 800.0, 800.0, 800.0, 560.0, 560.0, 800.0]
+
 ## Per-class base HP and HP-per-level, same index. Mirrors the Rust ClassStats
 ## (server/src/sim/ability.rs) so the HUD HP bar's max matches the server's class+level-scaled
 ## max_health: max_hp(level) = hp_base + hp_per_level * (level - 1). HP is NOT in snapshots, so the
@@ -178,6 +184,7 @@ func _ready() -> void:
 	movement_sm.ability_cost = _ability_mana_cost_for_class(configured_class)
 	movement_sm.ability_cooldown_max = _ability_cooldown_for_class(configured_class)
 	movement_sm.stamina_regen = _stamina_regen_for_class(configured_class)
+	projectile_range = _projectile_range_for_class(configured_class)
 	movement_sm.ability_triggered.connect(_on_offline_ability_triggered)
 
 	# HUD HP bar: scale the cap to this class+level so the bar's max matches the server's
@@ -358,6 +365,12 @@ func _stamina_regen_for_class(class_id: int) -> float:
 	if class_id >= 0 and class_id < _STAMINA_REGEN.size():
 		return _STAMINA_REGEN[class_id]
 	return GameConstants.PLAYER_STAMINA_REGEN_PER_SEC
+
+
+func _projectile_range_for_class(class_id: int) -> float:
+	if class_id >= 0 and class_id < _PROJECTILE_RANGE.size():
+		return _PROJECTILE_RANGE[class_id]
+	return GameConstants.PROJECTILE_MAX_DISTANCE
 
 
 ## Class+level-scaled max HP — mirrors the server's effective_max_health

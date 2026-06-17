@@ -116,8 +116,9 @@ func _route_to_initial_scene() -> void:
 		print("[SceneManager] User not logged in, going to login screen")
 		change_scene(SceneName.LOGIN, false)
 
-## Change to a specific scene
-func change_scene(scene_name: SceneName, use_loading_screen: bool = false) -> void:
+## Change to a specific scene. `loading_title` overrides the loading screen headline when
+## `use_loading_screen` is set (ignored otherwise).
+func change_scene(scene_name: SceneName, use_loading_screen: bool = false, loading_title: String = "") -> void:
 	var scene_path = _get_scene_path(scene_name)
 	if scene_path.is_empty():
 		print("[SceneManager] Invalid scene name: %d" % scene_name)
@@ -126,12 +127,12 @@ func change_scene(scene_name: SceneName, use_loading_screen: bool = false) -> vo
 	# Update GameManager state
 	_update_game_state_for_scene(scene_name)
 
-	await change_scene_to_path(scene_path, use_loading_screen)
+	await change_scene_to_path(scene_path, use_loading_screen, loading_title)
 
 
 ## Change to an arbitrary scene file. Used by Portal for destinations that have
 ## no SceneName (dungeons, sub-worlds); GameManager state is left untouched.
-func change_scene_to_path(scene_path: String, use_loading_screen: bool = false) -> void:
+func change_scene_to_path(scene_path: String, use_loading_screen: bool = false, loading_title: String = "") -> void:
 	if is_transitioning:
 		print("[SceneManager] Scene transition already in progress")
 		return
@@ -142,7 +143,7 @@ func change_scene_to_path(scene_path: String, use_loading_screen: bool = false) 
 	scene_change_started.emit(current_scene_name, scene_path)
 
 	if use_loading_screen:
-		await _change_scene_with_loading(scene_path)
+		await _change_scene_with_loading(scene_path, loading_title)
 	else:
 		await _change_scene_direct(scene_path)
 
@@ -186,11 +187,11 @@ func _change_scene_direct(scene_path: String) -> void:
 	scene_loaded.emit(new_scene)
 
 ## Scene change with loading screen
-func _change_scene_with_loading(scene_path: String) -> void:
+func _change_scene_with_loading(scene_path: String, loading_title: String = "") -> void:
 	print("[SceneManager] Performing scene change with loading screen to: %s" % scene_path)
 
 	# Show loading screen
-	await _show_loading_screen()
+	await _show_loading_screen(loading_title)
 
 	# Start background loading
 	var error = ResourceLoader.load_threaded_request(scene_path)
@@ -252,8 +253,8 @@ func _change_scene_with_loading(scene_path: String) -> void:
 	scene_change_completed.emit(scene_path)
 	scene_loaded.emit(new_scene)
 
-## Show loading screen
-func _show_loading_screen() -> void:
+## Show loading screen. `loading_title` overrides the headline (empty = keep the scene default).
+func _show_loading_screen(loading_title: String = "") -> void:
 	if loading_screen != null:
 		return
 
@@ -273,6 +274,10 @@ func _show_loading_screen() -> void:
 		_loading_layer.layer = 100
 		get_tree().root.add_child(_loading_layer)
 		_loading_layer.add_child(loading_screen)
+
+		# Apply the per-transition headline (after add_child so _ready/_build_ui has run).
+		if loading_screen.has_method("set_loading_text"):
+			loading_screen.set_loading_text(loading_title)
 
 		# If loading screen has an animation, play it
 		if loading_screen.has_method("show_loading"):
@@ -394,9 +399,11 @@ func _cleanup_scene(scene: Node) -> void:
 func goto_login() -> void:
 	change_scene(SceneName.LOGIN, false)
 
-## Go to main menu
-func goto_main_menu() -> void:
-	change_scene(SceneName.MAIN_MENU, false)
+## Go to main menu. Pure menu-to-menu navigation uses a direct fade (the default); leaving a
+## live world (Sanctuary "Exit to Menu") passes use_loading_screen=true so the disconnect +
+## menu rebuild is covered by the loading screen instead of a flash of the old scene.
+func goto_main_menu(use_loading_screen: bool = false, loading_title: String = "RETURNING TO MENU") -> void:
+	change_scene(SceneName.MAIN_MENU, use_loading_screen, loading_title)
 
 ## Go to character creation
 func goto_character_creation() -> void:
@@ -408,12 +415,14 @@ func goto_settings() -> void:
 
 ## Go to arena (with loading screen)
 func goto_arena() -> void:
-	change_scene(SceneName.ARENA, true)
+	change_scene(SceneName.ARENA, true, "ENTERING THE ARENA")
 
 
-## Go to the Sanctuary town hub (offline; entering the world lands here)
-func goto_sanctuary() -> void:
-	change_scene(SceneName.SANCTUARY, false)
+## Go to the Sanctuary town hub (networked). Uses the loading screen to cover the disconnect +
+## reconnect and the town's code-generated build. `loading_title` lets callers distinguish
+## entering from the menu vs. returning from the Arena.
+func goto_sanctuary(loading_title: String = "ENTERING THE SANCTUARY") -> void:
+	change_scene(SceneName.SANCTUARY, true, loading_title)
 
 ## Go to offline practice level
 func goto_practice() -> void:

@@ -342,6 +342,7 @@ impl ProtocolCodec {
                         y,
                         color,
                         class,
+                        level,
                     } => {
                         data.set("character_name", &GString::from(name.as_str()));
                         data.set("position", v2(x, y));
@@ -354,6 +355,7 @@ impl ProtocolCodec {
                             ),
                         );
                         data.set("player_class", class as i64);
+                        data.set("player_level", level as i64);
                     }
                     protocol::GameEventData::Leaderboard { entries } => {
                         let mut arr = VarArray::new();

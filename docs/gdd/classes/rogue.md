@@ -29,7 +29,9 @@ A stat at level `L` is `base + per_lvl * (L - 1)`; max level **50**.
 |---|---|---|---|
 | Primary damage | 24 | +2 | 122 |
 
-Cooldown 0.3 s, projectile speed 400 (shared).
+Cooldown 0.3 s, projectile speed 400 (shared). Projectile reach is **560** units — a deliberate
+30% cut below the 800 baseline (`projectile_max_distance`), so this short-range assassin must
+close in while the Mage and ranged kits poke from outside its range.
 
 ## Class ability (RMB) — Shadowstep
 

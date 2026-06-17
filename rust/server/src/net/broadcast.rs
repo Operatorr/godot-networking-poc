@@ -555,6 +555,7 @@ impl BroadcastService {
                     p.position,
                     p.player_color,
                     p.player_class,
+                    p.level,
                 ),
             );
         }
@@ -581,6 +582,7 @@ pub fn player_info_event(
     position: Vec2,
     color: (u8, u8, u8),
     class: u8,
+    level: u16,
 ) -> ServerPacket {
     ServerPacket::GameEvent(GameEvent {
         event_type: game_event_type::PLAYER_INFO,
@@ -592,6 +594,7 @@ pub fn player_info_event(
             y: position.y,
             color,
             class,
+            level,
         },
     })
 }

@@ -52,7 +52,7 @@ Multishot spawns ordinary projectiles (band 10000–29999).
 
 | Class | Ability | Shape | Predicted? | Server-authoritative |
 |---|---|---|---|---|
-| Mage | Mageblast | instant AOE (event only) | no | range-clamp, AOE damage |
+| Mage | Mageblast | instant AOE (event only) | no | range-clamp, AOE damage to monsters **and (PvP) players**, **Daze** on players hit |
 | Plague Seer | Plague Zone | spawned `dot-zone` entity | no | range-clamp, spawn, per-tick DoT |
 | Engineer | Mine | spawned `mine` entity | no | spawn, arm, proximity trigger, AOE blast |
 | Zealot | Spinning Bibles | spawned `bible` entities | no | spawn, orbit, sweep + re-hit gating |
@@ -69,6 +69,31 @@ predicts the steering and the mana-bounded end with zero divergence from the ser
 server-authoritative and the client snaps to the corrected position on the next snapshot. Everything
 else — all damage, every spawn, invulnerability, target selection, Stealth — is decided by the server
 and learned by the client through `ABILITY_EFFECT`, replicated entity flags, or the effect entities.
+
+## On-hit status effects (Strategy dispatch)
+
+Abilities that damage players can also inflict **status effects** through a small, extensible system —
+added so Mageblast could apply **Daze** and future spells can stack new effects without touching every
+hit site:
+
+- **`ability::StatusEffect`** — an enum of effects (`Daze { secs }` today; slow/burn/silence are the
+  intended next variants). It is the **Strategy expressed as an enum**: idiomatic Rust, `const`-friendly
+  (no heap/vtable), dispatched by one `match` in `combat::apply_player_damage`.
+- **`ClassStats::ability_effects: &'static [StatusEffect]`** — the per-class list an ability inflicts on
+  every player it damages. Mage lists `&[Daze { secs: PLAYER_DAZE_DURATION }]`; the other six are empty.
+- **`combat::apply_player_damage(owner, target, damage, effects, …)`** — the shared player-damage core.
+  The projectile path (`apply_player_hit`) calls it with an empty effect list; instant abilities pass
+  their own `damage` + `effects`. On survival it applies the sprint-hit Daze, then each listed effect,
+  then knockback. Adding a new effect = one enum variant + one match arm; every ability that lists it
+  gains it for free.
+
+**Mageblast is the first ability that PvP-damages players.** Its handler calls `aoe_damage_players`
+(the PvP mirror of `aoe_damage_monsters`): every *other* alive player within the blast radius takes the
+ability damage and the listed effects, gated by the arena PvP flag (a no-op in the safe Sanctuary), and
+the caster is never caught by their own blast. The **Daze** itself is the same `MovementSm` debuff a
+sprint-hit applies (sprint/dash locked, walking allowed, 1.5 s, re-application extends) and replicates
+via the existing **`DAZED`** entity flag (bit 8) — no new wire format, and the client's daze
+star-indicator + prediction edge-slaving already handle it. See [`combat-hits.md`](combat-hits.md).
 
 ## Stealth (entity flag bit 9)
 

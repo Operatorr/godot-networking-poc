@@ -192,8 +192,10 @@ waiting for the PLAYER_INFO broadcast, which is still sent for names/colors).
 `[u8 type][u8 event_type][u16 source_id][u16 target_id][tail]` — event types and tails as built,
 except where protocol v4 noted: DAMAGE `[u16 amount][u8 dmg_type]`;
 KILL/KILL_PVP none; RESPAWN `[s16 qx][s16 qy]`; PLAYER_INFO
-`[u8 len][utf8 name][s16 qx][s16 qy][u8 r][u8 g][u8 b][u8 class]`
-(class since protocol v3 — server-clamped to 0..=6, see ConnectAuth);
+`[u8 len][utf8 name][s16 qx][s16 qy][u8 r][u8 g][u8 b][u8 class][u16 level]`
+(class since protocol v3 — server-clamped to 0..=6, see ConnectAuth; `level` since protocol v6 —
+server-authoritative, broadcast to **all** clients so any client can show a player's level, e.g. the
+leaderboard, and re-sent on hydrate completion + level-up so observers stay fresh);
 LEADERBOARD_UPDATE `[u8 n]{n × [u16 id][u16 kills]}`; PROJECTILE_FIRED
 `[s16 qx][s16 qy][u16 fire_tick]` with target_id = projectile id (**non-zero for monster shots** —
 hit-authority invariant); EXP_GAIN=13 `[u16 amount]` with source_id = the player who earned it (one event
@@ -227,6 +229,17 @@ the owner's current HP. HP is not in snapshots, so the owner's HUD bar was a dis
 that couldn't see server-side regen and diverged from the authoritative `health`; the owner now
 reconciles it against this field, exactly like stamina/mana. Death stays server-authoritative (the
 reliable KILL/KILL_PVP event), so the client never infers death from this value.
+
+## Protocol v6 — per-player level in PLAYER_INFO
+
+`PROTOCOL_VERSION` advances to **6**: `PlayerInfo` (GameEvent type 67) gains a trailing `[u16 level]`
+(+2 B). Until v6, level/XP rode only the **owner-only** `PROGRESS` event, so a client knew its own
+level but not anyone else's. The leaderboard (and any future "who's around me" UI) needs every
+player's level, so the server now stamps level onto the **broadcast** `PlayerInfo`. Because the
+join-time broadcast carries the pre-hydrate default (1), the server **re-broadcasts** `PlayerInfo`
+when the async API hydrate lands and again on every level-up, so observers' values stay correct.
+`PROGRESS` is unchanged and still owner-only (it also carries XP + move-speed, which observers don't
+need). The client caches the broadcast level in `EntityNameCache` keyed by entity id.
 
 ## Protocol v4 — the Class-ability + server-authoritative-progression bump
 
