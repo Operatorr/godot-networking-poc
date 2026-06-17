@@ -91,9 +91,10 @@ hit site:
 (the PvP mirror of `aoe_damage_monsters`): every *other* alive player within the blast radius takes the
 ability damage and the listed effects, gated by the arena PvP flag (a no-op in the safe Sanctuary), and
 the caster is never caught by their own blast. The **Daze** itself is the same `MovementSm` debuff a
-sprint-hit applies (sprint/dash locked, walking allowed, 1.5 s, re-application extends) and replicates
-via the existing **`DAZED`** entity flag (bit 8) — no new wire format, and the client's daze
-star-indicator + prediction edge-slaving already handle it. See [`combat-hits.md`](combat-hits.md).
+sprint-hit applies (sprint/dash locked, **walk speed cut 30%** via `PLAYER_DAZE_SPEED_MULTIPLIER`,
+1.5 s, re-application extends) and replicates via the existing **`DAZED`** entity flag (bit 8) — no
+new wire format, and the client's daze star-indicator + prediction edge-slaving already handle it.
+See [`combat-hits.md`](combat-hits.md).
 
 ## Stealth (entity flag bit 9)
 

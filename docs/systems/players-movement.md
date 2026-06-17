@@ -153,9 +153,19 @@ The Local player is simulated immediately on input, before the server confirms �
 - Visual correction: smooth lerp at `interpolation_speed = 12.0`, unless the correction exceeds
   `teleport_threshold = 150` u, which snaps instantly (and `reset_physics_interpolation()` so the
   render lerp doesn't smear across the snap).
-- The Local player slaves its DAZED and DASHING/CHARGING edges to the server's authoritative entity
-  flags (`prediction.gd::_update_own_flags` / `_update_own_charge`) so a server-applied daze or a
-  charge end releases the prediction exactly when the server does, instead of rubber-banding.
+- The Local player slaves its DAZED, KNOCKED_BACK and DASHING/CHARGING edges to the server's
+  authoritative entity flags (`prediction.gd::_update_own_flags` / `_update_own_charge`) so a
+  server-applied daze or a charge end releases the prediction exactly when the server does, instead
+  of rubber-banding.
+- **Knockback freeze-and-follow.** Because the client never predicts knockback (it's server-only),
+  while the `KNOCKED_BACK` flag is set the local player **stops input-driven prediction and eases
+  toward the authoritative server position** (`_follow_server_through_knockback`): the sim still
+  advances its timers on neutral input, but its position output is ignored and both reconcile paths
+  (Snapshot + `ActionConfirm`) skip input-replay. Without this the input-driven sim fought the
+  server's knockback and the reconcile lerp chased a moving target — a visible twitch, worst exactly
+  when you steered against the knockback. A lost falling-edge flag is backstopped by a 0.75 s timer
+  (`KNOCKBACK_FOLLOW_MAX_SECONDS`); on resume the stale input buffer is dropped and prediction
+  restarts from the server's last position.
 
 Confirmations ride **ch0** as `ActionConfirm` (type 66): `[seq][action][s16 qx][s16 qy][result]
 [u16 server_tick][u8 stamina][u8 mana]` — see [`../server/contract.md`](../server/contract.md).

@@ -46,8 +46,9 @@ An **instant AOE explosion** at the cursor — no travel time, big single burst.
 `max_cast_range` (600) of the caster, and resolves an instant AOE at that point: every **monster**
 within 144 (`radius`) takes 55 (`damage`) in a single burst. **In PvP it also hits players:** every
 **other** player within the radius (the caster is never caught by their own blast) takes the same 55
-and is **Dazed** — sprint and dash locked out for 1.5 s (`PLAYER_DAZE_DURATION`), the same control
-debuff a sprint-hit applies; walking is unaffected. The player damage is gated by the arena PvP flag,
+and is **Dazed** for 1.5 s (`PLAYER_DAZE_DURATION`) — sprint and dash locked out **and walk speed
+cut 30%** (`PLAYER_DAZE_SPEED_MULTIPLIER`), the same control debuff a sprint-hit applies (walking is
+slowed, not blocked). This is the Mage's CC. The player damage is gated by the arena PvP flag,
 so it does nothing in the safe Sanctuary. There is no projectile and no lingering entity — only an
 `ABILITY_EFFECT` VFX event marks the explosion, and the Daze rides the existing `DAZED` entity flag.
 All damage and effects are server-side.

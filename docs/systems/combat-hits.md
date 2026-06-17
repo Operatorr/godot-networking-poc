@@ -35,7 +35,8 @@ All combat constants live in [`rust/sim_core/src/constants.rs`](../../rust/sim_c
 | Max **PvP** rewind | **4 ticks (~133 ms @30 Hz)** | `MAX_PVP_PROJECTILE_COMPENSATION_TICKS` |
 | PvP defender-favor lerp | 0.25 | `PVP_DEFENDER_FAVOR` |
 | Knockback force (player & monster bullets) | 450 u/s | `PLAYER/MONSTER_PROJECTILE_KNOCKBACK_FORCE` |
-| Daze on hit while sprinting | 1.5 s | `PLAYER_DAZE_DURATION` |
+| Daze duration (sprint-hit or Mageblast) | 1.5 s | `PLAYER_DAZE_DURATION` |
+| Daze movement slow | ×0.7 (−30%) for the duration | `PLAYER_DAZE_SPEED_MULTIPLIER` |
 | Backstop overlap window | 24 u (true, no looser) | `HIT_BACKSTOP_OVERLAP_UNITS` |
 | Backstop grace floor | 15 ticks | `HIT_BACKSTOP_GRACE_TICKS` |
 | Local-hit-report rate cap | 20 / s / peer | `LOCAL_HIT_REPORT_MAX_PER_SECOND` (`combat.rs`) |
@@ -204,8 +205,9 @@ their own `damage` and `effects`:
   (Mageblast 55). `DAMAGE` broadcasts the **applied** delta; **zero applied** (dead/invulnerable
   target) ⇒ **no event at all**.
 - **Daze (sprint hit)** (survival only): a target hit **while SPRINTING** is dazed for
-  `PLAYER_DAZE_DURATION` (1.5 s) — sprint and dash locked out, walking allowed (replicated via
-  `ENTITY_FLAG_DAZED`; the client shows circling stars). See
+  `PLAYER_DAZE_DURATION` (1.5 s) — sprint and dash locked out, **and walk speed cut 30%**
+  (`PLAYER_DAZE_SPEED_MULTIPLIER`, applied in the shared `ground_speed` so prediction agrees);
+  walking still allowed (replicated via `ENTITY_FLAG_DAZED`; the client shows circling stars). See
   [`players-movement-state-machine.md`](players-movement-state-machine.md).
 - **Status effects** (survival only): every `ability::StatusEffect` in the source's list is applied
   via one `match` (Strategy dispatch) — today `Daze { secs }`, which Mageblast inflicts on every

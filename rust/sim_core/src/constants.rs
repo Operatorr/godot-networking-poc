@@ -33,9 +33,12 @@ pub const PLAYER_PROJECTILE_KNOCKBACK_FORCE: f64 = PLAYER_KNOCKBACK_BASE_FORCE;
 pub const MONSTER_PROJECTILE_KNOCKBACK_FORCE: f64 = PLAYER_KNOCKBACK_BASE_FORCE;
 
 // ── Daze ────────────────────────────────────────────────────────────────────
-/// Hit while SPRINTING ⇒ dazed: sprint and dash are locked out for the duration;
-/// walking stays allowed (reduced control, not a stun).
+/// Hit while SPRINTING (or caught in a Mageblast) ⇒ dazed: sprint and dash are locked out for the
+/// duration, and ground (walk) speed is cut to `PLAYER_DAZE_SPEED_MULTIPLIER`. Walking still works
+/// (reduced control, not a stun).
 pub const PLAYER_DAZE_DURATION: f64 = 1.5;
+/// Ground-speed multiplier while dazed — a 30% slow, the CC component of the daze.
+pub const PLAYER_DAZE_SPEED_MULTIPLIER: f64 = 0.7;
 
 // ── Stamina / mana ──────────────────────────────────────────────────────────
 pub const PLAYER_STAMINA_MAX: f64 = 100.0;

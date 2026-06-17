@@ -111,10 +111,14 @@ const MONSTER_PROJECTILE_KNOCKBACK_FORCE := PLAYER_KNOCKBACK_BASE_FORCE
 # DAZE
 # =============================================================================
 
-## Hit while SPRINTING => dazed for this long: sprint and dash are locked out,
-## walking stays allowed (reduced control, not a stun). Server-authoritative;
-## replicated via ENTITY_FLAG_DAZED. Mirrors rust/sim_core/src/constants.rs.
+## Hit while SPRINTING (or caught in a Mageblast) => dazed for this long: sprint and
+## dash are locked out and walk speed is cut to PLAYER_DAZE_SPEED_MULTIPLIER; walking
+## stays allowed (reduced control, not a stun). Server-authoritative; replicated via
+## ENTITY_FLAG_DAZED. Mirrors rust/sim_core/src/constants.rs.
 const PLAYER_DAZE_DURATION := 1.5
+
+## Ground-speed multiplier while dazed — a 30% slow, the CC component of the daze.
+const PLAYER_DAZE_SPEED_MULTIPLIER := 0.7
 
 
 # =============================================================================

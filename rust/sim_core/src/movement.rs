@@ -550,15 +550,22 @@ impl MovementSm {
         self.speed_multiplier = 1.0;
     }
 
-    /// Effective ground speed (walk or sprint) including the speed multiplier. Used by both live
-    /// prediction and reconciliation replay so they agree.
+    /// Effective ground speed (walk or sprint) including the speed multiplier and the daze slow.
+    /// Used by both live prediction and reconciliation replay so they agree. While dazed, ground
+    /// speed is cut to `PLAYER_DAZE_SPEED_MULTIPLIER` (sprint is separately refused, so in the live
+    /// path this only ever scales walking).
     pub fn ground_speed(&self, is_sprinting: bool) -> f64 {
         let base = if is_sprinting {
             self.base_speed * PLAYER_SPRINT_MULTIPLIER
         } else {
             self.base_speed
         };
-        base * self.speed_multiplier
+        let daze = if self.is_dazed() {
+            PLAYER_DAZE_SPEED_MULTIPLIER
+        } else {
+            1.0
+        };
+        base * self.speed_multiplier * daze
     }
 
     /// Authoritatively set resources (server → owner correction via ActionConfirm). Assignment is
@@ -886,9 +893,10 @@ mod tests {
         assert_eq!(sm.state(), MoveState::Sprinting);
         sm.apply_daze(0.5);
         assert_eq!(sm.state(), MoveState::Walking, "daze ends the sprint");
-        // Sprint held but refused while dazed — walking speed only.
+        // Sprint held but refused while dazed — walking speed, further cut 30% by the daze slow
+        // (200 * 0.7 = 140).
         let v = sm.tick(DT, RIGHT, true, false, false, false, RIGHT);
-        assert!((v.length() - 200.0).abs() < 0.5, "speed = {}", v.length());
+        assert!((v.length() - 140.0).abs() < 0.5, "speed = {}", v.length());
         assert_eq!(sm.state(), MoveState::Walking);
         // Dash refused while dazed; refusal does not start the cooldown.
         assert!(!sm.try_dash(RIGHT, Vec2::ZERO));
@@ -900,6 +908,39 @@ mod tests {
         assert!(!sm.is_dazed());
         let v = sm.tick(DT, RIGHT, true, false, false, false, RIGHT);
         assert!(v.length() > 300.0, "sprint must resume after daze");
+    }
+
+    #[test]
+    fn daze_slows_walk_speed_by_30pct_then_restores() {
+        let mut sm = MovementSm::new();
+        sm.set_base_speed(200.0);
+        // Baseline walk speed (not dazed).
+        let walk = sm.tick(DT, RIGHT, false, false, false, false, RIGHT);
+        assert!(
+            (walk.length() - 200.0).abs() < 0.5,
+            "walk = {}",
+            walk.length()
+        );
+        // Dazed: walk is cut to 70% (200 -> 140), via the shared ground_speed used by prediction.
+        sm.apply_daze(1.5);
+        let slowed = sm.tick(DT, RIGHT, false, false, false, false, RIGHT);
+        assert!(
+            (slowed.length() - 140.0).abs() < 0.5,
+            "dazed walk = {}",
+            slowed.length()
+        );
+        assert!((sm.ground_speed(false) - 140.0).abs() < 1e-9);
+        // Once the daze expires the slow lifts (15 ticks ≈ 0.5 s used; run out the 1.5 s).
+        for _ in 0..45 {
+            sm.tick(DT, RIGHT, false, false, false, false, RIGHT);
+        }
+        assert!(!sm.is_dazed());
+        let restored = sm.tick(DT, RIGHT, false, false, false, false, RIGHT);
+        assert!(
+            (restored.length() - 200.0).abs() < 0.5,
+            "restored walk = {}",
+            restored.length()
+        );
     }
 
     #[test]

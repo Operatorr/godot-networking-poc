@@ -85,6 +85,11 @@ const INPUT_SEND_INTERVAL: float = GameConstants.SERVER_TICK_INTERVAL
 ## within ~1 RTT. See _handle_action_confirm.
 const COOLDOWN_RECONCILE_EPSILON: float = 0.75
 
+## Max time to follow the server through a knockback before force-resuming prediction. A backstop
+## for a lost KNOCKED_BACK falling-edge flag delta (a baseline or the next hit re-asserts it if the
+## server really is still knocking us back). Knockback decays in ~12 ticks (~0.4 s at 30 Hz).
+const KNOCKBACK_FOLLOW_MAX_SECONDS: float = 0.75
+
 ## Current frame's accumulated input flags
 var current_input_flags: int = 0
 
@@ -106,6 +111,19 @@ var prediction_enabled: bool = true
 ## Last seen state of our own DAZED entity flag (edge-detected: snapshot flags
 ## are delta-compressed, so they arrive only when they change or on baselines).
 var _own_dazed: bool = false
+
+## True while the server's authoritative KNOCKED_BACK flag is set for the local player. The client
+## never predicts knockback (apply_knockback is server-only — see rust/sim_core movement.rs), so
+## while it's set we FREEZE input-driven prediction and just follow the server's position. Otherwise
+## the input-driven sim pushes against the server's knockback and the reconcile lerp chases a moving
+## target — the visible twitch. Slaved on the flag edge exactly like _own_dazed.
+var _own_knocked_back: bool = false
+## Latest authoritative server position for the local player (from snapshots / ActionConfirm) — the
+## follow target while knocked back.
+var _server_follow_position: Vector2 = Vector2.ZERO
+var _has_server_follow_position: bool = false
+## Counts down while following a knockback; force-resumes prediction at 0 (see KNOCKBACK_FOLLOW_MAX_SECONDS).
+var _knockback_follow_time_left: float = 0.0
 
 ## The shared Rust simulation core (migration-spec D5): prediction runs LITERALLY the same
 ## compiled code as the server's authoritative step, so movement divergence is zero by
@@ -199,6 +217,9 @@ func _reset_state() -> void:
 	is_correcting = false
 	input_send_timer = 0.0
 	current_input_flags = 0
+	_own_knocked_back = false
+	_has_server_follow_position = false
+	_knockback_follow_time_left = 0.0
 
 
 ## Initialize the controller with a player node
@@ -438,6 +459,12 @@ func _get_client_render_tick() -> int:
 
 #region Local Prediction
 func _apply_local_prediction(input_flags: int, delta: float) -> void:
+	# While the server owns our motion (knockback), don't predict from input — follow the server.
+	# The client never applies knockback locally, so predicting here just fights the server.
+	if _own_knocked_back:
+		_follow_server_through_knockback(delta)
+		return
+
 	# Drive the shared Rust sim_core (D5): movement state machine tick + analytic obstacle
 	# mover + realized-velocity recompute, in one extension call — the exact code the server
 	# runs authoritatively. The reconcile path corrects position if real divergence appears
@@ -475,6 +502,54 @@ func _apply_local_prediction(input_flags: int, delta: float) -> void:
 
 	# Update visual position (unless correcting)
 	_update_player_visual()
+
+
+## Follow the server through a server-owned knockback instead of predicting it. The sim is still
+## stepped with NEUTRAL input so its daze/cooldown/stamina timers keep counting with the server, but
+## its position output is ignored: the rendered position is eased toward the latest authoritative
+## server position (set by snapshots / ActionConfirm). One target ⇒ no tug-of-war, no jitter.
+func _follow_server_through_knockback(delta: float) -> void:
+	# Lost-flag backstop: if the falling-edge KNOCKED_BACK delta never arrives, resume anyway.
+	_knockback_follow_time_left = maxf(0.0, _knockback_follow_time_left - delta)
+	if _knockback_follow_time_left <= 0.0:
+		_own_knocked_back = false
+		_resume_prediction_after_knockback()
+		return
+
+	# Advance the sim's timers only (neutral input ⇒ no movement, no edges); mirror resources and
+	# cooldowns to the HUD SM exactly like the normal path so the bars/wedges don't freeze.
+	var aim_dir := Vector2.from_angle(_get_aim_angle())
+	var result: Dictionary = _sim.step(delta, predicted_position, Vector2.ZERO, false, false, false, false, aim_dir)
+	var sm := _get_movement_sm()
+	if sm != null:
+		sm.set_resources(result["stamina"], result["mana"])
+		if sm.has_method("set_exhausted_state"):
+			sm.set_exhausted_state(bool(result.get("exhausted", false)))
+		if sm.has_method("set_predicted_cooldowns"):
+			sm.set_predicted_cooldowns(
+				float(result.get("dash_cooldown", 0.0)),
+				float(result.get("ability_cooldown", 0.0)))
+
+	# Ease the predicted position toward the server's authoritative position.
+	if _has_server_follow_position:
+		var t := clampf(interpolation_speed * delta, 0.0, 1.0)
+		var before := predicted_position
+		predicted_position = predicted_position.lerp(_server_follow_position, t)
+		predicted_velocity = ((predicted_position - before) / delta) if delta > 0.0 else Vector2.ZERO
+	_update_player_visual()
+
+
+## Resume normal prediction when a knockback ends (falling edge, or the backstop fires). Snap the
+## logical position to where the server left us and drop the now-stale input buffer + any in-flight
+## correction, so resumed prediction starts clean (the buffered inputs were consumed as knockback,
+## never as movement, so replaying them would re-introduce divergence).
+func _resume_prediction_after_knockback() -> void:
+	if _has_server_follow_position:
+		predicted_position = _server_follow_position
+	predicted_velocity = Vector2.ZERO
+	correction_target = predicted_position
+	is_correcting = false
+	input_buffer.clear()
 
 
 ## The local player's predicted movement state machine, or null if the controlled
@@ -693,6 +768,16 @@ func _handle_action_confirm(data: Dictionary) -> void:
 	last_ack_sequence = sequence
 	last_server_tick = server_tick
 
+	# Track the authoritative position as the knockback-follow target.
+	_server_follow_position = corrected_position
+	_has_server_follow_position = true
+
+	# While the server owns our motion (knockback), follow it (handled in _apply_local_prediction)
+	# and never replay inputs from here — the freeze exists precisely to avoid that divergence.
+	if _own_knocked_back:
+		_prune_acknowledged_inputs()
+		return
+
 	# Check if correction is needed
 	# result_code != SUCCESS means the server sent us a correction
 	if result_code != PacketTypes.ResultCode.SUCCESS:
@@ -783,6 +868,18 @@ func _handle_state_update(data: Dictionary) -> void:
 func _update_own_flags(flags: int) -> void:
 	_update_own_charge(flags)
 
+	# Slave the knockback-follow to the server's KNOCKED_BACK flag. On the rising edge we cancel any
+	# in-flight predictive correction (so it doesn't fight the follow) and arm the lost-flag backstop;
+	# on the falling edge we resume prediction cleanly from the server's last position.
+	var knocked_back := (flags & PacketTypes.ENTITY_FLAG_KNOCKED_BACK) != 0
+	if knocked_back != _own_knocked_back:
+		_own_knocked_back = knocked_back
+		if knocked_back:
+			is_correcting = false
+			_knockback_follow_time_left = KNOCKBACK_FOLLOW_MAX_SECONDS
+		else:
+			_resume_prediction_after_knockback()
+
 	var dazed := (flags & PacketTypes.ENTITY_FLAG_DAZED) != 0
 	if dazed == _own_dazed:
 		return
@@ -834,9 +931,18 @@ func _exit_tree() -> void:
 
 func _process_own_state_update(entity_data: Dictionary) -> void:
 	var server_position: Vector2 = entity_data.get("position", Vector2.ZERO)
+	_server_follow_position = server_position
+	_has_server_follow_position = true
 
 	if not has_authoritative_position:
 		force_sync(server_position)
+		return
+
+	# Server owns our motion during knockback — follow it (eased in _follow_server_through_knockback)
+	# and do NOT replay inputs: the client never predicted the knockback, so a reconcile-replay from
+	# here re-introduces the divergence the freeze removes. Keep the buffer from growing.
+	if _own_knocked_back:
+		_prune_acknowledged_inputs()
 		return
 
 	# If no unacknowledged inputs, sync directly to server position
