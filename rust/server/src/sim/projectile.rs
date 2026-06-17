@@ -25,6 +25,10 @@ pub struct ProjectileState {
     pub pierce: u8,
     pub hit_targets: Vec<u16>,
     pub distance_traveled: f32,
+    /// Travel distance (units) at which this projectile despawns. Per-projectile so each class's
+    /// primary reach can differ (see `ability::ClassStats::projectile_max_distance`); the legacy
+    /// spawn path defaults it to the global `PROJECTILE_MAX_DISTANCE`.
+    pub max_distance: f32,
     pub alive: bool,
     pub spawn_tick: u64,
     pub simulation_ticks: u64,
@@ -50,7 +54,7 @@ impl ProjectileState {
         self.position += movement;
         self.distance_traveled += movement.length();
         self.simulation_ticks += 1;
-        if self.distance_traveled >= PROJECTILE_MAX_DISTANCE {
+        if self.distance_traveled >= self.max_distance {
             self.alive = false;
             self.removal_reason = "max_distance";
             return true;
@@ -154,11 +158,13 @@ impl ProjectileManager {
             knockback_force,
             0,
             0,
+            PROJECTILE_MAX_DISTANCE,
         )
     }
 
-    /// Full spawn with a per-projectile monster `damage` and `pierce` count (multishot). The
-    /// 8-arg `spawn_projectile` forwards here with `damage = 0` (legacy flat) and `pierce = 0`.
+    /// Full spawn with a per-projectile monster `damage`, `pierce` count (multishot), and
+    /// `max_distance` (per-class reach). The 8-arg `spawn_projectile` forwards here with
+    /// `damage = 0` (legacy flat), `pierce = 0`, and the global `PROJECTILE_MAX_DISTANCE`.
     #[allow(clippy::too_many_arguments)]
     pub fn spawn_projectile_ex(
         &mut self,
@@ -172,6 +178,7 @@ impl ProjectileManager {
         knockback_force: f64,
         damage: i32,
         pierce: u8,
+        max_distance: f32,
     ) -> Option<&ProjectileState> {
         if direction.x.abs() < 1e-5 && direction.y.abs() < 1e-5 {
             return None;
@@ -189,6 +196,7 @@ impl ProjectileManager {
             pierce,
             hit_targets: Vec::new(),
             distance_traveled: 0.0,
+            max_distance,
             alive: true,
             spawn_tick,
             simulation_ticks: 0,
@@ -398,6 +406,35 @@ mod tests {
         // 800 / (400/30) = 60 nominal; f32 accumulation residue may push the >= 800 crossing
         // to the 61st tick (the GDScript has the same float sensitivity).
         assert!((60..=61).contains(&ticks), "ticks = {ticks}");
+    }
+
+    #[test]
+    fn per_class_max_distance_despawns_earlier() {
+        // A Warrior/Rogue shot is capped at 560 (30% below 800), so it dies ~30% sooner.
+        init_arena_geometry();
+        let mut mgr = ProjectileManager::new();
+        mgr.spawn_projectile_ex(
+            1,
+            Vec2::new(-900.0, 900.0),
+            Vec2::new(1.0, 0.0),
+            1,
+            0,
+            0,
+            PROJECTILE_SPEED,
+            PLAYER_PROJECTILE_KNOCKBACK_FORCE,
+            0,
+            0,
+            560.0,
+        )
+        .unwrap();
+        let mut ticks = 0;
+        while mgr.count() > 0 {
+            mgr.update_all(DT);
+            ticks += 1;
+            assert!(ticks < 100);
+        }
+        // 560 / (400/30) = 42 nominal; f32 residue may push the crossing to the 43rd tick.
+        assert!((42..=43).contains(&ticks), "ticks = {ticks}");
     }
 
     #[test]

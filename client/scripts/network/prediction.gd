@@ -4,6 +4,10 @@
 class_name PredictionController
 extends Node
 
+## Preloaded so the GDExtension/headless class cache can't fail to resolve the
+## global class during startup (repo convention: const named exactly like the class).
+const ChargeTrail := preload("res://scripts/entities/world_effects/charge_trail.gd")
+
 
 #region Signals
 ## Emitted when a server correction is applied
@@ -85,6 +89,15 @@ const INPUT_SEND_INTERVAL: float = GameConstants.SERVER_TICK_INTERVAL
 ## within ~1 RTT. See _handle_action_confirm.
 const COOLDOWN_RECONCILE_EPSILON: float = 0.75
 
+## Comms-loss safety ceiling: max time to follow the server through a knockback before force-resuming
+## prediction. KNOCKED_BACK is only sent on flag *edges* (cached-vs-current delta), so a sustained or
+## chained knockback exposes no per-tick re-affirmation. The ceiling is re-armed by every update that
+## still shows the flag set (rising edge + each full-state baseline, sent every DELTA_FULL_STATE_INTERVAL
+## = 100 ticks ≈ 3.3 s), so it must outlast that interval — otherwise it force-resumes mid-knockback and
+## reintroduces the tug-of-war it exists to prevent. Genuine release is detected from the falling edge
+## (including via the next baseline); this ceiling only fires if flag deltas AND baselines both stop.
+const KNOCKBACK_FOLLOW_MAX_SECONDS: float = 4.0
+
 ## Current frame's accumulated input flags
 var current_input_flags: int = 0
 
@@ -106,6 +119,20 @@ var prediction_enabled: bool = true
 ## Last seen state of our own DAZED entity flag (edge-detected: snapshot flags
 ## are delta-compressed, so they arrive only when they change or on baselines).
 var _own_dazed: bool = false
+
+## True while the server's authoritative KNOCKED_BACK flag is set for the local player. The client
+## never predicts knockback (apply_knockback is server-only — see rust/sim_core movement.rs), so
+## while it's set we FREEZE input-driven prediction and just follow the server's position. Otherwise
+## the input-driven sim pushes against the server's knockback and the reconcile lerp chases a moving
+## target — the visible twitch. Slaved on the flag edge exactly like _own_dazed.
+var _own_knocked_back: bool = false
+## Latest authoritative server position for the local player (from snapshots / ActionConfirm) — the
+## follow target while knocked back.
+var _server_follow_position: Vector2 = Vector2.ZERO
+var _has_server_follow_position: bool = false
+## Comms-loss safety ceiling, re-armed by every update that still shows KNOCKED_BACK; force-resumes
+## prediction at 0 only if flag deltas AND baselines both stop (see KNOCKBACK_FOLLOW_MAX_SECONDS).
+var _knockback_follow_time_left: float = 0.0
 
 ## The shared Rust simulation core (migration-spec D5): prediction runs LITERALLY the same
 ## compiled code as the server's authoritative step, so movement divergence is zero by
@@ -143,6 +170,10 @@ var _own_dashing: bool = false
 ## Distinct from _own_dashing, which edges on the server's DASHING flag (covering the plain dash
 ## too) to slave the charge END to the server; this one edges on the predicted is_charging state.
 var _was_charging: bool = false
+
+## Active shader-driven charge trail (Warrior), parented to the player while charging.
+## Created on the charge rising edge and released (faded out) on the falling edge.
+var _charge_trail: ChargeTrail = null
 #endregion
 
 
@@ -199,6 +230,9 @@ func _reset_state() -> void:
 	is_correcting = false
 	input_send_timer = 0.0
 	current_input_flags = 0
+	_own_knocked_back = false
+	_has_server_follow_position = false
+	_knockback_follow_time_left = 0.0
 
 
 ## Initialize the controller with a player node
@@ -258,6 +292,7 @@ func _physics_process(delta: float) -> void:
 	var charging := player_node != null and NetworkManager.is_server_connected() and is_active() \
 		and _sim != null and _sim_has_is_charging and _sim.is_charging()
 	_drive_charge_loop_sfx(charging)
+	_drive_charge_trail(charging)
 
 	if player_node == null:
 		return
@@ -438,6 +473,12 @@ func _get_client_render_tick() -> int:
 
 #region Local Prediction
 func _apply_local_prediction(input_flags: int, delta: float) -> void:
+	# While the server owns our motion (knockback), don't predict from input — follow the server.
+	# The client never applies knockback locally, so predicting here just fights the server.
+	if _own_knocked_back:
+		_follow_server_through_knockback(delta)
+		return
+
 	# Drive the shared Rust sim_core (D5): movement state machine tick + analytic obstacle
 	# mover + realized-velocity recompute, in one extension call — the exact code the server
 	# runs authoritatively. The reconcile path corrects position if real divergence appears
@@ -475,6 +516,55 @@ func _apply_local_prediction(input_flags: int, delta: float) -> void:
 
 	# Update visual position (unless correcting)
 	_update_player_visual()
+
+
+## Follow the server through a server-owned knockback instead of predicting it. The sim is still
+## stepped with NEUTRAL input so its daze/cooldown/stamina timers keep counting with the server, but
+## its position output is ignored: the rendered position is eased toward the latest authoritative
+## server position (set by snapshots / ActionConfirm). One target ⇒ no tug-of-war, no jitter.
+func _follow_server_through_knockback(delta: float) -> void:
+	# Lost-flag backstop: if the falling-edge KNOCKED_BACK delta never arrives, resume anyway.
+	_knockback_follow_time_left = maxf(0.0, _knockback_follow_time_left - delta)
+	if _knockback_follow_time_left <= 0.0:
+		_own_knocked_back = false
+		_resume_prediction_after_knockback()
+		return
+
+	# Advance the sim's timers only (neutral input ⇒ no movement, no edges); mirror resources and
+	# cooldowns to the HUD SM exactly like the normal path so the bars/wedges don't freeze.
+	var aim_dir := Vector2.from_angle(_get_aim_angle())
+	var result: Dictionary = _sim.step(delta, predicted_position, Vector2.ZERO, false, false, false, false, aim_dir)
+	var sm := _get_movement_sm()
+	if sm != null:
+		sm.set_resources(result["stamina"], result["mana"])
+		if sm.has_method("set_exhausted_state"):
+			sm.set_exhausted_state(bool(result.get("exhausted", false)))
+		if sm.has_method("set_predicted_cooldowns"):
+			sm.set_predicted_cooldowns(
+				float(result.get("dash_cooldown", 0.0)),
+				float(result.get("ability_cooldown", 0.0)))
+
+	# Ease the predicted position toward the server's authoritative position. Frame-rate-independent
+	# exponential smoothing (1 - e^(-k·dt)) so the convergence rate is identical at 60 and 144 FPS.
+	if _has_server_follow_position:
+		var t := 1.0 - exp(-interpolation_speed * delta)
+		var before := predicted_position
+		predicted_position = predicted_position.lerp(_server_follow_position, t)
+		predicted_velocity = ((predicted_position - before) / delta) if delta > 0.0 else Vector2.ZERO
+	_update_player_visual()
+
+
+## Resume normal prediction when a knockback ends (falling edge, or the backstop fires). Snap the
+## logical position to where the server left us and drop the now-stale input buffer + any in-flight
+## correction, so resumed prediction starts clean (the buffered inputs were consumed as knockback,
+## never as movement, so replaying them would re-introduce divergence).
+func _resume_prediction_after_knockback() -> void:
+	if _has_server_follow_position:
+		predicted_position = _server_follow_position
+	predicted_velocity = Vector2.ZERO
+	correction_target = predicted_position
+	is_correcting = false
+	input_buffer.clear()
 
 
 ## The local player's predicted movement state machine, or null if the controlled
@@ -662,6 +752,18 @@ func _handle_action_confirm(data: Dictionary) -> void:
 		if sm != null:
 			sm.set_resources(_sim.stamina(), _sim.mana())
 
+	# Authoritative current HP for the HUD bar. The bar is a display mirror (start full, minus
+	# DAMAGE, plus PICKUP heals) that can't see server-side regen, so it drifts low; this snaps it
+	# back to the server's value. ONLY while alive — death is server-authoritative (the reliable
+	# KILL/KILL_PVP event drives it, see arena_base._enter_local_death), so a 0 here must not
+	# trigger the client death path. set_hp clamps to the class+level max_hp (which matches the
+	# server's max_health).
+	if data.has("health") and player_node != null and "hp_component" in player_node:
+		var hp := int(data.get("health", 0))
+		var hp_comp = player_node.hp_component
+		if hp > 0 and hp_comp != null:
+			hp_comp.set_hp(hp)
+
 	# Reconcile the predicted dash + RMB-ability cooldowns against the server's authoritative ones,
 	# which ride along on this confirm. The cooldowns are committed locally on the PREDICTED
 	# dash/cast, so without this they drift permanently out of phase whenever the server refuses /
@@ -680,6 +782,16 @@ func _handle_action_confirm(data: Dictionary) -> void:
 	# Update tracking
 	last_ack_sequence = sequence
 	last_server_tick = server_tick
+
+	# Track the authoritative position as the knockback-follow target.
+	_server_follow_position = corrected_position
+	_has_server_follow_position = true
+
+	# While the server owns our motion (knockback), follow it (handled in _apply_local_prediction)
+	# and never replay inputs from here — the freeze exists precisely to avoid that divergence.
+	if _own_knocked_back:
+		_prune_acknowledged_inputs()
+		return
 
 	# Check if correction is needed
 	# result_code != SUCCESS means the server sent us a correction
@@ -771,6 +883,23 @@ func _handle_state_update(data: Dictionary) -> void:
 func _update_own_flags(flags: int) -> void:
 	_update_own_charge(flags)
 
+	# Slave the knockback-follow to the server's KNOCKED_BACK flag. On the rising edge we cancel any
+	# in-flight predictive correction (so it doesn't fight the follow) and arm the lost-flag backstop;
+	# on the falling edge we resume prediction cleanly from the server's last position.
+	var knocked_back := (flags & PacketTypes.ENTITY_FLAG_KNOCKED_BACK) != 0
+	if knocked_back != _own_knocked_back:
+		_own_knocked_back = knocked_back
+		if knocked_back:
+			is_correcting = false  # don't let an in-flight correction fight the follow
+		else:
+			_resume_prediction_after_knockback()
+	# Re-arm the comms-loss ceiling on every update that still shows the flag (rising edge + each
+	# baseline). Because the flag is not re-sent per tick, a sustained/chained knockback would otherwise
+	# expire the timer mid-knockback; refreshing it on baselines keeps the follow alive while the server
+	# really is still knocking us back, and the ceiling only matters once updates stop entirely.
+	if knocked_back:
+		_knockback_follow_time_left = KNOCKBACK_FOLLOW_MAX_SECONDS
+
 	var dazed := (flags & PacketTypes.ENTITY_FLAG_DAZED) != 0
 	if dazed == _own_dazed:
 		return
@@ -812,19 +941,44 @@ func _drive_charge_loop_sfx(charging: bool) -> void:
 		AudioManager.stop_charge_loop()
 
 
+## Attach/release the shader-driven charge trail (Warrior) on the charge edges.
+## Edge-detected via _charge_trail's existence so it mirrors the charge-loop SFX.
+func _drive_charge_trail(charging: bool) -> void:
+	if charging:
+		if _charge_trail == null and player_node != null and is_instance_valid(player_node):
+			_charge_trail = ChargeTrail.create()
+			player_node.add_child(_charge_trail)
+	elif _charge_trail != null:
+		if is_instance_valid(_charge_trail):
+			_charge_trail.finish()  # stop emitting; self-frees once embers fade
+		_charge_trail = null
+
+
 ## Safety: stop the charge rumble if the controller is freed mid-charge (scene change), since
 ## _physics_process won't run to clear it (the AudioManager autoload outlives this node).
 func _exit_tree() -> void:
 	if _was_charging:
 		AudioManager.stop_charge_loop()
 		_was_charging = false
+	if _charge_trail != null and is_instance_valid(_charge_trail):
+		_charge_trail.finish()
+	_charge_trail = null
 
 
 func _process_own_state_update(entity_data: Dictionary) -> void:
 	var server_position: Vector2 = entity_data.get("position", Vector2.ZERO)
+	_server_follow_position = server_position
+	_has_server_follow_position = true
 
 	if not has_authoritative_position:
 		force_sync(server_position)
+		return
+
+	# Server owns our motion during knockback — follow it (eased in _follow_server_through_knockback)
+	# and do NOT replay inputs: the client never predicted the knockback, so a reconcile-replay from
+	# here re-introduces the divergence the freeze removes. Keep the buffer from growing.
+	if _own_knocked_back:
+		_prune_acknowledged_inputs()
 		return
 
 	# If no unacknowledged inputs, sync directly to server position
@@ -958,9 +1112,10 @@ func _apply_smooth_correction(delta: float) -> void:
 	# Target is the current predicted position (moves each frame)
 	correction_target = predicted_position
 
-	# Exponential interpolation toward target
+	# Frame-rate-independent exponential interpolation toward target (1 - e^(-k·dt)): same convergence
+	# rate regardless of FPS, unlike the raw interpolation_speed * delta approximation.
 	var current_visual := player_node.position
-	var new_visual := current_visual.lerp(correction_target, interpolation_speed * delta)
+	var new_visual := current_visual.lerp(correction_target, 1.0 - exp(-interpolation_speed * delta))
 
 	# Check if close enough to stop correcting
 	var remaining := new_visual.distance_to(correction_target)

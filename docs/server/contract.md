@@ -131,10 +131,13 @@ the Class ability (point-target Mageblast/Plague Zone clamp to `max_cast_range`;
 Shadowstep searches near it; movement Charge uses it for direction). One of the `input_flags` bits is
 the RMB **ability-held** flag. See [`../systems/abilities.md`](../systems/abilities.md).
 
-### ActionConfirm (type 66, ch0) — 14 B
+### ActionConfirm (type 66, ch0) — 16 B (protocol v5 adds `health`)
 
-`[u8 type][u8 seq][u8 action][s16 qx][s16 qy][u8 result][u16 server_tick][u8 stamina][u8 mana][u8 dash_cd][u8 ability_cd]`
-(stamina/mana = `clamp(round(v), 0, 255)`; dash/ability cooldown = `clamp(round(seconds×10), 0, 255)`
+`[u8 type][u8 seq][u8 action][s16 qx][s16 qy][u8 result][u16 server_tick][u8 stamina][u8 mana][u8 dash_cd][u8 ability_cd][u16 health]`
+(stamina/mana = `clamp(round(v), 0, 255)`; dash/ability cooldown = `clamp(round(seconds×10), 0, 255)`;
+`health` = the owner's current HP, **un-quantized** `clamp(hp, 0, 65535)`. HP is not in snapshots,
+so the owner reconciles its display-only HUD bar against this — like stamina/mana — keeping it in
+step with server-side regen. The client never reads death from it; death is the reliable KILL event.
 **deciseconds**, 0.1-s resolution up to 25.5 s). The owner reconciles its **predicted** dash + RMB
 cooldowns against these authoritative values (epsilon-gated) so a refused / lost / cooldown-boundary
 dash can't drift the client's cooldown permanently out of phase with the server — see
@@ -189,9 +192,12 @@ waiting for the PLAYER_INFO broadcast, which is still sent for names/colors).
 `[u8 type][u8 event_type][u16 source_id][u16 target_id][tail]` — event types and tails as built,
 except where protocol v4 noted: DAMAGE `[u16 amount][u8 dmg_type]`;
 KILL/KILL_PVP none; RESPAWN `[s16 qx][s16 qy]`; PLAYER_INFO
-`[u8 len][utf8 name][s16 qx][s16 qy][u8 r][u8 g][u8 b][u8 class]`
-(class since protocol v3 — server-clamped to 0..=6, see ConnectAuth);
-LEADERBOARD_UPDATE `[u8 n]{n × [u16 id][u16 kills]}`; PROJECTILE_FIRED
+`[u8 len][utf8 name][s16 qx][s16 qy][u8 r][u8 g][u8 b][u8 class][u16 level]`
+(class since protocol v3 — server-clamped to 0..=6, see ConnectAuth; `level` since protocol v6 —
+server-authoritative, broadcast to **all** clients so any client can show a player's level, e.g. the
+leaderboard, and re-sent on hydrate completion + level-up so observers stay fresh);
+LEADERBOARD_UPDATE `[u8 n]{n × [u16 id][u16 kills][u16 deaths]}` (`deaths` since protocol v7 — the
+HUD shows a Kills:Deaths ratio; ranking is still by kills); PROJECTILE_FIRED
 `[s16 qx][s16 qy][u16 fire_tick]` with target_id = projectile id (**non-zero for monster shots** —
 hit-authority invariant); EXP_GAIN=13 `[u16 amount]` with source_id = the player who earned it (one event
 per nearby player when a monster dies — the HUD "+XP" pop only; progression itself is now
@@ -199,7 +205,7 @@ server-authoritative, see [`../systems/PROGRESSION.md`](../systems/PROGRESSION.m
 
 **Protocol v4 additions:**
 - **PICKUP=6** now carries `[u8 kind][u16 amount]` (was empty) — `kind` identifies the picked-up
-  world effect (e.g. Healthorb), `amount` the magnitude (Healthorb heals +5 HP); target_id = the
+  world effect (e.g. Healthorb), `amount` the magnitude (Healthorb heals +25 HP); target_id = the
   picked-up entity. Server-authoritative pickup.
 - **ABILITY_EFFECT=14** `[u16 effect_id][s16 qx][s16 qy][u16 radius]` with source_id = the casting
   player — a one-shot VFX/SFX cue for a Class ability (blast/cast/hitscan center + radius). All
@@ -217,9 +223,38 @@ server-authoritative, see [`../systems/PROGRESSION.md`](../systems/PROGRESSION.m
 ### BaselineAck (3): `[u8 type][u32 baseline_tick]` · RequestFullState (4) / RespawnRequest (5):
 `[u8 type]` · LocalHitReport (6): `[u8 type][u16 projectile_id]`
 
+## Protocol v5 — authoritative HP for the HUD bar
+
+`PROTOCOL_VERSION` advances to **5**: `ActionConfirm` gains a trailing `[u16 health]` (+2 B) carrying
+the owner's current HP. HP is not in snapshots, so the owner's HUD bar was a display-only delta mirror
+that couldn't see server-side regen and diverged from the authoritative `health`; the owner now
+reconciles it against this field, exactly like stamina/mana. Death stays server-authoritative (the
+reliable KILL/KILL_PVP event), so the client never infers death from this value.
+
+## Protocol v6 — per-player level in PLAYER_INFO
+
+`PROTOCOL_VERSION` advances to **6**: `PlayerInfo` (GameEvent type 67) gains a trailing `[u16 level]`
+(+2 B). Until v6, level/XP rode only the **owner-only** `PROGRESS` event, so a client knew its own
+level but not anyone else's. The leaderboard (and any future "who's around me" UI) needs every
+player's level, so the server now stamps level onto the **broadcast** `PlayerInfo`. Because the
+join-time broadcast carries the pre-hydrate default (1), the server **re-broadcasts** `PlayerInfo`
+when the async API hydrate lands and again on every level-up, so observers' values stay correct.
+`PROGRESS` is unchanged and still owner-only (it also carries XP + move-speed, which observers don't
+need). The client caches the broadcast level in `EntityNameCache` keyed by entity id.
+
+## Protocol v7 — deaths in LEADERBOARD_UPDATE (Kills:Deaths)
+
+`PROTOCOL_VERSION` advances to **7**: each `LEADERBOARD_UPDATE` row gains a trailing `[u16 deaths]`
+(+2 B/row), so the HUD leaderboard shows a **Kills:Deaths** ratio instead of bare kills. The Rust
+in-memory `Leaderboard` already tracked deaths (incremented on every PvP kill); they were simply never
+serialized — `top_n` now returns `(entity_id, pvp_kills, deaths)`. **Ranking is unchanged** (still
+kills DESC, entity-id ASC tiebreak); deaths only ride along for display. This is the in-session board
+(ephemeral, forgotten on disconnect — ADR 0005); persistent career K/D would be a separate Go-API/Redis
+path (the schema exists, but no gameplay stats are reported to the API today).
+
 ## Protocol v4 — the Class-ability + server-authoritative-progression bump
 
-`PROTOCOL_VERSION` advances to **4** (v3 added the class byte; v4 adds the ability system and moves
+`PROTOCOL_VERSION` advanced to **4** (v3 added the class byte; v4 adds the ability system and moves
 progression server-side). The full delta versus v3, in one place — each is detailed in its section
 above:
 
@@ -231,7 +266,7 @@ above:
 | `STEALTH` flag | 16-bit entity_flags | **bit 9** (invisible to AI targeting; Rogue Shadowstep) |
 | `ABILITY_EFFECT=14` | `GameEvent` (type 67) | new: `[u16 effect_id][s16 qx][s16 qy][u16 radius]` (ability VFX cue) |
 | `PROGRESS=15` | `GameEvent` (type 67) | new: `[u16 level][u32 experience][s16 move_speed_q]` (authoritative progression push) |
-| `PICKUP=6` payload | `GameEvent` (type 67) | now `[u8 kind][u16 amount]` (was empty) — Healthorb +5 HP etc. |
+| `PICKUP=6` payload | `GameEvent` (type 67) | now `[u8 kind][u16 amount]` (was empty) — Healthorb +25 HP etc. |
 
 Lockstep client/server deploy as always (DIY versioning): a v3↔v4 mismatch is refused at the
 handshake (`ConnectAuth` re-check). The new fields are all server-authoritative in effect — abilities,

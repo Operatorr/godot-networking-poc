@@ -478,9 +478,19 @@ func _handle_progress_event(data: Dictionary) -> void:
 	var level := int(event_data.get("level", 1))
 	var experience := int(event_data.get("experience", 0))
 	var move_speed := int(event_data.get("move_speed", 0))
+	var leveled_up := level > GameManager.get_player_level()
 	GameManager.set_progression(level, experience, move_speed)
 	if prediction_controller and move_speed > 0:
 		prediction_controller.set_base_speed(float(move_speed))
+	# Keep the HUD HP bar's cap in step with the server's class+level max_health (HP isn't carried
+	# in snapshots, so the client derives the cap). On a level-up the server fully restores HP +
+	# mana, so fill the bar to the new max here too; mana arrives on the next ActionConfirm. The
+	# server stays authoritative for the actual value.
+	# NOTE: `leveled_up` compares against the local (possibly stale) level, so on reconnect hydration
+	# of a wounded high-level character this reads true once and briefly fills the bar to full — the
+	# next STATE_UPDATE / ActionConfirm reconciles it. Display-only; the server owns the real HP.
+	if local_player and is_instance_valid(local_player):
+		local_player.apply_level_scaled_max_hp(level, leveled_up)
 
 
 ## Health pickup. Spawn a green "+amount" heal floater at the picked-up player's position and,
@@ -523,10 +533,17 @@ func _handle_ability_effect_event(data: Dictionary) -> void:
 	var effect_id := int(event_data.get("effect_id", 0))
 	var world_pos: Vector2 = event_data.get("position", Vector2.ZERO)
 	var radius := float(event_data.get("radius", 60))
-	var vfx := _AbilityEffectVfx.new()
-	vfx.effect_id = effect_id
-	vfx.max_radius = maxf(radius, 8.0)
-	vfx.position = world_pos
+	# Mageblast (0) and Charge blast (1) play assembled sprite animations; mine (2)
+	# and shadowstep (3) have no bespoke art yet, so BlastEffect renders its ring
+	# fallback for them (and for 0/1 too until their sheets are assembled).
+	var key := ""
+	match effect_id:
+		0: key = "mageblast"
+		1: key = "charge_blast"
+	var vfx := BlastEffect.create(
+		key, world_pos, maxf(radius, 8.0),
+		_ability_fill_color(effect_id), _ability_ring_color(effect_id)
+	)
 	_add_effect_to_arena(vfx)
 
 	# Ability SFX: Mageblast (0) arcane detonation, Warrior Charge blast (1) heavy slam.
@@ -666,18 +683,13 @@ func _sync_local_player_state(entity_data: Dictionary) -> void:
 	var flags: int = entity_data.get("flags", 0)
 	var is_alive := (flags & PacketTypes.ENTITY_FLAG_ALIVE) != 0
 
-	# Sync alive state - detect death
-	if not is_alive:
-		if local_player.action_state != Player.ActionState.DEAD:
-			local_player.action_state = Player.ActionState.DEAD
-			local_player.movement_state = Player.MovementState.IDLE
-			local_player.velocity = Vector2.ZERO
-			local_player.set_input_enabled(false)
-			if prediction_controller:
-				prediction_controller.set_prediction_enabled(false)
-			if local_player.hp_component:
-				local_player.hp_component.set_hp(0)
-		_play_local_death_feedback()
+	# Server-authoritative death backstop: the reliable KILL/KILL_PVP event normally triggers the
+	# death first, but if that snapshot's flags delta is the signal we honor it here too (idempotent).
+	# Gated on authority-sync so a full-state snapshot arriving before we've adopted authority (e.g. a
+	# REQUEST_FULL_STATE reply that momentarily reports the entity not-yet-alive) can't pop a spurious
+	# death screen at join — once we own the player, a cleared ALIVE flag is a real death.
+	if not is_alive and _local_player_authority_synced:
+		_enter_local_death(_last_killer_id)
 
 	# Sync invulnerability visual, then Rogue stealth dim. Stealth wins when both are set.
 	var is_invulnerable := (flags & PacketTypes.ENTITY_FLAG_INVULNERABLE) != 0
@@ -753,35 +765,50 @@ func _handle_damage_event(data: Dictionary) -> void:
 			_last_killer_id = source_id
 
 		if amount > 0 and local_player.hp_component:
-			var was_dead := local_player.hp_component.is_dead
+			# Display only: drive the HP bar from the applied delta. Death is SERVER-authoritative
+			# (the reliable KILL/KILL_PVP event + the ALIVE flag — see _enter_local_death). The
+			# client must NOT declare its own death from predicted HP: its flat 100 max-HP and the
+			# server's class+level-scaled max_health diverge, and server-side regen isn't
+			# replicated, so a client-predicted 0 would start the respawn countdown before the
+			# server agrees the player is dead — and the server then rejects the respawn until its
+			# real HP drains (the "stuck on Respawning…" hang).
 			local_player.hp_component.take_damage(amount)
-			var is_dead := local_player.hp_component.is_dead
 
-			if is_dead and not was_dead:
-				local_player.movement_state = Player.MovementState.IDLE
-				local_player.velocity = Vector2.ZERO
-				local_player.set_input_enabled(false)
-				if prediction_controller:
-					prediction_controller.set_prediction_enabled(false)
-				_play_local_death_feedback()
-			else:
-				# Play hit sound for local player taking damage
-				var audio := _get_audio_manager()
-				if audio:
-					audio.play_player_hit()
-
-			# Spawn damage number
+			# Hit feedback fires on every damage event; the death feedback is separate (it rides
+			# the authoritative kill signal, not this predicted HP).
+			var audio := _get_audio_manager()
+			if audio:
+				audio.play_player_hit()
 			_spawn_damage_number(amount, local_player.global_position, false)
+			if screen_effects:
+				screen_effects.shake(ScreenEffects.SHAKE_HIT)
+				screen_effects.flash_damage()
+			var sparks := ParticleEffects.create_hit_sparks(local_player.global_position)
+			_add_effect_to_arena(sparks)
 
-			if not is_dead:
-				# Screen shake + red flash on hit
-				if screen_effects:
-					screen_effects.shake(ScreenEffects.SHAKE_HIT)
-					screen_effects.flash_damage()
 
-				# Hit sparks at player position
-				var sparks := ParticleEffects.create_hit_sparks(local_player.global_position)
-				_add_effect_to_arena(sparks)
+## Server-authoritative local death transition. The client never declares its own death from
+## predicted HP (its max-HP and the server's diverge, and regen isn't replicated). This is driven
+## by the reliable KILL/KILL_PVP event (exact server timing) with the ALIVE-flag snapshot as a
+## backstop. Idempotent: re-entry while already dead is a no-op, so it's safe to call from every
+## path. Starting the respawn countdown only here keeps it in lockstep with the server's respawn
+## timer, so the respawn request isn't rejected for arriving early.
+func _enter_local_death(killer_id: int) -> void:
+	if local_player == null or not is_instance_valid(local_player):
+		return
+	if killer_id > 0:
+		_last_killer_id = killer_id
+	if local_player.action_state == Player.ActionState.DEAD:
+		return
+	local_player.action_state = Player.ActionState.DEAD
+	local_player.movement_state = Player.MovementState.IDLE
+	local_player.velocity = Vector2.ZERO
+	local_player.set_input_enabled(false)
+	if prediction_controller:
+		prediction_controller.set_prediction_enabled(false)
+	if local_player.hp_component:
+		local_player.hp_component.set_hp(0)
+	_play_local_death_feedback()
 
 
 ## Play local death audio, particles, screen effects, and UI exactly once.
@@ -935,6 +962,8 @@ func _handle_kill_pvp_event(data: Dictionary) -> void:
 
 	if victim_id == local_id:
 		GameManager.update_stat("deaths", 1)
+		# Authoritative death signal (reliable channel, exact server timing).
+		_enter_local_death(killer_id)
 
 
 ## Handle generic kill event (PvE)
@@ -954,6 +983,8 @@ func _handle_kill_event(data: Dictionary) -> void:
 	if killer_id >= GameConstants.MONSTER_ENTITY_ID_START and victim_id < GameConstants.MONSTER_ENTITY_ID_START:
 		if victim_id == local_id:
 			GameManager.update_stat("deaths", 1)
+			# Authoritative death signal (reliable channel, exact server timing).
+			_enter_local_death(killer_id)
 		if kill_feed:
 			var victim_name := EntityNameCache.get_entity_name(victim_id)
 			# Display name comes from the monster catalogue (data-driven). The wire
@@ -1229,6 +1260,11 @@ func _on_disconnected(_reason: String) -> void:
 	# is expected — keep the permadeath death screen up and don't offer to reconnect.
 	if _hardcore_death:
 		return
+	# Leaving for another instance (Sanctuary / menu / Arena portal, instance switch) tears the
+	# link down on purpose; the destination scene shows a loading screen, so this is not a
+	# failure. Only an actual transport-level drop should surface the reconnect overlay.
+	if NetworkManager.last_disconnect_expected:
+		return
 	if GameManager.current_state == GameManager.GameState.IN_ARENA:
 		if connection_lost_overlay:
 			connection_lost_overlay.show_overlay()
@@ -1291,7 +1327,8 @@ func _leave_arena() -> void:
 	NetworkManager.connect_to_server(sanctuary_url, AuthManager.get_token())
 	# Switch scenes immediately; the Sanctuary's _setup_client drives the handshake once the
 	# link opens (connect_to_server awaits the link internally and emits connected_to_server).
-	SceneManager.goto_sanctuary()
+	# The loading screen covers the reconnect + town build (no "connection lost" flash).
+	SceneManager.goto_sanctuary("RETURNING TO SANCTUARY")
 
 
 ## Called when exiting the arena scene
@@ -1869,50 +1906,22 @@ class _GroundDecorLayer extends Node2D:
 			row += 1
 
 
-## Transient expanding-ring/burst VFX for an ABILITY_EFFECT event. Styled by effect_id and
-## sized by the event radius; self-frees after ~0.4s. Pure cosmetics, no logic.
-class _AbilityEffectVfx extends Node2D:
-	const DURATION := 0.4
+## Fill / ring tint for an ABILITY_EFFECT by effect_id, handed to BlastEffect for
+## its procedural-ring fallback (and as the flash tint). Sprite-backed effects
+## ignore these. 0 mageblast, 1 charge_blast, 2 mine_detonation, 3 shadowstep_blink.
+func _ability_fill_color(effect_id: int) -> Color:
+	match effect_id:
+		0: return Color(0.5, 0.7, 1.0)   # mageblast — blue/white
+		1: return Color(1.0, 0.6, 0.2)   # charge_blast — orange
+		2: return Color(1.0, 0.25, 0.15) # mine_detonation — red
+		3: return Color(0.6, 0.3, 0.85)  # shadowstep — purple
+		_: return Color(0.8, 0.8, 0.8)
 
-	## 0 mageblast, 1 charge_blast, 2 mine_detonation, 3 shadowstep_blink.
-	var effect_id: int = 0
-	var max_radius: float = 60.0
-	var _timer: float = 0.0
 
-	func _process(delta: float) -> void:
-		_timer += delta
-		if _timer >= DURATION:
-			queue_free()
-			return
-		queue_redraw()
-
-	func _draw() -> void:
-		var t: float = clampf(_timer / DURATION, 0.0, 1.0)
-		var alpha := 1.0 - t
-		var radius := max_radius * (0.2 + 0.8 * t)
-		var fill := _fill_color()
-		var ring := _ring_color()
-		fill.a = 0.30 * alpha
-		ring.a = 0.9 * alpha
-		draw_circle(Vector2.ZERO, radius, fill)
-		draw_arc(Vector2.ZERO, radius, 0.0, TAU, 48, ring, 3.0)
-		# A second, brighter inner ring for punch.
-		var inner := ring
-		inner.a = 0.5 * alpha
-		draw_arc(Vector2.ZERO, radius * 0.6, 0.0, TAU, 36, inner, 2.0)
-
-	func _fill_color() -> Color:
-		match effect_id:
-			0: return Color(0.5, 0.7, 1.0)   # mageblast — blue/white
-			1: return Color(1.0, 0.6, 0.2)   # charge_blast — orange
-			2: return Color(1.0, 0.25, 0.15) # mine_detonation — red
-			3: return Color(0.6, 0.3, 0.85)  # shadowstep — purple
-			_: return Color(0.8, 0.8, 0.8)
-
-	func _ring_color() -> Color:
-		match effect_id:
-			0: return Color(0.85, 0.95, 1.0)
-			1: return Color(1.0, 0.8, 0.4)
-			2: return Color(1.0, 0.5, 0.3)
-			3: return Color(0.8, 0.5, 1.0)
-			_: return Color(1.0, 1.0, 1.0)
+func _ability_ring_color(effect_id: int) -> Color:
+	match effect_id:
+		0: return Color(0.85, 0.95, 1.0)
+		1: return Color(1.0, 0.8, 0.4)
+		2: return Color(1.0, 0.5, 0.3)
+		3: return Color(0.8, 0.5, 1.0)
+		_: return Color(1.0, 1.0, 1.0)

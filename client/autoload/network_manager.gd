@@ -90,6 +90,13 @@ var _had_successful_connection: bool = false
 ## re-auth and spawn the player again behind the death screen. Cleared on a fresh connect.
 var _suppress_auto_reconnect: bool = false
 
+## True when the most recent `disconnected_from_server` came from a client-initiated disconnect
+## (scene travel, instance switch, logout, sacrifice) rather than a transport-level connection
+## loss. UI that shows a "connection lost" overlay MUST stay silent when this is set — the
+## destination scene covers the transition with a loading screen instead. Cleared once a fresh
+## link opens, so a later genuine drop is treated as unexpected.
+var last_disconnect_expected: bool = false
+
 const UINT32_WRAP: int = 4294967296
 const MAX_REASONABLE_PING_MS: int = 10000
 
@@ -273,6 +280,9 @@ func _complete_connection() -> void:
 	reconnect_attempts = 0
 	_had_successful_connection = true
 	server_clock_offset_samples = 0
+	# A fresh link is open: any subsequent drop starts out unexpected until the client
+	# explicitly tears it down via disconnect_from_server().
+	last_disconnect_expected = false
 
 	# Auth handshake is intentionally NOT sent here — the arena scene drives it
 	# from _setup_client once its server_message_received listener is bound.
@@ -367,6 +377,12 @@ func disconnect_from_server(reason: String = "User disconnect") -> void:
 	# RECONNECTING state, where the transport is already closed and the early-return below would
 	# otherwise leave the backoff timer running and dial back in.
 	_suppress_auto_reconnect = true
+	# Client-initiated: mark every `disconnected_from_server` emitted below as expected so the
+	# in-arena "connection lost" overlay stays hidden during travel/instance switches.
+	last_disconnect_expected = true
+	# Evict the per-entity identity cache so it can't accumulate stale cross-session entries on an
+	# instance switch (Arena <-> Sanctuary). PLAYER_INFO is re-broadcast on the next connect/hydrate.
+	EntityNameCache.clear()
 	if current_state == ConnectionState.RECONNECTING:
 		current_state = ConnectionState.DISCONNECTED
 		_transport.client_reset()
@@ -543,6 +559,12 @@ func send_player_input(input_data: Dictionary) -> void:
 func _on_connection_closed(reason: String) -> void:
 	current_state = ConnectionState.DISCONNECTED
 	_auth_handshake_sent = false
+	# The transport reported CLOSED without a client-initiated disconnect: this is a genuine
+	# loss (server crash, network drop). Leave it flagged unexpected so the overlay surfaces.
+	last_disconnect_expected = false
+	# Drop cached entity identities; an auto-reconnect re-hydrates them via re-broadcast PLAYER_INFO
+	# (see `arena_base._on_reconnected`), so this only costs a brief "Player_N" fallback window.
+	EntityNameCache.clear()
 	disconnected_from_server.emit(reason)
 	if _had_successful_connection and not _suppress_auto_reconnect:
 		_schedule_reconnect()

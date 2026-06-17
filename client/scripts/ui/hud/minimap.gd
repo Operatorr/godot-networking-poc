@@ -80,7 +80,9 @@ func _draw() -> void:
 	var max_r := MINIMAP_SIZE * 0.5 - EDGE_MARGIN
 	_draw_dots("minimap_monster", player_world, zoom, mc, max_r, MONSTER_COLOR, 3.0, false, Color(0, 0, 0, 0))
 	_draw_dots("minimap_npc", player_world, zoom, mc, max_r, NPC_COLOR, 3.0, false, Color(0, 0, 0, 0))
-	_draw_dots("minimap_player_remote", player_world, zoom, mc, max_r, REMOTE_PLAYER_COLOR, 3.0, false, REMOTE_PLAYER_BORDER)
+	# Remote players hide while stealthed (same as their world sprite) — a minimap dot would leak
+	# an invisible player's position.
+	_draw_dots("minimap_player_remote", player_world, zoom, mc, max_r, REMOTE_PLAYER_COLOR, 3.0, false, REMOTE_PLAYER_BORDER, true)
 	# Landmarks clamp to the rim so they stay findable when off the visible window.
 	_draw_dots("minimap_landmark", player_world, zoom, mc, max_r, LANDMARK_COLOR, 3.5, true, Color(0, 0, 0, 0))
 	# Draw the local player last so it sits on top.
@@ -88,9 +90,11 @@ func _draw() -> void:
 
 
 func _draw_dots(group: String, center_world: Vector2, zoom: float, mc: Vector2, max_r: float,
-		color: Color, radius: float, clamp_to_edge: bool, border: Color) -> void:
+		color: Color, radius: float, clamp_to_edge: bool, border: Color, hide_stealthed: bool = false) -> void:
 	for node in get_tree().get_nodes_in_group(group):
 		if not (node is Node2D) or not is_instance_valid(node):
+			continue
+		if hide_stealthed and node is RemotePlayer and (node as RemotePlayer).is_stealthed():
 			continue
 		var p := mc + ((node as Node2D).global_position - center_world) * zoom
 		var off := p - mc

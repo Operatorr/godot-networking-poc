@@ -47,6 +47,16 @@ func heal(amount: int) -> void:
 	hp_changed.emit(current_hp, max_hp)
 
 
+## Set the HP cap (class+level scaling). Clamps current HP to the new cap, or tops it to full when
+## `fill` is set (spawn / level-up). Display mirror — the server owns the authoritative HP.
+func set_max_hp(new_max: int, fill: bool = false) -> void:
+	max_hp = maxi(1, new_max)
+	current_hp = max_hp if fill else mini(current_hp, max_hp)
+	if current_hp > 0:
+		is_dead = false
+	hp_changed.emit(current_hp, max_hp)
+
+
 ## Reset to full HP and clear is_dead flag
 func reset() -> void:
 	is_dead = false

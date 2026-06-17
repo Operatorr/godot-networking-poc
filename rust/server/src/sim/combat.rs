@@ -2,6 +2,7 @@
 //! backstop — port of `server_collision_handler.gd` + `server_main.gd` hit handling
 //! (extraction combat §4.8–4.12, §4.16).
 
+use crate::ability::StatusEffect;
 use crate::leaderboard::Leaderboard;
 use crate::monster::MonsterManager;
 use crate::outbox::Outbox;
@@ -55,14 +56,10 @@ impl HitImpact {
     }
 }
 
-/// The shared damage path for every player hit (PvP collision, validated client report, and the
-/// backstop). Damage selected by owner-id range; DAMAGE broadcasts the APPLIED delta; zero
-/// applied (dead/invulnerable) ⇒ no event at all; knockback and daze only on survival.
-/// Knockback pushes along the projectile's TRAVEL direction (predictable "shot from the left ⇒
-/// thrown to the right"), not away from the impact point — the discrete-tick overlap test can
-/// place the impact point past the target's center, which made away-from-impact feel random.
-/// A target hit while SPRINTING is additionally dazed (sprint/dash locked out) for
-/// `PLAYER_DAZE_DURATION`.
+/// The shared damage path for every PROJECTILE player hit (PvP collision, validated client report,
+/// and the backstop). Damage is the flat per-source constant selected by owner-id range; a
+/// projectile carries no extra status effects beyond the sprint-hit daze, so it delegates to
+/// `apply_player_damage` with an empty effect list.
 pub fn apply_player_hit(
     owner_id: u16,
     target_id: u16,
@@ -71,17 +68,59 @@ pub fn apply_player_hit(
     outbox: &mut Outbox,
     impact: Option<HitImpact>,
 ) {
+    let damage = if owner_id >= MONSTER_ENTITY_ID_START {
+        MONSTER_PROJECTILE_DAMAGE
+    } else {
+        PLAYER_PROJECTILE_DAMAGE
+    };
+    apply_player_damage(
+        owner_id,
+        target_id,
+        damage,
+        &[],
+        players,
+        leaderboard,
+        outbox,
+        impact,
+    );
+}
+
+/// The shared damage core for every player hit — projectiles (via `apply_player_hit`) AND instant
+/// abilities that PvP (Mageblast). Applies `damage` from `owner_id`; DAMAGE broadcasts the APPLIED
+/// delta; zero applied (dead/invulnerable/unauthenticated) ⇒ no event at all; status effects,
+/// daze and knockback only on survival.
+///
+/// On survival, three things land in order: (1) the sprint-hit daze (any target caught SPRINTING),
+/// (2) every `StatusEffect` the source inflicts — the Strategy dispatch: one `match` arm per
+/// effect, so new effects on any spell/ability are added in exactly one place, (3) knockback if an
+/// `impact` is supplied. Knockback pushes along the projectile's TRAVEL direction (predictable
+/// "shot from the left ⇒ thrown to the right"), not away from the impact point — the discrete-tick
+/// overlap test can place the impact point past the target's center, which made away-from-impact
+/// feel random. AoE abilities pass `impact = None` (no knockback).
+#[allow(clippy::too_many_arguments)]
+pub fn apply_player_damage(
+    owner_id: u16,
+    target_id: u16,
+    damage: i32,
+    effects: &[StatusEffect],
+    players: &mut PlayerManager,
+    leaderboard: &mut Leaderboard,
+    outbox: &mut Outbox,
+    impact: Option<HitImpact>,
+) {
+    // Defense-in-depth: never let a source damage/daze/knockback itself. Callers already filter
+    // (AoE excludes the caster; projectiles can't target their owner), but enforcing it here keeps
+    // a future caller from silently enabling self-damage. Safe for PvE — monster owner ids are in a
+    // disjoint range (>= MONSTER_ENTITY_ID_START) and can never equal a player target id.
+    if owner_id == target_id {
+        return;
+    }
     let Some(target) = players.get_by_entity_id_mut(target_id) else {
         return;
     };
     if !target.authenticated {
         return;
     }
-    let damage = if owner_id >= MONSTER_ENTITY_ID_START {
-        MONSTER_PROJECTILE_DAMAGE
-    } else {
-        PLAYER_PROJECTILE_DAMAGE
-    };
     let was_sprinting = target.movement_sm.state() == MoveState::Sprinting;
     let previous = target.health;
     let killed = target.take_damage(damage, owner_id as i32);
@@ -92,6 +131,11 @@ pub fn apply_player_hit(
     if !killed {
         if was_sprinting {
             target.movement_sm.apply_daze(PLAYER_DAZE_DURATION);
+        }
+        for effect in effects {
+            match *effect {
+                StatusEffect::Daze { secs } => target.movement_sm.apply_daze(secs),
+            }
         }
         if let Some(impact) = impact {
             let knock_dir = if impact.direction != Vec2::ZERO && impact.direction.is_finite() {
@@ -134,6 +178,15 @@ fn broadcast_player_kill(
         if killer_id == victim_id {
             return;
         }
+        // Capture the victim's death position + level before any mutation: the kill XP mirrors a
+        // monster kill (the victim is "worth" a monster of their level — see
+        // progression::xp_reward_for_level) and is shared by proximity to where they fell.
+        let Some((victim_pos, victim_level)) = players
+            .get_by_entity_id(victim_id)
+            .map(|v| (v.position, v.level))
+        else {
+            return;
+        };
         let killer_exists_authenticated = match players.get_by_entity_id(killer_id) {
             Some(k) if !k.authenticated => return, // unauthenticated killer suppresses the event
             Some(_) => true,
@@ -145,14 +198,19 @@ fn broadcast_player_kill(
             target_id: victim_id,
             data: GameEventData::None,
         }));
-        if !killer_exists_authenticated {
-            return;
+        if killer_exists_authenticated {
+            if let Some(killer) = players.get_by_entity_id_mut(killer_id) {
+                killer.pvp_kills += 1;
+            }
+            leaderboard.record_pvp_kill(killer_id, victim_id);
+            // No inline broadcast: record_pvp_kill marks the board dirty and the tick loop flushes a
+            // single leaderboard snapshot at end-of-tick, coalescing AoE multi-kills (see World::tick).
         }
-        if let Some(killer) = players.get_by_entity_id_mut(killer_id) {
-            killer.pvp_kills += 1;
-        }
-        leaderboard.record_pvp_kill(killer_id, victim_id);
-        outbox.broadcast(leaderboard_event(leaderboard));
+        // Award shared XP to every living player near the kill (the killer + any co-contributor),
+        // exactly like a monster kill. Granted even if the last-hit killer disconnected, so the
+        // other contributor in a brawl still gets credit.
+        let xp = progression::xp_reward_for_level(victim_level);
+        grant_shared_kill_experience(victim_pos, xp, players, outbox);
     } else {
         outbox.broadcast(ServerPacket::GameEvent(GameEvent {
             event_type: game_event_type::KILL,
@@ -262,18 +320,20 @@ pub fn apply_monster_damage(
             target_id: monster_id,
             data: GameEventData::None,
         }));
-        grant_kill_experience(monster_pos, xp_reward, players, outbox);
+        grant_shared_kill_experience(monster_pos, xp_reward, players, outbox);
         return Some(monster_pos);
     }
     None
 }
 
-/// Server-authoritative XP grant on a monster kill. Every alive, authenticated player within
-/// XP_SHARE_RADIUS gets the full reward (no split). The SERVER owns leveling now: it accumulates
-/// XP, resolves level-ups (recomputing class+level stats), marks progression dirty for the API
-/// write-back, and emits a PROGRESS event (authoritative HUD) plus a cosmetic EXP_GAIN floater.
-fn grant_kill_experience(
-    monster_pos: Vec2,
+/// Server-authoritative XP grant on a kill (monster OR player). Every alive, authenticated player
+/// within XP_SHARE_RADIUS of `death_pos` gets the full reward (no split) — so in a brawl every
+/// contributor in range is rewarded, exactly like a monster kill. The SERVER owns leveling now: it
+/// accumulates XP, resolves level-ups (recomputing class+level stats and fully restoring HP+mana),
+/// marks progression dirty for the API write-back, and emits a PROGRESS event (authoritative HUD)
+/// plus a cosmetic EXP_GAIN floater.
+fn grant_shared_kill_experience(
+    death_pos: Vec2,
     xp_reward: u32,
     players: &mut PlayerManager,
     outbox: &mut Outbox,
@@ -282,12 +342,16 @@ fn grant_kill_experience(
         return;
     }
     let radius_sq = XP_SHARE_RADIUS * XP_SHARE_RADIUS;
+    // The EXP_GAIN floater is a cosmetic u16 on the wire, so it SATURATES at 65535 — at high victim
+    // levels xp_reward_for_level exceeds that (e.g. ~108k at level 50) and the displayed "+N" caps out.
+    // The authoritative grant below uses the full u32 xp_reward, so leveling is unaffected; only the
+    // floater text is clamped. Widening the floater would require a wire-protocol bump.
     let amount = xp_reward.min(u16::MAX as u32) as u16;
     for player in players.players.iter_mut() {
         if !player.authenticated || !player.is_alive {
             continue;
         }
-        if player.position.distance_squared_to(monster_pos) > radius_sq {
+        if player.position.distance_squared_to(death_pos) > radius_sq {
             continue;
         }
         // Cosmetic "+N" floater.
@@ -299,8 +363,13 @@ fn grant_kill_experience(
         }));
         let (new_level, new_xp) =
             progression::apply_experience(player.level, player.experience, xp_reward);
-        if new_level != player.level {
+        let leveled_up = new_level != player.level;
+        if leveled_up {
             player.apply_class_and_level(player.player_class, new_level, new_xp);
+            // A level-up fully restores HP and mana. apply_class_and_level already raised the HP
+            // cap (and partially healed by the delta); top both off to full here.
+            player.health = player.max_health;
+            player.movement_sm.refill_mana();
         } else {
             player.experience = new_xp;
         }
@@ -322,6 +391,18 @@ fn grant_kill_experience(
                 },
             }),
         );
+        // Progress above is owner-only; on a level-up re-broadcast PLAYER_INFO so every other
+        // client's leaderboard shows this player's new level (identity fields are unchanged).
+        if leveled_up {
+            outbox.broadcast(crate::broadcast::player_info_event(
+                player.entity_id,
+                &player.character_name,
+                player.position,
+                player.player_color,
+                player.player_class,
+                player.level,
+            ));
+        }
     }
 }
 
@@ -870,6 +951,41 @@ mod tests {
     }
 
     #[test]
+    fn ability_effect_dazes_walking_target_with_explicit_damage() {
+        // The Mageblast path: explicit ability damage + an unconditional Daze effect, on a target
+        // that is NOT sprinting (so the sprint-hit daze does not fire — only the effect does).
+        let (mut players, _projectiles, mut lb, mut outbox) = setup();
+        let id = players.players[0].entity_id;
+        let before = players.players[0].health;
+        assert_ne!(
+            players.players[0].movement_sm.state(),
+            MoveState::Sprinting,
+            "target must be walking for this test"
+        );
+        apply_player_damage(
+            2, // a player-owned source (no kill here, so owner lookup is irrelevant)
+            id,
+            55, // explicit ability damage, not the flat projectile constant
+            &[StatusEffect::Daze {
+                secs: PLAYER_DAZE_DURATION,
+            }],
+            &mut players,
+            &mut lb,
+            &mut outbox,
+            None, // AoE: no knockback impact
+        );
+        assert_eq!(
+            players.players[0].health,
+            before - 55,
+            "explicit ability damage is applied (not the flat constant)"
+        );
+        assert!(
+            players.players[0].movement_sm.is_dazed(),
+            "the Daze effect fires on a walking target"
+        );
+    }
+
+    #[test]
     fn invulnerable_target_takes_no_damage_no_event() {
         let (mut players, mut projectiles, mut lb, mut outbox) = setup();
         players.players[0].life_state = crate::player::LifeState::Invulnerable;
@@ -937,6 +1053,63 @@ mod tests {
                 ServerPacket::GameEvent(e) if e.event_type == game_event_type::DAMAGE
             )),
             "no DAMAGE event in the safe Sanctuary"
+        );
+    }
+
+    #[test]
+    fn pvp_kill_grants_shared_xp_by_victim_level() {
+        let (mut players, _projectiles, mut lb, mut outbox) = setup(); // adds authed peer 1
+        for peer in [2usize, 3, 4] {
+            players.add_player(peer).unwrap().authenticated = true;
+        }
+        // Killer (1) + near bystander (3) co-located with the victim (2); far bystander (4) well
+        // outside XP_SHARE_RADIUS.
+        for p in players.players.iter_mut() {
+            p.position = Vec2::ZERO;
+        }
+        let far_id = players.get(4).unwrap().entity_id;
+        players.get_by_entity_id_mut(far_id).unwrap().position = Vec2::new(5000.0, 0.0);
+
+        let killer_id = players.get(1).unwrap().entity_id;
+        let victim_id = players.get(2).unwrap().entity_id;
+        // Victim is level 3 → worth 132 XP (monster table); low HP so the hit kills.
+        {
+            let v = players.get_mut(2).unwrap();
+            v.apply_class_and_level(v.player_class, 3, 0);
+            v.health = 10;
+        }
+
+        apply_player_hit(
+            killer_id,
+            victim_id,
+            &mut players,
+            &mut lb,
+            &mut outbox,
+            None,
+        );
+
+        assert!(!players.get(2).unwrap().is_alive, "victim died");
+        assert_eq!(players.get(2).unwrap().level, 3, "victim level unchanged");
+        // 132 XP at level 1 → level 2 with 32 progress (100 to reach level 2).
+        let killer = players.get(1).unwrap();
+        assert_eq!(
+            (killer.level, killer.experience),
+            (2, 32),
+            "killer got full XP"
+        );
+        // Killer's level-up fully restores HP.
+        assert_eq!(killer.health, killer.max_health, "level-up refills HP");
+        let near = players.get(3).unwrap();
+        assert_eq!(
+            (near.level, near.experience),
+            (2, 32),
+            "co-contributor got full XP"
+        );
+        let far = players.get(4).unwrap();
+        assert_eq!(
+            (far.level, far.experience),
+            (1, 0),
+            "out-of-range player got no XP"
         );
     }
 

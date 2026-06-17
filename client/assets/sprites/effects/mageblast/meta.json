@@ -1,0 +1,16 @@
+{
+  "canvas": [
+    128,
+    128
+  ],
+  "directional": false,
+  "dir_order": [],
+  "anims": {
+    "blast": {
+      "frames": 13,
+      "fps": 26,
+      "loop": false,
+      "png": "blast.png"
+    }
+  }
+}

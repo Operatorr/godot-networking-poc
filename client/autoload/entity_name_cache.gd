@@ -9,9 +9,13 @@ var entity_names: Dictionary = {}  # entity_id (int) -> character_name (String)
 var entity_colors: Dictionary = {}  # entity_id (int) -> Color
 ## Entity ID to player class mapping (PacketTypes.PlayerClass; server-clamped to 0..6)
 var entity_classes: Dictionary = {}  # entity_id (int) -> player_class (int)
+## Entity ID to player level mapping (server-authoritative, >= 1; from PLAYER_INFO — broadcast for
+## all players since protocol v6, re-sent on hydrate + level-up so it stays fresh for observers)
+var entity_levels: Dictionary = {}  # entity_id (int) -> level (int)
 
 signal entity_color_updated(entity_id: int, player_color: Color)
 signal entity_class_updated(entity_id: int, player_class: int)
+signal entity_level_updated(entity_id: int, level: int)
 
 ## Runtime mode detection
 var _is_server: bool = false
@@ -50,12 +54,14 @@ func _on_server_message(message_type: int, data: Dictionary) -> void:
 		var character_name: String = event_data.get("character_name", "")
 		var player_color: Color = event_data.get("player_color", Color(0.27, 0.53, 1.0))
 		var player_class: int = int(event_data.get("player_class", PacketTypes.PlayerClass.ZEALOT))
+		var player_level: int = maxi(1, int(event_data.get("player_level", 1)))
 
 		if entity_id > 0 and not character_name.is_empty():
 			set_entity_name(entity_id, character_name)
 			set_entity_color(entity_id, player_color)
 			set_entity_class(entity_id, player_class)
-			print("[EntityNameCache] Cached: entity %d -> '%s' color=%s class=%d" % [entity_id, character_name, player_color, player_class])
+			set_entity_level(entity_id, player_level)
+			print("[EntityNameCache] Cached: entity %d -> '%s' color=%s class=%d level=%d" % [entity_id, character_name, player_color, player_class, player_level])
 
 
 ## Add or update entity name
@@ -74,6 +80,12 @@ func set_entity_color(entity_id: int, player_color: Color) -> void:
 func set_entity_class(entity_id: int, player_class: int) -> void:
 	entity_classes[entity_id] = player_class
 	entity_class_updated.emit(entity_id, player_class)
+
+
+## Add or update entity level (re-broadcast PLAYER_INFO on hydrate/level-up keeps this fresh)
+func set_entity_level(entity_id: int, level: int) -> void:
+	entity_levels[entity_id] = level
+	entity_level_updated.emit(entity_id, level)
 
 
 ## Get entity name with fallback
@@ -97,6 +109,13 @@ func get_entity_class(entity_id: int) -> int:
 	return PacketTypes.PlayerClass.ZEALOT
 
 
+## Get entity level with fallback (1 until PLAYER_INFO arrives)
+func get_entity_level(entity_id: int) -> int:
+	if entity_levels.has(entity_id):
+		return entity_levels[entity_id]
+	return 1
+
+
 ## Check if an entity name is cached
 func has_entity_name(entity_id: int) -> bool:
 	return entity_names.has(entity_id)
@@ -112,6 +131,7 @@ func clear() -> void:
 	entity_names.clear()
 	entity_colors.clear()
 	entity_classes.clear()
+	entity_levels.clear()
 
 
 ## Remove specific entity name
@@ -119,3 +139,4 @@ func remove_entity_name(entity_id: int) -> void:
 	entity_names.erase(entity_id)
 	entity_colors.erase(entity_id)
 	entity_classes.erase(entity_id)
+	entity_levels.erase(entity_id)

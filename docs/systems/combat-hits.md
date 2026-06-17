@@ -28,14 +28,15 @@ All combat constants live in [`rust/sim_core/src/constants.rs`](../../rust/sim_c
 | Player hitbox radius | 16 u | `PLAYER_HITBOX_RADIUS` |
 | Monster hitbox radius | 16 u | `MONSTER_HITBOX_RADIUS` |
 | Hit window (PvP & PvE) | 24 u | `PROJECTILE_RADIUS + PLAYER/MONSTER_HITBOX_RADIUS` |
-| Max projectile distance | 800 u | `PROJECTILE_MAX_DISTANCE` |
+| Max projectile distance | 800 u (default); **per-class** override, Warrior/Rogue **560** | `PROJECTILE_MAX_DISTANCE` (default) / `ClassStats::projectile_max_distance` |
 | Player projectile damage (flat fallback) | 25 | `PLAYER_PROJECTILE_DAMAGE` |
 | Monster projectile damage | 10 | `MONSTER_PROJECTILE_DAMAGE` |
 | Max PvE rewind | 6 ticks (200 ms @30 Hz) | `MAX_PVE_PROJECTILE_COMPENSATION_TICKS` |
 | Max **PvP** rewind | **4 ticks (~133 ms @30 Hz)** | `MAX_PVP_PROJECTILE_COMPENSATION_TICKS` |
 | PvP defender-favor lerp | 0.25 | `PVP_DEFENDER_FAVOR` |
 | Knockback force (player & monster bullets) | 450 u/s | `PLAYER/MONSTER_PROJECTILE_KNOCKBACK_FORCE` |
-| Daze on hit while sprinting | 1.5 s | `PLAYER_DAZE_DURATION` |
+| Daze duration (sprint-hit or Mageblast) | 1.5 s | `PLAYER_DAZE_DURATION` |
+| Daze movement slow | ×0.7 (−30%) for the duration | `PLAYER_DAZE_SPEED_MULTIPLIER` |
 | Backstop overlap window | 24 u (true, no looser) | `HIT_BACKSTOP_OVERLAP_UNITS` |
 | Backstop grace floor | 15 ticks | `HIT_BACKSTOP_GRACE_TICKS` |
 | Local-hit-report rate cap | 20 / s / peer | `LOCAL_HIT_REPORT_MAX_PER_SECOND` (`combat.rs`) |
@@ -191,23 +192,32 @@ projectiles only** (monster-owned are skipped — D11 invariant #1):
   bullets *between backstop firings* — the backstop bounds the abuse to blatant overlaps. PvP and
   player→monster PvE stay fully server-authoritative.
 
-### On a hit (shared path) — damage, knockback, daze, kills
+### On a hit (shared path) — damage, knockback, daze, effects, kills
 
-Every player hit (PvP collision, validated client report, and the backstop) resolves through the one
-shared `combat::apply_player_hit` (`combat.rs`):
+Every player hit resolves through one shared core, `combat::apply_player_damage(owner, target,
+damage, effects, …)` (`combat.rs`). Projectile hits (PvP collision, validated client report, and the
+backstop) go through the thin `apply_player_hit` wrapper, which picks the flat owner-id damage and
+passes an **empty** effect list; instant PvP abilities (**Mageblast**) call the core directly with
+their own `damage` and `effects`:
 
-- **Damage** is selected by owner-id range (monster-owned ⇒ `MONSTER_PROJECTILE_DAMAGE`, else
-  `PLAYER_PROJECTILE_DAMAGE`). `DAMAGE` broadcasts the **applied** delta; **zero applied**
-  (dead/invulnerable target) ⇒ **no event at all**.
+- **Damage.** For projectiles it is selected by owner-id range (monster-owned ⇒
+  `MONSTER_PROJECTILE_DAMAGE`, else `PLAYER_PROJECTILE_DAMAGE`); abilities pass their own value
+  (Mageblast 55). `DAMAGE` broadcasts the **applied** delta; **zero applied** (dead/invulnerable
+  target) ⇒ **no event at all**.
+- **Daze (sprint hit)** (survival only): a target hit **while SPRINTING** is dazed for
+  `PLAYER_DAZE_DURATION` (1.5 s) — sprint and dash locked out, **and walk speed cut 30%**
+  (`PLAYER_DAZE_SPEED_MULTIPLIER`, applied in the shared `ground_speed` so prediction agrees);
+  walking still allowed (replicated via `ENTITY_FLAG_DAZED`; the client shows circling stars). See
+  [`players-movement-state-machine.md`](players-movement-state-machine.md).
+- **Status effects** (survival only): every `ability::StatusEffect` in the source's list is applied
+  via one `match` (Strategy dispatch) — today `Daze { secs }`, which Mageblast inflicts on every
+  player in its blast (unconditionally, not just sprinters). New effects (slow/burn/…) are a variant
+  + an arm; see [`abilities.md`](abilities.md) "On-hit status effects".
 - **Knockback** (survival only) pushes along the projectile's **travel direction** (fallback:
   away-from-impact when no direction is known) with the projectile's per-spawn `knockback_force`
   (450 u/s today; the `apply_knockback` multiplier is the buff/debuff hook). Travel direction beats
   away-from-impact because the discrete-tick overlap test can place the impact point past the
-  target's centre, which made away-from-impact feel random.
-- **Daze** (survival only): a target hit **while SPRINTING** is dazed for `PLAYER_DAZE_DURATION`
-  (1.5 s) — sprint and dash locked out, walking allowed (replicated via `ENTITY_FLAG_DAZED`; the
-  client shows circling stars). See
-  [`players-movement-state-machine.md`](players-movement-state-machine.md).
+  target's centre, which made away-from-impact feel random. AoE abilities pass no impact ⇒ no knockback.
 - **Kill** (lethal): `broadcast_player_kill` emits `KILL_PVP` (PvP) and credits the killer +
   leaderboard, or `KILL` (monster killer). A PvP self-hit and an unauthenticated killer are guarded.
 

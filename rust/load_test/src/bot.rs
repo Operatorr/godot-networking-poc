@@ -55,8 +55,8 @@ pub struct Bot {
     peer_key: usize,
     behavior: BehaviorState,
     rng: Pcg32,
-    /// Player class (0=Zealot … 6=Mage), picked uniformly at random once at construction and
-    /// sent in ConnectAuth — exercises the identity plumbing across the swarm.
+    /// Player class — one of Warrior(4)/Rogue(5)/Mage(6), assigned round-robin by bot id so a
+    /// swarm is split evenly across the three playable classes. Sent in ConnectAuth.
     player_class: u8,
     sm: MovementSm,
     pos: Vec2,
@@ -84,6 +84,12 @@ pub struct Bot {
     /// needs a snapshot to re-evaluate around the new position, and stale far entities would
     /// otherwise log as false cull violations.
     aoi_grace_until: f64,
+    /// Own authoritative HP, learned from `ActionConfirm.health` (the only HP source on the wire —
+    /// snapshots carry no HP). `max_health` is the running max ever seen (full on spawn, so it
+    /// converges to the true class/level max); together they give the HP fraction the strategy AI
+    /// uses to decide whether to break off and grab a Healthorb.
+    health: u16,
+    max_health: u16,
 }
 
 impl Bot {
@@ -124,12 +130,16 @@ impl Bot {
         };
         // Reproducible per-bot stream when `--seed` is given (`seed ^ bot_id`, matching the rng
         // module contract); otherwise fall back to entropy for an unseeded run.
-        let mut rng = match seed {
+        let rng = match seed {
             Some(s) => Pcg32::new(s ^ id as u64),
             None => Pcg32::from_entropy(id as u64),
         };
-        let player_class = rng.rand_index(7) as u8; // uniform over the 7 classes (0=Zealot … 6=Mage)
-        debug!("bot {id} picked class {player_class}");
+        // Only the three playable classes are spawned, round-robin by bot id so a swarm is split
+        // evenly (3 bots → 1 Warrior, 1 Rogue, 1 Mage). The other classes are disabled, and an even
+        // split makes test runs reproducible and easy to read. ids: Warrior=4, Rogue=5, Mage=6.
+        const SPAWN_CLASSES: [u8; 3] = [4, 5, 6];
+        let player_class = SPAWN_CLASSES[(id as usize).wrapping_sub(1) % SPAWN_CLASSES.len()];
+        debug!("bot {id} assigned class {player_class}");
         Ok(Self {
             id,
             phase: Phase::Connecting,
@@ -137,7 +147,7 @@ impl Bot {
             entity_id: 0,
             host,
             peer_key,
-            behavior: BehaviorState::new(behavior, difficulty),
+            behavior: BehaviorState::new(behavior, difficulty, player_class),
             rng,
             player_class,
             sm: MovementSm::new(),
@@ -160,6 +170,8 @@ impl Bot {
             dead_since: None,
             last_respawn_request_at: f64::NEG_INFINITY,
             pos_synced: false,
+            health: 0,
+            max_health: 0,
             aoi_grace_until: 0.0,
         })
     }
@@ -311,14 +323,22 @@ impl Bot {
                 self.pos = Vec2::new(c.position.0, c.position.1);
                 self.pos_synced = true;
                 self.sm.set_resources(c.stamina as f64, c.mana as f64);
+                // Track HP for the strategy AI's orb-seek decision. max_health is the running max
+                // (HP is full on spawn/respawn, so this latches the true class/level max).
+                self.health = c.health;
+                self.max_health = self.max_health.max(c.health);
             }
             ServerPacket::GameEvent(e) => {
                 self.metrics.game_events_received += 1;
                 use protocol::types::game_event_type as t;
                 match e.event_type {
                     t::PROJECTILE_FIRED => {
-                        // target_id = projectile id (non-zero for monster shots — D11).
-                        if e.source_id >= MONSTER_ID_START && e.target_id != 0 {
+                        // target_id = projectile id, source_id = its owner. Record EVERY shot —
+                        // monster, player, AND other bots — so the strategy AI can dodge incoming
+                        // PvP fire, not just monster bullets. (`scan_for_monster_hits` re-filters to
+                        // monster owners for client-authoritative PvE hit reports; PvP hits are
+                        // server-authoritative and must never be self-reported.)
+                        if e.target_id != 0 {
                             self.projectile_owners.insert(e.target_id, e.source_id);
                         }
                     }
@@ -334,6 +354,7 @@ impl Bot {
                         self.dead_since = None;
                         self.sm.reset();
                         self.vel = Vec2::ZERO;
+                        self.health = self.max_health; // respawn restores full HP
                         self.aoi_grace_until = now + 1.0;
                     }
                     _ => {}
@@ -451,15 +472,25 @@ impl Bot {
         }
 
         let mut flags: u16 = 0;
+        // Cursor world position for cursor-targeted ability casts; `None` ⇒ the bot's own position.
+        let mut cursor: Option<(f32, f32)> = None;
         if self.dead_since.is_some() {
             self.maybe_request_respawn(now);
             // Keep sending zero-input frames while dead, like an idle client.
         } else {
             let decision = {
+                // HP fraction for the orb-seek decision; treat "unknown HP" (no confirm yet) as
+                // full so a fresh bot never thinks it is hurt before its first ActionConfirm.
+                let hp_fraction = if self.max_health > 0 {
+                    self.health as f64 / self.max_health as f64
+                } else {
+                    1.0
+                };
                 let view = View {
                     my_id: self.entity_id,
                     pos: (self.pos.x, self.pos.y),
                     stamina: self.sm.stamina(),
+                    hp_fraction,
                     entities: &self.entities,
                     projectile_owners: &self.projectile_owners,
                 };
@@ -467,6 +498,7 @@ impl Bot {
             };
             flags = decision.flags;
             self.last_aim = decision.aim_angle;
+            cursor = decision.cursor;
             let aim = self.last_aim as f64;
             let aim_dir = Vec2::new(aim.cos() as f32, aim.sin() as f32);
             let result = step_movement(
@@ -491,7 +523,8 @@ impl Bot {
             aim_angle: self.last_aim,
             position: (self.pos.x, self.pos.y),
             velocity: (self.vel.x, self.vel.y),
-            cursor: (self.pos.x, self.pos.y), // bots aim from their own position
+            // Target world position for cursor-aimed casts (Rogue/Mage); own position otherwise.
+            cursor: cursor.unwrap_or((self.pos.x, self.pos.y)),
             client_render_tick: (self.metrics.last_server_tick & 0xFFFF) as u16,
             client_rtt_ms: self.last_rtt_ms.clamp(0.0, u16::MAX as f64) as u16,
         });

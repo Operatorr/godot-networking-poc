@@ -117,6 +117,23 @@ mirror only** — `set_hp()` is the authoritative path written from server `Game
 flags; the client never decides its own death. Death sets the entity's ALIVE flag off; dead players
 keep replicating (animation DEATH, flags == VISIBLE) and are not despawned.
 
+The death transition + respawn countdown on the client (`arena_base.gd::_enter_local_death`) is driven
+**only** by server-authoritative signals — the reliable `KILL` / `KILL_PVP` event (exact server
+timing), with the ALIVE-flag snapshot as a backstop — **never** by the client's predicted HP reaching
+0. Letting predicted HP trigger death would start the respawn countdown before the server agreed the
+player was dead, and the server would then reject the respawn (`is_alive` still true) until its real
+HP drained — the "stuck on Respawning…" hang.
+
+The HUD HP bar's **cap** is class+level-scaled to match the server's `max_health`: `Player`
+mirrors the Rust `ClassStats` (`_HP_BASE` / `_HP_PER_LEVEL`) and computes
+`max_hp = base + per_level·(level−1)` (`apply_level_scaled_max_hp`, applied at spawn and on every
+`PROGRESS` event; a level-up fills to the new max, matching the server's full HP+mana restore). HP
+itself is not carried in snapshots, so the bar's *current* value is reconciled the same way as
+stamina/mana: `ActionConfirm` carries the owner's authoritative `health` (protocol v5), and
+`prediction.gd::_handle_action_confirm` snaps `hp_component` to it each confirm — keeping the bar in
+step with server-side regen and any damage the delta tracking missed. The reconciliation is gated to
+**alive only** (`health > 0`); death never comes from HP, only the reliable KILL/KILL_PVP event.
+
 ## Local player: predicted
 
 The Local player is simulated immediately on input, before the server confirms — see
@@ -136,14 +153,29 @@ The Local player is simulated immediately on input, before the server confirms �
 - Visual correction: smooth lerp at `interpolation_speed = 12.0`, unless the correction exceeds
   `teleport_threshold = 150` u, which snaps instantly (and `reset_physics_interpolation()` so the
   render lerp doesn't smear across the snap).
-- The Local player slaves its DAZED and DASHING/CHARGING edges to the server's authoritative entity
-  flags (`prediction.gd::_update_own_flags` / `_update_own_charge`) so a server-applied daze or a
-  charge end releases the prediction exactly when the server does, instead of rubber-banding.
+- The Local player slaves its DAZED, KNOCKED_BACK and DASHING/CHARGING edges to the server's
+  authoritative entity flags (`prediction.gd::_update_own_flags` / `_update_own_charge`) so a
+  server-applied daze or a charge end releases the prediction exactly when the server does, instead
+  of rubber-banding.
+- **Knockback freeze-and-follow.** Because the client never predicts knockback (it's server-only),
+  while the `KNOCKED_BACK` flag is set the local player **stops input-driven prediction and eases
+  toward the authoritative server position** (`_follow_server_through_knockback`): the sim still
+  advances its timers on neutral input, but its position output is ignored and both reconcile paths
+  (Snapshot + `ActionConfirm`) skip input-replay. Without this the input-driven sim fought the
+  server's knockback and the reconcile lerp chased a moving target — a visible twitch, worst exactly
+  when you steered against the knockback. The KNOCKED_BACK flag is only sent on flag *edges*, so a
+  sustained/chained knockback exposes no per-tick re-affirmation; the follow is held by a comms-loss
+  ceiling (`KNOCKBACK_FOLLOW_MAX_SECONDS`, 4 s) that is **re-armed** by every update still flagging
+  knockback (the rising edge + each full-state baseline, ~3.3 s apart), so it only force-resumes if
+  flag deltas *and* baselines both stop. Normal release is the observed falling edge (including via
+  the next baseline); on resume the stale input buffer is dropped and prediction restarts from the
+  server's last position.
 
 Confirmations ride **ch0** as `ActionConfirm` (type 66): `[seq][action][s16 qx][s16 qy][result]
-[u16 server_tick][u8 stamina][u8 mana]` — see [`../server/contract.md`](../server/contract.md).
-Quantization is wire-frozen: positions ×10 truncate-toward-zero clamped to `i16`; stamina/mana ×255
-round-half-away clamped to `u8`.
+[u16 server_tick][u8 stamina][u8 mana][u8 dash_cd][u8 ability_cd][u16 health]` — see
+[`../server/contract.md`](../server/contract.md). Quantization is wire-frozen: positions ×10
+truncate-toward-zero clamped to `i16`; stamina/mana are `clamp(round(v), 0, 255)`; dash/ability
+cooldowns are `clamp(round(seconds×10), 0, 255)` (deciseconds); `health` is the raw `u16`.
 
 ## Remote players: interpolated
 

@@ -28,7 +28,9 @@ A stat at level `L` is `base + per_lvl * (L - 1)`; max level **50**.
 | -------------- | ---- | --------- | ------ |
 | Primary damage | 25   | +2.5      | 147.5  |
 
-Cooldown 0.3 s, projectile speed 400 (shared).
+Cooldown 0.3 s, projectile speed 400 (shared). Projectile reach is **560** units — a deliberate
+30% cut below the 800 baseline (`projectile_max_distance`), so this melee bruiser must close in
+while the Mage and ranged kits poke from outside its range.
 
 ## Class ability (RMB) — Charge
 
@@ -75,6 +77,12 @@ steering motion and mana drain are shared.
 **Audio.** A low looping rumble plays **while charging** (`AudioManager.play_charge_loop` /
 `stop_charge_loop`, driven by the predicted charge edges in `prediction.gd`), and the `charge` impact
 SFX fires on the `CHARGE_BLAST` effect when it connects.
+
+**VFX.** The blast plays a generated orange fiery-nova sprite animation (`charge_blast`) via
+`BlastEffect`, and a **shader-driven GPU particle trail** (`ChargeTrail`) streams orange embers
+behind the Warrior while charging (created on the same predicted charge edges as the rumble). Both
+are render-only; see
+[`arena-visuals.md`](../../systems/arena-visuals.md#ability-blast-effects--charge-trail-implemented-2026-06-17).
 
 ### The eight questions (this ability)
 

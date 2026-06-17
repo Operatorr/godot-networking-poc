@@ -72,6 +72,16 @@ pub fn apply_experience(level: u16, experience: u32, gained: u32) -> (u16, u32) 
     (level, experience.min(u32::MAX as u64) as u32)
 }
 
+/// XP awarded for defeating a level-`level` combatant — `round(100 × 1.15^(level - 1))`, the
+/// monster EXP table in docs/gdd/progression/EXP_monster_table.md. Used for BOTH monster kills and
+/// PvP kills, so a defeated player is worth the same XP as a monster of their level. The level is
+/// clamped to the player cap (the only PvP victims). Server-authoritative only (XP is replicated,
+/// never predicted), so the float `powi` is fine here — it does not feed client prediction.
+pub fn xp_reward_for_level(level: u16) -> u32 {
+    let level = level.clamp(1, MAX_PLAYER_LEVEL);
+    (100.0_f64 * 1.15_f64.powi(level as i32 - 1)).round() as u32
+}
+
 /// Health regenerated per second at `level` — a smooth lerp from 0.2 hp/s (L1) to 5.0 hp/s (L50).
 pub fn health_regen_per_sec(level: u16) -> f64 {
     let level = level.clamp(1, MAX_PLAYER_LEVEL);
@@ -122,6 +132,23 @@ mod tests {
         // Level 3 = 100 + 400 = 500 lifetime XP = 5 Glory.
         assert_eq!(total_lifetime_xp(3, 0), 500);
         assert_eq!(glory_for(3, 0), 5);
+    }
+
+    #[test]
+    fn xp_reward_matches_monster_table() {
+        // Values from docs/gdd/progression/EXP_monster_table.md (the documented equation).
+        assert_eq!(xp_reward_for_level(1), 100);
+        assert_eq!(xp_reward_for_level(2), 115);
+        assert_eq!(xp_reward_for_level(3), 132);
+        assert_eq!(xp_reward_for_level(5), 175);
+        assert_eq!(xp_reward_for_level(10), 352);
+        assert_eq!(xp_reward_for_level(15), 708);
+        // Level 0 / above-cap inputs clamp into [1, MAX_PLAYER_LEVEL].
+        assert_eq!(xp_reward_for_level(0), 100);
+        assert_eq!(
+            xp_reward_for_level(MAX_PLAYER_LEVEL + 5),
+            xp_reward_for_level(MAX_PLAYER_LEVEL)
+        );
     }
 
     #[test]

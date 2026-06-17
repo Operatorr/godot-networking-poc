@@ -23,7 +23,10 @@ static func play(world: Node, player: Node2D, class_id: int, cursor: Vector2) ->
 			# 3 spinning "bibles" orbiting the player (Vampire-Survivors feel).
 			player.add_child(_make_orbit(3, 80.0, BIBLE_DURATION, Color(0.97, 0.9, 0.55)))
 		PacketTypes.PlayerClass.MAGE:
-			world.add_child(_make_burst(cursor, 144.0, 0.45, Color(0.55, 0.78, 1.0)))
+			world.add_child(BlastEffect.create(
+				"mageblast", cursor, 144.0,
+				Color(0.5, 0.7, 1.0), Color(0.85, 0.95, 1.0)
+			))
 			_play_mageblast_sfx(player)
 		PacketTypes.PlayerClass.VOID_HUNTER:
 			var dir := _dir(ppos, cursor)
@@ -35,7 +38,10 @@ static func play(world: Node, player: Node2D, class_id: int, cursor: Vector2) ->
 			world.add_child(_make_zone(cursor, 100.0, ZONE_DURATION, Color(0.62, 0.32, 0.78)))
 		PacketTypes.PlayerClass.WARRIOR:
 			var dir := _dir(ppos, cursor)
-			world.add_child(_make_burst(ppos + dir * 220.0, 120.0, 0.5, Color(1.0, 0.62, 0.22)))
+			world.add_child(BlastEffect.create(
+				"charge_blast", ppos + dir * 220.0, 120.0,
+				Color(1.0, 0.6, 0.2), Color(1.0, 0.8, 0.4)
+			))
 		PacketTypes.PlayerClass.ROGUE:
 			if player.has_method("apply_stealth_preview"):
 				player.apply_stealth_preview(STEALTH_DURATION)

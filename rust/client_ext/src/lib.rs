@@ -299,6 +299,7 @@ impl ProtocolCodec {
                 out.set("server_tick", c.server_tick as i64);
                 out.set("stamina", c.stamina as i64);
                 out.set("mana", c.mana as i64);
+                out.set("health", c.health as i64);
                 // Dequantized to seconds so GDScript reconciliation compares against the predicted
                 // cooldown directly (PredictionSim cooldowns are in seconds).
                 out.set("dash_cooldown", protocol::dequant_cooldown(c.dash_cooldown));
@@ -341,6 +342,7 @@ impl ProtocolCodec {
                         y,
                         color,
                         class,
+                        level,
                     } => {
                         data.set("character_name", &GString::from(name.as_str()));
                         data.set("position", v2(x, y));
@@ -353,13 +355,15 @@ impl ProtocolCodec {
                             ),
                         );
                         data.set("player_class", class as i64);
+                        data.set("player_level", level as i64);
                     }
                     protocol::GameEventData::Leaderboard { entries } => {
                         let mut arr = VarArray::new();
-                        for (entity_id, pvp_kills) in entries {
+                        for (entity_id, pvp_kills, deaths) in entries {
                             let mut row = VarDictionary::new();
                             row.set("entity_id", entity_id as i64);
                             row.set("pvp_kills", pvp_kills as i64);
+                            row.set("deaths", deaths as i64);
                             arr.push(&row.to_variant());
                         }
                         data.set("entries", &arr);

@@ -2,6 +2,10 @@
 ## Pulsing bioluminescent text with cosmic horror aesthetic
 extends Control
 
+## Headline shown above the animated dots. SceneManager sets this per transition (via
+## set_loading_text) so the same overlay reads "ENTERING THE ARENA", "ENTERING THE SANCTUARY",
+## "RETURNING TO MENU", etc. Defaults to the Arena message for direct/standalone uses.
+@export var loading_title: String = "ENTERING THE ARENA"
 
 var _title_label: Label = null
 var _dots_label: Label = null
@@ -33,7 +37,7 @@ func _build_ui() -> void:
 
 	# Title
 	_title_label = Label.new()
-	_title_label.text = "ENTERING THE ARENA"
+	_title_label.text = loading_title
 	_title_label.add_theme_font_size_override("font_size", 36)
 	_title_label.add_theme_color_override("font_color", Color(0.27, 0.53, 1.0))
 	_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -60,6 +64,16 @@ func _process(delta: float) -> void:
 	var t := Time.get_ticks_msec() / 1000.0
 	var pulse := 0.6 + 0.4 * sin(t * TAU * 0.5)
 	_title_label.modulate.a = pulse
+
+
+## Set the headline (e.g. "ENTERING THE SANCTUARY"). Safe to call before or after _ready —
+## updates the live label if it exists, otherwise the value is picked up by _build_ui().
+func set_loading_text(text: String) -> void:
+	if text.is_empty():
+		return
+	loading_title = text
+	if _title_label:
+		_title_label.text = text
 
 
 ## Called by SceneManager

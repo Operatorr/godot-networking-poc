@@ -404,11 +404,14 @@ func broadcast_movement_state() -> void:
 
 
 #region Queries & debug
-## Effective ground speed (walk or sprint) including the Haste/Slow multiplier.
-## Used by both live prediction and reconciliation replay so they agree.
+## Effective ground speed (walk or sprint) including the Haste/Slow multiplier and the daze slow.
+## Used by both live prediction and reconciliation replay so they agree. While dazed, ground speed
+## is cut to PLAYER_DAZE_SPEED_MULTIPLIER (sprint is separately refused, so live this only scales
+## walking). Mirrors rust/sim_core MovementSm::ground_speed.
 func get_ground_speed(is_sprinting: bool) -> float:
 	var base := GameConstants.PLAYER_SPRINT_SPEED if is_sprinting else GameConstants.PLAYER_SPEED
-	return base * _speed_multiplier
+	var daze := GameConstants.PLAYER_DAZE_SPEED_MULTIPLIER if is_dazed() else 1.0
+	return base * _speed_multiplier * daze
 
 
 func is_input_locked() -> bool:

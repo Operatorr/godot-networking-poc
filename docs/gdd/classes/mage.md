@@ -27,7 +27,8 @@ A stat at level `L` is `base + per_lvl * (L - 1)`; max level **50**.
 |---|---|---|---|
 | Primary damage | 28 | +3 | 175 |
 
-Cooldown 0.3 s, projectile speed 400 (shared).
+Cooldown 0.3 s, projectile speed 400 (shared). Projectile reach **800** units — full baseline,
+vs the Warrior/Rogue's throttled 560, so the Mage out-ranges both melee bruisers.
 
 ## Class ability (RMB) — Mageblast
 
@@ -42,20 +43,30 @@ An **instant AOE explosion** at the cursor — no travel time, big single burst.
 | `max_cast_range` | 600 |
 
 **Behavior.** On cast the server validates Mana/cooldown, deducts Mana, clamps the cursor target to
-`max_cast_range` (600) of the caster, and resolves an instant AOE at that point: every monster within
-144 (`radius`) takes 55 (`damage`) in a single burst. There is no projectile and no lingering entity —
-only an `ABILITY_EFFECT` VFX event marks the explosion. All damage is server-side.
+`max_cast_range` (600) of the caster, and resolves an instant AOE at that point: every **monster**
+within 144 (`radius`) takes 55 (`damage`) in a single burst. **In PvP it also hits players:** every
+**other** player within the radius (the caster is never caught by their own blast) takes the same 55
+and is **Dazed** for 1.5 s (`PLAYER_DAZE_DURATION`) — sprint and dash locked out **and walk speed
+cut 30%** (`PLAYER_DAZE_SPEED_MULTIPLIER`), the same control debuff a sprint-hit applies (walking is
+slowed, not blocked). This is the Mage's CC. The player damage is gated by the arena PvP flag,
+so it does nothing in the safe Sanctuary. There is no projectile and no lingering entity — only an
+`ABILITY_EFFECT` VFX event marks the explosion, and the Daze rides the existing `DAZED` entity flag.
+All damage and effects are server-side.
+
+The Daze is wired through a reusable **on-hit effect system** (`ability::StatusEffect`, applied in
+`combat::apply_player_damage`): Mageblast lists `Daze` in its `ability_effects`, and future spells
+can gain Daze/slow/burn/etc. by listing them — see [`../systems/abilities.md`](../../systems/abilities.md).
 
 ### The eight questions (this ability)
 
-- **Client:** sends the ability flag + cursor; renders the explosion from the `ABILITY_EFFECT` event.
-- **Server:** authoritative — validates Mana/cooldown, clamps the target to range, applies the instant 55 AOE within radius 144.
-- **Predicted:** nothing — the explosion is instant and server-resolved; only the Mage's own movement is predicted.
-- **Replicated:** an `ABILITY_EFFECT` event carrying the blast center + radius (no persistent entity).
+- **Client:** sends the ability flag + cursor; renders the explosion from the `ABILITY_EFFECT` event as a generated cyan arcane-burst sprite (`mageblast`) via `BlastEffect` (ring fallback when the art is missing — see [`../systems/arena-visuals.md`](../../systems/arena-visuals.md#ability-blast-effects--charge-trail-implemented-2026-06-17)); shows the Daze star-indicator from the replicated `DAZED` flag.
+- **Server:** authoritative — validates Mana/cooldown, clamps the target to range, applies the instant 55 AOE to monsters and (PvP) to other players in radius, dazing the players hit.
+- **Predicted:** nothing — the explosion is instant and server-resolved; only the Mage's own movement is predicted. A victim's client slaves its local Daze to the server's `DAZED` flag edge.
+- **Replicated:** an `ABILITY_EFFECT` event (blast center + radius), per-victim `DAMAGE`, and the `DAZED` entity flag on each dazed player. No persistent entity.
 - **Persisted:** nothing — the blast is a one-shot.
-- **Validated:** Mana ≥ cost, cooldown elapsed, and cast point within `max_cast_range` — all server-side.
-- **Can fail:** insufficient Mana or on cooldown ⇒ no-op; an out-of-range cursor is clamped, not rejected.
-- **Tested:** protocol round-trip for the ability flag + `ABILITY_EFFECT`; AOE radius + range clamp by play-test.
+- **Validated:** Mana ≥ cost, cooldown elapsed, cast point within `max_cast_range`, and PvP enabled for player damage — all server-side.
+- **Can fail:** insufficient Mana or on cooldown ⇒ no-op; an out-of-range cursor is clamped, not rejected; player damage/daze is skipped where PvP is disabled (Sanctuary).
+- **Tested:** protocol round-trip for the ability flag + `ABILITY_EFFECT`; unit tests for the effect dispatch + the PvP AoE (damage + daze, caster excluded, PvP-gated); AOE radius + range clamp by play-test.
 
 ## See also
 

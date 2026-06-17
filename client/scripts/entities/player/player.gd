@@ -112,6 +112,19 @@ const _ABILITY_COOLDOWN := [8.0, 5.0, 8.0, 7.0, 9.0, 10.0, 6.0]
 ## Per-class stamina regen (u/s) while not sprinting, same index. Mage (6) regenerates slower.
 const _STAMINA_REGEN := [20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 14.0]
 
+## Per-class primary-attack projectile travel distance (units), same index. Warrior (4) and Rogue
+## (5) are throttled to 70% reach so Mage and the ranged kits out-distance them. Offline parity
+## with the Rust ClassStats projectile_max_distance / client/data/classes/*.json; online the local
+## player does not spawn its own projectiles (they are server entities), so this is offline-only.
+const _PROJECTILE_RANGE := [800.0, 800.0, 800.0, 800.0, 560.0, 560.0, 800.0]
+
+## Per-class base HP and HP-per-level, same index. Mirrors the Rust ClassStats
+## (server/src/sim/ability.rs) so the HUD HP bar's max matches the server's class+level-scaled
+## max_health: max_hp(level) = hp_base + hp_per_level * (level - 1). HP is NOT in snapshots, so the
+## client derives the cap from class+level rather than receiving it.
+const _HP_BASE := [120.0, 90.0, 100.0, 95.0, 130.0, 85.0, 80.0]
+const _HP_PER_LEVEL := [8.0, 5.0, 6.0, 5.0, 9.0, 4.0, 4.0]
+
 ## Reference to HP component
 @onready var hp_component: HPComponent = $HPComponent
 
@@ -135,6 +148,11 @@ func _ready() -> void:
 	assert(
 		_ABILITY_MANA_COST.size() == PacketTypes.CLASS_DISPLAY_NAMES.size(),
 		"_ABILITY_MANA_COST must have one entry per PacketTypes.PlayerClass"
+	)
+	assert(
+		_HP_BASE.size() == PacketTypes.CLASS_DISPLAY_NAMES.size() \
+			and _HP_PER_LEVEL.size() == PacketTypes.CLASS_DISPLAY_NAMES.size(),
+		"_HP_BASE/_HP_PER_LEVEL must have one entry per PacketTypes.PlayerClass"
 	)
 
 	# Set motion mode for top-down game (no gravity)
@@ -166,7 +184,13 @@ func _ready() -> void:
 	movement_sm.ability_cost = _ability_mana_cost_for_class(configured_class)
 	movement_sm.ability_cooldown_max = _ability_cooldown_for_class(configured_class)
 	movement_sm.stamina_regen = _stamina_regen_for_class(configured_class)
+	projectile_range = _projectile_range_for_class(configured_class)
 	movement_sm.ability_triggered.connect(_on_offline_ability_triggered)
+
+	# HUD HP bar: scale the cap to this class+level so the bar's max matches the server's
+	# max_health (it used to pin a flat 100, which diverged for high-HP classes/levels and made
+	# the client mispredict its own death). Full HP at spawn; PROGRESS events keep it in step.
+	apply_level_scaled_max_hp(_get_configured_player_level(), true)
 
 	_daze_indicator = DazeIndicator.new()
 	add_child(_daze_indicator)
@@ -341,6 +365,34 @@ func _stamina_regen_for_class(class_id: int) -> float:
 	if class_id >= 0 and class_id < _STAMINA_REGEN.size():
 		return _STAMINA_REGEN[class_id]
 	return GameConstants.PLAYER_STAMINA_REGEN_PER_SEC
+
+
+func _projectile_range_for_class(class_id: int) -> float:
+	if class_id >= 0 and class_id < _PROJECTILE_RANGE.size():
+		return _PROJECTILE_RANGE[class_id]
+	return GameConstants.PROJECTILE_MAX_DISTANCE
+
+
+## Class+level-scaled max HP — mirrors the server's effective_max_health
+## (rust/server/src/sim/ability.rs): base_hp + hp_per_level * (level - 1). Inputs are integers, so
+## this is exact (no rounding ambiguity vs the server's round()).
+func _max_hp_for_class_level(class_id: int, level: int) -> int:
+	var idx := clampi(class_id, 0, _HP_BASE.size() - 1)
+	# Clamp to [1, MAX_PLAYER_LEVEL] to match the server's scale_stat — the server caps level at 50
+	# before it reaches us, but mirroring the upper bound keeps the derived cap from ever exceeding
+	# the server's max_health if an out-of-range level slips through.
+	var lvl := clampi(level, 1, GameConstants.MAX_PLAYER_LEVEL)
+	return int(roundf(_HP_BASE[idx] + _HP_PER_LEVEL[idx] * float(lvl - 1)))
+
+
+## Recompute the HP cap from this player's class at `level` so the HUD bar's max tracks the
+## server's max_health. `fill` tops HP to full (spawn / level-up, where the server also fully
+## heals); otherwise current HP is clamped to the new cap. Display mirror — the server stays
+## authoritative for the actual HP value.
+func apply_level_scaled_max_hp(level: int, fill: bool = false) -> void:
+	if hp_component == null:
+		return
+	hp_component.set_max_hp(_max_hp_for_class_level(_get_configured_player_class(), level), fill)
 
 
 ## Offline RMB preview: the GDScript SM (offline mover) fired an ability and paid the mana cost.
@@ -528,6 +580,17 @@ func set_dazed(active: bool) -> void:
 
 
 func _on_hp_component_died() -> void:
+	# Online, death is SERVER-authoritative: arena_base._enter_local_death (driven by the reliable
+	# KILL/KILL_PVP event) performs this transition. The networked HP bar is a display mirror that
+	# can momentarily read 0 — delta tracking racing the authoritative ActionConfirm reconcile, or
+	# missing server-side regen — while the server still has the player alive. Acting on that here
+	# would set action_state = DEAD (which _physics_process treats as "block all processing") and
+	# strand the player at 0 HP, unable to move, with no death screen. So defer to the server; the
+	# next confirm reconciles HP back up. Offline (sandbox/practice), the hp_component IS the
+	# authority, so keep the local death transition.
+	if prediction_owns_movement:
+		return
+
 	action_state = ActionState.DEAD
 	movement_state = MovementState.IDLE
 	velocity = Vector2.ZERO
@@ -678,6 +741,17 @@ func _get_configured_player_class() -> int:
 	if game_mgr == null:
 		return PacketTypes.PlayerClass.ZEALOT
 	return game_mgr.player_data.get("player_class", PacketTypes.PlayerClass.ZEALOT)
+
+
+## The local player's current level (>= 1). Defaults to 1 offline / before hydration.
+func _get_configured_player_level() -> int:
+	var tree := get_tree()
+	if tree == null:
+		return 1
+	var game_mgr = tree.root.get_node_or_null("GameManager")
+	if game_mgr == null:
+		return 1
+	return maxi(1, int(game_mgr.player_data.get("player_level", 1)))
 
 
 ## Get readable state name for debugging

@@ -122,6 +122,39 @@ static func class_id_to_name(class_id: int) -> String:
 		return String(CLASS_DISPLAY_NAMES[PlayerClass.ZEALOT])
 	return String(CLASS_DISPLAY_NAMES[class_id])
 
+## Per-class identity colors, indexed by PlayerClass. Inspired by World of Warcraft class colors:
+## Warrior=tan, Rogue=yellow, Mage=light-blue (the three playable classes), with the deferred four
+## mapped to thematically-fitting WoW palettes (Zealot=Paladin pink, Void Hunter=Demon Hunter
+## magenta, Engineer=Evoker teal, Plague Seer=Death Knight red). Used to tint leaderboard rows etc.
+const CLASS_COLORS := [
+	Color(0.961, 0.549, 0.729),  # ZEALOT      — Paladin pink   #F58CBA
+	Color(0.639, 0.188, 0.788),  # VOID_HUNTER — Demon Hunter    #A330C9
+	Color(0.200, 0.576, 0.498),  # ENGINEER    — Evoker teal     #33937F
+	Color(0.769, 0.118, 0.227),  # PLAGUE_SEER — Death Knight red #C41E3A
+	Color(0.776, 0.612, 0.431),  # WARRIOR     — Warrior tan      #C69B6E
+	Color(1.000, 0.961, 0.412),  # ROGUE       — Rogue yellow     #FFF569
+	Color(0.412, 0.800, 0.941),  # MAGE        — Mage light-blue  #69CCF0
+]
+
+## Pixel-art class-icon texture paths, keyed by PlayerClass. Only the playable classes (Warrior,
+## Rogue, Mage) ship icons today; deferred classes have no entry and fall back to no icon (see
+## PLAYABLE_CLASSES). Add the other four here when those classes leave the deferred set.
+const CLASS_ICON_PATHS := {
+	PlayerClass.WARRIOR: "res://assets/ui/hud/class_icons/warrior.png",
+	PlayerClass.ROGUE: "res://assets/ui/hud/class_icons/rogue.png",
+	PlayerClass.MAGE: "res://assets/ui/hud/class_icons/mage.png",
+}
+
+## WoW-inspired identity color for a PlayerClass enum value (clamped to the valid range).
+static func class_color(class_id: int) -> Color:
+	if class_id < 0 or class_id >= CLASS_COLORS.size():
+		return CLASS_COLORS[PlayerClass.ZEALOT]
+	return CLASS_COLORS[class_id]
+
+## res:// path of the class icon for a PlayerClass, or "" when that class has no icon yet.
+static func class_icon_path(class_id: int) -> String:
+	return CLASS_ICON_PATHS.get(class_id, "")
+
 ## Animation states (fits in u8)
 enum AnimationState {
 	IDLE = 0,
@@ -157,7 +190,7 @@ const ENTITY_FLAG_VISIBLE := 1 << 5
 const ENTITY_FLAG_DASHING := 1 << 6       ## Movement SM is in the DASHING state
 const ENTITY_FLAG_KNOCKED_BACK := 1 << 7  ## Movement SM is in the KNOCKED_BACK state
 const ENTITY_FLAG_DAZED := 1 << 8         ## Daze timer active (sprint/dash locked out)
-const ENTITY_FLAG_STEALTH := 1 << 9       ## Rogue stealth active (dim the sprite when set)
+const ENTITY_FLAG_STEALTH := 1 << 9       ## Rogue stealth: local player dims, others hide fully
 
 ## Delta compression mask bits (TASK-021)
 ## Used in STATE_UPDATE packets to indicate which fields changed

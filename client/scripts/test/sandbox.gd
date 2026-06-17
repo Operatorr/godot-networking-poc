@@ -139,7 +139,8 @@ func _seed_leaderboard() -> void:
 	for i in range(5):
 		entries.append({
 			"entity_id": i + 1,
-			"pvp_kills": (5 - i) * 3 + randi() % 5
+			"pvp_kills": (5 - i) * 3 + randi() % 5,
+			"deaths": i + randi() % 4
 		})
 		EntityNameCache.set_entity_name(i + 1, _fake_names[i])
 

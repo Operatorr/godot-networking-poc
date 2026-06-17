@@ -4,7 +4,20 @@
 //! (mana cost / cooldown / charge tuning, so prediction matches) and the server-only effect
 //! dispatch in `world.rs`.
 
+use sim_core::constants::PLAYER_DAZE_DURATION;
 use sim_core::progression::scale_stat;
+
+/// A status effect an attack/ability can inflict on a player it damages. The combat hit path
+/// (`combat::apply_player_damage`) iterates an ability's `ability_effects` and dispatches each via
+/// one `match` — the Strategy pattern expressed as an enum (idiomatic Rust, const-friendly, no heap
+/// or vtable). Adding a new effect (slow, burn, silence…) is a new variant here plus one arm in
+/// that match; every spell/ability that lists it in `ability_effects` then gains it for free.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum StatusEffect {
+    /// Lock sprint & dash for `secs` (walking still allowed) — the same `MovementSm` daze a
+    /// sprint-hit applies. Re-application extends, never shortens. Mageblast inflicts this.
+    Daze { secs: f64 },
+}
 
 /// Which RMB effect a class has. Derived from `player_class`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,10 +59,17 @@ pub struct ClassStats {
     pub speed_per_level: f64,
     pub base_damage: f64,
     pub damage_per_level: f64,
+    /// How far a primary-attack projectile travels before it despawns (world units). Per-class so
+    /// melee-leaning kits (Warrior/Rogue) can be range-throttled while casters keep reach. Mirrors
+    /// `projectile_max_distance` in `client/data/classes/<id>.json` (primary block).
+    pub projectile_max_distance: f32,
     /// Stamina regen (u/s) while not sprinting. Mage is deliberately lower than Warrior/Rogue.
     pub stamina_regen_per_sec: f64,
     // ── RMB ability ──
     pub ability_mana: f64,
+    /// Status effects this class's ability inflicts on players it damages (Strategy dispatch in
+    /// `combat::apply_player_damage`). Empty for abilities with no on-hit effect.
+    pub ability_effects: &'static [StatusEffect],
     pub ability_cooldown: f64,
     /// Generic ability magnitude (per-hit / blast / AOE / dps depending on kind).
     pub ability_damage: i32,
@@ -115,7 +135,9 @@ const ZEALOT: ClassStats = ClassStats {
     speed_per_level: 0.5,
     base_damage: 22.0,
     damage_per_level: 2.0,
+    projectile_max_distance: 800.0,
     ability_mana: 35.0,
+    ability_effects: &[],
     ability_cooldown: 8.0,
     ability_damage: 15,
     ability_radius: 80.0, // orbit radius
@@ -138,7 +160,9 @@ const VOID_HUNTER: ClassStats = ClassStats {
     speed_per_level: 0.7,
     base_damage: 26.0,
     damage_per_level: 2.5,
+    projectile_max_distance: 800.0,
     ability_mana: 30.0,
+    ability_effects: &[],
     ability_cooldown: 5.0,
     ability_damage: 18,
     ability_radius: 0.0,
@@ -161,7 +185,9 @@ const ENGINEER: ClassStats = ClassStats {
     speed_per_level: 0.5,
     base_damage: 24.0,
     damage_per_level: 2.0,
+    projectile_max_distance: 800.0,
     ability_mana: 35.0,
+    ability_effects: &[],
     ability_cooldown: 8.0,
     ability_damage: 60,
     ability_radius: 120.0,  // blast radius
@@ -184,7 +210,9 @@ const PLAGUE_SEER: ClassStats = ClassStats {
     speed_per_level: 0.5,
     base_damage: 20.0,
     damage_per_level: 2.0,
+    projectile_max_distance: 800.0,
     ability_mana: 35.0,
+    ability_effects: &[],
     ability_cooldown: 7.0,
     ability_damage: 12, // dps
     ability_radius: 100.0,
@@ -210,7 +238,9 @@ const WARRIOR: ClassStats = ClassStats {
     speed_per_level: 0.6,
     base_damage: 25.0,
     damage_per_level: 2.5,
+    projectile_max_distance: 560.0, // 30% below the 800 baseline — melee bruiser, short reach
     ability_mana: 30.0, // activation cost (the charge then drains more per unit — see below)
+    ability_effects: &[],
     ability_cooldown: 4.5,
     ability_damage: 50, // blast damage
     ability_radius: 120.0,
@@ -235,7 +265,9 @@ const ROGUE: ClassStats = ClassStats {
     speed_per_level: 0.9,
     base_damage: 24.0,
     damage_per_level: 2.0,
+    projectile_max_distance: 560.0, // 30% below the 800 baseline — assassin, short reach
     ability_mana: 30.0,
+    ability_effects: &[],
     ability_cooldown: 10.0,
     ability_damage: 85,    // AoE landing damage
     ability_radius: 160.0, // cursor search radius
@@ -258,7 +290,12 @@ const MAGE: ClassStats = ClassStats {
     speed_per_level: 0.5,
     base_damage: 28.0,
     damage_per_level: 3.0,
+    projectile_max_distance: 800.0, // full baseline reach — the long-range caster
     ability_mana: 40.0,
+    // Mageblast dazes every player caught in the blast (sprint/dash locked), on top of its damage.
+    ability_effects: &[StatusEffect::Daze {
+        secs: PLAYER_DAZE_DURATION,
+    }],
     ability_cooldown: 6.0,
     ability_damage: 55,
     ability_radius: 144.0, // +20% blast radius
@@ -314,6 +351,39 @@ mod tests {
         for c in 0..7u8 {
             let is_warrior = c == 4;
             assert_eq!(stats_for_class(c).charge_speed > 0.0, is_warrior);
+        }
+    }
+
+    #[test]
+    fn warrior_and_rogue_have_30pct_shorter_reach() {
+        // Warrior (4) and Rogue (5) are throttled to 560; everyone else keeps the 800 baseline.
+        for c in 0..7u8 {
+            let expected = if c == 4 || c == 5 { 560.0 } else { 800.0 };
+            assert_eq!(
+                stats_for_class(c).projectile_max_distance,
+                expected,
+                "class {c} reach"
+            );
+        }
+        // 560 is exactly 30% below 800.
+        assert!((stats_for_class(4).projectile_max_distance - 800.0 * 0.7).abs() < 1e-3);
+    }
+
+    #[test]
+    fn only_mage_inflicts_daze() {
+        for c in 0..7u8 {
+            let effects = stats_for_class(c).ability_effects;
+            if c == 6 {
+                assert_eq!(
+                    effects,
+                    &[StatusEffect::Daze {
+                        secs: PLAYER_DAZE_DURATION
+                    }],
+                    "mage dazes"
+                );
+            } else {
+                assert!(effects.is_empty(), "class {c} has no on-hit effect");
+            }
         }
     }
 }

@@ -40,6 +40,10 @@ pub struct ActionConfirm {
     /// dash or cast can't leave the client's cooldown permanently out of phase with the server.
     pub dash_cooldown: u8,
     pub ability_cooldown: u8,
+    /// Authoritative current HP for the owner's HUD bar. HP is not carried in snapshots, so the
+    /// owner reconciles its display-only HP against this (like stamina/mana above) — keeping the
+    /// bar in step with server-side regen and any damage the client's delta tracking missed.
+    pub health: u16,
 }
 
 /// GAME_EVENT — common head + per-type tail, identical semantics to today (extraction §4.15).
@@ -97,9 +101,15 @@ pub enum GameEventData {
         color: (u8, u8, u8),
         /// Player class (0=Zealot … 6=Mage). Already server-clamped when broadcast.
         class: u8,
+        /// Server-authoritative character level (≥1). Broadcast to ALL clients (unlike `Progress`,
+        /// which is owner-only) so every client can show each player's level — e.g. the leaderboard.
+        /// Re-sent on hydrate completion and on level-up so observers stay fresh.
+        level: u16,
     },
     Leaderboard {
-        entries: Vec<(u16, u16)>,
+        /// `(entity_id, pvp_kills, deaths)` per ranked player. Ranking is by kills (the server
+        /// `top_n` order); deaths ride along so the HUD can show a Kills:Deaths ratio.
+        entries: Vec<(u16, u16, u16)>,
     },
     /// `target_id` of the enclosing event is the projectile id — MUST be non-zero for monster
     /// shots (D11 carried-forward invariant).
@@ -219,6 +229,7 @@ impl ServerPacket {
                 w.write_u8(c.mana);
                 w.write_u8(c.dash_cooldown);
                 w.write_u8(c.ability_cooldown);
+                w.write_u16(c.health);
             }
             ServerPacket::GameEvent(e) => {
                 // The decoder picks the data layout from event_type; a mismatched variant
@@ -258,6 +269,7 @@ impl ServerPacket {
                         y,
                         color,
                         class,
+                        level,
                     } => {
                         w.write_str8(name);
                         w.write_i16(quant_coord(*x));
@@ -266,13 +278,15 @@ impl ServerPacket {
                         w.write_u8(color.1);
                         w.write_u8(color.2);
                         w.write_u8(*class);
+                        w.write_u16(*level);
                     }
                     GameEventData::Leaderboard { entries } => {
                         let n = entries.len().min(10);
                         w.write_u8(n as u8);
-                        for (id, kills) in entries.iter().take(n) {
+                        for (id, kills, deaths) in entries.iter().take(n) {
                             w.write_u16(*id);
                             w.write_u16(*kills);
+                            w.write_u16(*deaths);
                         }
                     }
                     GameEventData::ProjectileFired { x, y, fire_tick } => {
@@ -360,6 +374,7 @@ impl ServerPacket {
                 mana: r.read_u8()?,
                 dash_cooldown: r.read_u8()?,
                 ability_cooldown: r.read_u8()?,
+                health: r.read_u16()?,
             }),
             server_type::GAME_EVENT => {
                 let event_type = r.read_u8()?;
@@ -387,6 +402,7 @@ impl ServerPacket {
                         y: dequant_coord(r.read_i16()?),
                         color: (r.read_u8()?, r.read_u8()?, r.read_u8()?),
                         class: r.read_u8()?,
+                        level: r.read_u16()?,
                     },
                     game_event_type::LEADERBOARD_UPDATE => {
                         let n = r.read_u8()? as usize;
@@ -395,7 +411,7 @@ impl ServerPacket {
                         }
                         let mut entries = Vec::with_capacity(n);
                         for _ in 0..n {
-                            entries.push((r.read_u16()?, r.read_u16()?));
+                            entries.push((r.read_u16()?, r.read_u16()?, r.read_u16()?));
                         }
                         GameEventData::Leaderboard { entries }
                     }
@@ -516,6 +532,7 @@ mod tests {
             mana: 100,
             dash_cooldown: 55,
             ability_cooldown: 100,
+            health: 437,
         });
         match rt(p) {
             ServerPacket::ActionConfirm(c) => {
@@ -524,6 +541,7 @@ mod tests {
                 assert_eq!(c.stamina, 73);
                 assert_eq!(c.dash_cooldown, 55);
                 assert_eq!(c.ability_cooldown, 100);
+                assert_eq!(c.health, 437);
             }
             other => panic!("wrong: {other:?}"),
         }
@@ -566,6 +584,7 @@ mod tests {
                     y: -1.0,
                     color: (69, 135, 255),
                     class: 4,
+                    level: 37,
                 },
             },
             GameEvent {
@@ -573,7 +592,7 @@ mod tests {
                 source_id: 0,
                 target_id: 0,
                 data: GameEventData::Leaderboard {
-                    entries: vec![(1, 5), (2, 3), (7, 1)],
+                    entries: vec![(1, 5, 2), (2, 3, 4), (7, 1, 0)],
                 },
             },
             GameEvent {
@@ -630,14 +649,21 @@ mod tests {
                     match (&d.data, &e.data) {
                         (
                             GameEventData::PlayerInfo {
-                                name: a, class: ca, ..
+                                name: a,
+                                class: ca,
+                                level: la,
+                                ..
                             },
                             GameEventData::PlayerInfo {
-                                name: b, class: cb, ..
+                                name: b,
+                                class: cb,
+                                level: lb,
+                                ..
                             },
                         ) => {
                             assert_eq!(a, b);
                             assert_eq!(ca, cb);
+                            assert_eq!(la, lb);
                         }
                         (
                             GameEventData::Leaderboard { entries: a },
@@ -717,6 +743,7 @@ mod tests {
                 y: 0.0,
                 color: (1, 2, 3),
                 class: 255,
+                level: 1,
             },
         });
         match rt(p) {

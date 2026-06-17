@@ -28,7 +28,7 @@ use tracing::{debug, info};
 
 /// 50% chance for a monster to drop a Healthorb on death; the orb heals this much HP.
 const HEALTHORB_DROP_CHANCE: f64 = 0.5;
-const HEALTHORB_HEAL: i32 = 5;
+const HEALTHORB_HEAL: i32 = 25;
 
 /// Rogue Shadowstep tuning (server-authoritative; not predicted).
 /// Max blink distance when the Rogue casts on empty ground (no target near the cursor): the
@@ -309,7 +309,7 @@ impl World {
         let per_peer_bytes = ((effective as f64 / rate as f64).trunc() as usize)
             .clamp(MIN_SNAPSHOT_FLOOR, self.config.max_snapshot_bytes);
 
-        let (entity_id, name, color, class, position, character_id) = {
+        let (entity_id, name, color, class, level, position, character_id) = {
             let Some(state) = self.players.get_mut(peer) else {
                 return;
             };
@@ -338,6 +338,7 @@ impl World {
                 state.character_name.clone(),
                 state.player_color,
                 state.player_class,
+                state.level,
                 state.position,
                 state.character_id,
             )
@@ -366,7 +367,7 @@ impl World {
         // PLAYER_INFO fan-out order (lifecycle §4.4): newcomer to all (incl. self), then every
         // OTHER authenticated player to the newcomer, then leaderboard register + broadcast.
         outbox.broadcast(crate::broadcast::player_info_event(
-            entity_id, &name, position, color, class,
+            entity_id, &name, position, color, class, level,
         ));
         let others: Vec<ServerPacket> = self
             .players
@@ -380,6 +381,7 @@ impl World {
                     p.position,
                     p.player_color,
                     p.player_class,
+                    p.level,
                 )
             })
             .collect();
@@ -452,7 +454,7 @@ impl World {
             // bar immediately and the owner can reconcile its PREDICTED cooldowns against the
             // authoritative ones (otherwise a refused / lost / boundary-timed dash drifts them
             // permanently out of phase — the dash-desync bug).
-            let (pos, mana, dash_cd, ability_cd) = self
+            let (pos, mana, dash_cd, ability_cd, health) = self
                 .players
                 .get(r.peer)
                 .map(|p| {
@@ -461,9 +463,10 @@ impl World {
                         protocol::quant_resource(p.movement_sm.mana()),
                         protocol::quant_cooldown(p.movement_sm.dash_cooldown_remaining()),
                         protocol::quant_cooldown(p.movement_sm.ability_cooldown_remaining()),
+                        p.health.clamp(0, u16::MAX as i32) as u16,
                     )
                 })
-                .unwrap_or((r.position, r.mana, 0, 0));
+                .unwrap_or((r.position, r.mana, 0, 0, 0));
             outbox.send(
                 r.peer,
                 ServerPacket::ActionConfirm(ActionConfirm {
@@ -480,6 +483,7 @@ impl World {
                     mana,
                     dash_cooldown: dash_cd,
                     ability_cooldown: ability_cd,
+                    health,
                 }),
             );
         }
@@ -508,9 +512,9 @@ impl World {
         }
         self.process_hardcore_deaths();
         self.leaderboard_timer += tick_dt;
-        if self.leaderboard_timer >= LEADERBOARD_BROADCAST_INTERVAL {
+        let leaderboard_cadence_due = self.leaderboard_timer >= LEADERBOARD_BROADCAST_INTERVAL;
+        if leaderboard_cadence_due {
             self.leaderboard_timer = 0.0;
-            outbox.broadcast(combat::leaderboard_event(&self.leaderboard));
         }
 
         // 3. Monster AI (+ fire events: position (0,0), tick 0, non-zero projectile id — D11).
@@ -566,6 +570,14 @@ impl World {
         //     pickups). Damage funnels through the same monster-damage path; more kills can drop
         //     more orbs.
         self.tick_world_entities(tick_dt, outbox);
+
+        // 5d. Coalesced leaderboard broadcast: one snapshot per tick at most. Every kill path above
+        //     (collisions, D11 backstop, ability AoE, world entities) marks the board dirty rather
+        //     than broadcasting inline, so an AoE that wipes several players emits a single update.
+        //     Also fires on the periodic cadence so HUDs stay fresh even with no recent kills.
+        if leaderboard_cadence_due || self.leaderboard.take_dirty() {
+            outbox.broadcast(combat::leaderboard_event(&self.leaderboard));
+        }
 
         // 6. Snapshot broadcast.
         if snapshot_due {
@@ -671,6 +683,7 @@ impl World {
         let spawn_pos = fire_origin + aim_dir * (PLAYER_HITBOX_RADIUS + PROJECTILE_RADIUS + 2.0);
         let owner_id = state.entity_id;
         let primary_damage = state.primary_damage();
+        let max_distance = ability::stats_for_class(state.player_class).projectile_max_distance;
         if let Some(proj) = self.projectiles.spawn_projectile_ex(
             owner_id,
             spawn_pos,
@@ -682,6 +695,7 @@ impl World {
             PLAYER_PROJECTILE_KNOCKBACK_FORCE,
             primary_damage,
             0,
+            max_distance,
         ) {
             let projectile_id = proj.entity_id;
             self.players.players[player_index].start_shoot_cooldown();
@@ -747,6 +761,15 @@ impl World {
                     stats.ability_radius,
                     stats.ability_damage,
                     owner_id,
+                    outbox,
+                );
+                // PvP: the blast also damages and dazes players in radius (Mage's `ability_effects`).
+                self.aoe_damage_players(
+                    center,
+                    stats.ability_radius,
+                    stats.ability_damage,
+                    owner_id,
+                    stats.ability_effects,
                     outbox,
                 );
                 self.broadcast_ability_effect(
@@ -826,6 +849,7 @@ impl World {
                 PLAYER_PROJECTILE_KNOCKBACK_FORCE,
                 stats.ability_damage,
                 stats.multishot_pierce,
+                stats.projectile_max_distance,
             ) {
                 let projectile_id = proj.entity_id;
                 outbox.broadcast(ServerPacket::GameEvent(GameEvent {
@@ -1056,6 +1080,51 @@ impl World {
         self.roll_healthorbs(&killed);
     }
 
+    /// PvP mirror of `aoe_damage_monsters`: apply an instant ability's `damage` + on-hit `effects`
+    /// to every OTHER alive, authenticated player within `radius` of `center`. Routes through the
+    /// shared `combat::apply_player_damage`, so kills, shared XP, the leaderboard and the DAMAGE
+    /// broadcast all match the projectile path; the daze/effects then replicate via the existing
+    /// DAZED entity flag (no new wire format). No knockback — an AoE has no single travel
+    /// direction. Skips the caster; a no-op where PvP is disabled (the safe Sanctuary).
+    fn aoe_damage_players(
+        &mut self,
+        center: Vec2,
+        radius: f32,
+        damage: i32,
+        owner_id: u16,
+        effects: &'static [ability::StatusEffect],
+        outbox: &mut Outbox,
+    ) {
+        if !self.pvp_enabled {
+            return;
+        }
+        let r2 = radius * radius;
+        let ids: Vec<u16> = self
+            .players
+            .players
+            .iter()
+            .filter(|p| {
+                p.authenticated
+                    && p.is_alive
+                    && p.entity_id != owner_id
+                    && p.position.distance_squared_to(center) <= r2
+            })
+            .map(|p| p.entity_id)
+            .collect();
+        for id in ids {
+            combat::apply_player_damage(
+                owner_id,
+                id,
+                damage,
+                effects,
+                &mut self.players,
+                &mut self.leaderboard,
+                outbox,
+                None,
+            );
+        }
+    }
+
     /// 50% Healthorb drop per killed monster (uses the world PCG so the order is deterministic).
     fn roll_healthorbs(&mut self, positions: &[Vec2]) {
         for &pos in positions {
@@ -1174,6 +1243,12 @@ impl World {
                 let move_speed_q = (p.effective_move_speed() / 4.0).round().clamp(0.0, 255.0) as u8;
                 let (peer, entity_id, level, experience) =
                     (p.peer, p.entity_id, p.level, p.experience);
+                let (name, color, class, position) = (
+                    p.character_name.clone(),
+                    p.player_color,
+                    p.player_class,
+                    p.position,
+                );
                 outbox.send(
                     peer,
                     ServerPacket::GameEvent(GameEvent {
@@ -1187,6 +1262,11 @@ impl World {
                         },
                     }),
                 );
+                // Join broadcast PLAYER_INFO with the pre-hydrate default level (1); now that the
+                // real level has landed, re-broadcast so every OTHER client's leaderboard shows it.
+                outbox.broadcast(crate::broadcast::player_info_event(
+                    entity_id, &name, position, color, class, level,
+                ));
             }
         }
         for d in deaths {
@@ -1554,6 +1634,72 @@ mod tests {
         }
         // Shooting also ended spawn invulnerability if any and started the cooldown.
         assert!(world.players.get(1).unwrap().shoot_cooldown > 0.0);
+    }
+
+    #[test]
+    fn mageblast_aoe_damages_and_dazes_players_in_radius() {
+        let mut world = test_world();
+        world.pvp_enabled = true;
+        let caster = join(&mut world, 1, "Mage");
+        let victim = join(&mut world, 2, "Victim");
+        let far = join(&mut world, 3, "Bystander");
+        // Caster + victim at the blast centre; the bystander is well outside the 144 radius.
+        world.players.get_by_entity_id_mut(caster).unwrap().position = Vec2::new(0.0, 0.0);
+        world.players.get_by_entity_id_mut(victim).unwrap().position = Vec2::new(50.0, 0.0);
+        world.players.get_by_entity_id_mut(far).unwrap().position = Vec2::new(500.0, 0.0);
+        let caster_hp = world.players.get_by_entity_id(caster).unwrap().health;
+        let victim_hp = world.players.get_by_entity_id(victim).unwrap().health;
+        let far_hp = world.players.get_by_entity_id(far).unwrap().health;
+
+        let mut outbox = Outbox::new();
+        world.aoe_damage_players(
+            Vec2::new(0.0, 0.0),
+            144.0,
+            55,
+            caster,
+            &[ability::StatusEffect::Daze {
+                secs: sim_core::constants::PLAYER_DAZE_DURATION,
+            }],
+            &mut outbox,
+        );
+
+        // Victim in radius: takes the blast damage and is dazed.
+        let v = world.players.get_by_entity_id(victim).unwrap();
+        assert_eq!(v.health, victim_hp - 55, "victim took Mageblast damage");
+        assert!(v.movement_sm.is_dazed(), "victim dazed by Mageblast");
+        // Caster: never caught by their own blast despite being at the centre.
+        let c = world.players.get_by_entity_id(caster).unwrap();
+        assert_eq!(c.health, caster_hp, "caster unharmed by own blast");
+        assert!(!c.movement_sm.is_dazed(), "caster not self-dazed");
+        // Bystander outside the radius: untouched.
+        let f = world.players.get_by_entity_id(far).unwrap();
+        assert_eq!(f.health, far_hp, "out-of-radius player untouched");
+        assert!(!f.movement_sm.is_dazed());
+    }
+
+    #[test]
+    fn mageblast_aoe_is_noop_when_pvp_disabled() {
+        let mut world = test_world();
+        world.pvp_enabled = false; // safe Sanctuary semantics
+        let caster = join(&mut world, 1, "Mage");
+        let victim = join(&mut world, 2, "Victim");
+        world.players.get_by_entity_id_mut(caster).unwrap().position = Vec2::ZERO;
+        world.players.get_by_entity_id_mut(victim).unwrap().position = Vec2::new(50.0, 0.0);
+        let victim_hp = world.players.get_by_entity_id(victim).unwrap().health;
+        let mut outbox = Outbox::new();
+        world.aoe_damage_players(
+            Vec2::ZERO,
+            144.0,
+            55,
+            caster,
+            &[ability::StatusEffect::Daze {
+                secs: sim_core::constants::PLAYER_DAZE_DURATION,
+            }],
+            &mut outbox,
+        );
+        let v = world.players.get_by_entity_id(victim).unwrap();
+        assert_eq!(v.health, victim_hp, "no PvP damage when pvp disabled");
+        assert!(!v.movement_sm.is_dazed(), "no daze when pvp disabled");
     }
 
     #[test]

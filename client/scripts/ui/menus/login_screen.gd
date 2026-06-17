@@ -33,6 +33,7 @@ const BUTTON_STATE_COLORS := {
 @onready var create_account_button: Button = $CenterContainer/VBoxContainer/CreateAccountButton
 @onready var forgot_password_button: Button = $CenterContainer/VBoxContainer/ForgotPasswordButton
 @onready var local_server_check: CheckButton = $CenterContainer/VBoxContainer/LocalServerCheck
+@onready var exit_button: Button = $CenterContainer/VBoxContainer/ExitButton
 @onready var error_dialog: PopupPanel = $ErrorDialog
 
 ## Track login state to prevent duplicate requests
@@ -52,6 +53,9 @@ func _ready() -> void:
 	# API target toggle: reflect the current resolved target, then switch + persist on change.
 	local_server_check.button_pressed = AuthManager.is_using_local_api()
 	local_server_check.toggled.connect(_on_local_server_toggled)
+
+	# Quit the game from the login screen, mirroring the main menu's Exit button.
+	exit_button.pressed.connect(_on_exit_pressed)
 
 	# Connect AuthManager signals
 	AuthManager.login_successful.connect(_on_login_successful)
@@ -151,7 +155,7 @@ func _apply_pixel_button_theme() -> void:
 		var state_texture := disabled_button_texture if state == "disabled" else button_texture
 		button_styleboxes[state] = _create_button_stylebox(state_texture, BUTTON_STATE_COLORS[state])
 
-	var buttons: Array[Button] = [login_button, create_account_button, forgot_password_button]
+	var buttons: Array[Button] = [login_button, create_account_button, forgot_password_button, exit_button]
 	for button in buttons:
 		button.flat = false
 		button.custom_minimum_size = BUTTON_MINIMUM_SIZE
@@ -236,6 +240,12 @@ func _on_local_server_toggled(pressed: bool) -> void:
 	AuthManager.set_use_local_api(pressed)
 	if AuthManager.is_logged_in():
 		AuthManager.logout()
+
+
+## Handle exit button press
+func _on_exit_pressed() -> void:
+	print("[LoginScreen] Exiting game")
+	get_tree().quit()
 
 
 ## Handle login button press
@@ -340,7 +350,7 @@ func _on_forgot_password_pressed() -> void:
 
 ## Setup button audio for hover and click sounds
 func _setup_button_audio() -> void:
-	var buttons: Array[Button] = [login_button, create_account_button, forgot_password_button]
+	var buttons: Array[Button] = [login_button, create_account_button, forgot_password_button, exit_button]
 	for button in buttons:
 		button.mouse_entered.connect(func(): AudioManager.play_button_hover())
 		button.pressed.connect(func(): AudioManager.play_button_click())

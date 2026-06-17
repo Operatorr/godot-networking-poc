@@ -55,13 +55,25 @@ gets the full reward** — there is no split, so standing near a stronger friend
 The server emits one `EXP_GAIN` event per eligible player (`source_id` = that player); each client
 keeps only the event whose `source_id` is its own.
 
+**Player kills (PvP) work the same way.** Defeating another player (or bot) grants XP by the exact
+same proximity rule — every living player within `XP_SHARE_RADIUS` of where the victim fell gets the
+full reward — so in a 1v1v1, if one player goes down, **both** surviving contributors near the body
+earn the kill. The amount is the victim's level run through the **monster EXP table** (a defeated
+level-`L` player is worth a level-`L` monster: `xp_reward_for_level(L) = round(100 × 1.15^(L-1))` —
+[`progression.rs`](../../rust/sim_core/src/progression.rs), table in
+[`../gdd/progression/EXP_monster_table.md`](../gdd/progression/EXP_monster_table.md)). PvP XP is
+only granted where PvP is enabled (the Arena, not the safe Sanctuary).
+
 ## Per-level stat scaling (new — level now matters)
 
 Level is no longer cosmetic. A stat at level `L` is `base + per_lvl * (L - 1)`, applied **on the
 server** when XP crosses a level boundary (and on hydrate at join). Three stats scale, per Class
 (full table in [`../classes/index.md`](../gdd/classes/index.md)):
 
-- **HP** — `max_hp` grows; the live HP cap rises on level-up (current HP is not topped up).
+- **HP** — `max_hp` grows. A **level-up fully restores HP and mana** (the server sets `health =
+  max_health` and refills mana); below a level boundary, only the HP cap rises (current HP is not
+  topped up). HP isn't carried in snapshots, so the client mirrors the level-up refill into the HUD
+  bar (`arena_base.gd` `_handle_progress_event`); mana reconciles on the next `ActionConfirm`.
 - **Move speed** — feeds the `sim_core` ground speed; the new value rides the wire so the client
   predicts at the right speed (see the `PROGRESS` event's `move_speed_q` below).
 - **Primary damage** — applied server-side when the player's projectile resolves a hit.
@@ -96,11 +108,12 @@ ends it. See [`../adr/0006-softcore-hardcore-glory-economy.md`](../adr/0006-soft
 1. **Hydrate on join.** The server fetches the character's `level` + `experience` from the Go API
    (the hydrate-on-join step, ADR 0005) and applies the per-level stats before the player enters the
    sim. `ConnectAuth` now carries `character_id` (protocol v4) so the server knows *which* character.
-2. **Server grant.** `combat.rs::process_collisions` PvE branch: when a player projectile kills a
-   monster, `grant_kill_experience(monster_pos, xp_reward, players, outbox)` distance-checks all
-   players against the corpse and grants the full reward to each eligible player. The server adds it
-   to that player's `experience` **and** `total_lifetime_XP`, resolving level-ups via the curve and
-   re-applying per-level stats.
+2. **Server grant.** `combat.rs::grant_shared_kill_experience(death_pos, xp_reward, players, outbox)`
+   distance-checks all players against the kill point and grants the full reward to each eligible
+   player. The PvE path (`process_collisions`) calls it on a monster kill; the PvP path
+   (`broadcast_player_kill`) calls it on a player kill with `xp_reward_for_level(victim.level)`. The
+   server adds the XP to each player's `experience` **and** `total_lifetime_XP`, resolving level-ups
+   via the curve, re-applying per-level stats, and **fully restoring HP + mana** on a level-up.
 3. **Replicate.** On a change the server emits a `PROGRESS { level, experience, move_speed_q }` event
    (protocol v4) to that player; an `EXP_GAIN { amount }` event still fires for the floating "+XP" HUD
    feedback.

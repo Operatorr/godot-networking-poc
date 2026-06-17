@@ -46,7 +46,7 @@ enum MoveState { Idle, Walking, Sprinting, Dashing, KnockedBack, Stunned, Abilit
 | State | Velocity each tick | Enters when | Leaves to |
 |---|---|---|---|
 | Idle | zero | no move input | Walking/Sprinting on input |
-| Walking | `dir × base_speed × speed_mult` | move input, not sprinting | Idle / Sprinting / Dashing / … |
+| Walking | `dir × base_speed × speed_mult × (0.7 if dazed)` | move input, not sprinting | Idle / Sprinting / Dashing / … |
 | Sprinting | `dir × base_speed × 1.6 × speed_mult` | move + sprint held + stamina > 0 + not exhausted + not dazed | Walking when released/exhausted/attacked/damaged |
 | Dashing | constant dash velocity | dash edge (cooldown ready, not dazed/stunned/KB/ability/charge) | Idle after `DASH_DURATION` |
 | KnockedBack | decaying impulse (`exp`) | `apply_knockback()` (server only) | Idle below `END_SPEED`; or Stunned/AbilityMovement |
@@ -61,11 +61,15 @@ a *held-input* directional dash (along move-dir, or aim-dir when standing still)
 the AOE blast (`rust/server/src/sim/world.rs` `process_charge_blasts`). Server-side enemy contact ends it
 via `end_charge()` (server pairs its own blast); stun/teleport clear the charge **without** a blast.
 
-**Daze is a timer, not a state.** `apply_daze(duration)` locks out sprint and dash and ends any
-in-progress sprint; walking, knockback, and ability/charge velocities proceed normally. It coexists
-with KnockedBack — the usual companion on a hit. Re-application **extends, never shortens**
-(`daze_time_left.max(duration)`). Applied server-side when a player is **hit while Sprinting**
-(`rust/server/src/sim/combat.rs` `apply_player_hit` — `was_sprinting` → `apply_daze(PLAYER_DAZE_DURATION)`);
+**Daze is a timer, not a state.** `apply_daze(duration)` locks out sprint and dash, ends any
+in-progress sprint, **and cuts walk speed to `PLAYER_DAZE_SPEED_MULTIPLIER` (×0.7, a 30% slow)** —
+the slow lives in the shared `ground_speed` so client prediction and the server agree. Knockback and
+ability/charge velocities proceed normally (they don't read `ground_speed`). It coexists with
+KnockedBack — the usual companion on a hit. Re-application **extends, never shortens**
+(`daze_time_left.max(duration)`). Applied server-side both when a player is **hit while Sprinting**
+(`rust/server/src/sim/combat.rs` `apply_player_hit` — `was_sprinting` → `apply_daze(PLAYER_DAZE_DURATION)`)
+**and when caught in a Mageblast** (`apply_player_damage` applies the ability's `Daze` effect to every
+player in the blast, unconditionally);
 replicated via the `DAZED` entity flag (bit 8; entity flags are u16 since protocol v2). The client
 slaves its predicted daze to that flag — apply on the rising edge, `clear_daze()` on the falling edge
 (`prediction.gd` `_update_own_flags`) — and shows the `DazeIndicator` circling-stars visual above the
@@ -86,7 +90,8 @@ agree by construction (they are read-checked against each other).
 | Dash cooldown (START-relative) | `PLAYER_DASH_COOLDOWN` | 5.5 s |
 | Knockback decay / end / base force | `PLAYER_KNOCKBACK_DECAY` / `_END_SPEED` / `_BASE_FORCE` | 9.0 / 12 u/s / 450 |
 | Per-projectile knockback force | `PLAYER/MONSTER_PROJECTILE_KNOCKBACK_FORCE` | 450 (per-projectile so weapons can vary) |
-| Daze duration (hit while sprinting) | `PLAYER_DAZE_DURATION` | 1.5 s |
+| Daze duration (sprint-hit or Mageblast) | `PLAYER_DAZE_DURATION` | 1.5 s |
+| Daze movement slow | `PLAYER_DAZE_SPEED_MULTIPLIER` | ×0.7 (−30%) for the duration |
 | Stamina max / drain / regen | `PLAYER_STAMINA_*` | 100 / 35 ps / 20 ps (per-class override via `set_stamina_regen`; Mage 14 ps) |
 | Sprint-exhaustion lockout | `PLAYER_STAMINA_EXHAUST_DURATION` | 3.0 s (no sprint, no regen) |
 | Mana max / regen / default ability cost | `PLAYER_MANA_*` | 100 / 2 ps / 25 |
@@ -155,7 +160,12 @@ the next packet's flags plus reconciliation rather than retransmission.
   blasts (`process_charge_blasts`); sets entity flags.
 - **Predicted:** dash, charge, sprint speed, stun, both resources — and (for the local player only)
   daze slaved to the wire flag. Knockback is **server-only** — the client never predicts it (the
-  `tick_knockback` `exp()` branch is dead on the client; KB position comes from snapshots).
+  `tick_knockback` `exp()` branch is dead on the client; KB position comes from snapshots). While the
+  `KNOCKED_BACK` flag is set the local player **freezes prediction and follows the server position**
+  (`prediction.gd::_follow_server_through_knockback`) — input-driven prediction and reconcile-replay
+  are suppressed so the predicted sim can't fight the server's knockback (the cause of the old
+  knockback twitch); a comms-loss ceiling (`KNOCKBACK_FOLLOW_MAX_SECONDS`, 4 s), re-armed by every
+  update still flagging knockback (rising edge + each baseline), covers a lost falling-edge flag.
 - **Replicated:** DASHING/KNOCKED_BACK/STUNNED/DAZED/STEALTH entity flags + INVULNERABLE during
   charge, to everyone; stamina/mana to the owner via `ActionConfirm`.
 - **Persisted:** none — all in-memory. Only account/character/progression persist (Go API,

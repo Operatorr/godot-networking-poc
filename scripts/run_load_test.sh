@@ -15,7 +15,7 @@
 # Examples:
 #   ./scripts/run_load_test.sh --scenario baseline                 # local server
 #   OMEGA_SERVER=<droplet-ip>:8081 ./scripts/run_load_test.sh --scenario baseline   # LIVE
-#   ./scripts/run_load_test.sh --bots 2 --behavior strategy --server <droplet-ip>:8081
+#   ./scripts/run_load_test.sh --bots 3 --scenario strategy --server <droplet-ip>:8081
 #
 # See rust/load_test/README.md (or --help) for scenarios and flags.
 set -euo pipefail

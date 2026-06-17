@@ -163,10 +163,14 @@ func _spawn_remote_player(entity_id: int, position: Vector2) -> void:
 	remote_player.entity_id = entity_id
 	remote_player.position = position
 
-	# Try to get character name from EntityNameCache
+	# Seed identity from EntityNameCache. PLAYER_INFO (which fills the cache) and the entity's
+	# first snapshot race, so the class MUST be applied here too — not only via the late
+	# `_on_entity_class_updated` path: when PLAYER_INFO already arrived, that signal fired before
+	# this node existed, so without this the player would render with the default Zealot skin.
 	var cached_name := EntityNameCache.get_entity_name(entity_id)
 	remote_player.set_character_name(cached_name)
 	remote_player.set_player_color(EntityNameCache.get_entity_color(entity_id))
+	remote_player.set_player_class(EntityNameCache.get_entity_class(entity_id))
 
 	entity_container.add_child(remote_player)
 	player_entities[entity_id] = remote_player
@@ -690,14 +694,13 @@ func _on_entity_color_updated(entity_id: int, player_color: Color) -> void:
 			_apply_projectile_color(projectile_id)
 
 
-## Late PLAYER_INFO class updates propagate like color updates. RemotePlayer does not expose
-## set_player_class yet (sprite selection is wired separately), so the call is guarded — once
-## the visual hook lands, this handler feeds it without further changes here.
+## Late PLAYER_INFO class updates (arriving after the entity spawned) swap the skin, mirroring
+## color updates. The spawn path seeds the class from the cache for the opposite ordering.
 func _on_entity_class_updated(entity_id: int, player_class: int) -> void:
 	if player_entities.has(entity_id):
 		var remote_player: RemotePlayer = player_entities[entity_id]
-		if is_instance_valid(remote_player) and remote_player.has_method("set_player_class"):
-			remote_player.call("set_player_class", player_class)
+		if is_instance_valid(remote_player):
+			remote_player.set_player_class(player_class)
 
 
 ## Get entity counts for debug

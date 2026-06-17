@@ -43,5 +43,10 @@
   "bot_animations": {
     "_comment": "idle (fight-stance-idle-8-frames, 8f), run (running-8-frames, 8f), death (falling-back-death, 7f) assembled per class to client/assets/sprites/players/<class>/ as 8-direction sheets + meta.json. Zealot has its own extended set.",
     "assembled": ["void_hunter", "engineer", "plague_seer", "warrior", "rogue", "mage"]
+  },
+  "ability_effects": {
+    "_comment": "Ability blast detonations (2026-06-17): 1-direction objects, picked from a 4-candidate review pack, then animate_object v3 (12 frames + 1 reference = 13). Assembled non-directional to client/assets/sprites/effects/<key>/ as a one-shot 'blast' anim (26 fps). Played by BlastEffect; see docs/systems/arena-visuals.md.",
+    "charge_blast": { "id": "69296e5f-290d-480e-95b0-aceed71085ec", "_comment": "Warrior — radially symmetric orange fiery nova (regen of an earlier off-center dusty version, deleted)" },
+    "mageblast": { "id": "cb8040ac-db73-42d7-ad7d-4278bf907d41", "_comment": "Mage — cyan arcane energy burst dissipating into sparks" }
   }
 }
