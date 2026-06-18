@@ -19,9 +19,12 @@ the generated assets are missing, so a checkout without the art keeps working.
   [`remote_player.gd`](../../client/scripts/entities/player/remote_player.gd),
   [`monster.gd`](../../client/scripts/entities/enemies/monster.gd),
   [`projectile.gd`](../../client/scripts/entities/projectiles/projectile.gd) consume
-  them; [`arena_base.gd`](../../client/scripts/levels/arena_base.gd) builds the
-  prop layer (`ARENA_PROPS` table → "Props" Node2D ordered just before
-  `EntityContainer`).
+  them; the cosmetic prop layer is **authored in the scene** — `arena_base.tscn`
+  ships a "Props" Node2D of hand-placed `Sprite2D` children (editable in the
+  editor), and [`arena_base.gd`](../../client/scripts/levels/arena_base.gd)
+  `_build_arena_props()` leaves it alone when present, falling back to the
+  `ARENA_PROPS` table only when no authored props exist (see *Editing the map*
+  below).
 - **Server:** knows nothing about any of this. The only server-side change is
   the `class: u8` identity byte (protocol v3) it stores, clamps (>6 → 0) and
   re-broadcasts in PLAYER_INFO — see
@@ -73,6 +76,36 @@ appears on the minimap.
   vein grid is drawn as before.
 - **Scope:** Arena only. The Sanctuary overrides `_build_level_environment()` (and sets
   `_draws_arena_floor = false`), so it never builds this layer — it paints its own town ground.
+
+## Editing the map in the editor (Implemented 2026-06-18)
+
+`arena_base.gd` is not a `@tool` script, so opening `arena_base.tscn` in the editor used to
+show a near-black scene (none of its `_ready`/`_process`/`_draw` run at edit time, and every
+prop was generated only at game-time). The arena is now **decoratable in the editor**:
+
+- **Props are authored nodes.** `arena_base.tscn` ships a **"Props"** Node2D (placed before
+  `EntityContainer`, `visibility_layer = 3` for the minimap) holding one `Sprite2D` per prop —
+  select, move, add, or delete them in the editor and it persists. Standing props bake their
+  bottom-plant as a `Sprite2D.offset` (`offset.y = ARENA_PROP_FOOT − height/2`) so the node
+  *position is the foot point*; flat decals are centered with no offset. `_build_arena_props()`
+  **early-returns** when the authored "Props" node has children, so the procedural `ARENA_PROPS`
+  table is now only the **graceful fallback** for a checkout without the authored layout (or the
+  missing-art skip rule per prop). To add a prop type: drop a `Sprite2D`, assign a texture from
+  `assets/sprites/environment/arena/`, set `visibility_layer = 3`.
+- **Editor-only backdrop.** A small `@tool` node **"EditorPreview"**
+  ([`arena_editor_preview.gd`](../../client/scripts/levels/arena_editor_preview.gd)) draws the
+  real stone floor + obstacle/boundary walls **in the editor only** so props can be placed
+  WYSIWYG. It reads `GameConstants.MAP_MIN/MAX` + `ARENA_OBSTACLES` (so it matches the runtime
+  look and the Rust authority) and at runtime `_ready()` `queue_free()`s itself — the live look
+  is still owned by `_setup_arena_tilemap()` / `_build_arena_floor_decor()` / `_draw()`, so it
+  never double-draws or costs anything in-game.
+- **Walls are locked & Rust-authoritative — do not move them in Godot alone.** The `Boundaries`
+  node (perimeter walls) is locked in the scene (`metadata/_edit_lock_ = true`). The obstacle
+  walls are drawn by the preview, not real nodes, so they can't be moved either. Their geometry
+  is **server-authoritative**: `GameConstants.ARENA_OBSTACLES` is mirrored byte-for-byte in
+  [`rust/sim_core/src/arena.rs`](../../rust/sim_core/src/arena.rs) (`OBSTACLES`), and collision
+  is decided server-side. Moving a wall in Godot would change only the *picture*, desyncing it
+  from collision — changing wall/bounds geometry means editing **both** files together.
 
 ## Sheet format (the contract between the art pipeline and the client)
 

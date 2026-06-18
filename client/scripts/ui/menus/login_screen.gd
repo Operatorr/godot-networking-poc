@@ -350,9 +350,11 @@ func _on_forgot_password_pressed() -> void:
 		push_warning("[LoginScreen] Failed to open forgot password URL: %d" % err)
 
 
-## Open the standalone Settings screen (Audio / Video / Controls).
+## Open the standalone Settings screen (Audio / Video / Controls). Pass LOGIN so the Settings
+## Back button returns here, not the authenticated main menu (a pre-login screen must not be a
+## back-door into the post-login menu).
 func _on_settings_pressed() -> void:
-	SceneManager.goto_settings()
+	SceneManager.goto_settings(SceneManager.SceneName.LOGIN)
 
 
 ## Setup button audio for hover and click sounds

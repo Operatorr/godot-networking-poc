@@ -61,9 +61,15 @@ var player_data: Dictionary = {
 
 ## Game settings.
 ## window_mode: "windowed_fullscreen" (Godot 4's WINDOW_MODE_FULLSCREEN — borderless,
-## non-exclusive fullscreen that covers the screen; the default launch mode) or "windowed"
-## (a small centered window). The Settings → Video tab toggles it. Replaces the old boolean
+## non-exclusive fullscreen that covers the screen; the default) or "windowed" (a small
+## centered window). The Settings → Video tab toggles it. Replaces the old boolean
 ## "fullscreen" key (migrated away in _load_settings).
+##
+## The project BOOTS windowed (project.godot window/size/mode=0) on purpose: on macOS
+## WINDOW_MODE_FULLSCREEN opens a native fullscreen Space with an animated transition, and
+## leaving that Space on the autoload's first frame is unreliable — a saved "windowed"
+## preference wouldn't stick. _load_settings() applies the saved/default window_mode at
+## startup, so we only ever transition INTO fullscreen at runtime (the reliable direction).
 var settings: Dictionary = {
 	"master_volume": 1.0,
 	"music_volume": 0.8,
@@ -96,7 +102,8 @@ var _physics_tick_rate_applied: bool = false
 ## Debounced settings save: update_setting() sets _settings_save_pending and (re)starts a short
 ## one-shot timer instead of writing to disk on every change (e.g. each volume-slider step).
 ## When the timer fires, _flush_settings_save() does one write. Window_mode/vsync persist the
-## same way — the timer always fires before the app can quit normally (and EXITING force-flushes).
+## same way. A pending save is also force-flushed on shutdown by _notification() (window close
+## or tree teardown) so a change made inside the debounce window isn't lost on quit.
 const SETTINGS_SAVE_DEBOUNCE := 0.5
 var _settings_save_pending: bool = false
 var _settings_save_timer: SceneTreeTimer = null
@@ -252,6 +259,15 @@ func _flush_settings_save() -> void:
 		return
 	_settings_save_pending = false
 	_save_settings()
+
+## Force-write any pending debounced settings on shutdown so a last-moment change (e.g. toggling
+## a setting then quitting inside the SETTINGS_SAVE_DEBOUNCE window) isn't lost. The SceneTreeTimer
+## that normally triggers the write won't fire during teardown, so flush synchronously here.
+## NOTIFICATION_WM_CLOSE_REQUEST covers a normal window close / Cmd-Q; NOTIFICATION_EXIT_TREE covers
+## get_tree().quit() (the in-game Exit buttons). A hard kill (SIGKILL) can't be caught.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_EXIT_TREE:
+		_flush_settings_save()
 
 ## Apply individual setting
 func _apply_setting(setting_name: String, value) -> void:
