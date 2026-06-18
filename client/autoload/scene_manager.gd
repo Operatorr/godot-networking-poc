@@ -45,6 +45,11 @@ var current_scene: Node = null
 var current_scene_name: String = ""
 var is_transitioning: bool = false
 
+## Where the standalone Settings screen's Back button returns to. Recorded by goto_settings()
+## so Settings opened from the (unauthenticated) login screen returns to LOGIN — NOT the
+## authenticated main menu, which would otherwise let a failed login reach the post-login menu.
+var _settings_return_to: SceneName = SceneName.MAIN_MENU
+
 ## Loading state
 var loading_screen: Node = null
 ## High CanvasLayer that hosts the loading screen so it renders ABOVE the newly-added
@@ -409,9 +414,16 @@ func goto_main_menu(use_loading_screen: bool = false, loading_title: String = "R
 func goto_character_creation() -> void:
 	change_scene(SceneName.CHARACTER_CREATION, false)
 
-## Go to the standalone Settings screen (Audio / Video / Controls tabs)
-func goto_settings() -> void:
+## Go to the standalone Settings screen (Audio / Video / Controls tabs). `return_to` is the scene
+## the Back button comes back to (defaults to the main menu; the login screen passes LOGIN).
+## Recorded in `_settings_return_to` (declared with the scene-state vars up top).
+func goto_settings(return_to: SceneName = SceneName.MAIN_MENU) -> void:
+	_settings_return_to = return_to
 	change_scene(SceneName.SETTINGS, false)
+
+## Return from the standalone Settings screen to whoever opened it (login or main menu).
+func return_from_settings() -> void:
+	change_scene(_settings_return_to, false)
 
 ## Go to arena (with loading screen)
 func goto_arena() -> void:

@@ -4,7 +4,9 @@
 # Installs Go + Rust + PostgreSQL + Redis natively (no Docker), creates the
 # database, lays down /etc/omega-realm/*.env, installs the systemd units, and
 # grants the deploy user a narrow passwordless `systemctl` rule for the two
-# Omega services (so recurring deploys never need an interactive sudo).
+# Omega services (so recurring deploys never need an interactive sudo). Finally
+# it sets up TLS (Caddy on :443) automatically IF the domain's DNS already points
+# here — otherwise it defers that step (see step 10/10 + setup_tls.sh).
 #
 # Run ON the server as the deploy user:   sudo bash deployment/provision_server.sh
 # Idempotent — safe to re-run.
@@ -34,14 +36,14 @@ export DEBIAN_FRONTEND=noninteractive
 ARCH="$(dpkg --print-architecture)"   # amd64 / arm64
 
 # ---------------------------------------------------------------------------
-log "1/9  Base packages (git, build tools, postgresql, redis)"
+log "1/10  Base packages (git, build tools, postgresql, redis)"
 apt-get update -y
 apt-get install -y --no-install-recommends \
   git curl ca-certificates build-essential pkg-config libssl-dev \
   postgresql postgresql-contrib redis-server
 
 # ---------------------------------------------------------------------------
-log "2/9  Swap (2G) — the build/runtime safety net on a 1 GB box"
+log "2/10  Swap (2G) — the build/runtime safety net on a 1 GB box"
 if ! swapon --show | grep -q '/swapfile'; then
   fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048
   chmod 600 /swapfile
@@ -53,7 +55,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-log "3/9  Go toolchain (official tarball — apt's Go is too old for go 1.24)"
+log "3/10  Go toolchain (official tarball — apt's Go is too old for go 1.24)"
 # Capture the body, THEN take the first line — go.dev/VERSION returns two lines
 # ("go1.26.4\ntime ..."); a guard surfaces a network failure instead of dying
 # silently under `set -e`.
@@ -91,7 +93,7 @@ fi
 /usr/local/go/bin/go version
 
 # ---------------------------------------------------------------------------
-log "4/9  Rust toolchain (rustup, as ${DEPLOY_USER})"
+log "4/10  Rust toolchain (rustup, as ${DEPLOY_USER})"
 if ! sudo -u "$DEPLOY_USER" bash -lc 'command -v cargo' >/dev/null 2>&1; then
   sudo -u "$DEPLOY_USER" bash -lc \
     'curl --proto "=https" --tlsv1.2 -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal'
@@ -99,7 +101,7 @@ fi
 sudo -u "$DEPLOY_USER" bash -lc 'source "$HOME/.cargo/env"; rustc --version'
 
 # ---------------------------------------------------------------------------
-log "5/9  PostgreSQL role + database (${DB_USER}/${DB_NAME})"
+log "5/10  PostgreSQL role + database (${DB_USER}/${DB_NAME})"
 systemctl enable --now postgresql
 sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}'" | grep -q 1 || \
   sudo -u postgres psql -c "CREATE ROLE ${DB_USER} LOGIN PASSWORD 'CHANGE_ME_TO_A_SECURE_PASSWORD';"
@@ -109,11 +111,11 @@ warn "Set a real DB password: sudo -u postgres psql -c \"ALTER ROLE ${DB_USER} P
 warn "Then put the SAME password in ${ETC_DIR}/api.env (DB_PASSWORD)."
 
 # ---------------------------------------------------------------------------
-log "6/9  Redis (enable, localhost-only by default)"
+log "6/10  Redis (enable, localhost-only by default)"
 systemctl enable --now redis-server
 
 # ---------------------------------------------------------------------------
-log "7/9  Clone/refresh the repo at ${REPO_DIR}"
+log "7/10  Clone/refresh the repo at ${REPO_DIR}"
 if [[ ! -d "$REPO_DIR/.git" ]]; then
   sudo -u "$DEPLOY_USER" git clone --branch "$BRANCH" "$REPO_URL" "$REPO_DIR"
 else
@@ -121,7 +123,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-log "8/9  Runtime env files in ${ETC_DIR} (root:${DEPLOY_USER} 0640)"
+log "8/10  Runtime env files in ${ETC_DIR} (root:${DEPLOY_USER} 0640)"
 mkdir -p "$ETC_DIR" "$REPO_DIR/logs"
 chown "$DEPLOY_USER:$DEPLOY_USER" "$REPO_DIR/logs"
 install_env() {  # $1 template  $2 dest
@@ -133,7 +135,7 @@ install_env "$REPO_DIR/deployment/env/api.env.example"    "$ETC_DIR/api.env"
 install_env "$REPO_DIR/deployment/env/server.env.example" "$ETC_DIR/server.env"
 
 # ---------------------------------------------------------------------------
-log "9/9  systemd units + narrow passwordless systemctl for ${DEPLOY_USER}"
+log "9/10  systemd units + narrow passwordless systemctl for ${DEPLOY_USER}"
 # Three services: the Go API + two game instances (Arena 8081, Sanctuary 8082).
 cp "$REPO_DIR/deployment/systemd/omega-api.service"       /etc/systemd/system/
 cp "$REPO_DIR/deployment/systemd/omega-arena.service"     /etc/systemd/system/
@@ -154,9 +156,55 @@ EOF
 chmod 0440 /etc/sudoers.d/omega-deploy
 visudo -cf /etc/sudoers.d/omega-deploy >/dev/null
 
+# ---------------------------------------------------------------------------
+log "10/10  TLS reverse proxy (Caddy) — HTTPS for the Go API"
+# The Go API serves plain HTTP on :8080; the public hop MUST be encrypted (the game
+# client and the CMS both send credentials/JWTs). deployment/setup_tls.sh installs Caddy
+# as a TLS-terminating reverse proxy on :443 with an automatic Let's Encrypt cert.
+#
+# Caddy proves domain control to Let's Encrypt over ports 80/443, so this only succeeds
+# once the domain's DNS A record already points at THIS box. On a fresh droplet that's
+# often not true yet — running it prematurely fails cert issuance, which under `set -e`
+# would abort the whole provision. So we run it AUTOMATICALLY only when DNS already
+# resolves here, and otherwise defer it to a clear manual step (the API stays reachable
+# on :8080 until then). Override the domain with OMEGA_API_DOMAIN; skip with OMEGA_SKIP_TLS=1.
+#
+# The auto-run gate is a strict A-record match (getent ahostsv4 == this box's public IPv4). It
+# is deliberately conservative: a domain behind a proxy/CDN (e.g. Cloudflare) or published only
+# as an AAAA/IPv6 record will NOT match, so the auto-run is skipped and TLS is DEFERRED to the
+# manual step even though the domain is correctly configured. That's the safe failure (defer,
+# never a half-configured box) — just run setup_tls.sh by hand in those setups.
+TLS_DOMAIN="${OMEGA_API_DOMAIN:-gsapi.marrowtech.app}"
+if [[ "${OMEGA_SKIP_TLS:-0}" == "1" ]]; then
+  warn "OMEGA_SKIP_TLS=1 — skipping TLS. Run later: sudo OMEGA_API_DOMAIN=${TLS_DOMAIN} bash ${REPO_DIR}/deployment/setup_tls.sh"
+  TLS_STATUS="skipped (OMEGA_SKIP_TLS=1)"
+else
+  SERVER_IP="$(curl -fsSL https://api.ipify.org 2>/dev/null || true)"
+  DOMAIN_IP="$(getent ahostsv4 "$TLS_DOMAIN" 2>/dev/null | awk 'NR==1 {print $1}')"
+  if [[ -n "$SERVER_IP" && "$DOMAIN_IP" == "$SERVER_IP" ]]; then
+    echo "DNS ${TLS_DOMAIN} -> ${DOMAIN_IP} matches this box (${SERVER_IP}); running setup_tls.sh"
+    # A DNS match doesn't guarantee cert issuance succeeds (port 80 blocked, Let's Encrypt
+    # rate-limit, Caddy error). Guard the call so a failure here can't abort the whole provision
+    # under `set -e` — everything before this step is already done and idempotent. Degrade to a
+    # FAILED status instead and point the operator at the manual re-run.
+    if OMEGA_API_DOMAIN="$TLS_DOMAIN" bash "$REPO_DIR/deployment/setup_tls.sh"; then
+      TLS_STATUS="configured (${TLS_DOMAIN} via Caddy on :443)"
+    else
+      warn "setup_tls.sh FAILED (cert issuance / port 80 reachability / rate-limit?). API still on :8080."
+      warn "    Re-run once resolved: sudo OMEGA_API_DOMAIN=${TLS_DOMAIN} bash ${REPO_DIR}/deployment/setup_tls.sh"
+      TLS_STATUS="FAILED — see logs above; API still on plain :8080"
+    fi
+  else
+    warn "DNS for ${TLS_DOMAIN} (${DOMAIN_IP:-unresolved}) does not point at this box (${SERVER_IP:-public IP unknown})."
+    warn "Deferring TLS so cert issuance can't fail the provision. Once the A record points here, run:"
+    warn "    sudo OMEGA_API_DOMAIN=${TLS_DOMAIN} bash ${REPO_DIR}/deployment/setup_tls.sh"
+    TLS_STATUS="DEFERRED — DNS not pointing here yet (API still on plain :8080)"
+  fi
+fi
+
 cat <<EOF
 
-$(printf '\033[1;32m==> Provisioning complete.\033[0m')
+$(printf '\033[1;32m==> Provisioning complete.\033[0m')   TLS: ${TLS_STATUS}
 
 Next steps:
   1. Set the DB password (role + ${ETC_DIR}/api.env must match):
@@ -164,4 +212,8 @@ Next steps:
        sudo nano ${ETC_DIR}/api.env       # DB_PASSWORD + JWT_SECRET_KEY
   2. From your laptop, deploy the code + start services:
        ./scripts/deploy.sh
+  3. Verify the API is reachable over HTTPS:
+       curl https://${TLS_DOMAIN}/health        # → {"status":"healthy",...}
+     If TLS shows DEFERRED above, point the domain's DNS A record at this box, then run:
+       sudo OMEGA_API_DOMAIN=${TLS_DOMAIN} bash ${REPO_DIR}/deployment/setup_tls.sh
 EOF

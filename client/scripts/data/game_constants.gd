@@ -249,6 +249,12 @@ const ARENA_TILE_ROWS := 40
 const ARENA_TILE_SIZE := 50.0
 const ARENA_TILE_SOURCE_ID := 0
 
+## Sprite-floor cell size: the seamless stone base is tiled in GROUND_TILE_SIZE squares across
+## the arena. 250 divides the 2000-unit map evenly (8x8) so the tiles fill it with no overshoot.
+## Single source of truth shared by the runtime floor (arena_base.gd `_GroundDecorLayer`) and the
+## editor backdrop (arena_editor_preview.gd) so the two can't drift apart.
+const GROUND_TILE_SIZE := 250.0
+
 ## Atlas coordinates used by the generated arena TileSet.
 const ARENA_FLOOR_TILE := Vector2i(0, 0)
 const ARENA_BORDER_TILE := Vector2i(1, 0)

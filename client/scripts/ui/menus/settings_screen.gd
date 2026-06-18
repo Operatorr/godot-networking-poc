@@ -314,4 +314,4 @@ func _persist_setting(key: String, value: Variant) -> void:
 
 func _on_back_pressed() -> void:
 	AudioManager.play_button_click()
-	SceneManager.goto_main_menu()
+	SceneManager.return_from_settings()

@@ -1,0 +1,112 @@
+[gd_scene load_steps=2 format=3]
+
+[sub_resource type="GDScript" id="GDScript_settings_save_regression"]
+script/source = "## SettingsSaveRegression - regression for PR #20's settings-persistence + settings-return logic.
+## Deterministic and load-free: exercises GameManager's debounced-save force-flush on shutdown
+## (_notification) and its idempotency, plus SceneManager.goto_settings()/_settings_return_to
+## routing. Backs up and restores user://settings.json so it never clobbers the dev's real file.
+## Quits 0 on PASS, 1 on any failure.
+extends Node
+
+const SETTINGS_PATH := \"user://settings.json\"
+
+
+func _ready() -> void:
+	var had_file := FileAccess.file_exists(SETTINGS_PATH)
+	var backup := \"\"
+	if had_file:
+		var bf := FileAccess.open(SETTINGS_PATH, FileAccess.READ)
+		backup = bf.get_as_text()
+		bf.close()
+
+	var failures: Array[String] = []
+	_test_force_flush_on_shutdown(failures)
+	_test_no_write_when_not_pending(failures)
+	_test_settings_return_routing(failures)
+
+	# Restore the dev's settings file exactly as we found it.
+	if had_file:
+		var rf := FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
+		rf.store_string(backup)
+		rf.close()
+	else:
+		_delete_settings()
+
+	if failures.is_empty():
+		print(\"[SettingsSaveRegression] PASS\")
+		get_tree().quit(0)
+	else:
+		for f in failures:
+			push_error(f)
+		print(\"[SettingsSaveRegression] FAIL (%d)\" % failures.size())
+		get_tree().quit(1)
+
+
+## A pending debounced save must be force-written when the app is told to close: the SceneTreeTimer
+## that normally fires the write won't run during teardown, so _notification flushes synchronously.
+func _test_force_flush_on_shutdown(failures: Array[String]) -> void:
+	GameManager.settings[\"vsync\"] = false  # sentinel we read back from disk
+	GameManager._settings_save_pending = true
+	_delete_settings()
+
+	GameManager._notification(NOTIFICATION_WM_CLOSE_REQUEST)
+
+	var saved := _read_saved()
+	if saved.get(\"vsync\", true) != false:
+		failures.append(\"force-flush on WM_CLOSE_REQUEST did not persist the pending setting\")
+	if GameManager._settings_save_pending:
+		failures.append(\"_settings_save_pending should be cleared after a flush\")
+
+	# Idempotent: a second shutdown notification (EXIT_TREE after WM_CLOSE_REQUEST) is a no-op.
+	GameManager._notification(NOTIFICATION_EXIT_TREE)
+
+
+## With nothing pending, a flush must NOT write a file (the debounce is the only writer).
+func _test_no_write_when_not_pending(failures: Array[String]) -> void:
+	_delete_settings()
+	GameManager._settings_save_pending = false
+	GameManager._flush_settings_save()
+	if FileAccess.file_exists(SETTINGS_PATH):
+		failures.append(\"_flush_settings_save wrote a file when no save was pending\")
+
+
+## goto_settings() records where Back returns to; the login screen passes LOGIN so a pre-login
+## screen can't be a back-door into the authenticated menu. is_transitioning is forced true so the
+## real scene swap inside change_scene_to_path() short-circuits — we only assert the recorded target.
+func _test_settings_return_routing(failures: Array[String]) -> void:
+	var prev := SceneManager.is_transitioning
+	SceneManager.is_transitioning = true
+
+	SceneManager.goto_settings(SceneManager.SceneName.LOGIN)
+	if SceneManager._settings_return_to != SceneManager.SceneName.LOGIN:
+		failures.append(\"goto_settings(LOGIN) did not record LOGIN as the return target\")
+
+	SceneManager.goto_settings()
+	if SceneManager._settings_return_to != SceneManager.SceneName.MAIN_MENU:
+		failures.append(\"goto_settings() default did not record MAIN_MENU\")
+
+	SceneManager.is_transitioning = prev
+
+
+func _read_saved() -> Dictionary:
+	if not FileAccess.file_exists(SETTINGS_PATH):
+		return {}
+	var f := FileAccess.open(SETTINGS_PATH, FileAccess.READ)
+	if f == null:
+		return {}
+	var txt := f.get_as_text()
+	f.close()
+	var json := JSON.new()
+	if json.parse(txt) != OK or typeof(json.data) != TYPE_DICTIONARY:
+		return {}
+	return json.data
+
+
+func _delete_settings() -> void:
+	var d := DirAccess.open(\"user://\")
+	if d != null and d.file_exists(\"settings.json\"):
+		d.remove(\"settings.json\")
+"
+
+[node name="SettingsSaveRegression" type="Node"]
+script = SubResource("GDScript_settings_save_regression")

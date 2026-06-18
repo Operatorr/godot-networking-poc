@@ -1,6 +1,23 @@
-[gd_scene load_steps=6 format=3 uid="uid://c1arena_base01"]
+[gd_scene load_steps=23 format=3 uid="uid://c1arena_base01"]
 
 [ext_resource type="Script" path="res://scripts/levels/arena_base.gd" id="1_arena"]
+[ext_resource type="Script" path="res://scripts/levels/arena_editor_preview.gd" id="2_preview"]
+[ext_resource type="Texture2D" uid="uid://p16gl1eao4so" path="res://assets/sprites/environment/arena/statue_weeping.png" id="t_statue"]
+[ext_resource type="Texture2D" uid="uid://d0km0hjq3qa24" path="res://assets/sprites/environment/arena/candelabra.png" id="t_candel"]
+[ext_resource type="Texture2D" uid="uid://d277ymg3324na" path="res://assets/sprites/environment/arena/pillar_broken.png" id="t_pillar"]
+[ext_resource type="Texture2D" uid="uid://bgld0bleutume" path="res://assets/sprites/environment/arena/banner_stand.png" id="t_banner"]
+[ext_resource type="Texture2D" uid="uid://x1wxoa8mnetf" path="res://assets/sprites/environment/arena/brazier.png" id="t_brazier"]
+[ext_resource type="Texture2D" uid="uid://t3mmqk5d1hcu" path="res://assets/sprites/environment/arena/corrupted_crystal.png" id="t_crystal"]
+[ext_resource type="Texture2D" uid="uid://d0sfcodmqvkbk" path="res://assets/sprites/environment/arena/gravestone_cross.png" id="t_grave"]
+[ext_resource type="Texture2D" uid="uid://l5vm7an6u70r" path="res://assets/sprites/environment/arena/funerary_urn.png" id="t_urn"]
+[ext_resource type="Texture2D" uid="uid://babm7d2bffu7v" path="res://assets/sprites/environment/arena/bone_pile.png" id="t_bone"]
+[ext_resource type="Texture2D" uid="uid://b4wi628o8cifw" path="res://assets/sprites/environment/arena/skull_pile.png" id="t_skull"]
+[ext_resource type="Texture2D" uid="uid://ck8hdvna5qrh7" path="res://assets/sprites/environment/arena/dead_tree.png" id="t_tree"]
+[ext_resource type="Texture2D" uid="uid://bbo6xloqrs4e8" path="res://assets/sprites/environment/arena/altar.png" id="t_altar"]
+[ext_resource type="Texture2D" uid="uid://512lp3o768ot" path="res://assets/sprites/environment/arena/ritual_circle.png" id="t_ritual"]
+[ext_resource type="Texture2D" uid="uid://dk7c166w5q6hk" path="res://assets/sprites/environment/arena/spike_barricade.png" id="t_spike"]
+[ext_resource type="Texture2D" uid="uid://deyw672syafcn" path="res://assets/sprites/environment/arena/rubble.png" id="t_rubble"]
+[ext_resource type="Texture2D" uid="uid://cqlvw81m85e5t" path="res://assets/sprites/environment/arena/blood_stain.png" id="t_blood"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_top"]
 size = Vector2(2020, 10)
@@ -16,6 +33,9 @@ size = Vector2(10, 2020)
 
 [node name="ArenaBase" type="Node2D"]
 script = ExtResource("1_arena")
+
+[node name="EditorPreview" type="Node2D" parent="."]
+script = ExtResource("2_preview")
 
 [node name="TileMapLayer" type="TileMapLayer" parent="."]
 position = Vector2(-1000, -1000)
@@ -91,11 +111,331 @@ position = Vector2(-500, 0)
 [node name="MonsterSpawn12" type="Marker2D" parent="SpawnPoints"]
 position = Vector2(500, 0)
 
+[node name="Props" type="Node2D" parent="."]
+visibility_layer = 3
+
+[node name="statue_weeping_1" type="Sprite2D" parent="Props"]
+position = Vector2(-610, -615)
+offset = Vector2(0, -58)
+texture = ExtResource("t_statue")
+visibility_layer = 3
+
+[node name="statue_weeping_2" type="Sprite2D" parent="Props"]
+position = Vector2(610, -615)
+offset = Vector2(0, -58)
+texture = ExtResource("t_statue")
+visibility_layer = 3
+
+[node name="statue_weeping_3" type="Sprite2D" parent="Props"]
+position = Vector2(-610, 660)
+offset = Vector2(0, -58)
+texture = ExtResource("t_statue")
+visibility_layer = 3
+
+[node name="statue_weeping_4" type="Sprite2D" parent="Props"]
+position = Vector2(610, 660)
+offset = Vector2(0, -58)
+texture = ExtResource("t_statue")
+visibility_layer = 3
+
+[node name="candelabra_1" type="Sprite2D" parent="Props"]
+position = Vector2(-545, -630)
+offset = Vector2(0, -26)
+texture = ExtResource("t_candel")
+visibility_layer = 3
+
+[node name="candelabra_2" type="Sprite2D" parent="Props"]
+position = Vector2(545, -630)
+offset = Vector2(0, -26)
+texture = ExtResource("t_candel")
+visibility_layer = 3
+
+[node name="candelabra_3" type="Sprite2D" parent="Props"]
+position = Vector2(-545, 645)
+offset = Vector2(0, -26)
+texture = ExtResource("t_candel")
+visibility_layer = 3
+
+[node name="candelabra_4" type="Sprite2D" parent="Props"]
+position = Vector2(545, 645)
+offset = Vector2(0, -26)
+texture = ExtResource("t_candel")
+visibility_layer = 3
+
+[node name="pillar_broken_1" type="Sprite2D" parent="Props"]
+position = Vector2(0, -205)
+offset = Vector2(0, -42)
+texture = ExtResource("t_pillar")
+visibility_layer = 3
+
+[node name="pillar_broken_2" type="Sprite2D" parent="Props"]
+position = Vector2(0, 205)
+offset = Vector2(0, -42)
+texture = ExtResource("t_pillar")
+visibility_layer = 3
+
+[node name="pillar_broken_3" type="Sprite2D" parent="Props"]
+position = Vector2(-205, 0)
+offset = Vector2(0, -42)
+texture = ExtResource("t_pillar")
+visibility_layer = 3
+
+[node name="pillar_broken_4" type="Sprite2D" parent="Props"]
+position = Vector2(205, 0)
+offset = Vector2(0, -42)
+texture = ExtResource("t_pillar")
+visibility_layer = 3
+
+[node name="banner_stand_1" type="Sprite2D" parent="Props"]
+position = Vector2(-85, -85)
+offset = Vector2(0, -34)
+texture = ExtResource("t_banner")
+visibility_layer = 3
+
+[node name="banner_stand_2" type="Sprite2D" parent="Props"]
+position = Vector2(85, -85)
+offset = Vector2(0, -34)
+texture = ExtResource("t_banner")
+visibility_layer = 3
+
+[node name="banner_stand_3" type="Sprite2D" parent="Props"]
+position = Vector2(-85, 85)
+offset = Vector2(0, -34)
+texture = ExtResource("t_banner")
+visibility_layer = 3
+
+[node name="banner_stand_4" type="Sprite2D" parent="Props"]
+position = Vector2(85, 85)
+offset = Vector2(0, -34)
+texture = ExtResource("t_banner")
+visibility_layer = 3
+
+[node name="brazier_1" type="Sprite2D" parent="Props"]
+position = Vector2(-400, -345)
+offset = Vector2(0, -30)
+texture = ExtResource("t_brazier")
+visibility_layer = 3
+
+[node name="brazier_2" type="Sprite2D" parent="Props"]
+position = Vector2(400, -345)
+offset = Vector2(0, -30)
+texture = ExtResource("t_brazier")
+visibility_layer = 3
+
+[node name="brazier_3" type="Sprite2D" parent="Props"]
+position = Vector2(-400, 343)
+offset = Vector2(0, -30)
+texture = ExtResource("t_brazier")
+visibility_layer = 3
+
+[node name="brazier_4" type="Sprite2D" parent="Props"]
+position = Vector2(400, 343)
+offset = Vector2(0, -30)
+texture = ExtResource("t_brazier")
+visibility_layer = 3
+
+[node name="corrupted_crystal_1" type="Sprite2D" parent="Props"]
+position = Vector2(0, -660)
+offset = Vector2(0, -26)
+texture = ExtResource("t_crystal")
+visibility_layer = 3
+
+[node name="corrupted_crystal_2" type="Sprite2D" parent="Props"]
+position = Vector2(660, 0)
+offset = Vector2(0, -26)
+texture = ExtResource("t_crystal")
+visibility_layer = 3
+
+[node name="corrupted_crystal_3" type="Sprite2D" parent="Props"]
+position = Vector2(0, 660)
+offset = Vector2(0, -26)
+texture = ExtResource("t_crystal")
+visibility_layer = 3
+
+[node name="corrupted_crystal_4" type="Sprite2D" parent="Props"]
+position = Vector2(-660, 0)
+offset = Vector2(0, -26)
+texture = ExtResource("t_crystal")
+visibility_layer = 3
+
+[node name="gravestone_cross_1" type="Sprite2D" parent="Props"]
+position = Vector2(-520, 380)
+offset = Vector2(0, -22)
+texture = ExtResource("t_grave")
+visibility_layer = 3
+
+[node name="gravestone_cross_2" type="Sprite2D" parent="Props"]
+position = Vector2(-455, 425)
+offset = Vector2(0, -22)
+texture = ExtResource("t_grave")
+visibility_layer = 3
+
+[node name="gravestone_cross_3" type="Sprite2D" parent="Props"]
+position = Vector2(-390, 372)
+offset = Vector2(0, -22)
+texture = ExtResource("t_grave")
+visibility_layer = 3
+
+[node name="gravestone_cross_4" type="Sprite2D" parent="Props"]
+position = Vector2(-545, 462)
+offset = Vector2(0, -22)
+texture = ExtResource("t_grave")
+visibility_layer = 3
+
+[node name="gravestone_cross_5" type="Sprite2D" parent="Props"]
+position = Vector2(-430, 487)
+offset = Vector2(0, -22)
+texture = ExtResource("t_grave")
+visibility_layer = 3
+
+[node name="funerary_urn_1" type="Sprite2D" parent="Props"]
+position = Vector2(-355, 440)
+offset = Vector2(0, -42)
+texture = ExtResource("t_urn")
+visibility_layer = 3
+
+[node name="bone_pile_1" type="Sprite2D" parent="Props"]
+position = Vector2(-500, 428)
+texture = ExtResource("t_bone")
+visibility_layer = 3
+
+[node name="skull_pile_1" type="Sprite2D" parent="Props"]
+position = Vector2(-412, 412)
+texture = ExtResource("t_skull")
+visibility_layer = 3
+
+[node name="dead_tree_1" type="Sprite2D" parent="Props"]
+position = Vector2(470, -480)
+offset = Vector2(0, -50)
+texture = ExtResource("t_tree")
+visibility_layer = 3
+
+[node name="dead_tree_2" type="Sprite2D" parent="Props"]
+position = Vector2(585, -390)
+offset = Vector2(0, -50)
+texture = ExtResource("t_tree")
+visibility_layer = 3
+
+[node name="altar_1" type="Sprite2D" parent="Props"]
+position = Vector2(500, -560)
+offset = Vector2(0, -22)
+texture = ExtResource("t_altar")
+visibility_layer = 3
+
+[node name="ritual_circle_1" type="Sprite2D" parent="Props"]
+position = Vector2(500, -480)
+texture = ExtResource("t_ritual")
+visibility_layer = 3
+
+[node name="funerary_urn_2" type="Sprite2D" parent="Props"]
+position = Vector2(545, -652)
+offset = Vector2(0, -42)
+texture = ExtResource("t_urn")
+visibility_layer = 3
+
+[node name="spike_barricade_1" type="Sprite2D" parent="Props"]
+position = Vector2(-450, -550)
+offset = Vector2(0, -14)
+texture = ExtResource("t_spike")
+visibility_layer = 3
+
+[node name="spike_barricade_2" type="Sprite2D" parent="Props"]
+position = Vector2(450, 550)
+offset = Vector2(0, -14)
+texture = ExtResource("t_spike")
+visibility_layer = 3
+
+[node name="rubble_1" type="Sprite2D" parent="Props"]
+position = Vector2(-150, -600)
+texture = ExtResource("t_rubble")
+visibility_layer = 3
+
+[node name="rubble_2" type="Sprite2D" parent="Props"]
+position = Vector2(300, -520)
+texture = ExtResource("t_rubble")
+visibility_layer = 3
+
+[node name="rubble_3" type="Sprite2D" parent="Props"]
+position = Vector2(620, -120)
+texture = ExtResource("t_rubble")
+visibility_layer = 3
+
+[node name="rubble_4" type="Sprite2D" parent="Props"]
+position = Vector2(520, 300)
+texture = ExtResource("t_rubble")
+visibility_layer = 3
+
+[node name="rubble_5" type="Sprite2D" parent="Props"]
+position = Vector2(-620, 140)
+texture = ExtResource("t_rubble")
+visibility_layer = 3
+
+[node name="rubble_6" type="Sprite2D" parent="Props"]
+position = Vector2(-300, 560)
+texture = ExtResource("t_rubble")
+visibility_layer = 3
+
+[node name="rubble_7" type="Sprite2D" parent="Props"]
+position = Vector2(150, 640)
+texture = ExtResource("t_rubble")
+visibility_layer = 3
+
+[node name="rubble_8" type="Sprite2D" parent="Props"]
+position = Vector2(-640, -300)
+texture = ExtResource("t_rubble")
+visibility_layer = 3
+
+[node name="bone_pile_2" type="Sprite2D" parent="Props"]
+position = Vector2(250, -650)
+texture = ExtResource("t_bone")
+visibility_layer = 3
+
+[node name="bone_pile_3" type="Sprite2D" parent="Props"]
+position = Vector2(-250, 230)
+texture = ExtResource("t_bone")
+visibility_layer = 3
+
+[node name="bone_pile_4" type="Sprite2D" parent="Props"]
+position = Vector2(640, 250)
+texture = ExtResource("t_bone")
+visibility_layer = 3
+
+[node name="bone_pile_5" type="Sprite2D" parent="Props"]
+position = Vector2(-360, -460)
+texture = ExtResource("t_bone")
+visibility_layer = 3
+
+[node name="skull_pile_2" type="Sprite2D" parent="Props"]
+position = Vector2(220, 420)
+texture = ExtResource("t_skull")
+visibility_layer = 3
+
+[node name="skull_pile_3" type="Sprite2D" parent="Props"]
+position = Vector2(-660, -660)
+texture = ExtResource("t_skull")
+visibility_layer = 3
+
+[node name="blood_stain_1" type="Sprite2D" parent="Props"]
+position = Vector2(120, -300)
+texture = ExtResource("t_blood")
+visibility_layer = 3
+
+[node name="blood_stain_2" type="Sprite2D" parent="Props"]
+position = Vector2(-200, 80)
+texture = ExtResource("t_blood")
+visibility_layer = 3
+
+[node name="blood_stain_3" type="Sprite2D" parent="Props"]
+position = Vector2(380, 120)
+texture = ExtResource("t_blood")
+visibility_layer = 3
+
 [node name="EntityContainer" type="Node2D" parent="."]
 
 [node name="Boundaries" type="StaticBody2D" parent="."]
 collision_layer = 8
 collision_mask = 0
+metadata/_edit_lock_ = true
 
 [node name="TopWall" type="CollisionShape2D" parent="Boundaries"]
 position = Vector2(0, -1005)

@@ -32,6 +32,7 @@ const BUTTON_STATE_COLORS := {
 @onready var login_button: Button = $CenterContainer/VBoxContainer/LoginButton
 @onready var create_account_button: Button = $CenterContainer/VBoxContainer/CreateAccountButton
 @onready var forgot_password_button: Button = $CenterContainer/VBoxContainer/ForgotPasswordButton
+@onready var settings_button: Button = $CenterContainer/VBoxContainer/SettingsButton
 @onready var local_server_check: CheckButton = $CenterContainer/VBoxContainer/LocalServerCheck
 @onready var exit_button: Button = $CenterContainer/VBoxContainer/ExitButton
 @onready var error_dialog: PopupPanel = $ErrorDialog
@@ -49,6 +50,7 @@ func _ready() -> void:
 	login_button.pressed.connect(_on_login_pressed)
 	create_account_button.pressed.connect(_on_create_account_pressed)
 	forgot_password_button.pressed.connect(_on_forgot_password_pressed)
+	settings_button.pressed.connect(_on_settings_pressed)
 
 	# API target toggle: reflect the current resolved target, then switch + persist on change.
 	local_server_check.button_pressed = AuthManager.is_using_local_api()
@@ -155,7 +157,7 @@ func _apply_pixel_button_theme() -> void:
 		var state_texture := disabled_button_texture if state == "disabled" else button_texture
 		button_styleboxes[state] = _create_button_stylebox(state_texture, BUTTON_STATE_COLORS[state])
 
-	var buttons: Array[Button] = [login_button, create_account_button, forgot_password_button, exit_button]
+	var buttons: Array[Button] = [login_button, create_account_button, forgot_password_button, settings_button, exit_button]
 	for button in buttons:
 		button.flat = false
 		button.custom_minimum_size = BUTTON_MINIMUM_SIZE
@@ -348,9 +350,16 @@ func _on_forgot_password_pressed() -> void:
 		push_warning("[LoginScreen] Failed to open forgot password URL: %d" % err)
 
 
+## Open the standalone Settings screen (Audio / Video / Controls). Pass LOGIN so the Settings
+## Back button returns here, not the authenticated main menu (a pre-login screen must not be a
+## back-door into the post-login menu).
+func _on_settings_pressed() -> void:
+	SceneManager.goto_settings(SceneManager.SceneName.LOGIN)
+
+
 ## Setup button audio for hover and click sounds
 func _setup_button_audio() -> void:
-	var buttons: Array[Button] = [login_button, create_account_button, forgot_password_button, exit_button]
+	var buttons: Array[Button] = [login_button, create_account_button, forgot_password_button, settings_button, exit_button]
 	for button in buttons:
 		button.mouse_entered.connect(func(): AudioManager.play_button_hover())
 		button.pressed.connect(func(): AudioManager.play_button_click())

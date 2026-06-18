@@ -54,7 +54,9 @@ Services (systemd units in [`systemd/`](systemd/)):
 
 Installs Go (official tarball — apt's is too old for `go 1.24`), Rust (rustup),
 PostgreSQL, Redis, swap, the systemd units, and a narrow passwordless `systemctl`
-rule for the three Omega services — and **clones the repo** into `~/omega-realm`. From
+rule for the three Omega services — and **clones the repo** into `~/omega-realm`. It also
+sets up TLS (Caddy on `:443`) automatically **if** the domain's DNS already points at the box,
+otherwise deferring it to [Step 4](#step-4--put-the-go-api-behind-https-tls). From
 your **laptop** (asks for the `deploy` user's sudo password; idempotent):
 
 ```bash
@@ -146,11 +148,18 @@ serves your domain on `443` with an automatic Let's Encrypt certificate and prox
 on `127.0.0.1:8080`, then **closes the direct 8080 firewall rule** so the API is reachable only
 over HTTPS.
 
+> **Provision runs this for you when DNS is ready.** Step 1's `provision_server.sh` ends with a
+> `10/10 TLS` step that runs `setup_tls.sh` automatically **iff** the domain's DNS `A` record
+> already resolves to this box. If DNS isn't pointed yet (common on a fresh droplet), provision
+> prints `TLS: DEFERRED …` and leaves the API on `:8080` — you then run this step manually once
+> DNS is in place. Skip the auto-run with `OMEGA_SKIP_TLS=1`.
+
 > **Prerequisite:** a DNS `A`/`AAAA` record for the domain must already point at this droplet —
 > Caddy proves domain control to Let's Encrypt over ports 80/443. The shipped default domain is
 > `gsapi.marrowtech.app` (see [`Caddyfile`](Caddyfile)); override with `OMEGA_API_DOMAIN`.
 
 ```bash
+# Only needed if provision reported `TLS: DEFERRED` (DNS wasn't pointing here yet).
 # [laptop]
 ssh deploy@<droplet-ip>                                  # → now on the server
 # [server] — default domain (gsapi.marrowtech.app):
