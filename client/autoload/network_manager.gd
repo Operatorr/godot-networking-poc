@@ -204,11 +204,17 @@ static func _split_host_port(url: String) -> Array:
 	return [host, port]
 
 
-## The ARENA instance address for a region: its advertised host:port unchanged (8081 locally).
+## The ARENA instance address for a region: the region's HOST on ARENA_DEFAULT_PORT (8081).
+## The region's advertised connect_url carries the SANCTUARY port (8082) — the Sanctuary is the
+## world-entry instance, so that is what the API registers — therefore the Arena port must be
+## forced here, exactly as sanctuary_url_for_region forces 8082. Both instances run on the same
+## host one port apart, so only the HOST is taken from the URL. (Taking the URL's own port made
+## "Enter Arena" dial 8082 and land on the Sanctuary; it only worked locally because the offline
+## fallback URL happens to carry 8081.)
 ## Accepts a region URL (with or without scheme) and returns a bare "host:port" for ENet.
 func arena_url_for_region(region_url: String) -> String:
 	var parts := _split_host_port(region_url)
-	return "%s:%d" % [parts[0], parts[1]]
+	return "%s:%d" % [parts[0], ARENA_DEFAULT_PORT]
 
 
 ## The SANCTUARY instance address for a region: the region's HOST on SANCTUARY_PORT (8082).
