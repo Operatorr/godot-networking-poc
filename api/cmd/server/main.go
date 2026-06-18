@@ -91,6 +91,7 @@ func main() {
 	leaderboardHandler := handlers.NewLeaderboardHandler(db)
 	regionHandler := handlers.NewRegionHandler(redis)
 	internalHandler := handlers.NewInternalHandler(db)
+	classHandler := handlers.NewClassHandler()
 	contentStore := content.NewPostgresStore(db)
 	contentHandler := handlers.NewContentHandler(db, contentStore)
 
@@ -127,6 +128,10 @@ func main() {
 	// Leaderboard routes
 	mux.HandleFunc("/api/leaderboard", leaderboardHandler.GetLeaderboard)
 	mux.HandleFunc("/api/leaderboard/update", leaderboardHandler.UpdateLeaderboard)
+
+	// Class catalogue (public, read-only): the playable class list the website's
+	// character-creation form renders, sourced from the game JSON (see classes.go).
+	mux.HandleFunc("GET /api/classes", classHandler.GetClasses)
 
 	// Region routes
 	mux.HandleFunc("/api/regions", regionHandler.GetRegions)
