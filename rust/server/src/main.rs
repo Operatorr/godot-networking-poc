@@ -140,17 +140,47 @@ fn main() {
         }
     }
 
-    let verifier = auth::TicketVerifier::new(
+    let region_wire = auth::region_from_string(&config.region);
+
+    // Fail LOUD, not silent. Requiring signed tickets (`allow_unsigned_tickets=false`) without a
+    // verification key means EVERY client join is rejected with BAD_TICKET — the exact misconfig
+    // that strands players behind an endless "Connection Lost, reconnecting" loop. A server that
+    // can admit literally no one should refuse to boot, not run 100% broken.
+    if !config.allow_unsigned_tickets && config.ticket_pubkey_hex.trim().is_empty() {
+        eprintln!(
+            "fatal: signed tickets are required (allow_unsigned_tickets=false) but \
+             OMEGA_TICKET_PUBKEY is empty — every client join would be rejected. Set \
+             OMEGA_TICKET_PUBKEY (run `go run ./cmd/gen_ticket_key` from api/ and copy the public \
+             half), or pass --allow-unsigned-tickets / OMEGA_ALLOW_UNSIGNED_TICKETS=true for dev."
+        );
+        std::process::exit(2);
+    }
+
+    let verifier = match auth::TicketVerifier::new(
         &config.ticket_pubkey_hex,
         config.allow_unsigned_tickets,
-        auth::region_from_string(&config.region),
-    )
-    .unwrap_or_else(|e| {
-        warn!("{e}; falling back to unsigned-ticket mode");
-        auth::TicketVerifier::new("", true, auth::region_from_string(&config.region)).unwrap()
-    });
+        region_wire,
+    ) {
+        Ok(v) => v,
+        // A malformed pubkey while unsigned joins are allowed is a dev annoyance — warn and run
+        // open. But when tickets are REQUIRED, silently downgrading to open auth (the old
+        // behaviour) is a security footgun: refuse to boot instead.
+        Err(e) if config.allow_unsigned_tickets => {
+            warn!("{e}; falling back to unsigned-ticket mode");
+            auth::TicketVerifier::new("", true, region_wire).unwrap()
+        }
+        Err(e) => {
+            eprintln!(
+                "fatal: OMEGA_TICKET_PUBKEY is invalid and signed tickets are required: {e}. \
+                 Fix the key or pass --allow-unsigned-tickets for dev."
+            );
+            std::process::exit(2);
+        }
+    };
     if config.allow_unsigned_tickets {
         warn!("dev mode: unsigned tickets accepted (--require-tickets + OMEGA_TICKET_PUBKEY for production)");
+    } else {
+        info!("signed session tickets REQUIRED; verifying with configured OMEGA_TICKET_PUBKEY");
     }
 
     let socket = UdpSocket::bind(("0.0.0.0", config.port)).expect("bind UDP game port");

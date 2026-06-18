@@ -6,6 +6,7 @@ extends Node
 
 ## Preloaded so the GDExtension/headless class cache can't fail to resolve the
 ## global class during startup (repo convention: const named exactly like the class).
+@warning_ignore("shadowed_global_identifier")
 const ChargeTrail := preload("res://scripts/entities/world_effects/charge_trail.gd")
 
 

@@ -222,7 +222,7 @@ func _locomotion_base() -> String:
 func _update_flags(flags: int) -> void:
 	var is_alive := (flags & PacketTypes.ENTITY_FLAG_ALIVE) != 0
 	var is_invulnerable := (flags & PacketTypes.ENTITY_FLAG_INVULNERABLE) != 0
-	var is_stealthed := (flags & PacketTypes.ENTITY_FLAG_STEALTH) != 0
+	var stealthed := (flags & PacketTypes.ENTITY_FLAG_STEALTH) != 0
 
 	visible = (flags & PacketTypes.ENTITY_FLAG_VISIBLE) != 0
 	if collision_shape:
@@ -235,13 +235,13 @@ func _update_flags(flags: int) -> void:
 	# against them, so a stealthed player stays fully damageable.
 	if _daze_indicator:
 		_daze_indicator.set_active(
-			is_alive and not is_stealthed and (flags & PacketTypes.ENTITY_FLAG_DAZED) != 0
+			is_alive and not stealthed and (flags & PacketTypes.ENTITY_FLAG_DAZED) != 0
 		)
 	_refresh_name_label_visibility()
 
 	# Stealth wins (fully hidden) over the invulnerability flash.
 	if animated_sprite:
-		if is_stealthed:
+		if stealthed:
 			animated_sprite.modulate.a = 0.0
 		elif is_invulnerable:
 			animated_sprite.modulate.a = 0.5 + 0.5 * sin(Time.get_ticks_msec() / 100.0)

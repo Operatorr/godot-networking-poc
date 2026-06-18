@@ -139,6 +139,7 @@ const ABILITY_COOLDOWN_S: f64 = 6.0;
 const WARRIOR_CHARGE_SPEED: f64 = 720.0; // units/s
 const WARRIOR_CHARGE_DISTANCE: f64 = 945.0; // units
 const CHARGE_HOLD_MARGIN_S: f64 = 0.04; // small cushion over the exact travel time
+
 // Hold the Warrior's ABILITY for the full charge travel time (distance / speed) plus a cushion so
 // the steerable charge runs its course. Releasing immediately — as the old edge-triggered cast did —
 // ended the charge after a single tick (the "charges ~1 unit" bug). The server ends the charge sooner

@@ -25,6 +25,11 @@ signal auth_state_changed(new_state: AuthState)
 ## `has_character` is true if the account currently has a (living) character server-side.
 signal character_refreshed(has_character: bool)
 
+## Wire length of a signed session ticket: 22-byte payload + 64-byte Ed25519 signature.
+## Mirrors protocol::TICKET_LEN (rust/protocol/src/client.rs); used to reject malformed blobs
+## before they reach the codec.
+const TICKET_BLOB_LEN := 86
+
 ## API server configuration (loaded from client_config.json)
 var api_base_url: String = "http://localhost:8080"
 var api_timeout: float = 10.0
@@ -331,6 +336,67 @@ func is_logged_in() -> bool:
 ## Get JWT token
 func get_token() -> String:
 	return jwt_token
+
+## Fetch a short-lived signed Ed25519 session ticket for the player's OWN character (M3).
+## POST /api/character/ticket (JWT-protected); the game server verifies the signature locally,
+## so there is no per-join API round-trip on the connect hot path. Tickets are short-TTL
+## (expiry IS the revocation story), so call this immediately before each (re)connect.
+##
+## Returns: { "ok": bool, "ticket": PackedByteArray, "unsigned": bool, "error": String }
+##   ok=true, unsigned=false  => `ticket` holds the 86-byte blob to present in ConnectAuth.
+##   ok=true, unsigned=true   => the API has no signing key (503): join with an EMPTY ticket
+##                               (the server is presumably running --allow-unsigned-tickets).
+##   ok=false                 => could not obtain a ticket; `error` explains. Caller decides.
+func fetch_session_ticket(region_id: String = "") -> Dictionary:
+	var empty := PackedByteArray()
+	if jwt_token.is_empty():
+		return {"ok": false, "ticket": empty, "unsigned": false, "error": "Not logged in"}
+
+	var url := api_base_url + "/api/character/ticket"
+	var headers := ["Content-Type: application/json", get_auth_header()]
+	var body := JSON.stringify({"region_id": region_id})
+
+	var req := _create_http_request()
+	var start_error := req.request(url, headers, HTTPClient.METHOD_POST, body)
+	if start_error != OK:
+		req.queue_free()
+		return {"ok": false, "ticket": empty, "unsigned": false,
+			"error": _format_request_start_error("session ticket", start_error)}
+
+	var response: Array = await req.request_completed
+	req.queue_free()
+	var result: int = response[0]
+	var response_code: int = response[1]
+	var resp_body: PackedByteArray = response[3]
+
+	if result != HTTPRequest.RESULT_SUCCESS:
+		return {"ok": false, "ticket": empty, "unsigned": false,
+			"error": _format_request_result_error("session ticket", result)}
+
+	# 503 = signing not configured on the API. The game server is then presumably in unsigned
+	# mode, so join with an empty ticket rather than failing the connect.
+	if response_code == 503:
+		print("[AuthManager] Ticket signing disabled on API (503); joining unsigned")
+		return {"ok": true, "ticket": empty, "unsigned": true, "error": ""}
+
+	if response_code != 200:
+		return {"ok": false, "ticket": empty, "unsigned": false,
+			"error": _parse_error_response(resp_body)}
+
+	var json := JSON.new()
+	if json.parse(resp_body.get_string_from_utf8()) != OK or not (json.data is Dictionary):
+		return {"ok": false, "ticket": empty, "unsigned": false, "error": "Invalid ticket response"}
+	var b64: String = _variant_to_string(json.data.get("ticket", ""))
+	if b64.is_empty():
+		return {"ok": false, "ticket": empty, "unsigned": false, "error": "Empty ticket in response"}
+
+	# The API base64-encodes the raw 86-byte blob (22-byte payload + 64-byte Ed25519 signature);
+	# the codec re-decodes it via protocol::Ticket::from_bytes, so length must be exact.
+	var blob := Marshalls.base64_to_raw(b64)
+	if blob.size() != TICKET_BLOB_LEN:
+		return {"ok": false, "ticket": empty, "unsigned": false,
+			"error": "Malformed ticket (%d bytes, expected %d)" % [blob.size(), TICKET_BLOB_LEN]}
+	return {"ok": true, "ticket": blob, "unsigned": false, "error": ""}
 
 ## Change authentication state
 func _change_state(new_state: AuthState) -> void:

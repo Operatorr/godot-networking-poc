@@ -12,6 +12,7 @@ static func make_frames(texture: Texture2D, frame_count: int, fps: float) -> Spr
 	frames.set_animation_speed("idle", fps)
 	frames.set_animation_loop("idle", true)
 
+	@warning_ignore("integer_division")  # horizontal strip: frames divide the width evenly
 	var frame_width := texture.get_width() / frame_count
 	for i in frame_count:
 		var atlas := AtlasTexture.new()
