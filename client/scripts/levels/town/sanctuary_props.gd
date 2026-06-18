@@ -526,10 +526,11 @@ func _draw_broken_statue() -> void:
 		Vector2(-9.0, -22.0), Vector2(9.0, -22.0),
 		Vector2(11.0, -44.0), Vector2(-7.0, -46.0)
 	]), stone)
-	# Jagged break across the top.
+	# Jagged break across the top. Vertices are wound as a simple (non-self-intersecting)
+	# quad — an x-sorted order would zigzag and cross itself, which fails triangulation.
 	draw_colored_polygon(PackedVector2Array([
 		Vector2(-7.0, -46.0), Vector2(0.0, -42.0),
-		Vector2(5.0, -47.0), Vector2(11.0, -44.0)
+		Vector2(11.0, -44.0), Vector2(5.0, -47.0)
 	]), dark)
 	# A lone arm fragment fallen on the plinth.
 	draw_rect(Rect2(10.0, -24.0, 12.0, 5.0), stone, true)

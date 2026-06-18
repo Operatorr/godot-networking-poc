@@ -5,6 +5,7 @@
 [node name="WorldMapView" type="SubViewport"]
 disable_3d = true
 render_target_update_mode = 0
+physics_interpolation_mode = 2
 script = ExtResource("1_world_map")
 
 [node name="Camera" type="Camera2D" parent="."]

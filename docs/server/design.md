@@ -97,9 +97,18 @@ its Ed25519 seed (`OMEGA_TICKET_PRIVKEY`), and returns the 86-byte blob base64-e
 `api/internal/auth/ticket.go` (signer + region map), `api/internal/handlers/ticket.go` (endpoint),
 `api/cmd/gen_ticket_key` (keypair generator). The exact byte layout is locked to the verifier by a
 shared cross-language test vector (`api/internal/auth/ticket_test.go` ⇄
-`rust/server/src/net/auth.rs::go_cross_language_ticket_vector`). **Not yet built:** the *client* fetch
-flow (M3) — `network_manager.gd` still presents an empty ticket — so player-facing deploys run
-`--allow-unsigned-tickets` until that lands.
+`rust/server/src/net/auth.rs::go_cross_language_ticket_vector`).
+
+**Client fetch side (implemented, M3).** `AuthManager.fetch_session_ticket()` POSTs to
+`/api/character/ticket` with the JWT, base64-decodes the blob, and validates the 86-byte length.
+`NetworkManager.connect_to_server()` calls it (via `_refresh_session_ticket()`) **before every
+dial** — so initial joins, portal travel, AND auto-reconnects all present a *fresh* ticket (TTL is
+short). On a 503 (API signing disabled) or no JWT, the client falls back to an empty ticket
+(unsigned join); a fetch failure is non-fatal and the server's `AuthResult` reports the precise
+reason. Player-facing deploys therefore run **fail-closed** (`OMEGA_ALLOW_UNSIGNED_TICKETS=false`
++ `OMEGA_TICKET_PUBKEY` set). **Boot guardrail:** the server refuses to start if tickets are
+required but no pubkey is configured (or the pubkey is malformed) — see `rust/server/src/main.rs`
+— so a re-provision can't silently strand every player behind a reconnect loop.
 
 ## Persistence: permadeath, death-as-save
 

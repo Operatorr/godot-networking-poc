@@ -175,8 +175,10 @@ Both run **locally on the droplet** as apt-supervised systemd services, bound to
 
 **Auth boundary.** The Go API mints a short-lived **Ed25519 session ticket** (private key
 API-side); the game server **verifies it locally** against the public key — no per-join API
-round-trip. The player-facing deploy currently runs `--allow-unsigned-tickets` until the client
-fetch flow lands ([`server/design.md`](../server/design.md) §auth). The Go API also enforces a
+round-trip. The client now fetches and presents the ticket on every connect (M3), so the
+player-facing deploy runs **fail-closed** (`OMEGA_TICKET_PUBKEY` set, unsigned tickets off); the
+server refuses to boot if tickets are required but no key is configured
+([`server/design.md`](../server/design.md) §auth). The Go API also enforces a
 **single active session per account** and owns atomic bank↔character item transfers — the
 durable-state invariants that keep the two languages from racing into dupes.
 

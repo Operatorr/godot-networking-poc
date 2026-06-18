@@ -308,6 +308,7 @@ func _apply_window_mode(mode: String) -> void:
 	var screen_size := DisplayServer.screen_get_size(screen)
 	var window_size := screen_size.min(WINDOWED_SMALL_SIZE)
 	DisplayServer.window_set_size(window_size)
+	@warning_ignore("integer_division")  # pixel offset — discarding the fractional half-pixel is intended
 	var offset := Vector2i(maxi(0, screen_size.x - window_size.x), maxi(0, screen_size.y - window_size.y)) / 2
 	DisplayServer.window_set_position(screen_pos + offset)
 
@@ -430,6 +431,7 @@ func total_lifetime_xp(level: int, experience: int) -> int:
 ## Glory the server credits this character on a hardcore death: floor(total lifetime XP / GLORY_XP_DIVISOR).
 ## Read from the current authoritative level/experience (kept in sync by PROGRESS events).
 func glory_for_death() -> int:
+	@warning_ignore("integer_division")  # integer division IS the documented floor() of lifetime XP
 	return total_lifetime_xp(get_player_level(), get_player_experience()) / GLORY_XP_DIVISOR
 
 

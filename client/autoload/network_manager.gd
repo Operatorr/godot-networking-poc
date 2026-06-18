@@ -242,6 +242,15 @@ func connect_to_server(url: String, token: String = "", is_reconnect: bool = fal
 
 	print("[NetworkManager] Connecting to %s (ENet)..." % url)
 
+	# M3: mint a fresh signed session ticket into `session_ticket` BEFORE dialing, so the auth
+	# handshake (sent by the scene once the link opens) presents it. Tickets are short-TTL, so we
+	# refresh on EVERY connect — including auto-reconnects, which also funnel through here.
+	await _refresh_session_ticket()
+	if attempt_id != _connection_attempt_id:
+		# A newer connect attempt superseded us while the ticket request was in flight; bail so we
+		# don't dial on behalf of a stale attempt.
+		return
+
 	var error = _transport.client_connect(url)
 
 	if error != OK:
@@ -249,6 +258,30 @@ func connect_to_server(url: String, token: String = "", is_reconnect: bool = fal
 		_fail_connection_attempt(_format_connection_error(url), is_reconnect)
 	else:
 		await _wait_for_connection(attempt_id, is_reconnect)
+
+
+## M3: refresh `session_ticket` ahead of the auth handshake. Online joins present a signed ticket;
+## offline/dev (no JWT) and unsigned-mode servers fall back to an empty ticket. A fetch failure is
+## non-fatal here on purpose: we still dial and let the server's AUTH_RESULT report the precise
+## reason (rejected/expired/wrong-region) rather than silently swallowing the join.
+func _refresh_session_ticket() -> void:
+	session_ticket = PackedByteArray()
+	if auth_token.is_empty():
+		return  # offline / dev direct-connect: unsigned join (server must allow it)
+	var auth = get_node_or_null("/root/AuthManager")
+	if auth == null:
+		return
+	var region_id := ""
+	var game_mgr = get_tree().root.get_node_or_null("GameManager")
+	if game_mgr:
+		region_id = str(game_mgr.player_data.get("selected_region", ""))
+	var res: Dictionary = await auth.fetch_session_ticket(region_id)
+	if res.get("ok", false):
+		session_ticket = res.get("ticket", PackedByteArray())
+		if res.get("unsigned", false):
+			print("[NetworkManager] Joining unsigned (API ticket signing disabled)")
+	else:
+		push_warning("[NetworkManager] Session ticket fetch failed: %s" % str(res.get("error", "")))
 
 
 func _wait_for_connection(attempt_id: int, is_reconnect: bool) -> void:

@@ -324,7 +324,6 @@ var _ground: Dictionary = {}        # Vector2i -> G style id
 var _ground_prio: Dictionary = {}   # Vector2i -> stamping priority
 var _wall_cells: Dictionary = {}    # Vector2i -> [Mat, height]
 var _stair_cells: Dictionary = {}   # Vector2i -> dir string
-var _interior_prop_specs: Array = []  # {kind, pos(world), key}
 var _scatter_props: Array = []      # {kind, cell} from landmark fills
 var _props_container: Node2D = null
 var _prop_body: StaticBody2D = null
@@ -859,10 +858,10 @@ func _build_fountain() -> void:
 		sprite.texture = tex
 		body.add_child(sprite)
 	else:
-		var draw := _FountainFallback.new()
-		draw.radius = FOUNTAIN_RADIUS
-		draw.palette = _palette()
-		body.add_child(draw)
+		var fallback := _FountainFallback.new()
+		fallback.radius = FOUNTAIN_RADIUS
+		fallback.palette = _palette()
+		body.add_child(fallback)
 
 
 ## The World Gate is decorative (sealed) — its props already render via PROPS; add a cold mist

@@ -205,10 +205,10 @@ func _connect_to_destination_instance() -> bool:
 		_set_prompt("Connected!")
 		return true
 
-	var reason: String = state["reason"]
-	if reason.is_empty():
-		reason = "Connection timed out"
-	await _show_error_prompt(reason)
+	var fail_reason: String = state["reason"]
+	if fail_reason.is_empty():
+		fail_reason = "Connection timed out"
+	await _show_error_prompt(fail_reason)
 	return false
 
 

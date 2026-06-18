@@ -197,8 +197,8 @@ func _on_sacrifice_completed(result: int, response_code: int, _headers: PackedSt
 
 func _build_safe_zone_badge() -> void:
 	# HUDLayer is created in _setup_hud before _after_client_setup runs (networked base owns it).
-	var hud := get_hud_layer()
-	if hud == null:
+	var hud_layer := get_hud_layer()
+	if hud_layer == null:
 		return
 
 	var badge := Label.new()
@@ -214,7 +214,7 @@ func _build_safe_zone_badge() -> void:
 	badge.add_theme_color_override("font_color", Color("c69a2e"))
 	badge.add_theme_color_override("font_outline_color", Color("050706"))
 	badge.add_theme_constant_override("outline_size", 6)
-	hud.add_child(badge)
+	hud_layer.add_child(badge)
 
 	var hint := Label.new()
 	hint.name = "TravelHint"
@@ -227,4 +227,4 @@ func _build_safe_zone_badge() -> void:
 	hint.offset_bottom = 120.0
 	hint.add_theme_font_size_override("font_size", 13)
 	hint.add_theme_color_override("font_color", Color(0.82, 0.78, 0.7, 0.85))
-	hud.add_child(hint)
+	hud_layer.add_child(hint)
