@@ -168,6 +168,12 @@ log "10/10  TLS reverse proxy (Caddy) — HTTPS for the Go API"
 # would abort the whole provision. So we run it AUTOMATICALLY only when DNS already
 # resolves here, and otherwise defer it to a clear manual step (the API stays reachable
 # on :8080 until then). Override the domain with OMEGA_API_DOMAIN; skip with OMEGA_SKIP_TLS=1.
+#
+# The auto-run gate is a strict A-record match (getent ahostsv4 == this box's public IPv4). It
+# is deliberately conservative: a domain behind a proxy/CDN (e.g. Cloudflare) or published only
+# as an AAAA/IPv6 record will NOT match, so the auto-run is skipped and TLS is DEFERRED to the
+# manual step even though the domain is correctly configured. That's the safe failure (defer,
+# never a half-configured box) — just run setup_tls.sh by hand in those setups.
 TLS_DOMAIN="${OMEGA_API_DOMAIN:-gsapi.marrowtech.app}"
 if [[ "${OMEGA_SKIP_TLS:-0}" == "1" ]]; then
   warn "OMEGA_SKIP_TLS=1 — skipping TLS. Run later: sudo OMEGA_API_DOMAIN=${TLS_DOMAIN} bash ${REPO_DIR}/deployment/setup_tls.sh"
@@ -177,8 +183,17 @@ else
   DOMAIN_IP="$(getent ahostsv4 "$TLS_DOMAIN" 2>/dev/null | awk 'NR==1 {print $1}')"
   if [[ -n "$SERVER_IP" && "$DOMAIN_IP" == "$SERVER_IP" ]]; then
     echo "DNS ${TLS_DOMAIN} -> ${DOMAIN_IP} matches this box (${SERVER_IP}); running setup_tls.sh"
-    OMEGA_API_DOMAIN="$TLS_DOMAIN" bash "$REPO_DIR/deployment/setup_tls.sh"
-    TLS_STATUS="configured (${TLS_DOMAIN} via Caddy on :443)"
+    # A DNS match doesn't guarantee cert issuance succeeds (port 80 blocked, Let's Encrypt
+    # rate-limit, Caddy error). Guard the call so a failure here can't abort the whole provision
+    # under `set -e` — everything before this step is already done and idempotent. Degrade to a
+    # FAILED status instead and point the operator at the manual re-run.
+    if OMEGA_API_DOMAIN="$TLS_DOMAIN" bash "$REPO_DIR/deployment/setup_tls.sh"; then
+      TLS_STATUS="configured (${TLS_DOMAIN} via Caddy on :443)"
+    else
+      warn "setup_tls.sh FAILED (cert issuance / port 80 reachability / rate-limit?). API still on :8080."
+      warn "    Re-run once resolved: sudo OMEGA_API_DOMAIN=${TLS_DOMAIN} bash ${REPO_DIR}/deployment/setup_tls.sh"
+      TLS_STATUS="FAILED — see logs above; API still on plain :8080"
+    fi
   else
     warn "DNS for ${TLS_DOMAIN} (${DOMAIN_IP:-unresolved}) does not point at this box (${SERVER_IP:-public IP unknown})."
     warn "Deferring TLS so cert issuance can't fail the provision. Once the A record points here, run:"

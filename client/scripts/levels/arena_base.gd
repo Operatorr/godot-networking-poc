@@ -1375,7 +1375,8 @@ const ARENA_PROP_TEXTURE_DIR := "res://assets/sprites/environment/arena/"
 const GROUND_BASE_FILE := "ground_stone1.png"
 const GROUND_DETAIL_FILES := ["ground_variation1.png", "ground_variation2.png"]
 ## 250 divides the 2000-unit arena evenly (8x8), so the base tiles fill it with no overshoot.
-const GROUND_TILE_SIZE := 250.0
+## Sourced from GameConstants so the runtime floor and the editor backdrop share one value.
+const GROUND_TILE_SIZE := GameConstants.GROUND_TILE_SIZE
 
 ## kind -> {file, flat}. Standing props (flat=false) are bottom-planted on
 ## their position; flat props (decals, piles) center on it.
@@ -1480,6 +1481,13 @@ func _build_arena_props() -> void:
 	# without authored props (or with the node deleted), matching the missing-art fallback rule.
 	var existing := get_node_or_null("Props")
 	if existing != null and existing.get_child_count() > 0:
+		# Authored props are used as-is, but re-stamp the minimap visibility bit from the constant
+		# so the hand-authored `visibility_layer = 3` in arena_base.tscn can't silently drift if
+		# MINIMAP_TERRAIN_VISIBILITY ever changes (a .tscn can't reference the constant).
+		existing.visibility_layer = GameConstants.MINIMAP_TERRAIN_VISIBILITY
+		for child in existing.get_children():
+			if child is CanvasItem:
+				child.visibility_layer = GameConstants.MINIMAP_TERRAIN_VISIBILITY
 		return
 	# Free any empty placeholder node IMMEDIATELY (not deferred queue_free) so a same-frame
 	# rebuild can't add a second child with the same name before the queued free runs.

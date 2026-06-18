@@ -29,6 +29,13 @@ EventBus="*res://autoload/event_bus.gd"
 
 window/size/viewport_width=1920
 window/size/viewport_height=1080
+; Boot windowed at the small windowed-mode size (matches GameManager.WINDOWED_SMALL_SIZE), not the
+; 1920x1080 render resolution. The project boots windowed on purpose (see game_manager.gd: macOS
+; native-fullscreen Spaces are unreliable on the first frame); _load_settings() applies the
+; saved/default window_mode at startup, so this small window is only the brief boot frame before we
+; transition INTO fullscreen — keeping that transient frame unobtrusive instead of a full-screen flash.
+window/size/window_width_override=1280
+window/size/window_height_override=720
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 

@@ -16,11 +16,14 @@ extends Node2D
 ## The walls drawn here are Rust-authoritative collision and must NOT be moved in Godot alone —
 ## changing them means editing BOTH GameConstants.ARENA_OBSTACLES and rust/sim_core/src/arena.rs.
 
-## The seamless stone base, tiled across the arena to mirror the runtime sprite floor
-## (_GroundDecorLayer in arena_base.gd). Detail decals are intentionally omitted — the base
-## alone is enough context for decorating.
+## The seamless stone base, drawn one GROUND_TILE_SIZE cell at a time across the arena to mirror
+## the runtime sprite floor (_GroundDecorLayer in arena_base.gd, which stretches the same base to
+## the same cell size). Detail decals are intentionally omitted — the base alone is enough context
+## for decorating.
 const GROUND_BASE_PATH := "res://assets/sprites/environment/arena/ground_stone1.png"
-const GROUND_TILE_SIZE := 250.0
+## Sourced from GameConstants (the same value the runtime floor uses) so this editor backdrop
+## can't drift from the in-game tiling if the cell size ever changes.
+const GROUND_TILE_SIZE := GameConstants.GROUND_TILE_SIZE
 
 ## Mirrors arena_base.gd's _draw() palette so the editor backdrop matches the runtime look.
 const BORDER_COLOR := Color(0.6, 0.1, 0.1, 1.0)
