@@ -152,7 +152,24 @@ func change_scene_to_path(scene_path: String, use_loading_screen: bool = false, 
 	else:
 		await _change_scene_direct(scene_path)
 
+	# A key held across the swap (e.g. walking into the portal while holding a movement key) can
+	# lose its key-up event during the loading-screen / connection awaits, leaving the action stuck
+	# "pressed" in the new scene — PredictionController._capture_input_flags then reads e.g.
+	# move_left as held forever and the character walks into the wall on its own. Reset input so the
+	# new scene starts from neutral. (Worse on live: the longer connect keeps the overlay up, so the
+	# key-up is far more likely to be dropped than on an instant local connect.)
+	_flush_stale_input()
+
 	is_transitioning = false
+
+
+## Clear accumulated input state at a scene boundary so a key held across the transition can't
+## carry over as a stuck action. The new scene re-reads live input on the next frame, so releasing
+## everything here only discards the orphaned "pressed" state left by a dropped key-up event.
+func _flush_stale_input() -> void:
+	Input.flush_buffered_events()
+	for action in InputMap.get_actions():
+		Input.action_release(action)
 
 ## Direct scene change with fade transition
 func _change_scene_direct(scene_path: String) -> void:

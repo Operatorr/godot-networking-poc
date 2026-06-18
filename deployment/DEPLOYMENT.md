@@ -130,11 +130,13 @@ same run. What must line up across the two files:
 | Ed25519 ticket key | `OMEGA_TICKET_PRIVKEY` (private) | `OMEGA_TICKET_PUBKEY` (public) | same keypair |
 
 > **Ticket policy — heads up.** The shipped default is `OMEGA_ALLOW_UNSIGNED_TICKETS=false`
-> (fail closed, require signed tickets). The **game client does not yet fetch/present
-> tickets** (the M3 client flow is unbuilt), so with `false` a real player is refused. Until
-> the client is wired, set `OMEGA_ALLOW_UNSIGNED_TICKETS=true` on a player-facing box. The
-> signing side (API mint endpoint + keys above) is ready now, so once the client presents
-> tickets you flip it back to `false` with `OMEGA_TICKET_PUBKEY` set — no server rebuild.
+> (fail closed, require signed tickets). The **game client now fetches and presents a signed
+> ticket on every connect** (M3 is built — see [`../docs/ops/distribution.md`](../docs/ops/distribution.md)),
+> so `false` is the correct player-facing setting **as long as you set `OMEGA_TICKET_PUBKEY`**
+> (the matched public half above). **Boot guardrail:** with `false` and an empty pubkey the
+> game server now *refuses to start* — it could admit no one — so a re-provision can't silently
+> strand players. Only set `OMEGA_ALLOW_UNSIGNED_TICKETS=true` for dev/load-test boxes that
+> skip ticket minting.
 
 > `/etc/omega-realm/*.env` are `root:deploy 0640` and are **not** in the repo. The
 > templates are `deployment/env/*.example`.

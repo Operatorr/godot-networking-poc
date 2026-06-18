@@ -125,6 +125,7 @@ for the map; this page is the **catalogue** with verification status. Terms are 
 | [`ops/architecture.md`](ops/architecture.md) | Active | Top-level system architecture (what the pieces are, how they talk) & POC success criteria. Rewritten post-Rust-port. |
 | [`ops/infrastructure.md`](ops/infrastructure.md) | Reference | Single-droplet as-built reality (Phase 1) + scaling Vision (Phases 2–3, not built). Native systemd deploy: [ADR 0007](adr/0007-native-systemd-deployment.md) + [`deployment/DEPLOYMENT.md`](../deployment/DEPLOYMENT.md). |
 | [`ops/multi-region.md`](ops/multi-region.md) | Implemented mechanism · operator guide | Running game servers in multiple regions (e.g. Frankfurt + Singapore): one global API/DB control plane, per-region UDP game servers + Sanctuary, region select → heartbeat-advertised connect address. |
+| [`ops/distribution.md`](ops/distribution.md) | Active · operator guide | Client testing/build/ship: run-from-editor vs export, local/prod API toggle, `build_client.sh` outputs, the M3 signed-ticket player-facing deploy runbook, and the no-automated-distribution gap. |
 
 ## Project conventions & reference material
 
