@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/http"
 	"strings"
@@ -13,6 +14,14 @@ import (
 	"github.com/omega-realm/api/internal/middleware"
 	"github.com/omega-realm/api/internal/models"
 )
+
+// LoadTestCharacterIDMin is the lowest character_id the load-test endpoint will mint a
+// ticket for. The game server excludes ids >= 1_000_000 from ALL Postgres I/O — no
+// progression hydrate, no progress write-back, no death/permadeath (see
+// rust/server/src/sim/world.rs, the `character_id < 1_000_000` guards). Refusing to sign
+// anything lower means a leaked LOAD_TEST_TICKET_SECRET still cannot mint a ticket that
+// touches a real character row — its blast radius is confined to harmless synthetic bots.
+const LoadTestCharacterIDMin uint32 = 1_000_000
 
 // TicketHandler issues short-lived Ed25519 session tickets that the authoritative game
 // server verifies locally — no per-join API round-trip on the connect hot path. The
@@ -116,6 +125,74 @@ func (h *TicketHandler) IssueTicket(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(TicketResponse{
 		Ticket:      base64.StdEncoding.EncodeToString(blob),
 		CharacterID: characterID,
+		Region:      regionID,
+		ExpiresAtMs: expiresMs,
+	})
+}
+
+// LoadTestTicketRequest is the body for IssueLoadTestTicket: the synthetic character_id
+// the bot will present (must be >= LoadTestCharacterIDMin) and the region to pin.
+type LoadTestTicketRequest struct {
+	CharacterID uint32 `json:"character_id"`
+	RegionID    string `json:"region_id"`
+}
+
+// IssueLoadTestTicket mints a signed ticket for a SYNTHETIC load-test bot — no user
+// account required.
+//
+// POST /api/loadtest/ticket  (guarded by X-Loadtest-Token vs LOAD_TEST_TICKET_SECRET)
+//
+// It exists so the bot swarm can authenticate against a fail-closed live server WITHOUT
+// opening unsigned tickets. To keep a leaked secret harmless it only mints character_ids
+// in the synthetic range (>= LoadTestCharacterIDMin), which the game server excludes from
+// all database I/O — so a load-test ticket can never read or corrupt a real character.
+func (h *TicketHandler) IssueLoadTestTicket(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !requireLoadTestSecret(w, r) {
+		return
+	}
+	if h.signer == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(ErrorResponse{
+			Error: "Ticket signing not configured (set OMEGA_TICKET_PRIVKEY)",
+		})
+		return
+	}
+
+	var req LoadTestTicketRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Invalid request body"})
+		return
+	}
+	if req.CharacterID < LoadTestCharacterIDMin {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{
+			Error: fmt.Sprintf("character_id must be >= %d (synthetic load-test range)", LoadTestCharacterIDMin),
+		})
+		return
+	}
+
+	regionID := strings.ToLower(strings.TrimSpace(req.RegionID))
+	if regionID == "" {
+		regionID = models.RegionAsia
+	}
+	if !models.IsValidRegion(regionID) {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Invalid region"})
+		return
+	}
+
+	blob, expiresMs := h.signer.Mint(req.CharacterID, auth.RegionToWire(regionID))
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(TicketResponse{
+		Ticket:      base64.StdEncoding.EncodeToString(blob),
+		CharacterID: int(req.CharacterID),
 		Region:      regionID,
 		ExpiresAtMs: expiresMs,
 	})

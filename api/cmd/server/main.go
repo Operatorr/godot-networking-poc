@@ -125,6 +125,12 @@ func main() {
 	mux.HandleFunc("POST /api/internal/characters/{id}/progress", internalHandler.UpdateProgress)
 	mux.HandleFunc("POST /api/internal/characters/{id}/death", internalHandler.Death)
 
+	// Load-test ticket route (guarded by X-Loadtest-Token vs LOAD_TEST_TICKET_SECRET, NOT
+	// JWT). Mints signed tickets for synthetic bot character_ids so the load-test swarm can
+	// authenticate against a fail-closed live server without opening unsigned tickets.
+	// Dormant (503) unless LOAD_TEST_TICKET_SECRET is set. See handlers/ticket.go.
+	mux.HandleFunc("POST /api/loadtest/ticket", ticketHandler.IssueLoadTestTicket)
+
 	// Leaderboard routes
 	mux.HandleFunc("/api/leaderboard", leaderboardHandler.GetLeaderboard)
 	mux.HandleFunc("/api/leaderboard/update", leaderboardHandler.UpdateLeaderboard)

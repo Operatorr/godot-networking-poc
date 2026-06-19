@@ -260,18 +260,42 @@ ssh deploy@<droplet-ip> 'sudo systemctl kill -s SIGKILL omega-arena; sleep 5; sy
 
 ## 4. Load test against the live server
 
-From your dev machine — bots hit the **Arena** (`8081`), never the Sanctuary:
+The live Arena is FAIL CLOSED (`OMEGA_ALLOW_UNSIGNED_TICKETS=false`), so bots must present a
+**signed ticket** — ticket-less joins get `AuthResult` code 2 / `BAD_TICKET`. The swarm fetches
+those tickets from the API's load-test endpoint, so the server never has to allow unsigned
+tickets. One-time API setup, then run from your laptop:
+
+**a. Enable the endpoint on the live API (once).** Pick a strong secret and set it in the API env:
 
 ```bash
-export OMEGA_SERVER=<droplet-ip>:8081           # set the live target once
-./scripts/run_load_test.sh --scenario baseline  # 50 bots
-./scripts/run_load_test.sh --scenario target     # 100 bots (POC success metric)
-# or per-invocation: ./scripts/run_load_test.sh --scenario stress --server <droplet-ip>:8081
+ssh deploy@<droplet-ip>
+SECRET=$(openssl rand -hex 32)
+echo "LOAD_TEST_TICKET_SECRET=$SECRET" | sudo tee -a /etc/omega-realm/api.env
+sudo systemctl restart omega-api
+echo "secret: $SECRET"      # copy this to your laptop
 ```
 
-> Bots authenticate ticket-less, so `OMEGA_ALLOW_UNSIGNED_TICKETS=true` (the default in
-> `server.env`). The `stress` scenario (200 bots) needs `max_players >= 200` in
-> `server_config.arena.json` — raise it and redeploy.
+The endpoint (`POST /api/loadtest/ticket`) is dormant (HTTP 503) until the secret is set, and it
+**only** mints tickets for synthetic `character_id`s (≥ 1,000,000) — ids the game server excludes
+from all DB I/O — so even a leaked secret can never read or corrupt a real character. (It needs
+`OMEGA_TICKET_PRIVKEY` set, which a player-facing deploy already has.)
+
+**b. Run the swarm (from your dev machine).** Bots hit the **Arena** (`8081`), never the Sanctuary:
+
+```bash
+export OMEGA_LOAD_TEST_SECRET=<the secret from step a>
+./scripts/run_load_test.sh --scenario baseline --live   # 50 bots → live arena (signed)
+./scripts/run_load_test.sh --scenario target --live      # 100 bots (POC success metric)
+```
+
+`--live` targets `gsapi.marrowtech.app:8081` (override `OMEGA_LIVE_SERVER`) and fetches tickets
+from `https://gsapi.marrowtech.app` (override `OMEGA_TICKET_API`). Each bot authenticates as a
+synthetic character `1_000_000 + bot_id`; nothing is written to Postgres. The `stress` scenario
+(200 bots) also needs `max_players >= 200` in `server_config.arena.json`.
+
+> Using an explicit `--server <ip>:8081` for live instead of `--live`? Set both env vars yourself:
+> `OMEGA_TICKET_API=https://gsapi.marrowtech.app OMEGA_LOAD_TEST_SECRET=… ./scripts/run_load_test.sh --server <ip>:8081 …`.
+> To shut the endpoint off again, remove `LOAD_TEST_TICKET_SECRET` from `api.env` and restart `omega-api`.
 
 ## Runtime config reference
 

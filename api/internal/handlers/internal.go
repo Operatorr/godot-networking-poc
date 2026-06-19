@@ -58,6 +58,29 @@ func serverTokenValid(got, expected string) bool {
 	return subtle.ConstantTimeCompare([]byte(got), []byte(expected)) == 1
 }
 
+// requireLoadTestSecret guards the load-test ticket endpoint with LOAD_TEST_TICKET_SECRET
+// (header X-Loadtest-Token). It FAILS CLOSED and — unlike requireServerToken — has NO
+// ALLOW_INSECURE_INTERNAL bypass: an unset secret means 503, so the endpoint is dormant in
+// normal production and only live when an operator deliberately sets the secret for a
+// load-test session. (Local load tests run against an unsigned dev server and never need
+// this endpoint.) Returns true if the request may proceed.
+func requireLoadTestSecret(w http.ResponseWriter, r *http.Request) bool {
+	expected := os.Getenv("LOAD_TEST_TICKET_SECRET")
+	if expected == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Load-test ticket endpoint disabled (set LOAD_TEST_TICKET_SECRET)"})
+		return false
+	}
+	if !serverTokenValid(r.Header.Get("X-Loadtest-Token"), expected) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Unauthorized"})
+		return false
+	}
+	return true
+}
+
 // CharacterProgressResponse is the body returned by GetCharacter.
 type CharacterProgressResponse struct {
 	Level      int    `json:"level"`

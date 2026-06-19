@@ -13,7 +13,7 @@ use crate::behavior::{BehaviorKind, BehaviorState, KnownEntity, View};
 use crate::metrics::BotMetrics;
 use crate::rng::Pcg32;
 use protocol::types::{delta_mask, disconnect_reason, entity_flags, MONSTER_ID_START};
-use protocol::{ClientPacket, ConnectAuth, PlayerInput, ServerPacket, Snapshot};
+use protocol::{ClientPacket, ConnectAuth, PlayerInput, ServerPacket, Snapshot, Ticket};
 use rusty_enet as enet;
 use sim_core::{input_flags, movement_direction, step_movement, MovementSm, Vec2};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -58,6 +58,9 @@ pub struct Bot {
     /// Player class — one of Warrior(4)/Rogue(5)/Mage(6), assigned round-robin by bot id so a
     /// swarm is split evenly across the three playable classes. Sent in ConnectAuth.
     player_class: u8,
+    /// Signed session ticket for authenticated joins (`Some` only on an authenticated run);
+    /// `None` = the ticket-less dev path. Sent in ConnectAuth on the ENet Connect event.
+    ticket: Option<Ticket>,
     sm: MovementSm,
     pos: Vec2,
     vel: Vec2,
@@ -102,6 +105,7 @@ impl Bot {
         input_hz: f64,
         bandwidth_budget_bps: u32,
         seed: Option<u64>,
+        ticket: Option<Ticket>,
         now: f64,
     ) -> std::io::Result<Self> {
         let socket = UdpSocket::bind(("0.0.0.0", 0))?;
@@ -150,6 +154,7 @@ impl Bot {
             behavior: BehaviorState::new(behavior, difficulty, player_class),
             rng,
             player_class,
+            ticket,
             sm: MovementSm::new(),
             pos: Vec2::ZERO,
             vel: Vec2::ZERO,
@@ -261,10 +266,14 @@ impl Bot {
             match event {
                 enet::EventNoRef::Connect { .. } => {
                     if self.phase == Phase::Connecting {
+                        // Authenticated run: present the signed ticket (its character_id is
+                        // authoritative server-side). Ticket-less run: None + id 0 (dev path).
+                        let character_id =
+                            self.ticket.as_ref().map(|t| t.character_id).unwrap_or(0);
                         self.send(&ClientPacket::ConnectAuth(ConnectAuth {
                             protocol_version: protocol::PROTOCOL_VERSION,
-                            ticket: None, // dev mode (unsigned); D9 tickets come from the Go API
-                            character_id: 0, // dev: no real character row to hydrate
+                            ticket: self.ticket.clone(),
+                            character_id,
                             character_name: format!("LoadBot{:03}", self.id),
                             color: color_for(self.id),
                             class: self.player_class,
