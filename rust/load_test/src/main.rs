@@ -402,10 +402,12 @@ fn main() {
     // and the whole swarm runs on this single thread over blocking ENet polling. The load
     // generator is therefore CPU-bound on one core past a few hundred bots — at high counts a low
     // client-side tick rate is the generator saturating, not the server; read results accordingly.
-    // Signed-ticket auth: with BOTH the API url and secret, each bot fetches a real Ed25519
-    // ticket (for a synthetic character_id) and joins authenticated — required against a
-    // fail-closed server. With neither, bots join ticket-less (the dev/unsigned path). One of
-    // the two alone is a misconfiguration we refuse loudly rather than silently fall back.
+    // Signed-ticket auth. The API URL is the TRIGGER (set by --live, or --ticket-api-url /
+    // OMEGA_TICKET_API): present + a secret ⇒ each bot fetches a real Ed25519 ticket (for a
+    // synthetic character_id) and joins authenticated, as a fail-closed server requires. No URL
+    // ⇒ ticket-less (the dev/unsigned path) EVEN IF a stray OMEGA_LOAD_TEST_SECRET lingers in the
+    // env — so persisting that secret in ~/.zshrc doesn't break local, unsigned runs. A URL with
+    // no secret is a real misconfiguration (you meant to authenticate) — fail loud.
     let ticket_client = match (&args.ticket_api_url, &args.ticket_secret) {
         (Some(url), Some(secret)) => {
             info!(
@@ -414,14 +416,14 @@ fn main() {
             );
             Some(TicketClient::new(url, secret.clone(), args.region.clone()))
         }
-        (None, None) => None,
-        _ => {
+        (Some(_), None) => {
             error!(
-                "ticket auth needs BOTH --ticket-api-url and --ticket-secret \
-                 (or OMEGA_TICKET_API / OMEGA_LOAD_TEST_SECRET); only one was given"
+                "ticket auth: --ticket-api-url / OMEGA_TICKET_API is set but no \
+                 --ticket-secret / OMEGA_LOAD_TEST_SECRET — cannot mint tickets"
             );
             std::process::exit(2);
         }
+        (None, _) => None,
     };
 
     info!("Phase 1: Spawning bots...");

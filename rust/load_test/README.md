@@ -9,9 +9,11 @@ prediction, so codec drift and sim drift against the server are impossible by co
 
 ```bash
 ./scripts/run_server.sh                                  # terminal 1: the server under test
-./scripts/run_load_test.sh --scenario baseline           # terminal 2: the swarm (local 127.0.0.1:8081)
+./scripts/run_load_test.sh --scenario baseline           # terminal 2: the swarm (run the test on local 127.0.0.1:8081)
+./scripts/run_load_test.sh --scenario baseline --live    # terminal 2: the swarm (runs the test on live server)
 OMEGA_LOAD_TEST_SECRET=… ./scripts/run_load_test.sh --scenario baseline --live   # the live arena (signed)
 ./scripts/run_load_test.sh --bots 75 --duration 120 --server 10.0.0.1:8081
+./scripts/run_load_test.sh --bots 3 --scenario strategy --live # live server testing
 ```
 
 Target precedence: explicit `--server <host:port>` wins, then `--live` (the live arena — the same
@@ -36,6 +38,52 @@ Two paths, by how the target server is configured:
 
 The `stress` scenario needs a server config with `max_players >= 200` (default is 100; excess bots
 are kicked at connect and show up as crash-rate failures, which is itself a valid full-server test).
+
+### Running against the live server
+
+Two one-time setups (server, then laptop), then run the swarm. See also
+[`deployment/DEPLOYMENT.md`](../../deployment/DEPLOYMENT.md) §4.
+
+**1. Enable the ticket endpoint on the live API** (once). `POST /api/loadtest/ticket` is dormant
+(503) until `LOAD_TEST_TICKET_SECRET` is set. On the droplet:
+
+```bash
+ssh deploy@<droplet-ip>
+SECRET=$(openssl rand -hex 32)
+echo "LOAD_TEST_TICKET_SECRET=$SECRET" | sudo tee -a /etc/omega-realm/api.env
+sudo systemctl restart omega-api
+echo "$SECRET"   # copy to your laptop (step 2)
+```
+
+The endpoint only mints synthetic `character_id`s (>= 1,000,000), so a leaked secret can't touch a
+real character — but it does let the holder spawn bots on the live server, so treat it as a secret.
+
+**2. Put the secret on your laptop.** Save the value from step 1 to a file the run command reads
+(kept out of the repo and your shell history):
+
+```bash
+echo '<SECRET from step 1>' > ~/.omega_loadtest_secret && chmod 600 ~/.omega_loadtest_secret
+```
+
+Optionally persist it as an env var so you don't prefix every run. This appends a line that
+_re-reads the file_ on each new shell — the secret value itself stays only in the file, not in
+`.zshrc` or your history:
+
+```bash
+echo 'export OMEGA_LOAD_TEST_SECRET="$(cat ~/.omega_loadtest_secret)"' >> ~/.zshrc
+```
+
+**3. Run the swarm** (`--live` targets the live Arena and the live API automatically):
+
+```bash
+# if you did NOT add the .zshrc line, pass the secret inline (reads the file for that one command):
+OMEGA_LOAD_TEST_SECRET="$(cat ~/.omega_loadtest_secret)" ./scripts/run_load_test.sh --bots 3 --scenario strategy --live
+# if you DID add the .zshrc line (and opened a new shell), the env var is already set:
+./scripts/run_load_test.sh --bots 3 --scenario strategy --live
+```
+
+To disable the endpoint again, remove the `LOAD_TEST_TICKET_SECRET=…` line from
+`/etc/omega-realm/api.env` and `sudo systemctl restart omega-api`.
 
 ## What each bot is
 
