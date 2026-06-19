@@ -17,6 +17,7 @@ godot = { version = "0.5.3", features = ["api-4-6"] }
 ed25519-dalek = "2.2"
 ctrlc = "3.5"
 ureq = { version = "3.3", features = ["json"] }
+base64 = "0.22"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"

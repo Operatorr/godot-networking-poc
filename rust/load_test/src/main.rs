@@ -14,6 +14,7 @@ mod behavior;
 mod bot;
 mod metrics;
 mod rng;
+mod ticket;
 
 use behavior::{BehaviorKind, VALID_BEHAVIORS};
 use bot::{Bot, Phase};
@@ -22,6 +23,7 @@ use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use ticket::{TicketClient, SYNTHETIC_ID_BASE};
 use tracing::{error, info, warn};
 
 struct Scenario {
@@ -114,6 +116,11 @@ OPTIONS:
         --assertions <MODE>    strict | warn | off — regression assertions (default: warn)
         --rate-budget <BPS>    Bytes/sec gate for the per-peer-budget assertion (0 skips)
         --aoi-exit-radius <U>  AoI cull assertion radius (default: 1100)
+        --ticket-api-url <URL> API origin for signed-ticket auth (env: OMEGA_TICKET_API).
+                               Set with --ticket-secret to join a fail-closed server; unset =
+                               ticket-less (server must allow unsigned). e.g. https://host
+        --ticket-secret <TOK>  Load-test ticket-endpoint secret (env: OMEGA_LOAD_TEST_SECRET)
+        --region <NAME>        Region the minted tickets pin (default: asia; must match server)
     -v, --verbose              Debug logging
     -h, --help                 This help
 
@@ -147,6 +154,14 @@ struct Args {
     rate_budget: u64,
     aoi_exit_radius: f64,
     verbose: bool,
+    /// API origin for signed-ticket auth (e.g. `https://gsapi.marrowtech.app`). When set with
+    /// `ticket_secret`, each bot fetches a real ticket and joins authenticated; unset = the
+    /// ticket-less dev path (server must allow unsigned). Env fallback: `OMEGA_TICKET_API`.
+    ticket_api_url: Option<String>,
+    /// Shared secret for the load-test ticket endpoint. Env fallback: `OMEGA_LOAD_TEST_SECRET`.
+    ticket_secret: Option<String>,
+    /// Region the minted tickets pin; must match the target instance (else `WRONG_REGION`).
+    region: String,
 }
 
 #[derive(PartialEq, Clone, Copy)]
@@ -174,6 +189,14 @@ fn parse_args() -> Result<Args, String> {
         rate_budget: 0,
         aoi_exit_radius: 1100.0,
         verbose: false,
+        // Default from env so the wrapper script and bare invocations agree; --flags override below.
+        ticket_api_url: std::env::var("OMEGA_TICKET_API")
+            .ok()
+            .filter(|s| !s.is_empty()),
+        ticket_secret: std::env::var("OMEGA_LOAD_TEST_SECRET")
+            .ok()
+            .filter(|s| !s.is_empty()),
+        region: "asia".into(),
     };
     let argv: Vec<String> = std::env::args().collect();
     let mut i = 1;
@@ -263,6 +286,9 @@ fn parse_args() -> Result<Args, String> {
                     .parse()
                     .map_err(|e| format!("--aoi-exit-radius: {e}"))?
             }
+            "--ticket-api-url" => args.ticket_api_url = Some(value(&mut i)?),
+            "--ticket-secret" => args.ticket_secret = Some(value(&mut i)?),
+            "--region" => args.region = value(&mut i)?,
             "--verbose" | "-v" => args.verbose = true,
             "--help" | "-h" => {
                 print!("{USAGE}");
@@ -376,6 +402,28 @@ fn main() {
     // and the whole swarm runs on this single thread over blocking ENet polling. The load
     // generator is therefore CPU-bound on one core past a few hundred bots — at high counts a low
     // client-side tick rate is the generator saturating, not the server; read results accordingly.
+    // Signed-ticket auth: with BOTH the API url and secret, each bot fetches a real Ed25519
+    // ticket (for a synthetic character_id) and joins authenticated — required against a
+    // fail-closed server. With neither, bots join ticket-less (the dev/unsigned path). One of
+    // the two alone is a misconfiguration we refuse loudly rather than silently fall back.
+    let ticket_client = match (&args.ticket_api_url, &args.ticket_secret) {
+        (Some(url), Some(secret)) => {
+            info!(
+                "Signed-ticket auth ENABLED via {url} (region={})",
+                args.region
+            );
+            Some(TicketClient::new(url, secret.clone(), args.region.clone()))
+        }
+        (None, None) => None,
+        _ => {
+            error!(
+                "ticket auth needs BOTH --ticket-api-url and --ticket-secret \
+                 (or OMEGA_TICKET_API / OMEGA_LOAD_TEST_SECRET); only one was given"
+            );
+            std::process::exit(2);
+        }
+    };
+
     info!("Phase 1: Spawning bots...");
     let mut bots: Vec<Bot> = Vec::with_capacity(bot_count);
     let mut stillborn: Vec<metrics::BotMetrics> = Vec::new();
@@ -383,6 +431,27 @@ fn main() {
         if stop.load(Ordering::SeqCst) {
             break;
         }
+        // Authenticated runs mint one ticket per bot just before connect (well within the
+        // API's short TTL). A fetch failure makes that bot stillborn; the swarm continues.
+        let bot_ticket = if let Some(tc) = &ticket_client {
+            let character_id = SYNTHETIC_ID_BASE + i as u32 + 1;
+            match tc.fetch(character_id) {
+                Ok(t) => Some(t),
+                Err(e) => {
+                    warn!("Bot {} ticket fetch failed: {e}", i + 1);
+                    stillborn.push(metrics::BotMetrics {
+                        bot_id: i as u32 + 1,
+                        behavior: behavior.name(),
+                        error_count: 1,
+                        last_error: format!("ticket fetch failed: {e}"),
+                        ..Default::default()
+                    });
+                    continue;
+                }
+            }
+        } else {
+            None
+        };
         match Bot::connect(
             i as u32 + 1,
             server_addr,
@@ -391,6 +460,7 @@ fn main() {
             args.input_hz,
             args.bandwidth_budget,
             args.seed,
+            bot_ticket,
             now(),
         ) {
             Ok(b) => bots.push(b),

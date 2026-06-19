@@ -110,6 +110,16 @@ reason. Player-facing deploys therefore run **fail-closed** (`OMEGA_ALLOW_UNSIGN
 required but no pubkey is configured (or the pubkey is malformed) — see `rust/server/src/main.rs`
 — so a re-provision can't silently strand every player behind a reconnect loop.
 
+**Load-test side (implemented).** The bot swarm (`rust/load_test`) has no user account, so it can't
+use `/api/character/ticket`. Against a fail-closed server it instead fetches tickets from
+`POST /api/loadtest/ticket` — guarded by a shared secret (`LOAD_TEST_TICKET_SECRET`; dormant/503
+when unset) and capped to **synthetic** `character_id`s (≥ 1,000,000). The server already excludes
+ids ≥ 1,000,000 from all progression I/O (no hydrate / write-back / permadeath — see
+`crate::world` and ADR 0005), so a load-test ticket authenticates a real ENet join **without
+touching any character row**, and the live server never has to allow unsigned tickets. Endpoint:
+`api/internal/handlers/ticket.go::IssueLoadTestTicket` (reuses the same signer); client side:
+`rust/load_test/src/ticket.rs`. See `deployment/DEPLOYMENT.md` §4.
+
 ## Persistence: permadeath, death-as-save
 
 Durable state lives behind the Go API (Postgres); the sim hydrates only the living character's
