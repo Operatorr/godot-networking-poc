@@ -100,6 +100,9 @@ and lifetime bandwidth remain diagnostic and separate from campaign validity gat
 
 ## Current results and forecast status
 
+[Matrix coverage](matrix-coverage.json) independently checks required cells and conditional
+admission before issue resolution. A phase flag alone is not completion evidence.
+
 [Summary CSV](summary.csv) keeps every scored row's validity, authenticated/alive
 player-seconds, outbound IP rate, conditional economics and delivery/server/generator
 quality together. [Repeat spread](repeat-spread.json) includes all rows and marks groups

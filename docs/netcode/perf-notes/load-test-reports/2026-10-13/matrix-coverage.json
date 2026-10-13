@@ -1,0 +1,10 @@
+{
+  "complete": false,
+  "phase_flags": {},
+  "expected_cell_count": 1,
+  "missing_cells": [],
+  "invalid_collection_cells": [],
+  "admission_required": false,
+  "admission_complete": true,
+  "note": "Coverage allows retained valid failures and generator-invalid cells; they cannot establish sustainable server capacity."
+}
