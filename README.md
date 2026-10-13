@@ -20,6 +20,7 @@ players** while maintaining playable performance.
 - [Prerequisites](#prerequisites)
 - [Quick Start (local)](#quick-start-local)
 - [Local Dev Stack](#local-dev-stack)
+- [Wayfinder Dashboard](#wayfinder-dashboard)
 - [Project Structure](#project-structure)
 - [Deploying to a Server](#deploying-to-a-server)
 - [Testing](#testing)
@@ -74,6 +75,21 @@ GDExtension (`rust/client_ext`) — prediction and authority run the same code b
 | Launch bots (gameplay)                | `./scripts/run_load_test.sh --bots 3 --scenario strategy` |
 | Launch bots (load scenario)           | `./scripts/run_load_test.sh --scenario baseline`          |
 | Stop bots                             | `Ctrl+C` in the load test terminal                        |
+| View Wayfinder issues                 | `pnpm dev:wayfinder` (first run: `pnpm install`)           |
+
+## Wayfinder Dashboard
+
+The local [Wayfinder dashboard](apps/wayfinder/README.md) displays this repository's
+GitHub map issues and their sub-issues as a dependency tree. Requires Node.js
+22.18+ (or 24+), pnpm, and an authenticated GitHub CLI (`gh`).
+
+```bash
+pnpm install
+pnpm dev:wayfinder
+```
+
+Open http://localhost:5175. Maps are issues labelled `wayfinder:map`; press
+**Sync** to fetch the latest ticket status and comments from GitHub.
 
 ---
 

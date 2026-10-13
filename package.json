@@ -1,0 +1,9 @@
+{
+  "name": "omega-realm-tools",
+  "private": true,
+  "scripts": {
+    "dev:wayfinder": "pnpm --filter wayfinder-dashboard dev",
+    "build:wayfinder": "pnpm --filter wayfinder-dashboard build",
+    "test:wayfinder": "pnpm --filter wayfinder-dashboard test"
+  }
+}
