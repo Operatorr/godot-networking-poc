@@ -126,6 +126,8 @@ for the map; this page is the **catalogue** with verification status. Terms are 
 | [`ops/infrastructure.md`](ops/infrastructure.md) | Reference | Single-droplet as-built reality (Phase 1) + scaling Vision (Phases 2–3, not built). Native systemd deploy: [ADR 0007](adr/0007-native-systemd-deployment.md) + [`deployment/DEPLOYMENT.md`](../deployment/DEPLOYMENT.md). |
 | [`ops/multi-region.md`](ops/multi-region.md) | Implemented mechanism · operator guide | Running game servers in multiple regions (e.g. Frankfurt + Singapore): one global API/DB control plane, per-region UDP game servers + Sanctuary, region select → heartbeat-advertised connect address. |
 | [`ops/distribution.md`](ops/distribution.md) | Active · operator guide | Client testing/build/ship: run-from-editor vs export, local/prod API toggle, `build_client.sh` outputs, the M3 signed-ticket player-facing deploy runbook, and the no-automated-distribution gap. |
+| [`ops/hetzner-load-testing.md`](ops/hetzner-load-testing.md) | Active · smoke verified | Two isolated CAX11 game/bot hosts, setup/build provenance, budget/Arm64 tradeoffs, and deferred CCX13 comparison. |
+| [`ops/load-test-egress-costs.md`](ops/load-test-egress-costs.md) | Researched · hypothetical forecasts | External egress measurement, provider billing rules, and monthly/yearly costs at 100/1000 CCU. |
 
 ## Project conventions & reference material
 

@@ -1,0 +1,51 @@
+#cloud-config
+# Omega temporary game/bot hosts: Ubuntu 24.04 LTS, x86_64 or arm64.
+# Paste this entire file into Hetzner's Cloud config field on each host.
+# Also select the matching public SSH key in Hetzner's SSH keys section.
+# This creates access and build tools; game services/builds are configured over SSH.
+# Root key login stays available for bootstrap recovery; SSH passwords are disabled.
+# No private keys or application secrets belong in this file.
+users:
+- default
+- name: deploy
+  gecos: Omega load testing
+  groups:
+  - sudo
+  shell: /bin/bash
+  lock_passwd: true
+  sudo: ALL=(ALL) NOPASSWD:ALL
+  ssh_authorized_keys:
+  - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINzYoRfr5CHH9uqWfsoOAIV90cLO/tQaj6hXG3XMFwqE omega-loadtest-2026-10
+ssh_pwauth: false
+disable_root: false
+package_update: true
+package_upgrade: false
+packages:
+- git
+- curl
+- ca-certificates
+- build-essential
+- pkg-config
+- libssl-dev
+- python3
+- jq
+- sysstat
+- tcpdump
+- iproute2
+- htop
+runcmd:
+- - sudo
+  - -iu
+  - deploy
+  - bash
+  - -c
+  - set -euo pipefail; curl --proto "=https" --tlsv1.2 -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain 1.95.0
+- - install
+  - -d
+  - -o
+  - deploy
+  - -g
+  - deploy
+  - -m
+  - '0750'
+  - /home/deploy/omega-results

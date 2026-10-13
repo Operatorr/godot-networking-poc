@@ -60,6 +60,15 @@ api/.env
 # Deploy target config (server IP / SSH user) — local only, never committed
 deployment/deploy.env
 
+# Temporary Hetzner SSH keys: keep private material local; public keys may be committed.
+/deployment/hetzner/ssh/*
+!/deployment/hetzner/ssh/*.pub
+# Per-session connection details and firewall source addresses.
+/deployment/hetzner/access.local.json
+/deployment/hetzner/firewall.local.json
+/deployment/hetzner/auth.local.env
+/deployment/hetzner/results/
+
 # Load test reports (omega-load-test writes report_<timestamp>.json to the CWD)
 report_*.json
 
