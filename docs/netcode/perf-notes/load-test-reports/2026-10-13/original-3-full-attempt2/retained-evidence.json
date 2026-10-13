@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/campaign-20261013/original-3-full-attempt2",
+  "sha256": {
+    "bots.tar.gz": "3c85b56a2beac0b02e1c0f3d300b066f8d289b9c7cb8ede3d0f4a9e12d15501b",
+    "game.tar.gz": "6813e6b8c9980f62c12cf171e00c970d204b7da990375d33369d4240c677bb5a"
+  },
+  "contents": "Unedited reports/logs, host observations, packet headers and full-datagram ENet descriptors. Retained off both temporary hosts in the ignored local evidence archive. Public copies redact connection addresses; no access records or credentials are published."
+}

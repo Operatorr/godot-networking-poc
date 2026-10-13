@@ -49,7 +49,7 @@ def ticks_cpu(observation):
     for pid, process in observation.get("processes", {}).items():
         if process["comm"] and process["comm"].startswith("omega-"):
             stat = process["stat"].split(")", 1)[1].split()
-            result[pid] = {"cpu_ticks": int(stat[11]) + int(stat[12]), "rss_bytes": int(stat[21]) * 4096,
+            result[pid] = {"cpu_ticks": int(stat[11]) + int(stat[12]), "rss_bytes": int(stat[21]) * observation.get("page_size", 4096),
                            "swap_kib": int(re.search(r"VmSwap:\s+(\d+)", process["status"])[1])}
     return result
 
@@ -60,14 +60,36 @@ def cpu_delta(start, end):
     result = {"duration_s": duration, "process_cpu_percent_one_core": None}
     common = first.keys() & last.keys()
     if common:
-        result["process_cpu_percent_one_core"] = sum(last[pid]["cpu_ticks"] - first[pid]["cpu_ticks"] for pid in common) / duration
+        result["process_cpu_percent_one_core"] = sum(last[pid]["cpu_ticks"] - first[pid]["cpu_ticks"] for pid in common) / duration * 100 / start.get("clock_ticks_s", 100)
         result["rss_end_bytes"] = sum(last[pid]["rss_bytes"] for pid in common)
         result["swap_end_kib"] = sum(last[pid]["swap_kib"] for pid in common)
+    def cgroup_cpu(observation):
+        if observation.get("swarm_cgroup_cpu"):
+            return int(dict(line.split() for line in observation["swarm_cgroup_cpu"].splitlines())["usage_usec"]) * 1000
+        text = observation.get("swarm_systemd_cpu_ns", {}).get("stdout", "").strip()
+        return int(text) if text.isdigit() else None
+    first_cgroup, last_cgroup = cgroup_cpu(start), cgroup_cpu(end)
+    if first_cgroup is not None and last_cgroup is not None:
+        result["swarm_cgroup_cpu_percent_one_core"] = (last_cgroup - first_cgroup) / duration / 1e7
+        result["swarm_cgroup_cpu_semantics"] = "Swarm unit (bot process plus tiny shell wrapper), matched boundaries; final systemd value if process exited during boundary observation"
     a = [int(value) for value in start["stat"].splitlines()[0].split()[1:]]
     b = [int(value) for value in end["stat"].splitlines()[0].split()[1:]]
     delta = [y - x for x, y in zip(a, b)]
     result["steal_percent"] = 100 * delta[7] / max(1, sum(delta[:8]))
     result["busy_percent_all_cores"] = 100 * (sum(delta[:8]) - delta[3] - delta[4]) / max(1, sum(delta[:8]))
+    result["per_core"] = {}
+    first_cores = {line.split()[0]: [int(value) for value in line.split()[1:]] for line in start["stat"].splitlines() if re.match(r"cpu\d", line)}
+    last_cores = {line.split()[0]: [int(value) for value in line.split()[1:]] for line in end["stat"].splitlines() if re.match(r"cpu\d", line)}
+    for name, values in first_cores.items():
+        changed = [last_value - value for value, last_value in zip(values, last_cores[name])]
+        total = max(1, sum(changed[:8]))
+        result["per_core"][name] = {"busy_percent": 100 * (sum(changed[:8]) - changed[3] - changed[4]) / total,
+                                    "steal_percent": 100 * changed[7] / total}
+    def snmp(observation):
+        lines = observation["net/snmp"].splitlines()
+        return {names.split()[0].rstrip(":"): dict(zip(names.split()[1:], map(int, values.split()[1:]))) for names, values in zip(lines[::2], lines[1::2])}
+    first_snmp, last_snmp = snmp(start), snmp(end)
+    result["kernel_udp_delta"] = {name: last_snmp["Udp"][name] - value for name, value in first_snmp["Udp"].items() if name != "InCsumErrors" or name in last_snmp["Udp"]}
     result["interface"] = {name: int(end["interface"][name]) - int(start["interface"][name]) for name in start["interface"]}
     result["flow"] = {name: {kind: counter[kind] - nft(start)[name][kind] for kind in ("bytes", "packets")}
                       for name, counter in nft(end).items() if name in nft(start)}
@@ -95,17 +117,31 @@ def records(stream):
         yield stamp, source, target, ip_len, udp_len, fingerprint, [commands[i:i + 16] for i in range(0, len(commands), 16)]
 
 
-def packet_observations(stream, start, end):
+def packet_observations(stream, start, end, margin_ns=2_000_000_000):
     result = {direction: {"packets": 0, "ip_bytes": 0, "reliable_retry_command_bytes": 0,
                           "reliable_retry_payload_bytes": 0, "reliable_commands": 0, "acks": 0,
                           "outstanding_commands_end": 0} for direction in ("out", "in")}
     fingerprints = {direction: collections.Counter() for direction in result}
     reliable = {direction: {} for direction in result}
     outstanding = {direction: set() for direction in result}
+    latest_sequences = {direction: {} for direction in result}
+    context = {direction: collections.defaultdict(list) for direction in result}
+    input_counts = collections.Counter()
+    end_outstanding = None
+    def extend(direction, port, channel, sequence):
+        old = latest_sequences[direction].get((port, channel), sequence)
+        difference = (sequence - old + 32768) % 65536 - 32768
+        extended = old + difference
+        latest_sequences[direction][port, channel] = max(old, extended)
+        return extended
     for stamp, source, target, ip_len, udp_len, fingerprint, commands in records(stream):
+        if end_outstanding is None and stamp >= end:
+            end_outstanding = {direction: len(values) for direction, values in outstanding.items()}
         direction = "out" if source == 8081 else "in"
         port = target if source == 8081 else source
         included = start <= stamp < end
+        if start - margin_ns <= stamp < end + margin_ns:
+            context[direction][(source, target, udp_len, fingerprint)].append(stamp)
         if included:
             result[direction]["packets"] += 1
             result[direction]["ip_bytes"] += ip_len
@@ -114,28 +150,31 @@ def packet_observations(stream, start, end):
             kind, channel = command[0] & 15, command[1]
             sequence, related, payload_length = struct.unpack_from(">HHH", command, 2)
             fragment = struct.unpack_from(">I", command, 8)[0]
-            key = port, channel, sequence, fragment if kind == 8 else 0
+            if included and direction == "in" and command[12] == 2 and kind in (6, 7) and payload_length == 22:
+                input_counts[port] += 1
             if kind == 1:
                 reverse = "in" if direction == "out" else "out"
-                outstanding[reverse].discard((port, channel, related, 0))
+                related = extend(reverse, port, channel, related)
+                outstanding[reverse].discard((port, channel, related))
                 if included:
                     result[direction]["acks"] += 1
-            elif command[0] & 0x80:
-                # Sequence wraps are distinguished from retries by a bounded age. ENet's
-                # maximum timeout is far below this; fragment keys use per-fragment seq.
+            elif command[0] & 0x80 and kind in (6, 8):
+                sequence = extend(direction, port, channel, sequence)
+                key = port, channel, sequence
                 previous = reliable[direction].get(key)
                 if included:
                     result[direction]["reliable_commands"] += 1
                     if previous is not None and stamp - previous < 60_000_000_000:
-                        result[direction]["reliable_retry_command_bytes"] += {6: 6, 8: 24}.get(kind, 4) + payload_length
+                        result[direction]["reliable_retry_command_bytes"] += {2: 48, 3: 44, 4: 8, 5: 4, 6: 6, 8: 24, 10: 12, 11: 16}.get(kind, 4) + payload_length
                         result[direction]["reliable_retry_payload_bytes"] += payload_length
                 reliable[direction][key] = stamp
-                outstanding[direction].add((port, channel, sequence, 0))
-        if stamp >= end:
+                outstanding[direction].add(key)
+        if stamp >= end + margin_ns:
             break
     for direction in result:
-        result[direction]["outstanding_commands_end"] = len(outstanding[direction])
-    return result, fingerprints
+        result[direction]["outstanding_commands_end"] = (end_outstanding or {direction: len(outstanding[direction])})[direction]
+    result["wire_input_counts_by_port"] = dict(input_counts)
+    return result, context
 
 
 def summarize(directory):
@@ -187,13 +226,27 @@ def summarize(directory):
         for direction in ("out", "in"):
             sender = flow_sets["game" if direction == "out" else "bots"][direction]
             receiver = flow_sets["bots" if direction == "out" else "game"][direction]
-            unmatched = sum((sender - receiver).values())
-            extra = sum((receiver - sender).values())
-            total = sum(sender.values())
-            result["directional_loss"][direction] = {"sent": total, "matched": total - unmatched,
-                                                      "unmatched": unmatched, "received_unmatched": extra,
-                                                      "loss_upper_bound_pct": 100 * unmatched / total if total else None,
-                                                      "semantics": "UTC-window multiset; boundary crossing is included in upper bound"}
+            unmatched = total = 0
+            delays_ms = []
+            for key, stamps in sender.items():
+                arrivals = receiver.get(key, [])
+                index = 0
+                for stamp in stamps:
+                    while index < len(arrivals) and arrivals[index] < stamp - 2_000_000:
+                        index += 1
+                    measured = window["start"] <= stamp < window["end"]
+                    if measured:
+                        total += 1
+                    if index < len(arrivals) and arrivals[index] <= stamp + 2_000_000_000:
+                        if measured:
+                            delays_ms.append((arrivals[index] - stamp) / 1e6)
+                        index += 1
+                    elif measured:
+                        unmatched += 1
+            result["directional_loss"][direction] = {"sent": total, "matched": total - unmatched, "unmatched": unmatched,
+                                                      "loss_pct": 100 * unmatched / total if total else None,
+                                                      "delay_ms": {"mean": statistics.mean(delays_ms), "p50": percentile(delays_ms,.5), "p95": percentile(delays_ms,.95), "p99": percentile(delays_ms,.99)} if delays_ms else {},
+                                                      "semantics": "sender steady window; timestamped full-UDP fingerprints matched to receiver ±2 ms/+2 s context; synchronized host clocks"}
     report = load("bots", "bot.json")
     result["legacy_harness"] = report["success_criteria"]
     result["legacy_aggregated"] = report["aggregated"]
@@ -213,14 +266,16 @@ def summarize(directory):
     # Piecewise-constant authoritative post-Tick population. Boundary values come from
     # the last preceding Tick; startup/teardown never share the denominator.
     population = living = 0.0
-    preceding = [row for row in all_ticks if int(row["utc_ns"]) < window["start"]]
+    state_stamp = lambda row: int(row["utc_ns"]) + int(row["work_ns"])
+    preceding = [row for row in all_ticks if state_stamp(row) < window["start"]]
     state = preceding[-1] if preceding else ticks[0]
     stamp = window["start"]
-    for row in ticks:
-        delta = (int(row["utc_ns"]) - stamp) / 1e9
+    population_ticks = [row for row in all_ticks if window["start"] <= state_stamp(row) < window["end"]]
+    for row in population_ticks:
+        delta = (state_stamp(row) - stamp) / 1e9
         population += delta * int(state["authenticated"])
         living += delta * int(state["alive"])
-        state, stamp = row, int(row["utc_ns"])
+        state, stamp = row, state_stamp(row)
     population += (window["end"] - stamp) / 1e9 * int(state["authenticated"])
     living += (window["end"] - stamp) / 1e9 * int(state["alive"])
     result["authenticated_player_seconds"] = population
@@ -228,7 +283,9 @@ def summarize(directory):
     result["alive_fraction"] = living / population if population else None
     result["population_min"] = min(int(row["authenticated"]) for row in ticks)
     result["population_max"] = max(int(row["authenticated"]) for row in ticks)
-    for name in ("deferred", "max_queue_age", "budget_pct", "peers_evaluated", "overflow", "monsters", "projectiles", "effects", "mean_radius_sq"):
+    for name in ("deferred", "max_queue_age", "budget_pct", "peers_evaluated", "overflow", "monsters", "projectiles", "effects", "mean_radius_sq", "pending_replication", "max_deferred_wait_ticks"):
+        if name not in ticks[0]:
+            continue
         values = [float(row[name]) for row in ticks]
         result[name] = {"mean": statistics.mean(values), "max": max(values), "first_30s_mean": statistics.mean(values[:900]),
                         "last_30s_mean": statistics.mean(values[-900:])}
@@ -240,11 +297,12 @@ def summarize(directory):
     if set(server_boundaries) != {"start", "end"}:
         collector_valid = False
     else:
-        result["application_sent_bytes_by_type_channel"] = {}
         for field in ("sent_bytes_by_type_channel", "received_bytes_by_type_channel"):
             first = dict(server_boundaries["start"][field]); last = dict(server_boundaries["end"][field])
             result["application_" + field] = {kind: [value - first.get(kind, [0, 0, 0])[index] for index, value in enumerate(values)] for kind, values in last.items()}
         result["server_send_errors"] = server_boundaries["end"]["send_errors"] - server_boundaries["start"]["send_errors"]
+        result["server_decode_errors"] = server_boundaries["end"]["decode_errors"] - server_boundaries["start"]["decode_errors"]
+        result["source_events_by_type"] = {index: value - server_boundaries["start"]["source_events"][index] for index, value in enumerate(server_boundaries["end"]["source_events"]) if value - server_boundaries["start"]["source_events"][index]}
     bot_samples = [json.loads(line) for line in archives["bots"].extractfile("bots/bots.ndjson")]
     bot_boundaries = {row.get("boundary"): row for row in bot_samples if row.get("boundary")}
     generator_valid = False
@@ -265,6 +323,8 @@ def summarize(directory):
                               for field in ("visible_entities", "snapshot_age_s", "delta_age_s", "confirm_age_s")
                               if (values := [bot[field] for sample in valid_samples for bot in sample["bots"] if bot[field] is not None])}
         result["per_bot_input_hz"] = rates
+        result["input_gap_histogram"] = [sum(bot["input_gaps"][i] - before[bot["id"]]["input_gaps"][i] for bot in last["bots"]) for i in range(8)]
+        result["snapshot_gap_histogram"] = [sum(bot["snapshot_gaps"][i] - before[bot["id"]]["snapshot_gaps"][i] for bot in last["bots"]) for i in range(8)]
         generator_valid = result["generator"]["overall_hz"] >= 29.7 and min(rates) >= 29.7
     else:
         collector_valid = False
@@ -276,12 +336,17 @@ def summarize(directory):
     result["outbound_ip_bytes_player_s"] = flow.get("bytes", 0) / population if population else None
     result["outbound_ip_packets_s"] = flow.get("packets", 0) / duration
     agg = report["aggregated"]
+    wait = result.get("max_deferred_wait_ticks")
+    growing_backlog = bool(wait and wait["last_30s_mean"] > wait["first_30s_mean"] + 30 and wait["max"] > 60)
+    result["growing_replication_backlog"] = growing_backlog
     sustainability = (result["population_min"] == manifest["requested_bots"] and agg["disconnected_bots"] == 0
                       and agg["total_decode_failures"] == 0 and agg["total_send_failures"] == 0 and agg["total_panics"] == 0
                       and result["tick_hz"] >= 29.7 and result["tick_work_ms"]["p99"] < 1000 / 30
-                      and result["tick_lag_ms"]["end"] < 100)
+                      and result["tick_lag_ms"]["end"] < 100 and not growing_backlog)
     result["server_sustainability_gate"] = sustainability
     result["classification"] = "collector-invalid" if not collector_valid else "generator-invalid" if not generator_valid else "native-stable-candidate" if sustainability else "valid-failure"
+    if manifest.get("profile", "native") != "native" and collector_valid and generator_valid:
+        result["classification"] = "controlled-profile-valid" if sustainability else "controlled-profile-degradation"
     for archive in archives.values():
         archive.close()
     return result

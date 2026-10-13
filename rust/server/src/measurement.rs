@@ -5,6 +5,60 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+#[derive(Default)]
+struct DeferredObservation {
+    pending: std::collections::HashMap<usize, std::collections::HashMap<u16, u64>>,
+    seen: std::collections::HashSet<u16>,
+    peer: usize,
+    tick: u64,
+}
+
+thread_local! {
+    static DEFERRED: std::cell::RefCell<Option<DeferredObservation>> = const { std::cell::RefCell::new(None) };
+}
+
+pub fn begin_schedule(peer: usize, tick: u64) {
+    DEFERRED.with(|slot| {
+        if let Some(state) = &mut *slot.borrow_mut() {
+            state.peer = peer;
+            state.tick = tick;
+            state.seen.clear();
+        }
+    });
+}
+
+pub fn observe_candidate(entity: u16, deferred: bool) {
+    DEFERRED.with(|slot| {
+        if let Some(state) = &mut *slot.borrow_mut() {
+            let pending = state.pending.entry(state.peer).or_default();
+            if deferred {
+                state.seen.insert(entity);
+                pending.entry(entity).or_insert(state.tick);
+            } else {
+                pending.remove(&entity);
+            }
+        }
+    });
+}
+
+pub fn end_schedule() {
+    DEFERRED.with(|slot| {
+        if let Some(state) = &mut *slot.borrow_mut() {
+            if let Some(pending) = state.pending.get_mut(&state.peer) {
+                pending.retain(|entity, _| state.seen.contains(entity));
+            }
+        }
+    });
+}
+
+pub fn remove_peer(peer: usize) {
+    DEFERRED.with(|slot| {
+        if let Some(state) = &mut *slot.borrow_mut() {
+            state.pending.remove(&peer);
+        }
+    });
+}
+
 pub struct Measurement {
     directory: std::path::PathBuf,
     boundaries: Vec<(String, u128)>,
@@ -26,13 +80,14 @@ pub struct Measurement {
 impl Measurement {
     pub fn from_env() -> Option<Self> {
         let directory = std::env::var_os("OMEGA_MEASURE_DIR")?;
+        DEFERRED.with(|slot| *slot.borrow_mut() = Some(DeferredObservation::default()));
         std::fs::create_dir_all(&directory).expect("create measurement directory");
         let directory = std::path::Path::new(&directory);
         let mut ticks = BufWriter::with_capacity(
             1024 * 1024,
             File::create(directory.join("ticks.csv")).expect("create raw Tick evidence"),
         );
-        writeln!(ticks, "utc_ns,mono_ns,tick,work_ns,accumulator_lag_s,authenticated,alive,monsters,projectiles,effects,deferred,max_queue_age,budget_pct,peers_evaluated,overflow,mean_x,mean_y,mean_radius_sq,observer_ns").unwrap();
+        writeln!(ticks, "utc_ns,mono_ns,tick,work_ns,accumulator_lag_s,authenticated,alive,monsters,projectiles,effects,deferred,max_queue_age,budget_pct,peers_evaluated,overflow,mean_x,mean_y,mean_radius_sq,pending_replication,max_deferred_wait_ticks,observer_ns").unwrap();
         Some(Self {
             directory: directory.to_path_buf(),
             boundaries: Vec::new(),
@@ -76,6 +131,26 @@ impl Measurement {
         }
         let denominator = f64::from(alive.max(1));
         let diag = &world.broadcast.diagnostics;
+        let (pending, max_wait) = DEFERRED.with(|slot| {
+            let state = slot.borrow();
+            let Some(state) = state.as_ref() else {
+                return (0, 0);
+            };
+            (
+                state
+                    .pending
+                    .values()
+                    .map(|entries| entries.len())
+                    .sum::<usize>(),
+                state
+                    .pending
+                    .values()
+                    .flat_map(|entries| entries.values())
+                    .map(|first| world.tick_count.saturating_sub(*first))
+                    .max()
+                    .unwrap_or(0),
+            )
+        });
         write!(
             self.ticks,
             "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},",
@@ -99,6 +174,7 @@ impl Measurement {
             radius_sq / denominator
         )
         .unwrap();
+        write!(self.ticks, "{pending},{max_wait},").unwrap();
         writeln!(self.ticks, "{}", observer.elapsed().as_nanos()).unwrap();
     }
 
@@ -156,5 +232,32 @@ impl Measurement {
         })).unwrap();
         self.samples.flush().unwrap();
         self.ticks.flush().unwrap();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deferred_wait_starts_at_first_deferral_and_clears_on_admission_or_cull() {
+        DEFERRED.with(|slot| *slot.borrow_mut() = Some(DeferredObservation::default()));
+        begin_schedule(7, 5000);
+        observe_candidate(30001, true);
+        end_schedule();
+        begin_schedule(7, 5001);
+        observe_candidate(30001, true);
+        end_schedule();
+        DEFERRED.with(|slot| assert_eq!(slot.borrow().as_ref().unwrap().pending[&7][&30001], 5000));
+        begin_schedule(7, 5002);
+        observe_candidate(30001, false);
+        observe_candidate(30002, true);
+        end_schedule();
+        DEFERRED.with(|slot| {
+            assert!(!slot.borrow().as_ref().unwrap().pending[&7].contains_key(&30001))
+        });
+        begin_schedule(7, 5003);
+        end_schedule();
+        DEFERRED.with(|slot| assert!(slot.borrow().as_ref().unwrap().pending[&7].is_empty()));
     }
 }

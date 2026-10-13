@@ -52,6 +52,7 @@ impl MetricsCollector {
     }
 
     pub fn remove_peer(&mut self, peer: usize) {
+        crate::measurement::remove_peer(peer);
         self.bytes_sent_per_peer.remove(&peer);
     }
 

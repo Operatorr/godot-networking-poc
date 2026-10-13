@@ -1,0 +1,117 @@
+{
+  "run_id": "original-50-control-1",
+  "requested_bots": 50,
+  "behavior": "movement",
+  "duration": 120,
+  "excluded_warmup": 60,
+  "collection": false,
+  "build": "original",
+  "variant": "native",
+  "started_utc": "2026-10-13T12:14:53.645145+00:00",
+  "stagger_ms": 100,
+  "input_hz": 30,
+  "seed": 30,
+  "difficulty": 1.0,
+  "bandwidth_budget": 0,
+  "ended_utc": "2026-10-13T12:17:44.377297+00:00",
+  "archive_sha256": {
+    "bots.tar.gz": "6ef6bae746fee70dd80a61e9844359f317428c1213f67b4d86ba8de4986ad0e1",
+    "game.tar.gz": "d1c120fceb160ffc1798c7c5ce0ddbb60e352fb08c5cc81b3d3525f775e2b261"
+  },
+  "window_s": 60.0,
+  "game_host": {
+    "duration_s": 60.000127362,
+    "process_cpu_percent_one_core": 13.58330450005287,
+    "rss_end_bytes": 15159296,
+    "swap_end_kib": 0,
+    "steal_percent": 0.0,
+    "busy_percent_all_cores": 8.401449397488834,
+    "interface": {
+      "tx_bytes": 28832771,
+      "rx_bytes": 9061473,
+      "tx_packets": 109413,
+      "rx_packets": 134726,
+      "rx_dropped": 0,
+      "tx_dropped": 0
+    },
+    "flow": {},
+    "boundary_start_lateness_ms": 0.333305,
+    "boundary_end_lateness_ms": 0.472788,
+    "boundary_sample_duration_ms": [
+      31.410104,
+      23.501877
+    ]
+  },
+  "exporter_tick_count": 1800.0,
+  "exporter_tick_mean_ms": 2.6018607083333256,
+  "exporter_tick_hz": 30.0,
+  "bots_host": {
+    "duration_s": 59.999845795,
+    "process_cpu_percent_one_core": 16.333375311469,
+    "rss_end_bytes": 6500352,
+    "swap_end_kib": 0,
+    "steal_percent": 0.0,
+    "busy_percent_all_cores": 11.319005478297514,
+    "interface": {
+      "tx_bytes": 9138879,
+      "rx_bytes": 28916799,
+      "tx_packets": 134944,
+      "rx_packets": 109848,
+      "rx_dropped": 0,
+      "tx_dropped": 0
+    },
+    "flow": {},
+    "boundary_start_lateness_ms": 0.524812,
+    "boundary_end_lateness_ms": 0.383847,
+    "boundary_sample_duration_ms": [
+      28.026723,
+      23.985408
+    ]
+  },
+  "legacy_harness": {
+    "bandwidth": {
+      "passed": false,
+      "value": "6.91 KB/s"
+    },
+    "crash_rate": {
+      "passed": true,
+      "value": "0.0%"
+    },
+    "latency_avg": {
+      "passed": true,
+      "value": "1.7ms"
+    },
+    "latency_p95": {
+      "passed": true,
+      "value": "3.0ms"
+    },
+    "packet_loss": {
+      "passed": true,
+      "value": "0.00%"
+    },
+    "server_tick_rate": {
+      "passed": true,
+      "value": "31.3 Hz"
+    }
+  },
+  "legacy_aggregated": {
+    "bandwidth_per_player_kbps": 6.91,
+    "connected_bots": 50,
+    "disconnected_bots": 0,
+    "estimated_tick_rate": 31.3,
+    "latency_avg_ms": 1.7,
+    "latency_max_ms": 3.0,
+    "latency_min_ms": 1.0,
+    "latency_p95_ms": 3.0,
+    "latency_p99_ms": 3.0,
+    "packet_loss_pct": 0.0,
+    "total_decode_failures": 0,
+    "total_errors": 0,
+    "total_packets_received": 434546,
+    "total_packets_sent": 186331,
+    "total_panics": 0,
+    "total_send_failures": 0
+  },
+  "collector_valid": true,
+  "classification": "original-build-control-unscored"
+}

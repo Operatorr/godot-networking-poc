@@ -1,0 +1,157 @@
+{
+  "run_id": "original-50-control-4",
+  "requested_bots": 50,
+  "behavior": "movement",
+  "duration": 120,
+  "excluded_warmup": 60,
+  "collection": false,
+  "build": "original",
+  "variant": "native",
+  "started_utc": "2026-10-13T12:25:32.520278+00:00",
+  "stagger_ms": 100,
+  "input_hz": 30,
+  "seed": 30,
+  "difficulty": 1.0,
+  "bandwidth_budget": 0,
+  "ended_utc": "2026-10-13T12:28:22.534402+00:00",
+  "archive_sha256": {
+    "bots.tar.gz": "3d20e8e1069e9c9873145978bd1204e91b77ee437c468a1b56e9fac6e3e442fa",
+    "game.tar.gz": "1d54416fefa73f68efbe4bfa730462edbcb4a9083a348b4c458131fbb5355085"
+  },
+  "window_s": 60.0,
+  "game_host": {
+    "duration_s": 59.999947308,
+    "process_cpu_percent_one_core": 14.166679107844258,
+    "rss_end_bytes": 15147008,
+    "swap_end_kib": 0,
+    "steal_percent": 0.0,
+    "busy_percent_all_cores": 9.081744098126523,
+    "per_core": {
+      "cpu0": {
+        "busy_percent": 6.9575471698113205,
+        "steal_percent": 0.0
+      },
+      "cpu1": {
+        "busy_percent": 11.193029490616622,
+        "steal_percent": 0.0
+      }
+    },
+    "kernel_udp_delta": {
+      "InDatagrams": 137417,
+      "NoPorts": 0,
+      "InErrors": 0,
+      "OutDatagrams": 108781,
+      "RcvbufErrors": 0,
+      "SndbufErrors": 0,
+      "InCsumErrors": 0,
+      "IgnoredMulti": 0,
+      "MemErrors": 0
+    },
+    "interface": {
+      "tx_bytes": 28997158,
+      "rx_bytes": 9158302,
+      "tx_packets": 108796,
+      "rx_packets": 137489,
+      "rx_dropped": 0,
+      "tx_dropped": 0
+    },
+    "flow": {},
+    "boundary_start_lateness_ms": 0.414565,
+    "boundary_end_lateness_ms": 0.374673,
+    "boundary_sample_duration_ms": [
+      33.349785,
+      20.503406
+    ]
+  },
+  "exporter_tick_count": 1800.0,
+  "exporter_tick_mean_ms": 2.6574051205555365,
+  "exporter_tick_hz": 30.0,
+  "bots_host": {
+    "duration_s": 60.000030421,
+    "process_cpu_percent_one_core": null,
+    "steal_percent": 0.0,
+    "busy_percent_all_cores": 11.207404291123265,
+    "per_core": {
+      "cpu0": {
+        "busy_percent": 11.762734584450403,
+        "steal_percent": 0.0
+      },
+      "cpu1": {
+        "busy_percent": 10.632183908045977,
+        "steal_percent": 0.0
+      }
+    },
+    "kernel_udp_delta": {
+      "InDatagrams": 108781,
+      "NoPorts": 0,
+      "InErrors": 0,
+      "OutDatagrams": 137434,
+      "RcvbufErrors": 0,
+      "SndbufErrors": 0,
+      "InCsumErrors": 0,
+      "IgnoredMulti": 0,
+      "MemErrors": 0
+    },
+    "interface": {
+      "tx_bytes": 9235499,
+      "rx_bytes": 29075556,
+      "tx_packets": 137716,
+      "rx_packets": 109169,
+      "rx_dropped": 0,
+      "tx_dropped": 0
+    },
+    "flow": {},
+    "boundary_start_lateness_ms": 0.301728,
+    "boundary_end_lateness_ms": 0.343749,
+    "boundary_sample_duration_ms": [
+      24.24509,
+      18.356839
+    ]
+  },
+  "legacy_harness": {
+    "bandwidth": {
+      "passed": false,
+      "value": "6.96 KB/s"
+    },
+    "crash_rate": {
+      "passed": true,
+      "value": "0.0%"
+    },
+    "latency_avg": {
+      "passed": true,
+      "value": "1.7ms"
+    },
+    "latency_p95": {
+      "passed": true,
+      "value": "3.0ms"
+    },
+    "packet_loss": {
+      "passed": true,
+      "value": "0.00%"
+    },
+    "server_tick_rate": {
+      "passed": true,
+      "value": "31.3 Hz"
+    }
+  },
+  "legacy_aggregated": {
+    "bandwidth_per_player_kbps": 6.96,
+    "connected_bots": 50,
+    "disconnected_bots": 0,
+    "estimated_tick_rate": 31.3,
+    "latency_avg_ms": 1.7,
+    "latency_max_ms": 3.0,
+    "latency_min_ms": 1.0,
+    "latency_p95_ms": 3.0,
+    "latency_p99_ms": 3.0,
+    "packet_loss_pct": 0.0,
+    "total_decode_failures": 0,
+    "total_errors": 0,
+    "total_packets_received": 434259,
+    "total_packets_sent": 186329,
+    "total_panics": 0,
+    "total_send_failures": 0
+  },
+  "collector_valid": true,
+  "classification": "original-build-control-unscored"
+}

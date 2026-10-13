@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/campaign-20261013/original-50-control-2",
+  "sha256": {
+    "bots.tar.gz": "f8eda18225ffdff7485c4849f5c29dc8c78da4b057645ede07c3ab712a70cd6e",
+    "game.tar.gz": "9f1d4d9b932dea3d5303dbacfd8636cd690cebee0405eb37e8abdadeedfbc879"
+  },
+  "contents": "Unedited reports/logs, host observations, packet headers and full-datagram ENet descriptors. Retained off both temporary hosts in the ignored local evidence archive. Public copies redact connection addresses; no access records or credentials are published."
+}

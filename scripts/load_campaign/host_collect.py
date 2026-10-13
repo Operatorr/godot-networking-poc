@@ -27,16 +27,21 @@ def read(path):
         return None
 
 
-def sample(role):
+def sample(role, swarm_unit=None):
     before = time.time_ns()
-    result = {"utc_ns": before, "monotonic_ns": time.monotonic_ns()}
-    for name in ("stat", "meminfo", "net/snmp", "net/softnet_stat", "net/dev", "pressure/cpu"):
+    result = {"utc_ns": before, "monotonic_ns": time.monotonic_ns(),
+              "clock_ticks_s": os.sysconf("SC_CLK_TCK"), "page_size": os.sysconf("SC_PAGE_SIZE")}
+    for name in ("stat", "meminfo", "net/snmp", "net/softnet_stat", "net/dev", "net/udp", "net/udp6", "pressure/cpu"):
         result[name] = read("/proc/" + name)
     result["interface"] = {
         name: read("/sys/class/net/eth0/statistics/" + name)
         for name in ("tx_bytes", "rx_bytes", "tx_packets", "rx_packets", "rx_dropped", "tx_dropped")
     }
     result["processes"] = {}
+    if swarm_unit:
+        result["swarm_cgroup_cpu"] = read("/sys/fs/cgroup/system.slice/" + swarm_unit + ".service/cpu.stat")
+        if result["swarm_cgroup_cpu"] is None:
+            result["swarm_systemd_cpu_ns"] = command(["systemctl", "show", swarm_unit, "--property=CPUUsageNSec", "--value"])
     for directory in pathlib.Path("/proc").iterdir():
         if directory.name.isdigit() and read(directory / "comm") in ("omega-server\n", "omega-load-test\n", "tcpdump\n"):
             result["processes"][directory.name] = {
@@ -62,6 +67,7 @@ def main():
     parser.add_argument("--directory", required=True)
     parser.add_argument("--seconds", type=int, default=1200)
     parser.add_argument("--light", action="store_true")
+    parser.add_argument("--swarm-unit")
     args = parser.parse_args()
     directory = pathlib.Path(args.directory)
     directory.mkdir(parents=True, exist_ok=True)
@@ -82,13 +88,13 @@ def main():
             targets = json.loads(schedule) if schedule else {}
             for boundary, target in targets.items():
                 if boundary not in boundaries and time.time_ns() >= target:
-                    observation = sample(args.role)
+                    observation = sample(args.role, args.swarm_unit)
                     observation["boundary"] = boundary
                     observation["target_utc_ns"] = target
                     (directory / (boundary + ".json")).write_text(json.dumps(observation))
                     boundaries.add(boundary)
             if not args.light and time.monotonic() >= next_sample:
-                output.write(json.dumps(sample(args.role)) + "\n")
+                output.write(json.dumps(sample(args.role, args.swarm_unit)) + "\n")
                 output.flush()
                 next_sample += 1
             nearest = min([v for k, v in targets.items() if k not in boundaries] or [time.time_ns() + 100_000_000])

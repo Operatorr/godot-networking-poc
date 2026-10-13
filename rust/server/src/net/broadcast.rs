@@ -291,9 +291,11 @@ fn schedule(candidates: &mut [Candidate], max_bytes: usize) -> (Vec<usize>, Sche
         stats.max_queue_age_ticks = stats.max_queue_age_ticks.max(c.ticks_since_last_sent);
         let fits = max_bits == 0 || bits + c.encoded_bits <= max_bits;
         if c.pinned || fits {
+            crate::measurement::observe_candidate(c.entity_id, false);
             selected.push(c.index);
             bits += c.encoded_bits;
         } else {
+            crate::measurement::observe_candidate(c.entity_id, true);
             stats.deferred += 1;
             stats.hit_budget = true;
         }
@@ -484,6 +486,7 @@ impl BroadcastService {
             let needs_baseline =
                 cache.needs_full_state_for_interval(tick) || cache.needs_baseline_resend(tick);
 
+            crate::measurement::begin_schedule(peer, tick);
             let packet = if needs_baseline && removed_entity_ids.is_empty() {
                 let entities: Vec<EntityData> =
                     visible.iter().map(|(i, _)| all_entities[*i]).collect();
@@ -515,6 +518,7 @@ impl BroadcastService {
                 }
                 snap
             };
+            crate::measurement::end_schedule();
             outbox.send(peer, ServerPacket::Snapshot(packet));
         }
 

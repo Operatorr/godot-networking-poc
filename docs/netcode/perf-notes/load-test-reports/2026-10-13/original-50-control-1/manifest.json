@@ -1,0 +1,18 @@
+{
+  "run_id": "original-50-control-1",
+  "requested_bots": 50,
+  "behavior": "movement",
+  "duration": 120,
+  "excluded_warmup": 60,
+  "collection": false,
+  "build": "original",
+  "variant": "native",
+  "started_utc": "2026-10-13T12:14:53.645145+00:00",
+  "stagger_ms": 100,
+  "input_hz": 30,
+  "seed": 30,
+  "difficulty": 1.0,
+  "bandwidth_budget": 0,
+  "command": "env -u OMEGA_TICKET_API -u OMEGA_LOAD_TEST_SECRET /home/deploy/omega-results/campaign-20261013/original/omega-load-test --server <game-host>:8081 --bots 50 --behavior movement --duration 120 --input-hz 30 --seed 30 --stagger 100 --difficulty 1.0 --bandwidth-budget 0 --assertions strict --aoi-exit-radius 1100 --output /home/deploy/omega-results/campaign-20261013/original-50-control-1/bots/bot.json",
+  "ended_utc": "2026-10-13T12:17:44.377297+00:00"
+}
