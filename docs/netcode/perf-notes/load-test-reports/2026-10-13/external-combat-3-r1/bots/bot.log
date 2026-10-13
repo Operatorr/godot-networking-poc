@@ -1,0 +1,139 @@
+2026-10-13T13:54:24.941028Z  INFO omega_load_test: Starting load test: 3 bots, 360s duration, behavior=combat, difficulty=1.00, server=<game-host>:8081
+2026-10-13T13:54:24.941237Z  INFO omega_load_test: Phase 1: Spawning bots...
+2026-10-13T13:54:26.700581Z  INFO omega_load_test: Spawned 3 bots, 3 connected successfully
+2026-10-13T13:54:26.701209Z  INFO omega_load_test: Phase 2: Running test for 360 seconds with 3 bots...
+2026-10-13T13:54:31.701270Z  INFO omega_load_test: [5s] bots=3 bytes_recv=39992 state_updates=513
+2026-10-13T13:54:36.701079Z  INFO omega_load_test: [10s] bots=3 bytes_recv=76809 state_updates=963
+2026-10-13T13:54:41.701143Z  INFO omega_load_test: [15s] bots=3 bytes_recv=123596 state_updates=1411
+2026-10-13T13:54:46.701525Z  INFO omega_load_test: [20s] bots=3 bytes_recv=177021 state_updates=1854
+2026-10-13T13:54:51.700951Z  INFO omega_load_test: [25s] bots=3 bytes_recv=225935 state_updates=2304
+2026-10-13T13:54:56.701897Z  INFO omega_load_test: [30s] bots=3 bytes_recv=267073 state_updates=2752
+2026-10-13T13:55:01.701480Z  INFO omega_load_test: [35s] bots=3 bytes_recv=319028 state_updates=3196
+2026-10-13T13:55:06.700910Z  INFO omega_load_test: [40s] bots=3 bytes_recv=344040 state_updates=3475
+2026-10-13T13:55:11.700997Z  INFO omega_load_test: [45s] bots=3 bytes_recv=388220 state_updates=3923
+2026-10-13T13:55:16.703395Z  INFO omega_load_test: [50s] bots=3 bytes_recv=433392 state_updates=4368
+2026-10-13T13:55:21.702177Z  INFO omega_load_test: [55s] bots=3 bytes_recv=509040 state_updates=4810
+2026-10-13T13:55:26.702304Z  INFO omega_load_test: [60s] bots=3 bytes_recv=592807 state_updates=5259
+2026-10-13T13:55:31.701227Z  INFO omega_load_test: [65s] bots=3 bytes_recv=671772 state_updates=5697
+2026-10-13T13:55:36.701936Z  INFO omega_load_test: [70s] bots=3 bytes_recv=722826 state_updates=6143
+2026-10-13T13:55:41.702001Z  INFO omega_load_test: [75s] bots=3 bytes_recv=761971 state_updates=6593
+2026-10-13T13:55:46.701761Z  INFO omega_load_test: [80s] bots=3 bytes_recv=799397 state_updates=7037
+2026-10-13T13:55:51.701306Z  INFO omega_load_test: [85s] bots=3 bytes_recv=849624 state_updates=7482
+2026-10-13T13:55:56.701159Z  INFO omega_load_test: [90s] bots=3 bytes_recv=896944 state_updates=7932
+2026-10-13T13:56:01.702285Z  INFO omega_load_test: [95s] bots=3 bytes_recv=943652 state_updates=8382
+2026-10-13T13:56:06.701153Z  INFO omega_load_test: [100s] bots=3 bytes_recv=993317 state_updates=8828
+2026-10-13T13:56:11.701407Z  INFO omega_load_test: [105s] bots=3 bytes_recv=1028821 state_updates=9154
+2026-10-13T13:56:16.702346Z  INFO omega_load_test: [110s] bots=3 bytes_recv=1068131 state_updates=9552
+2026-10-13T13:56:21.701849Z  INFO omega_load_test: [115s] bots=3 bytes_recv=1128882 state_updates=10002
+2026-10-13T13:56:26.702244Z  INFO omega_load_test: [120s] bots=3 bytes_recv=1165962 state_updates=10451
+2026-10-13T13:56:31.701383Z  INFO omega_load_test: [125s] bots=3 bytes_recv=1216455 state_updates=10895
+2026-10-13T13:56:36.701622Z  INFO omega_load_test: [130s] bots=3 bytes_recv=1271054 state_updates=11343
+2026-10-13T13:56:41.701638Z  INFO omega_load_test: [135s] bots=3 bytes_recv=1330596 state_updates=11793
+2026-10-13T13:56:46.701702Z  INFO omega_load_test: [140s] bots=3 bytes_recv=1385441 state_updates=12243
+2026-10-13T13:56:51.702604Z  INFO omega_load_test: [145s] bots=3 bytes_recv=1449634 state_updates=12692
+2026-10-13T13:56:56.701624Z  INFO omega_load_test: [150s] bots=3 bytes_recv=1509913 state_updates=13142
+2026-10-13T13:57:01.702496Z  INFO omega_load_test: [155s] bots=3 bytes_recv=1570630 state_updates=13592
+2026-10-13T13:57:06.701924Z  INFO omega_load_test: [160s] bots=3 bytes_recv=1634974 state_updates=14041
+2026-10-13T13:57:11.702664Z  INFO omega_load_test: [165s] bots=3 bytes_recv=1705008 state_updates=14486
+2026-10-13T13:57:16.702508Z  INFO omega_load_test: [170s] bots=3 bytes_recv=1771874 state_updates=14935
+2026-10-13T13:57:21.702369Z  INFO omega_load_test: [175s] bots=3 bytes_recv=1822438 state_updates=15385
+2026-10-13T13:57:26.707526Z  INFO omega_load_test: [180s] bots=3 bytes_recv=1880095 state_updates=15834
+2026-10-13T13:57:31.701790Z  INFO omega_load_test: [185s] bots=3 bytes_recv=1945347 state_updates=16284
+2026-10-13T13:57:36.701596Z  INFO omega_load_test: [190s] bots=3 bytes_recv=2022689 state_updates=16734
+2026-10-13T13:57:41.709223Z  INFO omega_load_test: [195s] bots=3 bytes_recv=2074565 state_updates=17184
+2026-10-13T13:57:46.703339Z  INFO omega_load_test: [200s] bots=3 bytes_recv=2115104 state_updates=17618
+2026-10-13T13:57:51.704143Z  INFO omega_load_test: [205s] bots=3 bytes_recv=2160097 state_updates=18067
+2026-10-13T13:57:56.702152Z  INFO omega_load_test: [210s] bots=3 bytes_recv=2203189 state_updates=18515
+2026-10-13T13:58:01.702625Z  INFO omega_load_test: [215s] bots=3 bytes_recv=2249017 state_updates=18965
+2026-10-13T13:58:06.702777Z  INFO omega_load_test: [220s] bots=3 bytes_recv=2292373 state_updates=19413
+2026-10-13T13:58:11.701923Z  INFO omega_load_test: [225s] bots=3 bytes_recv=2352076 state_updates=19862
+2026-10-13T13:58:16.702359Z  INFO omega_load_test: [230s] bots=3 bytes_recv=2399086 state_updates=20312
+2026-10-13T13:58:21.702961Z  INFO omega_load_test: [235s] bots=3 bytes_recv=2461665 state_updates=20762
+2026-10-13T13:58:26.702588Z  INFO omega_load_test: [240s] bots=3 bytes_recv=2528951 state_updates=21211
+2026-10-13T13:58:31.702751Z  INFO omega_load_test: [245s] bots=3 bytes_recv=2600493 state_updates=21661
+2026-10-13T13:58:36.702323Z  INFO omega_load_test: [250s] bots=3 bytes_recv=2663300 state_updates=22107
+2026-10-13T13:58:41.703045Z  INFO omega_load_test: [255s] bots=3 bytes_recv=2740095 state_updates=22555
+2026-10-13T13:58:46.703109Z  INFO omega_load_test: [260s] bots=3 bytes_recv=2812590 state_updates=23005
+2026-10-13T13:58:51.702856Z  INFO omega_load_test: [265s] bots=3 bytes_recv=2897226 state_updates=23453
+2026-10-13T13:58:56.702510Z  INFO omega_load_test: [270s] bots=3 bytes_recv=2997974 state_updates=23900
+2026-10-13T13:59:01.702225Z  INFO omega_load_test: [275s] bots=3 bytes_recv=3075503 state_updates=24350
+2026-10-13T13:59:06.703084Z  INFO omega_load_test: [280s] bots=3 bytes_recv=3126497 state_updates=24800
+2026-10-13T13:59:11.703478Z  INFO omega_load_test: [285s] bots=3 bytes_recv=3189300 state_updates=25247
+2026-10-13T13:59:16.702518Z  INFO omega_load_test: [290s] bots=3 bytes_recv=3250555 state_updates=25696
+2026-10-13T13:59:21.702729Z  INFO omega_load_test: [295s] bots=3 bytes_recv=3304714 state_updates=26142
+2026-10-13T13:59:26.703616Z  INFO omega_load_test: [300s] bots=3 bytes_recv=3360364 state_updates=26592
+2026-10-13T13:59:31.702425Z  INFO omega_load_test: [305s] bots=3 bytes_recv=3423416 state_updates=27042
+2026-10-13T13:59:36.703503Z  INFO omega_load_test: [310s] bots=3 bytes_recv=3478955 state_updates=27490
+2026-10-13T13:59:41.702358Z  INFO omega_load_test: [315s] bots=3 bytes_recv=3545667 state_updates=27938
+2026-10-13T13:59:46.703392Z  INFO omega_load_test: [320s] bots=3 bytes_recv=3603614 state_updates=28388
+2026-10-13T13:59:51.702568Z  INFO omega_load_test: [325s] bots=3 bytes_recv=3652998 state_updates=28837
+2026-10-13T13:59:56.702260Z  INFO omega_load_test: [330s] bots=3 bytes_recv=3700397 state_updates=29287
+2026-10-13T14:00:01.704351Z  INFO omega_load_test: [335s] bots=3 bytes_recv=3761061 state_updates=29737
+2026-10-13T14:00:06.703688Z  INFO omega_load_test: [340s] bots=3 bytes_recv=3827251 state_updates=30187
+2026-10-13T14:00:11.702985Z  INFO omega_load_test: [345s] bots=3 bytes_recv=3884620 state_updates=30632
+2026-10-13T14:00:16.702483Z  INFO omega_load_test: [350s] bots=3 bytes_recv=3935537 state_updates=31078
+2026-10-13T14:00:21.702431Z  INFO omega_load_test: [355s] bots=3 bytes_recv=3984467 state_updates=31521
+2026-10-13T14:00:26.702797Z  INFO omega_load_test: [360s] bots=3 bytes_recv=4022894 state_updates=31967
+2026-10-13T14:00:26.704614Z  INFO omega_load_test: Phase 3: Collecting metrics...
+
+============================================================
+  Omega Realm Load Test Report (ENet/Rust)
+============================================================
+
+Test Configuration:
+  Bot Count:       3
+  Duration:        360 seconds
+  Server:          <game-host>:8081
+  Timestamp:       2026-10-13T14:00:26Z (UTC)
+
+Connection Summary:
+  Connected:       3
+  Disconnected:    0
+  Errors:          0
+  Decode Failures: 0
+  Send Failures:   0
+  Bot Panics:      0
+
+Server Metrics (client-estimated):
+  Est. Tick Rate:  30.1 Hz
+  State Updates:   10656 per bot (avg)
+
+Server Metrics (server-reported):
+  Avg Tick Time:   0.22ms
+  Max Tick Time:   0.27ms
+  Players:         3
+  Entity Count:    12
+  Total Bytes Out: 4065918
+  Avg BW/Client:   2271 bytes
+
+Network Metrics:
+  Packets Sent:    33022
+  Packets Recv:    73868
+  Bandwidth/Player: 4.29 KB/s
+
+Latency Distribution (ENet RTT):
+  Min:             235.0ms
+  Avg:             247.4ms
+  Max:             289.0ms
+  P95:             256.0ms
+  P99:             268.0ms
+  Packet Loss:     0.18%
+
+Success Criteria:
+  [FAIL] Average latency < 100ms: 247.4ms
+  [FAIL] P95 latency < 150ms: 256.0ms
+  [PASS] Bandwidth < 5.0 KB/s per player: 4.29 KB/s
+  [PASS] Packet loss < 2.0%: 0.18%
+  [PASS] Bot crash rate < 5.0%: 0.0%
+  [PASS] Server tick rate > 30 Hz: 30.1 Hz
+
+------------------------------------------------------------
+  Conclusion: SOME CRITERIA FAILED
+------------------------------------------------------------
+
+Regression Assertions (§8.3):
+  [PASS] aoi_cull: 3/3 bots within 1150 u (95% required)
+  [PASS] decode_clean: no decode failures
+  [SKIP] per_peer_budget: skipped: no --rate-budget configured
+
+2026-10-13T14:00:26.951674Z  INFO omega_load_test: JSON report saved to: /Users/opera/Godot Projects/godot-networking-poc/deployment/hetzner/results/campaign-20261013/external-combat-3-r1/bots/bot.json

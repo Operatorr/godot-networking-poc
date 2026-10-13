@@ -1,0 +1,12 @@
+{
+  "source": "User game-host Traffic out tooltip screenshot",
+  "screenshot_local_time": "2026-10-13 21:39:34 Asia/Taipei",
+  "screenshot_utc": "2026-10-13T13:39:34Z",
+  "display_value": "0.00008464 TB",
+  "decimal_bytes_if_decimal_TB": 84640000,
+  "display_quantum_bytes_if_decimal_TB": 10000,
+  "account_unit_definition_verified": false,
+  "reporting_delay_verified": false,
+  "source_sha256": "78692152b488a9cb6fd107a4e072659f9916c363cfba80e783e76fd31f880f55",
+  "context": "Before external bot check, after setup/preflights and archive downloads. Same-zone game/bot traffic is exempt; provider counter may lag and includes SSH egress."
+}

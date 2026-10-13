@@ -275,6 +275,9 @@ def summarize(directory):
                                                       "loss_pct": 100 * unmatched / total if total else None,
                                                       "delay_ms": {"mean": statistics.mean(delays_ms), "p50": percentile(delays_ms,.5), "p95": percentile(delays_ms,.95), "p99": percentile(delays_ms,.99)} if delays_ms else {},
                                                       "semantics": "sender pre-qdisc mirror when available (otherwise post-qdisc capture); timestamped full-UDP fingerprints matched to receiver ±2 ms/+2 s context; synchronized host clocks"}
+    if "Operator Mac" in manifest.get("topology", ""):
+        for observation in result.get("directional_loss", {}).values():
+            observation["semantics"] += "; external receiver/sender observations are socket timestamps, operator clock uncertainty ±35.746 ms; unmatched rates cannot independently distinguish internet loss from operator NIC/kernel loss"
     if manifest.get("profile", "native") != "native" and len(prequeue_sets) != 2:
         collector_valid = False
         result["collector_missing"] = "Pre-qdisc directional observations; post-qdisc matching cannot measure injected drops/delay"

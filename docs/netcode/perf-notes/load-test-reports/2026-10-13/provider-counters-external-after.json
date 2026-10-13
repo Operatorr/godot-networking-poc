@@ -1,0 +1,15 @@
+{
+  "source": "User typed game-host post-external-check Traffic out tooltip",
+  "recorded_utc": "2026-10-13T14:05:02.393512+00:00",
+  "game_display_value": "0.00008464 TB",
+  "decimal_bytes_if_decimal_TB": 84640000,
+  "display_change_from_fresh_before_TB": "0",
+  "external_game_ip_bytes_measured": 4844642,
+  "external_game_ip_bytes_decimal_TB": 4.844642e-06,
+  "invoice_reconciliation": "Pending provider update/account billing semantics; unchanged display does not mean zero measured egress",
+  "caveats": [
+    "Provider reporting interval unknown",
+    "Provider billable byte-layer semantics unverified",
+    "Archive/SSH egress outside matched game window is separately relevant to cumulative account counter"
+  ]
+}

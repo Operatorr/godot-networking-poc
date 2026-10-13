@@ -1,0 +1,16 @@
+{
+  "source": "User typed current account Traffic out tooltips",
+  "recorded_utc": "2026-10-13T13:54:36.333962+00:00",
+  "phase": "Immediately before external swarm launch; controller setup underway; core controller paused",
+  "game": {
+    "display_value": "0.00008464 TB",
+    "decimal_bytes_if_decimal_TB": 84640000
+  },
+  "bots": {
+    "display_value": "0.00013999 TB",
+    "decimal_bytes_if_decimal_TB": 139990000
+  },
+  "display_quantum_bytes_if_decimal_TB": 10000,
+  "exact_units_and_reporting_delay_verified": false,
+  "interpretation": "Game display unchanged from 13:39:34Z despite later archive downloads; reconcile only with explicit reporting-delay and unrelated-egress caveats."
+}

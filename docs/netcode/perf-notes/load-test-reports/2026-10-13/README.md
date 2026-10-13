@@ -95,8 +95,12 @@ and lifetime bandwidth remain diagnostic and separate from campaign validity gat
 
 The user's CAX11 bot-host overview screenshot confirms **$6.99/month compute** and a nominal
 **20 TB included outgoing transfer**, displaying `0/20 TB` on 2026-10-13. It does not expose
-an exact-byte allowance, excess rate or sufficiently precise game-host external-transfer
-counter. The screenshot is retained privately with a checksum because it contains connection
+an exact-byte allowance or excess rate. A later game-host tooltip at 21:39:34 Taipei
+shows **0.00008464 TB**, while its main display remains `0/20 TB`. Under decimal units
+this is 84,640,000 bytes, with a displayed last-place step of 10,000 bytes.
+[The timestamped reading](game-provider-counter-before.json) precedes the external-client
+check; intervening SSH/archive egress and unverified provider reporting delay prevent
+treating it as an immediate before-run counter. The screenshot is retained privately with a checksum because it contains connection
 details. The quoted production base remains conditionally $6.99 + $0.60 IPv4 = $7.59/month,
 or $91.08/year, before tax/overage. The retained two-host test pair is separate: $15.18/month,
 $182.16/year before tax/overage.
@@ -107,6 +111,37 @@ supporting decimal units as the preferred interpretation, while account-specific
 and the assumed $1.20/excess TB remain conditional. Forecasts will include the agreed binary
 sensitivity, a 30-day illustrative month and all 12 months of non-leap 2027 with separately
 renewing allowances. [Hetzner billing FAQ](https://docs.hetzner.com/cloud/billing/faq/).
+
+## External accounting check
+
+Three combat bots on the operator Mac used the real Taiwan–Falkenstein internet path,
+with the CAX11 bot host idle. The matched five-minute window was 13:55:26.700671–
+14:00:26.700671 UTC. All three stayed connected and achieved 29.9999 inputs/s, with
+zero missed schedules, send/decode failures or game capture drops. Mean/p95 RTT was
+247.64/256 ms. This checks small-flow accounting, not high-CCU internet capacity.
+
+[Recorded observations](external-combat-3-r1/steady.json) contain **4,844,642 outbound
+IPv4 IP bytes**, 30,048 outbound datagrams, 900 authenticated player-seconds and
+845.53 alive player-seconds: **16,148.81 bytes/s**, or **5,382.94 bytes/player-second**.
+The separately bracketed nftables counter differs by only 38 bytes. Interface TX was
+5,265,776 bytes; 420,672 bytes correspond to 14-byte Ethernet headers on the captured
+game datagrams, leaving 462 bytes of other/boundary traffic. These are distinct accounting
+layers; provider billing-layer semantics remain conditional.
+
+The external generator uses a passive libc socket observer because local privileged
+NIC capture was unavailable. Packet payloads, lengths and successful send/receive times
+are retained; its IPv4/Ethernet envelope is synthetic. Game-host packet lengths and
+64-bit flow/interface counters determine outbound transfer. Observed unmatched rates
+were 0.0133% outbound and 0.0424% inbound; operator NIC/kernel drops were not independently
+measured. One-way socket/capture delays carry the recorded ±35.746 ms operator clock
+uncertainty, so RTT is the stronger external latency measurement.
+
+[Fresh pre-check account readings](provider-counters-external-before.json) were
+0.00008464 TB on the game host and 0.00013999 TB on the bot host. The game display was
+unchanged from the earlier reading despite intervening archive downloads. [The post-check game reading](provider-counters-external-after.json) remains
+0.00008464 TB. Thus invoice reconciliation remains pending provider update/account
+billing semantics; the unchanged display does not mean zero measured external egress.
+Provider reporting delay and unrelated archive egress remain explicit.
 
 ## Failures and separate work
 
