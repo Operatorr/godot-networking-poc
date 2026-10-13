@@ -50,7 +50,7 @@
   },
   "service_invocation": "689923118e4b499cb80a58c965fec93c",
   "ended_utc": "2026-10-13T12:46:11.773212+00:00",
-  "derived_source_sha256": "0b7e41ed92751ba179e798dabad43c4bdd71a620e4d5fd38f051e75397f47162",
+  "derived_source_sha256": "b73c350dece926063b4ac155ff5f16ca796a16b10d7a758581c93a5cb271102f",
   "archive_sha256": {
     "bots.tar.gz": "0dd6f8de1c5d710fc184c4491409447381e41f8b01f02bc452b3612b60cc6e4a",
     "game.tar.gz": "07970670c3d29a3b95d332ac4e7a7bf79f3e2583f31be232023e0c508f3fe38b"
@@ -127,7 +127,14 @@
       "reliable_retry_payload_bytes": 153,
       "reliable_commands": 45464,
       "acks": 6433,
-      "outstanding_commands_end": 0
+      "outstanding_commands_end": 0,
+      "first_message_counts_by_type": {
+        "66": 89321,
+        "65": 89996,
+        "67": 41550,
+        "68": 3000
+      },
+      "first_transmission_payload_bytes": 21838177
     },
     "in": {
       "packets": 136540,
@@ -136,7 +143,14 @@
       "reliable_retry_payload_bytes": 14,
       "reliable_commands": 1123,
       "acks": 45505,
-      "outstanding_commands_end": 0
+      "outstanding_commands_end": 0,
+      "first_message_counts_by_type": {
+        "2": 89996,
+        "3": 897,
+        "6": 215,
+        "5": 7
+      },
+      "first_transmission_payload_bytes": 1985049
     },
     "wire_input_counts_by_port": {
       "50064": 1800,
@@ -265,7 +279,14 @@
       "reliable_retry_payload_bytes": 153,
       "reliable_commands": 45464,
       "acks": 6433,
-      "outstanding_commands_end": 0
+      "outstanding_commands_end": 0,
+      "first_message_counts_by_type": {
+        "66": 89321,
+        "65": 89996,
+        "67": 41550,
+        "68": 3000
+      },
+      "first_transmission_payload_bytes": 21838177
     },
     "in": {
       "packets": 136539,
@@ -274,7 +295,14 @@
       "reliable_retry_payload_bytes": 14,
       "reliable_commands": 1123,
       "acks": 45505,
-      "outstanding_commands_end": 0
+      "outstanding_commands_end": 0,
+      "first_message_counts_by_type": {
+        "2": 89995,
+        "3": 897,
+        "6": 215,
+        "5": 7
+      },
+      "first_transmission_payload_bytes": 1985027
     },
     "wire_input_counts_by_port": {
       "54099": 1800,
@@ -341,7 +369,7 @@
         "p95": 0.254,
         "p99": 0.702
       },
-      "semantics": "sender steady window; timestamped full-UDP fingerprints matched to receiver \u00b12 ms/+2 s context; synchronized host clocks"
+      "semantics": "sender pre-qdisc mirror when available (otherwise post-qdisc capture); timestamped full-UDP fingerprints matched to receiver \u00b12 ms/+2 s context; synchronized host clocks"
     },
     "in": {
       "sent": 136539,
@@ -354,7 +382,7 @@
         "p95": 0.488,
         "p99": 0.921
       },
-      "semantics": "sender steady window; timestamped full-UDP fingerprints matched to receiver \u00b12 ms/+2 s context; synchronized host clocks"
+      "semantics": "sender pre-qdisc mirror when available (otherwise post-qdisc capture); timestamped full-UDP fingerprints matched to receiver \u00b12 ms/+2 s context; synchronized host clocks"
     }
   },
   "legacy_harness": {
@@ -402,5 +430,5 @@
     "total_send_failures": 0
   },
   "collector_valid": true,
-  "classification": "original-build-control-unscored"
+  "classification": "instrumented-build-recording-off-control-unscored"
 }

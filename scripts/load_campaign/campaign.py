@@ -22,6 +22,8 @@ def cell(name, population, behavior, repeat=1, profile="native", variant="native
         result = analyze.summarize(directory)
         (directory / "steady.json").write_text(json.dumps(result, indent=2))
         publish.publish(name)
+        import summarize_campaign
+        summarize_campaign.main()
     result = json.loads((directory / "steady.json").read_text())
     print(json.dumps({"run": name, "classification": result["classification"], "tick_hz": result.get("tick_hz"),
                       "tick_p99_ms": result.get("tick_work_ms", {}).get("p99"), "input_hz": result.get("generator", {}).get("overall_hz"),
@@ -100,10 +102,14 @@ def network():
             for population in sorted({100, highest} - {0}):
                 if population == 100 and highest < 100:
                     continue
-                cell(f"network-control-before-{behavior}-{population}-r{repeat}", population, behavior, repeat)
+                control = cell(f"network-control-before-{behavior}-{population}-r{repeat}", population, behavior, repeat)
+                if not stable(control):
+                    raise RuntimeError("Native control no longer passes: review before impairment group")
                 for profile in profiles:
                     cell(f"network-{behavior}-{population}-{profile}-r{repeat}", population, behavior, repeat, profile)
-                cell(f"network-control-after-{behavior}-{population}-r{repeat}", population, behavior, repeat)
+                control = cell(f"network-control-after-{behavior}-{population}-r{repeat}", population, behavior, repeat)
+                if not stable(control):
+                    raise RuntimeError("Native cleanup control no longer passes: preserve group and review")
     state["network_complete"] = True
     STATE.write_text(json.dumps(state, indent=2))
 

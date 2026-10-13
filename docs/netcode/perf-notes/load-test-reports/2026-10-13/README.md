@@ -1,6 +1,6 @@
 # CAX11 load-test campaign — 2026-10-13
 
-**Status: measurement preflight in progress; scored matrix not yet started.**
+**Status: measurement preflight passed; scored matrix running.**
 This report resolves [Run the new load tests and record results](https://github.com/Operatorr/godot-networking-poc/issues/31)
 only when the agreed matrix and its permitted failure truncations are recorded. The
 [matrix resolution](https://github.com/Operatorr/godot-networking-poc/issues/30#issuecomment-6145030523)
@@ -20,6 +20,9 @@ global warmup. Short preflights and overhead controls are explicitly unscored.
   Builds use Rust 1.95.0, locked dependencies, ordinary release settings and thin LTO.
   A subsequent measurement revision supplies actual deferred scheduler waiting, after
   preflight exposed misleading semantics in the existing queue-age diagnostic.
+  Scored server build: revision `642c1472232a5d3681654ab2965ba09db12ad69d`,
+  SHA-256 `80c94e7071887212594285b90960b41f11a97438ad2b2b0b8e15278e210e41b1`.
+  Bot build SHA-256 `8af491831304e1ab913089e3b8f1750ea701e4ccd8993d834bcc30ecfa3e8bdf`.
 - Isolated unsigned dev mode, no API or persistence, source-restricted UDP 8081 and
   loopback-only Prometheus. No CCX13 provisioning or historical-report retrieval.
 - Bots use 30 inputs/s, seed 30, 100 ms stagger, difficulty 1.0, default advertised byte
@@ -41,6 +44,22 @@ with Tick-work p99 4.446 ms. It recorded zero capture drops and parser errors. O
 game-flow transfer was 443,071 bytes/s and 8,861 bytes/authenticated player-second during
 its **60-second, unscored** observation. Do not use this short 50-player rate as validated
 100/1000-CCU economics or capacity evidence.
+
+The [final measurement gate](measurement-preflight-resolution.json) passed native 50-bot
+collection and selective impairment checks. With the same final binary and full host/flow
+collection, recording-on/off mean Tick work was 3.149/2.979 ms; server CPU was 15.47/14.82%
+of one core, generator CPU 18.02/16.85%. The direct raw observer averaged 0.010 ms/Tick.
+These include different entropy-seeded worlds and shared-host noise. The final native
+recording-on check sustained 30 Tick/s, per-bot inputs 29.984–30.000/s, p99 work 4.424 ms,
+and zero actual deferred backlog. All 90,000 scheduled Snapshots were enqueued and first
+transmitted during its 60-second unscored window; all four capture paths were clean.
+
+The 3-bot mirrored combined-profile check measured 49.82/50.86 ms average one-way delay
+and 1.18/1.14% loss outbound/inbound around configured 50 ms ±20 ms normal jitter and
+1% independent loss each direction. Its short 30-second interval is measurement validation,
+not a scored robustness result. Pre-qdisc mirrors are necessary: post-qdisc interface
+captures alone omit injected drops and delay. The earlier combined-profile attempt is
+retained as collector-incomplete, even though RTT and qdisc counters confirmed shaping.
 
 ## Collection and interpretation
 

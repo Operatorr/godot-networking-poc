@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/campaign-20261013/final-50-native-on",
+  "sha256": {
+    "bots.tar.gz": "7b58f7eac51fb8043b628c4c131e6dbdbf49ebb308b8bffad1de772930682313",
+    "game.tar.gz": "f8f53ba408530062ffd91b598380e95c05effbe3a47f54d1215e7dde99cd4226"
+  },
+  "contents": "Unedited reports/logs, host observations, packet headers and full-datagram ENet descriptors. Retained off both temporary hosts in the ignored local evidence archive. Public copies redact connection addresses; no access records or credentials are published."
+}

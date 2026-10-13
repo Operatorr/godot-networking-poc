@@ -127,6 +127,8 @@ def packet_observations(stream, start, end, margin_ns=2_000_000_000):
     latest_sequences = {direction: {} for direction in result}
     context = {direction: collections.defaultdict(list) for direction in result}
     input_counts = collections.Counter()
+    first_message_counts = {direction: collections.Counter() for direction in result}
+    first_payload_bytes = {direction: 0 for direction in result}
     end_outstanding = None
     def extend(direction, port, channel, sequence):
         old = latest_sequences[direction].get((port, channel), sequence)
@@ -150,6 +152,9 @@ def packet_observations(stream, start, end, margin_ns=2_000_000_000):
             kind, channel = command[0] & 15, command[1]
             sequence, related, payload_length = struct.unpack_from(">HHH", command, 2)
             fragment = struct.unpack_from(">I", command, 8)[0]
+            if included and kind == 7:
+                first_message_counts[direction][command[12]] += 1
+                first_payload_bytes[direction] += payload_length
             if included and direction == "in" and command[12] == 2 and kind in (6, 7) and payload_length == 22:
                 input_counts[port] += 1
             if kind == 1:
@@ -167,12 +172,18 @@ def packet_observations(stream, start, end, margin_ns=2_000_000_000):
                     if previous is not None and stamp - previous < 60_000_000_000:
                         result[direction]["reliable_retry_command_bytes"] += {2: 48, 3: 44, 4: 8, 5: 4, 6: 6, 8: 24, 10: 12, 11: 16}.get(kind, 4) + payload_length
                         result[direction]["reliable_retry_payload_bytes"] += payload_length
+                    else:
+                        first_payload_bytes[direction] += payload_length
+                        if kind == 6 or fragment == 0:
+                            first_message_counts[direction][command[12]] += 1
                 reliable[direction][key] = stamp
                 outstanding[direction].add(key)
         if stamp >= end + margin_ns:
             break
     for direction in result:
         result[direction]["outstanding_commands_end"] = (end_outstanding or {direction: len(outstanding[direction])})[direction]
+        result[direction]["first_message_counts_by_type"] = dict(first_message_counts[direction])
+        result[direction]["first_transmission_payload_bytes"] = first_payload_bytes[direction]
     result["wire_input_counts_by_port"] = dict(input_counts)
     return result, context
 
@@ -273,7 +284,7 @@ def summarize(directory):
     result["collector_valid"] = collector_valid
     game = archives["game"]
     if "game/ticks.csv" not in game.getnames():
-        result["classification"] = "original-build-control-unscored"
+        result["classification"] = "original-build-control-unscored" if manifest["build"] == "original" else "instrumented-build-recording-off-control-unscored" if manifest["build"] == "instrumented-off" else "collector-invalid"
         return result
     all_ticks = list(csv.DictReader(io.TextIOWrapper(game.extractfile("game/ticks.csv"))))
     ticks = [row for row in all_ticks if window["start"] <= int(row["utc_ns"]) < window["end"]]
@@ -323,6 +334,31 @@ def summarize(directory):
         result["server_send_errors"] = server_boundaries["end"]["send_errors"] - server_boundaries["start"]["send_errors"]
         result["server_decode_errors"] = server_boundaries["end"]["decode_errors"] - server_boundaries["start"]["decode_errors"]
         result["source_events_by_type"] = {index: value - server_boundaries["start"]["source_events"][index] for index, value in enumerate(server_boundaries["end"]["source_events"]) if value - server_boundaries["start"]["source_events"][index]}
+        result["server_enqueued_snapshots"] = sum(server_boundaries["end"][field] - server_boundaries["start"][field] for field in ("baselines", "deltas"))
+        result["expected_scheduled_snapshots"] = population * manifest.get("game_config", {}).get("snapshot_rate_hz", 30)
+        emitted = result.get("game_prequeue_packets", result.get("game_packets", {})).get("out", {}).get("first_message_counts_by_type", {}).get(65)
+        if emitted is not None:
+            result["first_transmitted_snapshots_prequeue"] = emitted
+            result["enqueued_minus_first_transmitted_snapshots"] = result["server_enqueued_snapshots"] - emitted
+        result["snapshot_schedule_semantics"] = "Scheduled count uses authoritative player-seconds × configured Snapshot Hz; source ENet enqueues and first wire transmissions separate scheduling/suppression from network drops. Boundary crossings can differ by one per-peer scheduled burst."
+        life_samples = [server_boundaries["start"]] + [sample for sample in server_samples
+                       if not sample.get("boundary") and server_boundaries["start"]["utc_ns"] < sample["utc_ns"] < server_boundaries["end"]["utc_ns"]] + [server_boundaries["end"]]
+        life_samples.sort(key=lambda sample: sample["utc_ns"])
+        previous = {player[0]: player[1] for player in life_samples[0]["players"]}
+        deaths = respawns = disconnects = 0
+        for sample in life_samples[1:]:
+            current = {player[0]: player[1] for player in sample["players"]}
+            for entity, alive in current.items():
+                if entity in previous:
+                    deaths += int(previous[entity] and not alive)
+                    respawns += int(not previous[entity] and alive)
+            disconnects += len(previous.keys() - current.keys())
+            previous = current
+        maximum_gap = max((later["utc_ns"] - earlier["utc_ns"]) / 1e9 for earlier, later in zip(life_samples, life_samples[1:]))
+        result["authoritative_life_transitions"] = {"player_deaths_observed": deaths, "player_respawns_observed": respawns,
+                                                   "disconnects_observed": disconnects, "maximum_sample_gap_s": maximum_gap,
+                                                   "semantics": "Per-player authoritative alive-state transitions, not global KILL events (which include monsters). 1 Hz observations and matched boundaries; bot respawn wait is 3.2 s. Event times lie between observations; gaps >=3.2 s can miss whole life cycles.",
+                                                   "whole_cycle_aliasing_possible": maximum_gap >= 3.2}
     bot_samples = [json.loads(line) for line in archives["bots"].extractfile("bots/bots.ndjson")]
     bot_boundaries = {row.get("boundary"): row for row in bot_samples if row.get("boundary")}
     generator_valid = False
