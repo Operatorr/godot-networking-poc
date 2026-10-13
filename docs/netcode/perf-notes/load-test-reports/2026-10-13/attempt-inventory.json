@@ -17,9 +17,9 @@
     "workload": "clustered",
     "requested_duration_s": 360,
     "started_utc": "2026-10-13T16:09:48.650969+00:00",
-    "ended_utc": null,
-    "classification": "not_yet_classified",
-    "scored_300s_window_present": false,
+    "ended_utc": "2026-10-13T16:28:09.274501+00:00",
+    "classification": "valid-failure",
+    "scored_300s_window_present": true,
     "retained_errors": [],
     "raw_asset_relative_location": "deployment/hetzner/results/campaign-20261013/core-clustered-50-r2"
   },
