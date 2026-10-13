@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { CloseIcon, KIND_LABEL } from "./icons";
-import { agentPrompt, indexById, kindOf, type MapBundle } from "./model";
+import { agentPrompt, indexById, kindOf, type MapBundle, mapPrompt } from "./model";
 import { renderMarkdown } from "./markdown";
 import { PromptField } from "./Prompt";
 
@@ -62,7 +62,7 @@ export function TicketPanel({ map, selectedId, onSelect }: Props) {
 										) : null}
 									</>
 								) : (
-									<span className="badge">Map</span>
+									<span className="badge">Map #{map.slug}</span>
 								)}
 							</div>
 						</div>
@@ -77,7 +77,9 @@ export function TicketPanel({ map, selectedId, onSelect }: Props) {
 						</button>
 					</div>
 					<div className="panel-body" ref={bodyRef}>
-						{selected ? <PromptField text={agentPrompt(selected)} /> : null}
+						<PromptField
+							text={selected ? agentPrompt(selected) : mapPrompt(map)}
+						/>
 						<p className="path">
 							<a
 								href={selected ? selected.path : map.path}

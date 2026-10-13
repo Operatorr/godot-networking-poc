@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { layoutTickets, NODE_H, NODE_W, type Ticket } from "../src/model.ts";
+import {
+	layoutTickets,
+	mapPrompt,
+	NODE_H,
+	NODE_W,
+	type Ticket,
+} from "../src/model.ts";
 
 function ticket(id: string, blockedBy: string[] = []): Ticket {
 	return {
@@ -90,4 +96,8 @@ test("empty maps have finite bounds", () => {
 		assert.ok(Number.isFinite(layout.width) && layout.width > 0);
 		assert.ok(Number.isFinite(layout.height) && layout.height > 0);
 	}
+});
+
+test("mapPrompt runs the map by its issue number", () => {
+	assert.equal(mapPrompt({ slug: "23" }), "/wayfinder #23");
 });

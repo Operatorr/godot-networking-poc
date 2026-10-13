@@ -167,6 +167,11 @@ export function agentPrompt(ticket: Ticket): string {
 	return `/wayfinder work on issue #${ticket.id} — ${ticket.title}`;
 }
 
+// Working a map without naming a ticket takes the next frontier ticket.
+export function mapPrompt(map: Pick<MapBundle, "slug">): string {
+	return `/wayfinder #${map.slug}`;
+}
+
 export function excerpt(body: string): string {
 	const after = body.split(/^## Question\s*$/m)[1] ?? body;
 	const lines = after

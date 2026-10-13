@@ -4,7 +4,8 @@ import { Graph, MapTrigger } from "./Graph";
 import { DisableThemeTransitions } from "./Theme";
 import { FILTER_LABEL, OpenIcon, SyncIcon, kindIcon } from "./icons";
 import { MapTabs } from "./MapTabs";
-import { type Filter, type Kind, type MapBundle, counts } from "./model";
+import { type Filter, type Kind, type MapBundle, counts, mapPrompt } from "./model";
+import { MapCommand } from "./Prompt";
 import { loadSnapshot, saveSnapshot } from "./store";
 
 const KINDS: Kind[] = ["resolved", "claimed", "frontier", "blocked"];
@@ -120,6 +121,7 @@ export function App() {
 								}
 							/>
 						</div>
+						{map ? <MapCommand id={map.slug} text={mapPrompt(map)} /> : null}
 					</div>
 					<div className="stats" role="group" aria-label="Filter tickets">
 						{tally ? (
