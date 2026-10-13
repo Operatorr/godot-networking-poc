@@ -131,5 +131,22 @@ def transfer():
     STATE.write_text(json.dumps(state, indent=2))
 
 
+def all_phases():
+    state = json.loads(STATE.read_text()) if STATE.exists() else {}
+    if not state.get("core_complete"):
+        core()
+    state = json.loads(STATE.read_text())
+    if not state.get("network_complete"):
+        network()
+    state = json.loads(STATE.read_text())
+    if not state.get("transfer_complete"):
+        transfer()
+    state = json.loads(STATE.read_text())
+    state["admission_check_required"] = state["highest_stable"].get("movement") == 999
+    state["matrix_measurement_phases_complete"] = True
+    STATE.write_text(json.dumps(state, indent=2))
+    print("Matrix measurement phases complete; inspect evidence, provider reconciliation and conditional admission requirement before resolving issue.", flush=True)
+
+
 if __name__ == "__main__":
-    {"core": core, "network": network, "transfer": transfer}[sys.argv[1]]()
+    {"core": core, "network": network, "transfer": transfer, "all": all_phases}[sys.argv[1]]()

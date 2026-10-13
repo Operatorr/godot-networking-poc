@@ -42,7 +42,7 @@
   "external_socket_capture_semantics": "Successful UDP payloads at send completion and socket receive observation; synthetic 20-byte IPv4 +8-byte UDP headers, no link/NIC counters. Game-host IP counters/capture are authoritative for outbound transfer.",
   "provider_reconciliation": "Earlier game-host tooltip is retained in game-provider-counter-before.json; seek a fresh before/after reading and account for provider delay and unrelated egress.",
   "ended_utc": "2026-10-13T14:00:53.295153+00:00",
-  "derived_source_sha256": "13b459f9febf23a1b163575d46048db7d378c10c79a9a33f6ee0b0bd1e02d51a",
+  "derived_source_sha256": "cb9b3fef8b1f43a020551260b21ebca02687bbd3412e3e4a9d10a045fe46bbd7",
   "archive_sha256": {
     "bots.tar.gz": "3824e5815f68795289d0fee6fd99ca6792d3558eac39846fe781d7a613cde725",
     "game.tar.gz": "34187532eef594f88a61e1cb99f9ba8371fd5d26ec5fd7d2528ae616bf5466ca"
@@ -51,6 +51,9 @@
   "game_host": {
     "duration_s": 299.999920544,
     "process_cpu_percent_one_core": 4.746667923837488,
+    "process_end_states": {
+      "56622": "S"
+    },
     "rss_end_bytes": 13205504,
     "swap_end_kib": 0,
     "steal_percent": 0.0,
@@ -99,7 +102,9 @@
     "boundary_sample_duration_ms": [
       27.701417,
       25.976113
-    ]
+    ],
+    "sampled_process_peak_rss_bytes": 13205504,
+    "steady_host_sample_count": 300
   },
   "game_capture_kernel_drops": 0,
   "game_flow_parse_errors": 0,

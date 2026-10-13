@@ -6,6 +6,7 @@ import hashlib
 import json
 import pathlib
 import shlex
+import shutil
 import subprocess
 import sys
 import time
@@ -90,6 +91,12 @@ def install():
 
 def run(run_id, bots, behavior, duration=360, collection=True, build="original", variant="native", configure_service=True, profile="native", repeat=1):
     local = RAW / run_id
+    if shutil.disk_usage(RAW).free < 8 * 1024 ** 3:
+        raise RuntimeError("Evidence storage has less than 8 GiB free; preserve archives and review storage before another run")
+    for role in HOSTS:
+        available = int(ssh(role, "df --output=avail -B1 " + shlex.quote(REMOTE) + " | tail -1").strip())
+        if available < 8 * 1024 ** 3:
+            raise RuntimeError(role + " evidence storage has less than 8 GiB free; preserve archives and review storage before another run")
     if local.exists():
         raise RuntimeError("Refusing to overwrite evidence: " + run_id)
     local.mkdir(parents=True)

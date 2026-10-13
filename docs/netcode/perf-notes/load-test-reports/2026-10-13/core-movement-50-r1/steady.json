@@ -54,7 +54,7 @@
   },
   "service_invocation": "a4b3e44bf09240d0b66feeefea7f370a",
   "ended_utc": "2026-10-13T13:37:37.032288+00:00",
-  "derived_source_sha256": "b73c350dece926063b4ac155ff5f16ca796a16b10d7a758581c93a5cb271102f",
+  "derived_source_sha256": "cb9b3fef8b1f43a020551260b21ebca02687bbd3412e3e4a9d10a045fe46bbd7",
   "archive_sha256": {
     "bots.tar.gz": "c7fd9a3acebcf8a2c7addd4dfaf29a690ee2a38fa9e4b20c254c1c0bdb12ea30",
     "game.tar.gz": "a2f3a17e989e3102403c4ebfa7e5f76822717bb349b93aafedb3c2879e4f9cbc"
@@ -63,6 +63,9 @@
   "game_host": {
     "duration_s": 299.999964431,
     "process_cpu_percent_one_core": 17.3966687292737,
+    "process_end_states": {
+      "49253": "S"
+    },
     "rss_end_bytes": 15052800,
     "swap_end_kib": 0,
     "steal_percent": 0.0,
@@ -119,7 +122,9 @@
     "boundary_sample_duration_ms": [
       20.885883,
       26.393718
-    ]
+    ],
+    "sampled_process_peak_rss_bytes": 15052800,
+    "steady_host_sample_count": 300
   },
   "game_capture_kernel_drops": 0,
   "game_flow_parse_errors": 0,
@@ -247,6 +252,9 @@
   "bots_host": {
     "duration_s": 300.00001899,
     "process_cpu_percent_one_core": 24.486665116660767,
+    "process_end_states": {
+      "55996": "R"
+    },
     "rss_end_bytes": 10166272,
     "swap_end_kib": 0,
     "swarm_cgroup_cpu_percent_one_core": 24.49120611637332,
@@ -305,7 +313,9 @@
     "boundary_sample_duration_ms": [
       25.137418,
       30.257103
-    ]
+    ],
+    "sampled_process_peak_rss_bytes": 10166272,
+    "steady_host_sample_count": 300
   },
   "bots_capture_kernel_drops": 0,
   "bots_flow_parse_errors": 0,

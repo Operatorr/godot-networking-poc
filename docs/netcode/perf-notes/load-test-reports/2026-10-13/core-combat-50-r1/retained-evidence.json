@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/campaign-20261013/core-combat-50-r1",
+  "sha256": {
+    "bots.tar.gz": "bf0311b1ea018cdcf2a3ea0cc2e34ba60bd7da996f5d4146b4198ef9b1c13611",
+    "game.tar.gz": "fc9ef3d85582c6047fb987b00077f4b07892e0134512bb8c98164972b3ac4e99"
+  },
+  "contents": "Unedited reports/logs, host observations, packet headers and full-datagram ENet descriptors. Retained off both temporary hosts in the ignored local evidence archive. Public copies redact connection addresses; no access records or credentials are published."
+}

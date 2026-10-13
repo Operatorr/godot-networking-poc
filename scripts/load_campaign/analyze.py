@@ -49,8 +49,9 @@ def ticks_cpu(observation):
     for pid, process in observation.get("processes", {}).items():
         if process["comm"] and process["comm"].startswith("omega-"):
             stat = process["stat"].split(")", 1)[1].split()
+            swap = re.search(r"VmSwap:\s+(\d+)", process["status"])
             result[pid] = {"cpu_ticks": int(stat[11]) + int(stat[12]), "rss_bytes": int(stat[21]) * observation.get("page_size", 4096),
-                           "swap_kib": int(re.search(r"VmSwap:\s+(\d+)", process["status"])[1])}
+                           "swap_kib": int(swap[1]) if swap else None, "state": stat[0]}
     return result
 
 
@@ -61,8 +62,11 @@ def cpu_delta(start, end):
     common = first.keys() & last.keys()
     if common:
         result["process_cpu_percent_one_core"] = sum(last[pid]["cpu_ticks"] - first[pid]["cpu_ticks"] for pid in common) / duration * 100 / start.get("clock_ticks_s", 100)
-        result["rss_end_bytes"] = sum(last[pid]["rss_bytes"] for pid in common)
-        result["swap_end_kib"] = sum(last[pid]["swap_kib"] for pid in common)
+        result["process_end_states"] = {pid: last[pid]["state"] for pid in common}
+        result["rss_end_bytes"] = sum(last[pid]["rss_bytes"] for pid in common) if all(last[pid]["state"] != "Z" for pid in common) else None
+        result["swap_end_kib"] = sum(last[pid]["swap_kib"] for pid in common) if all(last[pid]["swap_kib"] is not None for pid in common) else None
+        if any(last[pid]["state"] == "Z" for pid in common):
+            result["endpoint_process_note"] = "Process exited during endpoint observation; zombie CPU totals retained, endpoint resident/swap memory unavailable. Swarm cgroup CPU supplies the matched generator total."
     def cgroup_cpu(observation):
         if observation.get("swarm_cgroup_cpu"):
             return int(dict(line.split() for line in observation["swarm_cgroup_cpu"].splitlines())["usage_usec"]) * 1000
@@ -219,6 +223,16 @@ def summarize(directory):
         except (KeyError, ValueError) as error:
             result[role + "_boundary_error"] = str(error)
             collector_valid = False
+        if not external_bot and role + "/host.ndjson.gz" in names:
+            host_samples = []
+            with gzip.GzipFile(fileobj=archive.extractfile(role + "/host.ndjson.gz")) as observations:
+                for line in observations:
+                    sample = json.loads(line)
+                    if window["start"] <= sample["utc_ns"] < window["end"]:
+                        host_samples.append(sample)
+            rss = [sum(process["rss_bytes"] for process in ticks_cpu(sample).values() if process["state"] != "Z") for sample in host_samples]
+            result[role + "_host"]["sampled_process_peak_rss_bytes"] = max(rss) if rss else None
+            result[role + "_host"]["steady_host_sample_count"] = len(host_samples)
         if role + "/capture.log" in names:
             text = archive.extractfile(role + "/capture.log").read().decode()
             drops = re.search(r"(\d+) packets dropped by kernel", text)

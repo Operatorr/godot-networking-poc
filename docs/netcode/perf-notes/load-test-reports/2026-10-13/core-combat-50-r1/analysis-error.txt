@@ -1,0 +1,19 @@
+Traceback (most recent call last):
+  File "/Users/opera/Godot Projects/godot-networking-poc/scripts/load_campaign/campaign.py", line 135, in <module>
+    {"core": core, "network": network, "transfer": transfer}[sys.argv[1]]()
+  File "/Users/opera/Godot Projects/godot-networking-poc/scripts/load_campaign/campaign.py", line 56, in core
+    result = cell(f"core-{behavior}-{population}-r{repeat}", population, behavior, repeat)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/opera/Godot Projects/godot-networking-poc/scripts/load_campaign/campaign.py", line 22, in cell
+    result = analyze.summarize(directory)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/opera/Godot Projects/godot-networking-poc/scripts/load_campaign/analyze.py", line 218, in summarize
+    result[role + "_host"] = cpu_delta(load(role, "start.json"), load(role, "end.json"))
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/opera/Godot Projects/godot-networking-poc/scripts/load_campaign/analyze.py", line 58, in cpu_delta
+    first, last = ticks_cpu(start), ticks_cpu(end)
+                                    ^^^^^^^^^^^^^^
+  File "/Users/opera/Godot Projects/godot-networking-poc/scripts/load_campaign/analyze.py", line 53, in ticks_cpu
+    "swap_kib": int(re.search(r"VmSwap:\s+(\d+)", process["status"])[1])}
+                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^
+TypeError: 'NoneType' object is not subscriptable

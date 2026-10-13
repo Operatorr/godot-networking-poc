@@ -21,7 +21,7 @@ def publish(run_id):
     source = run.RAW / run_id
     target = OUTPUT / run_id
     target.mkdir(parents=True, exist_ok=True)
-    for name in ("manifest.json", "steady.json", "window.json", "controller-error.txt", "boot.log",
+    for name in ("manifest.json", "steady.json", "window.json", "controller-error.txt", "analysis-error.txt", "boot.log",
                  "game-run-provenance.txt", "bots-run-provenance.txt", "game-final-service.txt", "bots-final-service.txt"):
         if (source / name).exists():
             (target / name).write_text(redact((source / name).read_text()))
@@ -58,8 +58,8 @@ def publish(run_id):
                 if member.name.endswith((".ndjson", ".csv", "host.ndjson.gz")):
                     if not destination.name.endswith(".gz"):
                         destination = destination.with_name(destination.name + ".gz")
-                    with gzip.open(destination, "wt") as output:
-                        output.write(text)
+                    with destination.open("wb") as buffer, gzip.GzipFile(fileobj=buffer, mode="wb", filename="", mtime=0) as output:
+                        output.write(text.encode())
                 else:
                     destination.write_text(text)
     (target / "retained-evidence.json").write_text(json.dumps({

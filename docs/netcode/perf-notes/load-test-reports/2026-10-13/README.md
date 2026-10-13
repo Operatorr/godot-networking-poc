@@ -91,6 +91,37 @@ observations. Work timing excludes between-Tick ENet dispatch and the raw observ
 Tick cadence, scheduling lag and CPU cover their effect on sustainability. Old harness pass/fail
 and lifetime bandwidth remain diagnostic and separate from campaign validity gates.
 
+## Current results and forecast status
+
+[Summary CSV](summary.csv) keeps every scored row's validity, authenticated/alive
+player-seconds, outbound IP rate, conditional economics and delivery/server/generator
+quality together. [Repeat spread](repeat-spread.json) includes all rows and marks groups
+incomplete until three repeats are present; individual successful runs are candidates,
+not an established capacity rung. [Attempt inventory](attempt-inventory.json) also retains
+short preflights, setup failures and analysis errors outside the scored-row table.
+
+Measured 100-player and validated 999-player economics remain pending those matrix cells.
+The following **[MEASURE] sensitivities are hypothetical fixed rates**, not extrapolations
+from the 3- or 50-player runs. They assume continuous use and do not demonstrate that one
+Instance can support 1000 CCU. Exact bytes and all calendar months are in
+[the sensitivity artifact](unmeasured-cost-sensitivity.json).
+
+| CCU model | Hypothetical KiB/player/s | 30-day TB / TiB | 365-day TB / TiB | Decimal USD 30-day / year | Binary sensitivity USD 30-day / year |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 100 | 5 | 1.327 / 1.207 | 16.146 / 14.685 | $7.59 / $91.08 | $7.59 / $91.08 |
+| 100 | 15 | 3.981 / 3.621 | 48.439 / 44.055 | $7.59 / $91.08 | $7.59 / $91.08 |
+| 100 | 30 | 7.963 / 7.242 | 96.879 / 88.111 | $7.59 / $91.08 | $7.59 / $91.08 |
+| 1000 | 5 | 13.271 / 12.070 | 161.464 / 146.851 | $7.59 / $91.08 | $7.59 / $91.08 |
+| 1000 | 15 | 39.813 / 36.210 | 484.393 / 440.553 | $31.37 / $384.35 | $27.04 / $331.74 |
+| 1000 | 30 | 79.626 / 72.420 | 968.786 / 881.106 | $79.14 / $965.62 | $70.49 / $860.41 |
+
+Both cost columns are conditional game-host production totals before tax, including
+$6.99 compute and assumed $0.60 Primary IPv4. Decimal uses 20 TB/month and $1.20/excess TB
+rounded to 100 MB; binary sensitivity uses 20 TiB/month and $1.20/excess TiB rounded to
+100 MiB. Excess rate, exact account units and IPv4 quote remain unverified. Calendar
+2027 uses 365 days and twelve independently renewed allowances, so yearly costs are not
+12 times the 30-day example. The retained test generator adds a separate host base.
+
 ## Billing evidence
 
 The user's CAX11 bot-host overview screenshot confirms **$6.99/month compute** and a nominal
@@ -136,7 +167,8 @@ were 0.0133% outbound and 0.0424% inbound; operator NIC/kernel drops were not in
 measured. One-way socket/capture delays carry the recorded ±35.746 ms operator clock
 uncertainty, so RTT is the stronger external latency measurement.
 
-[Fresh pre-check account readings](provider-counters-external-before.json) were
+[Fresh pre-scored-window account readings](provider-counters-external-before.json),
+recorded during the excluded warmup, were
 0.00008464 TB on the game host and 0.00013999 TB on the bot host. The game display was
 unchanged from the earlier reading despite intervening archive downloads. [The post-check game reading](provider-counters-external-after.json) remains
 0.00008464 TB. Thus invoice reconciliation remains pending provider update/account
@@ -150,6 +182,14 @@ before swarm startup because the collector's nftables declaration lacked chain s
 was corrected and rerun. An analysis controller initially read an archive while SCP was still
 writing it; the retry preserves the run, and downloads now use atomic completion with a remote
 checksum check. Neither attempt is a scored capacity result.
+
+The first scored combat run's analysis stopped on absent `VmSwap` at the exact bot
+endpoint: its process was already a zombie. The original traceback and raw endpoint
+remain retained. Cgroup and zombie CPU totals, exact counter boundaries and bot end
+telemetry are complete, so this was an analyzer failure rather than invalid workload
+collection. Analysis now explicitly reports endpoint resident/swap memory unavailable
+for exited processes and supplies sampled peak RSS from the retained 1 Hz host series.
+Re-analysis validated the five-minute run without repeating or replacing its evidence.
 
 [Needed fixes](needed-fixes.md) records baseline diagnostic/harness issues without optimizing
 the baseline. A five-minute campaign does not establish long-term stability; 1000 CCU is a
