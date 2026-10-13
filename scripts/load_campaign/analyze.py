@@ -180,6 +180,7 @@ def packet_observations(stream, start, end, margin_ns=2_000_000_000):
 def summarize(directory):
     manifest = json.loads((directory / "manifest.json").read_text())
     result = dict(manifest)
+    result["derived_source_sha256"] = hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest()
     result.pop("command", None)
     result["archive_sha256"] = {name.name: hashlib.sha256(name.read_bytes()).hexdigest() for name in directory.glob("*.tar.gz")}
     if not (directory / "window.json").exists():
@@ -195,10 +196,15 @@ def summarize(directory):
 
     collector_valid = True
     flow_sets = {}
+    prequeue_sets = {}
     for role, archive in archives.items():
         names = archive.getnames()
+        external_bot = role == "bots" and "Operator Mac" in manifest.get("topology", "")
         try:
-            result[role + "_host"] = cpu_delta(load(role, "start.json"), load(role, "end.json"))
+            if external_bot:
+                result[role + "_host"] = {"duration_s": duration, "semantics": "Operator Mac process observations retained in operator-host.ndjson; socket capture has synthetic IPv4 headers and no NIC/kernel capture counters"}
+            else:
+                result[role + "_host"] = cpu_delta(load(role, "start.json"), load(role, "end.json"))
         except (KeyError, ValueError) as error:
             result[role + "_boundary_error"] = str(error)
             collector_valid = False
@@ -208,12 +214,22 @@ def summarize(directory):
             parse_errors = re.search(r"parse_errors=(\d+)", text)
             result[role + "_capture_kernel_drops"] = int(drops[1]) if drops else None
             result[role + "_flow_parse_errors"] = int(parse_errors[1]) if parse_errors else None
-            collector_valid &= bool(drops and int(drops[1]) == 0)
+            collector_valid &= external_bot or bool(drops and int(drops[1]) == 0)
         if role + "/datagrams.bin" in names:
             packets, fingerprints = packet_observations(archive.extractfile(role + "/datagrams.bin"), window["start"], window["end"])
             result[role + "_packets"] = packets
             flow_sets[role] = fingerprints
             collector_valid &= result.get(role + "_flow_parse_errors") == 0
+        if role + "/prequeue/datagrams.bin" in names:
+            text = archive.extractfile(role + "/prequeue/capture.log").read().decode()
+            drops = re.search(r"(\d+) packets dropped by kernel", text)
+            parse_errors = re.search(r"parse_errors=(\d+)", text)
+            result[role + "_prequeue_capture_drops"] = int(drops[1]) if drops else None
+            result[role + "_prequeue_parse_errors"] = int(parse_errors[1]) if parse_errors else None
+            collector_valid &= bool(drops and parse_errors and int(drops[1]) == 0 and int(parse_errors[1]) == 0)
+            packets, fingerprints = packet_observations(archive.extractfile(role + "/prequeue/datagrams.bin"), window["start"], window["end"])
+            result[role + "_prequeue_packets"] = packets
+            prequeue_sets[role] = fingerprints
         if role == "game":
             start_prom = exposition(load(role, "start.json").get("prometheus", ""))
             end_prom = exposition(load(role, "end.json").get("prometheus", ""))
@@ -224,7 +240,8 @@ def summarize(directory):
     if len(flow_sets) == 2:
         result["directional_loss"] = {}
         for direction in ("out", "in"):
-            sender = flow_sets["game" if direction == "out" else "bots"][direction]
+            sender_role = "game" if direction == "out" else "bots"
+            sender = prequeue_sets.get(sender_role, flow_sets[sender_role])[direction]
             receiver = flow_sets["bots" if direction == "out" else "game"][direction]
             unmatched = total = 0
             delays_ms = []
@@ -246,7 +263,10 @@ def summarize(directory):
             result["directional_loss"][direction] = {"sent": total, "matched": total - unmatched, "unmatched": unmatched,
                                                       "loss_pct": 100 * unmatched / total if total else None,
                                                       "delay_ms": {"mean": statistics.mean(delays_ms), "p50": percentile(delays_ms,.5), "p95": percentile(delays_ms,.95), "p99": percentile(delays_ms,.99)} if delays_ms else {},
-                                                      "semantics": "sender steady window; timestamped full-UDP fingerprints matched to receiver ±2 ms/+2 s context; synchronized host clocks"}
+                                                      "semantics": "sender pre-qdisc mirror when available (otherwise post-qdisc capture); timestamped full-UDP fingerprints matched to receiver ±2 ms/+2 s context; synchronized host clocks"}
+    if manifest.get("profile", "native") != "native" and len(prequeue_sets) != 2:
+        collector_valid = False
+        result["collector_missing"] = "Pre-qdisc directional observations; post-qdisc matching cannot measure injected drops/delay"
     report = load("bots", "bot.json")
     result["legacy_harness"] = report["success_criteria"]
     result["legacy_aggregated"] = report["aggregated"]
@@ -331,10 +351,14 @@ def summarize(directory):
     result["collector_valid"] = collector_valid
     result["generator_valid"] = generator_valid
     flow = result.get("game_host", {}).get("flow", {}).get("game_out", {})
-    result["outbound_ip_bytes"] = flow.get("bytes")
-    result["outbound_ip_bytes_s"] = flow.get("bytes", 0) / result["game_host"]["duration_s"]
-    result["outbound_ip_bytes_player_s"] = flow.get("bytes", 0) / population if population else None
-    result["outbound_ip_packets_s"] = flow.get("packets", 0) / duration
+    wire = result.get("game_packets", {}).get("out", flow)
+    wire_bytes = wire.get("ip_bytes", flow.get("bytes", 0))
+    result["outbound_ip_bytes"] = wire_bytes
+    result["outbound_ip_bytes_s"] = wire_bytes / duration
+    result["outbound_ip_bytes_player_s"] = wire_bytes / population if population else None
+    result["outbound_ip_packets_s"] = wire.get("packets", 0) / duration
+    result["offered_outbound_ip_bytes_nft_prequeue"] = flow.get("bytes")
+    result["outbound_counter_semantics"] = "Post-qdisc game-port capture IP lengths over the common UTC window; nftables output counters are pre-qdisc offered bytes. Native counter differences also reflect read-time brackets. Interface bytes are separate."
     agg = report["aggregated"]
     wait = result.get("max_deferred_wait_ticks")
     growing_backlog = bool(wait and wait["last_30s_mean"] > wait["first_30s_mean"] + 30 and wait["max"] > 60)
@@ -347,6 +371,8 @@ def summarize(directory):
     result["classification"] = "collector-invalid" if not collector_valid else "generator-invalid" if not generator_valid else "native-stable-candidate" if sustainability else "valid-failure"
     if manifest.get("profile", "native") != "native" and collector_valid and generator_valid:
         result["classification"] = "controlled-profile-valid" if sustainability else "controlled-profile-degradation"
+    if "Operator Mac" in manifest.get("topology", "") and collector_valid and generator_valid:
+        result["classification"] = "external-accounting-check-valid"
     for archive in archives.values():
         archive.close()
     return result

@@ -1,0 +1,20 @@
+2026-10-13T12:20:29.814036+00:00 CAX11-game-server omega-server[17989]: 2026-10-13T12:20:29.812454Z  INFO omega_server::sim::world: peer 35 disconnected
+2026-10-13T12:20:29.814575+00:00 CAX11-game-server omega-server[17989]: 2026-10-13T12:20:29.812461Z  INFO omega_server::sim::world: peer 36 disconnected
+2026-10-13T12:20:29.815181+00:00 CAX11-game-server omega-server[17989]: 2026-10-13T12:20:29.814745Z  INFO omega_server::sim::world: peer 37 disconnected
+2026-10-13T12:20:29.815181+00:00 CAX11-game-server omega-server[17989]: 2026-10-13T12:20:29.814772Z  INFO omega_server::sim::world: peer 38 disconnected
+2026-10-13T12:20:29.815181+00:00 CAX11-game-server omega-server[17989]: 2026-10-13T12:20:29.814779Z  INFO omega_server::sim::world: peer 39 disconnected
+2026-10-13T12:20:29.815181+00:00 CAX11-game-server omega-server[17989]: 2026-10-13T12:20:29.814784Z  INFO omega_server::sim::world: peer 40 disconnected
+2026-10-13T12:20:29.815181+00:00 CAX11-game-server omega-server[17989]: 2026-10-13T12:20:29.814789Z  INFO omega_server::sim::world: peer 41 disconnected
+2026-10-13T12:20:29.815181+00:00 CAX11-game-server omega-server[17989]: 2026-10-13T12:20:29.814795Z  INFO omega_server::sim::world: peer 42 disconnected
+2026-10-13T12:20:29.815181+00:00 CAX11-game-server omega-server[17989]: 2026-10-13T12:20:29.814800Z  INFO omega_server::sim::world: peer 43 disconnected
+2026-10-13T12:20:29.815181+00:00 CAX11-game-server omega-server[17989]: 2026-10-13T12:20:29.814806Z  INFO omega_server::sim::world: peer 44 disconnected
+2026-10-13T12:20:29.815181+00:00 CAX11-game-server omega-server[17989]: 2026-10-13T12:20:29.814811Z  INFO omega_server::sim::world: peer 45 disconnected
+2026-10-13T12:20:29.815181+00:00 CAX11-game-server omega-server[17989]: 2026-10-13T12:20:29.814817Z  INFO omega_server::sim::world: peer 46 disconnected
+2026-10-13T12:20:29.815181+00:00 CAX11-game-server omega-server[17989]: 2026-10-13T12:20:29.814822Z  INFO omega_server::sim::world: peer 47 disconnected
+2026-10-13T12:20:29.815181+00:00 CAX11-game-server omega-server[17989]: 2026-10-13T12:20:29.814828Z  INFO omega_server::sim::world: peer 48 disconnected
+2026-10-13T12:20:29.815181+00:00 CAX11-game-server omega-server[17989]: 2026-10-13T12:20:29.814833Z  INFO omega_server::sim::world: peer 49 disconnected
+2026-10-13T12:21:43.228699+00:00 CAX11-game-server omega-server[19421]: 2026-10-13T12:21:43.228627Z  INFO omega_server: instance mode: ARENA — monsters + PvP, ±1000 with pillars
+2026-10-13T12:21:43.228699+00:00 CAX11-game-server omega-server[19421]: 2026-10-13T12:21:43.228658Z  INFO omega_server: config: ServerConfig { port: 8081, tick_rate: 30, max_players: 999, region: "local", mode: "arena", debug_logging: false, api_server_url: "", aoi_radius: 1000.0, aoi_exit_radius: 1100.0, lod_near_radius: 400.0, lod_mid_radius: 1000.0, snapshot_rate_hz_raw: 30, max_snapshot_bytes: 1200, default_client_bandwidth_bps: 120000, max_client_bandwidth_bps: 200000, min_client_bandwidth_bps: 24000, monster_ai_difficulty: 0.85, monster_spawn_rate: 0.1, allow_unsigned_tickets: true, ticket_pubkey_hex: "", advertise_url: "", backstop_grace_ticks: 20, metrics_port: 9100 }
+2026-10-13T12:21:43.229750+00:00 CAX11-game-server omega-server[19421]: 2026-10-13T12:21:43.229668Z  INFO omega_server: prometheus metrics on 127.0.0.1:9100
+2026-10-13T12:21:43.229750+00:00 CAX11-game-server omega-server[19421]: 2026-10-13T12:21:43.229712Z  WARN omega_server: dev mode: unsigned tickets accepted (--require-tickets + OMEGA_TICKET_PUBKEY for production)
+2026-10-13T12:21:43.230507+00:00 CAX11-game-server omega-server[19421]: 2026-10-13T12:21:43.230445Z  INFO omega_server: listening on udp/8081 (3 channels)

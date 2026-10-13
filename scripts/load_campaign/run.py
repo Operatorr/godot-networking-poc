@@ -103,6 +103,7 @@ def run(run_id, bots, behavior, duration=360, collection=True, build="original",
     game_directory = REMOTE + "/" + run_id + "/game"
     roles = []
     impaired = []
+    mirrored = []
     try:
         if configure_service:
             manifest["game_config"] = configure(build, variant)
@@ -123,6 +124,12 @@ def run(run_id, bots, behavior, duration=360, collection=True, build="original",
                 ssh(role, "printf '%s' " + shlex.quote(nft) + " | sudo -n nft -f -")
                 capture = f"exec python3 {REMOTE}/capture.py {directory}"
                 ssh(role, f"sudo -n systemd-run --quiet --property=KillMode=mixed --unit={unit}-{role}-capture /bin/bash -c " + shlex.quote(capture))
+                import mirror
+                mirrored.append(role)
+                ssh(role, f"mkdir -p {directory}/prequeue")
+                mirror.apply(role, directory)
+                capture = f"exec python3 {REMOTE}/capture.py {directory}/prequeue omega-observe"
+                ssh(role, f"sudo -n systemd-run --quiet --property=KillMode=mixed --unit={unit}-{role}-prequeue /bin/bash -c " + shlex.quote(capture))
             collector = f"python3 {REMOTE}/host_collect.py --role {role} --directory {directory} --seconds {duration + bots * 16 + 120}" + (" --light" if not collection else "")
             if role == "bots":
                 collector += " --swarm-unit " + unit + "-swarm"
@@ -191,13 +198,16 @@ def run(run_id, bots, behavior, duration=360, collection=True, build="original",
             ssh("game", f"cp /var/lib/omega-measure/current/ticks.csv /var/lib/omega-measure/current/server.ndjson {game_directory}/", check=False)
         for role in HOSTS:
             (local / (role + "-final-service.txt")).write_text(ssh(role, f"systemctl show {unit}-swarm -p Result -p CPUUsageNSec -p ExecMainStatus; systemctl show omega-loadtest-arena.service -p NRestarts -p MainPID -p Result", check=False))
-            ssh(role, f"sudo -n systemctl stop {unit}-swarm {unit}-{role}-collect {unit}-{role}-capture 2>/dev/null || true", check=False)
+            ssh(role, f"sudo -n systemctl stop {unit}-swarm {unit}-{role}-collect {unit}-{role}-capture {unit}-{role}-prequeue 2>/dev/null || true", check=False)
             directory = REMOTE + "/" + run_id + "/" + role
             if role in impaired:
                 import netem
                 ssh(role, f"tc -s -j qdisc show dev eth0 > {directory}/netem-final.json", check=False)
                 netem.restore(role)
                 ssh(role, f"sudo -n systemctl stop omega-netem-cleanup-{run_id}-{role}", check=False)
+            if role in mirrored:
+                import mirror
+                mirror.restore(role)
             if role in roles:
                 ssh(role, f"sudo -n chown -R deploy:deploy {directory}; tc -s -j qdisc show dev eth0 > {directory}/qdisc-after.json; "
                     f"tar -czf {REMOTE}/{run_id}-{role}.tar.gz -C {REMOTE}/{run_id} {role}")

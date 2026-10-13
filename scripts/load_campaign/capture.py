@@ -6,9 +6,11 @@ import subprocess
 import sys
 
 directory = pathlib.Path(sys.argv[1])
+interface = sys.argv[2] if len(sys.argv) > 2 else "eth0"
 with (directory / "capture.log").open("w") as log:
-    capture = subprocess.Popen(["tcpdump", "-i", "eth0", "-n", "-s", "0", "-B", "32768", "-U", "-w", "-", "udp", "port", "8081"], stdout=subprocess.PIPE, stderr=log)
-    recorder = subprocess.Popen([str(directory.parents[1] / "flow-record"), str(directory)], stdin=capture.stdout, stderr=log)
+    capture = subprocess.Popen(["tcpdump", "-i", interface, "-n", "-s", "0", "-B", "32768", "-U", "-w", "-", "udp", "port", "8081"], stdout=subprocess.PIPE, stderr=log)
+    recorder_path = next(parent / "flow-record" for parent in directory.parents if (parent / "flow-record").exists())
+    recorder = subprocess.Popen([str(recorder_path), str(directory)], stdin=capture.stdout, stderr=log)
     capture.stdout.close()
 
     def stop(*_):

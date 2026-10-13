@@ -59,7 +59,9 @@ bytes, emitted/received reliable data and delivery freshness provide complementa
 Capture drops and parser errors invalidate packet accounting.
 
 Primary economics use game-port outbound IPv4 IP bytes (including ENet, UDP/IP and retries)
-over integrated authoritative authenticated player-seconds. Interface bytes and unrelated
+from post-qdisc packet capture over integrated authoritative authenticated player-seconds.
+The nftables output counter measures pre-qdisc offered bytes, including injected drops;
+pre-qdisc mirroring supplies directional delay/loss evidence. Interface bytes and unrelated
 SSH/collector traffic are separate. Counter reads have timestamp brackets; small boundary
 differences are reported rather than hidden. Packet matching includes a receiver context
 outside the steady window to avoid counting delayed boundary-crossing packets as loss.

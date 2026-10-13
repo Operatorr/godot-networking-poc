@@ -37,6 +37,11 @@ def publish(run_id):
                 if member.name.endswith(".gz"):
                     content = gzip.decompress(content)
                 text = redact(content.decode())
+                if member.name.endswith(("/start.json", "/end.json")):
+                    row = json.loads(text)
+                    row.pop("net/udp", None)
+                    row.pop("net/udp6", None)
+                    text = json.dumps(row, indent=2)
                 # Host proc/socket observations retain local addresses and contain thousands
                 # of redundant status fields. Publish the timestamped metrics exposition and
                 # interface/process/CPU/flow observations after removing network endpoint data.

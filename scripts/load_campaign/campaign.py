@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute scored cells only after a recorded, operator-reviewed measurement preflight."""
+"""Execute scored cells only after a recorded and validated measurement preflight."""
 import json
 import pathlib
 import sys

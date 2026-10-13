@@ -13,7 +13,12 @@ def build(role):
     script = f"""set -eu
 cd /home/deploy/omega-realm
 git fetch origin measure/cax11-20261013
-git worktree add --detach /home/deploy/omega-measured {revision}
+if test -d /home/deploy/omega-measured; then
+    test -z "$(git -C /home/deploy/omega-measured status --porcelain)"
+    git -C /home/deploy/omega-measured checkout --detach {revision}
+else
+    git worktree add --detach /home/deploy/omega-measured {revision}
+fi
 cd /home/deploy/omega-measured/rust
 source /home/deploy/.cargo/env
 cargo build --release --locked -j 2 -p {package} > {run.REMOTE}/{role}-measurement-build.log 2>&1

@@ -1,0 +1,84 @@
+[2m2026-10-13T12:33:38.578213Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m Starting load test: 3 bots, 90s duration, behavior=movement, difficulty=1.00, server=<game-host>:8081
+[2m2026-10-13T12:33:38.578275Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m Phase 1: Spawning bots...
+[2m2026-10-13T12:33:38.903418Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m Spawned 3 bots, 3 connected successfully
+[2m2026-10-13T12:33:38.903609Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m Phase 2: Running test for 90 seconds with 3 bots...
+[2m2026-10-13T12:33:43.903637Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [5s] bots=3 bytes_recv=22079 state_updates=468
+[2m2026-10-13T12:33:48.904090Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [10s] bots=3 bytes_recv=43198 state_updates=918
+[2m2026-10-13T12:33:53.903854Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [15s] bots=3 bytes_recv=63006 state_updates=1368
+[2m2026-10-13T12:33:58.904349Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [20s] bots=3 bytes_recv=83997 state_updates=1818
+[2m2026-10-13T12:34:03.904208Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [25s] bots=3 bytes_recv=109196 state_updates=2268
+[2m2026-10-13T12:34:08.903873Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [30s] bots=3 bytes_recv=135591 state_updates=2718
+[2m2026-10-13T12:34:13.904151Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [35s] bots=3 bytes_recv=171722 state_updates=3168
+[2m2026-10-13T12:34:18.903790Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [40s] bots=3 bytes_recv=215904 state_updates=3618
+[2m2026-10-13T12:34:23.903603Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [45s] bots=3 bytes_recv=263456 state_updates=4068
+[2m2026-10-13T12:34:28.903687Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [50s] bots=3 bytes_recv=309164 state_updates=4518
+[2m2026-10-13T12:34:33.903628Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [55s] bots=3 bytes_recv=353065 state_updates=4968
+[2m2026-10-13T12:34:38.903963Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [60s] bots=3 bytes_recv=396212 state_updates=5418
+[2m2026-10-13T12:34:43.903668Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [65s] bots=3 bytes_recv=442211 state_updates=5868
+[2m2026-10-13T12:34:48.903692Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [70s] bots=3 bytes_recv=496229 state_updates=6318
+[2m2026-10-13T12:34:53.903771Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [75s] bots=3 bytes_recv=560888 state_updates=6768
+[2m2026-10-13T12:34:58.904188Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [80s] bots=3 bytes_recv=650413 state_updates=7218
+[2m2026-10-13T12:35:03.904407Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [85s] bots=3 bytes_recv=732509 state_updates=7668
+[2m2026-10-13T12:35:08.904296Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m Phase 3: Collecting metrics...
+
+============================================================
+  Omega Realm Load Test Report (ENet/Rust)
+============================================================
+
+Test Configuration:
+  Bot Count:       3
+  Duration:        90 seconds
+  Server:          <game-host>:8081
+  Timestamp:       2026-10-13T12:35:08Z (UTC)
+
+Connection Summary:
+  Connected:       3
+  Disconnected:    0
+  Errors:          0
+  Decode Failures: 0
+  Send Failures:   0
+  Bot Panics:      0
+
+Server Metrics (client-estimated):
+  Est. Tick Rate:  30.1 Hz
+  State Updates:   2706 per bot (avg)
+
+Server Metrics (server-reported):
+  Avg Tick Time:   0.27ms
+  Max Tick Time:   0.38ms
+  Players:         3
+  Entity Count:    22
+  Total Bytes Out: 814511
+  Avg BW/Client:   5888 bytes
+
+Network Metrics:
+  Packets Sent:    8264
+  Packets Recv:    17963
+  Bandwidth/Player: 3.60 KB/s
+
+Latency Distribution (ENet RTT):
+  Min:             1.0ms
+  Avg:             2.0ms
+  Max:             3.0ms
+  P95:             3.0ms
+  P99:             3.0ms
+  Packet Loss:     0.00%
+
+Success Criteria:
+  [PASS] Average latency < 100ms: 2.0ms
+  [PASS] P95 latency < 150ms: 3.0ms
+  [PASS] Bandwidth < 5.0 KB/s per player: 3.60 KB/s
+  [PASS] Packet loss < 2.0%: 0.00%
+  [PASS] Bot crash rate < 5.0%: 0.0%
+  [PASS] Server tick rate > 30 Hz: 30.1 Hz
+
+------------------------------------------------------------
+  Conclusion: ALL CRITERIA MET
+------------------------------------------------------------
+
+Regression Assertions (§8.3):
+  [PASS] aoi_cull: 3/3 bots within 1150 u (95% required)
+  [PASS] decode_clean: no decode failures
+  [SKIP] per_peer_budget: skipped: no --rate-budget configured
+
+[2m2026-10-13T12:35:08.907131Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m JSON report saved to: /home/deploy/omega-results/campaign-20261013/instrumented-3-preflight/bots/bot.json

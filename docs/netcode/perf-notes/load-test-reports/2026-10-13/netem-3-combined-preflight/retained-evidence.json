@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/campaign-20261013/netem-3-combined-preflight",
+  "sha256": {
+    "bots.tar.gz": "406c99fce9228ceaad93651c74fd29e3af4559dd68315b943367130b398d7b6e",
+    "game.tar.gz": "2f74c943347e624404188f775fd8c0df18bad14e730afc0596c6952250f07292"
+  },
+  "contents": "Unedited reports/logs, host observations, packet headers and full-datagram ENet descriptors. Retained off both temporary hosts in the ignored local evidence archive. Public copies redact connection addresses; no access records or credentials are published."
+}
