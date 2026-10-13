@@ -6,6 +6,7 @@
 //! matching the GDScript's frame-loop handler semantics.
 
 mod config;
+mod measurement;
 mod net;
 mod sim;
 
@@ -275,16 +276,25 @@ fn main() {
                         }
                         enet::EventNoRef::Receive {
                             peer,
-                            channel_id: _,
+                            channel_id,
                             packet,
                         } => {
                             let key = peer.0;
                             collector.record_received(packet.data().len());
+                            if let Some(measure) = &mut collector.measurement {
+                                if let Some(kind) = packet.data().first() {
+                                    measure.received[*kind as usize][channel_id as usize] +=
+                                        packet.data().len() as u64;
+                                }
+                            }
                             match ClientPacket::decode(packet.data()) {
                                 Ok(pkt) => {
                                     world.on_packet(key, pkt, now_ms(start), unix_ms(), &mut outbox)
                                 }
                                 Err(e) => {
+                                    if let Some(measure) = &mut collector.measurement {
+                                        measure.decode_errors += 1;
+                                    }
                                     tracing::debug!("bad packet from peer {key}: {e}");
                                 }
                             }
@@ -299,6 +309,9 @@ fn main() {
             }
         }
         flush_outbox(&mut outbox, &mut host, &connected, &mut collector);
+        if let Some(measure) = &mut collector.measurement {
+            measure.check_boundaries(&world);
+        }
 
         // Fixed-tick accumulator with fractional-remainder carry; unbounded catch-up like the
         // GDScript (the snapshot accumulator's drift guard caps bursts to one snapshot).
@@ -311,13 +324,20 @@ fn main() {
             world.tick(now_ms(start), &mut outbox);
             flush_outbox(&mut outbox, &mut host, &connected, &mut collector);
             host.flush();
-            collector.record_tick_time(tick_start.elapsed().as_secs_f64() * 1000.0);
+            let work = tick_start.elapsed();
+            collector.record_tick_time(work.as_secs_f64() * 1000.0);
+            if let Some(measure) = &mut collector.measurement {
+                measure.tick(&world, tick_start, work.as_nanos(), tick_timer);
+            }
         }
 
         // 1 Hz metrics (skip when empty, parity with GDScript).
         let t_ms = now_ms(start);
         if t_ms.saturating_sub(last_metrics_ms) >= 1000 {
             last_metrics_ms = t_ms;
+            if let Some(measure) = &mut collector.measurement {
+                measure.sample(&world);
+            }
             let entity_count =
                 world.projectiles.count() + world.monsters.count() + world.world_entities.count();
             let player_count = world.players.player_count();
@@ -377,6 +397,11 @@ fn flush_outbox<S: enet::Socket>(
 ) {
     for (target, packet) in outbox.drain() {
         let bytes = packet.encode();
+        if let (Some(measure), ServerPacket::GameEvent(event)) =
+            (&mut collector.measurement, &packet)
+        {
+            measure.source_events[event.event_type as usize] += 1;
+        }
         let channel = packet.channel();
         let reliable = packet.reliable();
         if !reliable && bytes.len() > protocol::MAX_UNRELIABLE_PAYLOAD {
@@ -399,6 +424,9 @@ fn flush_outbox<S: enet::Socket>(
                         };
                         if peer.send(channel, &pkt).is_ok() {
                             collector.record_sent(key, bytes.len());
+                            record_message(collector, &packet, &bytes, channel);
+                        } else if let Some(measure) = &mut collector.measurement {
+                            measure.send_errors += 1;
                         }
                     }
                 }
@@ -414,6 +442,9 @@ fn flush_outbox<S: enet::Socket>(
                         };
                         if peer.send(channel, &pkt).is_ok() {
                             collector.record_sent(key, bytes.len());
+                            record_message(collector, &packet, &bytes, channel);
+                        } else if let Some(measure) = &mut collector.measurement {
+                            measure.send_errors += 1;
                         }
                     }
                 }
@@ -424,6 +455,23 @@ fn flush_outbox<S: enet::Socket>(
         if connected.contains(&key) {
             // disconnect_later: the queued packets (e.g. the AuthResult nack) flush first.
             host.peer_mut(enet::PeerID(key)).disconnect_later(reason);
+        }
+    }
+}
+
+fn record_message(
+    collector: &mut metrics::MetricsCollector,
+    packet: &ServerPacket,
+    bytes: &[u8],
+    channel: u8,
+) {
+    if let Some(measure) = &mut collector.measurement {
+        measure.sent[bytes[0] as usize][channel as usize] += bytes.len() as u64;
+        match packet {
+            ServerPacket::GameEvent(event) => measure.event_sends[event.event_type as usize] += 1,
+            ServerPacket::Snapshot(snapshot) if snapshot.is_baseline => measure.baselines += 1,
+            ServerPacket::Snapshot(_) => measure.deltas += 1,
+            _ => {}
         }
     }
 }

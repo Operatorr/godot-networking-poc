@@ -47,6 +47,7 @@ pub enum Phase {
 }
 
 pub struct Bot {
+    observation: Option<crate::measurement::BotObservation>,
     pub id: u32,
     pub phase: Phase,
     pub metrics: BotMetrics,
@@ -145,6 +146,8 @@ impl Bot {
         let player_class = SPAWN_CLASSES[(id as usize).wrapping_sub(1) % SPAWN_CLASSES.len()];
         debug!("bot {id} assigned class {player_class}");
         Ok(Self {
+            observation: std::env::var_os("OMEGA_MEASURE_DIR")
+                .map(|_| crate::measurement::BotObservation::default()),
             id,
             phase: Phase::Connecting,
             metrics,
@@ -292,6 +295,11 @@ impl Bot {
                     return;
                 }
                 enet::EventNoRef::Receive { packet, .. } => {
+                    if let Some(observation) = &mut self.observation {
+                        if let Some(kind) = packet.data().first() {
+                            observation.received[*kind as usize] += packet.data().len() as u64;
+                        }
+                    }
                     self.metrics.packets_received += 1;
                     self.metrics.bytes_received += packet.data().len() as u64;
                     match ServerPacket::decode(packet.data()) {
@@ -326,6 +334,9 @@ impl Bot {
             },
             ServerPacket::Snapshot(s) => self.apply_snapshot(&s, now),
             ServerPacket::ActionConfirm(c) => {
+                if let Some(observation) = &mut self.observation {
+                    observation.last_confirm = Some(std::time::Instant::now());
+                }
                 self.metrics.action_confirms_received += 1;
                 // The confirm is the authoritative answer to our input: adopt position and
                 // resources (poor man's reconciliation — bots don't replay).
@@ -376,6 +387,31 @@ impl Bot {
     }
 
     fn apply_snapshot(&mut self, s: &Snapshot, now: f64) {
+        if let Some(observation) = &mut self.observation {
+            crate::measurement::observe_gap(
+                &mut observation.last_snapshot,
+                &mut observation.snapshot_gaps,
+                &mut observation.snapshot_gap_max_ms,
+            );
+            observation.last_snapshot_server_ms = s.server_ms;
+            observation.last_snapshot_tick = s.server_tick;
+            if s.is_baseline {
+                observation.last_baseline = Some(s.server_tick);
+            } else {
+                observation.last_delta = Some(std::time::Instant::now());
+                if s.baseline_tick != observation.last_baseline {
+                    observation.baseline_reference_misses += 1;
+                }
+                observation.unknown_delta_entities += s
+                    .entities
+                    .iter()
+                    .filter(|record| {
+                        record.delta_mask & (delta_mask::FULL | delta_mask::REMOVED) == 0
+                            && !self.entities.contains_key(&record.entity_id)
+                    })
+                    .count() as u64;
+            }
+        }
         self.metrics.state_updates_received += 1;
         self.metrics.first_server_tick.get_or_insert(s.server_tick);
         self.metrics.last_server_tick = self.metrics.last_server_tick.max(s.server_tick);
@@ -474,6 +510,11 @@ impl Bot {
     // ── Input loop ──────────────────────────────────────────────────────────
 
     fn input_step(&mut self, now: f64) {
+        if let Some(observation) = &mut self.observation {
+            observation.missed_schedules += ((now - self.next_input_at) / self.input_interval)
+                .max(0.0)
+                .floor() as u64;
+        }
         self.next_input_at += self.input_interval;
         if self.next_input_at < now {
             // Fell behind (host stall); don't burst-send to catch up.
@@ -607,6 +648,21 @@ impl Bot {
         let peer = self.host.peer_mut(enet::PeerID(self.peer_key));
         match peer.send(packet.channel(), &enet_packet) {
             Ok(()) => {
+                if let Some(observation) = &mut self.observation {
+                    observation.sent[bytes[0] as usize] += bytes.len() as u64;
+                    if let ClientPacket::PlayerInput(input) = packet {
+                        observation.inputs += 1;
+                        observation.shoot_inputs +=
+                            u64::from(input.input_flags & input_flags::SHOOT != 0);
+                        observation.ability_inputs +=
+                            u64::from(input.input_flags & input_flags::ABILITY != 0);
+                        crate::measurement::observe_gap(
+                            &mut observation.last_input,
+                            &mut observation.input_gaps,
+                            &mut observation.input_gap_max_ms,
+                        );
+                    }
+                }
                 self.metrics.packets_sent += 1;
                 self.metrics.bytes_sent += bytes.len() as u64;
             }
@@ -622,6 +678,39 @@ impl Bot {
                 );
             }
         }
+    }
+
+    pub fn observation(&self) -> serde_json::Value {
+        let Some(observation) = &self.observation else {
+            return serde_json::Value::Null;
+        };
+        let sparse = |values: &[u64; 256]| {
+            values
+                .iter()
+                .enumerate()
+                .filter(|(_, value)| **value > 0)
+                .map(|(kind, value)| (kind.to_string(), serde_json::json!(value)))
+                .collect::<serde_json::Map<_, _>>()
+        };
+        let age =
+            |stamp: Option<std::time::Instant>| stamp.map(|value| value.elapsed().as_secs_f64());
+        serde_json::json!({
+            "id": self.id, "phase": format!("{:?}", self.phase), "alive": self.dead_since.is_none(),
+            "inputs": observation.inputs, "missed_schedules": observation.missed_schedules,
+            "shoot_inputs": observation.shoot_inputs, "ability_inputs": observation.ability_inputs,
+            "input_gaps": observation.input_gaps, "input_gap_max_ms": observation.input_gap_max_ms,
+            "snapshot_gaps": observation.snapshot_gaps, "snapshot_gap_max_ms": observation.snapshot_gap_max_ms,
+            "baseline_reference_misses": observation.baseline_reference_misses,
+            "unknown_delta_entities": observation.unknown_delta_entities,
+            "snapshot_age_s": age(observation.last_snapshot), "delta_age_s": age(observation.last_delta),
+            "confirm_age_s": age(observation.last_confirm), "snapshot_tick": observation.last_snapshot_tick,
+            "snapshot_server_ms": observation.last_snapshot_server_ms, "visible_entities": self.entities.len(),
+            "rtt_ms": self.last_rtt_ms, "enet_loss_estimate": self.metrics.enet_packet_loss,
+            "received_bytes_by_type": sparse(&observation.received), "sent_bytes_by_type": sparse(&observation.sent),
+            "decode_failures": self.metrics.decode_failures, "send_failures": self.metrics.send_failures,
+            "panics": self.metrics.panic_count, "baselines": self.metrics.baselines_received,
+            "snapshots": self.metrics.state_updates_received, "confirms": self.metrics.action_confirms_received,
+        })
     }
 }
 
