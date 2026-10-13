@@ -14,6 +14,9 @@ STATE = run.RAW / "campaign-state.json"
 
 
 def cell(name, population, behavior, repeat=1, profile="native", variant="native"):
+    replacements_path = run.RAW / "matrix-replacements.json"
+    replacements = json.loads(replacements_path.read_text()) if replacements_path.exists() else {}
+    name = replacements.get(name, {}).get("selected_run_id", name)
     directory = run.RAW / name
     if not (directory / "steady.json").exists():
         if directory.exists():
@@ -70,9 +73,6 @@ def core():
     boundaries = {}
     for behavior, failure in failed.items():
         lower, upper = highest.get(behavior, 0), failure["population"]
-        if lower == 0:
-            boundaries[behavior] = {"lower": 0, "upper": upper, "note": "No stable initial rung; no server ceiling established"}
-            continue
         while upper - lower > 25:
             middle = ((lower + upper) // 2 // 25) * 25
             if middle <= lower:
@@ -82,9 +82,10 @@ def core():
                 lower = middle
             else:
                 upper = middle
-        highest[behavior] = lower
+        if lower:
+            highest[behavior] = lower
         boundaries[behavior] = {"lower": lower, "upper": upper,
-                                "note": "Classification of the failed side determines whether this is a server boundary or generator validity boundary"}
+                                "note": "No positive stable population established" if lower == 0 else "Classification of the failed side determines whether this is a server boundary or generator validity boundary"}
         STATE.write_text(json.dumps({"highest_stable": highest, "first_failed": failed, "boundaries": boundaries}, indent=2))
     for population in sorted({100, max(highest.values(), default=100)}):
         repeats(f"idle-{population}", population, "idle")
@@ -123,8 +124,6 @@ def transfer():
             variants = ["native", "aoi600", "snapshot15", "native"]
         for behavior in ("combat", "clustered", "strategy"):
             for population in sorted({100, highest} - {0}):
-                if population == 100 and highest < 100:
-                    continue
                 for index, variant in enumerate(variants):
                     cell(f"transfer-{behavior}-{population}-{variant}-{index}-r{repeat}", population, behavior, repeat, variant=variant)
     state["transfer_complete"] = True

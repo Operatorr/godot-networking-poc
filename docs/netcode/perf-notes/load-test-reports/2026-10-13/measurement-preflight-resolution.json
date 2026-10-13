@@ -29,5 +29,15 @@
     "Life transitions are authoritative 1Hz observations, with 3.2s bot respawn wait and sample-gap checks",
     "Private unsent ENet queues are inferred from source enqueues versus first transmissions, not read directly"
   ],
-  "primary_counter": "post-qdisc captured IP lengths; prequeue mirrors for delay/loss; nft offered-byte counters separately"
+  "primary_counter": "post-qdisc captured IP lengths; prequeue mirrors for delay/loss; nft offered-byte counters separately",
+  "peer_scope_validation": {
+    "capture_source_sha256": "8e96e11f9cdea6d95f55507b1d14997633f941f9538bbde801dcf5f2f297c0df",
+    "runs": [
+      "scope-3-native-validation",
+      "scope-3-combined-validation",
+      "scope-50-native-validation"
+    ],
+    "passed": true,
+    "reason": "Port-only capture included one unrelated Internet probe; raw capture/counters now require the test peer IP and game port."
+  }
 }

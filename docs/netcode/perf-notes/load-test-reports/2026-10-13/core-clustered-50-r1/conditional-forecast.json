@@ -1,6 +1,6 @@
 {
   "source_run": "core-clustered-50-r1",
-  "source_classification": "native-stable-candidate",
+  "source_classification": "valid-failure",
   "rate_bytes_authenticated_player_second": 22490.813800000058,
   "forecasts": {
     "50": {

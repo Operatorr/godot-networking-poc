@@ -42,7 +42,7 @@
   "external_socket_capture_semantics": "Successful UDP payloads at send completion and socket receive observation; synthetic 20-byte IPv4 +8-byte UDP headers, no link/NIC counters. Game-host IP counters/capture are authoritative for outbound transfer.",
   "provider_reconciliation": "Earlier game-host tooltip is retained in game-provider-counter-before.json; seek a fresh before/after reading and account for provider delay and unrelated egress.",
   "ended_utc": "2026-10-13T14:00:53.295153+00:00",
-  "derived_source_sha256": "cb9b3fef8b1f43a020551260b21ebca02687bbd3412e3e4a9d10a045fe46bbd7",
+  "derived_source_sha256": "3ce15e98fcf3559eaca4e77495f1e3f653654db0bb5e3d86b46fbc7e5d63b4ba",
   "archive_sha256": {
     "bots.tar.gz": "3824e5815f68795289d0fee6fd99ca6792d3558eac39846fe781d7a613cde725",
     "game.tar.gz": "34187532eef594f88a61e1cb99f9ba8371fd5d26ec5fd7d2528ae616bf5466ca"
@@ -444,7 +444,12 @@
     "minimum_bot_hz": 29.99991306275194,
     "maximum_bot_hz": 29.99991306275194,
     "window_s": 300.000869375,
-    "missed_schedules": 0
+    "missed_schedules": 0,
+    "wire_input_ports_observed": 3,
+    "wire_overall_input_hz": 29.88111111111111,
+    "minimum_wire_port_input_hz": 29.846666666666668,
+    "wire_offered_load_gate": true,
+    "kernel_udp_validation_semantics": "Whole-host UDP error deltas on the isolated bot endpoint; positive errors require raw socket-table diagnosis. External Mac NIC/kernel counters unavailable; external accounting is not capacity evidence."
   },
   "baseline_reference_misses": 2,
   "unknown_delta_entities": 67,
@@ -506,6 +511,8 @@
     1028,
     45
   ],
+  "game_kernel_udp_errors": {},
+  "bots_kernel_udp_errors": {},
   "generator_valid": true,
   "outbound_ip_bytes": 4844642,
   "outbound_ip_bytes_s": 16148.806666666667,

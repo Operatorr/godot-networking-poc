@@ -9,11 +9,14 @@
       "core-clustered-50-r1"
     ],
     "classes": [
-      "native-stable-candidate"
+      "valid-failure"
     ],
     "three_repeats_present": false,
     "all_collector_valid": true,
     "all_generator_valid": true,
+    "selected_matrix_runs": [
+      "core-clustered-50-r1"
+    ],
     "native_sustainability_demonstrated_all_repeats": false,
     "spread_includes_all_source_rows_even_invalid": true,
     "metrics": {
@@ -100,6 +103,9 @@
     "three_repeats_present": false,
     "all_collector_valid": true,
     "all_generator_valid": true,
+    "selected_matrix_runs": [
+      "core-combat-50-r1"
+    ],
     "native_sustainability_demonstrated_all_repeats": false,
     "spread_includes_all_source_rows_even_invalid": true,
     "metrics": {
@@ -186,6 +192,9 @@
     "three_repeats_present": false,
     "all_collector_valid": true,
     "all_generator_valid": true,
+    "selected_matrix_runs": [
+      "core-movement-50-r1"
+    ],
     "native_sustainability_demonstrated_all_repeats": false,
     "spread_includes_all_source_rows_even_invalid": true,
     "metrics": {
@@ -258,6 +267,100 @@
     }
   },
   {
+    "family": "core",
+    "workload": "strategy",
+    "requested_population": 50,
+    "profile": "native",
+    "variant": "native",
+    "runs": [
+      "core-strategy-50-r1",
+      "core-strategy-50-r1-attempt2",
+      "core-strategy-50-r2"
+    ],
+    "classes": [
+      "collector-invalid",
+      "native-stable-candidate",
+      "native-stable-candidate"
+    ],
+    "three_repeats_present": false,
+    "all_collector_valid": false,
+    "all_generator_valid": true,
+    "selected_matrix_runs": [
+      "core-strategy-50-r1-attempt2",
+      "core-strategy-50-r2"
+    ],
+    "native_sustainability_demonstrated_all_repeats": false,
+    "spread_includes_all_source_rows_even_invalid": true,
+    "metrics": {
+      "outbound_ip_bytes_s": {
+        "min": 961513.45,
+        "mean": 963729.8866666666,
+        "median": 963652.3166666667,
+        "max": 966023.8933333333
+      },
+      "outbound_ip_bytes_player_s": {
+        "min": 19230.268999999993,
+        "mean": 19274.597733333318,
+        "median": 19273.046333333292,
+        "max": 19320.477866666668
+      },
+      "alive_fraction": {
+        "min": 0.854850395901197,
+        "mean": 0.8573860582185319,
+        "median": 0.8579671188388656,
+        "max": 0.8593406599155331
+      },
+      "tick_hz": {
+        "min": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "max": 30.0
+      },
+      "tick_work_p99_ms": {
+        "min": 6.843175,
+        "mean": 6.884682333333333,
+        "median": 6.872576,
+        "max": 6.938296
+      },
+      "server_cpu_percent_one_core": {
+        "min": 20.400002480708302,
+        "mean": 20.498887005553442,
+        "median": 20.466669685773333,
+        "max": 20.62998885017869
+      },
+      "generator_cpu_percent_one_core": {
+        "min": 40.99851042833332,
+        "mean": 41.12762642461744,
+        "median": 41.17260312728175,
+        "max": 41.211765718237245
+      },
+      "generator_achieved_hz": {
+        "min": 29.999734714121125,
+        "mean": 29.999809383389707,
+        "median": 29.99975868452941,
+        "max": 29.999934751518584
+      },
+      "rtt_p95_ms": {
+        "min": 3.0,
+        "mean": 3.3333333333333335,
+        "median": 3.0,
+        "max": 4.0
+      },
+      "tested_ccu_30day_game_host_USD_conditional": {
+        "min": 7.59,
+        "mean": 7.59,
+        "median": 7.59,
+        "max": 7.59
+      },
+      "tested_ccu_year_game_host_USD_conditional": {
+        "min": 91.08000000000003,
+        "mean": 91.08000000000003,
+        "median": 91.08000000000003,
+        "max": 91.08000000000003
+      }
+    }
+  },
+  {
     "family": "external",
     "workload": "combat",
     "requested_population": 3,
@@ -272,6 +375,9 @@
     "three_repeats_present": false,
     "all_collector_valid": true,
     "all_generator_valid": true,
+    "selected_matrix_runs": [
+      "external-combat-3-r1"
+    ],
     "native_sustainability_demonstrated_all_repeats": false,
     "spread_includes_all_source_rows_even_invalid": true,
     "metrics": {

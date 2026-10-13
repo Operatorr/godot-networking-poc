@@ -1,0 +1,10 @@
+{
+  "protocol": "IPv4 UDP",
+  "port": 8081,
+  "same_socket_inode_at_endpoints": true,
+  "receive_drops_start": 0,
+  "receive_drops_end": 8,
+  "receive_drop_delta": 8,
+  "source": "Unedited /proc/net/udp endpoint observations in private game archive",
+  "source_archive_sha256": "f1c61c729bc17b0c4f74cc75e6642fe1559b041d8de88abc574de3e2243c81bd"
+}

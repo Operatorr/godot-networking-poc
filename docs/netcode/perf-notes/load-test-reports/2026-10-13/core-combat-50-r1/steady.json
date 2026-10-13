@@ -55,7 +55,7 @@
   },
   "service_invocation": "d03e890d65bc475bb23e26fa6220d6a1",
   "ended_utc": "2026-10-13T14:05:56.899902+00:00",
-  "derived_source_sha256": "cb9b3fef8b1f43a020551260b21ebca02687bbd3412e3e4a9d10a045fe46bbd7",
+  "derived_source_sha256": "3ce15e98fcf3559eaca4e77495f1e3f653654db0bb5e3d86b46fbc7e5d63b4ba",
   "archive_sha256": {
     "bots.tar.gz": "bf0311b1ea018cdcf2a3ea0cc2e34ba60bd7da996f5d4146b4198ef9b1c13611",
     "game.tar.gz": "fc9ef3d85582c6047fb987b00077f4b07892e0134512bb8c98164972b3ac4e99"
@@ -739,7 +739,12 @@
     "minimum_bot_hz": 29.996709964117805,
     "maximum_bot_hz": 30.0000433022625,
     "window_s": 299.999566978,
-    "missed_schedules": 0
+    "missed_schedules": 0,
+    "wire_input_ports_observed": 50,
+    "wire_overall_input_hz": 29.999133333333333,
+    "minimum_wire_port_input_hz": 29.986666666666668,
+    "wire_offered_load_gate": true,
+    "kernel_udp_validation_semantics": "Whole-host UDP error deltas on the isolated bot endpoint; positive errors require raw socket-table diagnosis. External Mac NIC/kernel counters unavailable; external accounting is not capacity evidence."
   },
   "baseline_reference_misses": 0,
   "unknown_delta_entities": 47,
@@ -848,6 +853,8 @@
     31,
     2
   ],
+  "game_kernel_udp_errors": {},
+  "bots_kernel_udp_errors": {},
   "generator_valid": true,
   "outbound_ip_bytes": 284038731,
   "outbound_ip_bytes_s": 946795.77,

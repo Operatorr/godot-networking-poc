@@ -27,3 +27,21 @@ the join ramp. Its Tick-rate estimator divides a lifetime observed Tick span by 
 duration. The wire byte totals wrap at 2^32. These fields remain preserved in original
 reports and excluded from steady-window economics and sustainability gates, as required
 by the agreed matrix. Correcting them is separate harness/protocol work.
+
+## Investigate native clustered socket-buffer pressure
+
+The first five-minute 50-player clustered run recorded 8 game-socket receive drops
+(same UDP 8081 socket inode at both endpoints: 0→8) and 61 game-host UDP send-buffer
+errors. They appeared in the retained 1 Hz host series around steady-window seconds
+151.98 and 47.99 respectively. Tick cadence was 30 Hz and Tick-work p99 7.494 ms;
+input enqueue and pre-qdisc wire rates passed 99% of 30 Hz. This is a valid failing
+native observation under the error gate, rather than a Tick-work CPU ceiling.
+
+All 450,000 scheduled Snapshots were enqueued; 449,987 were first transmitted before
+the qdisc in the matched window. Capture drops/parser errors were zero. This exposes
+why successful application enqueue cannot establish successful transport delivery.
+The counters are preserved in [the run](core-clustered-50-r1/steady.json). Further
+repeats and boundary observations remain pending. Investigate burst/socket pressure,
+shared-host variation and collection effects before choosing any stabilization fix;
+the task does not tune buffers or optimize gameplay. Original-build/measurement
+collection controls currently quantify a movement workload, not this specific burst.

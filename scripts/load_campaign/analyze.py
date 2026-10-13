@@ -15,6 +15,7 @@ import tarfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 RAW = ROOT / "deployment/hetzner/results/campaign-20261013"
+ANALYZER_SOURCE_SHA256 = hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest()
 
 
 def percentile(values, fraction):
@@ -195,7 +196,7 @@ def packet_observations(stream, start, end, margin_ns=2_000_000_000):
 def summarize(directory):
     manifest = json.loads((directory / "manifest.json").read_text())
     result = dict(manifest)
-    result["derived_source_sha256"] = hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest()
+    result["derived_source_sha256"] = ANALYZER_SOURCE_SHA256
     result.pop("command", None)
     result["archive_sha256"] = {name.name: hashlib.sha256(name.read_bytes()).hexdigest() for name in directory.glob("*.tar.gz")}
     if not (directory / "window.json").exists():
@@ -231,7 +232,7 @@ def summarize(directory):
                     if window["start"] <= sample["utc_ns"] < window["end"]:
                         host_samples.append(sample)
             rss = [sum(process["rss_bytes"] for process in ticks_cpu(sample).values() if process["state"] != "Z") for sample in host_samples]
-            result[role + "_host"]["sampled_process_peak_rss_bytes"] = max(rss) if rss else None
+            result.setdefault(role + "_host", {})["sampled_process_peak_rss_bytes"] = max(rss) if rss else None
             result[role + "_host"]["steady_host_sample_count"] = len(host_samples)
         if role + "/capture.log" in names:
             text = archive.extractfile(role + "/capture.log").read().decode()
@@ -401,6 +402,19 @@ def summarize(directory):
         generator_valid = result["generator"]["overall_hz"] >= 29.7 and min(rates) >= 29.7
     else:
         collector_valid = False
+    sender = result.get("bots_prequeue_packets", result.get("bots_packets", {}))
+    input_ports = sender.get("wire_input_counts_by_port", {})
+    wire_rates = [count / duration for count in input_ports.values()]
+    wire_gate = len(wire_rates) == manifest["requested_bots"] and min(wire_rates, default=0) >= 29.7
+    result.setdefault("generator", {}).update(wire_input_ports_observed=len(wire_rates),
+        wire_overall_input_hz=sum(input_ports.values()) / duration / manifest["requested_bots"],
+        minimum_wire_port_input_hz=min(wire_rates, default=None), wire_offered_load_gate=wire_gate)
+    kernel_error_names = ("RcvbufErrors", "SndbufErrors", "MemErrors", "InErrors")
+    for role in ("game", "bots"):
+        errors = result.get(role + "_host", {}).get("kernel_udp_delta", {})
+        result[role + "_kernel_udp_errors"] = {name: errors[name] for name in kernel_error_names if errors.get(name, 0) > 0}
+    result["generator"]["kernel_udp_validation_semantics"] = "Whole-host UDP error deltas on the isolated bot endpoint; positive errors require raw socket-table diagnosis. External Mac NIC/kernel counters unavailable; external accounting is not capacity evidence."
+    generator_valid = generator_valid and wire_gate and not result["bots_kernel_udp_errors"]
     result["collector_valid"] = collector_valid
     result["generator_valid"] = generator_valid
     flow = result.get("game_host", {}).get("flow", {}).get("game_out", {})
@@ -419,7 +433,7 @@ def summarize(directory):
     sustainability = (result["population_min"] == manifest["requested_bots"] and agg["disconnected_bots"] == 0
                       and agg["total_decode_failures"] == 0 and agg["total_send_failures"] == 0 and agg["total_panics"] == 0
                       and result["tick_hz"] >= 29.7 and result["tick_work_ms"]["p99"] < 1000 / 30
-                      and result["tick_lag_ms"]["end"] < 100 and not growing_backlog)
+                      and result["tick_lag_ms"]["end"] < 100 and not growing_backlog and not result["game_kernel_udp_errors"])
     result["server_sustainability_gate"] = sustainability
     result["classification"] = "collector-invalid" if not collector_valid else "generator-invalid" if not generator_valid else "native-stable-candidate" if sustainability else "valid-failure"
     if manifest.get("profile", "native") != "native" and collector_valid and generator_valid:

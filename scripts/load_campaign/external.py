@@ -25,12 +25,13 @@ def main():
     config = run.configure("instrumented", "native")
     run.ssh("game", "rm -f /var/lib/omega-measure/current/window.json; sudo -n systemctl restart omega-loadtest-arena.service")
     run.ssh("game", f"mkdir -p {game_directory}")
-    nft = 'table inet omega_measure { chain input { type filter hook input priority -150; policy accept; udp dport 8081 counter comment "bot_in"; }; chain output { type filter hook output priority -150; policy accept; udp sport 8081 counter comment "game_out"; }; }'
+    peer = run.ACCESS['operator_ipv4_cidr'].split('/')[0]
+    nft = 'table inet omega_measure { chain input { type filter hook input priority -150; policy accept; ip saddr ' + peer + ' udp dport 8081 counter comment "bot_in"; }; chain output { type filter hook output priority -150; policy accept; ip daddr ' + peer + ' udp sport 8081 counter comment "game_out"; }; }'
     run.ssh("game", "sudo -n nft delete table inet omega_measure 2>/dev/null || true")
     run.ssh("game", "printf '%s' " + shlex.quote(nft) + " | sudo -n nft -f -")
     command = f"python3 {run.REMOTE}/host_collect.py --role game --directory {game_directory} --seconds 600"
     run.ssh("game", f"sudo -n systemd-run --quiet --unit={unit}-game-collect --uid=deploy /bin/bash -c " + shlex.quote(command))
-    command = f"exec python3 {run.REMOTE}/capture.py {game_directory}"
+    command = f"exec python3 {run.REMOTE}/capture.py {game_directory} eth0 {peer}"
     run.ssh("game", f"sudo -n systemd-run --quiet --property=KillMode=mixed --unit={unit}-game-capture /bin/bash -c " + shlex.quote(command))
     binary = run.ROOT / "rust/target/release/omega-load-test"
     args = [str(binary), "--server", run.HOSTS["game"]["ipv4"] + ":8081", "--bots", "3", "--behavior", "combat",

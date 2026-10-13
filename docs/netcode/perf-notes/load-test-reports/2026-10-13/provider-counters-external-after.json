@@ -10,6 +10,7 @@
   "caveats": [
     "Provider reporting interval unknown",
     "Provider billable byte-layer semantics unverified",
-    "Archive/SSH egress outside matched game window is separately relevant to cumulative account counter"
+    "Archive/SSH egress outside matched game window is separately relevant to cumulative account counter",
+    "UI refresh/cache status unknown; unchanged display cannot identify the backend update interval"
   ]
 }

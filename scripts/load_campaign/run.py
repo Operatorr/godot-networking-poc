@@ -126,16 +126,17 @@ def run(run_id, bots, behavior, duration=360, collection=True, build="original",
                 impaired.append(role)
                 manifest.setdefault("netem", {})[role] = netem.apply(role, profile, 3100 + repeat * 10 + (role == "bots"), run_id, duration + bots * 16 + 150)
             if collection:
-                nft = 'table inet omega_measure { chain input { type filter hook input priority -150; policy accept; udp sport 8081 counter comment "game_in"; udp dport 8081 counter comment "bot_in"; }; chain output { type filter hook output priority -150; policy accept; udp sport 8081 counter comment "game_out"; udp dport 8081 counter comment "bot_out"; }; }'
+                peer = HOSTS["bots" if role == "game" else "game"]["ipv4"]
+                nft = 'table inet omega_measure { chain input { type filter hook input priority -150; policy accept; ip saddr ' + peer + ' udp sport 8081 counter comment "game_in"; ip saddr ' + peer + ' udp dport 8081 counter comment "bot_in"; }; chain output { type filter hook output priority -150; policy accept; ip daddr ' + peer + ' udp sport 8081 counter comment "game_out"; ip daddr ' + peer + ' udp dport 8081 counter comment "bot_out"; }; }'
                 ssh(role, "sudo -n nft delete table inet omega_measure 2>/dev/null || true")
                 ssh(role, "printf '%s' " + shlex.quote(nft) + " | sudo -n nft -f -")
-                capture = f"exec python3 {REMOTE}/capture.py {directory}"
+                capture = f"exec python3 {REMOTE}/capture.py {directory} eth0 {peer}"
                 ssh(role, f"sudo -n systemd-run --quiet --property=KillMode=mixed --unit={unit}-{role}-capture /bin/bash -c " + shlex.quote(capture))
                 import mirror
                 mirrored.append(role)
                 ssh(role, f"mkdir -p {directory}/prequeue")
                 mirror.apply(role, directory)
-                capture = f"exec python3 {REMOTE}/capture.py {directory}/prequeue omega-observe"
+                capture = f"exec python3 {REMOTE}/capture.py {directory}/prequeue omega-observe {peer}"
                 ssh(role, f"sudo -n systemd-run --quiet --property=KillMode=mixed --unit={unit}-{role}-prequeue /bin/bash -c " + shlex.quote(capture))
             collector = f"python3 {REMOTE}/host_collect.py --role {role} --directory {directory} --seconds {duration + bots * 16 + 120}" + (" --light" if not collection else "")
             if role == "bots":

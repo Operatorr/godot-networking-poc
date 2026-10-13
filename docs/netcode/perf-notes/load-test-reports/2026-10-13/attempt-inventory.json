@@ -6,10 +6,22 @@
     "requested_duration_s": 360,
     "started_utc": "2026-10-13T14:11:56.053965+00:00",
     "ended_utc": "2026-10-13T14:25:07.986709+00:00",
-    "classification": "native-stable-candidate",
+    "classification": "valid-failure",
     "scored_300s_window_present": true,
     "retained_errors": [],
     "raw_asset_relative_location": "deployment/hetzner/results/campaign-20261013/core-clustered-50-r1"
+  },
+  {
+    "run_id": "core-clustered-50-r2",
+    "requested_population": 50,
+    "workload": "clustered",
+    "requested_duration_s": 360,
+    "started_utc": "2026-10-13T16:09:48.650969+00:00",
+    "ended_utc": null,
+    "classification": "not_yet_classified",
+    "scored_300s_window_present": false,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/campaign-20261013/core-clustered-50-r2"
   },
   {
     "run_id": "core-combat-50-r1",
@@ -36,6 +48,42 @@
     "scored_300s_window_present": true,
     "retained_errors": [],
     "raw_asset_relative_location": "deployment/hetzner/results/campaign-20261013/core-movement-50-r1"
+  },
+  {
+    "run_id": "core-strategy-50-r1",
+    "requested_population": 50,
+    "workload": "strategy",
+    "requested_duration_s": 360,
+    "started_utc": "2026-10-13T14:26:14.426483+00:00",
+    "ended_utc": "2026-10-13T14:39:47.614351+00:00",
+    "classification": "collector-invalid",
+    "scored_300s_window_present": true,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/campaign-20261013/core-strategy-50-r1"
+  },
+  {
+    "run_id": "core-strategy-50-r1-attempt2",
+    "requested_population": 50,
+    "workload": "strategy",
+    "requested_duration_s": 360,
+    "started_utc": "2026-10-13T15:10:30.937914+00:00",
+    "ended_utc": "2026-10-13T15:28:05.926497+00:00",
+    "classification": "native-stable-candidate",
+    "scored_300s_window_present": true,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/campaign-20261013/core-strategy-50-r1-attempt2"
+  },
+  {
+    "run_id": "core-strategy-50-r2",
+    "requested_population": 50,
+    "workload": "strategy",
+    "requested_duration_s": 360,
+    "started_utc": "2026-10-13T15:56:16.717761+00:00",
+    "ended_utc": "2026-10-13T16:08:53.841385+00:00",
+    "classification": "native-stable-candidate",
+    "scored_300s_window_present": true,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/campaign-20261013/core-strategy-50-r2"
   },
   {
     "run_id": "external-combat-3-r1",
@@ -242,5 +290,41 @@
     "scored_300s_window_present": false,
     "retained_errors": [],
     "raw_asset_relative_location": "deployment/hetzner/results/campaign-20261013/original-50-control-4"
+  },
+  {
+    "run_id": "scope-3-combined-validation",
+    "requested_population": 3,
+    "workload": "movement",
+    "requested_duration_s": 90,
+    "started_utc": "2026-10-13T14:57:28.288165+00:00",
+    "ended_utc": "2026-10-13T15:02:17.030328+00:00",
+    "classification": "controlled-profile-valid",
+    "scored_300s_window_present": false,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/campaign-20261013/scope-3-combined-validation"
+  },
+  {
+    "run_id": "scope-3-native-validation",
+    "requested_population": 3,
+    "workload": "movement",
+    "requested_duration_s": 90,
+    "started_utc": "2026-10-13T14:53:19.550267+00:00",
+    "ended_utc": "2026-10-13T14:57:21.525350+00:00",
+    "classification": "native-stable-candidate",
+    "scored_300s_window_present": false,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/campaign-20261013/scope-3-native-validation"
+  },
+  {
+    "run_id": "scope-50-native-validation",
+    "requested_population": 50,
+    "workload": "movement",
+    "requested_duration_s": 120,
+    "started_utc": "2026-10-13T15:02:23.822401+00:00",
+    "ended_utc": "2026-10-13T15:10:17.478287+00:00",
+    "classification": "native-stable-candidate",
+    "scored_300s_window_present": false,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/campaign-20261013/scope-50-native-validation"
   }
 ]

@@ -75,7 +75,14 @@ every ENet command, UDP payload fingerprints, lengths and timestamps. This enabl
 directional packet matching, reliable payload retry accounting and observed unacknowledged
 reliable data commands; it does not inspect unsent private ENet queues. Application queue
 bytes, emitted/received reliable data and delivery freshness provide complementary evidence.
-Capture drops and parser errors invalidate packet accounting.
+Capture drops and parser errors invalidate packet accounting. Generator validity checks
+both accepted input enqueues and pre-qdisc input commands on every bot socket against
+29.7 Hz, plus bot-host UDP error counters. Game-host UDP receive/send-buffer errors fail
+the native sustainability gate; raw socket tables retain evidence for attributing any
+positive whole-host counter. The first clustered run's game UDP 8081 socket accumulated
+8 receive drops and the host 61 send-buffer errors, so its earlier timing-only candidate
+classification is corrected to a valid failing observation. This does not alter the run
+or workload. [Needed fixes](needed-fixes.md) keeps the investigation separate.
 
 Primary economics use game-port outbound IPv4 IP bytes (including ENet, UDP/IP and retries)
 from post-qdisc packet capture over integrated authoritative authenticated player-seconds.
@@ -173,7 +180,8 @@ recorded during the excluded warmup, were
 unchanged from the earlier reading despite intervening archive downloads. [The post-check game reading](provider-counters-external-after.json) remains
 0.00008464 TB. Thus invoice reconciliation remains pending provider update/account
 billing semantics; the unchanged display does not mean zero measured external egress.
-Provider reporting delay and unrelated archive egress remain explicit.
+Provider reporting delay, UI refresh/cache status and unrelated archive egress remain
+explicit.
 
 ## Failures and separate work
 
@@ -190,6 +198,18 @@ telemetry are complete, so this was an analyzer failure rather than invalid work
 collection. Analysis now explicitly reports endpoint resident/swap memory unavailable
 for exited processes and supplies sampled peak RSS from the retained 1 Hz host series.
 Re-analysis validated the five-minute run without repeating or replacing its evidence.
+
+The first scored strategy attempt is retained as **collector-invalid**. One unrelated
+104-byte IPv4 Internet probe reached the bot host's UDP 8081 port and entered the
+port-only capture; parsing that payload as ENet produced one recorder error. Bot codec
+errors, capture drops and kernel socket errors were zero, but the accounting scope was
+incorrect. Offline peer filtering excludes exactly that one packet and preserves all
+1,819,123 test-peer packet headers. Capture and nftables counters now require the test
+peer IPv4 address as well as the game port. Native 3-bot, controlled 3-bot and native
+50-bot checks validate the correction before a separately named scored retry. The
+original attempt remains in raw evidence and the summary; replacement selection is
+explicit and applies only to collector-invalid attempts, never valid server/generator
+failures.
 
 [Needed fixes](needed-fixes.md) records baseline diagnostic/harness issues without optimizing
 the baseline. A five-minute campaign does not establish long-term stability; 1000 CCU is a
