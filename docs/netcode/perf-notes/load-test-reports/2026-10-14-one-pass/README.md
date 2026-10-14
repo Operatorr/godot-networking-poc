@@ -2,7 +2,7 @@
 
 Execution of [Execute the revised one-pass CAX11 load-test matrix](https://github.com/Operatorr/godot-networking-poc/issues/35),
 following the [amended matrix](https://github.com/Operatorr/godot-networking-poc/issues/30#issuecomment-6145030523).
-**In progress.** This directory does not establish complete matrix coverage.
+**Operator-accepted CAX11 checkpoint (2026-10-14).** The operator requested merge into `master` and closure of the execution ticket. This directory does not establish complete matrix coverage; unfinished phases remain in [Run the new load tests and record results](https://github.com/Operatorr/godot-networking-poc/issues/31). See [failure hypotheses and closure scope](CAX11-CONCLUSION.md).
 
 The operator-requested [Strategy 200/250/500/750/999 continuation](STRATEGY-EXTENSION.md) is recorded: all five separate subagents returned failed, unscored ramps, with observed authenticated peaks of 191/185/176/180/190. Game CPU reached approximately one logical CPU’s budget; no higher rung completed a steady measurement. Hosts are idle/native and update timers are restored. Network/transfer/external accounting and full coverage audit remain pending.
 

@@ -16,8 +16,36 @@ def records(path):
         return [json.loads(line) for line in stream]
 
 
+def receive_drop_onset(samples, ticks):
+    """First host UDP receive-buffer increment, aligned with retained Tick points."""
+    def count(sample):
+        lines = sample['net/snmp'].splitlines()
+        for names, values in zip(lines[::2], lines[1::2]):
+            if names.startswith('Udp:'):
+                return dict(zip(names.split()[1:], map(int, values.split()[1:])))['RcvbufErrors']
+        raise ValueError('Missing UDP receive-buffer counter')
+
+    for first, last in zip(samples, samples[1:]):
+        delta = count(last) - count(first)
+        if delta < 0:
+            raise ValueError('UDP receive-buffer counter reset during retained run')
+        if delta == 0:
+            continue
+        population = [int(tick['authenticated']) for tick in ticks
+                      if first['utc_ns'] <= int(tick['utc_ns']) < last['utc_ns']]
+        cpu = cpu_report.interval(first, last)
+        return {'utc_start_ns': first['utc_ns'], 'utc_end_ns': last['utc_ns'],
+                'seconds_from_first_host_sample': (first['utc_ns'] - samples[0]['utc_ns']) / 1e9,
+                'receive_buffer_error_delta': delta,
+                'game_cpu_percent_one_core': cpu['process_cpu_percent_one_core'],
+                'authenticated_min': min(population) if population else None,
+                'authenticated_max': max(population) if population else None,
+                'scope': 'First positive host-wide UDP receive-buffer delta; one sample interval, not an exact drop instant or socket-specific attribution.'}
+    return None
+
+
 def update(report=REPORT, charts=True):
-    rows, timelines = [], []
+    rows, timelines, onsets = [], [], []
     for population in POPULATIONS:
         directory = report / f'core-strategy-{population}-r1'
         result_path = directory / 'agent-result.json'
@@ -37,6 +65,9 @@ def update(report=REPORT, charts=True):
         timeline = {'directory': directory, 'population': population, 'result': result, 'hosts': {}}
         for role in ('game', 'bots'):
             samples = records(directory / role / 'host.ndjson.gz')
+            if role == 'game':
+                onsets.append({'run_id': directory.name, 'requested_players': population,
+                               'first_receive_buffer_errors': receive_drop_onset(samples, ticks)})
             # Failed ramps have no scheduled common window. Derive only the retained
             # host interval; exclude long gaps from 1 Hz peaks exactly as CPU reports do.
             if result.get('window_s') is None:
@@ -76,6 +107,7 @@ def update(report=REPORT, charts=True):
         timelines.append(timeline)
     if not rows:
         return []
+    (report / 'strategy-failure-onset.json').write_text(json.dumps(onsets, indent=2) + '\n')
     with (report / 'strategy-extension-summary.csv').open('w') as stream:
         writer = csv.DictWriter(stream, fieldnames=list(rows[0]), lineterminator='\n')
         writer.writeheader(); writer.writerows(rows)
@@ -111,8 +143,8 @@ def update(report=REPORT, charts=True):
               f'for {len(rows)} attempts, using the compact logging policy. '
               'The [extension audit](strategy-extension-audit.json) verifies bundle hashes, pinned provenance, '
               'redaction, actual per-Tick peaks and preservation of the original campaign state.', '',
-              'This completes the requested Strategy continuation attempts. The broader matrix’s network/transfer phases, '
-              'external accounting and complete coverage audit remain pending; the execution task stays open.', '']
+              'The broader matrix’s network/transfer phases, external accounting and complete coverage audit remain pending. '
+              'See the [operator closure and failure hypotheses](CAX11-CONCLUSION.md) for the accepted checkpoint scope and future comparison.', '']
     if (report / 'strategy-extension-final-cleanup.json').exists():
         lines += ['[Final cleanup](strategy-extension-final-cleanup.json) independently verified native idle endpoints, '
                   'restored update timers and stopped the temporary restoration watchdog timers.', '']

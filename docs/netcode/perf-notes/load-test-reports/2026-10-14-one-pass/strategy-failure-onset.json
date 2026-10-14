@@ -1,0 +1,72 @@
+[
+  {
+    "run_id": "core-strategy-200-r1",
+    "requested_players": 200,
+    "first_receive_buffer_errors": {
+      "utc_start_ns": 1791971437198165950,
+      "utc_end_ns": 1791971438184159780,
+      "seconds_from_first_host_sample": 22.017513027,
+      "receive_buffer_error_delta": 5,
+      "game_cpu_percent_one_core": 56.795494161925234,
+      "authenticated_min": 131,
+      "authenticated_max": 139,
+      "scope": "First positive host-wide UDP receive-buffer delta; one sample interval, not an exact drop instant or socket-specific attribution."
+    }
+  },
+  {
+    "run_id": "core-strategy-250-r1",
+    "requested_players": 250,
+    "first_receive_buffer_errors": {
+      "utc_start_ns": 1791971857007058838,
+      "utc_end_ns": 1791971857992012014,
+      "seconds_from_first_host_sample": 26.042536894,
+      "receive_buffer_error_delta": 14,
+      "game_cpu_percent_one_core": 69.038834523108,
+      "authenticated_min": 157,
+      "authenticated_max": 164,
+      "scope": "First positive host-wide UDP receive-buffer delta; one sample interval, not an exact drop instant or socket-specific attribution."
+    }
+  },
+  {
+    "run_id": "core-strategy-500-r1",
+    "requested_players": 500,
+    "first_receive_buffer_errors": {
+      "utc_start_ns": 1791972163217086856,
+      "utc_end_ns": 1791972164201541265,
+      "seconds_from_first_host_sample": 25.044554378,
+      "receive_buffer_error_delta": 380,
+      "game_cpu_percent_one_core": 76.18428710475634,
+      "authenticated_min": 156,
+      "authenticated_max": 162,
+      "scope": "First positive host-wide UDP receive-buffer delta; one sample interval, not an exact drop instant or socket-specific attribution."
+    }
+  },
+  {
+    "run_id": "core-strategy-750-r1",
+    "requested_players": 750,
+    "first_receive_buffer_errors": {
+      "utc_start_ns": 1791972396595829139,
+      "utc_end_ns": 1791972397628257448,
+      "seconds_from_first_host_sample": 22.002120527,
+      "receive_buffer_error_delta": 135,
+      "game_cpu_percent_one_core": 58.11540634685849,
+      "authenticated_min": 132,
+      "authenticated_max": 140,
+      "scope": "First positive host-wide UDP receive-buffer delta; one sample interval, not an exact drop instant or socket-specific attribution."
+    }
+  },
+  {
+    "run_id": "core-strategy-999-r1",
+    "requested_players": 999,
+    "first_receive_buffer_errors": {
+      "utc_start_ns": 1791972628490946833,
+      "utc_end_ns": 1791972629474388354,
+      "seconds_from_first_host_sample": 24.032018838,
+      "receive_buffer_error_delta": 123,
+      "game_cpu_percent_one_core": 64.06075898204976,
+      "authenticated_min": 150,
+      "authenticated_max": 157,
+      "scope": "First positive host-wide UDP receive-buffer delta; one sample interval, not an exact drop instant or socket-specific attribution."
+    }
+  }
+]

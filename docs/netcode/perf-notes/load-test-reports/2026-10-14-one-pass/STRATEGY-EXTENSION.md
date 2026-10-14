@@ -20,7 +20,7 @@ Across these attempts, the first retained game CPU interval ≥95% coincided wit
 
 Retained endpoint bundles total **3.90 MiB** for 5 attempts, using the compact logging policy. The [extension audit](strategy-extension-audit.json) verifies bundle hashes, pinned provenance, redaction, actual per-Tick peaks and preservation of the original campaign state.
 
-This completes the requested Strategy continuation attempts. The broader matrix’s network/transfer phases, external accounting and complete coverage audit remain pending; the execution task stays open.
+The broader matrix’s network/transfer phases, external accounting and complete coverage audit remain pending. See the [operator closure and failure hypotheses](CAX11-CONCLUSION.md) for the accepted checkpoint scope and future comparison.
 
 [Final cleanup](strategy-extension-final-cleanup.json) independently verified native idle endpoints, restored update timers and stopped the temporary restoration watchdog timers.
 
