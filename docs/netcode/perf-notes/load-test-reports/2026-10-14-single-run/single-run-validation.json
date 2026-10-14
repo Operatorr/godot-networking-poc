@@ -1,0 +1,39 @@
+{
+  "status": "Single native diagnostic passes operational checks; full matrix held",
+  "checks": {
+    "native_scored_candidate": true,
+    "all_50_connected": true,
+    "generator_valid": true,
+    "collector_valid": true,
+    "whole_kernel_errors_zero": true,
+    "whole_application_errors_zero": true,
+    "trace_queue_failures_zero": true
+  },
+  "run_id": "pilot-clustered-50-recovery",
+  "game_revision": "b1266c1",
+  "game_binary_sha256": "f2bf76c6fa3c28b7fb9b5d52f216061e9c3239999d67bf8a42acadf44dada3a2",
+  "bot_revision": "642c147",
+  "window_s": 300,
+  "whole_matrix_complete": false,
+  "three_repeat_capacity_established": false,
+  "legacy_bandwidth_target_satisfied": false,
+  "enqueued_snapshots_absent_from_first_wire_observation": 23,
+  "delivery_caveat": "Retain source/ENet send observations separately from endpoint network loss; no entity model/reference errors observed. Unreliable Snapshots are not guaranteed delivery.",
+  "actual_controller_elapsed_s": 637.81,
+  "peak_local_rss_bytes": 580648960,
+  "before_full_execution": "Review checklist; configure a fresh campaign with pinned corrected revision; repeat corrected-build collection overhead and validity preflight; verify ramp/error recovery and evidence storage.",
+  "directional_packet_matching": {
+    "out": {
+      "sent": 561069,
+      "matched": 561069,
+      "unmatched": 0,
+      "loss_pct": 0.0
+    },
+    "in": {
+      "sent": 1000547,
+      "matched": 1000545,
+      "unmatched": 2,
+      "loss_pct": 0.00019989065980908444
+    }
+  }
+}

@@ -1,0 +1,5 @@
+run_id,game_revision,bot_revision,outbound_ip_bytes_s,window_s,tick_hz,tick_work_p99_ms,generator_valid,collector_valid,classification,scored_unknown_delta_entities,cumulative_unknown_delta_entities,scored_game_receive_buffer_errors,scored_game_send_buffer_errors,whole_collected_game_receive_buffer_errors,whole_collected_game_send_buffer_errors,enqueued_minus_first_wire_snapshots
+pilot-clustered-50-before,642c147,642c147,1115586.1066666667,300.0,30.0,7.785107,True,True,valid-failure,72,1535,0,86,17,86,87
+pilot-clustered-50-after,77a8af5,642c147,1132005.19,300.0,30.0,7.852188,True,True,native-stable-candidate,7,2425,0,0,0,0,5
+pilot-clustered-50-baseline-cache,a8fb109,642c147,1117411.5333333334,300.0,30.0,7.975069,True,True,native-stable-candidate,0,1915,0,0,0,0,0
+pilot-clustered-50-recovery,b1266c1,642c147,1239239.7066666668,300.0,30.0,7.95119,True,True,native-stable-candidate,0,0,0,0,0,0,23

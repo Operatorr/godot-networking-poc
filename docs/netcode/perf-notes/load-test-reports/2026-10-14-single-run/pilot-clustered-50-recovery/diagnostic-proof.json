@@ -1,0 +1,44 @@
+{
+  "purpose": "Single-run diagnosis; outside the scored matrix",
+  "binary_and_buffers": "Unchanged unless the selected executable provenance explicitly records a later revision",
+  "trace_scope": "Dedicated tracefs instance: UDP queue failures and SOCKET_RCVBUFF drops only; no global tracing changes",
+  "trace_clock": "mono",
+  "trace_sha256": "c5b26229ccf7c9fe9c11f3d18bbb00833d8c8d855ca1a9d3735d913a35ad26e2",
+  "trace_stats_sha256": "0efe7c6b0c2171eb87451ac6861a2ef70981423cf2d3d9bbf33415d462aabe86",
+  "udp_queue_failure_events_all_ports": 0,
+  "socket_receive_buffer_drop_events": 0,
+  "run_and_evidence_seconds": 561.1710962080106,
+  "runtime_source_sha256": {
+    "run.py": "5c161776eb7ecc63ac7297ebf24e3acfa54a9bde15e2319bf5efcd3f884ea258",
+    "analyze.py": "1bff59703ce1a765ccfeeeb84a5c0f50e73fc083f1a9de905e8fa207f11b6f71",
+    "packet_store.py": "35b91bcd9bbab00bb754b49bb6fccdb0d951a063532feb6a67bfa96c56808287",
+    "single_run.py": "0e3346d0ef1f05b4e68b3e7a9ea25975beba780e7ded3600f4b0c82a424160b9"
+  },
+  "analysis_seconds": 58.476274209009716,
+  "whole_run_checks": {
+    "scope": "Kernel: full retained host-collection interval. Application: cumulative process/bot observations through measurement end, including warmup.",
+    "game_kernel_udp_errors": {
+      "InErrors": 0,
+      "RcvbufErrors": 0,
+      "SndbufErrors": 0,
+      "InCsumErrors": 0
+    },
+    "server_cumulative": {
+      "send_errors": 0,
+      "decode_errors": 0
+    },
+    "bots_kernel_udp_errors": {
+      "InErrors": 0,
+      "RcvbufErrors": 0,
+      "SndbufErrors": 0,
+      "InCsumErrors": 0
+    },
+    "bots_cumulative": {
+      "unknown_delta_entities": 0,
+      "baseline_reference_misses": 0,
+      "decode_failures": 0,
+      "send_failures": 0,
+      "panics": 0
+    }
+  }
+}

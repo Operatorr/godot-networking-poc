@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/single-run-20261014/pilot-clustered-50-recovery",
+  "sha256": {
+    "bots.tar.gz": "41be4094701889a620bd1f5e23c08ab81756b6434bdefc399cadd5a192e7e575",
+    "game.tar.gz": "0ddca689d693c7b8171f8b3d04803fbdb31074a0f4a90e656139c904a71c93a4"
+  },
+  "contents": "Unedited reports/logs, host observations, packet headers and full-datagram ENet descriptors. Retained off both temporary hosts in the ignored local evidence archive. Public copies redact connection addresses; no access records or credentials are published."
+}

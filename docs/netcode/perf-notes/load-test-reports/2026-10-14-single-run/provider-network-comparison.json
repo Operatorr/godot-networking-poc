@@ -5,11 +5,11 @@
   "comparison_window_utc": "2026-10-14 02:29:21.905374652\u201302:34:21.905374652",
   "comparison_window_taipei": "2026-10-14 10:29:21.905374652\u201310:34:21.905374652",
   "provider_outbound_approximate": {
-    "rate": "1.0\u20131.1",
+    "rate": "about 1.1 (roughly 1.0\u20131.2)",
     "display_unit": "MBps",
     "reading_kind": "Visual approximation, no sampled API data",
-    "out_packets_s": "approximately 1500\u20131800",
-    "in_packets_s": "approximately 3000\u20133300"
+    "out_packets_s": "roughly 1900",
+    "in_packets_s": "roughly 3300"
   },
   "measured_game_traffic": {
     "scored_seconds": 300.0,

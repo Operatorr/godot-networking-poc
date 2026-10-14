@@ -1,6 +1,6 @@
 # CAX11 single-run diagnosis and stabilization
 
-**Status: transport fix passed the diagnostic; a separate baseline-cache correction awaits remote validation. The full matrix is held.**
+**Status: corrected 50-bot clustered pilot passed operational checks, including warmup. The full matrix is held for checklist/time-estimate review.**
 
 On 2026-10-14 the user requested one smooth run and reproducible bug fixes before the
 full rundown, followed by a run checklist and time estimate. The earlier
@@ -65,7 +65,45 @@ Baseline includes them; existing Baseline entities retain their normal partial m
 The test fails before this correction and passes after it, including the return to partial
 updates after a Baseline. This is a correctness/transfer trade-off, not an optimization;
 record its bandwidth separately. All 206 workspace tests, Clippy and formatting pass.
-Remote validation of this follow-up remains pending.
+The follow-up remote diagnostic passed; details follow below.
+
+The [cache-fix pilot](pilot-clustered-50-baseline-cache/steady.json), game revision
+`a8fb109`, completed with zero unknown-entity partial deltas and zero baseline-reference
+misses during measurement, Tick cadence 30 Hz and p99 work 7.975 ms. The generator and
+collection remained valid with no kernel errors. Whole-run cumulative delivery checks
+still recorded 1,915 unknown-entity observations before the scored window. The
+[separate whole-run replay](pilot-clustered-50-baseline-cache/whole-run-checks-replay.json)
+makes that warmup fault explicit. No run is overwritten or promoted into a corrected
+three-repeat capacity rung. Follow-up revision `b1266c1` applies first-record recovery;
+its remote five-minute diagnostic passed; details follow below.
+
+## Completed corrected pilot
+
+[The recovery pilot](pilot-clustered-50-recovery/steady.json), game `b1266c1` and unchanged
+bot `642c147`, held all 50 bots for 300 measured seconds with valid generation/collection,
+30 Ticks/s, p99 work 7.951 ms, max 14.370 ms and no work-deadline exceedances. Whole-run
+checks include warmup: zero kernel UDP, application send/decode, panic, unknown-entity
+and baseline-reference errors. Dedicated tracing saw zero socket queue/drop events.
+This passes [the single-run operational checks](single-run-validation.json), not a
+three-repeat capacity claim or the full matrix. The legacy bandwidth target still fails.
+
+Game outbound IP traffic averaged 1,239,239.707 bytes/s (371,771,912 bytes in the window).
+Twenty-three enqueued Snapshots were absent from first observed wire transmissions;
+retain this source/ENet observation separately from network loss. No unknown-entity
+errors or reference misses resulted. Endpoint matching observed zero unmatched outbound
+packets and two unmatched inbound packets out of 1,000,547 (0.00020%); this is not a
+perfect-delivery claim. The conservative new-entity FULL recovery changes
+transfer, so this build is a separate baseline; do not mix its repeats with earlier builds.
+
+The controller took 637.81 s (10 min 38 s), including 58.48 s of analysis, with peak local
+RSS 580,648,960 bytes. All raw archives are checksummed and copied off the temporary
+hosts. [Pilot comparison CSV](pilot-comparison.csv), [fixes and open checks](fixes-and-open-checks.md)
+and [full run checklist and estimate](run-checklist.md) preserve the scope and next gates.
+The 283-run all-ladders-pass matrix needs 23 h 35 min of measurement alone; at observed
+50-player end-to-end throughput it is about 53 hours, with higher-population costs still
+unmeasured. Reserve roughly 3–4 days provisionally, update at staged checkpoints, and
+plan evidence storage. The full controller remains held; historical reports and CCX13
+remain deferred.
 
 ## Collection and execution fixes
 
@@ -118,7 +156,7 @@ they are not exact invoice reconciliation. Reporting delay, exact account units 
 transport overhead remain unresolved. [Timestamped snapshot](provider-reconciliation-snapshot.json).
 
 The independent [provider network screenshot](provider-network-20261014.png), supplied
-at 10:56 Taipei, shows yellow outbound around 1.0–1.1 MBps during the 10:29–10:34 scored
+at 10:56 Taipei, shows yellow outbound around 1.1 MBps (roughly 1.0–1.2) during the 10:29–10:34 scored
 window. Guest game IP traffic averaged 1.132 decimal MB/s (1.080 MiB/s, 9.056 Mbit/s);
 whole-interface TX averaged 1.158 decimal MB/s. Packet rates broadly agree too. These are
 approximate chart readings, without verified chart smoothing or unit base. Hetzner's
