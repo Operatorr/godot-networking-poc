@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/one-pass-20261014/network-control-before-combat-100-r1",
+  "sha256": {
+    "bots.tar.gz": "88a664f1b4ce2c710098638d87ffdadc452880a5cf50e5519c8ef08eef16838d",
+    "game.tar.gz": "b35d66f7428e37c7a8820ec436b70c209d8a2aade709e00a9947c2652ca7741e"
+  },
+  "contents": "Curated article graph points, exact counters and bounded diagnostics; only 1/64 fingerprint samples privately retained, no raw packet archive."
+}

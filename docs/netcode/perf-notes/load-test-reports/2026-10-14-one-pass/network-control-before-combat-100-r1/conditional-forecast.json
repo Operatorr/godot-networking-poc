@@ -1,0 +1,312 @@
+{
+  "source_run": "network-control-before-combat-100-r1",
+  "source_classification": "native-stable-candidate",
+  "rate_bytes_authenticated_player_second": 38758.40270000009,
+  "forecasts": {
+    "100": {
+      "decimal": {
+        "ccu": 100,
+        "year": 2027,
+        "conditional_units": "decimal preferred",
+        "allowance_bytes_per_month": 20000000000000,
+        "excess_increment_bytes": 100000000,
+        "excess_increment_USD": 0.00012,
+        "account_verified": {
+          "compute_monthly_quote": true,
+          "nominal_20TB_quote": true,
+          "exact_bytes_excess_rate_primary_ipv4": false
+        },
+        "illustrative_30_days": {
+          "days": 30,
+          "outbound_bytes": 10046177979840.023,
+          "decimal_TB": 10.046177979840023,
+          "binary_TiB": 9.13694564573236,
+          "egress_overage_USD": 0.0,
+          "game_host_compute_USD": 6.99,
+          "game_host_ipv4_USD": 0.6,
+          "total_game_host_USD": 7.59
+        },
+        "calendar_months": {
+          "1": {
+            "days": 31,
+            "outbound_bytes": 10381050579168.025,
+            "decimal_TB": 10.381050579168026,
+            "binary_TiB": 9.441510500590107,
+            "egress_overage_USD": 0.0,
+            "game_host_compute_USD": 6.99,
+            "game_host_ipv4_USD": 0.6,
+            "total_game_host_USD": 7.59
+          },
+          "2": {
+            "days": 28,
+            "outbound_bytes": 9376432781184.021,
+            "decimal_TB": 9.376432781184022,
+            "binary_TiB": 8.52781593601687,
+            "egress_overage_USD": 0.0,
+            "game_host_compute_USD": 6.99,
+            "game_host_ipv4_USD": 0.6,
+            "total_game_host_USD": 7.59
+          },
+          "3": {
+            "days": 31,
+            "outbound_bytes": 10381050579168.025,
+            "decimal_TB": 10.381050579168026,
+            "binary_TiB": 9.441510500590107,
+            "egress_overage_USD": 0.0,
+            "game_host_compute_USD": 6.99,
+            "game_host_ipv4_USD": 0.6,
+            "total_game_host_USD": 7.59
+          },
+          "4": {
+            "days": 30,
+            "outbound_bytes": 10046177979840.023,
+            "decimal_TB": 10.046177979840023,
+            "binary_TiB": 9.13694564573236,
+            "egress_overage_USD": 0.0,
+            "game_host_compute_USD": 6.99,
+            "game_host_ipv4_USD": 0.6,
+            "total_game_host_USD": 7.59
+          },
+          "5": {
+            "days": 31,
+            "outbound_bytes": 10381050579168.025,
+            "decimal_TB": 10.381050579168026,
+            "binary_TiB": 9.441510500590107,
+            "egress_overage_USD": 0.0,
+            "game_host_compute_USD": 6.99,
+            "game_host_ipv4_USD": 0.6,
+            "total_game_host_USD": 7.59
+          },
+          "6": {
+            "days": 30,
+            "outbound_bytes": 10046177979840.023,
+            "decimal_TB": 10.046177979840023,
+            "binary_TiB": 9.13694564573236,
+            "egress_overage_USD": 0.0,
+            "game_host_compute_USD": 6.99,
+            "game_host_ipv4_USD": 0.6,
+            "total_game_host_USD": 7.59
+          },
+          "7": {
+            "days": 31,
+            "outbound_bytes": 10381050579168.025,
+            "decimal_TB": 10.381050579168026,
+            "binary_TiB": 9.441510500590107,
+            "egress_overage_USD": 0.0,
+            "game_host_compute_USD": 6.99,
+            "game_host_ipv4_USD": 0.6,
+            "total_game_host_USD": 7.59
+          },
+          "8": {
+            "days": 31,
+            "outbound_bytes": 10381050579168.025,
+            "decimal_TB": 10.381050579168026,
+            "binary_TiB": 9.441510500590107,
+            "egress_overage_USD": 0.0,
+            "game_host_compute_USD": 6.99,
+            "game_host_ipv4_USD": 0.6,
+            "total_game_host_USD": 7.59
+          },
+          "9": {
+            "days": 30,
+            "outbound_bytes": 10046177979840.023,
+            "decimal_TB": 10.046177979840023,
+            "binary_TiB": 9.13694564573236,
+            "egress_overage_USD": 0.0,
+            "game_host_compute_USD": 6.99,
+            "game_host_ipv4_USD": 0.6,
+            "total_game_host_USD": 7.59
+          },
+          "10": {
+            "days": 31,
+            "outbound_bytes": 10381050579168.025,
+            "decimal_TB": 10.381050579168026,
+            "binary_TiB": 9.441510500590107,
+            "egress_overage_USD": 0.0,
+            "game_host_compute_USD": 6.99,
+            "game_host_ipv4_USD": 0.6,
+            "total_game_host_USD": 7.59
+          },
+          "11": {
+            "days": 30,
+            "outbound_bytes": 10046177979840.023,
+            "decimal_TB": 10.046177979840023,
+            "binary_TiB": 9.13694564573236,
+            "egress_overage_USD": 0.0,
+            "game_host_compute_USD": 6.99,
+            "game_host_ipv4_USD": 0.6,
+            "total_game_host_USD": 7.59
+          },
+          "12": {
+            "days": 31,
+            "outbound_bytes": 10381050579168.025,
+            "decimal_TB": 10.381050579168026,
+            "binary_TiB": 9.441510500590107,
+            "egress_overage_USD": 0.0,
+            "game_host_compute_USD": 6.99,
+            "game_host_ipv4_USD": 0.6,
+            "total_game_host_USD": 7.59
+          }
+        },
+        "annual_outbound_bytes": 122228498754720.31,
+        "annual_game_host_USD": 91.08000000000003,
+        "test_generator_host_monthly_base_USD": 7.59,
+        "test_pair_monthly_base_USD": 15.18,
+        "test_pair_yearly_base_USD": 182.16,
+        "notes": "Continuous-use projection before tax; generator excluded from game-host production total. 1000 CCU requires valid 999-player evidence for a capacity-backed marginal forecast."
+      },
+      "binary_sensitivity": {
+        "ccu": 100,
+        "year": 2027,
+        "conditional_units": "binary sensitivity",
+        "allowance_bytes_per_month": 21990232555520,
+        "excess_increment_bytes": 104857600,
+        "excess_increment_USD": 0.00011444091796875,
+        "account_verified": {
+          "compute_monthly_quote": true,
+          "nominal_20TB_quote": true,
+          "exact_bytes_excess_rate_primary_ipv4": false
+        },
+        "illustrative_30_days": {
+          "days": 30,
+          "outbound_bytes": 10046177979840.023,
+          "decimal_TB": 10.046177979840023,
+          "binary_TiB": 9.13694564573236,
+          "egress_overage_USD": 0.0,
+          "game_host_compute_USD": 6.99,
+          "game_host_ipv4_USD": 0.6,
+          "total_game_host_USD": 7.59
+        },
+        "calendar_months": {
+          "1": {
+            "days": 31,
+            "outbound_bytes": 10381050579168.025,
+            "decimal_TB": 10.381050579168026,
+            "binary_TiB": 9.441510500590107,
+            "egress_overage_USD": 0.0,
+            "game_host_compute_USD": 6.99,
+            "game_host_ipv4_USD": 0.6,
+            "total_game_host_USD": 7.59
+          },
+          "2": {
+            "days": 28,
+            "outbound_bytes": 9376432781184.021,
+            "decimal_TB": 9.376432781184022,
+            "binary_TiB": 8.52781593601687,
+            "egress_overage_USD": 0.0,
+            "game_host_compute_USD": 6.99,
+            "game_host_ipv4_USD": 0.6,
+            "total_game_host_USD": 7.59
+          },
+          "3": {
+            "days": 31,
+            "outbound_bytes": 10381050579168.025,
+            "decimal_TB": 10.381050579168026,
+            "binary_TiB": 9.441510500590107,
+            "egress_overage_USD": 0.0,
+            "game_host_compute_USD": 6.99,
+            "game_host_ipv4_USD": 0.6,
+            "total_game_host_USD": 7.59
+          },
+          "4": {
+            "days": 30,
+            "outbound_bytes": 10046177979840.023,
+            "decimal_TB": 10.046177979840023,
+            "binary_TiB": 9.13694564573236,
+            "egress_overage_USD": 0.0,
+            "game_host_compute_USD": 6.99,
+            "game_host_ipv4_USD": 0.6,
+            "total_game_host_USD": 7.59
+          },
+          "5": {
+            "days": 31,
+            "outbound_bytes": 10381050579168.025,
+            "decimal_TB": 10.381050579168026,
+            "binary_TiB": 9.441510500590107,
+            "egress_overage_USD": 0.0,
+            "game_host_compute_USD": 6.99,
+            "game_host_ipv4_USD": 0.6,
+            "total_game_host_USD": 7.59
+          },
+          "6": {
+            "days": 30,
+            "outbound_bytes": 10046177979840.023,
+            "decimal_TB": 10.046177979840023,
+            "binary_TiB": 9.13694564573236,
+            "egress_overage_USD": 0.0,
+            "game_host_compute_USD": 6.99,
+            "game_host_ipv4_USD": 0.6,
+            "total_game_host_USD": 7.59
+          },
+          "7": {
+            "days": 31,
+            "outbound_bytes": 10381050579168.025,
+            "decimal_TB": 10.381050579168026,
+            "binary_TiB": 9.441510500590107,
+            "egress_overage_USD": 0.0,
+            "game_host_compute_USD": 6.99,
+            "game_host_ipv4_USD": 0.6,
+            "total_game_host_USD": 7.59
+          },
+          "8": {
+            "days": 31,
+            "outbound_bytes": 10381050579168.025,
+            "decimal_TB": 10.381050579168026,
+            "binary_TiB": 9.441510500590107,
+            "egress_overage_USD": 0.0,
+            "game_host_compute_USD": 6.99,
+            "game_host_ipv4_USD": 0.6,
+            "total_game_host_USD": 7.59
+          },
+          "9": {
+            "days": 30,
+            "outbound_bytes": 10046177979840.023,
+            "decimal_TB": 10.046177979840023,
+            "binary_TiB": 9.13694564573236,
+            "egress_overage_USD": 0.0,
+            "game_host_compute_USD": 6.99,
+            "game_host_ipv4_USD": 0.6,
+            "total_game_host_USD": 7.59
+          },
+          "10": {
+            "days": 31,
+            "outbound_bytes": 10381050579168.025,
+            "decimal_TB": 10.381050579168026,
+            "binary_TiB": 9.441510500590107,
+            "egress_overage_USD": 0.0,
+            "game_host_compute_USD": 6.99,
+            "game_host_ipv4_USD": 0.6,
+            "total_game_host_USD": 7.59
+          },
+          "11": {
+            "days": 30,
+            "outbound_bytes": 10046177979840.023,
+            "decimal_TB": 10.046177979840023,
+            "binary_TiB": 9.13694564573236,
+            "egress_overage_USD": 0.0,
+            "game_host_compute_USD": 6.99,
+            "game_host_ipv4_USD": 0.6,
+            "total_game_host_USD": 7.59
+          },
+          "12": {
+            "days": 31,
+            "outbound_bytes": 10381050579168.025,
+            "decimal_TB": 10.381050579168026,
+            "binary_TiB": 9.441510500590107,
+            "egress_overage_USD": 0.0,
+            "game_host_compute_USD": 6.99,
+            "game_host_ipv4_USD": 0.6,
+            "total_game_host_USD": 7.59
+          }
+        },
+        "annual_outbound_bytes": 122228498754720.31,
+        "annual_game_host_USD": 91.08000000000003,
+        "test_generator_host_monthly_base_USD": 7.59,
+        "test_pair_monthly_base_USD": 15.18,
+        "test_pair_yearly_base_USD": 182.16,
+        "notes": "Continuous-use projection before tax; generator excluded from game-host production total. 1000 CCU requires valid 999-player evidence for a capacity-backed marginal forecast."
+      }
+    }
+  },
+  "status": "Continuous-use conditional economics. Invalid/failing source rows cannot establish sustainable CCU costs."
+}

@@ -1,0 +1,79 @@
+{
+  "highest_stable": {
+    "movement": 150,
+    "combat": 100,
+    "clustered": 50,
+    "strategy": 100
+  },
+  "first_failed": {
+    "clustered": {
+      "population": 100,
+      "classes": [
+        "valid-failure"
+      ]
+    },
+    "combat": {
+      "population": 150,
+      "classes": [
+        "generator-invalid"
+      ]
+    },
+    "strategy": {
+      "population": 150,
+      "classes": [
+        "generator-invalid"
+      ]
+    }
+  },
+  "boundaries": {
+    "clustered": {
+      "lower": 50,
+      "upper": 75,
+      "note": "Classification of the failed side determines whether this is a server boundary or generator validity boundary"
+    },
+    "combat": {
+      "lower": 100,
+      "upper": 125,
+      "note": "Classification of the failed side determines whether this is a server boundary or generator validity boundary"
+    },
+    "strategy": {
+      "lower": 100,
+      "upper": 125,
+      "note": "Classification of the failed side determines whether this is a server boundary or generator validity boundary"
+    }
+  },
+  "planned_populations_by_workload": {
+    "movement": [
+      50,
+      100,
+      150
+    ],
+    "combat": [
+      50,
+      100,
+      150
+    ],
+    "clustered": [
+      50,
+      100,
+      150
+    ],
+    "strategy": [
+      50,
+      100,
+      150,
+      200,
+      250,
+      500,
+      750,
+      999
+    ]
+  },
+  "ladder_stop_reason": {
+    "movement": "planned-population-limit",
+    "combat": "failed-observation",
+    "clustered": "failed-observation",
+    "strategy": "failed-observation"
+  },
+  "core_complete": true
+}

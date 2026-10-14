@@ -204,6 +204,18 @@
     "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/idle-150-r1"
   },
   {
+    "run_id": "network-control-before-combat-100-r1",
+    "requested_population": 100,
+    "workload": "combat",
+    "requested_duration_s": 360,
+    "started_utc": "2026-10-14T09:32:05.370953+00:00",
+    "ended_utc": "2026-10-14T09:39:15.175286+00:00",
+    "classification": "native-stable-candidate",
+    "scored_300s_window_present": true,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/network-control-before-combat-100-r1"
+  },
+  {
     "run_id": "pilot-clustered-50-recovery",
     "requested_population": 50,
     "workload": "clustered",

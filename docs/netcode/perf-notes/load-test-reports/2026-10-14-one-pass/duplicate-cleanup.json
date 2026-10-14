@@ -110,5 +110,12 @@
       "bots": "7b3e6ad8b34b12a70af5a4b95d08e96475b0607271ba99beaaf0a0ef127613b8"
     },
     "removed": "Remote unpacked duplicates only; local and remote archives retained"
+  },
+  "network-control-before-combat-100-r1": {
+    "archive_sha256": {
+      "game": "b35d66f7428e37c7a8820ec436b70c209d8a2aade709e00a9947c2652ca7741e",
+      "bots": "88a664f1b4ce2c710098638d87ffdadc452880a5cf50e5519c8ef08eef16838d"
+    },
+    "removed": "Remote unpacked duplicates only; local and remote archives retained"
   }
 }

@@ -1,0 +1,33 @@
+{
+  "authorized_utc": "2026-10-14T09:44:26.868333+00:00",
+  "authorization": "User explicitly requests Strategy 200,250,500,750,999 despite prior failures; separate subagent per run, each reports to parent. Document lower ladder before continuing.",
+  "pre_extension_state": "pre-strategy-extension-state.json",
+  "conditions": "Pinned binaries, compact article collection, native settings, one run per requested rung; no sustainable capacity claim unless valid offered load and server gates pass.",
+  "runs": [
+    {
+      "requested_bots": 200,
+      "run_id": "core-strategy-200-r1",
+      "status": "pending"
+    },
+    {
+      "requested_bots": 250,
+      "run_id": "core-strategy-250-r1",
+      "status": "pending"
+    },
+    {
+      "requested_bots": 500,
+      "run_id": "core-strategy-500-r1",
+      "status": "pending"
+    },
+    {
+      "requested_bots": 750,
+      "run_id": "core-strategy-750-r1",
+      "status": "pending"
+    },
+    {
+      "requested_bots": 999,
+      "run_id": "core-strategy-999-r1",
+      "status": "pending"
+    }
+  ]
+}
