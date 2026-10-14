@@ -3,17 +3,51 @@
 import argparse
 import concurrent.futures
 import hashlib
+import gzip
 import json
 import re
 import shlex
 import time
 import traceback
 import pathlib
+import tarfile
 import run
 import analyze
 import publish
 
 SOURCE_BYTES = pathlib.Path(__file__).read_bytes()
+
+
+def whole_run_checks(directory):
+    """Keep warmup faults visible beside the scored-window classification."""
+    def udp(row):
+        lines = row['net/snmp'].splitlines()
+        return next(dict(zip(names.split()[1:], map(int, values.split()[1:])))
+                    for names, values in zip(lines[::2], lines[1::2]) if names.startswith('Udp:'))
+
+    checks = {'scope': 'Kernel: full retained host-collection interval. Application: cumulative process/bot observations through measurement end, including warmup.'}
+    for role in run.HOSTS:
+        with tarfile.open(directory / (role + '.tar.gz')) as archive:
+            first = last = None
+            with gzip.GzipFile(fileobj=archive.extractfile(role + '/host.ndjson.gz')) as stream:
+                for line in stream:
+                    row = json.loads(line)
+                    if first is None:
+                        first = row
+                    last = row
+            start, end = udp(first), udp(last)
+            checks[role + '_kernel_udp_errors'] = {key: end[key] - start[key] for key in
+                ('InErrors', 'RcvbufErrors', 'SndbufErrors', 'InCsumErrors')}
+            if role == 'bots':
+                for line in archive.extractfile('bots/bots.ndjson'):
+                    row = json.loads(line)
+                checks['bots_cumulative'] = {key: sum(bot[key] for bot in row['bots']) for key in
+                    ('unknown_delta_entities', 'baseline_reference_misses', 'decode_failures', 'send_failures', 'panics')}
+            else:
+                for line in archive.extractfile('game/server.ndjson'):
+                    row = json.loads(line)
+                checks['server_cumulative'] = {key: row[key] for key in ('send_errors', 'decode_errors')}
+    return checks
 
 
 def main():
@@ -110,6 +144,7 @@ p.rmdir()
         (directory / 'analysis-error.txt').write_text(traceback.format_exc())
         raise
     proof['analysis_seconds'] = time.monotonic() - analysis_started
+    proof['whole_run_checks'] = whole_run_checks(directory)
     (directory / 'diagnostic-proof.json').write_text(json.dumps(proof, indent=2))
     publish.publish(args.run_id)
     target = publish.OUTPUT / args.run_id
