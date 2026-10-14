@@ -24,7 +24,10 @@ def main():
         if rate is not None:
             for ccu in (result["requested_bots"],):
                 forecasts[str(ccu)] = {"decimal": economics.forecast(rate, ccu), "binary_sensitivity": economics.forecast(rate, ccu, binary=True)}
-            if result["requested_bots"] == 999 and result.get("generator_valid") and result.get("server_sustainability_gate"):
+            if (result["requested_bots"] == 999 and result.get("behavior") == "strategy"
+                    and result.get("collector_valid") and result.get("generator_valid")
+                    and result.get("server_sustainability_gate")
+                    and result.get("classification") in ("native-stable-candidate", "controlled-profile-valid")):
                 forecasts["1000"] = {"decimal": economics.forecast(rate, 1000), "binary_sensitivity": economics.forecast(rate, 1000, binary=True),
                                      "status": "Marginal extrapolation from this 999-player cell, not 1000-player admission evidence"}
         forecast_path = publish.OUTPUT / path.parent.name / "conditional-forecast.json"

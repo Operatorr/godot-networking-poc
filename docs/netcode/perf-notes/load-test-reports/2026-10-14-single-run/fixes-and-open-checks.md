@@ -46,3 +46,21 @@ now requires one five-minute observation per test rather than three repetitions.
   them network loss. Verify recovery, and retain their count even when the pilot is stable.
 
 Historical retrieval and CCX13 remain deferred behind their existing gates.
+
+## Merge preparation review, 2026-10-14
+
+The specification review reproduced a false-complete coverage audit using 88 mislabeled
+copies of the pilot and corrupted archives. The verifier now binds every required condition
+to its population, workload, impairment profile and transfer variant, including replacement
+attempts, and recomputes both retained archive digests. A separate reporting fix prevents
+collector-invalid or non-Strategy 999-player observations from producing the forecast columns
+labelled as derived from valid 999-player evidence. Seven regression tests cover these cases
+and the actual scheduler's complete 88-cell fixture; all 22 local campaign tests pass.
+These are local audit/reporting fixes; no new benchmark was executed and historical reports
+were not regenerated.
+
+The standards review found no hard invariant violations or configured private endpoints,
+private-key blocks or GitHub-token patterns in the tracked evidence. One maintenance follow-up
+remains: consolidate campaign paths/build selections into one configuration rather than
+rebinding globals across modules. The fresh execution handoff already requires coordinated
+initialization and a separate audit of source revisions and binary provenance before resolution.
