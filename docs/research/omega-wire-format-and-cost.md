@@ -1,7 +1,10 @@
 # Omega's wire format bit by bit, and its per-player cost
 
 **Status:** Research (issue #27, wayfinder). Verified against the code at commit `62fbfc3`
-(branch `research/omega-wire-format-and-cost`, never merged). **Audience:** an article for gamedev
+(original branch `research/omega-wire-format-and-cost`). This is a dated code snapshot;
+the CAX11 measurement instrumentation and subsequent correctness fixes are recorded in
+[`2026-10-14-single-run`](../netcode/perf-notes/load-test-reports/2026-10-14-single-run/README.md).
+**Audience:** an article for gamedev
 engineers. Every fact below cites the code that owns it. Where a doc disagrees with the code, the code
 wins and the drift is listed in [§10](#10-doc-drift-found-while-verifying).
 
