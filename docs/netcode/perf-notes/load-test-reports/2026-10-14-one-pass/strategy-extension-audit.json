@@ -1,0 +1,21 @@
+{
+  "scope": "completed extension attempts only; not full-matrix audit",
+  "checks": [
+    {
+      "run": "core-strategy-200-r1",
+      "verified": true,
+      "retained_tick_peak_authenticated": 191
+    },
+    {
+      "run": "core-strategy-250-r1",
+      "verified": true,
+      "retained_tick_peak_authenticated": 185
+    },
+    {
+      "run": "core-strategy-500-r1",
+      "verified": true,
+      "retained_tick_peak_authenticated": 176
+    }
+  ],
+  "campaign_tests_passed": 35
+}

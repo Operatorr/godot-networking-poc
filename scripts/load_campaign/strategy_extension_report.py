@@ -94,6 +94,14 @@ def update(report=REPORT, charts=True):
               'Strategy 100 remains the highest passing native rung in the preserved campaign state; the earlier offered-load failures remain unchanged.', '',
               '[Numeric comparison](strategy-extension-summary.csv) includes CPU coverage, means, p99, peaks and seconds ≥95%. '
               '[Dispatch ledger](strategy-extension-ledger.json) and each agent result retain outcome, errors, archive checksums and cleanup proof.', '']
+    near_min = [row['first_game_cpu_ge95_authenticated_min'] for row in rows
+                if row['first_game_cpu_ge95_authenticated_min'] is not None]
+    near_max = [row['first_game_cpu_ge95_authenticated_max'] for row in rows
+                if row['first_game_cpu_ge95_authenticated_max'] is not None]
+    if near_min and near_max:
+        lines += [f'Across these attempts, the first retained game CPU interval ≥95% coincided with '
+                  f'**{min(near_min)}–{max(near_max)} authenticated players**, using the per-Tick population within that CPU interval. '
+                  'This locates observed startup overload episodes; it is not a validated steady-player ceiling.', '']
     if charts:
         plot(report, timelines)
         lines += ['![CPU and actual population during each attempt](strategy-extension-timelines.png)', '']
@@ -127,7 +135,9 @@ def plot(report, timelines):
              '1 Hz process/unit CPU sums threads; actual population comes from authoritative server samples.', ha='center', fontsize=9)
     fig.tight_layout(rect=(0, .6 / fig.get_figheight(), 1, .96))
     fig.savefig(report / 'strategy-extension-timelines.png', dpi=160)
-    fig.savefig(report / 'strategy-extension-timelines.svg', metadata={'Date': None})
+    svg = report / 'strategy-extension-timelines.svg'
+    fig.savefig(svg, metadata={'Date': None})
+    svg.write_text('\n'.join(line.rstrip() for line in svg.read_text().splitlines()) + '\n')
     plt.close(fig)
 
 
