@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/one-pass-20261014/core-strategy-250-r1",
+  "sha256": {
+    "bots.tar.gz": "a9f9d2cbc3a0e4e050fee323f524c8a3998c9c75b83dfbd12543a3150bde2726",
+    "game.tar.gz": "be3ba0a0ce5365694b1be872106327f7240a845765b246e05e21b006cbbdf782"
+  },
+  "contents": "Curated article graph points, exact counters and bounded diagnostics; only 1/64 fingerprint samples privately retained, no raw packet archive."
+}
