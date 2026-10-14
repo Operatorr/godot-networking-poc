@@ -34,6 +34,11 @@ The two transport regression tests failed with the original initialization deleg
 and passed after applying the options. Workspace tests (203 tests), Clippy and formatting
 passed; Clippy retains two existing `collapsible_match` warnings in the unchanged bot.
 The candidate is not yet validated by the remote five-minute workload.
+Its game build is revision `77a8af53d947a41106b0cc3b44a9c340145bd9f1`, ordinary locked
+Arm release with Rust 1.95.0. SHA-256:
+`ae7f7afc130ad647dbd3bd917f91e60d5b16e650f123bdd5d35e0d4d9b36b021`.
+The unchanged bot remains at measurement revision `642c147` and its previously recorded
+hash. Both source checkouts are recorded separately in each pilot's provenance.
 
 ## Collection and execution fixes
 
@@ -52,6 +57,16 @@ The completed pilot took 713.85 seconds overall, including 52.34 seconds of anal
 The slower endpoint spent 24.27 seconds archiving and 219.11 seconds downloading and
 checking SHA-256. Peak local analysis RSS was 2,918,858,752 bytes. Full-campaign planning
 must address the analyzer's unbounded packet-context storage before scaling populations.
+The revised analyzer stores packet matching and exact delay quantiles in a temporary
+disk database, limits retry history to its actual classification window and stops
+accumulating an unsupported outstanding queue on egress-only mirrors. A replay of the
+unaltered pilot archives used 542,998,528 bytes peak RSS and 56.79 seconds. Every prior
+metric matched within 1e-12 floating tolerance except the intentional correction of
+four mirror outstanding fields to unavailable. Bidirectional endpoint ACK accounting,
+traffic, retries, loss, classifications and original evidence were unchanged.
+[Replay validation](packet-analysis-validation.json) and five focused regression tests
+cover duplicates, clock margins, late arrivals, unsigned fingerprints, ACK scope and
+temporary-file cleanup. Larger-population resource demand is still unmeasured.
 Before announcing a successful pilot, verify joins/connections, actual per-bot input rate,
 clean collection, transport/codec errors across warmup and measurement, Tick cadence/work,
 lag/backlog and delivery recovery. The final run checklist and estimate follow that gate.

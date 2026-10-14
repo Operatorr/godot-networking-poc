@@ -14,6 +14,7 @@ import sys
 import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
+SOURCE_BYTES = pathlib.Path(__file__).read_bytes()
 ACCESS = json.loads((ROOT / "deployment/hetzner/access.local.json").read_text())
 HOSTS = {host["role"]: host for host in ACCESS["servers"]}
 KEY = ROOT / "deployment/hetzner/ssh/omega_loadtest_ed25519"
@@ -140,13 +141,13 @@ def run(run_id, bots, behavior, duration=360, collection=True, build="original",
                 ssh(role, "sudo -n nft delete table inet omega_measure 2>/dev/null || true")
                 ssh(role, "printf '%s' " + shlex.quote(nft) + " | sudo -n nft -f -")
                 capture = f"exec python3 {REMOTE}/capture.py {directory} eth0 {peer}"
-                ssh(role, f"sudo -n systemd-run --quiet --property=KillMode=mixed --unit={unit}-{role}-capture /bin/bash -c " + shlex.quote(capture))
+                ssh(role, f"sudo -n systemd-run --quiet --property=KillMode=mixed --property=RuntimeMaxSec={duration + bots * 16 + 150} --unit={unit}-{role}-capture /bin/bash -c " + shlex.quote(capture))
                 import mirror
                 mirrored.append(role)
                 ssh(role, f"mkdir -p {directory}/prequeue")
                 mirror.apply(role, directory)
                 capture = f"exec python3 {REMOTE}/capture.py {directory}/prequeue omega-observe {peer}"
-                ssh(role, f"sudo -n systemd-run --quiet --property=KillMode=mixed --unit={unit}-{role}-prequeue /bin/bash -c " + shlex.quote(capture))
+                ssh(role, f"sudo -n systemd-run --quiet --property=KillMode=mixed --property=RuntimeMaxSec={duration + bots * 16 + 150} --unit={unit}-{role}-prequeue /bin/bash -c " + shlex.quote(capture))
             collector = f"python3 {REMOTE}/host_collect.py --role {role} --directory {directory} --seconds {duration + bots * 16 + 120}" + (" --light" if not collection else "")
             if role == "bots":
                 collector += " --swarm-unit " + unit + "-swarm"

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Derive steady-window observations; keep harness criteria separate from campaign gates."""
 import collections
+import contextlib
 import csv
 import gzip
 import hashlib
@@ -12,10 +13,12 @@ import re
 import statistics
 import struct
 import tarfile
+import packet_store
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 RAW = ROOT / "deployment/hetzner/results/campaign-20261013"
-ANALYZER_SOURCE_SHA256 = hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest()
+SOURCE_BYTES = pathlib.Path(__file__).read_bytes()
+ANALYZER_SOURCE_SHA256 = hashlib.sha256(SOURCE_BYTES).hexdigest()
 
 
 def percentile(values, fraction):
@@ -122,19 +125,20 @@ def records(stream):
         yield stamp, source, target, ip_len, udp_len, fingerprint, [commands[i:i + 16] for i in range(0, len(commands), 16)]
 
 
-def packet_observations(stream, start, end, margin_ns=2_000_000_000):
+def packet_observations(stream, start, end, margin_ns=2_000_000_000, context=None, track_outstanding=True):
     result = {direction: {"packets": 0, "ip_bytes": 0, "reliable_retry_command_bytes": 0,
                           "reliable_retry_payload_bytes": 0, "reliable_commands": 0, "acks": 0,
                           "outstanding_commands_end": 0} for direction in ("out", "in")}
-    fingerprints = {direction: collections.Counter() for direction in result}
     reliable = {direction: {} for direction in result}
+    reliable_order = {direction: collections.deque() for direction in result}
     outstanding = {direction: set() for direction in result}
     latest_sequences = {direction: {} for direction in result}
-    context = {direction: collections.defaultdict(list) for direction in result}
+    context = context or {direction: packet_store.MemoryContext() for direction in result}
     input_counts = collections.Counter()
     first_message_counts = {direction: collections.Counter() for direction in result}
     first_payload_bytes = {direction: 0 for direction in result}
     end_outstanding = None
+    last_stamp = maximum_backstep = 0
     def extend(direction, port, channel, sequence):
         old = latest_sequences[direction].get((port, channel), sequence)
         difference = (sequence - old + 32768) % 65536 - 32768
@@ -142,17 +146,26 @@ def packet_observations(stream, start, end, margin_ns=2_000_000_000):
         latest_sequences[direction][port, channel] = max(old, extended)
         return extended
     for stamp, source, target, ip_len, udp_len, fingerprint, commands in records(stream):
+        maximum_backstep = max(maximum_backstep, last_stamp - stamp)
+        last_stamp = stamp
         if end_outstanding is None and stamp >= end:
             end_outstanding = {direction: len(values) for direction, values in outstanding.items()}
         direction = "out" if source == 8081 else "in"
         port = target if source == 8081 else source
+        # Retry classification only consults the previous 60 seconds. Keep one
+        # additional second for capture timestamp reordering; larger backsteps
+        # invalidate chronology rather than consuming unbounded memory.
+        order = reliable_order[direction]
+        while order and order[0][0] < stamp - 61_000_000_000:
+            old_stamp, old_key = order.popleft()
+            if reliable[direction].get(old_key) == old_stamp:
+                del reliable[direction][old_key]
         included = start <= stamp < end
         if start - margin_ns <= stamp < end + margin_ns:
-            context[direction][(source, target, udp_len, fingerprint)].append(stamp)
+            context[direction].add((source, target, udp_len, fingerprint), stamp)
         if included:
             result[direction]["packets"] += 1
             result[direction]["ip_bytes"] += ip_len
-            fingerprints[direction][(source, target, udp_len, fingerprint)] += 1
         for command in commands:
             kind, channel = command[0] & 15, command[1]
             sequence, related, payload_length = struct.unpack_from(">HHH", command, 2)
@@ -164,8 +177,9 @@ def packet_observations(stream, start, end, margin_ns=2_000_000_000):
                 input_counts[port] += 1
             if kind == 1:
                 reverse = "in" if direction == "out" else "out"
-                related = extend(reverse, port, channel, related)
-                outstanding[reverse].discard((port, channel, related))
+                if track_outstanding:
+                    related = extend(reverse, port, channel, related)
+                    outstanding[reverse].discard((port, channel, related))
                 if included:
                     result[direction]["acks"] += 1
             elif command[0] & 0x80 and kind in (6, 8):
@@ -182,21 +196,32 @@ def packet_observations(stream, start, end, margin_ns=2_000_000_000):
                         if kind == 6 or fragment == 0:
                             first_message_counts[direction][command[12]] += 1
                 reliable[direction][key] = stamp
-                outstanding[direction].add(key)
+                order.append((stamp, key))
+                if track_outstanding:
+                    outstanding[direction].add(key)
         if stamp >= end + margin_ns:
             break
     for direction in result:
-        result[direction]["outstanding_commands_end"] = (end_outstanding or {direction: len(outstanding[direction])})[direction]
+        result[direction]["outstanding_commands_end"] = (end_outstanding or {direction: len(outstanding[direction])})[direction] if track_outstanding else None
         result[direction]["first_message_counts_by_type"] = dict(first_message_counts[direction])
         result[direction]["first_transmission_payload_bytes"] = first_payload_bytes[direction]
     result["wire_input_counts_by_port"] = dict(input_counts)
+    result['max_timestamp_backstep_ns'] = maximum_backstep
+    result['outstanding_semantics'] = 'Observed reliable data commands without returning ACK at the endpoint boundary; not unsent ENet queues' if track_outstanding else 'Unavailable: egress-only mirror does not observe the returning ACK path'
     return result, context
 
 
 def summarize(directory):
+    with contextlib.ExitStack() as resources:
+        store = resources.enter_context(packet_store.PacketStore())
+        return _summarize(directory, store, resources)
+
+
+def _summarize(directory, store, resources):
     manifest = json.loads((directory / "manifest.json").read_text())
     result = dict(manifest)
     result["derived_source_sha256"] = ANALYZER_SOURCE_SHA256
+    result['derived_support_sources_sha256'] = {'packet_store.py': packet_store.SOURCE_SHA256}
     result.pop("command", None)
     result["archive_sha256"] = {}
     for name in directory.glob("*.tar.gz"):
@@ -208,7 +233,7 @@ def summarize(directory):
     window = json.loads((directory / "window.json").read_text())
     duration = (window["end"] - window["start"]) / 1e9
     result["window_s"] = duration
-    archives = {role: tarfile.open(directory / (role + ".tar.gz")) for role in ("game", "bots")}
+    archives = {role: resources.enter_context(tarfile.open(directory / (role + ".tar.gz"))) for role in ("game", "bots")}
 
     def load(role, name):
         return json.load(archives[role].extractfile(role + "/" + name))
@@ -245,10 +270,11 @@ def summarize(directory):
             result[role + "_flow_parse_errors"] = int(parse_errors[1]) if parse_errors else None
             collector_valid &= external_bot or bool(drops and int(drops[1]) == 0)
         if role + "/datagrams.bin" in names:
-            packets, fingerprints = packet_observations(archive.extractfile(role + "/datagrams.bin"), window["start"], window["end"])
+            packets, fingerprints = packet_observations(archive.extractfile(role + "/datagrams.bin"), window["start"], window["end"], context=store.contexts())
             result[role + "_packets"] = packets
             flow_sets[role] = fingerprints
             collector_valid &= result.get(role + "_flow_parse_errors") == 0
+            collector_valid &= packets['max_timestamp_backstep_ns'] <= 1_000_000_000
         if role + "/prequeue/datagrams.bin" in names:
             text = archive.extractfile(role + "/prequeue/capture.log").read().decode()
             drops = re.search(r"(\d+) packets dropped by kernel", text)
@@ -256,9 +282,10 @@ def summarize(directory):
             result[role + "_prequeue_capture_drops"] = int(drops[1]) if drops else None
             result[role + "_prequeue_parse_errors"] = int(parse_errors[1]) if parse_errors else None
             collector_valid &= bool(drops and parse_errors and int(drops[1]) == 0 and int(parse_errors[1]) == 0)
-            packets, fingerprints = packet_observations(archive.extractfile(role + "/prequeue/datagrams.bin"), window["start"], window["end"])
+            packets, fingerprints = packet_observations(archive.extractfile(role + "/prequeue/datagrams.bin"), window["start"], window["end"], context=store.contexts(), track_outstanding=False)
             result[role + "_prequeue_packets"] = packets
             prequeue_sets[role] = fingerprints
+            collector_valid &= packets['max_timestamp_backstep_ns'] <= 1_000_000_000
         if role == "game":
             start_prom = exposition(load(role, "start.json").get("prometheus", ""))
             end_prom = exposition(load(role, "end.json").get("prometheus", ""))
@@ -267,32 +294,14 @@ def summarize(directory):
             result["exporter_tick_mean_ms"] = (end_prom.get("tick_duration_ms_sum", 0) - start_prom.get("tick_duration_ms_sum", 0)) / count if count else None
             result["exporter_tick_hz"] = count / duration
     if len(flow_sets) == 2:
+        store.prepare()
         result["directional_loss"] = {}
         for direction in ("out", "in"):
             sender_role = "game" if direction == "out" else "bots"
             sender = prequeue_sets.get(sender_role, flow_sets[sender_role])[direction]
             receiver = flow_sets["bots" if direction == "out" else "game"][direction]
-            unmatched = total = 0
-            delays_ms = []
-            for key, stamps in sender.items():
-                arrivals = receiver.get(key, [])
-                index = 0
-                for stamp in stamps:
-                    while index < len(arrivals) and arrivals[index] < stamp - 2_000_000:
-                        index += 1
-                    measured = window["start"] <= stamp < window["end"]
-                    if measured:
-                        total += 1
-                    if index < len(arrivals) and arrivals[index] <= stamp + 2_000_000_000:
-                        if measured:
-                            delays_ms.append((arrivals[index] - stamp) / 1e6)
-                        index += 1
-                    elif measured:
-                        unmatched += 1
-            result["directional_loss"][direction] = {"sent": total, "matched": total - unmatched, "unmatched": unmatched,
-                                                      "loss_pct": 100 * unmatched / total if total else None,
-                                                      "delay_ms": {"mean": statistics.mean(delays_ms), "p50": percentile(delays_ms,.5), "p95": percentile(delays_ms,.95), "p99": percentile(delays_ms,.99)} if delays_ms else {},
-                                                      "semantics": "sender pre-qdisc mirror when available (otherwise post-qdisc capture); timestamped full-UDP fingerprints matched to receiver ±2 ms/+2 s context; synchronized host clocks"}
+            result["directional_loss"][direction] = store.match(sender, receiver, window['start'], window['end'])
+            result['directional_loss'][direction]['semantics'] = "sender pre-qdisc mirror when available (otherwise post-qdisc capture); timestamped full-UDP fingerprints matched to receiver ±2 ms/+2 s context; synchronized host clocks"
     if "Operator Mac" in manifest.get("topology", ""):
         for observation in result.get("directional_loss", {}).values():
             observation["semantics"] += "; external receiver/sender observations are socket timestamps, operator clock uncertainty ±35.746 ms; unmatched rates cannot independently distinguish internet loss from operator NIC/kernel loss"
@@ -444,8 +453,6 @@ def summarize(directory):
         result["classification"] = "controlled-profile-valid" if sustainability else "controlled-profile-degradation"
     if "Operator Mac" in manifest.get("topology", "") and collector_valid and generator_valid:
         result["classification"] = "external-accounting-check-valid"
-    for archive in archives.values():
-        archive.close()
     return result
 
 

@@ -8,9 +8,12 @@ import re
 import shlex
 import time
 import traceback
+import pathlib
 import run
 import analyze
 import publish
+
+SOURCE_BYTES = pathlib.Path(__file__).read_bytes()
 
 
 def main():
@@ -62,16 +65,26 @@ p=pathlib.Path(INSTANCE)
 (p/'events/enable').write_text('0')
 p.rmdir()
 """.replace('INSTANCE', repr(instance))
+    remote_run = run.REMOTE + '/' + args.run_id
+    run.ssh('game', 'mkdir -p ' + shlex.quote(remote_run))
+    watchdog_unit = 'omega-trace-watchdog-' + args.run_id
+    watchdog = ('sleep 1800; cat ' + shlex.quote(instance + '/trace') + ' > ' + shlex.quote(remote_run + '/trace-watchdog.txt')
+                + '; cat ' + instance + '/per_cpu/cpu*/stats > ' + shlex.quote(remote_run + '/trace-watchdog-stats.txt')
+                + '; python3 -c ' + shlex.quote(cleanup))
+    run.ssh('game', 'sudo -n systemd-run --quiet --unit=' + watchdog_unit + ' /bin/bash -c ' + shlex.quote(watchdog))
     started = time.monotonic()
     try:
         run.run(args.run_id, 50, 'clustered', duration=args.duration, build='instrumented')
     finally:
         directory.mkdir(parents=True, exist_ok=True)
-        trace = run.ssh('game', 'sudo -n cat ' + shlex.quote(instance + '/trace'), check=False)
+        trace_command = 'if test -e ' + shlex.quote(instance + '/trace') + '; then cat ' + shlex.quote(instance + '/trace') + '; else cat ' + shlex.quote(remote_run + '/trace-watchdog.txt') + '; fi'
+        trace = run.ssh('game', 'sudo -n sh -c ' + shlex.quote(trace_command))
         (directory / 'kernel-drop-trace.txt').write_text(trace)
-        stats = run.ssh('game', 'sudo -n sh -c ' + shlex.quote('cat ' + instance + '/per_cpu/cpu*/stats'), check=False)
+        stats_command = 'if test -d ' + shlex.quote(instance) + '; then cat ' + instance + '/per_cpu/cpu*/stats; else cat ' + shlex.quote(remote_run + '/trace-watchdog-stats.txt') + '; fi'
+        stats = run.ssh('game', 'sudo -n sh -c ' + shlex.quote(stats_command))
         (directory / 'kernel-drop-trace-stats.txt').write_text(stats)
         run.ssh('game', 'sudo -n python3 -c ' + shlex.quote(cleanup), check=False)
+        run.ssh('game', 'sudo -n systemctl stop ' + watchdog_unit, check=False)
     proof = {'purpose': 'Single-run diagnosis; outside the scored matrix',
              'binary_and_buffers': 'Unchanged unless the selected executable provenance explicitly records a later revision',
              'trace_scope': 'Dedicated tracefs instance: UDP queue failures and SOCKET_RCVBUFF drops only; no global tracing changes',
@@ -80,6 +93,13 @@ p.rmdir()
              'udp_queue_failure_events_all_ports': trace.count('udp_fail_queue_rcv_skb:'),
              'socket_receive_buffer_drop_events': trace.count('kfree_skb:'),
              'run_and_evidence_seconds': time.monotonic() - started}
+    sources = {'run.py': run.SOURCE_BYTES, 'analyze.py': analyze.SOURCE_BYTES,
+               'packet_store.py': analyze.packet_store.SOURCE_BYTES, 'single_run.py': SOURCE_BYTES}
+    source_directory = directory / 'runtime-sources'
+    source_directory.mkdir()
+    for name, content in sources.items():
+        (source_directory / name).write_bytes(content)
+    proof['runtime_source_sha256'] = {name: hashlib.sha256(content).hexdigest() for name, content in sources.items()}
     (directory / 'diagnostic-proof.json').write_text(json.dumps(proof, indent=2))
     analysis_started = time.monotonic()
     try:
@@ -90,6 +110,7 @@ p.rmdir()
         (directory / 'analysis-error.txt').write_text(traceback.format_exc())
         raise
     proof['analysis_seconds'] = time.monotonic() - analysis_started
+    (directory / 'diagnostic-proof.json').write_text(json.dumps(proof, indent=2))
     publish.publish(args.run_id)
     target = publish.OUTPUT / args.run_id
     (target / 'diagnostic-proof.json').write_text(json.dumps(proof, indent=2))
