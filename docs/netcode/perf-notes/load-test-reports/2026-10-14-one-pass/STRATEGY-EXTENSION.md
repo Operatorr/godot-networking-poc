@@ -6,6 +6,7 @@ The [lower-ladder checkpoint](PRE-STRATEGY-EXTENSION.md) was documented before t
 | ---: | --- | ---: | ---: | ---: | ---: | ---: |
 | 200 | [ramp-failed-unscored](core-strategy-200-r1/agent-result.json) | 191 | unscored ramp | 99.74% | 87.28% | 198020 / 5095 |
 | 250 | [ramp-failed-unscored](core-strategy-250-r1/agent-result.json) | 185 | unscored ramp | 99.93% | 81.51% | 197688 / 9719 |
+| 500 | [ramp-failed-unscored](core-strategy-500-r1/agent-result.json) | 176 | unscored ramp | 99.99% | 81.40% | 176138 / 2901 |
 
 CPU percentages use **100% = one logical CPU**. A two-vCPU host can reach 200% on this scale. Peaks are approximately one-second interval values, not instantaneous or tick-thread CPU. Near-95% duration is descriptive, not a pass gate. Failed-ramp CPU and kernel deltas cover differing startup/abort intervals and must not be compared as fixed-population steady measurements.
 

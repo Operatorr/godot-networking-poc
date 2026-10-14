@@ -25,6 +25,8 @@ def update(report=REPORT, charts=True):
             continue
         result = json.loads(result_path.read_text())
         actual = result.get('actual_population') or {}
+        with gzip.open(directory / 'game/ticks.csv.gz', 'rt') as stream:
+            ticks = list(csv.DictReader(stream))
         row = {'requested_players': population, 'classification': result['classification'],
                'window_s': result.get('window_s'),
                'ramp_peak_authenticated': actual.get('ramp_peak_authenticated'),
@@ -56,6 +58,13 @@ def update(report=REPORT, charts=True):
                 row[role + '_' + key] = (result.get(role.rstrip('s') + '_kernel_errors') or {}).get(key)
             # Bot result uses singular bot_kernel_errors; game stays game.
             timeline['hosts'][role] = {'points': points, 'metric': metric}
+        near = next((point for point in timeline['hosts']['game']['points']
+                     if point.get('usable_for_1hz_peaks') and
+                     (point.get('process_cpu_percent_one_core') or 0) >= 95), None)
+        near_population = [int(tick['authenticated']) for tick in ticks
+                           if near and near['utc_start_ns'] <= int(tick['utc_ns']) < near['utc_end_ns']]
+        row['first_game_cpu_ge95_authenticated_min'] = min(near_population) if near_population else None
+        row['first_game_cpu_ge95_authenticated_max'] = max(near_population) if near_population else None
         row['bundle_bytes'] = sum((result.get('bundle_bytes') or {}).values())
         rows.append(row)
         timeline['players'] = records(directory / 'game/server.ndjson.gz')
