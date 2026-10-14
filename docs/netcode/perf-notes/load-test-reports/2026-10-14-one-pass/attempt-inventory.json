@@ -72,6 +72,18 @@
     "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/core-movement-50-r1"
   },
   {
+    "run_id": "core-strategy-100-points-recovery",
+    "requested_population": 100,
+    "workload": "strategy",
+    "requested_duration_s": 360,
+    "started_utc": "2026-10-14T08:27:03.172661+00:00",
+    "ended_utc": "2026-10-14T08:34:02.380630+00:00",
+    "classification": "native-stable-candidate",
+    "scored_300s_window_present": true,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/core-strategy-100-points-recovery"
+  },
+  {
     "run_id": "core-strategy-100-r1",
     "requested_population": 100,
     "workload": "strategy",

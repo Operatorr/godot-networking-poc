@@ -546,37 +546,41 @@
     "profile": "native",
     "variant": "native",
     "runs": [
+      "core-strategy-100-points-recovery",
       "core-strategy-100-r1"
     ],
     "classes": [
+      "native-stable-candidate",
       "collector-invalid"
     ],
     "required_runs_per_condition": 1,
-    "required_runs_present": false,
-    "single_observation_only": false,
+    "required_runs_present": true,
+    "single_observation_only": true,
     "variation_semantics": "Single-pass matrix; any group spread includes separate control positions or retained historical attempts, not three repeated passes.",
     "all_collector_valid": false,
     "all_generator_valid": false,
-    "selected_matrix_runs": [],
-    "native_sustainability_demonstrated_required_runs": false,
+    "selected_matrix_runs": [
+      "core-strategy-100-points-recovery"
+    ],
+    "native_sustainability_demonstrated_required_runs": true,
     "spread_includes_all_source_rows_even_invalid": true,
     "metrics": {
       "outbound_ip_bytes_s": {
         "min": 3648489.76,
-        "mean": 3648489.76,
-        "median": 3648489.76,
-        "max": 3648489.76
+        "mean": 3659454.785,
+        "median": 3659454.785,
+        "max": 3670419.81
       },
       "outbound_ip_bytes_player_s": {
         "min": 36484.89759999984,
-        "mean": 36484.89759999984,
-        "median": 36484.89759999984,
-        "max": 36484.89759999984
+        "mean": 36594.547849999915,
+        "median": 36594.547849999915,
+        "max": 36704.1981
       },
       "alive_fraction": {
-        "min": 0.8632911744554592,
-        "mean": 0.8632911744554592,
-        "median": 0.8632911744554592,
+        "min": 0.8582555377695692,
+        "mean": 0.8607733561125142,
+        "median": 0.8607733561125142,
         "max": 0.8632911744554592
       },
       "tick_hz": {
@@ -587,33 +591,45 @@
       },
       "tick_work_p99_ms": {
         "min": 15.515733,
-        "mean": 15.515733,
-        "median": 15.515733,
-        "max": 15.515733
+        "mean": 15.737696,
+        "median": 15.737696,
+        "max": 15.959659
       },
       "server_cpu_percent_one_core": {
-        "min": 41.53666138015731,
-        "mean": 41.53666138015731,
-        "median": 41.53666138015731,
+        "min": 39.70007885520796,
+        "mean": 40.61837011768264,
+        "median": 40.61837011768264,
         "max": 41.53666138015731
       },
       "generator_cpu_percent_one_core": {
         "min": 70.63537309727245,
-        "mean": 70.63537309727245,
-        "median": 70.63537309727245,
-        "max": 70.63537309727245
+        "mean": 73.96020894117905,
+        "median": 73.96020894117905,
+        "max": 77.28504478508563
       },
       "generator_achieved_hz": {
         "min": 29.837785792015268,
-        "mean": 29.837785792015268,
-        "median": 29.837785792015268,
-        "max": 29.837785792015268
+        "mean": 29.91861563246416,
+        "median": 29.91861563246416,
+        "max": 29.99944547291305
       },
       "rtt_p95_ms": {
-        "min": 19.0,
-        "mean": 19.0,
-        "median": 19.0,
+        "min": 12.0,
+        "mean": 15.5,
+        "median": 15.5,
         "max": 19.0
+      },
+      "tested_ccu_30day_game_host_USD_conditional": {
+        "min": 7.59,
+        "mean": 7.59,
+        "median": 7.59,
+        "max": 7.59
+      },
+      "tested_ccu_year_game_host_USD_conditional": {
+        "min": 91.08000000000003,
+        "mean": 91.08000000000003,
+        "median": 91.08000000000003,
+        "max": 91.08000000000003
       }
     }
   },
