@@ -8,6 +8,7 @@ The [lower-ladder checkpoint](PRE-STRATEGY-EXTENSION.md) was documented before t
 | 250 | [ramp-failed-unscored](core-strategy-250-r1/agent-result.json) | 185 | unscored ramp | 99.93% | 81.51% | 197688 / 9719 |
 | 500 | [ramp-failed-unscored](core-strategy-500-r1/agent-result.json) | 176 | unscored ramp | 99.99% | 81.40% | 176138 / 2901 |
 | 750 | [ramp-failed-unscored](core-strategy-750-r1/agent-result.json) | 180 | unscored ramp | 100.54% | 84.26% | 196083 / 4032 |
+| 999 | [ramp-failed-unscored](core-strategy-999-r1/agent-result.json) | 190 | unscored ramp | 100.71% | 83.11% | 182585 / 3389 |
 
 CPU percentages use **100% = one logical CPU**. A two-vCPU host can reach 200% on this scale. Peaks are approximately one-second interval values, not instantaneous or tick-thread CPU. Near-95% duration is descriptive, not a pass gate. Failed-ramp CPU and kernel deltas cover differing startup/abort intervals and must not be compared as fixed-population steady measurements.
 
@@ -16,5 +17,11 @@ A requested population is not an achieved load. A ramp failure has no five-minut
 [Numeric comparison](strategy-extension-summary.csv) includes CPU coverage, means, p99, peaks and seconds ≥95%. [Dispatch ledger](strategy-extension-ledger.json) and each agent result retain outcome, errors, archive checksums and cleanup proof.
 
 Across these attempts, the first retained game CPU interval ≥95% coincided with **176–191 authenticated players**, using the per-Tick population within that CPU interval. This locates observed startup overload episodes; it is not a validated steady-player ceiling.
+
+Retained endpoint bundles total **3.90 MiB** for 5 attempts, using the compact logging policy. The [extension audit](strategy-extension-audit.json) verifies bundle hashes, pinned provenance, redaction, actual per-Tick peaks and preservation of the original campaign state.
+
+This completes the requested Strategy continuation attempts. The broader matrix’s network/transfer phases, external accounting and complete coverage audit remain pending; the execution task stays open.
+
+[Final cleanup](strategy-extension-final-cleanup.json) independently verified native idle endpoints, restored update timers and stopped the temporary restoration watchdog timers.
 
 ![CPU and actual population during each attempt](strategy-extension-timelines.png)

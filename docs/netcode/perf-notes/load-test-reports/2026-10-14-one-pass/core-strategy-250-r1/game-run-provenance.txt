@@ -58,7 +58,7 @@ Root dispersion : 0.002200000 seconds
 Update interval : 1035.8 seconds
 Leap status     : Normal
 State  Recv-Q Send-Q Local Address:Port Peer Address:Port
-UNCONN 0      0            0.0.0.0:8081      0.0.0.0:*   
+UNCONN 0      0            0.0.0.0:8081      0.0.0.0:*
 	 skmem:(r0,rb524288,t0,tb524288,f0,w0,o0,bl0,d0)
 212992
 4194304

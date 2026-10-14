@@ -1,0 +1,6 @@
+{
+  "line": "\u001b[2m2026-10-14T10:10:50.168862Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2momega_load_test\u001b[0m\u001b[2m:\u001b[0m Bot 191 failed to connect: connect timeout",
+  "classification": "ramp-failed-unscored",
+  "requested_bots": 999,
+  "elapsed_s": 41.25218545799726
+}

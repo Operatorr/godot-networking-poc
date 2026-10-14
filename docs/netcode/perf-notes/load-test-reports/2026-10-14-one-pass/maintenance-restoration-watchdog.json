@@ -4,5 +4,8 @@
     "game": "ActiveState=active\nNextElapseUSecMonotonic=1d 21h 34min 35.854543s\n",
     "bots": "ActiveState=active\nNextElapseUSecMonotonic=1d 21h 32min 50.266232s\n"
   },
-  "normal_restoration": "Parent restores both hosts after the operator-requested per-agent Strategy sequence; original finish watcher was stopped for the handoff. No unmasking during an active observation."
+  "normal_restoration": "Parent restores both hosts after the operator-requested per-agent Strategy sequence; original finish watcher was stopped for the handoff. No unmasking during an active observation.",
+  "restored_after_strategy_extension": true,
+  "proof": "strategy-extension-final-cleanup.json",
+  "fallback_timer_final_state": "inactive on both hosts; original update timers active/enabled"
 }

@@ -4,6 +4,8 @@ Execution of [Execute the revised one-pass CAX11 load-test matrix](https://githu
 following the [amended matrix](https://github.com/Operatorr/godot-networking-poc/issues/30#issuecomment-6145030523).
 **In progress.** This directory does not establish complete matrix coverage.
 
+The operator-requested [Strategy 200/250/500/750/999 continuation](STRATEGY-EXTENSION.md) is recorded: all five separate subagents returned failed, unscored ramps, with observed authenticated peaks of 191/185/176/180/190. Game CPU reached approximately one logical CPU’s budget; no higher rung completed a steady measurement. Hosts are idle/native and update timers are restored. Network/transfer/external accounting and full coverage audit remain pending.
+
 The fresh namespace is `one-pass-20261014`. The historical administrative hold and all
 earlier campaign state remain unchanged. Initial checks found no active swarm, native
 `fq_codel` on both hosts and the expected separate game/bot executable hashes. Game

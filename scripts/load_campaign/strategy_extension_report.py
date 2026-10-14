@@ -52,6 +52,11 @@ def update(report=REPORT, charts=True):
                 metric = 'process_cpu_percent_one_core'
             stats = summary['one_second_statistics'][metric]
             row[role + '_cpu_scope'] = scope
+            row[role + '_logical_cpus'] = summary['matched_boundary']['logical_cpus']
+            row[role + '_host_mean_percent_capacity'] = summary['matched_boundary']['host_execution_percent_capacity']
+            for key in ('p99', 'max'):
+                row[role + '_host_' + key + '_percent_capacity'] = summary['one_second_statistics']['host_execution_percent_capacity'].get(key)
+            row[role + '_host_mean_steal_percent_capacity'] = summary['matched_boundary']['steal_percent_capacity']
             for key in ('time_weighted_mean', 'p99', 'max', 'seconds_at_or_above_95_percent', 'covered_seconds'):
                 row[role + '_cpu_' + key] = stats.get(key)
             for key in ('RcvbufErrors', 'SndbufErrors'):
@@ -102,6 +107,15 @@ def update(report=REPORT, charts=True):
         lines += [f'Across these attempts, the first retained game CPU interval ≥95% coincided with '
                   f'**{min(near_min)}–{max(near_max)} authenticated players**, using the per-Tick population within that CPU interval. '
                   'This locates observed startup overload episodes; it is not a validated steady-player ceiling.', '']
+    lines += [f'Retained endpoint bundles total **{sum(row["bundle_bytes"] for row in rows) / 2**20:.2f} MiB** '
+              f'for {len(rows)} attempts, using the compact logging policy. '
+              'The [extension audit](strategy-extension-audit.json) verifies bundle hashes, pinned provenance, '
+              'redaction, actual per-Tick peaks and preservation of the original campaign state.', '',
+              'This completes the requested Strategy continuation attempts. The broader matrix’s network/transfer phases, '
+              'external accounting and complete coverage audit remain pending; the execution task stays open.', '']
+    if (report / 'strategy-extension-final-cleanup.json').exists():
+        lines += ['[Final cleanup](strategy-extension-final-cleanup.json) independently verified native idle endpoints, '
+                  'restored update timers and stopped the temporary restoration watchdog timers.', '']
     if charts:
         plot(report, timelines)
         lines += ['![CPU and actual population during each attempt](strategy-extension-timelines.png)', '']

@@ -1,21 +1,51 @@
 {
-  "scope": "completed extension attempts only; not full-matrix audit",
+  "scope": "five requested extension attempts; not full matrix",
+  "verified_utc": "2026-10-14T10:12:42.723550+00:00",
   "checks": [
     {
       "run": "core-strategy-200-r1",
-      "verified": true,
-      "retained_tick_peak_authenticated": 191
+      "retained_tick_peak_authenticated": 191,
+      "bundle_hashes_verified": true,
+      "pinned_provenance_verified": true,
+      "redaction_verified": true,
+      "cleanup_verified": true
     },
     {
       "run": "core-strategy-250-r1",
-      "verified": true,
-      "retained_tick_peak_authenticated": 185
+      "retained_tick_peak_authenticated": 185,
+      "bundle_hashes_verified": true,
+      "pinned_provenance_verified": true,
+      "redaction_verified": true,
+      "cleanup_verified": true
     },
     {
       "run": "core-strategy-500-r1",
-      "verified": true,
-      "retained_tick_peak_authenticated": 176
+      "retained_tick_peak_authenticated": 176,
+      "bundle_hashes_verified": true,
+      "pinned_provenance_verified": true,
+      "redaction_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "run": "core-strategy-750-r1",
+      "retained_tick_peak_authenticated": 180,
+      "bundle_hashes_verified": true,
+      "pinned_provenance_verified": true,
+      "redaction_verified": true,
+      "cleanup_verified": true
+    },
+    {
+      "run": "core-strategy-999-r1",
+      "retained_tick_peak_authenticated": 190,
+      "bundle_hashes_verified": true,
+      "pinned_provenance_verified": true,
+      "redaction_verified": true,
+      "cleanup_verified": true
     }
   ],
-  "campaign_tests_passed": 35
+  "original_campaign_state_unchanged": true,
+  "campaign_tests_passed": 35,
+  "all_requested_attempts_present": true,
+  "all_attempts_ramp_failed_unscored": true,
+  "total_compact_bundle_bytes": 4091869
 }
