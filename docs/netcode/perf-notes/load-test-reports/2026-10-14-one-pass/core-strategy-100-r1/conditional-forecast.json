@@ -1,0 +1,7 @@
+{
+  "source_run": "core-strategy-100-r1",
+  "source_classification": "collector-invalid",
+  "rate_bytes_authenticated_player_second": 36484.89759999984,
+  "forecasts": {},
+  "status": "Continuous-use conditional economics. Invalid/failing source rows cannot establish sustainable CCU costs."
+}

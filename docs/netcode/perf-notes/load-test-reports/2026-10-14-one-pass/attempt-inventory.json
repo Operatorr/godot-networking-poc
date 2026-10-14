@@ -1,5 +1,29 @@
 [
   {
+    "run_id": "core-clustered-100-r1",
+    "requested_population": 100,
+    "workload": "clustered",
+    "requested_duration_s": 360,
+    "started_utc": "2026-10-14T06:24:36.078808+00:00",
+    "ended_utc": "2026-10-14T06:40:05.749155+00:00",
+    "classification": "valid-failure",
+    "scored_300s_window_present": true,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/core-clustered-100-r1"
+  },
+  {
+    "run_id": "core-combat-100-r1",
+    "requested_population": 100,
+    "workload": "combat",
+    "requested_duration_s": 360,
+    "started_utc": "2026-10-14T06:06:23.830319+00:00",
+    "ended_utc": "2026-10-14T06:21:00.034187+00:00",
+    "classification": "native-stable-candidate",
+    "scored_300s_window_present": true,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/core-combat-100-r1"
+  },
+  {
     "run_id": "core-combat-50-r1",
     "requested_population": 50,
     "workload": "combat",
@@ -17,11 +41,23 @@
     "workload": "movement",
     "requested_duration_s": 360,
     "started_utc": "2026-10-14T05:53:35.307743+00:00",
-    "ended_utc": null,
-    "classification": "not_yet_classified",
-    "scored_300s_window_present": false,
+    "ended_utc": "2026-10-14T06:04:58.473557+00:00",
+    "classification": "native-stable-candidate",
+    "scored_300s_window_present": true,
     "retained_errors": [],
     "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/core-movement-100-r1"
+  },
+  {
+    "run_id": "core-movement-150-r1",
+    "requested_population": 150,
+    "workload": "movement",
+    "requested_duration_s": 360,
+    "started_utc": "2026-10-14T06:58:27.287107+00:00",
+    "ended_utc": "2026-10-14T07:03:52.317555+00:00",
+    "classification": "operator-aborted-unscored",
+    "scored_300s_window_present": false,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/core-movement-150-r1"
   },
   {
     "run_id": "core-movement-50-r1",
@@ -34,6 +70,18 @@
     "scored_300s_window_present": true,
     "retained_errors": [],
     "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/core-movement-50-r1"
+  },
+  {
+    "run_id": "core-strategy-100-r1",
+    "requested_population": 100,
+    "workload": "strategy",
+    "requested_duration_s": 360,
+    "started_utc": "2026-10-14T06:45:14.219945+00:00",
+    "ended_utc": "2026-10-14T06:56:09.655921+00:00",
+    "classification": "collector-invalid",
+    "scored_300s_window_present": true,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/core-strategy-100-r1"
   },
   {
     "run_id": "core-strategy-50-r1",
@@ -58,6 +106,54 @@
     "scored_300s_window_present": true,
     "retained_errors": [],
     "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/pilot-clustered-50-recovery"
+  },
+  {
+    "run_id": "points-preflight-clustered-50-off",
+    "requested_population": 50,
+    "workload": "clustered",
+    "requested_duration_s": 120,
+    "started_utc": "2026-10-14T08:09:00.026741+00:00",
+    "ended_utc": "2026-10-14T08:11:27.738244+00:00",
+    "classification": "instrumented-build-recording-off-control-unscored",
+    "scored_300s_window_present": false,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/points-preflight-clustered-50-off"
+  },
+  {
+    "run_id": "points-preflight-clustered-50-on",
+    "requested_population": 50,
+    "workload": "clustered",
+    "requested_duration_s": 120,
+    "started_utc": "2026-10-14T08:11:29.996859+00:00",
+    "ended_utc": "2026-10-14T08:14:08.894515+00:00",
+    "classification": "native-stable-candidate",
+    "scored_300s_window_present": false,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/points-preflight-clustered-50-on"
+  },
+  {
+    "run_id": "points-preflight-combat-3-cleanup",
+    "requested_population": 3,
+    "workload": "combat",
+    "requested_duration_s": 120,
+    "started_utc": "2026-10-14T08:16:52.290728+00:00",
+    "ended_utc": "2026-10-14T08:19:23.192221+00:00",
+    "classification": "native-stable-candidate",
+    "scored_300s_window_present": false,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/points-preflight-combat-3-cleanup"
+  },
+  {
+    "run_id": "points-preflight-combat-3-combined",
+    "requested_population": 3,
+    "workload": "combat",
+    "requested_duration_s": 120,
+    "started_utc": "2026-10-14T08:14:11.327544+00:00",
+    "ended_utc": "2026-10-14T08:16:48.579458+00:00",
+    "classification": "controlled-profile-valid",
+    "scored_300s_window_present": false,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/points-preflight-combat-3-combined"
   },
   {
     "run_id": "preflight-clustered-50-off",

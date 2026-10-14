@@ -1,0 +1,4 @@
+{
+  "classification": "operator-aborted-unscored",
+  "reason": "Interrupted after discovering collector restart in prior Strategy 100 observation; no complete 300-second window. Archives retained unchanged."
+}

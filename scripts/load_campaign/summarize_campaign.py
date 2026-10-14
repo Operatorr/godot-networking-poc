@@ -21,7 +21,7 @@ def main():
             continue
         rate = result.get("outbound_ip_bytes_player_s")
         forecasts = {}
-        if rate is not None:
+        if rate is not None and result.get('collector_valid') and result.get('generator_valid') and result.get('classification') in ('native-stable-candidate', 'controlled-profile-valid', 'external-accounting-check-valid'):
             for ccu in (result["requested_bots"],):
                 forecasts[str(ccu)] = {"decimal": economics.forecast(rate, ccu), "binary_sensitivity": economics.forecast(rate, ccu, binary=True)}
             if (result["requested_bots"] == 999 and result.get("behavior") == "strategy"
@@ -42,6 +42,10 @@ def main():
             "run_id": path.parent.name, "classification": result["classification"],
             "selected_for_matrix_cell": path.parent.name not in replacements and result.get("repeat", 1) in campaign.REPETITIONS,
 
+            "collection_format": result.get('collection_format', 'legacy-full'),
+            "delivery_loss_is_sample_estimate": result.get('directional_loss', {}).get('out', {}).get('estimate', False),
+            "outbound_delivery_sample_packets": result.get('directional_loss', {}).get('out', {}).get('sent'),
+            "inbound_delivery_sample_packets": result.get('directional_loss', {}).get('in', {}).get('sent'),
             "requested_population": result["requested_bots"], "actual_min": result.get("population_min"), "actual_max": result.get("population_max"),
             "workload": result["behavior"], "profile": result.get("profile", "native"), "variant": result.get("variant", "native"),
             "repeat": result.get("repeat"), "collector_valid": result.get("collector_valid"), "generator_valid": result.get("generator_valid"),
@@ -126,7 +130,8 @@ def main():
     for manifest_path in sorted(run.RAW.glob("*/manifest.json")):
         manifest = json.loads(manifest_path.read_text())
         result_path = manifest_path.parent / "steady.json"
-        result = json.loads(result_path.read_text()) if result_path.exists() else {}
+        attempt_path = manifest_path.parent / 'unscored-attempt.json'
+        result = json.loads(result_path.read_text()) if result_path.exists() else json.loads(attempt_path.read_text()) if attempt_path.exists() else {}
         errors = [publish.redact(path.read_text()) for name in ("controller-error.txt", "analysis-error.txt") if (path := manifest_path.parent / name).exists()]
         attempts.append({"run_id": manifest_path.parent.name, "requested_population": manifest.get("requested_bots"),
                          "workload": manifest.get("behavior"), "requested_duration_s": manifest.get("duration"),

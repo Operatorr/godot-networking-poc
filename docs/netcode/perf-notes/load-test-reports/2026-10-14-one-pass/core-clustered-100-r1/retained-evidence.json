@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/one-pass-20261014/core-clustered-100-r1",
+  "sha256": {
+    "bots.tar.gz": "49b090d72613e28d878cb1a6a1ed4b03d1031c4b36065088e28025a55f0f1252",
+    "game.tar.gz": "f487b67fcc19dc80e5936119856b953a60418727fa4f7660c222d75490e01750"
+  },
+  "contents": "Unedited reports/logs, host observations, packet headers and full-datagram ENet descriptors. Retained off both temporary hosts in the ignored local evidence archive. Public copies redact connection addresses; no access records or credentials are published."
+}

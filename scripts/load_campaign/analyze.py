@@ -139,6 +139,7 @@ def packet_observations(stream, start, end, margin_ns=2_000_000_000, context=Non
     first_payload_bytes = {direction: 0 for direction in result}
     end_outstanding = None
     last_stamp = maximum_backstep = 0
+    first_stamp = None
     def extend(direction, port, channel, sequence):
         old = latest_sequences[direction].get((port, channel), sequence)
         difference = (sequence - old + 32768) % 65536 - 32768
@@ -146,6 +147,8 @@ def packet_observations(stream, start, end, margin_ns=2_000_000_000, context=Non
         latest_sequences[direction][port, channel] = max(old, extended)
         return extended
     for stamp, source, target, ip_len, udp_len, fingerprint, commands in records(stream):
+        if first_stamp is None:
+            first_stamp = stamp
         maximum_backstep = max(maximum_backstep, last_stamp - stamp)
         last_stamp = stamp
         if end_outstanding is None and stamp >= end:
@@ -207,8 +210,18 @@ def packet_observations(stream, start, end, margin_ns=2_000_000_000, context=Non
         result[direction]["first_transmission_payload_bytes"] = first_payload_bytes[direction]
     result["wire_input_counts_by_port"] = dict(input_counts)
     result['max_timestamp_backstep_ns'] = maximum_backstep
+    result['capture_first_timestamp_ns'] = first_stamp
+    result['capture_last_timestamp_ns'] = last_stamp if first_stamp is not None else None
     result['outstanding_semantics'] = 'Observed reliable data commands without returning ACK at the endpoint boundary; not unsent ENet queues' if track_outstanding else 'Unavailable: egress-only mirror does not observe the returning ACK path'
     return result, context
+
+
+def capture_covers_window(packets, start, end):
+    """Collector chronology gate shared by endpoint and prequeue observations."""
+    first, last = packets.get('capture_first_timestamp_ns'), packets.get('capture_last_timestamp_ns')
+    return (first is not None and last is not None and first <= start
+            and last >= end - 100_000_000
+            and packets['max_timestamp_backstep_ns'] <= 1_000_000_000)
 
 
 def summarize(directory):
@@ -271,10 +284,17 @@ def _summarize(directory, store, resources):
             collector_valid &= external_bot or bool(drops and int(drops[1]) == 0)
         if role + "/datagrams.bin" in names:
             packets, fingerprints = packet_observations(archive.extractfile(role + "/datagrams.bin"), window["start"], window["end"], context=store.contexts())
+            if role + "/flow-summary.json" in names:
+                packets = load(role, 'flow-summary.json')
+                collector_valid &= packets.get('window') == window and packets.get('schedule_observed_utc_ns', window['start'] + 1) <= window['start']
+                packets['out']['first_message_counts_by_type'] = {int(k): v for k, v in packets['out']['first_message_counts_by_type'].items()}
+                packets['in']['first_message_counts_by_type'] = {int(k): v for k, v in packets['in']['first_message_counts_by_type'].items()}
+            elif manifest.get('collection_format') == 'article-points-v1':
+                collector_valid = False
             result[role + "_packets"] = packets
             flow_sets[role] = fingerprints
             collector_valid &= result.get(role + "_flow_parse_errors") == 0
-            collector_valid &= packets['max_timestamp_backstep_ns'] <= 1_000_000_000
+            collector_valid &= capture_covers_window(packets, window['start'], window['end'])
         if role + "/prequeue/datagrams.bin" in names:
             text = archive.extractfile(role + "/prequeue/capture.log").read().decode()
             drops = re.search(r"(\d+) packets dropped by kernel", text)
@@ -283,9 +303,16 @@ def _summarize(directory, store, resources):
             result[role + "_prequeue_parse_errors"] = int(parse_errors[1]) if parse_errors else None
             collector_valid &= bool(drops and parse_errors and int(drops[1]) == 0 and int(parse_errors[1]) == 0)
             packets, fingerprints = packet_observations(archive.extractfile(role + "/prequeue/datagrams.bin"), window["start"], window["end"], context=store.contexts(), track_outstanding=False)
+            if role + "/prequeue/flow-summary.json" in names:
+                packets = load(role, 'prequeue/flow-summary.json')
+                collector_valid &= packets.get('window') == window and packets.get('schedule_observed_utc_ns', window['start'] + 1) <= window['start']
+                for direction in ('out', 'in'):
+                    packets[direction]['first_message_counts_by_type'] = {int(k): v for k, v in packets[direction]['first_message_counts_by_type'].items()}
+            elif manifest.get('collection_format') == 'article-points-v1':
+                collector_valid = False
             result[role + "_prequeue_packets"] = packets
             prequeue_sets[role] = fingerprints
-            collector_valid &= packets['max_timestamp_backstep_ns'] <= 1_000_000_000
+            collector_valid &= capture_covers_window(packets, window['start'], window['end'])
         if role == "game":
             start_prom = exposition(load(role, "start.json").get("prometheus", ""))
             end_prom = exposition(load(role, "end.json").get("prometheus", ""))
@@ -301,7 +328,10 @@ def _summarize(directory, store, resources):
             sender = prequeue_sets.get(sender_role, flow_sets[sender_role])[direction]
             receiver = flow_sets["bots" if direction == "out" else "game"][direction]
             result["directional_loss"][direction] = store.match(sender, receiver, window['start'], window['end'])
-            result['directional_loss'][direction]['semantics'] = "sender pre-qdisc mirror when available (otherwise post-qdisc capture); timestamped full-UDP fingerprints matched to receiver ±2 ms/+2 s context; synchronized host clocks"
+            if manifest.get('collection_format') == 'article-points-v1':
+                result['directional_loss'][direction].update(sample_modulus=64, estimate=True,
+                    uncertainty='Deterministic fingerprint sample; identical retransmissions are correlated. No independent-packet confidence interval or exact zero-loss claim.')
+            result['directional_loss'][direction]['semantics'] = "sender pre-qdisc mirror when available (otherwise post-qdisc capture); timestamped full-UDP fingerprints matched to receiver ±2 ms/+2 s context; host clocks; signed, uncorrected timestamp differences include clock offset (negative sub-ms values are not negative network latency)"
     if "Operator Mac" in manifest.get("topology", ""):
         for observation in result.get("directional_loss", {}).values():
             uncertainty = manifest.get('external_clock_uncertainty_ms', 35.746)

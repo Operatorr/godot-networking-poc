@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/one-pass-20261014/points-preflight-combat-3-cleanup",
+  "sha256": {
+    "bots.tar.gz": "f0e466df559ee7b84f5bad6fbcd0ec3dc86ceb00032fecb374eb061c2e95c062",
+    "game.tar.gz": "ef2b74dfa3165c43284eeaa89efd968eb9cd97ddad48ab8cef91f2c3f399eef7"
+  },
+  "contents": "Curated article graph points, exact counters and bounded diagnostics; only 1/64 fingerprint samples privately retained, no raw packet archive."
+}

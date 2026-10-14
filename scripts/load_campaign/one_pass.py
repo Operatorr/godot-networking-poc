@@ -20,6 +20,7 @@ NAMESPACE = 'one-pass-20261014'
 run.RAW = run.ROOT / 'deployment/hetzner/results' / NAMESPACE
 run.REMOTE = '/home/deploy/omega-results/' + NAMESPACE
 run.UNIT_PREFIX = 'omega-' + NAMESPACE + '-'
+run.ARTICLE_POINTS = True
 run.MEASURED_BY_ROLE = {
     'game': '/home/deploy/omega-stabilized-b1266c1/rust/target/release',
     'bots': '/home/deploy/omega-measured/rust/target/release',
@@ -98,21 +99,37 @@ def observe(name, population, behavior, duration=120, collection=True, build='in
     return result
 
 
-def preflight():
-    observe('preflight-clustered-50-off', 50, 'clustered', collection=False, build='instrumented-off')
-    observe('preflight-clustered-50-on', 50, 'clustered')
-    observe('preflight-combat-3-combined', 3, 'combat', profile='combined')
-    observe('preflight-combat-3-cleanup', 3, 'combat')
+def stage_points():
+    check_hosts()
+    def stage(role):
+        for name in ('host_collect.py', 'capture.py', 'flow_record.rs', 'article_flow.rs', 'article_points.py'):
+            run.copy(role, run.ROOT / 'scripts/load_campaign' / name, run.REMOTE + '/' + name)
+        run.ssh(role, 'source /home/deploy/.cargo/env && rustc --edition=2021 -O ' + run.REMOTE + '/flow_record.rs -o ' + run.REMOTE + '/flow-record')
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        list(executor.map(stage, run.HOSTS))
 
 
-def resolve_preflight():
+def preflight(prefix='preflight'):
+    observe(prefix + '-clustered-50-off', 50, 'clustered', collection=False, build='instrumented-off')
+    observe(prefix + '-clustered-50-on', 50, 'clustered')
+    observe(prefix + '-combat-3-combined', 3, 'combat', profile='combined')
+    observe(prefix + '-combat-3-cleanup', 3, 'combat')
+
+
+def points_preflight():
+    stage_points()
+    preflight('points-preflight')
+    resolve_preflight('points-preflight')
+
+
+def resolve_preflight(prefix="preflight"):
     rows = {name: json.loads((run.RAW / name / 'steady.json').read_text()) for name in (
-        'preflight-clustered-50-off', 'preflight-clustered-50-on',
-        'preflight-combat-3-combined', 'preflight-combat-3-cleanup')}
-    off = rows['preflight-clustered-50-off']
-    on = audit_whole_run(rows['preflight-clustered-50-on'])
-    impaired = audit_whole_run(rows['preflight-combat-3-combined'])
-    cleanup = audit_whole_run(rows['preflight-combat-3-cleanup'])
+        prefix + '-clustered-50-off', prefix + '-clustered-50-on',
+        prefix + '-combat-3-combined', prefix + '-combat-3-cleanup')}
+    off = rows[prefix + '-clustered-50-off']
+    on = audit_whole_run(rows[prefix + '-clustered-50-on'])
+    impaired = audit_whole_run(rows[prefix + '-combat-3-combined'])
+    cleanup = audit_whole_run(rows[prefix + '-combat-3-cleanup'])
     if off['classification'] != 'instrumented-build-recording-off-control-unscored':
         raise RuntimeError('Unexpected off-control result')
     for row in (on, cleanup):
@@ -132,6 +149,7 @@ def resolve_preflight():
         return host.get('swarm_cgroup_cpu_percent_one_core', host.get('process_cpu_percent_one_core'))
     save('measurement-preflight-resolution.json', {
         'scored_runs_authorized_by_preflight': True,
+        'collection_format': 'article-points-v1' if prefix == 'points-preflight' else 'legacy-full',
         'validated_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
         'binary_sha256_by_role': PINNED,
         'observations': list(rows), 'measurement_seconds_per_preflight': 60,
@@ -232,6 +250,7 @@ def external_run():
         raise RuntimeError('External generator sources differ from the measurement revision')
     for name in ('socket-capture.dylib', 'flow-record-macos'):
         shutil.copy2(historical / name, run.RAW / name)
+    run.subprocess.run(['rustc', '--edition=2021', '-O', str(run.ROOT / 'scripts/load_campaign/flow_record.rs'), '-o', str(run.RAW / 'flow-record-macos')], check=True)
     external.main()
     directory = run.RAW / 'external-combat-3-r1'
     result = analyze.summarize(directory)
@@ -267,5 +286,6 @@ def audit():
 
 if __name__ == '__main__':
     {'init': initialize, 'preflight': preflight, 'resolve-preflight': resolve_preflight,
+     'points-preflight': points_preflight, 'stage-points': stage_points,
      'core': campaign.core, 'network': campaign.network, 'transfer': campaign.transfer,
      'all': campaign.all_phases, 'external': external_run, 'audit': audit}[sys.argv[1]]()

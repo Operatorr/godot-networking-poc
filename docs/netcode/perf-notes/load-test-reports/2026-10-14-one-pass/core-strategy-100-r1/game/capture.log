@@ -1,0 +1,5 @@
+tcpdump: listening on eth0, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+4081407 packets captured
+4081407 packets received by filter
+0 packets dropped by kernel
+flow recorder packets=4081407 parse_errors=0

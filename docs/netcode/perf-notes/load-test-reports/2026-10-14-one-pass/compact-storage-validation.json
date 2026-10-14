@@ -1,0 +1,7 @@
+{
+  "old_50_player_120_second_bundle_bytes": 115871322,
+  "compact_50_player_120_second_bundle_bytes": 1172585,
+  "reduction_percent": 98.98802828882887,
+  "scope": "One short clustered observation per collector, including ramp and warmup. Different worlds; storage comparison, not repeat variance or a universal high-population bound.",
+  "future_storage": "Compact graph-point bundles and small 1/64 fingerprint samples. No new private archive destination required by this checkpoint; free-space guard remains active."
+}

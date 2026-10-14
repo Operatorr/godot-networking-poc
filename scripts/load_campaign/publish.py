@@ -63,10 +63,11 @@ def publish(run_id):
                         output.write(text.encode())
                 else:
                     destination.write_text(text)
+    compact = json.loads((source / "manifest.json").read_text()).get("collection_format") == "article-points-v1"
     (target / "retained-evidence.json").write_text(json.dumps({
         "original_archives_relative_location": str(source.relative_to(run.ROOT)),
         "sha256": checksums,
-        "contents": "Unedited reports/logs, host observations, packet headers and full-datagram ENet descriptors. Retained off both temporary hosts in the ignored local evidence archive. Public copies redact connection addresses; no access records or credentials are published.",
+        "contents": "Curated article graph points, exact counters and bounded diagnostics; only 1/64 fingerprint samples privately retained, no raw packet archive." if compact else "Unedited reports/logs, host observations, packet headers and full-datagram ENet descriptors. Retained off both temporary hosts in the ignored local evidence archive. Public copies redact connection addresses; no access records or credentials are published.",
     }, indent=2))
 
 

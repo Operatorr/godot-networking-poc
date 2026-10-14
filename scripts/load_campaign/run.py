@@ -24,6 +24,7 @@ MEASURED = "/home/deploy/omega-measured/rust/target/release"
 MEASURED_BY_ROLE = {role: MEASURED for role in HOSTS}
 MEASURED_CHECKOUTS = {role: '/home/deploy/omega-measured' for role in HOSTS}
 UNIT_PREFIX = 'omega-campaign-'
+ARTICLE_POINTS = True
 SSH_OPTIONS = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15',
                '-o', 'ControlMaster=auto', '-o', 'ControlPersist=300',
                '-o', f'ControlPath=/tmp/omega-cax11-{os.getuid()}-%C',
@@ -113,6 +114,8 @@ def install():
         copy(role, ROOT / "scripts/load_campaign/host_collect.py", REMOTE + "/host_collect.py")
         copy(role, ROOT / "scripts/load_campaign/capture.py", REMOTE + "/capture.py")
         copy(role, ROOT / "scripts/load_campaign/flow_record.rs", REMOTE + "/flow_record.rs")
+        copy(role, ROOT / "scripts/load_campaign/article_flow.rs", REMOTE + "/article_flow.rs")
+        copy(role, ROOT / "scripts/load_campaign/article_points.py", REMOTE + "/article_points.py")
         ssh(role, f"source /home/deploy/.cargo/env && rustc --edition=2021 -O {REMOTE}/flow_record.rs -o {REMOTE}/flow-record")
     config = ssh("game", "cat /etc/omega-loadtest/arena.json; systemctl cat omega-loadtest-arena.service")
     (RAW / "original-config-service.txt").write_text(config)
@@ -134,6 +137,7 @@ def run(run_id, bots, behavior, duration=360, collection=True, build="original",
                 "excluded_warmup": 60, "collection": collection, "build": build, "variant": variant,
                 "started_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(), "stagger_ms": 100,
                 "input_hz": 30, "seed": 30, "difficulty": 1.0, "bandwidth_budget": 0, "profile": profile, "repeat": repeat}
+    manifest["collection_format"] = "article-points-v1" if ARTICLE_POINTS else "legacy-full"
     manifest["collector_source_sha256"] = {path.name: hashlib.sha256(path.read_bytes()).hexdigest()
                                           for path in (ROOT / "scripts/load_campaign").glob("*") if path.is_file()}
     unit = UNIT_PREFIX + run_id
@@ -161,13 +165,13 @@ def run(run_id, bots, behavior, duration=360, collection=True, build="original",
                 nft = 'table inet omega_measure { chain input { type filter hook input priority -150; policy accept; ip saddr ' + peer + ' udp sport 8081 counter comment "game_in"; ip saddr ' + peer + ' udp dport 8081 counter comment "bot_in"; }; chain output { type filter hook output priority -150; policy accept; ip daddr ' + peer + ' udp sport 8081 counter comment "game_out"; ip daddr ' + peer + ' udp dport 8081 counter comment "bot_out"; }; }'
                 ssh(role, "sudo -n nft delete table inet omega_measure 2>/dev/null || true")
                 ssh(role, "printf '%s' " + shlex.quote(nft) + " | sudo -n nft -f -")
-                capture = f"exec python3 {REMOTE}/capture.py {directory} eth0 {peer}"
+                capture = f"exec python3 {REMOTE}/capture.py {directory} eth0 {peer}" + (" --article" if ARTICLE_POINTS else "")
                 ssh(role, f"sudo -n systemd-run --quiet --property=KillMode=mixed --property=RuntimeMaxSec={duration + bots * 16 + 150} --unit={unit}-{role}-capture /bin/bash -c " + shlex.quote(capture))
                 import mirror
                 mirrored.append(role)
                 ssh(role, f"mkdir -p {directory}/prequeue")
                 mirror.apply(role, directory)
-                capture = f"exec python3 {REMOTE}/capture.py {directory}/prequeue omega-observe {peer}"
+                capture = f"exec python3 {REMOTE}/capture.py {directory}/prequeue omega-observe {peer}" + (" --article" if ARTICLE_POINTS else "")
                 ssh(role, f"sudo -n systemd-run --quiet --property=KillMode=mixed --property=RuntimeMaxSec={duration + bots * 16 + 150} --unit={unit}-{role}-prequeue /bin/bash -c " + shlex.quote(capture))
             collector = f"python3 {REMOTE}/host_collect.py --role {role} --directory {directory} --seconds {duration + bots * 16 + 120}" + (" --light" if not collection else "")
             if role == "bots":
@@ -180,10 +184,10 @@ def run(run_id, bots, behavior, duration=360, collection=True, build="original",
         for role in HOSTS:
             binary_path = REMOTE + "/original/omega-" + ("server" if role == "game" else "load-test") if build == "original" else MEASURED_BY_ROLE[role] + "/omega-" + ("server" if role == "game" else "load-test")
             command = "sha256sum " + binary_path
-            command += f"; sha256sum {REMOTE}/host_collect.py {REMOTE}/capture.py {REMOTE}/flow_record.rs {REMOTE}/flow-record"
+            command += f"; sha256sum {REMOTE}/host_collect.py {REMOTE}/capture.py {REMOTE}/flow_record.rs {REMOTE}/article_flow.rs {REMOTE}/article_points.py {REMOTE}/flow-record"
             if role == "game":
                 command += "; sha256sum /etc/omega-loadtest/arena.json; systemctl cat omega-loadtest-arena.service; systemctl show omega-loadtest-arena.service -p NRestarts -p MainPID -p CPUUsageNSec"
-                command += "; ss -u -a -m -n '( sport = :8081 )'; cat /proc/sys/net/core/rmem_default /proc/sys/net/core/rmem_max /proc/sys/net/core/wmem_default /proc/sys/net/core/wmem_max"
+                command += "; chronyc tracking; ss -u -a -m -n '( sport = :8081 )'; cat /proc/sys/net/core/rmem_default /proc/sys/net/core/rmem_max /proc/sys/net/core/wmem_default /proc/sys/net/core/wmem_max"
             if build != "original":
                 checkout = shlex.quote(MEASURED_CHECKOUTS[role])
                 command += f"; git -C {checkout} rev-parse HEAD; git -C {checkout} status --short"
@@ -231,7 +235,9 @@ def run(run_id, bots, behavior, duration=360, collection=True, build="original",
                     window = {"start": phase + 60_000_000_000, "end": phase + duration * 1_000_000_000}
                     (local / "window.json").write_text(json.dumps(window))
                     for role in HOSTS:
-                        copy(role, local / "window.json", REMOTE + "/" + run_id + "/" + role + "/window.json")
+                        target_window = REMOTE + "/" + run_id + "/" + role + "/window.json"
+                        copy(role, local / "window.json", target_window + ".partial")
+                        ssh(role, "mv " + shlex.quote(target_window + ".partial") + " " + shlex.quote(target_window))
                     if build not in ("original", "instrumented-off"):
                         ssh("game", f"cp {game_directory}/window.json /var/lib/omega-measure/current/window.json")
                     print(run_id + ": Phase 2; window scheduled", flush=True)
@@ -265,6 +271,8 @@ def run(run_id, bots, behavior, duration=360, collection=True, build="original",
             try:
                 if role in roles:
                     started = time.monotonic()
+                    if ARTICLE_POINTS:
+                        ssh(role, f"sudo -n chown -R deploy:deploy {directory}; python3 {REMOTE}/article_points.py {directory}")
                     ssh(role, f"sudo -n chown -R deploy:deploy {directory}; tc -s -j qdisc show dev eth0 > {directory}/qdisc-after.json; "
                         f"tar -czf {REMOTE}/{run_id}-{role}.tar.gz -C {REMOTE}/{run_id} {role}")
                     stages['archive_s'] = time.monotonic() - started

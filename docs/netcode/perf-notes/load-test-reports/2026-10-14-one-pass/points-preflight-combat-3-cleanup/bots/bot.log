@@ -1,0 +1,20 @@
+  Packet Loss:     0.01%
+
+Success Criteria:
+  [PASS] Average latency < 100ms: 1.7ms
+  [PASS] P95 latency < 150ms: 2.0ms
+  [PASS] Bandwidth < 5.0 KB/s per player: 3.80 KB/s
+  [PASS] Packet loss < 2.0%: 0.01%
+  [PASS] Bot crash rate < 5.0%: 0.0%
+  [PASS] Server tick rate > 30 Hz: 30.1 Hz
+
+------------------------------------------------------------
+  Conclusion: ALL CRITERIA MET
+------------------------------------------------------------
+
+Regression Assertions (§8.3):
+  [PASS] aoi_cull: 3/3 bots within 1150 u (95% required)
+  [PASS] decode_clean: no decode failures
+  [SKIP] per_peer_budget: skipped: no --rate-budget configured
+
+[2m2026-10-14T08:19:13.333190Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m JSON report saved to: /home/deploy/omega-results/one-pass-20261014/points-preflight-combat-3-cleanup/bots/bot.json

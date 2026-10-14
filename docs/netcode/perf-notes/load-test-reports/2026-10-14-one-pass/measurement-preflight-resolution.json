@@ -1,67 +1,74 @@
 {
   "scored_runs_authorized_by_preflight": true,
-  "validated_utc": "2026-10-14T05:21:08.179226+00:00",
+  "collection_format": "article-points-v1",
+  "validated_utc": "2026-10-14T08:20:24.055651+00:00",
   "binary_sha256_by_role": {
     "game": "f2bf76c6fa3c28b7fb9b5d52f216061e9c3239999d67bf8a42acadf44dada3a2",
     "bots": "8af491831304e1ab913089e3b8f1750ea701e4ccd8993d834bcc30ecfa3e8bdf"
   },
   "observations": [
-    "preflight-clustered-50-off",
-    "preflight-clustered-50-on",
-    "preflight-combat-3-combined",
-    "preflight-combat-3-cleanup"
+    "points-preflight-clustered-50-off",
+    "points-preflight-clustered-50-on",
+    "points-preflight-combat-3-combined",
+    "points-preflight-combat-3-cleanup"
   ],
   "measurement_seconds_per_preflight": 60,
   "overhead": {
-    "mean_tick_work_on_ms": 4.900527796666629,
-    "mean_tick_work_off_ms": 4.379511142777781,
-    "tick_difference_ms": 0.5210166538888483,
-    "server_cpu_on_percent_one_core": 20.849978193702803,
-    "server_cpu_off_percent_one_core": 18.85003738936333,
-    "generator_cpu_on_percent_one_core": 25.580905930438522,
-    "generator_cpu_off_percent_one_core": 23.134528605306826,
-    "observer_mean_ms": 0.010407626111111111
+    "mean_tick_work_on_ms": 4.852797825555545,
+    "mean_tick_work_off_ms": 4.190939738888887,
+    "tick_difference_ms": 0.6618580866666575,
+    "server_cpu_on_percent_one_core": 20.06662169837077,
+    "server_cpu_off_percent_one_core": 17.966644347303284,
+    "generator_cpu_on_percent_one_core": 25.528196729684634,
+    "generator_cpu_off_percent_one_core": 23.19399529278269,
+    "observer_mean_ms": 0.00981428388888889
   },
   "impairment_directional_observations": {
     "out": {
-      "sent": 6031,
-      "matched": 5968,
-      "unmatched": 63,
-      "loss_pct": 1.0446028850936826,
+      "sent": 87,
+      "matched": 85,
+      "unmatched": 2,
+      "loss_pct": 2.2988505747126435,
       "delay_ms": {
-        "mean": 50.36190767426273,
-        "p50": 50.089,
-        "p95": 83.84,
-        "p99": 97.76
+        "mean": 48.143341176470585,
+        "p50": 48.824,
+        "p95": 79.661,
+        "p99": 109.231
       },
-      "semantics": "sender pre-qdisc mirror when available (otherwise post-qdisc capture); timestamped full-UDP fingerprints matched to receiver \u00b12 ms/+2 s context; synchronized host clocks"
+      "sample_modulus": 64,
+      "estimate": true,
+      "uncertainty": "Deterministic fingerprint sample; identical retransmissions are correlated. No independent-packet confidence interval or exact zero-loss claim.",
+      "semantics": "sender pre-qdisc mirror when available (otherwise post-qdisc capture); timestamped full-UDP fingerprints matched to receiver \u00b12 ms/+2 s context; host clocks; signed, uncorrected timestamp differences include clock offset (negative sub-ms values are not negative network latency)"
     },
     "in": {
-      "sent": 7925,
-      "matched": 7844,
-      "unmatched": 81,
-      "loss_pct": 1.0220820189274449,
+      "sent": 122,
+      "matched": 121,
+      "unmatched": 1,
+      "loss_pct": 0.819672131147541,
       "delay_ms": {
-        "mean": 50.36691917389087,
-        "p50": 50.751,
-        "p95": 82.244,
-        "p99": 95.445
+        "mean": 49.18526446280992,
+        "p50": 51.034,
+        "p95": 81.077,
+        "p99": 102.82
       },
-      "semantics": "sender pre-qdisc mirror when available (otherwise post-qdisc capture); timestamped full-UDP fingerprints matched to receiver \u00b12 ms/+2 s context; synchronized host clocks"
+      "sample_modulus": 64,
+      "estimate": true,
+      "uncertainty": "Deterministic fingerprint sample; identical retransmissions are correlated. No independent-packet confidence interval or exact zero-loss claim.",
+      "semantics": "sender pre-qdisc mirror when available (otherwise post-qdisc capture); timestamped full-UDP fingerprints matched to receiver \u00b12 ms/+2 s context; host clocks; signed, uncorrected timestamp differences include clock offset (negative sub-ms values are not negative network latency)"
     }
   },
   "impairment_rtt_ms": {
-    "mean": 101.34408602150538,
-    "p95": 110.0,
+    "mean": 105.76344086021506,
+    "p95": 114.0,
     "p99": 118.0,
-    "max": 118.0
+    "max": 120.0
   },
   "cleanup_state": {
     "game": {
       "qdiscs": [
         {
           "kind": "fq_codel",
-          "handle": "8004:",
+          "handle": "8005:",
           "root": true,
           "refcnt": 2,
           "options": {
@@ -82,7 +89,7 @@
       "qdiscs": [
         {
           "kind": "fq_codel",
-          "handle": "8004:",
+          "handle": "8005:",
           "root": true,
           "refcnt": 2,
           "options": {

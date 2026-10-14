@@ -1,0 +1,39 @@
+{
+  "utc_ns": 1791965419692642645,
+  "monotonic_ns": 75381814501445,
+  "clock_ticks_s": 100,
+  "page_size": 4096,
+  "stat": "cpu  351884 10900 228568 14377166 4018 0 50194 0 0 0\ncpu0 188269 7861 121257 7165099 1902 0 28276 0 0 0\ncpu1 163614 3038 107311 7212066 2115 0 21918 0 0 0",
+  "net/snmp": "Ip: Forwarding DefaultTTL InReceives InHdrErrors InAddrErrors ForwDatagrams InUnknownProtos InDiscards InDelivers OutRequests OutDiscards OutNoRoutes ReasmTimeout ReasmReqds ReasmOKs ReasmFails FragOKs FragFails FragCreates OutTransmits\nIp: 2 64 23712179 0 13 0 0 0 23681631 36482949 0 1 0 0 0 0 0 0 0 36482949\nIcmp: InMsgs InErrors InCsumErrors InDestUnreachs InTimeExcds InParmProbs InSrcQuenchs InRedirects InEchos InEchoReps InTimestamps InTimestampReps InAddrMasks InAddrMaskReps OutMsgs OutErrors OutRateLimitGlobal OutRateLimitHost OutDestUnreachs OutTimeExcds OutParmProbs OutSrcQuenchs OutRedirects OutEchos OutEchoReps OutTimestamps OutTimestampReps OutAddrMasks OutAddrMaskReps\nIcmp: 179 0 0 0 0 0 0 0 179 0 0 0 0 0 199 0 0 36929 20 0 0 0 0 0 179 0 0 0 0\nIcmpMsg: InType8 OutType0 OutType3\nIcmpMsg: 179 179 20\nTcp: RtoAlgorithm RtoMin RtoMax MaxConn ActiveOpens PassiveOpens AttemptFails EstabResets CurrEstab InSegs OutSegs RetransSegs InErrs OutRsts InCsumErrors\nTcp: 1 200 120000 -1 39 2177 0 1 1 872478 3588606 26111 1 252 0\nUdp: InDatagrams NoPorts InErrors OutDatagrams RcvbufErrors SndbufErrors InCsumErrors IgnoredMulti MemErrors\nUdp: 22851900 36949 0 34649202 0 0 0 3 0\nUdpLite: InDatagrams NoPorts InErrors OutDatagrams RcvbufErrors SndbufErrors InCsumErrors IgnoredMulti MemErrors\nUdpLite: 0 0 0 0 0 0 0 0 0\n",
+  "interface": {
+    "tx_bytes": "8149788819\n",
+    "rx_bytes": "13595634081\n",
+    "tx_packets": "36529358\n",
+    "rx_packets": "23794279\n",
+    "rx_dropped": "0\n",
+    "tx_dropped": "0\n"
+  },
+  "processes": {
+    "499191": {
+      "comm": "omega-load-test\n",
+      "stat": "499191 (omega-load-test) R 499190 499190 499190 0 -1 4194304 1067 0 0 0 666 674 0 0 20 0 2 0 7531643 80175104 2315 18446744073709551615 192682297458688 192682300752260 281474524420592 0 0 0 0 4096 1090 0 0 0 17 0 0 0 0 0 0 192682300825232 192682300936816 192683144388608 281474524425354 281474524425710 281474524425710 281474524426168 0\n",
+      "status": "VmSwap:\t       0 kB"
+    }
+  },
+  "swarm_cgroup_cpu": "usage_usec 13416628\nuser_usec 6668213\nsystem_usec 6748415\nnice_usec 0\ncore_sched.force_idle_usec 0\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0\n",
+  "nft_before_utc_ns": 1791965419699627384,
+  "nft": {
+    "rc": 1,
+    "stdout": "",
+    "stderr": "Error: No such file or directory\nlist table inet omega_measure\n                ^^^^^^^^^^^^^\n"
+  },
+  "nft_after_utc_ns": 1791965419710202034,
+  "tc": {
+    "rc": 0,
+    "stdout": "[{\"kind\":\"fq_codel\",\"handle\":\"8004:\",\"root\":true,\"refcnt\":2,\"options\":{\"limit\":10240,\"flows\":1024,\"quantum\":1514,\"target\":4999,\"interval\":99999,\"memory_limit\":33554432,\"ecn\":true,\"drop_batch\":64},\"bytes\":3597008829,\"packets\":15282452,\"drops\":0,\"overlimits\":0,\"requeues\":3590,\"backlog\":0,\"qlen\":0,\"maxpacket\":3028,\"drop_overlimit\":0,\"new_flow_count\":18942,\"ecn_mark\":0,\"new_flows_len\":0,\"old_flows_len\":0}]\n",
+    "stderr": ""
+  },
+  "sample_duration_ns": 20436373,
+  "boundary": "start",
+  "target_utc_ns": 1791965419692247040
+}
