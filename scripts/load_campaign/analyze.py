@@ -432,6 +432,7 @@ def summarize(directory):
     result["growing_replication_backlog"] = growing_backlog
     sustainability = (result["population_min"] == manifest["requested_bots"] and agg["disconnected_bots"] == 0
                       and agg["total_decode_failures"] == 0 and agg["total_send_failures"] == 0 and agg["total_panics"] == 0
+                      and result.get("server_send_errors") == 0 and result.get("server_decode_errors") == 0
                       and result["tick_hz"] >= 29.7 and result["tick_work_ms"]["p99"] < 1000 / 30
                       and result["tick_lag_ms"]["end"] < 100 and not growing_backlog and not result["game_kernel_udp_errors"])
     result["server_sustainability_gate"] = sustainability

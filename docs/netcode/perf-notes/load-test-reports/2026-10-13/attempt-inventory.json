@@ -38,6 +38,18 @@
     "raw_asset_relative_location": "deployment/hetzner/results/campaign-20261013/core-combat-50-r1"
   },
   {
+    "run_id": "core-combat-50-r2",
+    "requested_population": 50,
+    "workload": "combat",
+    "requested_duration_s": 360,
+    "started_utc": "2026-10-13T16:29:16.389877+00:00",
+    "ended_utc": "2026-10-13T16:42:20.432679+00:00",
+    "classification": "native-stable-candidate",
+    "scored_300s_window_present": true,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/campaign-20261013/core-combat-50-r2"
+  },
+  {
     "run_id": "core-movement-50-r1",
     "requested_population": 50,
     "workload": "movement",
@@ -48,6 +60,30 @@
     "scored_300s_window_present": true,
     "retained_errors": [],
     "raw_asset_relative_location": "deployment/hetzner/results/campaign-20261013/core-movement-50-r1"
+  },
+  {
+    "run_id": "core-movement-50-r2",
+    "requested_population": 50,
+    "workload": "movement",
+    "requested_duration_s": 360,
+    "started_utc": "2026-10-13T16:43:15.527970+00:00",
+    "ended_utc": "2026-10-13T16:54:55.640216+00:00",
+    "classification": "native-stable-candidate",
+    "scored_300s_window_present": true,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/campaign-20261013/core-movement-50-r2"
+  },
+  {
+    "run_id": "core-movement-50-r3",
+    "requested_population": 50,
+    "workload": "movement",
+    "requested_duration_s": 360,
+    "started_utc": "2026-10-13T16:55:28.718978+00:00",
+    "ended_utc": "2026-10-13T17:09:38.603216+00:00",
+    "classification": "native-stable-candidate",
+    "scored_300s_window_present": true,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/campaign-20261013/core-movement-50-r3"
   },
   {
     "run_id": "core-strategy-50-r1",

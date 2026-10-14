@@ -98,37 +98,40 @@
     "profile": "native",
     "variant": "native",
     "runs": [
-      "core-combat-50-r1"
+      "core-combat-50-r1",
+      "core-combat-50-r2"
     ],
     "classes": [
+      "native-stable-candidate",
       "native-stable-candidate"
     ],
     "three_repeats_present": false,
     "all_collector_valid": true,
     "all_generator_valid": true,
     "selected_matrix_runs": [
-      "core-combat-50-r1"
+      "core-combat-50-r1",
+      "core-combat-50-r2"
     ],
     "native_sustainability_demonstrated_all_repeats": false,
     "spread_includes_all_source_rows_even_invalid": true,
     "metrics": {
       "outbound_ip_bytes_s": {
         "min": 946795.77,
-        "mean": 946795.77,
-        "median": 946795.77,
-        "max": 946795.77
+        "mean": 950331.1950000001,
+        "median": 950331.1950000001,
+        "max": 953866.62
       },
       "outbound_ip_bytes_player_s": {
         "min": 18935.915400000038,
-        "mean": 18935.915400000038,
-        "median": 18935.915400000038,
-        "max": 18935.915400000038
+        "mean": 19006.623900000035,
+        "median": 19006.623900000035,
+        "max": 19077.33240000003
       },
       "alive_fraction": {
         "min": 0.8606249669557337,
-        "mean": 0.8606249669557337,
-        "median": 0.8606249669557337,
-        "max": 0.8606249669557337
+        "mean": 0.8616526873764339,
+        "median": 0.8616526873764339,
+        "max": 0.8626804077971342
       },
       "tick_hz": {
         "min": 30.0,
@@ -138,32 +141,32 @@
       },
       "tick_work_p99_ms": {
         "min": 6.568729,
-        "mean": 6.568729,
-        "median": 6.568729,
-        "max": 6.568729
+        "mean": 6.6516915,
+        "median": 6.6516915,
+        "max": 6.734654
       },
       "server_cpu_percent_one_core": {
         "min": 19.70999827537515,
-        "mean": 19.70999827537515,
-        "median": 19.70999827537515,
-        "max": 19.70999827537515
+        "mean": 19.973335244929025,
+        "median": 19.973335244929025,
+        "max": 20.236672214482898
       },
       "generator_cpu_percent_one_core": {
         "min": 27.721947168433832,
-        "mean": 27.721947168433832,
-        "median": 27.721947168433832,
-        "max": 27.721947168433832
+        "mean": 27.86487471831809,
+        "median": 27.86487471831809,
+        "max": 28.007802268202347
       },
       "generator_achieved_hz": {
         "min": 29.99984330197382,
-        "mean": 29.99984330197382,
-        "median": 29.99984330197382,
-        "max": 29.99984330197382
+        "mean": 29.999850803330766,
+        "median": 29.999850803330766,
+        "max": 29.99985830468771
       },
       "rtt_p95_ms": {
-        "min": 4.0,
-        "mean": 4.0,
-        "median": 4.0,
+        "min": 3.0,
+        "mean": 3.5,
+        "median": 3.5,
         "max": 4.0
       },
       "tested_ccu_30day_game_host_USD_conditional": {
@@ -187,37 +190,43 @@
     "profile": "native",
     "variant": "native",
     "runs": [
-      "core-movement-50-r1"
+      "core-movement-50-r1",
+      "core-movement-50-r2",
+      "core-movement-50-r3"
     ],
     "classes": [
+      "native-stable-candidate",
+      "native-stable-candidate",
       "native-stable-candidate"
     ],
-    "three_repeats_present": false,
+    "three_repeats_present": true,
     "all_collector_valid": true,
     "all_generator_valid": true,
     "selected_matrix_runs": [
-      "core-movement-50-r1"
+      "core-movement-50-r1",
+      "core-movement-50-r2",
+      "core-movement-50-r3"
     ],
-    "native_sustainability_demonstrated_all_repeats": false,
+    "native_sustainability_demonstrated_all_repeats": true,
     "spread_includes_all_source_rows_even_invalid": true,
     "metrics": {
       "outbound_ip_bytes_s": {
-        "min": 627407.7633333333,
-        "mean": 627407.7633333333,
-        "median": 627407.7633333333,
+        "min": 588367.2966666666,
+        "mean": 609690.61,
+        "median": 613296.77,
         "max": 627407.7633333333
       },
       "outbound_ip_bytes_player_s": {
-        "min": 12548.155266666652,
-        "mean": 12548.155266666652,
-        "median": 12548.155266666652,
+        "min": 11767.345933333374,
+        "mean": 12193.812200000015,
+        "median": 12265.935400000017,
         "max": 12548.155266666652
       },
       "alive_fraction": {
         "min": 0.9635369715267984,
-        "mean": 0.9635369715267984,
-        "median": 0.9635369715267984,
-        "max": 0.9635369715267984
+        "mean": 0.9653134597753126,
+        "median": 0.9661128574376687,
+        "max": 0.9662905503614707
       },
       "tick_hz": {
         "min": 30.0,
@@ -226,33 +235,33 @@
         "max": 30.0
       },
       "tick_work_p99_ms": {
-        "min": 5.734718,
-        "mean": 5.734718,
+        "min": 5.628718,
+        "mean": 5.735559,
         "median": 5.734718,
-        "max": 5.734718
+        "max": 5.843241
       },
       "server_cpu_percent_one_core": {
-        "min": 17.3966687292737,
-        "mean": 17.3966687292737,
+        "min": 17.29333021332834,
+        "mean": 17.51333586114474,
         "median": 17.3966687292737,
-        "max": 17.3966687292737
+        "max": 17.850008640832183
       },
       "generator_cpu_percent_one_core": {
-        "min": 24.49120611637332,
-        "mean": 24.49120611637332,
+        "min": 23.59952492996816,
+        "mean": 24.327622139327072,
         "median": 24.49120611637332,
-        "max": 24.49120611637332
+        "max": 24.89213537163974
       },
       "generator_achieved_hz": {
         "min": 29.999371788853484,
-        "mean": 29.999371788853484,
-        "median": 29.999371788853484,
-        "max": 29.999371788853484
+        "mean": 29.999659692001902,
+        "median": 29.99974888342788,
+        "max": 29.99985840372434
       },
       "rtt_p95_ms": {
-        "min": 4.0,
-        "mean": 4.0,
-        "median": 4.0,
+        "min": 3.0,
+        "mean": 3.3333333333333335,
+        "median": 3.0,
         "max": 4.0
       },
       "tested_ccu_30day_game_host_USD_conditional": {

@@ -45,3 +45,10 @@ repeats and boundary observations remain pending. Investigate burst/socket press
 shared-host variation and collection effects before choosing any stabilization fix;
 the task does not tune buffers or optimize gameplay. Original-build/measurement
 collection controls currently quantify a movement workload, not this specific burst.
+
+The [second clustered repeat](core-clustered-50-r2/steady.json) recorded 10 game-host
+UDP receive-buffer errors, zero send-buffer errors and clean generator/capture checks.
+Tick cadence remained 30 Hz with Tick-work p99 7.475 ms. Of 450,000 enqueued Snapshots,
+449,972 were observed first transmitted before the qdisc during the common window.
+This corroborates the failing error gate at 50 players; the third repeat and refined
+boundary are still needed before describing a sustainable clustered population.

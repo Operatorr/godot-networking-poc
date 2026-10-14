@@ -103,6 +103,16 @@ and lifetime bandwidth remain diagnostic and separate from campaign validity gat
 [Matrix coverage](matrix-coverage.json) independently checks required cells and conditional
 admission before issue resolution. A phase flag alone is not completion evidence.
 
+At the 2026-10-14 01:33 UTC checkpoint, nine selected five-minute core observations and
+the external accounting check were recorded. Movement passed all three 50-player repeats;
+combat and strategy had two passing repeats each. Both recorded 50-player clustered
+repeats failed the native UDP-error gate, despite 30 Hz Tick cadence and low Tick-work p99.
+The remaining core repeats, larger populations, boundary refinement, idle controls,
+network profiles and transfer comparisons were still pending. The previous local
+controller had exited without a retained traceback after the third movement run;
+its completed archives matched the remote SHA-256 values, were analyzed without
+rerunning the workload, and the controller resumed from that evidence checkpoint.
+
 [Summary CSV](summary.csv) keeps every scored row's validity, authenticated/alive
 player-seconds, outbound IP rate, conditional economics and delivery/server/generator
 quality together. [Repeat spread](repeat-spread.json) includes all rows and marks groups
