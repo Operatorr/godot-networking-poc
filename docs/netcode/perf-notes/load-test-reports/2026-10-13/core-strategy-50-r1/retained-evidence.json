@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/campaign-20261013/core-strategy-50-r1",
+  "sha256": {
+    "bots.tar.gz": "13f64e17e950d3e72f50aec1231b6336296f7aed7a89c4fe636dbbc9d2a2ecf4",
+    "game.tar.gz": "ae25e42b57e6177a51a29db89ac7c7dbb15c4c82d6bb814aeb5e6511c45f0941"
+  },
+  "contents": "Unedited reports/logs, host observations, packet headers and full-datagram ENet descriptors. Retained off both temporary hosts in the ignored local evidence archive. Public copies redact connection addresses; no access records or credentials are published."
+}

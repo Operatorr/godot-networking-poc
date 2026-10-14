@@ -1,0 +1,43 @@
+{
+  "scored_runs_authorized_by_preflight": true,
+  "validated_utc": "2026-10-13T13:25:23.426113+00:00",
+  "measurement_revision": "642c1472232a5d3681654ab2965ba09db12ad69d",
+  "original_revision": "89348a21dcc3ce190aa851bb5f2cb49256097297",
+  "original_controls": [
+    "original-50-control-1",
+    "original-50-control-2",
+    "original-50-control-3",
+    "original-50-control-4"
+  ],
+  "final_native_on": "final-50-native-on",
+  "final_native_off": "final-50-native-off",
+  "selective_impairment_validation": "final-3-mirror-combined",
+  "final_overhead": {
+    "mean_tick_work_on_ms": 3.148941426666667,
+    "mean_tick_work_off_ms": 2.9790855794444444,
+    "tick_difference_ms": 0.1698558472222227,
+    "server_cpu_on_percent_one_core": 15.466682131028795,
+    "server_cpu_off_percent_one_core": 14.81667762878561,
+    "generator_cpu_on_percent_one_core": 18.01612466449981,
+    "generator_cpu_off_percent_one_core": 16.845250771829832,
+    "observer_mean_ms": 0.009957460555555556
+  },
+  "caveats": [
+    "Short preflights and controls are unscored",
+    "Different entropy-seeded worlds/shared-host variation prevent a pure causal overhead estimate",
+    "Native off control observed two downstream unmatched packets; all captures/parsers clean",
+    "Life transitions are authoritative 1Hz observations, with 3.2s bot respawn wait and sample-gap checks",
+    "Private unsent ENet queues are inferred from source enqueues versus first transmissions, not read directly"
+  ],
+  "primary_counter": "post-qdisc captured IP lengths; prequeue mirrors for delay/loss; nft offered-byte counters separately",
+  "peer_scope_validation": {
+    "capture_source_sha256": "8e96e11f9cdea6d95f55507b1d14997633f941f9538bbde801dcf5f2f297c0df",
+    "runs": [
+      "scope-3-native-validation",
+      "scope-3-combined-validation",
+      "scope-50-native-validation"
+    ],
+    "passed": true,
+    "reason": "Port-only capture included one unrelated Internet probe; raw capture/counters now require the test peer IP and game port."
+  }
+}

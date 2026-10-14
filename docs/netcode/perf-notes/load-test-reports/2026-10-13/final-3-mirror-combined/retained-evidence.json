@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/campaign-20261013/final-3-mirror-combined",
+  "sha256": {
+    "bots.tar.gz": "d945a8a587d2991ea768a928c3ee6daafd297cf93bf1c07e80b886ea31d91f59",
+    "game.tar.gz": "818bb59897b863392f8df2e0d7a341ba79a9e46dd6224abb95bf911cebe67cae"
+  },
+  "contents": "Unedited reports/logs, host observations, packet headers and full-datagram ENet descriptors. Retained off both temporary hosts in the ignored local evidence archive. Public copies redact connection addresses; no access records or credentials are published."
+}

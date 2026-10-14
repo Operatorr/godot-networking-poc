@@ -1,0 +1,15 @@
+{
+  "foreign_packets": [
+    {
+      "utc_ns": 1791901964910141000,
+      "ip_bytes": 104,
+      "ports": [
+        44325,
+        8081
+      ],
+      "peer": "not game host",
+      "payload_prefix_hex": "722e7757754719280c6d4b663b5a262c"
+    }
+  ],
+  "finding": "Port-only capture included non-test-peer traffic; no test-host address is published"
+}

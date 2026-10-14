@@ -1,0 +1,8 @@
+{
+  "original_packets": 1819124,
+  "filtered_packets": 1819123,
+  "excluded_packets": 1,
+  "excluded_ip_bytes": 104,
+  "test_peer_packets_preserved": true,
+  "filter": "IPv4 UDP, host <game-host>, port 8081"
+}

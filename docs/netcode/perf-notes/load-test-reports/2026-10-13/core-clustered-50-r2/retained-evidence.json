@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/campaign-20261013/core-clustered-50-r2",
+  "sha256": {
+    "bots.tar.gz": "41f0d8d8ab1605d52d783e2c4409064d20fb53d710e0318c0bf0feb1a83904a9",
+    "game.tar.gz": "2786f83b8efa7841b18a1f2a40588c81d6b7f9ac36fab1eb6e5a970602df2a43"
+  },
+  "contents": "Unedited reports/logs, host observations, packet headers and full-datagram ENet descriptors. Retained off both temporary hosts in the ignored local evidence archive. Public copies redact connection addresses; no access records or credentials are published."
+}

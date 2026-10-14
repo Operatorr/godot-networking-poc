@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/campaign-20261013/core-movement-50-r3",
+  "sha256": {
+    "bots.tar.gz": "495692933336c52613b36719ecc1f26221dc99d78aa4598706274b8d80f51076",
+    "game.tar.gz": "93893f32fa3610cd9939cf1408a36938e63dbe91878fc7d25d8836737bf90a36"
+  },
+  "contents": "Unedited reports/logs, host observations, packet headers and full-datagram ENet descriptors. Retained off both temporary hosts in the ignored local evidence archive. Public copies redact connection addresses; no access records or credentials are published."
+}

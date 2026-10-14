@@ -1,0 +1,143 @@
+[2m2026-10-13T13:39:33.344182Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m Starting load test: 50 bots, 360s duration, behavior=combat, difficulty=1.00, server=<game-host>:8081
+[2m2026-10-13T13:39:33.344230Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m Phase 1: Spawning bots...
+[2m2026-10-13T13:39:34.311602Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m Connected 10/10 bots...
+[2m2026-10-13T13:39:35.385451Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m Connected 20/20 bots...
+[2m2026-10-13T13:39:36.465431Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m Connected 30/30 bots...
+[2m2026-10-13T13:39:37.545771Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m Connected 40/40 bots...
+[2m2026-10-13T13:39:38.637199Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m Connected 50/50 bots...
+[2m2026-10-13T13:39:38.737719Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m Spawned 50 bots, 50 connected successfully
+[2m2026-10-13T13:39:38.737893Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m Phase 2: Running test for 360 seconds with 50 bots...
+[2m2026-10-13T13:39:43.739050Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [5s] bots=50 bytes_recv=5394789 state_updates=10909
+[2m2026-10-13T13:39:48.739013Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [10s] bots=50 bytes_recv=9417082 state_updates=18409
+[2m2026-10-13T13:39:53.737870Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [15s] bots=50 bytes_recv=13347397 state_updates=25909
+[2m2026-10-13T13:39:58.738522Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [20s] bots=50 bytes_recv=17272509 state_updates=33409
+[2m2026-10-13T13:40:03.738635Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [25s] bots=50 bytes_recv=21376639 state_updates=40909
+[2m2026-10-13T13:40:08.738571Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [30s] bots=50 bytes_recv=25438211 state_updates=48409
+[2m2026-10-13T13:40:13.738843Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [35s] bots=50 bytes_recv=29693332 state_updates=55909
+[2m2026-10-13T13:40:18.738056Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [40s] bots=50 bytes_recv=33695480 state_updates=63409
+[2m2026-10-13T13:40:23.739049Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [45s] bots=50 bytes_recv=37357711 state_updates=70909
+[2m2026-10-13T13:40:28.737915Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [50s] bots=50 bytes_recv=41281074 state_updates=78409
+[2m2026-10-13T13:40:33.738637Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [55s] bots=50 bytes_recv=45144954 state_updates=85909
+[2m2026-10-13T13:40:38.741061Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [60s] bots=50 bytes_recv=48902374 state_updates=93409
+[2m2026-10-13T13:40:43.737995Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [65s] bots=50 bytes_recv=52830215 state_updates=100909
+[2m2026-10-13T13:40:48.739074Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [70s] bots=50 bytes_recv=56704864 state_updates=108409
+[2m2026-10-13T13:40:53.738251Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [75s] bots=50 bytes_recv=60250670 state_updates=115909
+[2m2026-10-13T13:40:58.738776Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [80s] bots=50 bytes_recv=64037853 state_updates=123409
+[2m2026-10-13T13:41:03.737939Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [85s] bots=50 bytes_recv=67894026 state_updates=130909
+[2m2026-10-13T13:41:08.737980Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [90s] bots=50 bytes_recv=71725946 state_updates=138409
+[2m2026-10-13T13:41:13.739158Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [95s] bots=50 bytes_recv=75803388 state_updates=145909
+[2m2026-10-13T13:41:18.738273Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [100s] bots=50 bytes_recv=79772736 state_updates=153409
+[2m2026-10-13T13:41:23.738956Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [105s] bots=50 bytes_recv=84150571 state_updates=160909
+[2m2026-10-13T13:41:28.739076Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [110s] bots=50 bytes_recv=88181585 state_updates=168409
+[2m2026-10-13T13:41:33.738711Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [115s] bots=50 bytes_recv=92168350 state_updates=175909
+[2m2026-10-13T13:41:38.739219Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [120s] bots=50 bytes_recv=95872654 state_updates=183409
+[2m2026-10-13T13:41:43.738000Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [125s] bots=50 bytes_recv=99844800 state_updates=190909
+[2m2026-10-13T13:41:48.737953Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [130s] bots=50 bytes_recv=104282019 state_updates=198409
+[2m2026-10-13T13:41:53.738250Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [135s] bots=50 bytes_recv=108466048 state_updates=205909
+[2m2026-10-13T13:41:58.738740Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [140s] bots=50 bytes_recv=112640834 state_updates=213409
+[2m2026-10-13T13:42:03.738284Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [145s] bots=50 bytes_recv=116848204 state_updates=220909
+[2m2026-10-13T13:42:08.739021Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [150s] bots=50 bytes_recv=120643997 state_updates=228409
+[2m2026-10-13T13:42:13.737900Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [155s] bots=50 bytes_recv=124819125 state_updates=235909
+[2m2026-10-13T13:42:18.738901Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [160s] bots=50 bytes_recv=128893641 state_updates=243409
+[2m2026-10-13T13:42:23.737994Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [165s] bots=50 bytes_recv=132909990 state_updates=250909
+[2m2026-10-13T13:42:28.738836Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [170s] bots=50 bytes_recv=136948878 state_updates=258409
+[2m2026-10-13T13:42:33.738806Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [175s] bots=50 bytes_recv=140758870 state_updates=265909
+[2m2026-10-13T13:42:38.738633Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [180s] bots=50 bytes_recv=144784562 state_updates=273409
+[2m2026-10-13T13:42:43.738494Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [185s] bots=50 bytes_recv=148884104 state_updates=280909
+[2m2026-10-13T13:42:48.738839Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [190s] bots=50 bytes_recv=152614414 state_updates=288409
+[2m2026-10-13T13:42:53.738511Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [195s] bots=50 bytes_recv=156671476 state_updates=295909
+[2m2026-10-13T13:42:58.738820Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [200s] bots=50 bytes_recv=160945039 state_updates=303409
+[2m2026-10-13T13:43:03.738651Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [205s] bots=50 bytes_recv=164835101 state_updates=310909
+[2m2026-10-13T13:43:08.737900Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [210s] bots=50 bytes_recv=168638385 state_updates=318409
+[2m2026-10-13T13:43:13.738487Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [215s] bots=50 bytes_recv=172266197 state_updates=325909
+[2m2026-10-13T13:43:18.738104Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [220s] bots=50 bytes_recv=175877736 state_updates=333409
+[2m2026-10-13T13:43:23.738715Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [225s] bots=50 bytes_recv=179653633 state_updates=340909
+[2m2026-10-13T13:43:28.738960Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [230s] bots=50 bytes_recv=183618821 state_updates=348409
+[2m2026-10-13T13:43:33.738768Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [235s] bots=50 bytes_recv=187564561 state_updates=355909
+[2m2026-10-13T13:43:38.738060Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [240s] bots=50 bytes_recv=191711560 state_updates=363386
+[2m2026-10-13T13:43:43.738543Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [245s] bots=50 bytes_recv=195734845 state_updates=370886
+[2m2026-10-13T13:43:48.738829Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [250s] bots=50 bytes_recv=199644823 state_updates=378386
+[2m2026-10-13T13:43:53.738950Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [255s] bots=50 bytes_recv=203375692 state_updates=385886
+[2m2026-10-13T13:43:58.739136Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [260s] bots=50 bytes_recv=207299271 state_updates=393386
+[2m2026-10-13T13:44:03.737860Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [265s] bots=50 bytes_recv=211233313 state_updates=400886
+[2m2026-10-13T13:44:08.738185Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [270s] bots=50 bytes_recv=215402108 state_updates=408386
+[2m2026-10-13T13:44:13.738722Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [275s] bots=50 bytes_recv=219683712 state_updates=415886
+[2m2026-10-13T13:44:18.738989Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [280s] bots=50 bytes_recv=223911481 state_updates=423386
+[2m2026-10-13T13:44:23.738784Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [285s] bots=50 bytes_recv=228180728 state_updates=430886
+[2m2026-10-13T13:44:28.738241Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [290s] bots=50 bytes_recv=232558898 state_updates=438386
+[2m2026-10-13T13:44:33.739005Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [295s] bots=50 bytes_recv=236795928 state_updates=445886
+[2m2026-10-13T13:44:38.738399Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [300s] bots=50 bytes_recv=240940338 state_updates=453386
+[2m2026-10-13T13:44:43.738221Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [305s] bots=50 bytes_recv=245017268 state_updates=460886
+[2m2026-10-13T13:44:48.738539Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [310s] bots=50 bytes_recv=249533506 state_updates=468386
+[2m2026-10-13T13:44:53.738800Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [315s] bots=50 bytes_recv=254113890 state_updates=475886
+[2m2026-10-13T13:44:58.738332Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [320s] bots=50 bytes_recv=258331533 state_updates=483386
+[2m2026-10-13T13:45:03.738307Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [325s] bots=50 bytes_recv=262374557 state_updates=490886
+[2m2026-10-13T13:45:08.739108Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [330s] bots=50 bytes_recv=266865482 state_updates=498386
+[2m2026-10-13T13:45:13.738587Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [335s] bots=50 bytes_recv=271077889 state_updates=505886
+[2m2026-10-13T13:45:18.737932Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [340s] bots=50 bytes_recv=275260356 state_updates=513386
+[2m2026-10-13T13:45:23.738455Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [345s] bots=50 bytes_recv=279495418 state_updates=520886
+[2m2026-10-13T13:45:28.739082Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [350s] bots=50 bytes_recv=283837062 state_updates=528386
+[2m2026-10-13T13:45:33.738344Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [355s] bots=50 bytes_recv=288032447 state_updates=535886
+[2m2026-10-13T13:45:38.740417Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m Phase 3: Collecting metrics...
+
+============================================================
+  Omega Realm Load Test Report (ENet/Rust)
+============================================================
+
+Test Configuration:
+  Bot Count:       50
+  Duration:        360 seconds
+  Server:          <game-host>:8081
+  Timestamp:       2026-10-13T13:45:38Z (UTC)
+
+Connection Summary:
+  Connected:       50
+  Disconnected:    0
+  Errors:          0
+  Decode Failures: 0
+  Send Failures:   0
+  Bot Panics:      0
+
+Server Metrics (client-estimated):
+  Est. Tick Rate:  30.4 Hz
+  State Updates:   10868 per bot (avg)
+
+Server Metrics (server-reported):
+  Avg Tick Time:   4.94ms
+  Max Tick Time:   6.05ms
+  Players:         50
+  Entity Count:    131
+  Total Bytes Out: 292983102
+  Avg BW/Client:   18708 bytes
+
+Network Metrics:
+  Packets Sent:    550255
+  Packets Recv:    4260647
+  Bandwidth/Player: 16.54 KB/s
+
+Latency Distribution (ENet RTT):
+  Min:             1.0ms
+  Avg:             2.1ms
+  Max:             5.0ms
+  P95:             4.0ms
+  P99:             4.0ms
+  Packet Loss:     0.00%
+
+Success Criteria:
+  [PASS] Average latency < 100ms: 2.1ms
+  [PASS] P95 latency < 150ms: 4.0ms
+  [FAIL] Bandwidth < 5.0 KB/s per player: 16.54 KB/s
+  [PASS] Packet loss < 2.0%: 0.00%
+  [PASS] Bot crash rate < 5.0%: 0.0%
+  [PASS] Server tick rate > 30 Hz: 30.4 Hz
+
+------------------------------------------------------------
+  Conclusion: SOME CRITERIA FAILED
+------------------------------------------------------------
+
+Regression Assertions (§8.3):
+  [PASS] aoi_cull: 50/50 bots within 1150 u (95% required)
+  [PASS] decode_clean: no decode failures
+  [SKIP] per_peer_budget: skipped: no --rate-budget configured
+
+[2m2026-10-13T13:45:38.746579Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m JSON report saved to: /home/deploy/omega-results/campaign-20261013/core-combat-50-r1/bots/bot.json

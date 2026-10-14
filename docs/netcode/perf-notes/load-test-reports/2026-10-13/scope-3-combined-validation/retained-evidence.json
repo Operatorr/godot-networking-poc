@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/campaign-20261013/scope-3-combined-validation",
+  "sha256": {
+    "bots.tar.gz": "0a09faf13a40d6ee17391f16cad088fe2c8ab7f8e2abac1f321fd52cce5eaef3",
+    "game.tar.gz": "f00d16a77547fbf1fca4fe55e489855e36860677640a5434298403efad906108"
+  },
+  "contents": "Unedited reports/logs, host observations, packet headers and full-datagram ENet descriptors. Retained off both temporary hosts in the ignored local evidence archive. Public copies redact connection addresses; no access records or credentials are published."
+}

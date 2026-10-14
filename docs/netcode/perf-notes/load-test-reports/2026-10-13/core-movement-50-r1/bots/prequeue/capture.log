@@ -1,0 +1,5 @@
+tcpdump: listening on omega-observe, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+943948 packets captured
+943948 packets received by filter
+0 packets dropped by kernel
+flow recorder packets=943948 parse_errors=0

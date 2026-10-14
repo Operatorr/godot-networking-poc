@@ -1,0 +1,55 @@
+80c94e7071887212594285b90960b41f11a97438ad2b2b0b8e15278e210e41b1  /home/deploy/omega-measured/rust/target/release/omega-server
+bac0bf8947937a334b4fd9e814e1e3a4e15b9753fd3f1c02e185285d26f0d68c  /etc/omega-loadtest/arena.json
+00080235cdd599da6b9a20ca0698acff7e57fe46a83fbc6df9b75381dce9bf5b  /home/deploy/omega-results/campaign-20261013/host_collect.py
+c3aebea98a8a53671edd8fc23cd58c486b7156eb384775f217de2b63490d1e00  /home/deploy/omega-results/campaign-20261013/capture.py
+9c322f21611c721fae66a28892d2b2862193bca04f07d036027c6123867a8c96  /home/deploy/omega-results/campaign-20261013/flow-record
+642c1472232a5d3681654ab2965ba09db12ad69d
+# /etc/systemd/system/omega-loadtest-arena.service
+[Unit]
+Description=Omega isolated load-test Arena (ENet UDP 8081, no API)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=deploy
+Group=deploy
+WorkingDirectory=/home/deploy/omega-realm/rust
+Environment=RUST_LOG=info
+Environment=OMEGA_API_SERVER_URL=
+ExecStart=/home/deploy/omega-realm/rust/target/release/omega-server --config /etc/omega-loadtest/arena.json --allow-unsigned-tickets
+Restart=on-failure
+RestartSec=3
+LimitNOFILE=65536
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target
+
+# /etc/systemd/system/omega-loadtest-arena.service.d/measurement.conf
+[Service]
+ExecStart=
+ExecStart=/home/deploy/omega-measured/rust/target/release/omega-server --config /etc/omega-loadtest/arena.json --allow-unsigned-tickets
+Environment=OMEGA_MEASURE_DIR=/var/lib/omega-measure/current
+ReadWritePaths=/var/lib/omega-measure
+Reference ID    : B97DBE7B (ntp-nts-3.ps5.canonical.com)
+Stratum         : 3
+Ref time (UTC)  : Tue Oct 13 13:44:14 2026
+System time     : 0.000349074 seconds fast of NTP time
+Last offset     : +0.000080288 seconds
+RMS offset      : 0.000362822 seconds
+Frequency       : 13.712 ppm slow
+Residual freq   : +0.001 ppm
+Skew            : 0.211 ppm
+Root delay      : 0.028786572 seconds
+Root dispersion : 0.004470254 seconds
+Update interval : 1028.6 seconds
+Leap status     : Normal
+[{"kind":"fq_codel","handle":"8002:","root":true,"refcnt":2,"options":{"limit":10240,"flows":1024,"quantum":1514,"target":4999,"interval":99999,"memory_limit":33554432,"ecn":true,"drop_batch":64},"bytes":1095846672,"packets":2070023,"drops":0,"overlimits":0,"requeues":2324,"backlog":0,"qlen":0,"maxpacket":1404,"drop_overlimit":0,"new_flow_count":17442,"ecn_mark":0,"new_flows_len":0,"old_flows_len":0}]

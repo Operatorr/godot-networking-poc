@@ -1117,6 +1117,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sim_core",
+ "socket2",
  "tracing",
  "tracing-subscriber",
  "ureq",

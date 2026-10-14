@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/campaign-20261013/scope-50-native-validation",
+  "sha256": {
+    "bots.tar.gz": "366295333d7108c9c57422a23f114b54cc63aa1aa52119bcf1bdf48909143f02",
+    "game.tar.gz": "c87853d032688d07550852984a08f0068c89530b0db82d5a7b95395b1d3be0c9"
+  },
+  "contents": "Unedited reports/logs, host observations, packet headers and full-datagram ENet descriptors. Retained off both temporary hosts in the ignored local evidence archive. Public copies redact connection addresses; no access records or credentials are published."
+}

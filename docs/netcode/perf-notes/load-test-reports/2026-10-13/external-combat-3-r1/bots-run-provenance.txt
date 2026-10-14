@@ -1,0 +1,1 @@
+Operator macOS external generator. Binary and observer SHA-256 in manifest. Socket observations are not NIC timestamps. Local code hash matches separately retained build evidence.

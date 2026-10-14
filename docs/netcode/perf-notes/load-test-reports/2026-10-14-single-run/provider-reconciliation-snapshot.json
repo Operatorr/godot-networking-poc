@@ -1,0 +1,38 @@
+{
+  "provider_reading": {
+    "game_TB": "0.00177221",
+    "bots_TB": "0.00178569",
+    "recorded_utc": "2026-10-14T01:42:49.283221+00:00",
+    "reported_by_user": true,
+    "decimal_interpretation_conditional": true
+  },
+  "same_zone_selected_windows": {
+    "runs": 9,
+    "game_out_ip_bytes": 2369450517,
+    "client_out_ip_bytes": 522795311,
+    "client_endpoint": "Hetzner bot host"
+  },
+  "external_client_windows": {
+    "runs": 1,
+    "game_out_ip_bytes": 4844642,
+    "client_out_ip_bytes": 2138729,
+    "client_endpoint": "Operator Mac"
+  },
+  "archive_download_payload_bytes": {
+    "game": {
+      "files": 29,
+      "bytes": 1887676993,
+      "semantics": "Retained downloaded compressed-file payload sizes; excludes SSH framing, retransmits, duplicate downloads and other external traffic."
+    },
+    "bots": {
+      "files": 29,
+      "bytes": 1908062685,
+      "semantics": "Retained downloaded compressed-file payload sizes; excludes SSH framing, retransmits, duplicate downloads and other external traffic."
+    }
+  },
+  "scope": "Snapshot at the recorded UTC time. Selected completed measurement windows omit ramp, warmup and preflights; archives include those attempts. Latest in-flight/unfinished analysis is not in the window sum. Archive bytes exclude SSH/TCP overhead. These are not matched provider-counter endpoints.",
+  "sources": [
+    "https://docs.hetzner.com/cloud/billing/faq/",
+    "https://docs.hetzner.com/cloud/general/locations/"
+  ]
+}

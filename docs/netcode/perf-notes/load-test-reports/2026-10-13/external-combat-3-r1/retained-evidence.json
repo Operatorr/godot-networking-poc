@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/campaign-20261013/external-combat-3-r1",
+  "sha256": {
+    "bots.tar.gz": "3824e5815f68795289d0fee6fd99ca6792d3558eac39846fe781d7a613cde725",
+    "game.tar.gz": "34187532eef594f88a61e1cb99f9ba8371fd5d26ec5fd7d2528ae616bf5466ca"
+  },
+  "contents": "Unedited reports/logs, host observations, packet headers and full-datagram ENet descriptors. Retained off both temporary hosts in the ignored local evidence archive. Public copies redact connection addresses; no access records or credentials are published."
+}

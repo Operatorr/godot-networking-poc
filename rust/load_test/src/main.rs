@@ -12,6 +12,7 @@
 mod assertions;
 mod behavior;
 mod bot;
+mod measurement;
 mod metrics;
 mod rng;
 mod ticket;
@@ -374,6 +375,7 @@ fn main() {
     }
 
     let start = Instant::now();
+    let mut recorder = measurement::Recorder::from_env();
     let now = || start.elapsed().as_secs_f64();
     info!(
         "Starting load test: {bot_count} bots, {} duration, behavior={}, difficulty={:.2}, server={}",
@@ -510,6 +512,9 @@ fn main() {
     // ── Phase 2: run ────────────────────────────────────────────────────────────────────────
     let mut time_series: Vec<Value> = Vec::new();
     let run_started = now();
+    if let Some(recorder) = &recorder {
+        recorder.phase2();
+    }
     if connected == 0 {
         error!("No bots connected! Aborting test.");
     } else {
@@ -522,10 +527,22 @@ fn main() {
             }
         );
         let mut next_sample_at = run_started + 5.0;
+        let mut next_observation_at = run_started;
+        let mut measured_started = false;
         while !stop.load(Ordering::SeqCst)
             && (duration == 0 || now() - run_started < duration as f64)
         {
             poll_all(&mut bots, now());
+            if let Some(recorder) = &mut recorder {
+                let elapsed = now() - run_started;
+                if elapsed >= 60.0 && !measured_started {
+                    recorder.sample(&bots, elapsed, "start");
+                    measured_started = true;
+                } else if now() >= next_observation_at {
+                    recorder.sample(&bots, elapsed, "");
+                    next_observation_at = now() + 1.0;
+                }
+            }
             if now() >= next_sample_at {
                 next_sample_at += 5.0;
                 time_series.push(sample_time_series(&bots, now() - run_started));
@@ -538,6 +555,9 @@ fn main() {
     }
 
     // ── Phase 3: disconnect + collect ───────────────────────────────────────────────────────
+    if let Some(recorder) = &mut recorder {
+        recorder.sample(&bots, now() - run_started, "end");
+    }
     info!("Phase 3: Collecting metrics...");
     let t = now();
     for b in &mut bots {

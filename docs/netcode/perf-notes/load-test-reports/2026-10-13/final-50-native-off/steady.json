@@ -1,0 +1,553 @@
+{
+  "run_id": "final-50-native-off",
+  "requested_bots": 50,
+  "behavior": "movement",
+  "duration": 120,
+  "excluded_warmup": 60,
+  "collection": true,
+  "build": "instrumented-off",
+  "variant": "native",
+  "started_utc": "2026-10-13T13:18:02.071978+00:00",
+  "stagger_ms": 100,
+  "input_hz": 30,
+  "seed": 30,
+  "difficulty": 1.0,
+  "bandwidth_budget": 0,
+  "profile": "native",
+  "repeat": 1,
+  "collector_source_sha256": {
+    "run.py": "244f05cabe1258d71b34e508fea402f6b492df9302e66db0ea0e96c07ee8216a",
+    "host_collect.py": "00080235cdd599da6b9a20ca0698acff7e57fe46a83fbc6df9b75381dce9bf5b",
+    "mirror.py": "6813b64c583082ea88f4e91d56e5c5f1f230587968992b29ee82c775222fa602",
+    "build_hosts.py": "80583acd7cacede8b08bea72b8ec83ba82bcff87127e279a4de2a63b1a7f4565",
+    "netem.py": "94298d3a441000f6f83edfefb3cf85b31029467ef45e05b2eaf726dbeab4045c",
+    "socket_capture_macos.c": "2583507b55df1e29b4685c5a21c465a48dd54f2ac3ffa4368332e39683cfe633",
+    "campaign.py": "38aa3bc9e0878e0bb732714dd692dbe5015691dee8b3c079006d9d74fb26b359",
+    "capture.py": "c3aebea98a8a53671edd8fc23cd58c486b7156eb384775f217de2b63490d1e00",
+    ".gitignore": "32dae3052f331ee34d628ef535709b301259a45df7c7522c4d35dcf49873f00b",
+    "flow_record.rs": "0081dbe48b363aa9408c8c37abb6e3d2e336a761ba773883bf0d48cdff219e28",
+    "economics.py": "23ce4505e7f92638e2534b3d3f6b6a35e8622c77392d360dd672a4bb029fc970",
+    "external.py": "16b1c43c0ec230e9189ce61ddfd088bc93a0210eaff6e01b0aab7c4c99d6aa1c",
+    "analyze.py": "4aae7464bc41f3eaae0c8c0d5f88cc8ec38cad2d91992d8710da3a9aa2465e57",
+    "publish.py": "0b39e812c3c52520cffe20212466fbc61ab4d2db43458bab3217c8ab4c493da3",
+    "summarize_campaign.py": "32c7861c68db9f14f69f19741a463c56c1d70a482dd1b9ca49aaf93dc70e7cca"
+  },
+  "game_config": {
+    "mode": "arena",
+    "port": 8081,
+    "metrics_port": 9100,
+    "tick_rate": 30,
+    "max_players": 999,
+    "region": "local",
+    "advertise_url": "",
+    "debug_logging": false,
+    "api_server_url": "",
+    "allow_unsigned_tickets": true,
+    "aoi_radius": 1000.0,
+    "aoi_exit_radius": 1100.0,
+    "lod_near_radius": 400.0,
+    "lod_mid_radius": 1000.0,
+    "snapshot_rate_hz": 30,
+    "default_client_bandwidth_bps": 120000,
+    "max_client_bandwidth_bps": 200000,
+    "monster_ai_difficulty": 0.85
+  },
+  "service_invocation": "060ce45de5e6495ba814c3dbdd663d5e",
+  "ended_utc": "2026-10-13T13:23:27.577261+00:00",
+  "derived_source_sha256": "b73c350dece926063b4ac155ff5f16ca796a16b10d7a758581c93a5cb271102f",
+  "archive_sha256": {
+    "bots.tar.gz": "77501231f710a2b139a0bed57f05413afea1a9edf3bdd58ea657e5613cfbf124",
+    "game.tar.gz": "76719038730f43927e880a26c614479c4e6606674958825a4604764625191d4a"
+  },
+  "window_s": 60.0,
+  "game_host": {
+    "duration_s": 59.999955609,
+    "process_cpu_percent_one_core": 14.81667762878561,
+    "rss_end_bytes": 13336576,
+    "swap_end_kib": 0,
+    "steal_percent": 0.0,
+    "busy_percent_all_cores": 11.465770684586309,
+    "per_core": {
+      "cpu0": {
+        "busy_percent": 10.228802153432031,
+        "steal_percent": 0.0
+      },
+      "cpu1": {
+        "busy_percent": 12.684563758389261,
+        "steal_percent": 0.0
+      }
+    },
+    "kernel_udp_delta": {
+      "InDatagrams": 133753,
+      "NoPorts": 0,
+      "InErrors": 0,
+      "OutDatagrams": 108506,
+      "RcvbufErrors": 0,
+      "SndbufErrors": 0,
+      "InCsumErrors": 0,
+      "IgnoredMulti": 0,
+      "MemErrors": 0
+    },
+    "interface": {
+      "tx_bytes": 28022816,
+      "rx_bytes": 8959313,
+      "tx_packets": 108507,
+      "rx_packets": 133800,
+      "rx_dropped": 0,
+      "tx_dropped": 0
+    },
+    "flow": {
+      "game_in": {
+        "bytes": 0,
+        "packets": 0
+      },
+      "bot_in": {
+        "bytes": 7084567,
+        "packets": 133770
+      },
+      "game_out": {
+        "bytes": 26493077,
+        "packets": 108504
+      },
+      "bot_out": {
+        "bytes": 0,
+        "packets": 0
+      }
+    },
+    "boundary_start_lateness_ms": 0.395092,
+    "boundary_end_lateness_ms": 0.350541,
+    "boundary_sample_duration_ms": [
+      27.438778,
+      19.886714
+    ]
+  },
+  "game_capture_kernel_drops": 0,
+  "game_flow_parse_errors": 0,
+  "game_packets": {
+    "out": {
+      "packets": 108506,
+      "ip_bytes": 26503690,
+      "reliable_retry_command_bytes": 33,
+      "reliable_retry_payload_bytes": 21,
+      "reliable_commands": 40750,
+      "acks": 6412,
+      "outstanding_commands_end": 0,
+      "first_message_counts_by_type": {
+        "66": 88805,
+        "65": 90000,
+        "67": 36850,
+        "68": 3000
+      },
+      "first_transmission_payload_bytes": 21453783
+    },
+    "in": {
+      "packets": 133754,
+      "ip_bytes": 7084559,
+      "reliable_retry_command_bytes": 0,
+      "reliable_retry_payload_bytes": 0,
+      "reliable_commands": 1097,
+      "acks": 40790,
+      "outstanding_commands_end": 0,
+      "first_message_counts_by_type": {
+        "2": 89996,
+        "3": 898,
+        "6": 192,
+        "5": 7
+      },
+      "first_transmission_payload_bytes": 1984985
+    },
+    "wire_input_counts_by_port": {
+      "49888": 1801,
+      "59031": 1800,
+      "34402": 1800,
+      "34761": 1800,
+      "34481": 1800,
+      "43426": 1800,
+      "53653": 1800,
+      "45371": 1800,
+      "54105": 1800,
+      "56368": 1800,
+      "54466": 1800,
+      "33770": 1800,
+      "47074": 1800,
+      "45303": 1800,
+      "34765": 1798,
+      "47256": 1800,
+      "59458": 1800,
+      "45193": 1800,
+      "52207": 1800,
+      "35278": 1800,
+      "40300": 1800,
+      "49024": 1800,
+      "44767": 1800,
+      "41234": 1798,
+      "46802": 1800,
+      "45392": 1800,
+      "46474": 1800,
+      "55834": 1800,
+      "44580": 1800,
+      "58044": 1800,
+      "57559": 1800,
+      "38161": 1800,
+      "41457": 1800,
+      "38956": 1800,
+      "40045": 1800,
+      "37386": 1800,
+      "55487": 1800,
+      "51476": 1800,
+      "35853": 1800,
+      "54657": 1800,
+      "33199": 1800,
+      "52317": 1800,
+      "44653": 1800,
+      "44993": 1800,
+      "33679": 1800,
+      "48702": 1800,
+      "53074": 1800,
+      "36139": 1800,
+      "57030": 1799,
+      "55373": 1800
+    }
+  },
+  "game_prequeue_capture_drops": 0,
+  "game_prequeue_parse_errors": 0,
+  "game_prequeue_packets": {
+    "out": {
+      "packets": 108506,
+      "ip_bytes": 26503690,
+      "reliable_retry_command_bytes": 33,
+      "reliable_retry_payload_bytes": 21,
+      "reliable_commands": 40750,
+      "acks": 6412,
+      "outstanding_commands_end": 63904,
+      "first_message_counts_by_type": {
+        "66": 88805,
+        "65": 90000,
+        "67": 36850,
+        "68": 3000
+      },
+      "first_transmission_payload_bytes": 21453783
+    },
+    "in": {
+      "packets": 0,
+      "ip_bytes": 0,
+      "reliable_retry_command_bytes": 0,
+      "reliable_retry_payload_bytes": 0,
+      "reliable_commands": 0,
+      "acks": 0,
+      "outstanding_commands_end": 0,
+      "first_message_counts_by_type": {},
+      "first_transmission_payload_bytes": 0
+    },
+    "wire_input_counts_by_port": {}
+  },
+  "exporter_tick_count": 1800.0,
+  "exporter_tick_mean_ms": 2.9790855794444444,
+  "exporter_tick_hz": 30.0,
+  "bots_host": {
+    "duration_s": 60.000044742,
+    "process_cpu_percent_one_core": null,
+    "swarm_cgroup_cpu_percent_one_core": 16.845250771829832,
+    "swarm_cgroup_cpu_semantics": "Swarm unit (bot process plus tiny shell wrapper), matched boundaries; final systemd value if process exited during boundary observation",
+    "steal_percent": 0.0,
+    "busy_percent_all_cores": 14.022949713128586,
+    "per_core": {
+      "cpu0": {
+        "busy_percent": 15.59248069822088,
+        "steal_percent": 0.0
+      },
+      "cpu1": {
+        "busy_percent": 12.45122985581001,
+        "steal_percent": 0.0
+      }
+    },
+    "kernel_udp_delta": {
+      "InDatagrams": 108504,
+      "NoPorts": 0,
+      "InErrors": 0,
+      "OutDatagrams": 133755,
+      "RcvbufErrors": 0,
+      "SndbufErrors": 0,
+      "InCsumErrors": 0,
+      "IgnoredMulti": 0,
+      "MemErrors": 0
+    },
+    "interface": {
+      "tx_bytes": 9032433,
+      "rx_bytes": 28094787,
+      "tx_packets": 134043,
+      "rx_packets": 108852,
+      "rx_dropped": 0,
+      "tx_dropped": 0
+    },
+    "flow": {
+      "game_in": {
+        "bytes": 26492782,
+        "packets": 108503
+      },
+      "bot_in": {
+        "bytes": 0,
+        "packets": 0
+      },
+      "game_out": {
+        "bytes": 0,
+        "packets": 0
+      },
+      "bot_out": {
+        "bytes": 7084843,
+        "packets": 133775
+      }
+    },
+    "boundary_start_lateness_ms": 0.333821,
+    "boundary_end_lateness_ms": 0.378163,
+    "boundary_sample_duration_ms": [
+      23.574925,
+      23.382723
+    ]
+  },
+  "bots_capture_kernel_drops": 0,
+  "bots_flow_parse_errors": 0,
+  "bots_packets": {
+    "out": {
+      "packets": 108504,
+      "ip_bytes": 26503357,
+      "reliable_retry_command_bytes": 0,
+      "reliable_retry_payload_bytes": 0,
+      "reliable_commands": 40748,
+      "acks": 6412,
+      "outstanding_commands_end": 0,
+      "first_message_counts_by_type": {
+        "66": 88804,
+        "65": 89999,
+        "67": 36850,
+        "68": 3000
+      },
+      "first_transmission_payload_bytes": 21453563
+    },
+    "in": {
+      "packets": 133753,
+      "ip_bytes": 7084499,
+      "reliable_retry_command_bytes": 0,
+      "reliable_retry_payload_bytes": 0,
+      "reliable_commands": 1097,
+      "acks": 40790,
+      "outstanding_commands_end": 0,
+      "first_message_counts_by_type": {
+        "2": 89995,
+        "3": 898,
+        "6": 192,
+        "5": 7
+      },
+      "first_transmission_payload_bytes": 1984963
+    },
+    "wire_input_counts_by_port": {
+      "34761": 1800,
+      "34481": 1800,
+      "59031": 1800,
+      "43426": 1800,
+      "34402": 1800,
+      "53653": 1800,
+      "45371": 1800,
+      "54105": 1800,
+      "54466": 1800,
+      "56368": 1800,
+      "33770": 1800,
+      "45303": 1800,
+      "47074": 1800,
+      "34765": 1798,
+      "47256": 1800,
+      "59458": 1800,
+      "45193": 1800,
+      "52207": 1800,
+      "35278": 1800,
+      "49024": 1800,
+      "40300": 1800,
+      "41234": 1798,
+      "46802": 1800,
+      "44767": 1800,
+      "45392": 1800,
+      "46474": 1800,
+      "55834": 1800,
+      "44580": 1800,
+      "58044": 1800,
+      "57559": 1800,
+      "38161": 1800,
+      "41457": 1800,
+      "38956": 1800,
+      "40045": 1800,
+      "37386": 1800,
+      "55487": 1800,
+      "51476": 1800,
+      "35853": 1800,
+      "54657": 1800,
+      "33199": 1800,
+      "52317": 1800,
+      "44653": 1800,
+      "33679": 1800,
+      "44993": 1800,
+      "48702": 1800,
+      "53074": 1800,
+      "36139": 1800,
+      "57030": 1799,
+      "49888": 1800,
+      "55373": 1800
+    }
+  },
+  "bots_prequeue_capture_drops": 0,
+  "bots_prequeue_parse_errors": 0,
+  "bots_prequeue_packets": {
+    "out": {
+      "packets": 0,
+      "ip_bytes": 0,
+      "reliable_retry_command_bytes": 0,
+      "reliable_retry_payload_bytes": 0,
+      "reliable_commands": 0,
+      "acks": 0,
+      "outstanding_commands_end": 0,
+      "first_message_counts_by_type": {},
+      "first_transmission_payload_bytes": 0
+    },
+    "in": {
+      "packets": 133753,
+      "ip_bytes": 7084499,
+      "reliable_retry_command_bytes": 0,
+      "reliable_retry_payload_bytes": 0,
+      "reliable_commands": 1097,
+      "acks": 40790,
+      "outstanding_commands_end": 2188,
+      "first_message_counts_by_type": {
+        "2": 89995,
+        "3": 898,
+        "6": 192,
+        "5": 7
+      },
+      "first_transmission_payload_bytes": 1984963
+    },
+    "wire_input_counts_by_port": {
+      "34761": 1800,
+      "34481": 1800,
+      "59031": 1800,
+      "43426": 1800,
+      "34402": 1800,
+      "53653": 1800,
+      "45371": 1800,
+      "54105": 1800,
+      "54466": 1800,
+      "56368": 1800,
+      "33770": 1800,
+      "45303": 1800,
+      "47074": 1800,
+      "34765": 1798,
+      "47256": 1800,
+      "59458": 1800,
+      "45193": 1800,
+      "52207": 1800,
+      "35278": 1800,
+      "49024": 1800,
+      "40300": 1800,
+      "41234": 1798,
+      "46802": 1800,
+      "44767": 1800,
+      "45392": 1800,
+      "46474": 1800,
+      "55834": 1800,
+      "44580": 1800,
+      "58044": 1800,
+      "57559": 1800,
+      "38161": 1800,
+      "41457": 1800,
+      "38956": 1800,
+      "40045": 1800,
+      "37386": 1800,
+      "55487": 1800,
+      "51476": 1800,
+      "35853": 1800,
+      "54657": 1800,
+      "33199": 1800,
+      "52317": 1800,
+      "44653": 1800,
+      "33679": 1800,
+      "44993": 1800,
+      "48702": 1800,
+      "53074": 1800,
+      "36139": 1800,
+      "57030": 1799,
+      "49888": 1800,
+      "55373": 1800
+    }
+  },
+  "directional_loss": {
+    "out": {
+      "sent": 108506,
+      "matched": 108504,
+      "unmatched": 2,
+      "loss_pct": 0.0018432160433524414,
+      "delay_ms": {
+        "mean": 0.09332798790827988,
+        "p50": 0.035,
+        "p95": 0.413,
+        "p99": 1.194
+      },
+      "semantics": "sender pre-qdisc mirror when available (otherwise post-qdisc capture); timestamped full-UDP fingerprints matched to receiver \u00b12 ms/+2 s context; synchronized host clocks"
+    },
+    "in": {
+      "sent": 133753,
+      "matched": 133753,
+      "unmatched": 0,
+      "loss_pct": 0.0,
+      "delay_ms": {
+        "mean": 0.3240667573811429,
+        "p50": 0.293,
+        "p95": 0.48,
+        "p99": 1.092
+      },
+      "semantics": "sender pre-qdisc mirror when available (otherwise post-qdisc capture); timestamped full-UDP fingerprints matched to receiver \u00b12 ms/+2 s context; synchronized host clocks"
+    }
+  },
+  "legacy_harness": {
+    "bandwidth": {
+      "passed": false,
+      "value": "6.83 KB/s"
+    },
+    "crash_rate": {
+      "passed": true,
+      "value": "0.0%"
+    },
+    "latency_avg": {
+      "passed": true,
+      "value": "1.8ms"
+    },
+    "latency_p95": {
+      "passed": true,
+      "value": "3.0ms"
+    },
+    "packet_loss": {
+      "passed": true,
+      "value": "0.00%"
+    },
+    "server_tick_rate": {
+      "passed": true,
+      "value": "31.3 Hz"
+    }
+  },
+  "legacy_aggregated": {
+    "bandwidth_per_player_kbps": 6.83,
+    "connected_bots": 50,
+    "disconnected_bots": 0,
+    "estimated_tick_rate": 31.3,
+    "latency_avg_ms": 1.8,
+    "latency_max_ms": 3.0,
+    "latency_min_ms": 1.0,
+    "latency_p95_ms": 3.0,
+    "latency_p99_ms": 3.0,
+    "packet_loss_pct": 0.0,
+    "total_decode_failures": 0,
+    "total_errors": 0,
+    "total_packets_received": 427737,
+    "total_packets_sent": 186343,
+    "total_panics": 0,
+    "total_send_failures": 0
+  },
+  "collector_valid": true,
+  "classification": "instrumented-build-recording-off-control-unscored"
+}

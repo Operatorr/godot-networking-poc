@@ -1,0 +1,31 @@
+{
+  "source": "User-supplied game host Graphs \u2192 Network screenshot",
+  "screenshot_sha256": "e59bd5f742e36e9fc319f286d13de3dc0640f9055942ccb38fa19c1ce4adfcb8",
+  "screenshot_time_taipei": "2026-10-14 10:56:07",
+  "comparison_window_utc": "2026-10-14 02:29:21.905374652\u201302:34:21.905374652",
+  "comparison_window_taipei": "2026-10-14 10:29:21.905374652\u201310:34:21.905374652",
+  "provider_outbound_approximate": {
+    "rate": "about 1.1 (roughly 1.0\u20131.2)",
+    "display_unit": "MBps",
+    "reading_kind": "Visual approximation, no sampled API data",
+    "out_packets_s": "roughly 1900",
+    "in_packets_s": "roughly 3300"
+  },
+  "measured_game_traffic": {
+    "scored_seconds": 300.0,
+    "ip_bytes": 339601557,
+    "ip_bytes_s": 1132005.19,
+    "decimal_MB_s": 1.1320051899999999,
+    "MiB_s": 1.079564275741577,
+    "Mbit_s": 9.056041519999999,
+    "out_packets_s": 1879.7766666666666,
+    "in_packets_s": 3349.66,
+    "interface_tx_bytes_s": 1158355.9452902984,
+    "interface_rx_bytes_s": 289044.17048204975
+  },
+  "interpretation": "Provider network graph independently observes same-zone load; values broadly agree with guest counters. Provider graph smoothing and exact displayed unit base are unverified, so no exact percentage agreement is claimed. The billable Traffic out allowance meter has different scope. High outbound after the scored workload includes evidence downloads; do not count it as gameplay.",
+  "provider_documentation": [
+    "https://docs.hetzner.com/cloud/servers/faq/",
+    "https://docs.hetzner.com/cloud/billing/faq/"
+  ]
+}

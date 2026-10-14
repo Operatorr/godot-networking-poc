@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/campaign-20261013/instrumented-3-preflight",
+  "sha256": {
+    "bots.tar.gz": "274fd63eb618a91709a0e0888b2d9a284f00551ad5cd827783b595e37029dee5",
+    "game.tar.gz": "84d13d9998f3d1a203a4ddb9ea1a6a5b3b1a657184424ad8998353b969b56096"
+  },
+  "contents": "Unedited reports/logs, host observations, packet headers and full-datagram ENet descriptors. Retained off both temporary hosts in the ignored local evidence archive. Public copies redact connection addresses; no access records or credentials are published."
+}

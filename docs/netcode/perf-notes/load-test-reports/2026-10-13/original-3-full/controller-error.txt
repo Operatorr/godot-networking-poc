@@ -1,0 +1,1 @@
+Preflight setup failure before swarm startup: nft chain declarations lacked separators. No benchmark workload ran. Original manifest retained. Corrected and repeated as original-3-full-attempt2.

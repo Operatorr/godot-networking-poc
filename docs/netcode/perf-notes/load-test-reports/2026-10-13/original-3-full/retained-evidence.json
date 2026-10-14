@@ -1,0 +1,5 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/campaign-20261013/original-3-full",
+  "sha256": {},
+  "contents": "Unedited reports/logs, host observations, packet headers and full-datagram ENet descriptors. Retained off both temporary hosts in the ignored local evidence archive. Public copies redact connection addresses; no access records or credentials are published."
+}

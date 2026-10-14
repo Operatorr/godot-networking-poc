@@ -1,0 +1,15 @@
+{
+  "previous_metrics_match_except_documented_egress_only_queue_correction": true,
+  "corrected_fields": [
+    ".game_prequeue_packets.out.outstanding_commands_end",
+    ".game_prequeue_packets.in.outstanding_commands_end",
+    ".bots_prequeue_packets.out.outstanding_commands_end",
+    ".bots_prequeue_packets.in.outstanding_commands_end"
+  ],
+  "float_tolerance": 1e-12,
+  "raw_and_original_steady_json_untouched": true,
+  "replay_analysis_seconds": 56.79,
+  "replay_peak_rss_bytes": 542998528,
+  "previous_peak_rss_bytes": 2918858752,
+  "original_raw_and_derived_evidence_preserved": true
+}

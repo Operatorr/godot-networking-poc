@@ -1,0 +1,55 @@
+{
+  "amended_utc": "2026-10-14T03:59:08.455862+00:00",
+  "canonical_matrix": "https://github.com/Operatorr/godot-networking-poc/issues/30#issuecomment-6145030523",
+  "runs_per_test": 1,
+  "measurement_s": 300,
+  "excluded_global_warmup_s": 60,
+  "population_ladder": [
+    50,
+    100,
+    150,
+    200,
+    250,
+    500,
+    750,
+    999
+  ],
+  "workload_populations": {
+    "movement": [
+      50,
+      100,
+      150
+    ],
+    "combat": [
+      50,
+      100,
+      150
+    ],
+    "clustered": [
+      50,
+      100,
+      150
+    ],
+    "strategy": [
+      50,
+      100,
+      150,
+      200,
+      250,
+      500,
+      750,
+      999
+    ]
+  },
+  "core_case_count": 17,
+  "core_measurement_minutes": 85,
+  "core_warmup_minutes": 17,
+  "checkpoint_50_100_cases": 8,
+  "checkpoint_measurement_minutes": 40,
+  "planned_limit_is_not_capacity_ceiling": true,
+  "idle_controls_max_population": 150,
+  "admission_workload": "strategy",
+  "earlier_raw_runs_preserved": true,
+  "validation": "15 Python tests, including exact scheduled pairs, stop/refinement, high-population non-Strategy rejection and one-run coverage requirements; local fixtures only, no benchmark restarted",
+  "scheduler_sha256": "e1791bc51d35022388766b156cc6d16d2693d0bb6e00714b8ec045504b780ecb"
+}

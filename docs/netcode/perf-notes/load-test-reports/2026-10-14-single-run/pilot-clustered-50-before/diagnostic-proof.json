@@ -1,0 +1,12 @@
+{
+  "purpose": "Single-run diagnosis; outside the scored matrix",
+  "binary_and_buffers": "Unchanged unless the selected executable provenance explicitly records a later revision",
+  "trace_scope": "Dedicated tracefs instance: UDP queue failures and SOCKET_RCVBUFF drops only; no global tracing changes",
+  "trace_clock": "mono",
+  "trace_sha256": "e399beeba43f0ce6f6d91bf0b285e5ad19103fff59df8eb0d87f22694ed7d570",
+  "trace_stats_sha256": "e12b68bcdebb4fe4d7aabb3059b6d9cdd05747e3614a9016bc8242bb94da1470",
+  "udp_queue_failure_events_all_ports": 17,
+  "socket_receive_buffer_drop_events": 17,
+  "run_and_evidence_seconds": 640.6138365419756,
+  "analysis_seconds": 52.336206875013886
+}

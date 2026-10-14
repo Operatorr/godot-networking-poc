@@ -108,6 +108,13 @@ IPv6-only host. [Billing FAQ](https://docs.hetzner.com/cloud/billing/faq/),
 
 Only outgoing traffic counts toward traffic billing; incoming traffic and internal traffic
 within a Hetzner network zone are free. Cross-zone traffic is treated as internet traffic.
+Falkenstein, Nuremberg and Helsinki all belong to `eu-central`: moving a bot from
+Falkenstein to Helsinki does not make its public-IP traffic count against the included
+outgoing allowance. Use a client outside Hetzner or a Cloud server in another network
+zone to independently check the provider's external-transfer meter. Evidence downloads
+to the operator also produce billable external egress and must be accounted separately
+from game-port traffic. [Network-zone locations](https://docs.hetzner.com/cloud/general/locations/),
+[same-zone public-IP exemption](https://docs.hetzner.com/cloud/billing/faq/).
 The included TB allowance is a billing quantity, not a guarantee of sustained packet rate
 or bandwidth. [Billing FAQ](https://docs.hetzner.com/cloud/billing/faq/),
 [location billing](https://docs.hetzner.com/cloud/general/locations/).
@@ -304,3 +311,11 @@ server metrics/service state were copied to ignored
 `deployment/hetzner/results/smoke-20261013/`. The operator controls the Hetzner lifecycle;
 export later results before deleting hosts and unused paid IPv4s. These smoke artifacts
 verify setup only and do not establish high-population capacity or monthly billable egress.
+
+## Current matrix amendment (2026-10-14)
+
+Follow the amended [Define the new load-test matrix](https://github.com/Operatorr/godot-networking-poc/issues/30#issuecomment-6145030523):
+one five-minute run per test; ladder 50/100/150/200/250/500/750/999. Use all four workloads
+through 150, Strategy only at 200+. There are 17 core cases, totaling 85 measured minutes.
+The lower workloads' planned stop at 150 is not a measured capacity ceiling. Earlier
+three-repeat reports remain historical evidence; do not schedule r2/r3 in the new campaign.

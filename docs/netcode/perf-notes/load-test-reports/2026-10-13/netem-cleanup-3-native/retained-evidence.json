@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/campaign-20261013/netem-cleanup-3-native",
+  "sha256": {
+    "bots.tar.gz": "359d19f9121dc4c8c0812e577caaac4fc50b84c673a16df8805e5a04bf82b4de",
+    "game.tar.gz": "52cbfef67ed5ba4ecc0ec92bd36749a9d28c2fbd5b3138a9efe30da5672f4bd3"
+  },
+  "contents": "Unedited reports/logs, host observations, packet headers and full-datagram ENet descriptors. Retained off both temporary hosts in the ignored local evidence archive. Public copies redact connection addresses; no access records or credentials are published."
+}

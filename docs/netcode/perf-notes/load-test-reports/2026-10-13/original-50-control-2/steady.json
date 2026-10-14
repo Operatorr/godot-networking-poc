@@ -1,0 +1,155 @@
+{
+  "run_id": "original-50-control-2",
+  "requested_bots": 50,
+  "behavior": "movement",
+  "duration": 120,
+  "excluded_warmup": 60,
+  "collection": true,
+  "build": "original",
+  "variant": "native",
+  "started_utc": "2026-10-13T12:17:44.381308+00:00",
+  "stagger_ms": 100,
+  "input_hz": 30,
+  "seed": 30,
+  "difficulty": 1.0,
+  "bandwidth_budget": 0,
+  "ended_utc": "2026-10-13T12:21:40.042045+00:00",
+  "archive_sha256": {
+    "bots.tar.gz": "f8eda18225ffdff7485c4849f5c29dc8c78da4b057645ede07c3ab712a70cd6e",
+    "game.tar.gz": "9f1d4d9b932dea3d5303dbacfd8636cd690cebee0405eb37e8abdadeedfbc879"
+  },
+  "window_s": 60.0,
+  "game_host": {
+    "duration_s": 59.999995125,
+    "process_cpu_percent_one_core": 14.916667878645931,
+    "rss_end_bytes": 15302656,
+    "swap_end_kib": 0,
+    "steal_percent": 0.0,
+    "busy_percent_all_cores": 11.218813216453135,
+    "interface": {
+      "tx_bytes": 29353682,
+      "rx_bytes": 9087386,
+      "tx_packets": 109641,
+      "rx_packets": 136113,
+      "rx_dropped": 0,
+      "tx_dropped": 0
+    },
+    "flow": {
+      "game_in": {
+        "bytes": 0,
+        "packets": 0
+      },
+      "bot_in": {
+        "bytes": 7178960,
+        "packets": 136034
+      },
+      "game_out": {
+        "bytes": 27805966,
+        "packets": 109584
+      },
+      "bot_out": {
+        "bytes": 0,
+        "packets": 0
+      }
+    },
+    "boundary_start_lateness_ms": 0.360242,
+    "boundary_end_lateness_ms": 0.355407,
+    "boundary_sample_duration_ms": [
+      26.126,
+      25.045625
+    ]
+  },
+  "game_capture_kernel_drops": 0,
+  "game_flow_parse_errors": null,
+  "exporter_tick_count": 1800.0,
+  "exporter_tick_mean_ms": 2.8230938555555563,
+  "exporter_tick_hz": 30.0,
+  "bots_host": {
+    "duration_s": 60.000021077,
+    "process_cpu_percent_one_core": 17.216660618740736,
+    "rss_end_bytes": 6500352,
+    "swap_end_kib": 0,
+    "steal_percent": 0.0,
+    "busy_percent_all_cores": 13.879993258048206,
+    "interface": {
+      "tx_bytes": 9168494,
+      "rx_bytes": 29437181,
+      "tx_packets": 136361,
+      "rx_packets": 110051,
+      "rx_dropped": 0,
+      "tx_dropped": 0
+    },
+    "flow": {
+      "game_in": {
+        "bytes": 27805966,
+        "packets": 109584
+      },
+      "bot_in": {
+        "bytes": 0,
+        "packets": 0
+      },
+      "game_out": {
+        "bytes": 0,
+        "packets": 0
+      },
+      "bot_out": {
+        "bytes": 7178684,
+        "packets": 136029
+      }
+    },
+    "boundary_start_lateness_ms": 0.336313,
+    "boundary_end_lateness_ms": 0.35715,
+    "boundary_sample_duration_ms": [
+      23.785727,
+      22.180752
+    ]
+  },
+  "bots_capture_kernel_drops": 0,
+  "bots_flow_parse_errors": null,
+  "legacy_harness": {
+    "bandwidth": {
+      "passed": false,
+      "value": "6.93 KB/s"
+    },
+    "crash_rate": {
+      "passed": true,
+      "value": "0.0%"
+    },
+    "latency_avg": {
+      "passed": true,
+      "value": "1.5ms"
+    },
+    "latency_p95": {
+      "passed": true,
+      "value": "3.0ms"
+    },
+    "packet_loss": {
+      "passed": true,
+      "value": "0.01%"
+    },
+    "server_tick_rate": {
+      "passed": true,
+      "value": "31.3 Hz"
+    }
+  },
+  "legacy_aggregated": {
+    "bandwidth_per_player_kbps": 6.93,
+    "connected_bots": 50,
+    "disconnected_bots": 0,
+    "estimated_tick_rate": 31.3,
+    "latency_avg_ms": 1.5,
+    "latency_max_ms": 3.0,
+    "latency_min_ms": 1.0,
+    "latency_p95_ms": 3.0,
+    "latency_p99_ms": 3.0,
+    "packet_loss_pct": 0.01,
+    "total_decode_failures": 0,
+    "total_errors": 0,
+    "total_packets_received": 432230,
+    "total_packets_sent": 186326,
+    "total_panics": 0,
+    "total_send_failures": 0
+  },
+  "collector_valid": true,
+  "classification": "original-build-control-unscored"
+}

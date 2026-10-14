@@ -1,0 +1,26 @@
+{
+  "scope": "Kernel: full retained host-collection interval. Application: cumulative process/bot observations through measurement end, including warmup.",
+  "game_kernel_udp_errors": {
+    "InErrors": 0,
+    "RcvbufErrors": 0,
+    "SndbufErrors": 0,
+    "InCsumErrors": 0
+  },
+  "server_cumulative": {
+    "send_errors": 0,
+    "decode_errors": 0
+  },
+  "bots_kernel_udp_errors": {
+    "InErrors": 0,
+    "RcvbufErrors": 0,
+    "SndbufErrors": 0,
+    "InCsumErrors": 0
+  },
+  "bots_cumulative": {
+    "unknown_delta_entities": 1915,
+    "baseline_reference_misses": 0,
+    "decode_failures": 0,
+    "send_failures": 0,
+    "panics": 0
+  }
+}

@@ -1,0 +1,45 @@
+2286a04a69f367c9661d2f9a72d779822af9e3dd3c27c7972763612b82dcd2e9  /home/deploy/omega-measured/rust/target/release/omega-server
+00080235cdd599da6b9a20ca0698acff7e57fe46a83fbc6df9b75381dce9bf5b  /home/deploy/omega-results/campaign-20261013/host_collect.py
+0db92f1b1a8a5c524adf72f3081761f69e6558c9c0d2374653d239c250980f46  /home/deploy/omega-results/campaign-20261013/capture.py
+0081dbe48b363aa9408c8c37abb6e3d2e336a761ba773883bf0d48cdff219e28  /home/deploy/omega-results/campaign-20261013/flow_record.rs
+9c322f21611c721fae66a28892d2b2862193bca04f07d036027c6123867a8c96  /home/deploy/omega-results/campaign-20261013/flow-record
+bac0bf8947937a334b4fd9e814e1e3a4e15b9753fd3f1c02e185285d26f0d68c  /etc/omega-loadtest/arena.json
+# /etc/systemd/system/omega-loadtest-arena.service
+[Unit]
+Description=Omega isolated load-test Arena (ENet UDP 8081, no API)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=deploy
+Group=deploy
+WorkingDirectory=/home/deploy/omega-realm/rust
+Environment=RUST_LOG=info
+Environment=OMEGA_API_SERVER_URL=
+ExecStart=/home/deploy/omega-realm/rust/target/release/omega-server --config /etc/omega-loadtest/arena.json --allow-unsigned-tickets
+Restart=on-failure
+RestartSec=3
+LimitNOFILE=65536
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target
+
+# /etc/systemd/system/omega-loadtest-arena.service.d/measurement.conf
+[Service]
+ExecStart=
+ExecStart=/home/deploy/omega-measured/rust/target/release/omega-server --config /etc/omega-loadtest/arena.json --allow-unsigned-tickets
+Environment=OMEGA_MEASURE_DIR=/var/lib/omega-measure/current
+ReadWritePaths=/var/lib/omega-measure
+MainPID=32074
+NRestarts=0
+CPUUsageNSec=1541049000
+05cf4f381367f783bd1c83b9ead734edeff074f6

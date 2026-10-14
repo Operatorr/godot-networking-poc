@@ -7,8 +7,8 @@ use std::collections::VecDeque;
 
 const METRICS_SAMPLE_SIZE: usize = 30;
 
-#[derive(Default)]
 pub struct MetricsCollector {
+    pub measurement: Option<crate::measurement::Measurement>,
     tick_times_ms: VecDeque<f64>,
     pub total_bytes_sent: u64,
     pub total_bytes_received: u64,
@@ -16,6 +16,21 @@ pub struct MetricsCollector {
     prev_total_peer_bytes: u64,
     prev_metrics_ms: u64,
     pub last_metrics_ms: u64,
+}
+
+impl Default for MetricsCollector {
+    fn default() -> Self {
+        Self {
+            measurement: crate::measurement::Measurement::from_env(),
+            tick_times_ms: VecDeque::new(),
+            total_bytes_sent: 0,
+            total_bytes_received: 0,
+            bytes_sent_per_peer: std::collections::HashMap::new(),
+            prev_total_peer_bytes: 0,
+            prev_metrics_ms: 0,
+            last_metrics_ms: 0,
+        }
+    }
 }
 
 impl MetricsCollector {
@@ -37,6 +52,7 @@ impl MetricsCollector {
     }
 
     pub fn remove_peer(&mut self, peer: usize) {
+        crate::measurement::remove_peer(peer);
         self.bytes_sent_per_peer.remove(&peer);
     }
 

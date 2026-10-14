@@ -1,0 +1,8 @@
+{
+  "core-strategy-50-r1": {
+    "selected_run_id": "core-strategy-50-r1-attempt2",
+    "original_invalid_attempt_retained": true,
+    "reason": "Corrected collection scope after independently identified non-test-peer traffic",
+    "replacement_classification": "native-stable-candidate"
+  }
+}

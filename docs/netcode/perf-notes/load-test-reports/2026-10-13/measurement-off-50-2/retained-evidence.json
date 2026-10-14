@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/campaign-20261013/measurement-off-50-2",
+  "sha256": {
+    "bots.tar.gz": "f17a53cb68f840c11cd1d8c730770f2caad82c10ecaa69b5f7e92f89cf2e905b",
+    "game.tar.gz": "94b3601232cd6df6c8c725d04b63918c54ff3c655abafae673073c9a41369854"
+  },
+  "contents": "Unedited reports/logs, host observations, packet headers and full-datagram ENet descriptors. Retained off both temporary hosts in the ignored local evidence archive. Public copies redact connection addresses; no access records or credentials are published."
+}
