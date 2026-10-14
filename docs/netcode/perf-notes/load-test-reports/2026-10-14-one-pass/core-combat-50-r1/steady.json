@@ -1,0 +1,930 @@
+{
+  "run_id": "core-combat-50-r1",
+  "requested_bots": 50,
+  "behavior": "combat",
+  "duration": 360,
+  "excluded_warmup": 60,
+  "collection": true,
+  "build": "instrumented",
+  "variant": "native",
+  "started_utc": "2026-10-14T05:31:25.348939+00:00",
+  "stagger_ms": 100,
+  "input_hz": 30,
+  "seed": 30,
+  "difficulty": 1.0,
+  "bandwidth_budget": 0,
+  "profile": "native",
+  "repeat": 1,
+  "collector_source_sha256": {
+    "archive_storage.py": "b820d1515b264a4326fa834fc1445688382ae3dd10ed28fd5cfc29e979df3d3c",
+    "run.py": "81424a5ff47e40638051c2904700ff440ff17845d6d9f772edfeb64f82eb0a13",
+    "host_collect.py": "00080235cdd599da6b9a20ca0698acff7e57fe46a83fbc6df9b75381dce9bf5b",
+    "mirror.py": "6813b64c583082ea88f4e91d56e5c5f1f230587968992b29ee82c775222fa602",
+    "test_single_pass_matrix.py": "0012d5b0dd9655b58accc56e72b1ae97c154e9f7ecb95ad1de5e7ab9218df114",
+    "test_matrix_evidence.py": "e9d73507f69389b5ffe322e9994be47fe7bfaf1cbe8de8dadf42d92be47ae516",
+    "test_packet_store.py": "db9e4023202ad773f5690884bb993f9bd29e4e9a9b51e13df5dae5b0aa704342",
+    "build_hosts.py": "80583acd7cacede8b08bea72b8ec83ba82bcff87127e279a4de2a63b1a7f4565",
+    "single_run.py": "0e3346d0ef1f05b4e68b3e7a9ea25975beba780e7ded3600f4b0c82a424160b9",
+    "netem.py": "d4b0fb86fc2c222703f28426b43cd6a3fea74f700a1351f149d8c08e6f460882",
+    "validate_peer_scope.py": "d5a0308123d308a220733a23ab2a861218799371ef34c893e8a9ff8856f66ea2",
+    "one_pass.py": "a12c9c318c333c5f860c1bd877b4800b4a135267e679bb3ec001ac64c972c2fa",
+    "socket_capture_macos.c": "2583507b55df1e29b4685c5a21c465a48dd54f2ac3ffa4368332e39683cfe633",
+    "campaign.py": "e1791bc51d35022388766b156cc6d16d2693d0bb6e00714b8ec045504b780ecb",
+    "capture.py": "8e96e11f9cdea6d95f55507b1d14997633f941f9538bbde801dcf5f2f297c0df",
+    "packet_store.py": "35b91bcd9bbab00bb754b49bb6fccdb0d951a063532feb6a67bfa96c56808287",
+    ".gitignore": "32dae3052f331ee34d628ef535709b301259a45df7c7522c4d35dcf49873f00b",
+    "flow_record.rs": "0081dbe48b363aa9408c8c37abb6e3d2e336a761ba773883bf0d48cdff219e28",
+    "economics.py": "23ce4505e7f92638e2534b3d3f6b6a35e8622c77392d360dd672a4bb029fc970",
+    "external.py": "edcb41212c1d4a1f44c2e115aebf1bba5fd9a6110769b80a142bb49d2074c6d8",
+    "test_run_failure.py": "525e42c7da8c763cf578c95f08a953196feefc3b6533685575e41181663f37fb",
+    "verify_matrix.py": "c75ef0421bfb5e9203360b794446ebe02c5263255d20558a65854676d59913a0",
+    "analyze.py": "c0d016766a019f6ee86de5f43054ec6cf53d8955ba19d51fe4761693576b3343",
+    "publish.py": "2b2321f69cfb6a19650f31fca52f4ef60a036fcba901d668d6fd48121cc003a3",
+    "summarize_campaign.py": "3ecd93dff12702e3c44a4fba7702431238962ee71ef4d2051200db0df2ef2ad6"
+  },
+  "systemd_unit_prefix": "omega-one-pass-20261014-",
+  "game_config": {
+    "mode": "arena",
+    "port": 8081,
+    "metrics_port": 9100,
+    "tick_rate": 30,
+    "max_players": 999,
+    "region": "local",
+    "advertise_url": "",
+    "debug_logging": false,
+    "api_server_url": "",
+    "allow_unsigned_tickets": true,
+    "aoi_radius": 1000.0,
+    "aoi_exit_radius": 1100.0,
+    "lod_near_radius": 400.0,
+    "lod_mid_radius": 1000.0,
+    "snapshot_rate_hz": 30,
+    "default_client_bandwidth_bps": 120000,
+    "max_client_bandwidth_bps": 200000,
+    "monster_ai_difficulty": 0.85
+  },
+  "service_invocation": "519201ee443b42e88ff8425927ccd16e",
+  "swarm_runtime_limit_s": 1280,
+  "ramp_failure_policy": "Abort on first logged start/connect/ticket failure; preserve both endpoint archives as unscored ramp evidence",
+  "cleanup_stages": {
+    "bots": {
+      "stop_and_restore_s": 1.6678277500031982,
+      "archive_s": 25.29589841599227,
+      "download_and_sha256_s": 120.51785850001033
+    },
+    "game": {
+      "stop_and_restore_s": 1.6699271659890655,
+      "archive_s": 24.429751874995418,
+      "download_and_sha256_s": 151.44828983402112
+    }
+  },
+  "ended_utc": "2026-10-14T05:40:52.941611+00:00",
+  "derived_source_sha256": "c0d016766a019f6ee86de5f43054ec6cf53d8955ba19d51fe4761693576b3343",
+  "derived_support_sources_sha256": {
+    "packet_store.py": "35b91bcd9bbab00bb754b49bb6fccdb0d951a063532feb6a67bfa96c56808287"
+  },
+  "archive_sha256": {
+    "bots.tar.gz": "25171eff331e96e466fa02e46f26a98c36cf7cf6b47f2882bf3af314d6530b12",
+    "game.tar.gz": "33f822b278e4a043451c11859301cc5dbc2e86cdd25514af73cb33310b9db954"
+  },
+  "window_s": 300.0,
+  "game_host": {
+    "duration_s": 300.000004002,
+    "process_cpu_percent_one_core": 20.586666392040534,
+    "process_end_states": {
+      "117440": "R"
+    },
+    "rss_end_bytes": 15147008,
+    "swap_end_kib": 0,
+    "steal_percent": 0.0,
+    "busy_percent_all_cores": 14.967964431220732,
+    "per_core": {
+      "cpu0": {
+        "busy_percent": 14.457017395710183,
+        "steal_percent": 0.0
+      },
+      "cpu1": {
+        "busy_percent": 15.483281440368215,
+        "steal_percent": 0.0
+      }
+    },
+    "kernel_udp_delta": {
+      "InDatagrams": 976334,
+      "NoPorts": 0,
+      "InErrors": 0,
+      "OutDatagrams": 531819,
+      "RcvbufErrors": 0,
+      "SndbufErrors": 0,
+      "InCsumErrors": 0,
+      "IgnoredMulti": 0,
+      "MemErrors": 0
+    },
+    "interface": {
+      "tx_bytes": 333378766,
+      "rx_bytes": 77777717,
+      "tx_packets": 531843,
+      "rx_packets": 976445,
+      "rx_dropped": 0,
+      "tx_dropped": 0
+    },
+    "flow": {
+      "game_in": {
+        "bytes": 0,
+        "packets": 0
+      },
+      "bot_in": {
+        "bytes": 64099478,
+        "packets": 976305
+      },
+      "game_out": {
+        "bytes": 325901176,
+        "packets": 531815
+      },
+      "bot_out": {
+        "bytes": 0,
+        "packets": 0
+      }
+    },
+    "boundary_start_lateness_ms": 0.364177,
+    "boundary_end_lateness_ms": 0.368179,
+    "boundary_sample_duration_ms": [
+      24.287053,
+      26.000797
+    ],
+    "sampled_process_peak_rss_bytes": 15147008,
+    "steady_host_sample_count": 300
+  },
+  "game_capture_kernel_drops": 0,
+  "game_flow_parse_errors": 0,
+  "game_packets": {
+    "out": {
+      "packets": 531818,
+      "ip_bytes": 325931076,
+      "reliable_retry_command_bytes": 0,
+      "reliable_retry_payload_bytes": 0,
+      "reliable_commands": 2635981,
+      "acks": 31939,
+      "outstanding_commands_end": 0,
+      "first_message_counts_by_type": {
+        "67": 2616724,
+        "66": 444036,
+        "65": 450000,
+        "68": 15000
+      },
+      "first_transmission_payload_bytes": 285792228
+    },
+    "in": {
+      "packets": 976334,
+      "ip_bytes": 64101476,
+      "reliable_retry_command_bytes": 29,
+      "reliable_retry_payload_bytes": 11,
+      "reliable_commands": 4968,
+      "acks": 2635981,
+      "outstanding_commands_end": 0,
+      "first_message_counts_by_type": {
+        "2": 449998,
+        "3": 4257,
+        "5": 661,
+        "6": 47
+      },
+      "first_transmission_payload_bytes": 9922043
+    },
+    "wire_input_counts_by_port": {
+      "52987": 9000,
+      "38603": 9001,
+      "53834": 9000,
+      "43859": 9000,
+      "60108": 9000,
+      "33487": 9000,
+      "50464": 9000,
+      "47724": 9000,
+      "34747": 9000,
+      "41792": 9000,
+      "42627": 9000,
+      "41558": 9000,
+      "47825": 9000,
+      "47939": 9000,
+      "42375": 9000,
+      "40947": 9000,
+      "49337": 9000,
+      "60184": 9000,
+      "50808": 8999,
+      "34336": 9000,
+      "33971": 9000,
+      "58495": 9000,
+      "58487": 9000,
+      "45863": 9000,
+      "40008": 9000,
+      "41563": 9000,
+      "34147": 9000,
+      "51365": 9000,
+      "48030": 9000,
+      "35259": 9000,
+      "46162": 9000,
+      "56425": 9000,
+      "53314": 9000,
+      "43116": 9000,
+      "48273": 9000,
+      "55667": 9000,
+      "51368": 9000,
+      "52038": 9000,
+      "58786": 9000,
+      "53538": 8998,
+      "49221": 9000,
+      "40178": 9000,
+      "43419": 9000,
+      "34168": 9000,
+      "53169": 9000,
+      "57496": 9000,
+      "57647": 9000,
+      "44966": 9000,
+      "60632": 9000,
+      "60400": 9000
+    },
+    "max_timestamp_backstep_ns": 250000,
+    "outstanding_semantics": "Observed reliable data commands without returning ACK at the endpoint boundary; not unsent ENet queues"
+  },
+  "game_prequeue_capture_drops": 0,
+  "game_prequeue_parse_errors": 0,
+  "game_prequeue_packets": {
+    "out": {
+      "packets": 531818,
+      "ip_bytes": 325931076,
+      "reliable_retry_command_bytes": 0,
+      "reliable_retry_payload_bytes": 0,
+      "reliable_commands": 2635981,
+      "acks": 31939,
+      "outstanding_commands_end": null,
+      "first_message_counts_by_type": {
+        "67": 2616724,
+        "66": 444036,
+        "65": 450000,
+        "68": 15000
+      },
+      "first_transmission_payload_bytes": 285792228
+    },
+    "in": {
+      "packets": 0,
+      "ip_bytes": 0,
+      "reliable_retry_command_bytes": 0,
+      "reliable_retry_payload_bytes": 0,
+      "reliable_commands": 0,
+      "acks": 0,
+      "outstanding_commands_end": null,
+      "first_message_counts_by_type": {},
+      "first_transmission_payload_bytes": 0
+    },
+    "wire_input_counts_by_port": {},
+    "max_timestamp_backstep_ns": 0,
+    "outstanding_semantics": "Unavailable: egress-only mirror does not observe the returning ACK path"
+  },
+  "exporter_tick_count": 9000.0,
+  "exporter_tick_mean_ms": 4.671958780999992,
+  "exporter_tick_hz": 30.0,
+  "bots_host": {
+    "duration_s": 300.000046716,
+    "process_cpu_percent_one_core": 28.453328902580957,
+    "process_end_states": {
+      "163714": "R"
+    },
+    "rss_end_bytes": 16715776,
+    "swap_end_kib": 0,
+    "swarm_cgroup_cpu_percent_one_core": 28.45195090279554,
+    "swarm_cgroup_cpu_semantics": "Swarm unit (bot process plus tiny shell wrapper), matched boundaries; final systemd value if process exited during boundary observation",
+    "steal_percent": 0.0,
+    "busy_percent_all_cores": 18.022745680345572,
+    "per_core": {
+      "cpu0": {
+        "busy_percent": 20.24158002758992,
+        "steal_percent": 0.0
+      },
+      "cpu1": {
+        "busy_percent": 15.787157702332193,
+        "steal_percent": 0.0
+      }
+    },
+    "kernel_udp_delta": {
+      "InDatagrams": 531818,
+      "NoPorts": 0,
+      "InErrors": 0,
+      "OutDatagrams": 976332,
+      "RcvbufErrors": 0,
+      "SndbufErrors": 0,
+      "InCsumErrors": 0,
+      "IgnoredMulti": 0,
+      "MemErrors": 0
+    },
+    "interface": {
+      "tx_bytes": 77962804,
+      "rx_bytes": 333524119,
+      "tx_packets": 977261,
+      "rx_packets": 532894,
+      "rx_dropped": 0,
+      "tx_dropped": 0
+    },
+    "flow": {
+      "game_in": {
+        "bytes": 325901176,
+        "packets": 531815
+      },
+      "bot_in": {
+        "bytes": 0,
+        "packets": 0
+      },
+      "game_out": {
+        "bytes": 0,
+        "packets": 0
+      },
+      "bot_out": {
+        "bytes": 64099478,
+        "packets": 976305
+      }
+    },
+    "boundary_start_lateness_ms": 0.311049,
+    "boundary_end_lateness_ms": 0.357845,
+    "boundary_sample_duration_ms": [
+      21.838263,
+      23.716959
+    ],
+    "sampled_process_peak_rss_bytes": 16453632,
+    "steady_host_sample_count": 300
+  },
+  "bots_capture_kernel_drops": 0,
+  "bots_flow_parse_errors": 0,
+  "bots_packets": {
+    "out": {
+      "packets": 531818,
+      "ip_bytes": 325931076,
+      "reliable_retry_command_bytes": 0,
+      "reliable_retry_payload_bytes": 0,
+      "reliable_commands": 2635981,
+      "acks": 31939,
+      "outstanding_commands_end": 0,
+      "first_message_counts_by_type": {
+        "67": 2616724,
+        "66": 444036,
+        "65": 450000,
+        "68": 15000
+      },
+      "first_transmission_payload_bytes": 285792228
+    },
+    "in": {
+      "packets": 976333,
+      "ip_bytes": 64101416,
+      "reliable_retry_command_bytes": 29,
+      "reliable_retry_payload_bytes": 11,
+      "reliable_commands": 4968,
+      "acks": 2635981,
+      "outstanding_commands_end": 0,
+      "first_message_counts_by_type": {
+        "2": 449997,
+        "3": 4257,
+        "5": 661,
+        "6": 47
+      },
+      "first_transmission_payload_bytes": 9922021
+    },
+    "wire_input_counts_by_port": {
+      "38603": 9001,
+      "53834": 9000,
+      "43859": 9000,
+      "33487": 9000,
+      "60108": 9000,
+      "50464": 9000,
+      "34747": 9000,
+      "41792": 9000,
+      "47724": 9000,
+      "42627": 9000,
+      "41558": 9000,
+      "47825": 9000,
+      "47939": 9000,
+      "42375": 9000,
+      "40947": 9000,
+      "49337": 9000,
+      "60184": 9000,
+      "50808": 8999,
+      "34336": 9000,
+      "33971": 9000,
+      "58495": 9000,
+      "58487": 9000,
+      "45863": 9000,
+      "40008": 9000,
+      "41563": 9000,
+      "34147": 9000,
+      "51365": 9000,
+      "48030": 9000,
+      "35259": 9000,
+      "46162": 9000,
+      "56425": 9000,
+      "53314": 9000,
+      "48273": 9000,
+      "43116": 9000,
+      "55667": 9000,
+      "51368": 9000,
+      "52038": 9000,
+      "58786": 9000,
+      "53538": 8998,
+      "49221": 9000,
+      "40178": 9000,
+      "43419": 9000,
+      "34168": 9000,
+      "53169": 9000,
+      "57496": 9000,
+      "57647": 9000,
+      "44966": 9000,
+      "60632": 9000,
+      "60400": 9000,
+      "52987": 8999
+    },
+    "max_timestamp_backstep_ns": 1102000,
+    "outstanding_semantics": "Observed reliable data commands without returning ACK at the endpoint boundary; not unsent ENet queues"
+  },
+  "bots_prequeue_capture_drops": 0,
+  "bots_prequeue_parse_errors": 0,
+  "bots_prequeue_packets": {
+    "out": {
+      "packets": 0,
+      "ip_bytes": 0,
+      "reliable_retry_command_bytes": 0,
+      "reliable_retry_payload_bytes": 0,
+      "reliable_commands": 0,
+      "acks": 0,
+      "outstanding_commands_end": null,
+      "first_message_counts_by_type": {},
+      "first_transmission_payload_bytes": 0
+    },
+    "in": {
+      "packets": 976333,
+      "ip_bytes": 64101416,
+      "reliable_retry_command_bytes": 29,
+      "reliable_retry_payload_bytes": 11,
+      "reliable_commands": 4968,
+      "acks": 2635981,
+      "outstanding_commands_end": null,
+      "first_message_counts_by_type": {
+        "2": 449997,
+        "3": 4257,
+        "5": 661,
+        "6": 47
+      },
+      "first_transmission_payload_bytes": 9922021
+    },
+    "wire_input_counts_by_port": {
+      "38603": 9001,
+      "53834": 9000,
+      "43859": 9000,
+      "33487": 9000,
+      "60108": 9000,
+      "50464": 9000,
+      "34747": 9000,
+      "41792": 9000,
+      "47724": 9000,
+      "42627": 9000,
+      "41558": 9000,
+      "47825": 9000,
+      "47939": 9000,
+      "42375": 9000,
+      "40947": 9000,
+      "49337": 9000,
+      "60184": 9000,
+      "50808": 8999,
+      "34336": 9000,
+      "33971": 9000,
+      "58495": 9000,
+      "58487": 9000,
+      "45863": 9000,
+      "40008": 9000,
+      "41563": 9000,
+      "34147": 9000,
+      "51365": 9000,
+      "48030": 9000,
+      "35259": 9000,
+      "46162": 9000,
+      "56425": 9000,
+      "53314": 9000,
+      "48273": 9000,
+      "43116": 9000,
+      "55667": 9000,
+      "51368": 9000,
+      "52038": 9000,
+      "58786": 9000,
+      "53538": 8998,
+      "49221": 9000,
+      "40178": 9000,
+      "43419": 9000,
+      "34168": 9000,
+      "53169": 9000,
+      "57496": 9000,
+      "57647": 9000,
+      "44966": 9000,
+      "60632": 9000,
+      "60400": 9000,
+      "52987": 8999
+    },
+    "max_timestamp_backstep_ns": 0,
+    "outstanding_semantics": "Unavailable: egress-only mirror does not observe the returning ACK path"
+  },
+  "directional_loss": {
+    "out": {
+      "sent": 531818,
+      "matched": 531818,
+      "unmatched": 0,
+      "loss_pct": 0.0,
+      "delay_ms": {
+        "mean": 0.2617784655652874,
+        "p50": 0.221,
+        "p95": 0.496,
+        "p99": 1.123
+      },
+      "semantics": "sender pre-qdisc mirror when available (otherwise post-qdisc capture); timestamped full-UDP fingerprints matched to receiver \u00b12 ms/+2 s context; synchronized host clocks"
+    },
+    "in": {
+      "sent": 976333,
+      "matched": 976333,
+      "unmatched": 0,
+      "loss_pct": 0.0,
+      "delay_ms": {
+        "mean": 0.1497877547926783,
+        "p50": 0.126,
+        "p95": 0.262,
+        "p99": 0.707
+      },
+      "semantics": "sender pre-qdisc mirror when available (otherwise post-qdisc capture); timestamped full-UDP fingerprints matched to receiver \u00b12 ms/+2 s context; synchronized host clocks"
+    }
+  },
+  "legacy_harness": {
+    "bandwidth": {
+      "passed": false,
+      "value": "19.19 KB/s"
+    },
+    "crash_rate": {
+      "passed": true,
+      "value": "0.0%"
+    },
+    "latency_avg": {
+      "passed": true,
+      "value": "2.1ms"
+    },
+    "latency_p95": {
+      "passed": true,
+      "value": "4.0ms"
+    },
+    "packet_loss": {
+      "passed": true,
+      "value": "0.00%"
+    },
+    "server_tick_rate": {
+      "passed": true,
+      "value": "30.4 Hz"
+    }
+  },
+  "legacy_aggregated": {
+    "bandwidth_per_player_kbps": 19.19,
+    "connected_bots": 50,
+    "disconnected_bots": 0,
+    "estimated_tick_rate": 30.4,
+    "latency_avg_ms": 2.1,
+    "latency_max_ms": 5.0,
+    "latency_min_ms": 1.0,
+    "latency_p95_ms": 4.0,
+    "latency_p99_ms": 5.0,
+    "packet_loss_pct": 0.0,
+    "total_decode_failures": 0,
+    "total_errors": 0,
+    "total_packets_received": 4258886,
+    "total_packets_sent": 550270,
+    "total_panics": 0,
+    "total_send_failures": 0
+  },
+  "collector_valid": true,
+  "tick_count": 9000,
+  "tick_hz": 30.0,
+  "tick_work_ms": {
+    "mean": 4.672373071111111,
+    "p50": 4.647944,
+    "p95": 6.003082,
+    "p99": 6.874334,
+    "max": 10.331542,
+    "exceed_33_333ms": 0
+  },
+  "observer_mean_ms": 0.010573888111111112,
+  "authenticated_player_seconds": 15000.000000000027,
+  "alive_player_seconds": 12854.126993758979,
+  "alive_fraction": 0.8569417995839304,
+  "population_min": 50,
+  "population_max": 50,
+  "deferred": {
+    "mean": 0.03077777777777778,
+    "max": 11.0,
+    "first_30s_mean": 0.0,
+    "last_30s_mean": 0.0
+  },
+  "max_queue_age": {
+    "mean": 6855.5,
+    "max": 11355.0,
+    "first_30s_mean": 2805.5,
+    "last_30s_mean": 10905.5
+  },
+  "budget_pct": {
+    "mean": 0.017777777777777778,
+    "max": 4.0,
+    "first_30s_mean": 0.0,
+    "last_30s_mean": 0.0
+  },
+  "peers_evaluated": {
+    "mean": 49.527,
+    "max": 50.0,
+    "first_30s_mean": 49.52111111111111,
+    "last_30s_mean": 49.52333333333333
+  },
+  "overflow": {
+    "mean": 0.0,
+    "max": 0.0,
+    "first_30s_mean": 0.0,
+    "last_30s_mean": 0.0
+  },
+  "monsters": {
+    "mean": 0.37244444444444447,
+    "max": 1.0,
+    "first_30s_mean": 0.6233333333333333,
+    "last_30s_mean": 0.21888888888888888
+  },
+  "projectiles": {
+    "mean": 108.54922222222223,
+    "max": 135.0,
+    "first_30s_mean": 106.39888888888889,
+    "last_30s_mean": 110.63888888888889
+  },
+  "effects": {
+    "mean": 0.8331111111111111,
+    "max": 2.0,
+    "first_30s_mean": 1.06,
+    "last_30s_mean": 0.6655555555555556
+  },
+  "mean_radius_sq": {
+    "mean": 871298.3675568769,
+    "max": 965556.7524181547,
+    "first_30s_mean": 877232.3587925406,
+    "last_30s_mean": 870964.2034259693
+  },
+  "pending_replication": {
+    "mean": 0.03077777777777778,
+    "max": 11.0,
+    "first_30s_mean": 0.0,
+    "last_30s_mean": 0.0
+  },
+  "max_deferred_wait_ticks": {
+    "mean": 0.0047777777777777775,
+    "max": 3.0,
+    "first_30s_mean": 0.0,
+    "last_30s_mean": 0.0
+  },
+  "tick_lag_ms": {
+    "end": -0.5954896666366949,
+    "max": 1.7733333333467272
+  },
+  "server_boundary_lateness_ms": {
+    "start": 0.101254,
+    "end": 0.258218
+  },
+  "application_sent_bytes_by_type_channel": {
+    "64": [
+      0,
+      0,
+      0
+    ],
+    "65": [
+      243881720,
+      2486970,
+      0
+    ],
+    "66": [
+      7104608,
+      0,
+      0
+    ],
+    "67": [
+      0,
+      31808962,
+      0
+    ],
+    "68": [
+      0,
+      510000,
+      0
+    ]
+  },
+  "application_received_bytes_by_type_channel": {
+    "1": [
+      0,
+      0,
+      0
+    ],
+    "2": [
+      0,
+      0,
+      9899934
+    ],
+    "3": [
+      0,
+      21285,
+      0
+    ],
+    "5": [
+      0,
+      661,
+      0
+    ],
+    "6": [
+      0,
+      141,
+      0
+    ]
+  },
+  "server_send_errors": 0,
+  "server_decode_errors": 0,
+  "source_events_by_type": {
+    "1": 6773,
+    "2": 32,
+    "3": 661,
+    "6": 4,
+    "9": 711,
+    "10": 658,
+    "11": 693,
+    "12": 39004,
+    "13": 3724,
+    "15": 3724
+  },
+  "server_enqueued_snapshots": 450000,
+  "expected_scheduled_snapshots": 450000.0000000008,
+  "first_transmitted_snapshots_prequeue": 450000,
+  "enqueued_minus_first_transmitted_snapshots": 0,
+  "snapshot_schedule_semantics": "Scheduled count uses authoritative player-seconds \u00d7 configured Snapshot Hz; source ENet enqueues and first wire transmissions separate scheduling/suppression from network drops. Boundary crossings can differ by one per-peer scheduled burst.",
+  "authoritative_life_transitions": {
+    "player_deaths_observed": 660,
+    "player_respawns_observed": 661,
+    "disconnects_observed": 0,
+    "maximum_sample_gap_s": 1.004733247,
+    "semantics": "Per-player authoritative alive-state transitions, not global KILL events (which include monsters). 1 Hz observations and matched boundaries; bot respawn wait is 3.2 s. Event times lie between observations; gaps >=3.2 s can miss whole life cycles.",
+    "whole_cycle_aliasing_possible": false
+  },
+  "generator": {
+    "overall_hz": 29.999859333580314,
+    "minimum_bot_hz": 29.996592674971414,
+    "maximum_bot_hz": 29.999926000082535,
+    "window_s": 300.000740001,
+    "missed_schedules": 0,
+    "wire_input_ports_observed": 50,
+    "wire_overall_input_hz": 29.9998,
+    "minimum_wire_port_input_hz": 29.993333333333332,
+    "wire_offered_load_gate": true,
+    "kernel_udp_validation_semantics": "Whole-host UDP error deltas on the isolated bot endpoint; positive errors require raw socket-table diagnosis. External Mac NIC/kernel counters unavailable; external accounting is not capacity evidence."
+  },
+  "baseline_reference_misses": 0,
+  "unknown_delta_entities": 0,
+  "shoot_inputs": 385727,
+  "ability_inputs": 0,
+  "snapshots": 450000,
+  "baselines": 4257,
+  "confirms": 444036,
+  "rtt_ms": {
+    "mean": 2.109036544850498,
+    "p95": 4.0,
+    "p99": 5.0,
+    "max": 5.0
+  },
+  "delivery": {
+    "visible_entities": {
+      "mean": 69.67900332225913,
+      "p99": 123,
+      "max": 148
+    },
+    "snapshot_age_s": {
+      "mean": 0.01563909406770764,
+      "p99": 0.032013508,
+      "max": 0.036151743
+    },
+    "delta_age_s": {
+      "mean": 0.015971644919534882,
+      "p99": 0.034365888,
+      "max": 0.064882704
+    },
+    "confirm_age_s": {
+      "mean": 0.016134019464584717,
+      "p99": 0.041034984,
+      "max": 0.066767159
+    }
+  },
+  "per_bot_input_hz": [
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.996592674971414,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535,
+    29.999926000082535
+  ],
+  "input_gap_histogram": [
+    0,
+    1,
+    718,
+    441951,
+    7314,
+    14,
+    1,
+    0
+  ],
+  "snapshot_gap_histogram": [
+    0,
+    0,
+    3883,
+    405446,
+    40651,
+    20,
+    0,
+    0
+  ],
+  "game_kernel_udp_errors": {},
+  "bots_kernel_udp_errors": {},
+  "generator_valid": true,
+  "outbound_ip_bytes": 325931076,
+  "outbound_ip_bytes_s": 1086436.92,
+  "outbound_ip_bytes_player_s": 21728.738399999962,
+  "outbound_ip_packets_s": 1772.7266666666667,
+  "offered_outbound_ip_bytes_nft_prequeue": 325901176,
+  "outbound_counter_semantics": "Post-qdisc game-port capture IP lengths over the common UTC window; nftables output counters are pre-qdisc offered bytes. Native counter differences also reflect read-time brackets. Interface bytes are separate.",
+  "growing_replication_backlog": false,
+  "server_sustainability_gate": true,
+  "classification": "native-stable-candidate",
+  "whole_run_checks": {
+    "scope": "Kernel: full retained host-collection interval. Application: cumulative process/bot observations through measurement end, including warmup.",
+    "game_kernel_udp_errors": {
+      "InErrors": 0,
+      "RcvbufErrors": 0,
+      "SndbufErrors": 0,
+      "InCsumErrors": 0
+    },
+    "server_cumulative": {
+      "send_errors": 0,
+      "decode_errors": 0
+    },
+    "bots_kernel_udp_errors": {
+      "InErrors": 0,
+      "RcvbufErrors": 0,
+      "SndbufErrors": 0,
+      "InCsumErrors": 0
+    },
+    "bots_cumulative": {
+      "unknown_delta_entities": 0,
+      "baseline_reference_misses": 0,
+      "decode_failures": 0,
+      "send_failures": 0,
+      "panics": 0
+    }
+  },
+  "whole_run_error_gate": true,
+  "controller_cell_elapsed_s": 647.7654946670227
+}

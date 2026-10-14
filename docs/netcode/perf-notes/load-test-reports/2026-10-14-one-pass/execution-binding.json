@@ -30,5 +30,7 @@
       }
     ],
     "source": "rust/load_test/src/bot.rs at pinned measurement revision 642c147"
-  }
+  },
+  "scored_controller_revision": "d1985c823eb620080deeb55aa7a338a19b071b66",
+  "systemd_unit_prefix": "omega-one-pass-20261014-"
 }

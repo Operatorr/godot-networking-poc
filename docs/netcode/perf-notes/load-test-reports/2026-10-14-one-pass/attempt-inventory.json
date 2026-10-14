@@ -1,5 +1,53 @@
 [
   {
+    "run_id": "core-combat-50-r1",
+    "requested_population": 50,
+    "workload": "combat",
+    "requested_duration_s": 360,
+    "started_utc": "2026-10-14T05:31:25.348939+00:00",
+    "ended_utc": "2026-10-14T05:40:52.941611+00:00",
+    "classification": "native-stable-candidate",
+    "scored_300s_window_present": true,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/core-combat-50-r1"
+  },
+  {
+    "run_id": "core-movement-100-r1",
+    "requested_population": 100,
+    "workload": "movement",
+    "requested_duration_s": 360,
+    "started_utc": "2026-10-14T05:53:35.307743+00:00",
+    "ended_utc": null,
+    "classification": "not_yet_classified",
+    "scored_300s_window_present": false,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/core-movement-100-r1"
+  },
+  {
+    "run_id": "core-movement-50-r1",
+    "requested_population": 50,
+    "workload": "movement",
+    "requested_duration_s": 360,
+    "started_utc": "2026-10-14T05:21:26.181188+00:00",
+    "ended_utc": "2026-10-14T05:30:29.298588+00:00",
+    "classification": "native-stable-candidate",
+    "scored_300s_window_present": true,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/core-movement-50-r1"
+  },
+  {
+    "run_id": "core-strategy-50-r1",
+    "requested_population": 50,
+    "workload": "strategy",
+    "requested_duration_s": 360,
+    "started_utc": "2026-10-14T05:42:42.775234+00:00",
+    "ended_utc": "2026-10-14T05:52:20.007807+00:00",
+    "classification": "native-stable-candidate",
+    "scored_300s_window_present": true,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/core-strategy-50-r1"
+  },
+  {
     "run_id": "pilot-clustered-50-recovery",
     "requested_population": 50,
     "workload": "clustered",

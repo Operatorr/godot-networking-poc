@@ -1,0 +1,23 @@
+{
+  "core-movement-50-r1": {
+    "archive_sha256": {
+      "game": "32bd987ddf9a4bbfb76e8da046cbf6b66941904bbd9841ab8ea5fbc1108bb754",
+      "bots": "209432b6a25c6d0b1e10033d152111001242765d015b4f92846844ed685c3166"
+    },
+    "removed": "Remote unpacked duplicates only; local and remote archives retained"
+  },
+  "core-combat-50-r1": {
+    "archive_sha256": {
+      "game": "33f822b278e4a043451c11859301cc5dbc2e86cdd25514af73cb33310b9db954",
+      "bots": "25171eff331e96e466fa02e46f26a98c36cf7cf6b47f2882bf3af314d6530b12"
+    },
+    "removed": "Remote unpacked duplicates only; local and remote archives retained"
+  },
+  "core-strategy-50-r1": {
+    "archive_sha256": {
+      "game": "118dd715c789c38741e7da16837157bd002a9d066cced054fb1e0eb506915b6c",
+      "bots": "fe7616c4da4392e079d77e285ba7fc12a6fa86363aaa95b054db18a63dc6b8a2"
+    },
+    "removed": "Remote unpacked duplicates only; local and remote archives retained"
+  }
+}

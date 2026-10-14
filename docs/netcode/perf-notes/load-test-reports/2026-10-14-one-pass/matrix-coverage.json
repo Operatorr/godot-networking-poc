@@ -1,17 +1,56 @@
 {
   "complete": false,
   "required_runs_per_condition": 1,
-  "phase_flags": {},
+  "phase_flags": {
+    "highest_stable": {
+      "movement": 50,
+      "combat": 50,
+      "clustered": 50,
+      "strategy": 50
+    },
+    "first_failed": {},
+    "boundaries": {},
+    "planned_populations_by_workload": {
+      "movement": [
+        50,
+        100,
+        150
+      ],
+      "combat": [
+        50,
+        100,
+        150
+      ],
+      "clustered": [
+        50,
+        100,
+        150
+      ],
+      "strategy": [
+        50,
+        100,
+        150,
+        200,
+        250,
+        500,
+        750,
+        999
+      ]
+    },
+    "ladder_stop_reason": {
+      "movement": "not-yet-complete",
+      "combat": "not-yet-complete",
+      "clustered": "not-yet-complete",
+      "strategy": "not-yet-complete"
+    }
+  },
   "expected_cell_count": 5,
   "missing_cells": [
-    "core-combat-50-r1",
-    "core-movement-50-r1",
-    "core-strategy-50-r1",
     "external-combat-3-r1"
   ],
   "invalid_collection_cells": [],
   "inconsistent_evidence": [],
-  "recorded_expected_cells": 1,
+  "recorded_expected_cells": 4,
   "admission_required": false,
   "admission_complete": true,
   "note": "Coverage allows retained valid failures and generator-invalid cells; they cannot establish sustainable server capacity."

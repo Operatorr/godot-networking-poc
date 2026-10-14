@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/one-pass-20261014/core-strategy-50-r1",
+  "sha256": {
+    "bots.tar.gz": "fe7616c4da4392e079d77e285ba7fc12a6fa86363aaa95b054db18a63dc6b8a2",
+    "game.tar.gz": "118dd715c789c38741e7da16837157bd002a9d066cced054fb1e0eb506915b6c"
+  },
+  "contents": "Unedited reports/logs, host observations, packet headers and full-datagram ENet descriptors. Retained off both temporary hosts in the ignored local evidence archive. Public copies redact connection addresses; no access records or credentials are published."
+}
