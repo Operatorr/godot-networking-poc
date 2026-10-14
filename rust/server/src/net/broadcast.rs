@@ -129,7 +129,10 @@ impl DeltaStateCache {
             }
         }
         e.last_tick_sent = tick;
-        e.is_new = false;
+        // Enqueuing an unreliable FULL record does not establish that the
+        // receiver knows this entity. Keep new entities self-contained until
+        // a reliable Baseline includes them; existing baseline entities still
+        // use field masks normally.
     }
 
     fn last_tick_sent(&self, entity_id: u16) -> Option<u64> {
@@ -829,6 +832,45 @@ mod tests {
         assert_eq!(
             cache.calculate_delta_mask(omitted_id, &reentered, 201),
             delta_mask::FULL
+        );
+    }
+
+    #[test]
+    fn lost_first_unreliable_entity_record_recovers_with_full_record() {
+        let mut cache = DeltaStateCache::default();
+        let kept = entity(1, 0.0, 0.0);
+        create_full_state_packet(&[kept], &mut cache, 100, 0);
+        cache.mark_baseline_acked(100);
+        let first = entity(30001, 10.0, 10.0);
+        let (dropped, _) = create_delta_packet(
+            &[kept, first],
+            &[(0, LOD_NEAR), (1, LOD_NEAR)],
+            &mut cache,
+            101,
+            0,
+            &[],
+            1200,
+        );
+        assert_eq!(dropped.entities[0].delta_mask, delta_mask::FULL);
+        // ENet or the path drops this unreliable Snapshot. The receiver still
+        // only knows the baseline's player; the next record must initialize it.
+        let moved = entity(30001, 11.0, 10.0);
+        let (recovery, _) = create_delta_packet(
+            &[kept, moved],
+            &[(0, LOD_NEAR), (1, LOD_NEAR)],
+            &mut cache,
+            102,
+            0,
+            &[],
+            1200,
+        );
+        assert_eq!(recovery.entities[0].delta_mask, delta_mask::FULL);
+        create_full_state_packet(&[kept, moved], &mut cache, 200, 0);
+        cache.mark_baseline_acked(200);
+        let changed = entity(30001, 12.0, 10.0);
+        assert_eq!(
+            cache.calculate_delta_mask(30001, &changed, 201),
+            delta_mask::POSITION
         );
     }
 

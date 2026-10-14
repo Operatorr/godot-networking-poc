@@ -58,6 +58,15 @@ pass. This is a separately recorded correctness fix; a new remote pilot must est
 whether it removes the observed anomalies. All 205 workspace tests, Clippy and formatting
 pass (the same two existing bot warnings remain).
 
+A third regression test reproduces loss of the first unreliable FULL record for a new
+entity. The next Snapshot previously contained position only, although the receiver had
+never learned animation/flags. New entities now retain FULL records until a reliable
+Baseline includes them; existing Baseline entities retain their normal partial masks.
+The test fails before this correction and passes after it, including the return to partial
+updates after a Baseline. This is a correctness/transfer trade-off, not an optimization;
+record its bandwidth separately. All 206 workspace tests, Clippy and formatting pass.
+Remote validation of this follow-up remains pending.
+
 ## Collection and execution fixes
 
 - Reuse authenticated SSH connections instead of establishing a new connection for
