@@ -197,6 +197,7 @@ def plot(report, rows):
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
+    plt.rcParams['svg.hashsalt'] = 'omega-cpu-report-v1'
     fig, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
     for ax, role, label in zip(axes, ('game', 'bots'), ('Game server process', 'Bot generator unit')):
         for behavior in ('movement', 'combat', 'clustered', 'strategy'):
@@ -218,7 +219,7 @@ def plot(report, rows):
     fig.text(.5, .01, '× = failed/invalid observation, not sustainable capacity. Averages after load collapses hide earlier CPU peaks.\nCPU includes all process threads; 1 Hz peaks/durations and host CPU are in cpu-summary.csv.', ha='center', fontsize=9)
     fig.tight_layout(rect=(0, .07, 1, .96))
     fig.savefig(report / 'cpu-vs-population.png', dpi=160)
-    fig.savefig(report / 'cpu-vs-population.svg')
+    fig.savefig(report / 'cpu-vs-population.svg', metadata={'Date': None})
     plt.close(fig)
 
 
@@ -247,7 +248,7 @@ def plot_timeline(directory):
     fig.suptitle(f"{metadata['behavior'].title()} {metadata['requested_bots']} — {metadata['classification']}\nMeasurement start: {begin}")
     fig.text(.5, .01, 'Entire-host CPU includes OS and observation work. Failed offered-load validation prevents a sustainable capacity claim.\n1 Hz CPU averages cannot resolve sub-second CPU spikes; Tick work and UDP errors are separate evidence.', ha='center', fontsize=9)
     fig.tight_layout(rect=(0, .06, 1, .94))
-    fig.savefig(directory / 'cpu-timeline.png', dpi=160); fig.savefig(directory / 'cpu-timeline.svg')
+    fig.savefig(directory / 'cpu-timeline.png', dpi=160); fig.savefig(directory / 'cpu-timeline.svg', metadata={'Date': None})
     plt.close(fig)
 
 
