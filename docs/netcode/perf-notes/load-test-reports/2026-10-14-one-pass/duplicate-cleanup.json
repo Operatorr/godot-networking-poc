@@ -117,5 +117,12 @@
       "bots": "88a664f1b4ce2c710098638d87ffdadc452880a5cf50e5519c8ef08eef16838d"
     },
     "removed": "Remote unpacked duplicates only; local and remote archives retained"
+  },
+  "network-combat-100-delay25-r1": {
+    "archive_sha256": {
+      "game": "1501143d1806837fc93a68082be15f8bc1c69dcc2b4333bdc8e74432bf3675f7",
+      "bots": "fa671338e75bd00c84f36175e9426f8cda63a5283a0fddd772b7563a9d5d360d"
+    },
+    "removed": "Remote unpacked duplicates only; local and remote archives retained"
   }
 }

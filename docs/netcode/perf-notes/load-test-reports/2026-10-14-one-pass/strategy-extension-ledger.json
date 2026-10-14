@@ -7,12 +7,18 @@
     {
       "requested_bots": 200,
       "run_id": "core-strategy-200-r1",
-      "status": "pending"
+      "status": "failed-attempt",
+      "agent": "/root/strategy_200",
+      "classification": "ramp-failed-unscored",
+      "result": "core-strategy-200-r1/agent-result.json",
+      "actual_peak_authenticated": 191,
+      "cleanup_verified_utc": "2026-10-14T09:52:24.810979+00:00"
     },
     {
       "requested_bots": 250,
       "run_id": "core-strategy-250-r1",
-      "status": "pending"
+      "status": "assigned",
+      "agent": "/root/strategy_250"
     },
     {
       "requested_bots": 500,
@@ -29,5 +35,6 @@
       "run_id": "core-strategy-999-r1",
       "status": "pending"
     }
-  ]
+  ],
+  "updated_utc": "2026-10-14T09:55:24.846998+00:00"
 }

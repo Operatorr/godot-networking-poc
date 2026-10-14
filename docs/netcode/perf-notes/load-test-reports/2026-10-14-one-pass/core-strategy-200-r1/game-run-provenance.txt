@@ -1,0 +1,67 @@
+f2bf76c6fa3c28b7fb9b5d52f216061e9c3239999d67bf8a42acadf44dada3a2  /home/deploy/omega-stabilized-b1266c1/rust/target/release/omega-server
+634fbdf22298c5bb7d86fa1e42536132dad733c0b39d0766a09aaaecb9895b43  /home/deploy/omega-results/one-pass-20261014/host_collect.py
+be5a45e0e4c14b1d2cd94ed8daa951ba62a6a0a5e7c949a94db19218879d92ca  /home/deploy/omega-results/one-pass-20261014/capture.py
+00ac4747185ad5c98065adc35c5815055cae808b11f38ebcd3fee29bf0cb9064  /home/deploy/omega-results/one-pass-20261014/flow_record.rs
+a8d0e7fb1ecef028dc174db8fb4c103dca1b0fa0db7bfb0397ed4c242206dd9b  /home/deploy/omega-results/one-pass-20261014/article_flow.rs
+db90d5296e3f77b55b2d8b0c47caeb9b8aa8e58fa5e76b22314c7e5b137a1f6d  /home/deploy/omega-results/one-pass-20261014/article_points.py
+516dbc61209a3688b73b433e214c3c43218df7621ea583c09c2135f4699875c2  /home/deploy/omega-results/one-pass-20261014/flow-record
+bac0bf8947937a334b4fd9e814e1e3a4e15b9753fd3f1c02e185285d26f0d68c  /etc/omega-loadtest/arena.json
+# /etc/systemd/system/omega-loadtest-arena.service
+[Unit]
+Description=Omega isolated load-test Arena (ENet UDP 8081, no API)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=deploy
+Group=deploy
+WorkingDirectory=/home/deploy/omega-realm/rust
+Environment=RUST_LOG=info
+Environment=OMEGA_API_SERVER_URL=
+ExecStart=/home/deploy/omega-realm/rust/target/release/omega-server --config /etc/omega-loadtest/arena.json --allow-unsigned-tickets
+Restart=on-failure
+RestartSec=3
+LimitNOFILE=65536
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target
+
+# /etc/systemd/system/omega-loadtest-arena.service.d/measurement.conf
+[Service]
+ExecStart=
+ExecStart=/home/deploy/omega-stabilized-b1266c1/rust/target/release/omega-server --config /etc/omega-loadtest/arena.json --allow-unsigned-tickets
+Environment=OMEGA_MEASURE_DIR=/var/lib/omega-measure/current
+ReadWritePaths=/var/lib/omega-measure
+MainPID=445833
+NRestarts=0
+CPUUsageNSec=466013000
+Reference ID    : B97DBE7B (ntp-nts-3.ps5.canonical.com)
+Stratum         : 3
+Ref time (UTC)  : Wed Oct 14 09:33:07 2026
+System time     : 0.000133097 seconds fast of NTP time
+Last offset     : -0.000022954 seconds
+RMS offset      : 0.000094653 seconds
+Frequency       : 13.744 ppm slow
+Residual freq   : -0.000 ppm
+Skew            : 0.021 ppm
+Root delay      : 0.027651737 seconds
+Root dispersion : 0.002797739 seconds
+Update interval : 1037.0 seconds
+Leap status     : Normal
+State  Recv-Q Send-Q Local Address:Port Peer Address:Port
+UNCONN 0      0            0.0.0.0:8081      0.0.0.0:*   
+	 skmem:(r0,rb524288,t0,tb524288,f0,w0,o0,bl0,d0)
+212992
+4194304
+212992
+4194304
+b1266c1d53a589c33b5ae8b5259bc7b2968dd252
