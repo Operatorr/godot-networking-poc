@@ -1,0 +1,13 @@
+{
+  "core-clustered-50-r1": {
+    "selected_run_id": "pilot-clustered-50-recovery",
+    "source_namespace": "single-run-20261014",
+    "reason": "Explicit audited reuse of matching corrected pilot; one observation, no new scored repeat",
+    "additional_instrumentation": "Dedicated tracefs UDP queue/drop diagnostic; trace and zero-drop proof retained",
+    "archive_sha256": {
+      "bots.tar.gz": "41be4094701889a620bd1f5e23c08ab81756b6434bdefc399cadd5a192e7e575",
+      "game.tar.gz": "0ddca689d693c7b8171f8b3d04803fbdb31074a0f4a90e656139c904a71c93a4"
+    },
+    "hashes_and_resolved_conditions_verified": true
+  }
+}

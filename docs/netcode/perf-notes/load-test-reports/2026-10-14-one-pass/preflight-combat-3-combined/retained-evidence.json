@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/one-pass-20261014/preflight-combat-3-combined",
+  "sha256": {
+    "bots.tar.gz": "5cb2e400504af0c9641ca02c5ece3c2474550e40d64d4b2ba365afc562fef3f8",
+    "game.tar.gz": "34c3bc653e61fe912e43a45d9ab6eeb50f27e52b116c299270230ef1881edd05"
+  },
+  "contents": "Unedited reports/logs, host observations, packet headers and full-datagram ENet descriptors. Retained off both temporary hosts in the ignored local evidence archive. Public copies redact connection addresses; no access records or credentials are published."
+}

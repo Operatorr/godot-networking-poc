@@ -304,7 +304,8 @@ def _summarize(directory, store, resources):
             result['directional_loss'][direction]['semantics'] = "sender pre-qdisc mirror when available (otherwise post-qdisc capture); timestamped full-UDP fingerprints matched to receiver ±2 ms/+2 s context; synchronized host clocks"
     if "Operator Mac" in manifest.get("topology", ""):
         for observation in result.get("directional_loss", {}).values():
-            observation["semantics"] += "; external receiver/sender observations are socket timestamps, operator clock uncertainty ±35.746 ms; unmatched rates cannot independently distinguish internet loss from operator NIC/kernel loss"
+            uncertainty = manifest.get('external_clock_uncertainty_ms', 35.746)
+            observation["semantics"] += f"; external receiver/sender observations are socket timestamps, operator clock uncertainty ±{uncertainty} ms; unmatched rates cannot independently distinguish internet loss from operator NIC/kernel loss"
     if manifest.get("profile", "native") != "native" and len(prequeue_sets) != 2:
         collector_valid = False
         result["collector_missing"] = "Pre-qdisc directional observations; post-qdisc matching cannot measure injected drops/delay"

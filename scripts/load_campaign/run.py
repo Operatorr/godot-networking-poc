@@ -23,6 +23,7 @@ REMOTE = "/home/deploy/omega-results/campaign-20261013"
 MEASURED = "/home/deploy/omega-measured/rust/target/release"
 MEASURED_BY_ROLE = {role: MEASURED for role in HOSTS}
 MEASURED_CHECKOUTS = {role: '/home/deploy/omega-measured' for role in HOSTS}
+UNIT_PREFIX = 'omega-campaign-'
 SSH_OPTIONS = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15',
                '-o', 'ControlMaster=auto', '-o', 'ControlPersist=300',
                '-o', f'ControlPath=/tmp/omega-cax11-{os.getuid()}-%C',
@@ -135,7 +136,8 @@ def run(run_id, bots, behavior, duration=360, collection=True, build="original",
                 "input_hz": 30, "seed": 30, "difficulty": 1.0, "bandwidth_budget": 0, "profile": profile, "repeat": repeat}
     manifest["collector_source_sha256"] = {path.name: hashlib.sha256(path.read_bytes()).hexdigest()
                                           for path in (ROOT / "scripts/load_campaign").glob("*") if path.is_file()}
-    unit = "omega-campaign-" + run_id
+    unit = UNIT_PREFIX + run_id
+    manifest['systemd_unit_prefix'] = UNIT_PREFIX
     game_directory = REMOTE + "/" + run_id + "/game"
     roles = []
     impaired = []
@@ -255,7 +257,7 @@ def run(run_id, bots, behavior, duration=360, collection=True, build="original",
                 import netem
                 ssh(role, f"tc -s -j qdisc show dev eth0 > {directory}/netem-final.json", check=False)
                 netem.restore(role)
-                ssh(role, f"sudo -n systemctl stop omega-netem-cleanup-{run_id}-{role}", check=False)
+                ssh(role, f"sudo -n systemctl stop {netem.cleanup_unit(run_id, role)}", check=False)
             if role in mirrored:
                 import mirror
                 mirror.restore(role)

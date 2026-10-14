@@ -1,0 +1,18 @@
+{
+  "complete": false,
+  "required_runs_per_condition": 1,
+  "phase_flags": {},
+  "expected_cell_count": 5,
+  "missing_cells": [
+    "core-combat-50-r1",
+    "core-movement-50-r1",
+    "core-strategy-50-r1",
+    "external-combat-3-r1"
+  ],
+  "invalid_collection_cells": [],
+  "inconsistent_evidence": [],
+  "recorded_expected_cells": 1,
+  "admission_required": false,
+  "admission_complete": true,
+  "note": "Coverage allows retained valid failures and generator-invalid cells; they cannot establish sustainable server capacity."
+}

@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/one-pass-20261014/preflight-combat-3-cleanup",
+  "sha256": {
+    "bots.tar.gz": "92d5951752d66186351d650404fb17db7a9427bcf7d4186c25bad9da68703917",
+    "game.tar.gz": "9d51de9b259f322a1b0795172afd96a07ffed20b7ae9c5b15d4d4c36329c96d8"
+  },
+  "contents": "Unedited reports/logs, host observations, packet headers and full-datagram ENet descriptors. Retained off both temporary hosts in the ignored local evidence archive. Public copies redact connection addresses; no access records or credentials are published."
+}

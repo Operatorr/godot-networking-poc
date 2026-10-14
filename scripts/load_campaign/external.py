@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import shlex
 import subprocess
 import tarfile
@@ -20,8 +21,14 @@ def main():
     local.mkdir()
     bots_directory = local / "bots"
     bots_directory.mkdir()
+    clock = subprocess.run(['sntp', '-t', '5', 'time.apple.com'], capture_output=True, text=True, timeout=45)
+    (local / 'operator-clock.txt').write_text(clock.stdout + clock.stderr)
+    clock_samples = re.findall(r'([+-]\d+\.\d+) \+/- (\d+\.\d+)', clock.stdout)
+    if not clock_samples:
+        raise RuntimeError('No fresh external clock sample; preserve attempt before retrying')
+    offset, uncertainty = map(float, clock_samples[-1])
     game_directory = run.REMOTE + "/" + name + "/game"
-    unit = "omega-campaign-" + name
+    unit = run.UNIT_PREFIX + name
     config = run.configure("instrumented", "native")
     run.ssh("game", "rm -f /var/lib/omega-measure/current/window.json; sudo -n systemctl restart omega-loadtest-arena.service")
     run.ssh("game", f"mkdir -p {game_directory}")
@@ -50,13 +57,15 @@ def main():
                 "difficulty": 1.0, "bandwidth_budget": 0,
                 "local_binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
                 "local_socket_observer_sha256": hashlib.sha256((run.RAW / "socket-capture.dylib").read_bytes()).hexdigest(),
-                "external_clock_evidence": "operator-clock.txt; sntp offset +0.282 ms with ±35.746 ms uncertainty",
+                "external_clock_evidence": f"operator-clock.txt; sntp offset {offset * 1000:+.3f} ms with ±{uncertainty * 1000:.3f} ms uncertainty",
+                "external_clock_offset_ms": offset * 1000,
+                "external_clock_uncertainty_ms": uncertainty * 1000,
                 "external_socket_capture_semantics": "Successful UDP payloads at send completion and socket receive observation; synthetic 20-byte IPv4 +8-byte UDP headers, no link/NIC counters. Game-host IP counters/capture are authoritative for outbound transfer.",
                 "provider_reconciliation": "Earlier game-host tooltip is retained in game-provider-counter-before.json; seek a fresh before/after reading and account for provider delay and unrelated egress."}
     (local / "manifest.json").write_text(json.dumps(manifest, indent=2))
     (local / "game-run-provenance.txt").write_text(run.ssh("game",
-        f"sha256sum {run.MEASURED}/omega-server /etc/omega-loadtest/arena.json {run.REMOTE}/host_collect.py {run.REMOTE}/capture.py {run.REMOTE}/flow-record; "
-        "git -C /home/deploy/omega-measured rev-parse HEAD; git -C /home/deploy/omega-measured status --short; "
+        f"sha256sum {run.MEASURED_BY_ROLE['game']}/omega-server /etc/omega-loadtest/arena.json {run.REMOTE}/host_collect.py {run.REMOTE}/capture.py {run.REMOTE}/flow-record; "
+        f"git -C {shlex.quote(run.MEASURED_CHECKOUTS['game'])} rev-parse HEAD; git -C {shlex.quote(run.MEASURED_CHECKOUTS['game'])} status --short; "
         "systemctl cat omega-loadtest-arena.service; chronyc tracking; tc -s -j qdisc show dev eth0"))
     (local / "bots-run-provenance.txt").write_text("Operator macOS external generator. Binary and observer SHA-256 in manifest. "
         "Socket observations are not NIC timestamps. Local code hash matches separately retained build evidence.\n")

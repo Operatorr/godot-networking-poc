@@ -9,7 +9,7 @@ import run
 
 
 class FailedRampTests(unittest.TestCase):
-    def exercise(self, log, phase=None):
+    def exercise(self, log, phase=None, unit_prefix='omega-campaign-'):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         root = pathlib.Path(temporary.name)
@@ -43,7 +43,7 @@ class FailedRampTests(unittest.TestCase):
 
         raw = root / 'raw'
         raw.mkdir()
-        with mock.patch.multiple(run, RAW=raw, REMOTE=str(remote)), \
+        with mock.patch.multiple(run, RAW=raw, REMOTE=str(remote), UNIT_PREFIX=unit_prefix), \
              mock.patch.object(run, 'ssh', side_effect=ssh), \
              mock.patch.object(run, 'copy', side_effect=copy), \
              mock.patch.object(run.time, 'sleep'):
@@ -58,13 +58,17 @@ class FailedRampTests(unittest.TestCase):
         self.assertIn('Ramp failed', (directory / 'controller-error.txt').read_text())
         manifest = json.loads((directory / 'manifest.json').read_text())
         self.assertIn('ended_utc', manifest)
+        self.assertEqual(manifest['systemd_unit_prefix'], unit_prefix)
         self.assertEqual(set(manifest['cleanup_stages']), {'game', 'bots'})
         self.assertEqual({role for role, download in copies if download}, {'game', 'bots'})
         for role in ('game', 'bots'):
             self.assertTrue(any(r == role and 'systemctl stop' in command for r, command in calls))
             self.assertTrue((directory / (role + '.tar.gz')).exists())
-        launch = next(command for role, command in calls if '--unit=omega-campaign-failed-ramp-swarm' in command)
+        launch = next(command for role, command in calls if '--unit=' + unit_prefix + 'failed-ramp-swarm' in command)
         self.assertIn('--property=RuntimeMaxSec=', launch)
+        for role in ('game', 'bots'):
+            self.assertTrue(any(r == role and 'systemctl stop ' + unit_prefix + 'failed-ramp-swarm' in command
+                                for r, command in calls))
         return failure
 
     def test_failure_before_last_five_lines_stops_and_preserves_both_endpoints(self):
@@ -76,6 +80,10 @@ class FailedRampTests(unittest.TestCase):
     def test_failed_start_cannot_be_promoted_by_phase_two_marker(self):
         self.exercise('WARN Bot 1 failed to start: socket unavailable\n',
                       {'phase2_utc_ns': 1_000_000_000})
+
+    def test_new_namespace_uses_distinct_launch_and_cleanup_units(self):
+        self.exercise('WARN Bot 1 failed to connect: connect timeout\n',
+                      unit_prefix='omega-fresh-campaign-')
 
     def test_successful_ramp_keeps_phase_and_finished_markers(self):
         with tempfile.TemporaryDirectory() as directory:

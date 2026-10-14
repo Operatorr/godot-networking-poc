@@ -1,0 +1,62 @@
+[
+  {
+    "run_id": "pilot-clustered-50-recovery",
+    "requested_population": 50,
+    "workload": "clustered",
+    "requested_duration_s": 360,
+    "started_utc": "2026-10-14T03:15:25.818771+00:00",
+    "ended_utc": "2026-10-14T03:24:43.457308+00:00",
+    "classification": "native-stable-candidate",
+    "scored_300s_window_present": true,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/pilot-clustered-50-recovery"
+  },
+  {
+    "run_id": "preflight-clustered-50-off",
+    "requested_population": 50,
+    "workload": "clustered",
+    "requested_duration_s": 120,
+    "started_utc": "2026-10-14T05:08:55.261203+00:00",
+    "ended_utc": "2026-10-14T05:11:25.158192+00:00",
+    "classification": "instrumented-build-recording-off-control-unscored",
+    "scored_300s_window_present": false,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/preflight-clustered-50-off"
+  },
+  {
+    "run_id": "preflight-clustered-50-on",
+    "requested_population": 50,
+    "workload": "clustered",
+    "requested_duration_s": 120,
+    "started_utc": "2026-10-14T05:11:27.215195+00:00",
+    "ended_utc": "2026-10-14T05:15:10.776267+00:00",
+    "classification": "native-stable-candidate",
+    "scored_300s_window_present": false,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/preflight-clustered-50-on"
+  },
+  {
+    "run_id": "preflight-combat-3-cleanup",
+    "requested_population": 3,
+    "workload": "combat",
+    "requested_duration_s": 120,
+    "started_utc": "2026-10-14T05:18:18.094723+00:00",
+    "ended_utc": "2026-10-14T05:20:55.046356+00:00",
+    "classification": "native-stable-candidate",
+    "scored_300s_window_present": false,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/preflight-combat-3-cleanup"
+  },
+  {
+    "run_id": "preflight-combat-3-combined",
+    "requested_population": 3,
+    "workload": "combat",
+    "requested_duration_s": 120,
+    "started_utc": "2026-10-14T05:15:29.979291+00:00",
+    "ended_utc": "2026-10-14T05:18:15.171316+00:00",
+    "classification": "controlled-profile-valid",
+    "scored_300s_window_present": false,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/preflight-combat-3-combined"
+  }
+]

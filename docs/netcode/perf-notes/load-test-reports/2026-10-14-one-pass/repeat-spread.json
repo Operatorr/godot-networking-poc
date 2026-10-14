@@ -1,0 +1,94 @@
+[
+  {
+    "family": "pilot",
+    "workload": "clustered",
+    "requested_population": 50,
+    "profile": "native",
+    "variant": "native",
+    "runs": [
+      "pilot-clustered-50-recovery"
+    ],
+    "classes": [
+      "native-stable-candidate"
+    ],
+    "required_runs_per_condition": 1,
+    "required_runs_present": true,
+    "single_observation_only": true,
+    "variation_semantics": "Single-pass matrix; any group spread includes separate control positions or retained historical attempts, not three repeated passes.",
+    "all_collector_valid": true,
+    "all_generator_valid": true,
+    "selected_matrix_runs": [
+      "pilot-clustered-50-recovery"
+    ],
+    "native_sustainability_demonstrated_required_runs": true,
+    "spread_includes_all_source_rows_even_invalid": true,
+    "metrics": {
+      "outbound_ip_bytes_s": {
+        "min": 1239239.7066666668,
+        "mean": 1239239.7066666668,
+        "median": 1239239.7066666668,
+        "max": 1239239.7066666668
+      },
+      "outbound_ip_bytes_player_s": {
+        "min": 24784.794133333435,
+        "mean": 24784.794133333435,
+        "median": 24784.794133333435,
+        "max": 24784.794133333435
+      },
+      "alive_fraction": {
+        "min": 0.8731838439152695,
+        "mean": 0.8731838439152695,
+        "median": 0.8731838439152695,
+        "max": 0.8731838439152695
+      },
+      "tick_hz": {
+        "min": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "max": 30.0
+      },
+      "tick_work_p99_ms": {
+        "min": 7.95119,
+        "mean": 7.95119,
+        "median": 7.95119,
+        "max": 7.95119
+      },
+      "server_cpu_percent_one_core": {
+        "min": 21.976668142546444,
+        "mean": 21.976668142546444,
+        "median": 21.976668142546444,
+        "max": 21.976668142546444
+      },
+      "generator_cpu_percent_one_core": {
+        "min": 27.801451352858322,
+        "mean": 27.801451352858322,
+        "median": 27.801451352858322,
+        "max": 27.801451352858322
+      },
+      "generator_achieved_hz": {
+        "min": 30.000049425724598,
+        "mean": 30.000049425724598,
+        "median": 30.000049425724598,
+        "max": 30.000049425724598
+      },
+      "rtt_p95_ms": {
+        "min": 4.0,
+        "mean": 4.0,
+        "median": 4.0,
+        "max": 4.0
+      },
+      "tested_ccu_30day_game_host_USD_conditional": {
+        "min": 7.59,
+        "mean": 7.59,
+        "median": 7.59,
+        "max": 7.59
+      },
+      "tested_ccu_year_game_host_USD_conditional": {
+        "min": 91.08000000000003,
+        "mean": 91.08000000000003,
+        "median": 91.08000000000003,
+        "max": 91.08000000000003
+      }
+    }
+  }
+]

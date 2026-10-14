@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/one-pass-20261014/preflight-clustered-50-on",
+  "sha256": {
+    "bots.tar.gz": "01b4965243f7c3999408f16870d7c7ce0f85d513f9d8b4536418a4f06652493a",
+    "game.tar.gz": "4b4649c2fb8ef657d3ba41cd92e917c62090049484feb5e39292d921c02cea79"
+  },
+  "contents": "Unedited reports/logs, host observations, packet headers and full-datagram ENet descriptors. Retained off both temporary hosts in the ignored local evidence archive. Public copies redact connection addresses; no access records or credentials are published."
+}
