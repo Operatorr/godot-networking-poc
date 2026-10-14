@@ -1,0 +1,251 @@
+{
+  "run_id": "core-strategy-500-r1",
+  "outcome": "failed_attempt",
+  "classification": "ramp-failed-unscored",
+  "requested_population": 500,
+  "actual_population": {
+    "requested": 500,
+    "steady_min": null,
+    "steady_max": null,
+    "reason": "Ramp failed before the controller scheduled a common measurement window; no 60-second warmup or 300-second steady observation completed.",
+    "ramp_peak_authenticated": 176,
+    "last_retained_authenticated": 76,
+    "end_of_ramp_log_spawned": null,
+    "end_of_ramp_log_connected": null,
+    "last_progress_log_spawned": 190,
+    "last_progress_log_connected": 159
+  },
+  "window_s": null,
+  "window_reason": "Ramp failed before the controller scheduled a common measurement window; no 60-second warmup or 300-second steady observation completed.",
+  "collector_valid": null,
+  "collector_valid_reason": "No scheduled measurement window; four capture streams retained. Capture diagnostics are recorded separately; no cadence or five-minute collector gate can be scored.",
+  "generator_valid": false,
+  "generator_valid_reason": "Requested 500-player ramp failed. First controller failure retained in ramp_failure; cadence gate not scoreable.",
+  "achieved_input_hz": {
+    "mean": null,
+    "minimum": null,
+    "wire_mean": null,
+    "wire_minimum": null,
+    "reason": "No retained cumulative bot observations and no scheduled measurement window; no steady cadence derivation."
+  },
+  "tick_hz": null,
+  "tick_work_p99_ms": null,
+  "tick_work_max_ms": null,
+  "tick_deadline_counts": null,
+  "game_cpu": null,
+  "bot_cpu": null,
+  "steady_metric_reason": "Ramp failed before the controller scheduled a common measurement window; no 60-second warmup or 300-second steady observation completed.",
+  "game_kernel_errors": {
+    "InErrors": 176138,
+    "RcvbufErrors": 176138,
+    "SndbufErrors": 0,
+    "InCsumErrors": 0
+  },
+  "bot_kernel_errors": {
+    "InErrors": 2901,
+    "RcvbufErrors": 2901,
+    "SndbufErrors": 0,
+    "InCsumErrors": 0
+  },
+  "game_application_errors": {
+    "send_errors": 0,
+    "decode_errors": 0
+  },
+  "bot_application_errors": null,
+  "bot_application_errors_reason": "Bot cumulative observer file is empty: aborted ramp produced no retained bot observation. No zero-error claim is made.",
+  "disconnects": null,
+  "disconnects_reason": "Unscored ramp sampled removals retained in diagnostics.",
+  "traffic_bytes_s": null,
+  "traffic_reason": "No common steady window; unmatched ramp nft counters retained in diagnostics.",
+  "bundle_bytes": {
+    "game": 412773,
+    "bots": 327898
+  },
+  "bundle_sha256": {
+    "game": "f8f33d9beaac41f9bb22383b63893cc754bcfe72ad68367bdc5e08861a768421",
+    "bots": "3b9b837a1b322eefdbf44a09f29774f7843d93f59b7a5f665b22a25de10bc68e"
+  },
+  "source_error": "RuntimeError('Ramp failed; stopping further joins: \\x1b[2m2026-10-14T10:03:01.959506Z\\x1b[0m \\x1b[33m WARN\\x1b[0m \\x1b[2momega_load_test\\x1b[0m\\x1b[2m:\\x1b[0m Bot 177 failed to connect: connect timeout')",
+  "cleanup_errors": {},
+  "ramp_failure": {
+    "line": "\u001b[2m2026-10-14T10:03:01.959506Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2momega_load_test\u001b[0m\u001b[2m:\u001b[0m Bot 177 failed to connect: connect timeout",
+    "classification": "ramp-failed-unscored",
+    "requested_bots": 500,
+    "elapsed_s": 37.65222874999745
+  },
+  "diagnostics": {
+    "scope": "Unscored startup/ramp through controller abort; populations vary. Not steady load, CPU capacity, or a five-minute measurement.",
+    "cpu": {
+      "game": {
+        "metric": "process_cpu_percent_one_core",
+        "mean_percent_one_core": 56.69158067455605,
+        "p99_percent_one_core": 99.98796573412415,
+        "peak_percent_one_core": 99.98796573412415,
+        "seconds_at_or_above_95": 14.010363499999999,
+        "covered_s": 46.00330364700002,
+        "samples": 46,
+        "host_interval_s": 46.003303647
+      },
+      "bots": {
+        "metric": "swarm_cpu_percent_one_core",
+        "mean_percent_one_core": 53.627660622544816,
+        "p99_percent_one_core": 81.40094718234589,
+        "peak_percent_one_core": 81.40094718234589,
+        "seconds_at_or_above_95": 0,
+        "covered_s": 39.024681959000006,
+        "samples": 39,
+        "host_interval_s": 42.04149885
+      }
+    },
+    "traffic": {
+      "game": {
+        "scope": "Unmatched ramp interval between first/last valid nft samples; pre-qdisc IP counters, not common-window wire accounting",
+        "interval_s": 46.003303647,
+        "nft_flows": {
+          "game_in": {
+            "bytes": 0,
+            "bytes_s": 0.0
+          },
+          "bot_in": {
+            "bytes": 52502174,
+            "bytes_s": 1141269.644520928
+          },
+          "game_out": {
+            "bytes": 211437343,
+            "bytes_s": 4596133.891218667
+          },
+          "bot_out": {
+            "bytes": 0,
+            "bytes_s": 0.0
+          }
+        }
+      },
+      "bots": {
+        "scope": "Unmatched ramp interval between first/last valid nft samples; pre-qdisc IP counters, not common-window wire accounting",
+        "interval_s": 42.04149885,
+        "nft_flows": {
+          "game_in": {
+            "bytes": 211753249,
+            "bytes_s": 5036767.355881271
+          },
+          "bot_in": {
+            "bytes": 0,
+            "bytes_s": 0.0
+          },
+          "game_out": {
+            "bytes": 0,
+            "bytes_s": 0.0
+          },
+          "bot_out": {
+            "bytes": 52599811,
+            "bytes_s": 1251140.2409241172
+          }
+        }
+      }
+    },
+    "captures": {
+      "game": {
+        "capture.log": {
+          "kernel_drops": 0,
+          "parse_errors": 0
+        },
+        "prequeue/capture.log": {
+          "kernel_drops": 0,
+          "parse_errors": 0
+        }
+      },
+      "bots": {
+        "capture.log": {
+          "kernel_drops": 0,
+          "parse_errors": 0
+        },
+        "prequeue/capture.log": {
+          "kernel_drops": 0,
+          "parse_errors": 0
+        }
+      }
+    },
+    "tick": {
+      "scope": "All retained startup/ramp ticks",
+      "count": 1547,
+      "span_s": 51.550761005,
+      "hz": 29.98985795476522,
+      "work_p99_ms": 33.163176,
+      "work_max_ms": 51.243944,
+      "work_deadline_exceedances": 15
+    },
+    "disconnects": {
+      "scope": "Sampled authoritative player removals during ramp, not a common steady window",
+      "observed": 100
+    }
+  },
+  "cleanup_proof": {
+    "verified_utc": "2026-10-14T10:03:51.098089+00:00",
+    "hosts": {
+      "game": {
+        "native_fq_codel": true,
+        "qdiscs": [
+          {
+            "kind": "fq_codel",
+            "handle": "8006:",
+            "root": true,
+            "refcnt": 2,
+            "options": {
+              "limit": 10240,
+              "flows": 1024,
+              "quantum": 1514,
+              "target": 4999,
+              "interval": 99999,
+              "memory_limit": 33554432,
+              "ecn": true,
+              "drop_batch": 64
+            }
+          }
+        ],
+        "egress_filters": [],
+        "active_swarm_capture_collectors": [],
+        "archive_sha256": "f8f33d9beaac41f9bb22383b63893cc754bcfe72ad68367bdc5e08861a768421",
+        "remote_archive_sha256_matches": true,
+        "clean": true
+      },
+      "bots": {
+        "native_fq_codel": true,
+        "qdiscs": [
+          {
+            "kind": "fq_codel",
+            "handle": "8006:",
+            "root": true,
+            "refcnt": 2,
+            "options": {
+              "limit": 10240,
+              "flows": 1024,
+              "quantum": 1514,
+              "target": 4999,
+              "interval": 99999,
+              "memory_limit": 33554432,
+              "ecn": true,
+              "drop_batch": 64
+            }
+          }
+        ],
+        "egress_filters": [],
+        "active_swarm_capture_collectors": [],
+        "archive_sha256": "3b9b837a1b322eefdbf44a09f29774f7843d93f59b7a5f665b22a25de10bc68e",
+        "remote_archive_sha256_matches": true,
+        "clean": true
+      }
+    },
+    "host_update_timers": "Parent owns final restoration; unchanged by this agent"
+  },
+  "cpu_report_refresh": "Not run: no completed case; ramp diagnostics derived locally from existing 1 Hz CPU observations only.",
+  "recorded_utc": "2026-10-14T10:03:54.517771+00:00",
+  "interpretation": "Failed ramp and invalid offered load do not establish server CPU capacity.",
+  "binary_sha256_by_role": {
+    "game": "f2bf76c6fa3c28b7fb9b5d52f216061e9c3239999d67bf8a42acadf44dada3a2",
+    "bots": "8af491831304e1ab913089e3b8f1750ea701e4ccd8993d834bcc30ecfa3e8bdf"
+  },
+  "preflight_proof": "preflight-proof.json",
+  "handoff_ready": true,
+  "authenticated_population_source": "game/ticks.csv.gz: exact per-Tick authenticated field; startup/ramp only",
+  "agent_scope": "Exactly one Strategy 500 attempt. No rerun, rebuild, scoring change, provisioning, campaign-state or extension-ledger mutation."
+}

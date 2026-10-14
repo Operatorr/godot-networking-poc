@@ -1,0 +1,36 @@
+{
+  "task": "https://github.com/Operatorr/godot-networking-poc/issues/35",
+  "started_utc": "2026-10-14T05:08:38.824616+00:00",
+  "controller_revision": "f0b9c33967ae74eaadfd9d1299a69b258afbfe4f",
+  "namespace": "one-pass-20261014",
+  "binary_sha256_by_role": {
+    "game": "f2bf76c6fa3c28b7fb9b5d52f216061e9c3239999d67bf8a42acadf44dada3a2",
+    "bots": "8af491831304e1ab913089e3b8f1750ea701e4ccd8993d834bcc30ecfa3e8bdf"
+  },
+  "checkouts_by_role": {
+    "game": "/home/deploy/omega-stabilized-b1266c1",
+    "bots": "/home/deploy/omega-measured"
+  },
+  "authorization": "User: $wayfinder work on Execute the revised one-pass CAX11 load-test matrix",
+  "historical_hold": "Preserved unchanged; administrative hold applies to the old namespace, with no active swarm found.",
+  "one_run_per_condition": true,
+  "bot_class_assignment": {
+    "round_robin": [
+      {
+        "name": "Warrior",
+        "class_id": 4
+      },
+      {
+        "name": "Rogue",
+        "class_id": 5
+      },
+      {
+        "name": "Mage",
+        "class_id": 6
+      }
+    ],
+    "source": "rust/load_test/src/bot.rs at pinned measurement revision 642c147"
+  },
+  "scored_controller_revision": "d1985c823eb620080deeb55aa7a338a19b071b66",
+  "systemd_unit_prefix": "omega-one-pass-20261014-"
+}

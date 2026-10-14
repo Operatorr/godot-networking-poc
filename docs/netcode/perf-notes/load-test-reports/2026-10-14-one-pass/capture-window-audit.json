@@ -1,0 +1,221 @@
+{
+  "scope": "All completed five-minute cells; unchanged retained packet observations",
+  "rows": [
+    {
+      "run_id": "core-clustered-100-r1",
+      "classification_before_audit": "valid-failure",
+      "captures": {
+        "game/datagrams.bin": {
+          "first_relative_s": -71.108342987,
+          "last_relative_s": 0.023470013,
+          "covers_window": true
+        },
+        "game/prequeue/datagrams.bin": {
+          "first_relative_s": -71.107752987,
+          "last_relative_s": 0.023469013,
+          "covers_window": true
+        },
+        "bots/datagrams.bin": {
+          "first_relative_s": -71.111899987,
+          "last_relative_s": 0.023737013,
+          "covers_window": true
+        },
+        "bots/prequeue/datagrams.bin": {
+          "first_relative_s": -71.111905987,
+          "last_relative_s": 0.008955013,
+          "covers_window": true
+        }
+      },
+      "collector_window_complete": true
+    },
+    {
+      "run_id": "core-combat-100-r1",
+      "classification_before_audit": "native-stable-candidate",
+      "captures": {
+        "game/datagrams.bin": {
+          "first_relative_s": -54.92231165,
+          "last_relative_s": 0.01841035,
+          "covers_window": true
+        },
+        "game/prequeue/datagrams.bin": {
+          "first_relative_s": -54.94147465,
+          "last_relative_s": 0.01840935,
+          "covers_window": true
+        },
+        "bots/datagrams.bin": {
+          "first_relative_s": -70.98738065,
+          "last_relative_s": 0.01843235,
+          "covers_window": true
+        },
+        "bots/prequeue/datagrams.bin": {
+          "first_relative_s": -70.98739465,
+          "last_relative_s": 0.00563435,
+          "covers_window": true
+        }
+      },
+      "collector_window_complete": true
+    },
+    {
+      "run_id": "core-combat-50-r1",
+      "classification_before_audit": "native-stable-candidate",
+      "captures": {
+        "game/datagrams.bin": {
+          "first_relative_s": -65.385981656,
+          "last_relative_s": 0.004680344,
+          "covers_window": true
+        },
+        "game/prequeue/datagrams.bin": {
+          "first_relative_s": -65.385241656,
+          "last_relative_s": 0.004679344,
+          "covers_window": true
+        },
+        "bots/datagrams.bin": {
+          "first_relative_s": -65.386835656,
+          "last_relative_s": 0.004829344,
+          "covers_window": true
+        },
+        "bots/prequeue/datagrams.bin": {
+          "first_relative_s": -65.386843656,
+          "last_relative_s": 0.003759344,
+          "covers_window": true
+        }
+      },
+      "collector_window_complete": true
+    },
+    {
+      "run_id": "core-movement-100-r1",
+      "classification_before_audit": "native-stable-candidate",
+      "captures": {
+        "game/datagrams.bin": {
+          "first_relative_s": -70.891674139,
+          "last_relative_s": 0.007758861,
+          "covers_window": true
+        },
+        "game/prequeue/datagrams.bin": {
+          "first_relative_s": -70.891404139,
+          "last_relative_s": 0.007757861,
+          "covers_window": true
+        },
+        "bots/datagrams.bin": {
+          "first_relative_s": -70.892607139,
+          "last_relative_s": 0.007749861,
+          "covers_window": true
+        },
+        "bots/prequeue/datagrams.bin": {
+          "first_relative_s": -70.892614139,
+          "last_relative_s": 0.005820861,
+          "covers_window": true
+        }
+      },
+      "collector_window_complete": true
+    },
+    {
+      "run_id": "core-movement-50-r1",
+      "classification_before_audit": "native-stable-candidate",
+      "captures": {
+        "game/datagrams.bin": {
+          "first_relative_s": -65.39040513,
+          "last_relative_s": 0.00674587,
+          "covers_window": true
+        },
+        "game/prequeue/datagrams.bin": {
+          "first_relative_s": -65.39012513,
+          "last_relative_s": 0.00674387,
+          "covers_window": true
+        },
+        "bots/datagrams.bin": {
+          "first_relative_s": -65.39171513,
+          "last_relative_s": 0.00836587,
+          "covers_window": true
+        },
+        "bots/prequeue/datagrams.bin": {
+          "first_relative_s": -65.39172213,
+          "last_relative_s": 0.00517487,
+          "covers_window": true
+        }
+      },
+      "collector_window_complete": true
+    },
+    {
+      "run_id": "core-strategy-100-r1",
+      "classification_before_audit": "generator-invalid",
+      "captures": {
+        "game/datagrams.bin": {
+          "first_relative_s": -71.032457104,
+          "last_relative_s": 0.016435896,
+          "covers_window": true
+        },
+        "game/prequeue/datagrams.bin": {
+          "first_relative_s": -71.031750104,
+          "last_relative_s": 0.016432896,
+          "covers_window": true
+        },
+        "bots/datagrams.bin": {
+          "first_relative_s": 201.902059896,
+          "last_relative_s": 0.016458896,
+          "covers_window": false
+        },
+        "bots/prequeue/datagrams.bin": {
+          "first_relative_s": 201.906254896,
+          "last_relative_s": 0.014043896,
+          "covers_window": false
+        }
+      },
+      "collector_window_complete": false
+    },
+    {
+      "run_id": "core-strategy-50-r1",
+      "classification_before_audit": "native-stable-candidate",
+      "captures": {
+        "game/datagrams.bin": {
+          "first_relative_s": -65.387592436,
+          "last_relative_s": 0.004739564,
+          "covers_window": true
+        },
+        "game/prequeue/datagrams.bin": {
+          "first_relative_s": -65.386746436,
+          "last_relative_s": 0.004737564,
+          "covers_window": true
+        },
+        "bots/datagrams.bin": {
+          "first_relative_s": -65.389100436,
+          "last_relative_s": 0.004790564,
+          "covers_window": true
+        },
+        "bots/prequeue/datagrams.bin": {
+          "first_relative_s": -65.389107436,
+          "last_relative_s": 0.003641564,
+          "covers_window": true
+        }
+      },
+      "collector_window_complete": true
+    },
+    {
+      "run_id": "pilot-clustered-50-recovery",
+      "classification_before_audit": "native-stable-candidate",
+      "captures": {
+        "game/datagrams.bin": {
+          "first_relative_s": -65.384919178,
+          "last_relative_s": 0.004961822,
+          "covers_window": true
+        },
+        "game/prequeue/datagrams.bin": {
+          "first_relative_s": -65.384090178,
+          "last_relative_s": 0.004959822,
+          "covers_window": true
+        },
+        "bots/datagrams.bin": {
+          "first_relative_s": -65.386157178,
+          "last_relative_s": 0.004921822,
+          "covers_window": true
+        },
+        "bots/prequeue/datagrams.bin": {
+          "first_relative_s": -65.386164178,
+          "last_relative_s": 0.003264822,
+          "covers_window": true
+        }
+      },
+      "collector_window_complete": true
+    }
+  ]
+}

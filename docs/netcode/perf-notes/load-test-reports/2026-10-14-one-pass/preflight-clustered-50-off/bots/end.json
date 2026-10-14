@@ -1,0 +1,37 @@
+{
+  "utc_ns": 1791954679136967189,
+  "monotonic_ns": 64641258807149,
+  "clock_ticks_s": 100,
+  "page_size": 4096,
+  "stat": "cpu  206466 408 134524 12511473 2566 0 31722 0 0 0\ncpu0 108595 406 70819 6244292 1205 0 18457 0 0 0\ncpu1 97870 2 63705 6267181 1361 0 13265 0 0 0\nintr 49193518 0 133086 4056693 0 0 0 13824 0 0 0 24899560 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1315 0 0 0 0 1 1 1 1 1 1 1 1 1 0 29 0 0 0 51669 60042 0 4409078 15253445 68 0 0 0 0 1063 0 313637 0\nctxt 25225304\nbtime 1791890037\nprocesses 158905\nprocs_running 1\nprocs_blocked 0\nsoftirq 29550335 7 1845894 52467 18665649 10 0 445135 7154795 20582 1365796\n",
+  "meminfo": "MemTotal:        3888028 kB\nMemFree:          136952 kB\nMemAvailable:    3446472 kB\nBuffers:           60832 kB\nCached:          3305128 kB\nSwapCached:            0 kB\nActive:           286836 kB\nInactive:        3193496 kB\nActive(anon):     123504 kB\nInactive(anon):      980 kB\nActive(file):     163332 kB\nInactive(file):  3192516 kB\nUnevictable:       19012 kB\nMlocked:           15012 kB\nSwapTotal:             0 kB\nSwapFree:              0 kB\nZswap:                 0 kB\nZswapped:              0 kB\nDirty:                40 kB\nWriteback:             0 kB\nAnonPages:        133384 kB\nMapped:           100180 kB\nShmem:              5160 kB\nKReclaimable:     137276 kB\nSlab:             202656 kB\nSReclaimable:     137276 kB\nSUnreclaim:        65380 kB\nKernelStack:        2368 kB\nShadowCallStack:     600 kB\nPageTables:         2948 kB\nSecPageTables:         0 kB\nNFS_Unstable:          0 kB\nBounce:                0 kB\nWritebackTmp:          0 kB\nCommitLimit:     1944012 kB\nCommitted_AS:     275032 kB\nVmallocTotal:   135288315904 kB\nVmallocUsed:       11828 kB\nVmallocChunk:          0 kB\nPercpu:             1752 kB\nHardwareCorrupted:     0 kB\nAnonHugePages:     77824 kB\nShmemHugePages:        0 kB\nShmemPmdMapped:        0 kB\nFileHugePages:    485376 kB\nFilePmdMapped:         0 kB\nCmaTotal:          32768 kB\nCmaFree:            7624 kB\nBalloon:               0 kB\nHugePages_Total:       0\nHugePages_Free:        0\nHugePages_Rsvd:        0\nHugePages_Surp:        0\nHugepagesize:       2048 kB\nHugetlb:               0 kB\n",
+  "net/snmp": "Ip: Forwarding DefaultTTL InReceives InHdrErrors InAddrErrors ForwDatagrams InUnknownProtos InDiscards InDelivers OutRequests OutDiscards OutNoRoutes ReasmTimeout ReasmReqds ReasmOKs ReasmFails FragOKs FragFails FragCreates OutTransmits\nIp: 2 64 13232988 0 13 0 0 0 13208923 21502959 0 1 0 0 0 0 0 0 0 21502959\nIcmp: InMsgs InErrors InCsumErrors InDestUnreachs InTimeExcds InParmProbs InSrcQuenchs InRedirects InEchos InEchoReps InTimestamps InTimestampReps InAddrMasks InAddrMaskReps OutMsgs OutErrors OutRateLimitGlobal OutRateLimitHost OutDestUnreachs OutTimeExcds OutParmProbs OutSrcQuenchs OutRedirects OutEchos OutEchoReps OutTimestamps OutTimestampReps OutAddrMasks OutAddrMaskReps\nIcmp: 154 0 0 0 0 0 0 0 154 0 0 0 0 0 159 0 0 0 5 0 0 0 0 0 154 0 0 0 0\nIcmpMsg: InType8 OutType0 OutType3\nIcmpMsg: 154 154 5\nTcp: RtoAlgorithm RtoMin RtoMax MaxConn ActiveOpens PassiveOpens AttemptFails EstabResets CurrEstab InSegs OutSegs RetransSegs InErrs OutRsts InCsumErrors\nTcp: 1 200 120000 -1 36 2173 0 1 1 517184 2025716 18315 1 250 0\nUdp: InDatagrams NoPorts InErrors OutDatagrams RcvbufErrors SndbufErrors InCsumErrors IgnoredMulti MemErrors\nUdp: 12758541 5 0 20467570 0 0 0 1 0\nUdpLite: InDatagrams NoPorts InErrors OutDatagrams RcvbufErrors SndbufErrors InCsumErrors IgnoredMulti MemErrors\nUdpLite: 0 0 0 0 0 0 0 0 0\n",
+  "net/softnet_stat": "00000066 00000000 00000082 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000\n00caf334 00000000 0000007b 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000001 00000000 00000000\n",
+  "net/dev": "Inter-|   Receive                                                |  Transmit\n face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed\n    lo:   21184     196    0    0    0     0          0         0    21184     196    0    0    0     0       0          0\n  eth0: 6573994789 13302067    0    0    0     0          0         0 4503730408 21544247    0    0    0     0       0          0\n",
+  "pressure/cpu": "some avg10=0.00 avg60=0.00 avg300=0.00 total=162977473\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n",
+  "interface": {
+    "tx_bytes": "4503732514\n",
+    "rx_bytes": "6573995465\n",
+    "tx_packets": "21544297\n",
+    "rx_packets": "13302080\n",
+    "rx_dropped": "0\n",
+    "tx_dropped": "0\n"
+  },
+  "processes": {},
+  "swarm_cgroup_cpu": "usage_usec 27332685\nuser_usec 14428066\nsystem_usec 12904618\nnice_usec 0\ncore_sched.force_idle_usec 0\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0\n",
+  "nft_before_utc_ns": 1791954679143249522,
+  "nft": {
+    "rc": 1,
+    "stdout": "",
+    "stderr": "Error: No such file or directory\nlist table inet omega_measure\n                ^^^^^^^^^^^^^\n"
+  },
+  "nft_after_utc_ns": 1791954679154423176,
+  "tc": {
+    "rc": 0,
+    "stdout": "[{\"kind\":\"fq_codel\",\"handle\":\"8003:\",\"root\":true,\"refcnt\":2,\"options\":{\"limit\":10240,\"flows\":1024,\"quantum\":1514,\"target\":4999,\"interval\":99999,\"memory_limit\":33554432,\"ecn\":true,\"drop_batch\":64},\"bytes\":3084407905,\"packets\":14664678,\"drops\":0,\"overlimits\":0,\"requeues\":4224,\"backlog\":0,\"qlen\":0,\"maxpacket\":3028,\"drop_overlimit\":0,\"new_flow_count\":22545,\"ecn_mark\":0,\"new_flows_len\":0,\"old_flows_len\":0}]\n",
+    "stderr": ""
+  },
+  "sample_duration_ns": 20696135,
+  "boundary": "end",
+  "target_utc_ns": 1791954679136619008
+}

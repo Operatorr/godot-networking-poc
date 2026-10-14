@@ -1,0 +1,424 @@
+{
+  "aggregated": {
+    "bandwidth_per_player_kbps": 3.8,
+    "connected_bots": 3,
+    "disconnected_bots": 0,
+    "estimated_tick_rate": 30.1,
+    "latency_avg_ms": 1.7,
+    "latency_max_ms": 2.0,
+    "latency_min_ms": 1.0,
+    "latency_p95_ms": 2.0,
+    "latency_p99_ms": 2.0,
+    "packet_loss_pct": 0.01,
+    "total_decode_failures": 0,
+    "total_errors": 0,
+    "total_packets_received": 26560,
+    "total_packets_sent": 10979,
+    "total_panics": 0,
+    "total_send_failures": 0
+  },
+  "config": {
+    "bot_count": 3,
+    "duration_seconds": 120.0,
+    "server": "<game-host>:8081"
+  },
+  "per_bot": [
+    {
+      "action_confirms_received": 3610,
+      "baselines_received": 37,
+      "behavior": "combat",
+      "bot_id": 1,
+      "bytes_received": 370802,
+      "bytes_sent": 79708,
+      "connected": true,
+      "connection_time_ms": 10.1,
+      "decode_failures": 0,
+      "enet_packet_loss_pct": 0.0,
+      "error_count": 0,
+      "game_events_received": 1524,
+      "hit_reports_sent": 25,
+      "last_error": "",
+      "latency_avg_ms": 2.0,
+      "latency_p95_ms": 2.0,
+      "max_observed_entity_distance": 1099.7,
+      "packets_received": 8865,
+      "packets_sent": 3674,
+      "panic_count": 0,
+      "respawn_requests_sent": 1,
+      "send_failures": 0,
+      "state_updates_received": 3610,
+      "unexpected_disconnect": false
+    },
+    {
+      "action_confirms_received": 3607,
+      "baselines_received": 36,
+      "behavior": "combat",
+      "bot_id": 2,
+      "bytes_received": 422210,
+      "bytes_sent": 79590,
+      "connected": true,
+      "connection_time_ms": 3.6,
+      "decode_failures": 0,
+      "enet_packet_loss_pct": 0.0,
+      "error_count": 0,
+      "game_events_received": 1518,
+      "hit_reports_sent": 9,
+      "last_error": "",
+      "latency_avg_ms": 1.0,
+      "latency_p95_ms": 1.0,
+      "max_observed_entity_distance": 1099.8,
+      "packets_received": 8853,
+      "packets_sent": 3655,
+      "panic_count": 0,
+      "respawn_requests_sent": 2,
+      "send_failures": 0,
+      "state_updates_received": 3607,
+      "unexpected_disconnect": false
+    },
+    {
+      "action_confirms_received": 3601,
+      "baselines_received": 37,
+      "behavior": "combat",
+      "bot_id": 3,
+      "bytes_received": 367731,
+      "bytes_sent": 79522,
+      "connected": true,
+      "connection_time_ms": 5.7,
+      "decode_failures": 0,
+      "enet_packet_loss_pct": 0.04,
+      "error_count": 0,
+      "game_events_received": 1516,
+      "hit_reports_sent": 7,
+      "last_error": "",
+      "latency_avg_ms": 2.0,
+      "latency_p95_ms": 2.0,
+      "max_observed_entity_distance": 1099.8,
+      "packets_received": 8842,
+      "packets_sent": 3650,
+      "panic_count": 0,
+      "respawn_requests_sent": 1,
+      "send_failures": 0,
+      "state_updates_received": 3604,
+      "unexpected_disconnect": false
+    }
+  ],
+  "regression_assertions": [
+    {
+      "details": {
+        "eligible_bots": 3,
+        "threshold": 1150.0,
+        "violators": []
+      },
+      "message": "3/3 bots within 1150 u (95% required)",
+      "name": "aoi_cull",
+      "passed": true,
+      "skipped": false
+    },
+    {
+      "details": {
+        "failing_bots": []
+      },
+      "message": "no decode failures",
+      "name": "decode_clean",
+      "passed": true,
+      "skipped": false
+    },
+    {
+      "details": null,
+      "message": "skipped: no --rate-budget configured",
+      "name": "per_peer_budget",
+      "passed": true,
+      "skipped": true
+    }
+  ],
+  "server_reported": {
+    "avg_bandwidth_per_client": 4198,
+    "avg_tick_time_ms": 0.27,
+    "entity_count": 20,
+    "max_tick_time_ms": 0.5,
+    "player_count": 3,
+    "total_bytes_sent": 1153236
+  },
+  "success_criteria": {
+    "bandwidth": {
+      "passed": true,
+      "value": "3.80 KB/s"
+    },
+    "crash_rate": {
+      "passed": true,
+      "value": "0.0%"
+    },
+    "latency_avg": {
+      "passed": true,
+      "value": "1.7ms"
+    },
+    "latency_p95": {
+      "passed": true,
+      "value": "2.0ms"
+    },
+    "packet_loss": {
+      "passed": true,
+      "value": "0.01%"
+    },
+    "server_tick_rate": {
+      "passed": true,
+      "value": "30.1 Hz"
+    }
+  },
+  "time_series": [
+    {
+      "connected_bots": 3,
+      "elapsed_seconds": 5.0,
+      "latency_avg_ms": 1.7,
+      "latency_p95_ms": 2.0,
+      "server_avg_tick_time_ms": 0.2,
+      "server_entity_count": 3,
+      "total_bytes_received": 38170,
+      "total_bytes_sent": 10473,
+      "total_state_updates": 471
+    },
+    {
+      "connected_bots": 3,
+      "elapsed_seconds": 10.0,
+      "latency_avg_ms": 1.7,
+      "latency_p95_ms": 2.0,
+      "server_avg_tick_time_ms": 0.21,
+      "server_entity_count": 8,
+      "total_bytes_received": 77557,
+      "total_bytes_sent": 20403,
+      "total_state_updates": 921
+    },
+    {
+      "connected_bots": 3,
+      "elapsed_seconds": 15.0,
+      "latency_avg_ms": 1.7,
+      "latency_p95_ms": 2.0,
+      "server_avg_tick_time_ms": 0.23,
+      "server_entity_count": 9,
+      "total_bytes_received": 120092,
+      "total_bytes_sent": 30318,
+      "total_state_updates": 1371
+    },
+    {
+      "connected_bots": 3,
+      "elapsed_seconds": 20.0,
+      "latency_avg_ms": 1.7,
+      "latency_p95_ms": 2.0,
+      "server_avg_tick_time_ms": 0.24,
+      "server_entity_count": 9,
+      "total_bytes_received": 169590,
+      "total_bytes_sent": 40248,
+      "total_state_updates": 1821
+    },
+    {
+      "connected_bots": 3,
+      "elapsed_seconds": 25.0,
+      "latency_avg_ms": 1.7,
+      "latency_p95_ms": 2.0,
+      "server_avg_tick_time_ms": 0.23,
+      "server_entity_count": 8,
+      "total_bytes_received": 212762,
+      "total_bytes_sent": 50163,
+      "total_state_updates": 2271
+    },
+    {
+      "connected_bots": 3,
+      "elapsed_seconds": 30.0,
+      "latency_avg_ms": 1.7,
+      "latency_p95_ms": 2.0,
+      "server_avg_tick_time_ms": 0.21,
+      "server_entity_count": 8,
+      "total_bytes_received": 248437,
+      "total_bytes_sent": 60093,
+      "total_state_updates": 2721
+    },
+    {
+      "connected_bots": 3,
+      "elapsed_seconds": 35.0,
+      "latency_avg_ms": 1.7,
+      "latency_p95_ms": 2.0,
+      "server_avg_tick_time_ms": 0.23,
+      "server_entity_count": 11,
+      "total_bytes_received": 288511,
+      "total_bytes_sent": 70014,
+      "total_state_updates": 3171
+    },
+    {
+      "connected_bots": 3,
+      "elapsed_seconds": 40.0,
+      "latency_avg_ms": 1.7,
+      "latency_p95_ms": 2.0,
+      "server_avg_tick_time_ms": 0.23,
+      "server_entity_count": 12,
+      "total_bytes_received": 330221,
+      "total_bytes_sent": 79950,
+      "total_state_updates": 3621
+    },
+    {
+      "connected_bots": 3,
+      "elapsed_seconds": 45.0,
+      "latency_avg_ms": 1.7,
+      "latency_p95_ms": 2.0,
+      "server_avg_tick_time_ms": 0.22,
+      "server_entity_count": 14,
+      "total_bytes_received": 371329,
+      "total_bytes_sent": 89868,
+      "total_state_updates": 4071
+    },
+    {
+      "connected_bots": 3,
+      "elapsed_seconds": 50.0,
+      "latency_avg_ms": 1.7,
+      "latency_p95_ms": 2.0,
+      "server_avg_tick_time_ms": 0.23,
+      "server_entity_count": 15,
+      "total_bytes_received": 410757,
+      "total_bytes_sent": 99810,
+      "total_state_updates": 4519
+    },
+    {
+      "connected_bots": 3,
+      "elapsed_seconds": 55.0,
+      "latency_avg_ms": 1.7,
+      "latency_p95_ms": 2.0,
+      "server_avg_tick_time_ms": 0.23,
+      "server_entity_count": 15,
+      "total_bytes_received": 449390,
+      "total_bytes_sent": 109734,
+      "total_state_updates": 4971
+    },
+    {
+      "connected_bots": 3,
+      "elapsed_seconds": 60.0,
+      "latency_avg_ms": 1.7,
+      "latency_p95_ms": 2.0,
+      "server_avg_tick_time_ms": 0.25,
+      "server_entity_count": 16,
+      "total_bytes_received": 495879,
+      "total_bytes_sent": 119667,
+      "total_state_updates": 5421
+    },
+    {
+      "connected_bots": 3,
+      "elapsed_seconds": 65.0,
+      "latency_avg_ms": 1.7,
+      "latency_p95_ms": 2.0,
+      "server_avg_tick_time_ms": 0.24,
+      "server_entity_count": 15,
+      "total_bytes_received": 545342,
+      "total_bytes_sent": 129588,
+      "total_state_updates": 5871
+    },
+    {
+      "connected_bots": 3,
+      "elapsed_seconds": 70.0,
+      "latency_avg_ms": 1.7,
+      "latency_p95_ms": 2.0,
+      "server_avg_tick_time_ms": 0.25,
+      "server_entity_count": 16,
+      "total_bytes_received": 599078,
+      "total_bytes_sent": 139521,
+      "total_state_updates": 6321
+    },
+    {
+      "connected_bots": 3,
+      "elapsed_seconds": 75.0,
+      "latency_avg_ms": 1.7,
+      "latency_p95_ms": 2.0,
+      "server_avg_tick_time_ms": 0.23,
+      "server_entity_count": 12,
+      "total_bytes_received": 637315,
+      "total_bytes_sent": 149447,
+      "total_state_updates": 6771
+    },
+    {
+      "connected_bots": 3,
+      "elapsed_seconds": 80.0,
+      "latency_avg_ms": 1.7,
+      "latency_p95_ms": 2.0,
+      "server_avg_tick_time_ms": 0.26,
+      "server_entity_count": 26,
+      "total_bytes_received": 699481,
+      "total_bytes_sent": 159375,
+      "total_state_updates": 7221
+    },
+    {
+      "connected_bots": 3,
+      "elapsed_seconds": 85.0,
+      "latency_avg_ms": 1.7,
+      "latency_p95_ms": 2.0,
+      "server_avg_tick_time_ms": 0.27,
+      "server_entity_count": 30,
+      "total_bytes_received": 768411,
+      "total_bytes_sent": 169310,
+      "total_state_updates": 7671
+    },
+    {
+      "connected_bots": 3,
+      "elapsed_seconds": 90.0,
+      "latency_avg_ms": 1.7,
+      "latency_p95_ms": 2.0,
+      "server_avg_tick_time_ms": 0.25,
+      "server_entity_count": 20,
+      "total_bytes_received": 820746,
+      "total_bytes_sent": 179245,
+      "total_state_updates": 8121
+    },
+    {
+      "connected_bots": 3,
+      "elapsed_seconds": 95.0,
+      "latency_avg_ms": 1.7,
+      "latency_p95_ms": 2.0,
+      "server_avg_tick_time_ms": 0.26,
+      "server_entity_count": 21,
+      "total_bytes_received": 870013,
+      "total_bytes_sent": 189165,
+      "total_state_updates": 8571
+    },
+    {
+      "connected_bots": 3,
+      "elapsed_seconds": 100.0,
+      "latency_avg_ms": 1.7,
+      "latency_p95_ms": 2.0,
+      "server_avg_tick_time_ms": 0.25,
+      "server_entity_count": 19,
+      "total_bytes_received": 922430,
+      "total_bytes_sent": 199096,
+      "total_state_updates": 9021
+    },
+    {
+      "connected_bots": 3,
+      "elapsed_seconds": 105.0,
+      "latency_avg_ms": 1.7,
+      "latency_p95_ms": 2.0,
+      "server_avg_tick_time_ms": 0.23,
+      "server_entity_count": 22,
+      "total_bytes_received": 971610,
+      "total_bytes_sent": 209031,
+      "total_state_updates": 9471
+    },
+    {
+      "connected_bots": 3,
+      "elapsed_seconds": 110.0,
+      "latency_avg_ms": 1.7,
+      "latency_p95_ms": 2.0,
+      "server_avg_tick_time_ms": 0.29,
+      "server_entity_count": 24,
+      "total_bytes_received": 1035392,
+      "total_bytes_sent": 218963,
+      "total_state_updates": 9921
+    },
+    {
+      "connected_bots": 3,
+      "elapsed_seconds": 115.0,
+      "latency_avg_ms": 1.7,
+      "latency_p95_ms": 2.0,
+      "server_avg_tick_time_ms": 0.27,
+      "server_entity_count": 20,
+      "total_bytes_received": 1101487,
+      "total_bytes_sent": 228886,
+      "total_state_updates": 10371
+    }
+  ],
+  "timestamp": "2026-10-14T08:19:13Z"
+}

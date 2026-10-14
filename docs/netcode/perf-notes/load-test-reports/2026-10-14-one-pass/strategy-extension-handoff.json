@@ -1,0 +1,60 @@
+{
+  "ready": true,
+  "ready_utc": "2026-10-14T09:49:34.064228+00:00",
+  "documentation_commit": "00271b9",
+  "prior_completed_case": "network-combat-100-delay25-r1",
+  "prior_case_classification": "controlled-profile-valid",
+  "prior_case_window_s": 300.0,
+  "old_coordinator": "Exited after safe end-of-window interrupt; network/transfer deferred",
+  "automatic_finish_watcher": "Stopped to prevent cleanup/accounting from racing new Strategy runs",
+  "binary_sha256": {
+    "game": "f2bf76c6fa3c28b7fb9b5d52f216061e9c3239999d67bf8a42acadf44dada3a2",
+    "bots": "8af491831304e1ab913089e3b8f1750ea701e4ccd8993d834bcc30ecfa3e8bdf"
+  },
+  "cleanup": {
+    "game": {
+      "native_qdiscs": [
+        {
+          "kind": "fq_codel",
+          "handle": "8006:",
+          "root": true,
+          "refcnt": 2,
+          "options": {
+            "limit": 10240,
+            "flows": 1024,
+            "quantum": 1514,
+            "target": 4999,
+            "interval": 99999,
+            "memory_limit": 33554432,
+            "ecn": true,
+            "drop_batch": 64
+          }
+        }
+      ],
+      "egress_filters": [],
+      "swarm_and_recorders": "none"
+    },
+    "bots": {
+      "native_qdiscs": [
+        {
+          "kind": "fq_codel",
+          "handle": "8006:",
+          "root": true,
+          "refcnt": 2,
+          "options": {
+            "limit": 10240,
+            "flows": 1024,
+            "quantum": 1514,
+            "target": 4999,
+            "interval": 99999,
+            "memory_limit": 33554432,
+            "ecn": true,
+            "drop_batch": 64
+          }
+        }
+      ],
+      "egress_filters": [],
+      "swarm_and_recorders": "none"
+    }
+  }
+}

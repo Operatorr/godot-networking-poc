@@ -1,0 +1,1496 @@
+[
+  {
+    "family": "boundary",
+    "workload": "clustered",
+    "requested_population": 75,
+    "profile": "native",
+    "variant": "native",
+    "runs": [
+      "boundary-clustered-75-r1"
+    ],
+    "classes": [
+      "valid-failure"
+    ],
+    "required_runs_per_condition": 1,
+    "required_runs_present": true,
+    "single_observation_only": true,
+    "variation_semantics": "Single-pass matrix; any group spread includes separate control positions or retained historical attempts, not three repeated passes.",
+    "all_collector_valid": true,
+    "all_generator_valid": true,
+    "selected_matrix_runs": [
+      "boundary-clustered-75-r1"
+    ],
+    "native_sustainability_demonstrated_required_runs": false,
+    "spread_includes_all_source_rows_even_invalid": true,
+    "metrics": {
+      "outbound_ip_bytes_s": {
+        "min": 2721592.5233333334,
+        "mean": 2721592.5233333334,
+        "median": 2721592.5233333334,
+        "max": 2721592.5233333334
+      },
+      "outbound_ip_bytes_player_s": {
+        "min": 36287.9003111112,
+        "mean": 36287.9003111112,
+        "median": 36287.9003111112,
+        "max": 36287.9003111112
+      },
+      "alive_fraction": {
+        "min": 0.8469028698316531,
+        "mean": 0.8469028698316531,
+        "median": 0.8469028698316531,
+        "max": 0.8469028698316531
+      },
+      "tick_hz": {
+        "min": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "max": 30.0
+      },
+      "tick_work_p99_ms": {
+        "min": 13.499705,
+        "mean": 13.499705,
+        "median": 13.499705,
+        "max": 13.499705
+      },
+      "server_cpu_percent_one_core": {
+        "min": 31.61666187052445,
+        "mean": 31.61666187052445,
+        "median": 31.61666187052445,
+        "max": 31.61666187052445
+      },
+      "generator_cpu_percent_one_core": {
+        "min": 41.798246023201195,
+        "mean": 41.798246023201195,
+        "median": 41.798246023201195,
+        "max": 41.798246023201195
+      },
+      "generator_achieved_hz": {
+        "min": 29.99942824931585,
+        "mean": 29.99942824931585,
+        "median": 29.99942824931585,
+        "max": 29.99942824931585
+      },
+      "rtt_p95_ms": {
+        "min": 8.0,
+        "mean": 8.0,
+        "median": 8.0,
+        "max": 8.0
+      }
+    }
+  },
+  {
+    "family": "boundary",
+    "workload": "combat",
+    "requested_population": 125,
+    "profile": "native",
+    "variant": "native",
+    "runs": [
+      "boundary-combat-125-r1"
+    ],
+    "classes": [
+      "valid-failure"
+    ],
+    "required_runs_per_condition": 1,
+    "required_runs_present": true,
+    "single_observation_only": true,
+    "variation_semantics": "Single-pass matrix; any group spread includes separate control positions or retained historical attempts, not three repeated passes.",
+    "all_collector_valid": true,
+    "all_generator_valid": true,
+    "selected_matrix_runs": [
+      "boundary-combat-125-r1"
+    ],
+    "native_sustainability_demonstrated_required_runs": false,
+    "spread_includes_all_source_rows_even_invalid": true,
+    "metrics": {
+      "outbound_ip_bytes_s": {
+        "min": 5522845.246666667,
+        "mean": 5522845.246666667,
+        "median": 5522845.246666667,
+        "max": 5522845.246666667
+      },
+      "outbound_ip_bytes_player_s": {
+        "min": 44182.76197333337,
+        "mean": 44182.76197333337,
+        "median": 44182.76197333337,
+        "max": 44182.76197333337
+      },
+      "alive_fraction": {
+        "min": 0.8560518952100277,
+        "mean": 0.8560518952100277,
+        "median": 0.8560518952100277,
+        "max": 0.8560518952100277
+      },
+      "tick_hz": {
+        "min": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "max": 30.0
+      },
+      "tick_work_p99_ms": {
+        "min": 28.297548,
+        "mean": 28.297548,
+        "median": 28.297548,
+        "max": 28.297548
+      },
+      "server_cpu_percent_one_core": {
+        "min": 55.28665586052121,
+        "mean": 55.28665586052121,
+        "median": 55.28665586052121,
+        "max": 55.28665586052121
+      },
+      "generator_cpu_percent_one_core": {
+        "min": 65.93584650905548,
+        "mean": 65.93584650905548,
+        "median": 65.93584650905548,
+        "max": 65.93584650905548
+      },
+      "generator_achieved_hz": {
+        "min": 29.999162150982478,
+        "mean": 29.999162150982478,
+        "median": 29.999162150982478,
+        "max": 29.999162150982478
+      },
+      "rtt_p95_ms": {
+        "min": 14.0,
+        "mean": 14.0,
+        "median": 14.0,
+        "max": 14.0
+      }
+    }
+  },
+  {
+    "family": "boundary",
+    "workload": "strategy",
+    "requested_population": 125,
+    "profile": "native",
+    "variant": "native",
+    "runs": [
+      "boundary-strategy-125-r1"
+    ],
+    "classes": [
+      "generator-invalid"
+    ],
+    "required_runs_per_condition": 1,
+    "required_runs_present": true,
+    "single_observation_only": true,
+    "variation_semantics": "Single-pass matrix; any group spread includes separate control positions or retained historical attempts, not three repeated passes.",
+    "all_collector_valid": true,
+    "all_generator_valid": false,
+    "selected_matrix_runs": [
+      "boundary-strategy-125-r1"
+    ],
+    "native_sustainability_demonstrated_required_runs": false,
+    "spread_includes_all_source_rows_even_invalid": true,
+    "metrics": {
+      "outbound_ip_bytes_s": {
+        "min": 5335114.85,
+        "mean": 5335114.85,
+        "median": 5335114.85,
+        "max": 5335114.85
+      },
+      "outbound_ip_bytes_player_s": {
+        "min": 42680.91879999982,
+        "mean": 42680.91879999982,
+        "median": 42680.91879999982,
+        "max": 42680.91879999982
+      },
+      "alive_fraction": {
+        "min": 0.8353148523957848,
+        "mean": 0.8353148523957848,
+        "median": 0.8353148523957848,
+        "max": 0.8353148523957848
+      },
+      "tick_hz": {
+        "min": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "max": 30.0
+      },
+      "tick_work_p99_ms": {
+        "min": 25.680312,
+        "mean": 25.680312,
+        "median": 25.680312,
+        "max": 25.680312
+      },
+      "server_cpu_percent_one_core": {
+        "min": 52.96666079125154,
+        "mean": 52.96666079125154,
+        "median": 52.96666079125154,
+        "max": 52.96666079125154
+      },
+      "generator_cpu_percent_one_core": {
+        "min": 92.3316518403466,
+        "mean": 92.3316518403466,
+        "median": 92.3316518403466,
+        "max": 92.3316518403466
+      },
+      "generator_achieved_hz": {
+        "min": 29.989854752631945,
+        "mean": 29.989854752631945,
+        "median": 29.989854752631945,
+        "max": 29.989854752631945
+      },
+      "rtt_p95_ms": {
+        "min": 24.0,
+        "mean": 24.0,
+        "median": 24.0,
+        "max": 24.0
+      }
+    }
+  },
+  {
+    "family": "core",
+    "workload": "clustered",
+    "requested_population": 100,
+    "profile": "native",
+    "variant": "native",
+    "runs": [
+      "core-clustered-100-r1"
+    ],
+    "classes": [
+      "valid-failure"
+    ],
+    "required_runs_per_condition": 1,
+    "required_runs_present": true,
+    "single_observation_only": true,
+    "variation_semantics": "Single-pass matrix; any group spread includes separate control positions or retained historical attempts, not three repeated passes.",
+    "all_collector_valid": true,
+    "all_generator_valid": true,
+    "selected_matrix_runs": [
+      "core-clustered-100-r1"
+    ],
+    "native_sustainability_demonstrated_required_runs": false,
+    "spread_includes_all_source_rows_even_invalid": true,
+    "metrics": {
+      "outbound_ip_bytes_s": {
+        "min": 4762699.8533333335,
+        "mean": 4762699.8533333335,
+        "median": 4762699.8533333335,
+        "max": 4762699.8533333335
+      },
+      "outbound_ip_bytes_player_s": {
+        "min": 47626.99853333308,
+        "mean": 47626.99853333308,
+        "median": 47626.99853333308,
+        "max": 47626.99853333308
+      },
+      "alive_fraction": {
+        "min": 0.8219651797347256,
+        "mean": 0.8219651797347256,
+        "median": 0.8219651797347256,
+        "max": 0.8219651797347256
+      },
+      "tick_hz": {
+        "min": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "max": 30.0
+      },
+      "tick_work_p99_ms": {
+        "min": 23.911928,
+        "mean": 23.911928,
+        "median": 23.911928,
+        "max": 23.911928
+      },
+      "server_cpu_percent_one_core": {
+        "min": 50.646663932590926,
+        "mean": 50.646663932590926,
+        "median": 50.646663932590926,
+        "max": 50.646663932590926
+      },
+      "generator_cpu_percent_one_core": {
+        "min": 55.6981250524449,
+        "mean": 55.6981250524449,
+        "median": 55.6981250524449,
+        "max": 55.6981250524449
+      },
+      "generator_achieved_hz": {
+        "min": 29.99951782536623,
+        "mean": 29.99951782536623,
+        "median": 29.99951782536623,
+        "max": 29.99951782536623
+      },
+      "rtt_p95_ms": {
+        "min": 11.0,
+        "mean": 11.0,
+        "median": 11.0,
+        "max": 11.0
+      }
+    }
+  },
+  {
+    "family": "core",
+    "workload": "combat",
+    "requested_population": 50,
+    "profile": "native",
+    "variant": "native",
+    "runs": [
+      "core-combat-50-r1"
+    ],
+    "classes": [
+      "native-stable-candidate"
+    ],
+    "required_runs_per_condition": 1,
+    "required_runs_present": true,
+    "single_observation_only": true,
+    "variation_semantics": "Single-pass matrix; any group spread includes separate control positions or retained historical attempts, not three repeated passes.",
+    "all_collector_valid": true,
+    "all_generator_valid": true,
+    "selected_matrix_runs": [
+      "core-combat-50-r1"
+    ],
+    "native_sustainability_demonstrated_required_runs": true,
+    "spread_includes_all_source_rows_even_invalid": true,
+    "metrics": {
+      "outbound_ip_bytes_s": {
+        "min": 1086436.92,
+        "mean": 1086436.92,
+        "median": 1086436.92,
+        "max": 1086436.92
+      },
+      "outbound_ip_bytes_player_s": {
+        "min": 21728.738399999962,
+        "mean": 21728.738399999962,
+        "median": 21728.738399999962,
+        "max": 21728.738399999962
+      },
+      "alive_fraction": {
+        "min": 0.8569417995839304,
+        "mean": 0.8569417995839304,
+        "median": 0.8569417995839304,
+        "max": 0.8569417995839304
+      },
+      "tick_hz": {
+        "min": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "max": 30.0
+      },
+      "tick_work_p99_ms": {
+        "min": 6.874334,
+        "mean": 6.874334,
+        "median": 6.874334,
+        "max": 6.874334
+      },
+      "server_cpu_percent_one_core": {
+        "min": 20.586666392040534,
+        "mean": 20.586666392040534,
+        "median": 20.586666392040534,
+        "max": 20.586666392040534
+      },
+      "generator_cpu_percent_one_core": {
+        "min": 28.45195090279554,
+        "mean": 28.45195090279554,
+        "median": 28.45195090279554,
+        "max": 28.45195090279554
+      },
+      "generator_achieved_hz": {
+        "min": 29.999859333580314,
+        "mean": 29.999859333580314,
+        "median": 29.999859333580314,
+        "max": 29.999859333580314
+      },
+      "rtt_p95_ms": {
+        "min": 4.0,
+        "mean": 4.0,
+        "median": 4.0,
+        "max": 4.0
+      },
+      "tested_ccu_30day_game_host_USD_conditional": {
+        "min": 7.59,
+        "mean": 7.59,
+        "median": 7.59,
+        "max": 7.59
+      },
+      "tested_ccu_year_game_host_USD_conditional": {
+        "min": 91.08000000000003,
+        "mean": 91.08000000000003,
+        "median": 91.08000000000003,
+        "max": 91.08000000000003
+      }
+    }
+  },
+  {
+    "family": "core",
+    "workload": "combat",
+    "requested_population": 100,
+    "profile": "native",
+    "variant": "native",
+    "runs": [
+      "core-combat-100-r1"
+    ],
+    "classes": [
+      "native-stable-candidate"
+    ],
+    "required_runs_per_condition": 1,
+    "required_runs_present": true,
+    "single_observation_only": true,
+    "variation_semantics": "Single-pass matrix; any group spread includes separate control positions or retained historical attempts, not three repeated passes.",
+    "all_collector_valid": true,
+    "all_generator_valid": true,
+    "selected_matrix_runs": [
+      "core-combat-100-r1"
+    ],
+    "native_sustainability_demonstrated_required_runs": true,
+    "spread_includes_all_source_rows_even_invalid": true,
+    "metrics": {
+      "outbound_ip_bytes_s": {
+        "min": 3834620.45,
+        "mean": 3834620.45,
+        "median": 3834620.45,
+        "max": 3834620.45
+      },
+      "outbound_ip_bytes_player_s": {
+        "min": 38346.20450000004,
+        "mean": 38346.20450000004,
+        "median": 38346.20450000004,
+        "max": 38346.20450000004
+      },
+      "alive_fraction": {
+        "min": 0.8759892850279658,
+        "mean": 0.8759892850279658,
+        "median": 0.8759892850279658,
+        "max": 0.8759892850279658
+      },
+      "tick_hz": {
+        "min": 30.003333333333334,
+        "mean": 30.003333333333334,
+        "median": 30.003333333333334,
+        "max": 30.003333333333334
+      },
+      "tick_work_p99_ms": {
+        "min": 20.4852,
+        "mean": 20.4852,
+        "median": 20.4852,
+        "max": 20.4852
+      },
+      "server_cpu_percent_one_core": {
+        "min": 39.84334326348977,
+        "mean": 39.84334326348977,
+        "median": 39.84334326348977,
+        "max": 39.84334326348977
+      },
+      "generator_cpu_percent_one_core": {
+        "min": 54.56612959535298,
+        "mean": 54.56612959535298,
+        "median": 54.56612959535298,
+        "max": 54.56612959535298
+      },
+      "generator_achieved_hz": {
+        "min": 29.99987826555679,
+        "mean": 29.99987826555679,
+        "median": 29.99987826555679,
+        "max": 29.99987826555679
+      },
+      "rtt_p95_ms": {
+        "min": 10.0,
+        "mean": 10.0,
+        "median": 10.0,
+        "max": 10.0
+      },
+      "tested_ccu_30day_game_host_USD_conditional": {
+        "min": 7.59,
+        "mean": 7.59,
+        "median": 7.59,
+        "max": 7.59
+      },
+      "tested_ccu_year_game_host_USD_conditional": {
+        "min": 91.08000000000003,
+        "mean": 91.08000000000003,
+        "median": 91.08000000000003,
+        "max": 91.08000000000003
+      }
+    }
+  },
+  {
+    "family": "core",
+    "workload": "combat",
+    "requested_population": 150,
+    "profile": "native",
+    "variant": "native",
+    "runs": [
+      "core-combat-150-r1"
+    ],
+    "classes": [
+      "generator-invalid"
+    ],
+    "required_runs_per_condition": 1,
+    "required_runs_present": true,
+    "single_observation_only": true,
+    "variation_semantics": "Single-pass matrix; any group spread includes separate control positions or retained historical attempts, not three repeated passes.",
+    "all_collector_valid": true,
+    "all_generator_valid": false,
+    "selected_matrix_runs": [
+      "core-combat-150-r1"
+    ],
+    "native_sustainability_demonstrated_required_runs": false,
+    "spread_includes_all_source_rows_even_invalid": true,
+    "metrics": {
+      "outbound_ip_bytes_s": {
+        "min": 800241.8166666667,
+        "mean": 800241.8166666667,
+        "median": 800241.8166666667,
+        "max": 800241.8166666667
+      },
+      "outbound_ip_bytes_player_s": {
+        "min": 29690.278220486518,
+        "mean": 29690.278220486518,
+        "median": 29690.278220486518,
+        "max": 29690.278220486518
+      },
+      "alive_fraction": {
+        "min": 0.8807279273744106,
+        "mean": 0.8807279273744106,
+        "median": 0.8807279273744106,
+        "max": 0.8807279273744106
+      },
+      "tick_hz": {
+        "min": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "max": 30.0
+      },
+      "tick_work_p99_ms": {
+        "min": 25.402229,
+        "mean": 25.402229,
+        "median": 25.402229,
+        "max": 25.402229
+      },
+      "server_cpu_percent_one_core": {
+        "min": 15.126661787965283,
+        "mean": 15.126661787965283,
+        "median": 15.126661787965283,
+        "max": 15.126661787965283
+      },
+      "generator_cpu_percent_one_core": {
+        "min": 19.377522061121766,
+        "mean": 19.377522061121766,
+        "median": 19.377522061121766,
+        "max": 19.377522061121766
+      },
+      "generator_achieved_hz": {
+        "min": 6.410522595224379,
+        "mean": 6.410522595224379,
+        "median": 6.410522595224379,
+        "max": 6.410522595224379
+      },
+      "rtt_p95_ms": {
+        "min": 101.0,
+        "mean": 101.0,
+        "median": 101.0,
+        "max": 101.0
+      }
+    }
+  },
+  {
+    "family": "core",
+    "workload": "movement",
+    "requested_population": 50,
+    "profile": "native",
+    "variant": "native",
+    "runs": [
+      "core-movement-50-r1"
+    ],
+    "classes": [
+      "native-stable-candidate"
+    ],
+    "required_runs_per_condition": 1,
+    "required_runs_present": true,
+    "single_observation_only": true,
+    "variation_semantics": "Single-pass matrix; any group spread includes separate control positions or retained historical attempts, not three repeated passes.",
+    "all_collector_valid": true,
+    "all_generator_valid": true,
+    "selected_matrix_runs": [
+      "core-movement-50-r1"
+    ],
+    "native_sustainability_demonstrated_required_runs": true,
+    "spread_includes_all_source_rows_even_invalid": true,
+    "metrics": {
+      "outbound_ip_bytes_s": {
+        "min": 643523.82,
+        "mean": 643523.82,
+        "median": 643523.82,
+        "max": 643523.82
+      },
+      "outbound_ip_bytes_player_s": {
+        "min": 12870.476400000016,
+        "mean": 12870.476400000016,
+        "median": 12870.476400000016,
+        "max": 12870.476400000016
+      },
+      "alive_fraction": {
+        "min": 0.9650365990120662,
+        "mean": 0.9650365990120662,
+        "median": 0.9650365990120662,
+        "max": 0.9650365990120662
+      },
+      "tick_hz": {
+        "min": 29.996666666666666,
+        "mean": 29.996666666666666,
+        "median": 29.996666666666666,
+        "max": 29.996666666666666
+      },
+      "tick_work_p99_ms": {
+        "min": 5.848,
+        "mean": 5.848,
+        "median": 5.848,
+        "max": 5.848
+      },
+      "server_cpu_percent_one_core": {
+        "min": 17.880000078672,
+        "mean": 17.880000078672,
+        "median": 17.880000078672,
+        "max": 17.880000078672
+      },
+      "generator_cpu_percent_one_core": {
+        "min": 25.366457249330214,
+        "mean": 25.366457249330214,
+        "median": 25.366457249330214,
+        "max": 25.366457249330214
+      },
+      "generator_achieved_hz": {
+        "min": 29.99970533252986,
+        "mean": 29.99970533252986,
+        "median": 29.99970533252986,
+        "max": 29.99970533252986
+      },
+      "rtt_p95_ms": {
+        "min": 3.0,
+        "mean": 3.0,
+        "median": 3.0,
+        "max": 3.0
+      },
+      "tested_ccu_30day_game_host_USD_conditional": {
+        "min": 7.59,
+        "mean": 7.59,
+        "median": 7.59,
+        "max": 7.59
+      },
+      "tested_ccu_year_game_host_USD_conditional": {
+        "min": 91.08000000000003,
+        "mean": 91.08000000000003,
+        "median": 91.08000000000003,
+        "max": 91.08000000000003
+      }
+    }
+  },
+  {
+    "family": "core",
+    "workload": "movement",
+    "requested_population": 100,
+    "profile": "native",
+    "variant": "native",
+    "runs": [
+      "core-movement-100-r1"
+    ],
+    "classes": [
+      "native-stable-candidate"
+    ],
+    "required_runs_per_condition": 1,
+    "required_runs_present": true,
+    "single_observation_only": true,
+    "variation_semantics": "Single-pass matrix; any group spread includes separate control positions or retained historical attempts, not three repeated passes.",
+    "all_collector_valid": true,
+    "all_generator_valid": true,
+    "selected_matrix_runs": [
+      "core-movement-100-r1"
+    ],
+    "native_sustainability_demonstrated_required_runs": true,
+    "spread_includes_all_source_rows_even_invalid": true,
+    "metrics": {
+      "outbound_ip_bytes_s": {
+        "min": 1511741.8733333333,
+        "mean": 1511741.8733333333,
+        "median": 1511741.8733333333,
+        "max": 1511741.8733333333
+      },
+      "outbound_ip_bytes_player_s": {
+        "min": 15117.418733333321,
+        "mean": 15117.418733333321,
+        "median": 15117.418733333321,
+        "max": 15117.418733333321
+      },
+      "alive_fraction": {
+        "min": 0.988777655534535,
+        "mean": 0.988777655534535,
+        "median": 0.988777655534535,
+        "max": 0.988777655534535
+      },
+      "tick_hz": {
+        "min": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "max": 30.0
+      },
+      "tick_work_p99_ms": {
+        "min": 9.792174,
+        "mean": 9.792174,
+        "median": 9.792174,
+        "max": 9.792174
+      },
+      "server_cpu_percent_one_core": {
+        "min": 27.940004399433086,
+        "mean": 27.940004399433086,
+        "median": 27.940004399433086,
+        "max": 27.940004399433086
+      },
+      "generator_cpu_percent_one_core": {
+        "min": 37.62677156249788,
+        "mean": 37.62677156249788,
+        "median": 37.62677156249788,
+        "max": 37.62677156249788
+      },
+      "generator_achieved_hz": {
+        "min": 29.999892475268556,
+        "mean": 29.999892475268556,
+        "median": 29.999892475268556,
+        "max": 29.999892475268556
+      },
+      "rtt_p95_ms": {
+        "min": 4.0,
+        "mean": 4.0,
+        "median": 4.0,
+        "max": 4.0
+      },
+      "tested_ccu_30day_game_host_USD_conditional": {
+        "min": 7.59,
+        "mean": 7.59,
+        "median": 7.59,
+        "max": 7.59
+      },
+      "tested_ccu_year_game_host_USD_conditional": {
+        "min": 91.08000000000003,
+        "mean": 91.08000000000003,
+        "median": 91.08000000000003,
+        "max": 91.08000000000003
+      }
+    }
+  },
+  {
+    "family": "core",
+    "workload": "movement",
+    "requested_population": 150,
+    "profile": "native",
+    "variant": "native",
+    "runs": [
+      "core-movement-150-points-recovery"
+    ],
+    "classes": [
+      "native-stable-candidate"
+    ],
+    "required_runs_per_condition": 1,
+    "required_runs_present": true,
+    "single_observation_only": true,
+    "variation_semantics": "Single-pass matrix; any group spread includes separate control positions or retained historical attempts, not three repeated passes.",
+    "all_collector_valid": true,
+    "all_generator_valid": true,
+    "selected_matrix_runs": [
+      "core-movement-150-points-recovery"
+    ],
+    "native_sustainability_demonstrated_required_runs": true,
+    "spread_includes_all_source_rows_even_invalid": true,
+    "metrics": {
+      "outbound_ip_bytes_s": {
+        "min": 2493897.97,
+        "mean": 2493897.97,
+        "median": 2493897.97,
+        "max": 2493897.97
+      },
+      "outbound_ip_bytes_player_s": {
+        "min": 16625.9864666667,
+        "mean": 16625.9864666667,
+        "median": 16625.9864666667,
+        "max": 16625.9864666667
+      },
+      "alive_fraction": {
+        "min": 0.9972855687834927,
+        "mean": 0.9972855687834927,
+        "median": 0.9972855687834927,
+        "max": 0.9972855687834927
+      },
+      "tick_hz": {
+        "min": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "max": 30.0
+      },
+      "tick_work_p99_ms": {
+        "min": 12.957298,
+        "mean": 12.957298,
+        "median": 12.957298,
+        "max": 12.957298
+      },
+      "server_cpu_percent_one_core": {
+        "min": 37.05004365458444,
+        "mean": 37.05004365458444,
+        "median": 37.05004365458444,
+        "max": 37.05004365458444
+      },
+      "generator_cpu_percent_one_core": {
+        "min": 43.012014472216556,
+        "mean": 43.012014472216556,
+        "median": 43.012014472216556,
+        "max": 43.012014472216556
+      },
+      "generator_achieved_hz": {
+        "min": 29.99986685882835,
+        "mean": 29.99986685882835,
+        "median": 29.99986685882835,
+        "max": 29.99986685882835
+      },
+      "rtt_p95_ms": {
+        "min": 8.0,
+        "mean": 8.0,
+        "median": 8.0,
+        "max": 8.0
+      },
+      "tested_ccu_30day_game_host_USD_conditional": {
+        "min": 7.59,
+        "mean": 7.59,
+        "median": 7.59,
+        "max": 7.59
+      },
+      "tested_ccu_year_game_host_USD_conditional": {
+        "min": 91.08000000000003,
+        "mean": 91.08000000000003,
+        "median": 91.08000000000003,
+        "max": 91.08000000000003
+      }
+    }
+  },
+  {
+    "family": "core",
+    "workload": "strategy",
+    "requested_population": 50,
+    "profile": "native",
+    "variant": "native",
+    "runs": [
+      "core-strategy-50-r1"
+    ],
+    "classes": [
+      "native-stable-candidate"
+    ],
+    "required_runs_per_condition": 1,
+    "required_runs_present": true,
+    "single_observation_only": true,
+    "variation_semantics": "Single-pass matrix; any group spread includes separate control positions or retained historical attempts, not three repeated passes.",
+    "all_collector_valid": true,
+    "all_generator_valid": true,
+    "selected_matrix_runs": [
+      "core-strategy-50-r1"
+    ],
+    "native_sustainability_demonstrated_required_runs": true,
+    "spread_includes_all_source_rows_even_invalid": true,
+    "metrics": {
+      "outbound_ip_bytes_s": {
+        "min": 1093347.3566666667,
+        "mean": 1093347.3566666667,
+        "median": 1093347.3566666667,
+        "max": 1093347.3566666667
+      },
+      "outbound_ip_bytes_player_s": {
+        "min": 21866.947133333342,
+        "mean": 21866.947133333342,
+        "median": 21866.947133333342,
+        "max": 21866.947133333342
+      },
+      "alive_fraction": {
+        "min": 0.8574894179360688,
+        "mean": 0.8574894179360688,
+        "median": 0.8574894179360688,
+        "max": 0.8574894179360688
+      },
+      "tick_hz": {
+        "min": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "max": 30.0
+      },
+      "tick_work_p99_ms": {
+        "min": 6.993416,
+        "mean": 6.993416,
+        "median": 6.993416,
+        "max": 6.993416
+      },
+      "server_cpu_percent_one_core": {
+        "min": 20.76333921890947,
+        "mean": 20.76333921890947,
+        "median": 20.76333921890947,
+        "max": 20.76333921890947
+      },
+      "generator_cpu_percent_one_core": {
+        "min": 40.98677134832419,
+        "mean": 40.98677134832419,
+        "median": 40.98677134832419,
+        "max": 40.98677134832419
+      },
+      "generator_achieved_hz": {
+        "min": 29.99993456584272,
+        "mean": 29.99993456584272,
+        "median": 29.99993456584272,
+        "max": 29.99993456584272
+      },
+      "rtt_p95_ms": {
+        "min": 3.0,
+        "mean": 3.0,
+        "median": 3.0,
+        "max": 3.0
+      },
+      "tested_ccu_30day_game_host_USD_conditional": {
+        "min": 7.59,
+        "mean": 7.59,
+        "median": 7.59,
+        "max": 7.59
+      },
+      "tested_ccu_year_game_host_USD_conditional": {
+        "min": 91.08000000000003,
+        "mean": 91.08000000000003,
+        "median": 91.08000000000003,
+        "max": 91.08000000000003
+      }
+    }
+  },
+  {
+    "family": "core",
+    "workload": "strategy",
+    "requested_population": 100,
+    "profile": "native",
+    "variant": "native",
+    "runs": [
+      "core-strategy-100-points-recovery",
+      "core-strategy-100-r1"
+    ],
+    "classes": [
+      "native-stable-candidate",
+      "collector-invalid"
+    ],
+    "required_runs_per_condition": 1,
+    "required_runs_present": true,
+    "single_observation_only": true,
+    "variation_semantics": "Single-pass matrix; any group spread includes separate control positions or retained historical attempts, not three repeated passes.",
+    "all_collector_valid": false,
+    "all_generator_valid": false,
+    "selected_matrix_runs": [
+      "core-strategy-100-points-recovery"
+    ],
+    "native_sustainability_demonstrated_required_runs": true,
+    "spread_includes_all_source_rows_even_invalid": true,
+    "metrics": {
+      "outbound_ip_bytes_s": {
+        "min": 3648489.76,
+        "mean": 3659454.785,
+        "median": 3659454.785,
+        "max": 3670419.81
+      },
+      "outbound_ip_bytes_player_s": {
+        "min": 36484.89759999984,
+        "mean": 36594.547849999915,
+        "median": 36594.547849999915,
+        "max": 36704.1981
+      },
+      "alive_fraction": {
+        "min": 0.8582555377695692,
+        "mean": 0.8607733561125142,
+        "median": 0.8607733561125142,
+        "max": 0.8632911744554592
+      },
+      "tick_hz": {
+        "min": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "max": 30.0
+      },
+      "tick_work_p99_ms": {
+        "min": 15.515733,
+        "mean": 15.737696,
+        "median": 15.737696,
+        "max": 15.959659
+      },
+      "server_cpu_percent_one_core": {
+        "min": 39.70007885520796,
+        "mean": 40.61837011768264,
+        "median": 40.61837011768264,
+        "max": 41.53666138015731
+      },
+      "generator_cpu_percent_one_core": {
+        "min": 70.63537309727245,
+        "mean": 73.96020894117905,
+        "median": 73.96020894117905,
+        "max": 77.28504478508563
+      },
+      "generator_achieved_hz": {
+        "min": 29.837785792015268,
+        "mean": 29.91861563246416,
+        "median": 29.91861563246416,
+        "max": 29.99944547291305
+      },
+      "rtt_p95_ms": {
+        "min": 12.0,
+        "mean": 15.5,
+        "median": 15.5,
+        "max": 19.0
+      },
+      "tested_ccu_30day_game_host_USD_conditional": {
+        "min": 7.59,
+        "mean": 7.59,
+        "median": 7.59,
+        "max": 7.59
+      },
+      "tested_ccu_year_game_host_USD_conditional": {
+        "min": 91.08000000000003,
+        "mean": 91.08000000000003,
+        "median": 91.08000000000003,
+        "max": 91.08000000000003
+      }
+    }
+  },
+  {
+    "family": "core",
+    "workload": "strategy",
+    "requested_population": 150,
+    "profile": "native",
+    "variant": "native",
+    "runs": [
+      "core-strategy-150-r1"
+    ],
+    "classes": [
+      "generator-invalid"
+    ],
+    "required_runs_per_condition": 1,
+    "required_runs_present": true,
+    "single_observation_only": true,
+    "variation_semantics": "Single-pass matrix; any group spread includes separate control positions or retained historical attempts, not three repeated passes.",
+    "all_collector_valid": true,
+    "all_generator_valid": false,
+    "selected_matrix_runs": [
+      "core-strategy-150-r1"
+    ],
+    "native_sustainability_demonstrated_required_runs": false,
+    "spread_includes_all_source_rows_even_invalid": true,
+    "metrics": {
+      "outbound_ip_bytes_s": {
+        "min": 7283111.15,
+        "mean": 7283111.15,
+        "median": 7283111.15,
+        "max": 7283111.15
+      },
+      "outbound_ip_bytes_player_s": {
+        "min": 48554.074333333294,
+        "mean": 48554.074333333294,
+        "median": 48554.074333333294,
+        "max": 48554.074333333294
+      },
+      "alive_fraction": {
+        "min": 0.7876366909432209,
+        "mean": 0.7876366909432209,
+        "median": 0.7876366909432209,
+        "max": 0.7876366909432209
+      },
+      "tick_hz": {
+        "min": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "max": 30.0
+      },
+      "tick_work_p99_ms": {
+        "min": 39.684505,
+        "mean": 39.684505,
+        "median": 39.684505,
+        "max": 39.684505
+      },
+      "server_cpu_percent_one_core": {
+        "min": 69.86332666464592,
+        "mean": 69.86332666464592,
+        "median": 69.86332666464592,
+        "max": 69.86332666464592
+      },
+      "generator_cpu_percent_one_core": {
+        "min": 97.84298073085917,
+        "mean": 97.84298073085917,
+        "median": 97.84298073085917,
+        "max": 97.84298073085917
+      },
+      "generator_achieved_hz": {
+        "min": 18.017242099002583,
+        "mean": 18.017242099002583,
+        "median": 18.017242099002583,
+        "max": 18.017242099002583
+      },
+      "rtt_p95_ms": {
+        "min": 62.0,
+        "mean": 62.0,
+        "median": 62.0,
+        "max": 62.0
+      }
+    }
+  },
+  {
+    "family": "idle",
+    "workload": "idle",
+    "requested_population": 100,
+    "profile": "native",
+    "variant": "native",
+    "runs": [
+      "idle-100-r1"
+    ],
+    "classes": [
+      "native-stable-candidate"
+    ],
+    "required_runs_per_condition": 1,
+    "required_runs_present": true,
+    "single_observation_only": true,
+    "variation_semantics": "Single-pass matrix; any group spread includes separate control positions or retained historical attempts, not three repeated passes.",
+    "all_collector_valid": true,
+    "all_generator_valid": true,
+    "selected_matrix_runs": [
+      "idle-100-r1"
+    ],
+    "native_sustainability_demonstrated_required_runs": true,
+    "spread_includes_all_source_rows_even_invalid": true,
+    "metrics": {
+      "outbound_ip_bytes_s": {
+        "min": 908016.58,
+        "mean": 908016.58,
+        "median": 908016.58,
+        "max": 908016.58
+      },
+      "outbound_ip_bytes_player_s": {
+        "min": 9080.165799999993,
+        "mean": 9080.165799999993,
+        "median": 9080.165799999993,
+        "max": 9080.165799999993
+      },
+      "alive_fraction": {
+        "min": 0.956395156583204,
+        "mean": 0.956395156583204,
+        "median": 0.956395156583204,
+        "max": 0.956395156583204
+      },
+      "tick_hz": {
+        "min": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "max": 30.0
+      },
+      "tick_work_p99_ms": {
+        "min": 8.01391,
+        "mean": 8.01391,
+        "median": 8.01391,
+        "max": 8.01391
+      },
+      "server_cpu_percent_one_core": {
+        "min": 25.546664787794626,
+        "mean": 25.546664787794626,
+        "median": 25.546664787794626,
+        "max": 25.546664787794626
+      },
+      "generator_cpu_percent_one_core": {
+        "min": 46.060094927424515,
+        "mean": 46.060094927424515,
+        "median": 46.060094927424515,
+        "max": 46.060094927424515
+      },
+      "generator_achieved_hz": {
+        "min": 29.999550997652435,
+        "mean": 29.999550997652435,
+        "median": 29.999550997652435,
+        "max": 29.999550997652435
+      },
+      "rtt_p95_ms": {
+        "min": 5.0,
+        "mean": 5.0,
+        "median": 5.0,
+        "max": 5.0
+      },
+      "tested_ccu_30day_game_host_USD_conditional": {
+        "min": 7.59,
+        "mean": 7.59,
+        "median": 7.59,
+        "max": 7.59
+      },
+      "tested_ccu_year_game_host_USD_conditional": {
+        "min": 91.08000000000003,
+        "mean": 91.08000000000003,
+        "median": 91.08000000000003,
+        "max": 91.08000000000003
+      }
+    }
+  },
+  {
+    "family": "idle",
+    "workload": "idle",
+    "requested_population": 150,
+    "profile": "native",
+    "variant": "native",
+    "runs": [
+      "idle-150-r1"
+    ],
+    "classes": [
+      "native-stable-candidate"
+    ],
+    "required_runs_per_condition": 1,
+    "required_runs_present": true,
+    "single_observation_only": true,
+    "variation_semantics": "Single-pass matrix; any group spread includes separate control positions or retained historical attempts, not three repeated passes.",
+    "all_collector_valid": true,
+    "all_generator_valid": true,
+    "selected_matrix_runs": [
+      "idle-150-r1"
+    ],
+    "native_sustainability_demonstrated_required_runs": true,
+    "spread_includes_all_source_rows_even_invalid": true,
+    "metrics": {
+      "outbound_ip_bytes_s": {
+        "min": 1393206.2966666666,
+        "mean": 1393206.2966666666,
+        "median": 1393206.2966666666,
+        "max": 1393206.2966666666
+      },
+      "outbound_ip_bytes_player_s": {
+        "min": 9288.04197777775,
+        "mean": 9288.04197777775,
+        "median": 9288.04197777775,
+        "max": 9288.04197777775
+      },
+      "alive_fraction": {
+        "min": 0.968825321033905,
+        "mean": 0.968825321033905,
+        "median": 0.968825321033905,
+        "max": 0.968825321033905
+      },
+      "tick_hz": {
+        "min": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "max": 30.0
+      },
+      "tick_work_p99_ms": {
+        "min": 10.691346,
+        "mean": 10.691346,
+        "median": 10.691346,
+        "max": 10.691346
+      },
+      "server_cpu_percent_one_core": {
+        "min": 34.31342034141578,
+        "mean": 34.31342034141578,
+        "median": 34.31342034141578,
+        "max": 34.31342034141578
+      },
+      "generator_cpu_percent_one_core": {
+        "min": 63.2626540578348,
+        "mean": 63.2626540578348,
+        "median": 63.2626540578348,
+        "max": 63.2626540578348
+      },
+      "generator_achieved_hz": {
+        "min": 29.999487113412812,
+        "mean": 29.999487113412812,
+        "median": 29.999487113412812,
+        "max": 29.999487113412812
+      },
+      "rtt_p95_ms": {
+        "min": 10.0,
+        "mean": 10.0,
+        "median": 10.0,
+        "max": 10.0
+      },
+      "tested_ccu_30day_game_host_USD_conditional": {
+        "min": 7.59,
+        "mean": 7.59,
+        "median": 7.59,
+        "max": 7.59
+      },
+      "tested_ccu_year_game_host_USD_conditional": {
+        "min": 91.08000000000003,
+        "mean": 91.08000000000003,
+        "median": 91.08000000000003,
+        "max": 91.08000000000003
+      }
+    }
+  },
+  {
+    "family": "network",
+    "workload": "combat",
+    "requested_population": 100,
+    "profile": "native",
+    "variant": "native",
+    "runs": [
+      "network-control-before-combat-100-r1"
+    ],
+    "classes": [
+      "native-stable-candidate"
+    ],
+    "required_runs_per_condition": 1,
+    "required_runs_present": true,
+    "single_observation_only": true,
+    "variation_semantics": "Single-pass matrix; any group spread includes separate control positions or retained historical attempts, not three repeated passes.",
+    "all_collector_valid": true,
+    "all_generator_valid": true,
+    "selected_matrix_runs": [
+      "network-control-before-combat-100-r1"
+    ],
+    "native_sustainability_demonstrated_required_runs": true,
+    "spread_includes_all_source_rows_even_invalid": true,
+    "metrics": {
+      "outbound_ip_bytes_s": {
+        "min": 3875840.27,
+        "mean": 3875840.27,
+        "median": 3875840.27,
+        "max": 3875840.27
+      },
+      "outbound_ip_bytes_player_s": {
+        "min": 38758.40270000009,
+        "mean": 38758.40270000009,
+        "median": 38758.40270000009,
+        "max": 38758.40270000009
+      },
+      "alive_fraction": {
+        "min": 0.8744762639247023,
+        "mean": 0.8744762639247023,
+        "median": 0.8744762639247023,
+        "max": 0.8744762639247023
+      },
+      "tick_hz": {
+        "min": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "max": 30.0
+      },
+      "tick_work_p99_ms": {
+        "min": 17.387639,
+        "mean": 17.387639,
+        "median": 17.387639,
+        "max": 17.387639
+      },
+      "server_cpu_percent_one_core": {
+        "min": 41.162444965720496,
+        "mean": 41.162444965720496,
+        "median": 41.162444965720496,
+        "max": 41.162444965720496
+      },
+      "generator_cpu_percent_one_core": {
+        "min": 54.86772725348774,
+        "mean": 54.86772725348774,
+        "median": 54.86772725348774,
+        "max": 54.86772725348774
+      },
+      "generator_achieved_hz": {
+        "min": 29.99987385688342,
+        "mean": 29.99987385688342,
+        "median": 29.99987385688342,
+        "max": 29.99987385688342
+      },
+      "rtt_p95_ms": {
+        "min": 10.0,
+        "mean": 10.0,
+        "median": 10.0,
+        "max": 10.0
+      },
+      "tested_ccu_30day_game_host_USD_conditional": {
+        "min": 7.59,
+        "mean": 7.59,
+        "median": 7.59,
+        "max": 7.59
+      },
+      "tested_ccu_year_game_host_USD_conditional": {
+        "min": 91.08000000000003,
+        "mean": 91.08000000000003,
+        "median": 91.08000000000003,
+        "max": 91.08000000000003
+      }
+    }
+  },
+  {
+    "family": "pilot",
+    "workload": "clustered",
+    "requested_population": 50,
+    "profile": "native",
+    "variant": "native",
+    "runs": [
+      "pilot-clustered-50-recovery"
+    ],
+    "classes": [
+      "native-stable-candidate"
+    ],
+    "required_runs_per_condition": 1,
+    "required_runs_present": true,
+    "single_observation_only": true,
+    "variation_semantics": "Single-pass matrix; any group spread includes separate control positions or retained historical attempts, not three repeated passes.",
+    "all_collector_valid": true,
+    "all_generator_valid": true,
+    "selected_matrix_runs": [
+      "pilot-clustered-50-recovery"
+    ],
+    "native_sustainability_demonstrated_required_runs": true,
+    "spread_includes_all_source_rows_even_invalid": true,
+    "metrics": {
+      "outbound_ip_bytes_s": {
+        "min": 1239239.7066666668,
+        "mean": 1239239.7066666668,
+        "median": 1239239.7066666668,
+        "max": 1239239.7066666668
+      },
+      "outbound_ip_bytes_player_s": {
+        "min": 24784.794133333435,
+        "mean": 24784.794133333435,
+        "median": 24784.794133333435,
+        "max": 24784.794133333435
+      },
+      "alive_fraction": {
+        "min": 0.8731838439152695,
+        "mean": 0.8731838439152695,
+        "median": 0.8731838439152695,
+        "max": 0.8731838439152695
+      },
+      "tick_hz": {
+        "min": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "max": 30.0
+      },
+      "tick_work_p99_ms": {
+        "min": 7.95119,
+        "mean": 7.95119,
+        "median": 7.95119,
+        "max": 7.95119
+      },
+      "server_cpu_percent_one_core": {
+        "min": 21.976668142546444,
+        "mean": 21.976668142546444,
+        "median": 21.976668142546444,
+        "max": 21.976668142546444
+      },
+      "generator_cpu_percent_one_core": {
+        "min": 27.801451352858322,
+        "mean": 27.801451352858322,
+        "median": 27.801451352858322,
+        "max": 27.801451352858322
+      },
+      "generator_achieved_hz": {
+        "min": 30.000049425724598,
+        "mean": 30.000049425724598,
+        "median": 30.000049425724598,
+        "max": 30.000049425724598
+      },
+      "rtt_p95_ms": {
+        "min": 4.0,
+        "mean": 4.0,
+        "median": 4.0,
+        "max": 4.0
+      },
+      "tested_ccu_30day_game_host_USD_conditional": {
+        "min": 7.59,
+        "mean": 7.59,
+        "median": 7.59,
+        "max": 7.59
+      },
+      "tested_ccu_year_game_host_USD_conditional": {
+        "min": 91.08000000000003,
+        "mean": 91.08000000000003,
+        "median": 91.08000000000003,
+        "max": 91.08000000000003
+      }
+    }
+  }
+]

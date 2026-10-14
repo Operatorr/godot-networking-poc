@@ -1,0 +1,12 @@
+{
+  "operator_accepted_checkpoint_utc": "2026-10-14T13:35:12.359267+00:00",
+  "instruction": "Commit and merge into master; close Execute the revised one-pass CAX11 load-test matrix at accepted CAX11 checkpoint. Compare hypotheses on a later CCX13.",
+  "conclusion": "Frozen Strategy join ramps fail at observed authenticated peaks 176\u2013191, with UDP receive-buffer errors before later near-core game CPU. Exact causal bottleneck and sustainable 190-player capacity are unproven.",
+  "execution_ticket": "https://github.com/Operatorr/godot-networking-poc/issues/35",
+  "remaining_matrix_owner": "https://github.com/Operatorr/godot-networking-poc/issues/31",
+  "later_comparison": "https://github.com/Operatorr/godot-networking-poc/issues/34",
+  "full_matrix_completed": false,
+  "original_campaign_state_preserved": true,
+  "no_new_measurements_or_provisioning": true,
+  "report": "CAX11-CONCLUSION.md"
+}

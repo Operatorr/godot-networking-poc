@@ -1,0 +1,128 @@
+{
+  "core-movement-50-r1": {
+    "archive_sha256": {
+      "game": "32bd987ddf9a4bbfb76e8da046cbf6b66941904bbd9841ab8ea5fbc1108bb754",
+      "bots": "209432b6a25c6d0b1e10033d152111001242765d015b4f92846844ed685c3166"
+    },
+    "removed": "Remote unpacked duplicates only; local and remote archives retained"
+  },
+  "core-combat-50-r1": {
+    "archive_sha256": {
+      "game": "33f822b278e4a043451c11859301cc5dbc2e86cdd25514af73cb33310b9db954",
+      "bots": "25171eff331e96e466fa02e46f26a98c36cf7cf6b47f2882bf3af314d6530b12"
+    },
+    "removed": "Remote unpacked duplicates only; local and remote archives retained"
+  },
+  "core-strategy-50-r1": {
+    "archive_sha256": {
+      "game": "118dd715c789c38741e7da16837157bd002a9d066cced054fb1e0eb506915b6c",
+      "bots": "fe7616c4da4392e079d77e285ba7fc12a6fa86363aaa95b054db18a63dc6b8a2"
+    },
+    "removed": "Remote unpacked duplicates only; local and remote archives retained"
+  },
+  "core-movement-100-r1": {
+    "archive_sha256": {
+      "game": "0084cd4b62187b554b7eda8e58e45daddcac13fd4ec55d4216c212f08a439d53",
+      "bots": "e634b944e0cf923d673f4c6106cbac27b3e7c5e5ee3793509ca6c335be57c576"
+    },
+    "removed": "Remote unpacked duplicates only; local and remote archives retained"
+  },
+  "core-combat-100-r1": {
+    "archive_sha256": {
+      "game": "1d9914fd3423ea86313b0c386b4bc1ed97d0b0927985890e65a61ab6befcb490",
+      "bots": "8eee2b9f0270c0d8b713c3c2bd117b5537234ae756361325e97e6df8a44fbc50"
+    },
+    "removed": "Remote unpacked duplicates only; local and remote archives retained"
+  },
+  "core-clustered-100-r1": {
+    "archive_sha256": {
+      "game": "f487b67fcc19dc80e5936119856b953a60418727fa4f7660c222d75490e01750",
+      "bots": "49b090d72613e28d878cb1a6a1ed4b03d1031c4b36065088e28025a55f0f1252"
+    },
+    "removed": "Remote unpacked duplicates only; local and remote archives retained"
+  },
+  "core-strategy-100-r1": {
+    "archive_sha256": {
+      "game": "c9021fa5afaff8b2ebb92861271b97c18528ea8f00342c92f4684f6bee33ca7a",
+      "bots": "a77652a763123343773766c11a5522fe546d8c27f7f52bff56aa6886c2860eda"
+    },
+    "removed": "Remote unpacked duplicates only; local and remote archives retained"
+  },
+  "core-strategy-100-points-recovery": {
+    "archive_sha256": {
+      "game": "a23945df104ecad4a2c06c62f4a7bd1e8fbe2a7e09719cea184feaf892fb6a22",
+      "bots": "f3248dfd6e74b1072db4991092296db2c380fdb49fae6df8592b84cbb1f7c5ea"
+    },
+    "removed": "Remote unpacked duplicates only; local and remote archives retained"
+  },
+  "core-movement-150-points-recovery": {
+    "archive_sha256": {
+      "game": "a86d0cc56fcf2d97f2f2bd04b44110c2cfd43af2036a084b2d6765ef5e7ee4e9",
+      "bots": "1f9067c6be2b08848fa79efe912a08bd41f0d2fd872ae02665e3baa8b139549a"
+    },
+    "removed": "Remote unpacked duplicates only; local and remote archives retained"
+  },
+  "core-combat-150-r1": {
+    "archive_sha256": {
+      "game": "998cd4968dfdcdaad731b6e1e38db370f31871743ca89173594500b7139b7fe1",
+      "bots": "91cbc44a1bd50abc6c60cfb2d5af1481dd9b8f9658af7c8040968f70dc59f4c6"
+    },
+    "removed": "Remote unpacked duplicates only; local and remote archives retained"
+  },
+  "core-strategy-150-r1": {
+    "archive_sha256": {
+      "game": "03bcd953dc4e17d0fb4d32cef3952486ec5823b4f637bafdd5e95de328f37ec2",
+      "bots": "51600dca59dcede49b3e2bf26077b7dc3184bb6f062ccc68787bd7354f3d2ab3"
+    },
+    "removed": "Remote unpacked duplicates only; local and remote archives retained"
+  },
+  "boundary-clustered-75-r1": {
+    "archive_sha256": {
+      "game": "067fa066f90ab45dd683961116d0d32cb489702e6aaa09f455d76135c3ba4172",
+      "bots": "ef211002b06007ba638df864c7504d42f5e61e71ca2f828cf1ae9542e1ffbfa5"
+    },
+    "removed": "Remote unpacked duplicates only; local and remote archives retained"
+  },
+  "boundary-combat-125-r1": {
+    "archive_sha256": {
+      "game": "73139d2500abf3af3d4d1e14506133beea804f0f48c3b7d5c9636c10e8497af9",
+      "bots": "0b78a886c65ee3c8546cb6f9e8e23999cd0c6ee48ee1c0af29702e711929b068"
+    },
+    "removed": "Remote unpacked duplicates only; local and remote archives retained"
+  },
+  "boundary-strategy-125-r1": {
+    "archive_sha256": {
+      "game": "9551073f7437a568c238c5d4fb668cf8b15489dcc5ecc2da617ea00e8d9be96e",
+      "bots": "31ff20a11c5fa18199b0b1473e3f92509bc26b083960abe6a729ce3381372e42"
+    },
+    "removed": "Remote unpacked duplicates only; local and remote archives retained"
+  },
+  "idle-100-r1": {
+    "archive_sha256": {
+      "game": "98eb6682e3009e6a2c3425fb389dde4e022a3d3e4e12937e9640f14724c14b57",
+      "bots": "1e86e9902eb2a5a33dda5778c1ef6593c141c96d5908879877b21aec3f5b747f"
+    },
+    "removed": "Remote unpacked duplicates only; local and remote archives retained"
+  },
+  "idle-150-r1": {
+    "archive_sha256": {
+      "game": "cf4fed9383ce021e8a1741dca848c2a9ccb51f670a75bf8a524bcbf8c343e493",
+      "bots": "7b3e6ad8b34b12a70af5a4b95d08e96475b0607271ba99beaaf0a0ef127613b8"
+    },
+    "removed": "Remote unpacked duplicates only; local and remote archives retained"
+  },
+  "network-control-before-combat-100-r1": {
+    "archive_sha256": {
+      "game": "b35d66f7428e37c7a8820ec436b70c209d8a2aade709e00a9947c2652ca7741e",
+      "bots": "88a664f1b4ce2c710098638d87ffdadc452880a5cf50e5519c8ef08eef16838d"
+    },
+    "removed": "Remote unpacked duplicates only; local and remote archives retained"
+  },
+  "network-combat-100-delay25-r1": {
+    "archive_sha256": {
+      "game": "1501143d1806837fc93a68082be15f8bc1c69dcc2b4333bdc8e74432bf3675f7",
+      "bots": "fa671338e75bd00c84f36175e9426f8cda63a5283a0fddd772b7563a9d5d360d"
+    },
+    "removed": "Remote unpacked duplicates only; local and remote archives retained"
+  }
+}

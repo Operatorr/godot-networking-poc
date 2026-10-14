@@ -1,0 +1,20 @@
+  Packet Loss:     0.07%
+
+Success Criteria:
+  [PASS] Average latency < 100ms: 17.7ms
+  [PASS] P95 latency < 150ms: 24.0ms
+  [FAIL] Bandwidth < 5.0 KB/s per player: 36.81 KB/s
+  [PASS] Packet loss < 2.0%: 0.07%
+  [PASS] Bot crash rate < 5.0%: 0.0%
+  [PASS] Server tick rate > 30 Hz: 31.2 Hz
+
+------------------------------------------------------------
+  Conclusion: SOME CRITERIA FAILED
+------------------------------------------------------------
+
+Regression Assertions (§8.3):
+  [FAIL] aoi_cull: 112/125 bots within 1150 u (95% required)
+  [PASS] decode_clean: no decode failures
+  [SKIP] per_peer_budget: skipped: no --rate-budget configured
+
+[2m2026-10-14T09:17:07.906091Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m JSON report saved to: /home/deploy/omega-results/one-pass-20261014/boundary-strategy-125-r1/bots/bot.json

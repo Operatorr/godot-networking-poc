@@ -1,0 +1,62 @@
+2026-10-14T05:08:50,938737197+00:00
+Linux CAX11-bot-server 7.0.0-30-generic #30-Ubuntu SMP PREEMPT_DYNAMIC Fri Jul 31 18:09:26 UTC 2026 aarch64 GNU/Linux
+Architecture:                            aarch64
+CPU op-mode(s):                          32-bit, 64-bit
+Byte Order:                              Little Endian
+CPU(s):                                  2
+On-line CPU(s) list:                     0,1
+Vendor ID:                               ARM
+Model name:                              Neoverse-N1
+Model:                                   1
+Thread(s) per core:                      1
+Core(s) per socket:                      2
+Socket(s):                               1
+Stepping:                                r3p1
+BogoMIPS:                                50.00
+Flags:                                   fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm lrcpc dcpop asimddp
+NUMA node(s):                            1
+NUMA node0 CPU(s):                       0,1
+Vulnerability Gather data sampling:      Not affected
+Vulnerability Ghostwrite:                Not affected
+Vulnerability Indirect target selection: Not affected
+Vulnerability Itlb multihit:             Not affected
+Vulnerability L1tf:                      Not affected
+Vulnerability Mds:                       Not affected
+Vulnerability Meltdown:                  Not affected
+Vulnerability Mmio stale data:           Not affected
+Vulnerability Old microcode:             Not affected
+Vulnerability Reg file data sampling:    Not affected
+Vulnerability Retbleed:                  Not affected
+Vulnerability Spec rstack overflow:      Not affected
+Vulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl
+Vulnerability Spectre v1:                Mitigation; __user pointer sanitization
+Vulnerability Spectre v2:                Mitigation; CSV2, BHB
+Vulnerability Srbds:                     Not affected
+Vulnerability Tsa:                       Not affected
+Vulnerability Tsx async abort:           Not affected
+Vulnerability Vmscape:                   Not affected
+Filesystem       1B-blocks       Used   Available Use% Mounted on
+/dev/sda1      39956590592 9716752384 28577632256  26% /
+Reference ID    : B97DBE7B (ntp-nts-3.ps5.canonical.com)
+Stratum         : 3
+Ref time (UTC)  : Wed Oct 14 05:05:35 2026
+System time     : 0.000544155 seconds fast of NTP time
+Last offset     : +0.000144713 seconds
+RMS offset      : 0.000151532 seconds
+Frequency       : 8.553 ppm slow
+Residual freq   : +0.001 ppm
+Skew            : 0.040 ppm
+Root delay      : 0.028292207 seconds
+Root dispersion : 0.000987730 seconds
+Update interval : 1044.2 seconds
+Leap status     : Normal
+[{"kind":"fq_codel","handle":"8003:","root":true,"refcnt":2,"options":{"limit":10240,"flows":1024,"quantum":1514,"target":4999,"interval":99999,"memory_limit":33554432,"ecn":true,"drop_batch":64},"bytes":3049319017,"packets":14258014,"drops":0,"overlimits":0,"requeues":4115,"backlog":0,"qlen":0,"maxpacket":3028,"drop_overlimit":0,"new_flow_count":22013,"ecn_mark":0,"new_flows_len":0,"old_flows_len":0}]
+[]
+rustc 1.95.0 (59807616e 2026-04-14)
+binary: rustc
+commit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860
+commit-date: 2026-04-14
+host: aarch64-unknown-linux-gnu
+release: 1.95.0
+LLVM version: 22.1.2
+9c322f21611c721fae66a28892d2b2862193bca04f07d036027c6123867a8c96  /home/deploy/omega-results/one-pass-20261014/flow-record

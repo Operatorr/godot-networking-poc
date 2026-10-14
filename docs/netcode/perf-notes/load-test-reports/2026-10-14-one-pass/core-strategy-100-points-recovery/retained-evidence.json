@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/one-pass-20261014/core-strategy-100-points-recovery",
+  "sha256": {
+    "bots.tar.gz": "f3248dfd6e74b1072db4991092296db2c380fdb49fae6df8592b84cbb1f7c5ea",
+    "game.tar.gz": "a23945df104ecad4a2c06c62f4a7bd1e8fbe2a7e09719cea184feaf892fb6a22"
+  },
+  "contents": "Curated article graph points, exact counters and bounded diagnostics; only 1/64 fingerprint samples privately retained, no raw packet archive."
+}

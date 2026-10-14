@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/one-pass-20261014/network-combat-100-delay25-r1",
+  "sha256": {
+    "bots.tar.gz": "fa671338e75bd00c84f36175e9426f8cda63a5283a0fddd772b7563a9d5d360d",
+    "game.tar.gz": "1501143d1806837fc93a68082be15f8bc1c69dcc2b4333bdc8e74432bf3675f7"
+  },
+  "contents": "Curated article graph points, exact counters and bounded diagnostics; only 1/64 fingerprint samples privately retained, no raw packet archive."
+}

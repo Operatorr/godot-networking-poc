@@ -1,0 +1,52 @@
+f2bf76c6fa3c28b7fb9b5d52f216061e9c3239999d67bf8a42acadf44dada3a2  /home/deploy/omega-stabilized-b1266c1/rust/target/release/omega-server
+00080235cdd599da6b9a20ca0698acff7e57fe46a83fbc6df9b75381dce9bf5b  /home/deploy/omega-results/one-pass-20261014/host_collect.py
+8e96e11f9cdea6d95f55507b1d14997633f941f9538bbde801dcf5f2f297c0df  /home/deploy/omega-results/one-pass-20261014/capture.py
+0081dbe48b363aa9408c8c37abb6e3d2e336a761ba773883bf0d48cdff219e28  /home/deploy/omega-results/one-pass-20261014/flow_record.rs
+9c322f21611c721fae66a28892d2b2862193bca04f07d036027c6123867a8c96  /home/deploy/omega-results/one-pass-20261014/flow-record
+bac0bf8947937a334b4fd9e814e1e3a4e15b9753fd3f1c02e185285d26f0d68c  /etc/omega-loadtest/arena.json
+# /etc/systemd/system/omega-loadtest-arena.service
+[Unit]
+Description=Omega isolated load-test Arena (ENet UDP 8081, no API)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=deploy
+Group=deploy
+WorkingDirectory=/home/deploy/omega-realm/rust
+Environment=RUST_LOG=info
+Environment=OMEGA_API_SERVER_URL=
+ExecStart=/home/deploy/omega-realm/rust/target/release/omega-server --config /etc/omega-loadtest/arena.json --allow-unsigned-tickets
+Restart=on-failure
+RestartSec=3
+LimitNOFILE=65536
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target
+
+# /etc/systemd/system/omega-loadtest-arena.service.d/measurement.conf
+[Service]
+ExecStart=
+ExecStart=/home/deploy/omega-stabilized-b1266c1/rust/target/release/omega-server --config /etc/omega-loadtest/arena.json --allow-unsigned-tickets
+Environment=OMEGA_MEASURE_DIR=/var/lib/omega-measure/current
+ReadWritePaths=/var/lib/omega-measure
+MainPID=114106
+NRestarts=0
+CPUUsageNSec=604111000
+State  Recv-Q Send-Q Local Address:Port Peer Address:Port
+UNCONN 0      0            0.0.0.0:8081      0.0.0.0:*   
+	 skmem:(r0,rb524288,t0,tb524288,f0,w0,o0,bl0,d0)
+212992
+4194304
+212992
+4194304
+b1266c1d53a589c33b5ae8b5259bc7b2968dd252

@@ -1,0 +1,49 @@
+{
+  "utc_ns": 1791970869270211321,
+  "monotonic_ns": 80831392051121,
+  "clock_ticks_s": 100,
+  "page_size": 4096,
+  "stat": "cpu  531207 10900 304484 15172613 4285 0 76114 0 0 0\ncpu0 282679 7861 163589 7557443 2021 0 39803 0 0 0\ncpu1 248527 3038 140895 7615170 2264 0 36311 0 0 0",
+  "net/snmp": "Ip: Forwarding DefaultTTL InReceives InHdrErrors InAddrErrors ForwDatagrams InUnknownProtos InDiscards InDelivers OutRequests OutDiscards OutNoRoutes ReasmTimeout ReasmReqds ReasmOKs ReasmFails FragOKs FragFails FragCreates OutTransmits\nIp: 2 64 45542267 0 13 0 0 0 45509993 63314624 0 1 0 0 0 0 0 0 0 63314624\nIcmp: InMsgs InErrors InCsumErrors InDestUnreachs InTimeExcds InParmProbs InSrcQuenchs InRedirects InEchos InEchoReps InTimestamps InTimestampReps InAddrMasks InAddrMaskReps OutMsgs OutErrors OutRateLimitGlobal OutRateLimitHost OutDestUnreachs OutTimeExcds OutParmProbs OutSrcQuenchs OutRedirects OutEchos OutEchoReps OutTimestamps OutTimestampReps OutAddrMasks OutAddrMaskReps\nIcmp: 660 0 0 0 0 0 0 0 660 0 0 0 0 0 682 0 0 36929 22 0 0 0 0 0 660 0 0 0 0\nIcmpMsg: InType8 OutType0 OutType3\nIcmpMsg: 660 660 22\nTcp: RtoAlgorithm RtoMin RtoMax MaxConn ActiveOpens PassiveOpens AttemptFails EstabResets CurrEstab InSegs OutSegs RetransSegs InErrs OutRsts InCsumErrors\nTcp: 1 200 120000 -1 39 2177 0 1 1 894313 3638297 26487 1 252 0\nUdp: InDatagrams NoPorts InErrors OutDatagrams RcvbufErrors SndbufErrors InCsumErrors IgnoredMulti MemErrors\nUdp: 44652527 36951 3518 61447182 3518 0 0 3 0\nUdpLite: InDatagrams NoPorts InErrors OutDatagrams RcvbufErrors SndbufErrors InCsumErrors IgnoredMulti MemErrors\nUdpLite: 0 0 0 0 0 0 0 0 0\n",
+  "interface": {
+    "tx_bytes": "11003120956\n",
+    "rx_bytes": "27039640421\n",
+    "tx_packets": "63360713\n",
+    "rx_packets": "45624404\n",
+    "rx_dropped": "0\n",
+    "tx_dropped": "0\n"
+  },
+  "processes": {
+    "523038": {
+      "comm": "tcpdump\n",
+      "stat": "523038 (tcpdump) S 523037 523037 523037 0 -1 4194560 361 0 0 0 26 91 0 0 20 0 1 0 8074539 52453376 9749 18446744073709551615 1 1 0 0 0 0 0 0 88579 0 0 0 17 1 0 0 0 0 0 0 0 0 0 0 0 0 0\n",
+      "status": "VmSwap:\t       0 kB"
+    },
+    "523067": {
+      "comm": "tcpdump\n",
+      "stat": "523067 (tcpdump) S 523066 523066 523066 0 -1 4194560 360 0 0 0 11 33 0 0 20 0 1 0 8074701 51351552 9719 18446744073709551615 1 1 0 0 0 0 0 0 88579 0 0 0 17 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n",
+      "status": "VmSwap:\t       0 kB"
+    },
+    "523098": {
+      "comm": "omega-load-test\n",
+      "stat": "523098 (omega-load-test) S 523097 523097 523097 0 -1 4194304 832 0 0 0 1553 1161 0 0 20 0 2 0 8075041 92708864 5172 18446744073709551615 202997621915648 202997625209220 281474135013104 0 0 0 0 4096 1090 0 0 0 17 1 0 0 0 0 0 202997625282192 202997625393776 202998520815616 281474135014450 281474135014800 281474135014800 281474135015352 0\n",
+      "status": "VmSwap:\t       0 kB"
+    }
+  },
+  "swarm_cgroup_cpu": "usage_usec 27156757\nuser_usec 15539960\nsystem_usec 11616797\nnice_usec 0\ncore_sched.force_idle_usec 0\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0\n",
+  "nft_before_utc_ns": 1791970869278214748,
+  "nft": {
+    "rc": 0,
+    "stdout": "{\"nftables\": [{\"metainfo\": {\"version\": \"1.1.6\", \"release_name\": \"Commodore Bullmoose #7\", \"json_schema_version\": 1}}, {\"table\": {\"family\": \"inet\", \"name\": \"omega_measure\", \"handle\": 58}}, {\"chain\": {\"family\": \"inet\", \"table\": \"omega_measure\", \"name\": \"input\", \"handle\": 1, \"type\": \"filter\", \"hook\": \"input\", \"prio\": -150, \"policy\": \"accept\"}}, {\"chain\": {\"family\": \"inet\", \"table\": \"omega_measure\", \"name\": \"output\", \"handle\": 2, \"type\": \"filter\", \"hook\": \"output\", \"prio\": -150, \"policy\": \"accept\"}}, {\"rule\": {\"family\": \"inet\", \"table\": \"omega_measure\", \"chain\": \"input\", \"handle\": 3, \"comment\": \"game_in\", \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"saddr\"}}, \"right\": \"<game-host>\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"udp\", \"field\": \"sport\"}}, \"right\": 8081}}, {\"counter\": {\"packets\": 322030, \"bytes\": 243879860}}]}}, {\"rule\": {\"family\": \"inet\", \"table\": \"omega_measure\", \"chain\": \"input\", \"handle\": 4, \"comment\": \"bot_in\", \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"saddr\"}}, \"right\": \"<game-host>\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"udp\", \"field\": \"dport\"}}, \"right\": 8081}}, {\"counter\": {\"packets\": 0, \"bytes\": 0}}]}}, {\"rule\": {\"family\": \"inet\", \"table\": \"omega_measure\", \"chain\": \"output\", \"handle\": 5, \"comment\": \"game_out\", \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"daddr\"}}, \"right\": \"<game-host>\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"udp\", \"field\": \"sport\"}}, \"right\": 8081}}, {\"counter\": {\"packets\": 0, \"bytes\": 0}}]}}, {\"rule\": {\"family\": \"inet\", \"table\": \"omega_measure\", \"chain\": \"output\", \"handle\": 6, \"comment\": \"bot_out\", \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"daddr\"}}, \"right\": \"<game-host>\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"udp\", \"field\": \"dport\"}}, \"right\": 8081}}, {\"counter\": {\"packets\": 486703, \"bytes\": 43194646}}]}}]}\n",
+    "stderr": ""
+  },
+  "nft_after_utc_ns": 1791970869294449844,
+  "tc": {
+    "rc": 0,
+    "stdout": "[{\"kind\":\"prio\",\"handle\":\"1:\",\"root\":true,\"refcnt\":2,\"options\":{\"bands\":3,\"priomap\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"multiqueue\":false},\"bytes\":50061266,\"packets\":486960,\"drops\":0,\"overlimits\":0,\"requeues\":0,\"backlog\":11650,\"qlen\":107},{\"kind\":\"fq_codel\",\"handle\":\"10:\",\"parent\":\"1:1\",\"options\":{\"limit\":10240,\"flows\":1024,\"quantum\":1514,\"target\":4999,\"interval\":99999,\"memory_limit\":33554432,\"ecn\":true,\"drop_batch\":64},\"bytes\":58304,\"packets\":332,\"drops\":0,\"overlimits\":0,\"requeues\":0,\"backlog\":0,\"qlen\":0,\"maxpacket\":806,\"drop_overlimit\":0,\"new_flow_count\":332,\"ecn_mark\":0,\"new_flows_len\":0,\"old_flows_len\":0},{\"kind\":\"netem\",\"handle\":\"20:\",\"parent\":\"1:2\",\"options\":{\"limit\":200000,\"delay\":{\"delay\":0.025,\"jitter\":0,\"correlation\":0},\"seed\":3111,\"ecn\":false,\"gap\":0},\"bytes\":50002962,\"packets\":486628,\"drops\":0,\"overlimits\":0,\"requeues\":0,\"backlog\":11650,\"qlen\":107},{\"kind\":\"clsact\",\"handle\":\"ffff:\",\"parent\":\"ffff:fff1\",\"options\":{},\"bytes\":50069518,\"packets\":487038,\"drops\":0,\"overlimits\":0,\"requeues\":0,\"backlog\":0,\"qlen\":0}]\n",
+    "stderr": ""
+  },
+  "sample_duration_ns": 29345325,
+  "boundary": "start",
+  "target_utc_ns": 1791970869269870662
+}

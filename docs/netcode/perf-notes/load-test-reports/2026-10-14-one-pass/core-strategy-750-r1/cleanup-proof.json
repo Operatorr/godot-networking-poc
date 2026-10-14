@@ -1,0 +1,58 @@
+{
+  "verified_utc": "2026-10-14T10:07:35.275766+00:00",
+  "hosts": {
+    "game": {
+      "native_fq_codel": true,
+      "qdiscs": [
+        {
+          "kind": "fq_codel",
+          "handle": "8006:",
+          "root": true,
+          "refcnt": 2,
+          "options": {
+            "limit": 10240,
+            "flows": 1024,
+            "quantum": 1514,
+            "target": 4999,
+            "interval": 99999,
+            "memory_limit": 33554432,
+            "ecn": true,
+            "drop_batch": 64
+          }
+        }
+      ],
+      "egress_filters": [],
+      "active_swarm_capture_collectors": [],
+      "archive_sha256": "b4f307e702766f9f4214e31b2cd23304689f4f537b2cdb01bee37b64c94ef38f",
+      "remote_archive_sha256_matches": true,
+      "clean": true
+    },
+    "bots": {
+      "native_fq_codel": true,
+      "qdiscs": [
+        {
+          "kind": "fq_codel",
+          "handle": "8006:",
+          "root": true,
+          "refcnt": 2,
+          "options": {
+            "limit": 10240,
+            "flows": 1024,
+            "quantum": 1514,
+            "target": 4999,
+            "interval": 99999,
+            "memory_limit": 33554432,
+            "ecn": true,
+            "drop_batch": 64
+          }
+        }
+      ],
+      "egress_filters": [],
+      "active_swarm_capture_collectors": [],
+      "archive_sha256": "7b929695cf9bf9823fd6d95e35c6a611e96842d56971538005ecfd19ddf1b730",
+      "remote_archive_sha256_matches": true,
+      "clean": true
+    }
+  },
+  "host_update_timers": "Parent owns final restoration; unchanged by this agent"
+}

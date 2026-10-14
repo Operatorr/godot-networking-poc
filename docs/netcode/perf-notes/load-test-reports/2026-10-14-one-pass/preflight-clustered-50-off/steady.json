@@ -1,0 +1,235 @@
+{
+  "run_id": "preflight-clustered-50-off",
+  "requested_bots": 50,
+  "behavior": "clustered",
+  "duration": 120,
+  "excluded_warmup": 60,
+  "collection": false,
+  "build": "instrumented-off",
+  "variant": "native",
+  "started_utc": "2026-10-14T05:08:55.261203+00:00",
+  "stagger_ms": 100,
+  "input_hz": 30,
+  "seed": 30,
+  "difficulty": 1.0,
+  "bandwidth_budget": 0,
+  "profile": "native",
+  "repeat": 1,
+  "collector_source_sha256": {
+    "archive_storage.py": "b820d1515b264a4326fa834fc1445688382ae3dd10ed28fd5cfc29e979df3d3c",
+    "run.py": "8b40519f1fb5853251532e923a5a5fc95aef3056bcd931bb6ef3c8fd85fd8ef3",
+    "host_collect.py": "00080235cdd599da6b9a20ca0698acff7e57fe46a83fbc6df9b75381dce9bf5b",
+    "mirror.py": "6813b64c583082ea88f4e91d56e5c5f1f230587968992b29ee82c775222fa602",
+    "test_single_pass_matrix.py": "0012d5b0dd9655b58accc56e72b1ae97c154e9f7ecb95ad1de5e7ab9218df114",
+    "test_matrix_evidence.py": "e9d73507f69389b5ffe322e9994be47fe7bfaf1cbe8de8dadf42d92be47ae516",
+    "test_packet_store.py": "db9e4023202ad773f5690884bb993f9bd29e4e9a9b51e13df5dae5b0aa704342",
+    "build_hosts.py": "80583acd7cacede8b08bea72b8ec83ba82bcff87127e279a4de2a63b1a7f4565",
+    "single_run.py": "0e3346d0ef1f05b4e68b3e7a9ea25975beba780e7ded3600f4b0c82a424160b9",
+    "netem.py": "94298d3a441000f6f83edfefb3cf85b31029467ef45e05b2eaf726dbeab4045c",
+    "validate_peer_scope.py": "d5a0308123d308a220733a23ab2a861218799371ef34c893e8a9ff8856f66ea2",
+    "one_pass.py": "0c3a6af151c68ddf34fc0a3f8bfa9b974b93b32e68552159d33a17ff3c456332",
+    "socket_capture_macos.c": "2583507b55df1e29b4685c5a21c465a48dd54f2ac3ffa4368332e39683cfe633",
+    "campaign.py": "e1791bc51d35022388766b156cc6d16d2693d0bb6e00714b8ec045504b780ecb",
+    "capture.py": "8e96e11f9cdea6d95f55507b1d14997633f941f9538bbde801dcf5f2f297c0df",
+    "packet_store.py": "35b91bcd9bbab00bb754b49bb6fccdb0d951a063532feb6a67bfa96c56808287",
+    ".gitignore": "32dae3052f331ee34d628ef535709b301259a45df7c7522c4d35dcf49873f00b",
+    "flow_record.rs": "0081dbe48b363aa9408c8c37abb6e3d2e336a761ba773883bf0d48cdff219e28",
+    "economics.py": "23ce4505e7f92638e2534b3d3f6b6a35e8622c77392d360dd672a4bb029fc970",
+    "external.py": "8b383c307e6e01acfcc2e0efc55e18194c524cd6def238a5457e3b77bbd7b468",
+    "test_run_failure.py": "be6265ceeaec1d4a30c4def4e03d3d9b253a87f12d9d741b354cdcee0495f71b",
+    "verify_matrix.py": "c75ef0421bfb5e9203360b794446ebe02c5263255d20558a65854676d59913a0",
+    "analyze.py": "1bff59703ce1a765ccfeeeb84a5c0f50e73fc083f1a9de905e8fa207f11b6f71",
+    "publish.py": "2b2321f69cfb6a19650f31fca52f4ef60a036fcba901d668d6fd48121cc003a3",
+    "summarize_campaign.py": "3ecd93dff12702e3c44a4fba7702431238962ee71ef4d2051200db0df2ef2ad6"
+  },
+  "game_config": {
+    "mode": "arena",
+    "port": 8081,
+    "metrics_port": 9100,
+    "tick_rate": 30,
+    "max_players": 999,
+    "region": "local",
+    "advertise_url": "",
+    "debug_logging": false,
+    "api_server_url": "",
+    "allow_unsigned_tickets": true,
+    "aoi_radius": 1000.0,
+    "aoi_exit_radius": 1100.0,
+    "lod_near_radius": 400.0,
+    "lod_mid_radius": 1000.0,
+    "snapshot_rate_hz": 30,
+    "default_client_bandwidth_bps": 120000,
+    "max_client_bandwidth_bps": 200000,
+    "monster_ai_difficulty": 0.85
+  },
+  "service_invocation": "a28ab6fe571d4fa191fc6e4c09f996e4",
+  "swarm_runtime_limit_s": 1040,
+  "ramp_failure_policy": "Abort on first logged start/connect/ticket failure; preserve both endpoint archives as unscored ramp evidence",
+  "cleanup_stages": {
+    "bots": {
+      "stop_and_restore_s": 1.191251000011107,
+      "archive_s": 0.7286360840080306,
+      "download_and_sha256_s": 3.416257000004407
+    },
+    "game": {
+      "stop_and_restore_s": 1.335052500013262,
+      "archive_s": 0.5868319580040406,
+      "download_and_sha256_s": 3.451150584005518
+    }
+  },
+  "ended_utc": "2026-10-14T05:11:25.158192+00:00",
+  "derived_source_sha256": "1bff59703ce1a765ccfeeeb84a5c0f50e73fc083f1a9de905e8fa207f11b6f71",
+  "derived_support_sources_sha256": {
+    "packet_store.py": "35b91bcd9bbab00bb754b49bb6fccdb0d951a063532feb6a67bfa96c56808287"
+  },
+  "archive_sha256": {
+    "bots.tar.gz": "6bcebe432738a584e74366ab5a8fd5fbc21c1c155b769aeddd123cf8ac61818d",
+    "game.tar.gz": "5b2256f6abe2c9ad282a2f90160d448d5b1200dcbe06f47b9b507814c5c71a76"
+  },
+  "window_s": 60.0,
+  "game_host": {
+    "duration_s": 59.999880989,
+    "process_cpu_percent_one_core": 18.85003738936333,
+    "process_end_states": {
+      "113214": "S"
+    },
+    "rss_end_bytes": 16035840,
+    "swap_end_kib": 0,
+    "steal_percent": 0.0,
+    "busy_percent_all_cores": 10.871594670287703,
+    "per_core": {
+      "cpu0": {
+        "busy_percent": 14.138513513513514,
+        "steal_percent": 0.0
+      },
+      "cpu1": {
+        "busy_percent": 7.591265779597407,
+        "steal_percent": 0.0
+      }
+    },
+    "kernel_udp_delta": {
+      "InDatagrams": 196370,
+      "NoPorts": 0,
+      "InErrors": 0,
+      "OutDatagrams": 107516,
+      "RcvbufErrors": 0,
+      "SndbufErrors": 0,
+      "InCsumErrors": 0,
+      "IgnoredMulti": 0,
+      "MemErrors": 0
+    },
+    "interface": {
+      "tx_bytes": 71645745,
+      "rx_bytes": 16907752,
+      "tx_packets": 107678,
+      "rx_packets": 196568,
+      "rx_dropped": 0,
+      "tx_dropped": 0
+    },
+    "flow": {},
+    "boundary_start_lateness_ms": 0.428631,
+    "boundary_end_lateness_ms": 0.322181,
+    "boundary_sample_duration_ms": [
+      45.615386,
+      23.820806
+    ],
+    "sampled_process_peak_rss_bytes": null,
+    "steady_host_sample_count": 0
+  },
+  "exporter_tick_count": 1800.0,
+  "exporter_tick_mean_ms": 4.379511142777781,
+  "exporter_tick_hz": 30.0,
+  "bots_host": {
+    "duration_s": 59.999986327,
+    "process_cpu_percent_one_core": null,
+    "swarm_cgroup_cpu_percent_one_core": 23.134528605306826,
+    "swarm_cgroup_cpu_semantics": "Swarm unit (bot process plus tiny shell wrapper), matched boundaries; final systemd value if process exited during boundary observation",
+    "steal_percent": 0.0,
+    "busy_percent_all_cores": 12.87195481749979,
+    "per_core": {
+      "cpu0": {
+        "busy_percent": 13.574432296047098,
+        "steal_percent": 0.0
+      },
+      "cpu1": {
+        "busy_percent": 12.164216928535225,
+        "steal_percent": 0.0
+      }
+    },
+    "kernel_udp_delta": {
+      "InDatagrams": 107516,
+      "NoPorts": 0,
+      "InErrors": 0,
+      "OutDatagrams": 196368,
+      "RcvbufErrors": 0,
+      "SndbufErrors": 0,
+      "InCsumErrors": 0,
+      "IgnoredMulti": 0,
+      "MemErrors": 0
+    },
+    "interface": {
+      "tx_bytes": 16931433,
+      "rx_bytes": 71669877,
+      "tx_packets": 196601,
+      "rx_packets": 107825,
+      "rx_dropped": 0,
+      "tx_dropped": 0
+    },
+    "flow": {},
+    "boundary_start_lateness_ms": 0.349254,
+    "boundary_end_lateness_ms": 0.348181,
+    "boundary_sample_duration_ms": [
+      30.247096,
+      20.696135
+    ],
+    "sampled_process_peak_rss_bytes": null,
+    "steady_host_sample_count": 0
+  },
+  "legacy_harness": {
+    "bandwidth": {
+      "passed": false,
+      "value": "22.45 KB/s"
+    },
+    "crash_rate": {
+      "passed": true,
+      "value": "0.0%"
+    },
+    "latency_avg": {
+      "passed": true,
+      "value": "1.8ms"
+    },
+    "latency_p95": {
+      "passed": true,
+      "value": "3.0ms"
+    },
+    "packet_loss": {
+      "passed": true,
+      "value": "0.00%"
+    },
+    "server_tick_rate": {
+      "passed": true,
+      "value": "31.4 Hz"
+    }
+  },
+  "legacy_aggregated": {
+    "bandwidth_per_player_kbps": 22.45,
+    "connected_bots": 50,
+    "disconnected_bots": 0,
+    "estimated_tick_rate": 31.4,
+    "latency_avg_ms": 1.8,
+    "latency_max_ms": 4.0,
+    "latency_min_ms": 1.0,
+    "latency_p95_ms": 3.0,
+    "latency_p99_ms": 4.0,
+    "packet_loss_pct": 0.0,
+    "total_decode_failures": 0,
+    "total_errors": 0,
+    "total_packets_received": 1799985,
+    "total_packets_sent": 186210,
+    "total_panics": 0,
+    "total_send_failures": 0
+  },
+  "collector_valid": true,
+  "classification": "instrumented-build-recording-off-control-unscored",
+  "pipeline_elapsed_s": 151.29419133299962
+}

@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/one-pass-20261014/points-preflight-clustered-50-on",
+  "sha256": {
+    "bots.tar.gz": "996338cb0972220afa515f7638e1044348f975aa61c392aec99a3b3b2f5e18fb",
+    "game.tar.gz": "9be0ef70543ab72be93b0fe7c970f184bcfe2a863b64b9c423bb8fcfb1b28ef6"
+  },
+  "contents": "Curated article graph points, exact counters and bounded diagnostics; only 1/64 fingerprint samples privately retained, no raw packet archive."
+}

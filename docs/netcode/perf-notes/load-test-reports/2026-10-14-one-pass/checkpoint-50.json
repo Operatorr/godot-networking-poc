@@ -1,0 +1,16 @@
+{
+  "utc": "2026-10-14T05:54:59.876476+00:00",
+  "completed_core_cells": 4,
+  "planned_core_cells": 17,
+  "population": 50,
+  "all_native_single_observations_passed": true,
+  "archive_bytes": 1304540199,
+  "local_free_bytes": 47756345344,
+  "new_case_controller_elapsed_s": [
+    589.3918677079782,
+    647.7654946670227,
+    641.4536704589846
+  ],
+  "timing_semantics": "Controller cell elapsed ends before final duplicate cleanup/publication. Imported pilot timing here is audit-only and is excluded from new-run estimates. Five-minute observation duration remains 300 s. Update at the 50/100 checkpoint using larger-population evidence.",
+  "next_phase": "100-player core cells"
+}

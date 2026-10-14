@@ -1,0 +1,44 @@
+{
+  "utc_ns": 1791954679136941189,
+  "monotonic_ns": 64747361270349,
+  "clock_ticks_s": 100,
+  "page_size": 4096,
+  "stat": "cpu  406211 2983 140028 12200247 3466 0 45599 0 0 0\ncpu0 226599 2819 78983 6060293 1520 0 10250 0 0 0\ncpu1 179611 163 61045 6139953 1945 0 35349 0 0 0\nintr 148294683 0 89214 5732416 0 0 0 14426 0 0 0 124569687 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1433 0 0 0 0 1 1 1 1 1 1 1 1 1 0 4 0 0 0 69072 78995 0 14693678 2730799 68 0 0 0 0 1065 0 313817 0\nctxt 125194791\nbtime 1791889931\nprocesses 113256\nprocs_running 1\nprocs_blocked 0\nsoftirq 39921350 7 1947839 67005 16489860 10 0 438014 19825812 16573 1136230\n",
+  "meminfo": "MemTotal:        3888028 kB\nMemFree:          174000 kB\nMemAvailable:    3443276 kB\nBuffers:           72060 kB\nCached:          3223812 kB\nSwapCached:            0 kB\nActive:           330388 kB\nInactive:        3077080 kB\nActive(anon):     113480 kB\nInactive(anon):     7916 kB\nActive(file):     216908 kB\nInactive(file):  3069164 kB\nUnevictable:       18380 kB\nMlocked:           14380 kB\nSwapTotal:             0 kB\nSwapFree:              0 kB\nZswap:                 0 kB\nZswapped:              0 kB\nDirty:                32 kB\nWriteback:             0 kB\nAnonPages:        129976 kB\nMapped:            96748 kB\nShmem:              5040 kB\nKReclaimable:     167028 kB\nSlab:             237852 kB\nSReclaimable:     167028 kB\nSUnreclaim:        70824 kB\nKernelStack:        2320 kB\nShadowCallStack:     588 kB\nPageTables:         2920 kB\nSecPageTables:         0 kB\nNFS_Unstable:          0 kB\nBounce:                0 kB\nWritebackTmp:          0 kB\nCommitLimit:     1944012 kB\nCommitted_AS:     277632 kB\nVmallocTotal:   135288315904 kB\nVmallocUsed:       11772 kB\nVmallocChunk:          0 kB\nPercpu:             1752 kB\nHardwareCorrupted:     0 kB\nAnonHugePages:     71680 kB\nShmemHugePages:        0 kB\nShmemPmdMapped:        0 kB\nFileHugePages:    225280 kB\nFilePmdMapped:         0 kB\nCmaTotal:          32768 kB\nCmaFree:           22608 kB\nBalloon:               0 kB\nHugePages_Total:       0\nHugePages_Free:        0\nHugePages_Rsvd:        0\nHugePages_Surp:        0\nHugepagesize:       2048 kB\nHugetlb:               0 kB\n",
+  "net/snmp": "Ip: Forwarding DefaultTTL InReceives InHdrErrors InAddrErrors ForwDatagrams InUnknownProtos InDiscards InDelivers OutRequests OutDiscards OutNoRoutes ReasmTimeout ReasmReqds ReasmOKs ReasmFails FragOKs FragFails FragCreates OutTransmits\nIp: 2 64 21051018 0 2 0 0 0 21031299 13879230 187 1 0 0 0 0 0 0 0 13879230\nIcmp: InMsgs InErrors InCsumErrors InDestUnreachs InTimeExcds InParmProbs InSrcQuenchs InRedirects InEchos InEchoReps InTimestamps InTimestampReps InAddrMasks InAddrMaskReps OutMsgs OutErrors OutRateLimitGlobal OutRateLimitHost OutDestUnreachs OutTimeExcds OutParmProbs OutSrcQuenchs OutRedirects OutEchos OutEchoReps OutTimestamps OutTimestampReps OutAddrMasks OutAddrMaskReps\nIcmp: 2872 0 0 83 0 0 0 0 2789 0 0 0 0 0 2874 0 0 0 85 0 0 0 0 0 2789 0 0 0 0\nIcmpMsg: InType3 InType8 OutType0 OutType3\nIcmpMsg: 83 2789 2789 85\nTcp: RtoAlgorithm RtoMin RtoMax MaxConn ActiveOpens PassiveOpens AttemptFails EstabResets CurrEstab InSegs OutSegs RetransSegs InErrs OutRsts InCsumErrors\nTcp: 1 200 120000 -1 9153 10183 2 1 1 596855 2052479 18441 0 224 0\nUdp: InDatagrams NoPorts InErrors OutDatagrams RcvbufErrors SndbufErrors InCsumErrors IgnoredMulti MemErrors\nUdp: 20514819 85 35 12795212 35 147 0 1 0\nUdpLite: InDatagrams NoPorts InErrors OutDatagrams RcvbufErrors SndbufErrors InCsumErrors IgnoredMulti MemErrors\nUdpLite: 0 0 0 0 0 0 0 0 0\n",
+  "net/softnet_stat": "0000b34a 00000000 00000017 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000\n0141ccf1 00000000 00000063 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000001 00000000 00000000\n",
+  "net/dev": "Inter-|   Receive                                                |  Transmit\n face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed\n    lo: 14306125   91475    0    0    0     0          0         0 14306125   91475    0    0    0     0       0          0\n  eth0: 2524532167 21044736    0    0    0     0          0         0 8890722433 13842086    0    0    0     0       0          0\n",
+  "pressure/cpu": "some avg10=0.00 avg60=0.02 avg300=0.00 total=399278796\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n",
+  "interface": {
+    "tx_bytes": "8890722433\n",
+    "rx_bytes": "2524533193\n",
+    "tx_packets": "13842086\n",
+    "rx_packets": "21044755\n",
+    "rx_dropped": "0\n",
+    "tx_dropped": "0\n"
+  },
+  "processes": {
+    "113214": {
+      "comm": "omega-server\n",
+      "stat": "113214 (omega-server) S 1 113214 113214 0 -1 4194560 1318 0 0 0 2015 418 0 0 20 0 3 0 6461387 221126656 3915 18446744073709551615 220674436235264 220674441838244 281474001352496 0 0 0 0 4096 1090 0 0 0 17 0 0 0 0 0 0 220674441932112 220674442146648 220675086249984 281474001354116 281474001354252 281474001354252 281474001354673 0\n",
+      "status": "Name:\tomega-server\nUmask:\t0022\nState:\tS (sleeping)\nTgid:\t113214\nNgid:\t0\nPid:\t113214\nPPid:\t1\nTracerPid:\t0\nUid:\t1000\t1000\t1000\t1000\nGid:\t1000\t1000\t1000\t1000\nFDSize:\t512\nGroups:\t27 1000 \nNStgid:\t113214\nNSpid:\t113214\nNSpgid:\t113214\nNSsid:\t113214\nKthread:\t0\nVmPeak:\t  215964 kB\nVmSize:\t  215944 kB\nVmLck:\t       0 kB\nVmPin:\t       0 kB\nVmHWM:\t   15684 kB\nVmRSS:\t   15684 kB\nRssAnon:\t   10616 kB\nRssFile:\t    5068 kB\nRssShmem:\t       0 kB\nVmData:\t   16712 kB\nVmStk:\t     132 kB\nVmExe:\t    5472 kB\nVmLib:\t    2700 kB\nVmPTE:\t      80 kB\nVmSwap:\t       0 kB\nHugetlbPages:\t       0 kB\nCoreDumping:\t0\nTHP_enabled:\t1\nuntag_mask:\t0xffffffffffffff\nThreads:\t3\nSigQ:\t0/13307\nSigPnd:\t0000000000000000\nShdPnd:\t0000000000000000\nSigBlk:\t0000000000000000\nSigIgn:\t0000000000001000\nSigCgt:\t0000000100000442\nCapInh:\t0000000000200100\nCapPrm:\t0000000000000000\nCapEff:\t0000000000000000\nCapBnd:\t000001ffffffffff\nCapAmb:\t0000000000000000\nNoNewPrivs:\t1\nSeccomp:\t2\nSeccomp_filters:\t1\nSpeculation_Store_Bypass:\tthread vulnerable\nSpeculationIndirectBranch:\tunknown\nCpus_allowed:\t3\nCpus_allowed_list:\t0-1\nMems_allowed:\t00000000,00000001\nMems_allowed_list:\t0\nvoluntary_ctxt_switches:\t101305\nnonvoluntary_ctxt_switches:\t234\n",
+      "io": "rchar: 629687\nwchar: 144690\nsyscr: 756\nsyscw: 1122\nread_bytes: 0\nwrite_bytes: 0\ncancelled_write_bytes: 0\n"
+    }
+  },
+  "nft_before_utc_ns": 1791954679145046620,
+  "nft": {
+    "rc": 1,
+    "stdout": "",
+    "stderr": "Error: No such file or directory\nlist table inet omega_measure\n                ^^^^^^^^^^^^^\n"
+  },
+  "nft_after_utc_ns": 1791954679156637139,
+  "tc": {
+    "rc": 0,
+    "stdout": "[{\"kind\":\"fq_codel\",\"handle\":\"8003:\",\"root\":true,\"refcnt\":2,\"options\":{\"limit\":10240,\"flows\":1024,\"quantum\":1514,\"target\":4999,\"interval\":99999,\"memory_limit\":33554432,\"ecn\":true,\"drop_batch\":64},\"bytes\":6123210712,\"packets\":9117877,\"drops\":0,\"overlimits\":0,\"requeues\":10224,\"backlog\":0,\"qlen\":0,\"maxpacket\":3028,\"drop_overlimit\":0,\"new_flow_count\":82399,\"ecn_mark\":0,\"new_flows_len\":0,\"old_flows_len\":0}]\n",
+    "stderr": ""
+  },
+  "prometheus": "# TYPE players_online gauge\nplayers_online 50\n\n# TYPE avg_bandwidth_per_client_bytes gauge\navg_bandwidth_per_client_bytes 19787.88\n\n# TYPE avg_tick_time_ms gauge\navg_tick_time_ms 4.331474133333333\n\n# TYPE snapshot_entities_deferred gauge\nsnapshot_entities_deferred 0\n\n# TYPE entities gauge\nentities 37\n\n# TYPE tick_duration_ms summary\ntick_duration_ms{quantile=\"0\"} 0.036400999999999996\ntick_duration_ms{quantile=\"0.5\"} 4.278061557375395\ntick_duration_ms{quantile=\"0.9\"} 5.226281340993812\ntick_duration_ms{quantile=\"0.95\"} 5.590674829585982\ntick_duration_ms{quantile=\"0.99\"} 6.920582908735173\ntick_duration_ms{quantile=\"0.999\"} 7.933545234658408\ntick_duration_ms{quantile=\"1\"} 9.693053\ntick_duration_ms_sum 16798.853751999995\ntick_duration_ms_count 4004\n\n",
+  "sample_duration_ns": 23820806,
+  "boundary": "end",
+  "target_utc_ns": 1791954679136619008
+}

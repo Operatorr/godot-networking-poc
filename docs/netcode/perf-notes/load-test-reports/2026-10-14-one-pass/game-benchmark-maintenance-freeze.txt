@@ -1,0 +1,39 @@
+2026-10-14T07:45:22,159790579+00:00
+d2ad3027-6817-470d-9646-b18963e33b89
+Linux CAX11-game-server 7.0.0-30-generic #30-Ubuntu SMP PREEMPT_DYNAMIC Fri Jul 31 18:09:26 UTC 2026 aarch64 GNU/Linux
+inactive
+inactive
+enabled
+enabled
+
+Start-Date: 2026-10-14  06:11:43
+Commandline: /usr/bin/unattended-upgrade
+Upgrade: python3-requests:arm64 (2.32.5+dfsg-1ubuntu1, 2.32.5+dfsg-1ubuntu1.1)
+End-Date: 2026-10-14  06:11:43
+
+Start-Date: 2026-10-14  06:12:03
+Commandline: /usr/bin/unattended-upgrade
+Upgrade: libxml2-16:arm64 (2.15.2+dfsg-0.1ubuntu0.1, 2.15.2+dfsg-0.1ubuntu0.3)
+End-Date: 2026-10-14  06:12:03
+
+Start-Date: 2026-10-14  06:12:23
+Commandline: /usr/bin/unattended-upgrade
+Upgrade: python3-pyasn1:arm64 (0.6.3-1, 0.6.3-1ubuntu0.1)
+End-Date: 2026-10-14  06:12:23
+
+Start-Date: 2026-10-14  06:12:42
+Commandline: /usr/bin/unattended-upgrade
+Upgrade: python3-jwt:arm64 (2.10.1-4ubuntu1, 2.10.1-4ubuntu1.1)
+End-Date: 2026-10-14  06:12:43
+
+Start-Date: 2026-10-14  06:13:02
+Commandline: /usr/bin/unattended-upgrade
+Upgrade: libgcrypt20:arm64 (1.12.0-2ubuntu1, 1.12.0-2ubuntu1.1)
+End-Date: 2026-10-14  06:13:02
+libc6:arm64	2.43-2ubuntu2.4
+libpcap0.8t64:arm64	1.10.6-1ubuntu1.1
+python3	3.14.3-0ubuntu2
+python3.14	3.14.4-1ubuntu0.2
+tcpdump	4.99.6-1
+masked-runtime
+masked-runtime

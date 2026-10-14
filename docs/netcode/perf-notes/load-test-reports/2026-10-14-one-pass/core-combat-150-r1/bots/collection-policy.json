@@ -1,0 +1,9 @@
+{
+  "format": "article-points-v1",
+  "tick_points": "Every Tick numeric work/population/backlog fields; exact percentile and player-second integrals.",
+  "host_points": "1 Hz CPU/process/interface/UDP/qdisc/flow metrics and matched boundaries; no socket tables or full proc dumps.",
+  "bot_points": "1 Hz cadence, RTT, delivery ages and error counters plus per-bot matched boundaries; no packet/event log.",
+  "flow_points": "Exact common-window bytes/packets/inputs/retries and 1 Hz traffic points from all packets.",
+  "delivery_sample": "1/64 deterministic UDP fingerprint sample; no payload, headers or command descriptors. Estimates are conditional on the fingerprint sample, not exact all-packet loss.",
+  "diagnostics": "At most first 20 warning/error lines plus last 20 bot log lines."
+}

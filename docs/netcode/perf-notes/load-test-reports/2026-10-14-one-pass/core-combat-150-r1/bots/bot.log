@@ -1,0 +1,20 @@
+  Packet Loss:     0.73%
+
+Success Criteria:
+  [PASS] Average latency < 100ms: 24.9ms
+  [PASS] P95 latency < 150ms: 83.0ms
+  [FAIL] Bandwidth < 5.0 KB/s per player: 108.45 KB/s
+  [PASS] Packet loss < 2.0%: 0.73%
+  [FAIL] Bot crash rate < 5.0%: 90.0%
+  [PASS] Server tick rate > 30 Hz: 31.4 Hz
+
+------------------------------------------------------------
+  Conclusion: SOME CRITERIA FAILED
+------------------------------------------------------------
+
+Regression Assertions (§8.3):
+  [FAIL] aoi_cull: 127/150 bots within 1150 u (95% required)
+  [PASS] decode_clean: no decode failures
+  [SKIP] per_peer_budget: skipped: no --rate-budget configured
+
+[2m2026-10-14T08:48:48.115843Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m JSON report saved to: /home/deploy/omega-results/one-pass-20261014/core-combat-150-r1/bots/bot.json

@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/one-pass-20261014/points-preflight-combat-3-combined",
+  "sha256": {
+    "bots.tar.gz": "76156e5b5924d74e264d5bec51c41c752684374ce75e978ce27e6fb7c557b23e",
+    "game.tar.gz": "4645dda82b36f250818496225c6d45937fb93c2def65c0ad6c9eb5669c57f3f2"
+  },
+  "contents": "Curated article graph points, exact counters and bounded diagnostics; only 1/64 fingerprint samples privately retained, no raw packet archive."
+}

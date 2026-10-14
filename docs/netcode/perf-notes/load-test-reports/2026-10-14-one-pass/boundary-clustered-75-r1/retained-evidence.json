@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/one-pass-20261014/boundary-clustered-75-r1",
+  "sha256": {
+    "bots.tar.gz": "ef211002b06007ba638df864c7504d42f5e61e71ca2f828cf1ae9542e1ffbfa5",
+    "game.tar.gz": "067fa066f90ab45dd683961116d0d32cb489702e6aaa09f455d76135c3ba4172"
+  },
+  "contents": "Curated article graph points, exact counters and bounded diagnostics; only 1/64 fingerprint samples privately retained, no raw packet archive."
+}

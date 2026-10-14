@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/one-pass-20261014/idle-100-r1",
+  "sha256": {
+    "bots.tar.gz": "1e86e9902eb2a5a33dda5778c1ef6593c141c96d5908879877b21aec3f5b747f",
+    "game.tar.gz": "98eb6682e3009e6a2c3425fb389dde4e022a3d3e4e12937e9640f14724c14b57"
+  },
+  "contents": "Curated article graph points, exact counters and bounded diagnostics; only 1/64 fingerprint samples privately retained, no raw packet archive."
+}

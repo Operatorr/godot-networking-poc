@@ -1,0 +1,95 @@
+[2m2026-10-14T05:09:13.736895Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m Starting load test: 50 bots, 120s duration, behavior=clustered, difficulty=1.00, server=<game-host>:8081
+[2m2026-10-14T05:09:13.736944Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m Phase 1: Spawning bots...
+[2m2026-10-14T05:09:14.710547Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m Connected 10/10 bots...
+[2m2026-10-14T05:09:15.782605Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m Connected 20/20 bots...
+[2m2026-10-14T05:09:16.860493Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m Connected 30/30 bots...
+[2m2026-10-14T05:09:17.948035Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m Connected 40/40 bots...
+[2m2026-10-14T05:09:19.036187Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m Connected 50/50 bots...
+[2m2026-10-14T05:09:19.136565Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m Spawned 50 bots, 50 connected successfully
+[2m2026-10-14T05:09:19.136619Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m Phase 2: Running test for 120 seconds with 50 bots...
+[2m2026-10-14T05:09:24.137425Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [5s] bots=50 bytes_recv=9282750 state_updates=10551
+[2m2026-10-14T05:09:29.136790Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [10s] bots=50 bytes_recv=14858292 state_updates=18051
+[2m2026-10-14T05:09:34.137123Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [15s] bots=50 bytes_recv=21087127 state_updates=25551
+[2m2026-10-14T05:09:39.137115Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [20s] bots=50 bytes_recv=27073104 state_updates=33051
+[2m2026-10-14T05:09:44.136684Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [25s] bots=50 bytes_recv=32508692 state_updates=40551
+[2m2026-10-14T05:09:49.136880Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [30s] bots=50 bytes_recv=39032075 state_updates=48051
+[2m2026-10-14T05:09:54.137138Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [35s] bots=50 bytes_recv=44555800 state_updates=55551
+[2m2026-10-14T05:09:59.137861Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [40s] bots=50 bytes_recv=50464990 state_updates=63051
+[2m2026-10-14T05:10:04.137116Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [45s] bots=50 bytes_recv=56370571 state_updates=70551
+[2m2026-10-14T05:10:09.137815Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [50s] bots=50 bytes_recv=62150478 state_updates=78051
+[2m2026-10-14T05:10:14.137541Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [55s] bots=50 bytes_recv=67495784 state_updates=85551
+[2m2026-10-14T05:10:19.137085Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [60s] bots=50 bytes_recv=72778401 state_updates=93051
+[2m2026-10-14T05:10:24.137845Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [65s] bots=50 bytes_recv=78129069 state_updates=100551
+[2m2026-10-14T05:10:29.137746Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [70s] bots=50 bytes_recv=83564113 state_updates=108051
+[2m2026-10-14T05:10:34.137371Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [75s] bots=50 bytes_recv=88760435 state_updates=115551
+[2m2026-10-14T05:10:39.137130Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [80s] bots=50 bytes_recv=94139513 state_updates=123051
+[2m2026-10-14T05:10:44.136930Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [85s] bots=50 bytes_recv=99427929 state_updates=130551
+[2m2026-10-14T05:10:49.137060Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [90s] bots=50 bytes_recv=104762049 state_updates=138051
+[2m2026-10-14T05:10:54.137728Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [95s] bots=50 bytes_recv=109766407 state_updates=145551
+[2m2026-10-14T05:10:59.137220Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [100s] bots=50 bytes_recv=114883077 state_updates=153051
+[2m2026-10-14T05:11:04.137037Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [105s] bots=50 bytes_recv=119567923 state_updates=160551
+[2m2026-10-14T05:11:09.137365Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [110s] bots=50 bytes_recv=124354394 state_updates=168051
+[2m2026-10-14T05:11:14.137675Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m [115s] bots=50 bytes_recv=129043495 state_updates=175551
+[2m2026-10-14T05:11:19.137366Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m Phase 3: Collecting metrics...
+
+============================================================
+  Omega Realm Load Test Report (ENet/Rust)
+============================================================
+
+Test Configuration:
+  Bot Count:       50
+  Duration:        120 seconds
+  Server:          <game-host>:8081
+  Timestamp:       2026-10-14T05:11:19Z (UTC)
+
+Connection Summary:
+  Connected:       50
+  Disconnected:    0
+  Errors:          0
+  Decode Failures: 0
+  Send Failures:   0
+  Bot Panics:      0
+
+Server Metrics (client-estimated):
+  Est. Tick Rate:  31.4 Hz
+  State Updates:   3661 per bot (avg)
+
+Server Metrics (server-reported):
+  Avg Tick Time:   4.33ms
+  Max Tick Time:   7.93ms
+  Players:         50
+  Entity Count:    37
+  Total Bytes Out: 134510301
+  Avg BW/Client:   19787 bytes
+
+Network Metrics:
+  Packets Sent:    186210
+  Packets Recv:    1799985
+  Bandwidth/Player: 22.45 KB/s
+
+Latency Distribution (ENet RTT):
+  Min:             1.0ms
+  Avg:             1.8ms
+  Max:             4.0ms
+  P95:             3.0ms
+  P99:             4.0ms
+  Packet Loss:     0.00%
+
+Success Criteria:
+  [PASS] Average latency < 100ms: 1.8ms
+  [PASS] P95 latency < 150ms: 3.0ms
+  [FAIL] Bandwidth < 5.0 KB/s per player: 22.45 KB/s
+  [PASS] Packet loss < 2.0%: 0.00%
+  [PASS] Bot crash rate < 5.0%: 0.0%
+  [PASS] Server tick rate > 30 Hz: 31.4 Hz
+
+------------------------------------------------------------
+  Conclusion: SOME CRITERIA FAILED
+------------------------------------------------------------
+
+Regression Assertions (§8.3):
+  [PASS] aoi_cull: 50/50 bots within 1150 u (95% required)
+  [PASS] decode_clean: no decode failures
+  [SKIP] per_peer_budget: skipped: no --rate-budget configured
+
+[2m2026-10-14T05:11:19.141798Z[0m [32m INFO[0m [2momega_load_test[0m[2m:[0m JSON report saved to: /home/deploy/omega-results/one-pass-20261014/preflight-clustered-50-off/bots/bot.json

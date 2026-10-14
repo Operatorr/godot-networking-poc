@@ -1,0 +1,115 @@
+{
+  "scored_runs_authorized_by_preflight": true,
+  "collection_format": "article-points-v1",
+  "validated_utc": "2026-10-14T08:20:24.055651+00:00",
+  "binary_sha256_by_role": {
+    "game": "f2bf76c6fa3c28b7fb9b5d52f216061e9c3239999d67bf8a42acadf44dada3a2",
+    "bots": "8af491831304e1ab913089e3b8f1750ea701e4ccd8993d834bcc30ecfa3e8bdf"
+  },
+  "observations": [
+    "points-preflight-clustered-50-off",
+    "points-preflight-clustered-50-on",
+    "points-preflight-combat-3-combined",
+    "points-preflight-combat-3-cleanup"
+  ],
+  "measurement_seconds_per_preflight": 60,
+  "overhead": {
+    "mean_tick_work_on_ms": 4.852797825555545,
+    "mean_tick_work_off_ms": 4.190939738888887,
+    "tick_difference_ms": 0.6618580866666575,
+    "server_cpu_on_percent_one_core": 20.06662169837077,
+    "server_cpu_off_percent_one_core": 17.966644347303284,
+    "generator_cpu_on_percent_one_core": 25.528196729684634,
+    "generator_cpu_off_percent_one_core": 23.19399529278269,
+    "observer_mean_ms": 0.00981428388888889
+  },
+  "impairment_directional_observations": {
+    "out": {
+      "sent": 87,
+      "matched": 85,
+      "unmatched": 2,
+      "loss_pct": 2.2988505747126435,
+      "delay_ms": {
+        "mean": 48.143341176470585,
+        "p50": 48.824,
+        "p95": 79.661,
+        "p99": 109.231
+      },
+      "sample_modulus": 64,
+      "estimate": true,
+      "uncertainty": "Deterministic fingerprint sample; identical retransmissions are correlated. No independent-packet confidence interval or exact zero-loss claim.",
+      "semantics": "sender pre-qdisc mirror when available (otherwise post-qdisc capture); timestamped full-UDP fingerprints matched to receiver \u00b12 ms/+2 s context; host clocks; signed, uncorrected timestamp differences include clock offset (negative sub-ms values are not negative network latency)"
+    },
+    "in": {
+      "sent": 122,
+      "matched": 121,
+      "unmatched": 1,
+      "loss_pct": 0.819672131147541,
+      "delay_ms": {
+        "mean": 49.18526446280992,
+        "p50": 51.034,
+        "p95": 81.077,
+        "p99": 102.82
+      },
+      "sample_modulus": 64,
+      "estimate": true,
+      "uncertainty": "Deterministic fingerprint sample; identical retransmissions are correlated. No independent-packet confidence interval or exact zero-loss claim.",
+      "semantics": "sender pre-qdisc mirror when available (otherwise post-qdisc capture); timestamped full-UDP fingerprints matched to receiver \u00b12 ms/+2 s context; host clocks; signed, uncorrected timestamp differences include clock offset (negative sub-ms values are not negative network latency)"
+    }
+  },
+  "impairment_rtt_ms": {
+    "mean": 105.76344086021506,
+    "p95": 114.0,
+    "p99": 118.0,
+    "max": 120.0
+  },
+  "cleanup_state": {
+    "game": {
+      "qdiscs": [
+        {
+          "kind": "fq_codel",
+          "handle": "8005:",
+          "root": true,
+          "refcnt": 2,
+          "options": {
+            "limit": 10240,
+            "flows": 1024,
+            "quantum": 1514,
+            "target": 4999,
+            "interval": 99999,
+            "memory_limit": 33554432,
+            "ecn": true,
+            "drop_batch": 64
+          }
+        }
+      ],
+      "egress_filters": []
+    },
+    "bots": {
+      "qdiscs": [
+        {
+          "kind": "fq_codel",
+          "handle": "8005:",
+          "root": true,
+          "refcnt": 2,
+          "options": {
+            "limit": 10240,
+            "flows": 1024,
+            "quantum": 1514,
+            "target": 4999,
+            "interval": 99999,
+            "memory_limit": 33554432,
+            "ecn": true,
+            "drop_batch": 64
+          }
+        }
+      ],
+      "egress_filters": []
+    }
+  },
+  "caveats": [
+    "One on/off comparison, different entropy-seeded worlds and shared-host conditions; no causal precision or repeat variance claimed.",
+    "Configured loss/delay is delivery degradation, not a native capacity failure.",
+    "All preflights are unscored; the matched exporter sum/count and host boundaries supply the off-control comparison."
+  ]
+}

@@ -31,8 +31,9 @@ def sample(role, swarm_unit=None):
     before = time.time_ns()
     result = {"utc_ns": before, "monotonic_ns": time.monotonic_ns(),
               "clock_ticks_s": os.sysconf("SC_CLK_TCK"), "page_size": os.sysconf("SC_PAGE_SIZE")}
-    for name in ("stat", "meminfo", "net/snmp", "net/softnet_stat", "net/dev", "net/udp", "net/udp6", "pressure/cpu"):
+    for name in ("stat", "net/snmp"):
         result[name] = read("/proc/" + name)
+    result["stat"] = "\n".join(line for line in result["stat"].splitlines() if line.startswith("cpu"))
     result["interface"] = {
         name: read("/sys/class/net/eth0/statistics/" + name)
         for name in ("tx_bytes", "rx_bytes", "tx_packets", "rx_packets", "rx_dropped", "tx_dropped")
@@ -45,8 +46,10 @@ def sample(role, swarm_unit=None):
     for directory in pathlib.Path("/proc").iterdir():
         if directory.name.isdigit() and read(directory / "comm") in ("omega-server\n", "omega-load-test\n", "tcpdump\n"):
             result["processes"][directory.name] = {
-                name: read(directory / name) for name in ("comm", "stat", "status", "io")
+                name: read(directory / name) for name in ("comm", "stat", "status")
             }
+    for process in result["processes"].values():
+        process["status"] = "\n".join(line for line in (process["status"] or "").splitlines() if line.startswith("VmSwap:"))
     result["nft_before_utc_ns"] = time.time_ns()
     result["nft"] = command(["sudo", "-n", "nft", "-j", "list", "table", "inet", "omega_measure"])
     result["nft_after_utc_ns"] = time.time_ns()
@@ -79,7 +82,7 @@ def main():
 
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
-    with gzip.open(directory / "host.ndjson.gz", "wt") as output:
+    with gzip.open(directory / "host.ndjson.gz", "xt") as output:
         deadline = time.monotonic() + args.seconds
         next_sample = time.monotonic()
         boundaries = set()

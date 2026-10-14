@@ -10,6 +10,10 @@ PROFILES = {
 RESTORE = "sudo -n tc qdisc replace dev eth0 root fq_codel limit 10240 flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 33554432 ecn"
 
 
+def cleanup_unit(run_id, role):
+    return run.UNIT_PREFIX + 'netem-cleanup-' + run_id + '-' + role
+
+
 def restore(role):
     run.ssh(role, RESTORE)
 
@@ -30,7 +34,7 @@ def apply(role, profile, seed, run_id, timeout):
     run.ssh(role, f"tc -s -j qdisc show dev eth0 > {directory}/netem-original.json; tc -s -j filter show dev eth0 > {directory}/filters-original.json")
     # A remote fallback also cleans up if the operator-side controller disappears.
     cleanup = "sleep " + str(timeout) + "; " + RESTORE
-    run.ssh(role, f"sudo -n systemd-run --quiet --unit=omega-netem-cleanup-{run_id}-{role} /bin/bash -c " + shlex.quote(cleanup))
+    run.ssh(role, f"sudo -n systemd-run --quiet --unit={cleanup_unit(run_id, role)} /bin/bash -c " + shlex.quote(cleanup))
     command = (
         "sudo -n tc qdisc replace dev eth0 root handle 1: prio bands 3 priomap " + " ".join(["0"] * 16) + "; "
         "sudo -n tc qdisc add dev eth0 parent 1:1 handle 10: fq_codel limit 10240 flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 33554432 ecn; "

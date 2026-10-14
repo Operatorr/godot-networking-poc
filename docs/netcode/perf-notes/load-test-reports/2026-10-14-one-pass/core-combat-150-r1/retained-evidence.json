@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/one-pass-20261014/core-combat-150-r1",
+  "sha256": {
+    "bots.tar.gz": "91cbc44a1bd50abc6c60cfb2d5af1481dd9b8f9658af7c8040968f70dc59f4c6",
+    "game.tar.gz": "998cd4968dfdcdaad731b6e1e38db370f31871743ca89173594500b7139b7fe1"
+  },
+  "contents": "Curated article graph points, exact counters and bounded diagnostics; only 1/64 fingerprint samples privately retained, no raw packet archive."
+}

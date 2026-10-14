@@ -1,0 +1,63 @@
+{
+  "authorized_utc": "2026-10-14T09:44:26.868333+00:00",
+  "authorization": "User explicitly requests Strategy 200,250,500,750,999 despite prior failures; separate subagent per run, each reports to parent. Document lower ladder before continuing.",
+  "pre_extension_state": "pre-strategy-extension-state.json",
+  "conditions": "Pinned binaries, compact article collection, native settings, one run per requested rung; no sustainable capacity claim unless valid offered load and server gates pass.",
+  "runs": [
+    {
+      "requested_bots": 200,
+      "run_id": "core-strategy-200-r1",
+      "status": "failed-attempt",
+      "agent": "/root/strategy_200",
+      "classification": "ramp-failed-unscored",
+      "result": "core-strategy-200-r1/agent-result.json",
+      "actual_peak_authenticated": 191,
+      "cleanup_verified_utc": "2026-10-14T09:52:24.810979+00:00"
+    },
+    {
+      "requested_bots": 250,
+      "run_id": "core-strategy-250-r1",
+      "status": "failed-attempt",
+      "agent": "/root/strategy_250",
+      "classification": "ramp-failed-unscored",
+      "result": "core-strategy-250-r1/agent-result.json",
+      "actual_peak_authenticated": 185,
+      "cleanup_verified_utc": "2026-10-14T09:58:40.471033+00:00"
+    },
+    {
+      "requested_bots": 500,
+      "run_id": "core-strategy-500-r1",
+      "status": "failed-attempt",
+      "agent": "/root/strategy_500",
+      "classification": "ramp-failed-unscored",
+      "result": "core-strategy-500-r1/agent-result.json",
+      "actual_peak_authenticated": 176,
+      "cleanup_verified_utc": "2026-10-14T10:03:51.098089+00:00"
+    },
+    {
+      "requested_bots": 750,
+      "run_id": "core-strategy-750-r1",
+      "status": "failed-attempt",
+      "agent": "/root/strategy_750",
+      "classification": "ramp-failed-unscored",
+      "result": "core-strategy-750-r1/agent-result.json",
+      "actual_peak_authenticated": 180,
+      "cleanup_verified_utc": "2026-10-14T10:07:35.275766+00:00"
+    },
+    {
+      "requested_bots": 999,
+      "run_id": "core-strategy-999-r1",
+      "status": "failed-attempt",
+      "agent": "/root/strategy_999",
+      "classification": "ramp-failed-unscored",
+      "result": "core-strategy-999-r1/agent-result.json",
+      "actual_peak_authenticated": 190,
+      "cleanup_verified_utc": "2026-10-14T10:12:01.804274+00:00"
+    }
+  ],
+  "updated_utc": "2026-10-14T10:12:42.723550+00:00",
+  "extension_attempts_complete": true,
+  "completed_scored_windows": 0,
+  "higher_strategy_capacity_validated": false,
+  "remaining_matrix_phases": "Network/transfer/external accounting and complete coverage audit remain pending; original campaign state preserved."
+}

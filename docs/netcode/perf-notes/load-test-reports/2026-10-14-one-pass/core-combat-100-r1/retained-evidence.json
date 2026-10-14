@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/one-pass-20261014/core-combat-100-r1",
+  "sha256": {
+    "bots.tar.gz": "8eee2b9f0270c0d8b713c3c2bd117b5537234ae756361325e97e6df8a44fbc50",
+    "game.tar.gz": "1d9914fd3423ea86313b0c386b4bc1ed97d0b0927985890e65a61ab6befcb490"
+  },
+  "contents": "Unedited reports/logs, host observations, packet headers and full-datagram ENet descriptors. Retained off both temporary hosts in the ignored local evidence archive. Public copies redact connection addresses; no access records or credentials are published."
+}

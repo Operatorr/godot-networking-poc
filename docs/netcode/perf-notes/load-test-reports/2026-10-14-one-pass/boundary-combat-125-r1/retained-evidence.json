@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/one-pass-20261014/boundary-combat-125-r1",
+  "sha256": {
+    "bots.tar.gz": "0b78a886c65ee3c8546cb6f9e8e23999cd0c6ee48ee1c0af29702e711929b068",
+    "game.tar.gz": "73139d2500abf3af3d4d1e14506133beea804f0f48c3b7d5c9636c10e8497af9"
+  },
+  "contents": "Curated article graph points, exact counters and bounded diagnostics; only 1/64 fingerprint samples privately retained, no raw packet archive."
+}

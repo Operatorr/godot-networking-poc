@@ -1,0 +1,157 @@
+{
+  "complete_population_observations": true,
+  "observations": [
+    {
+      "run_id": "core-movement-100-r1",
+      "classification": "native-stable-candidate",
+      "collection_format": null,
+      "collector_valid": true,
+      "generator_valid": true,
+      "whole_run_error_gate": true,
+      "tick_hz": 30.0,
+      "tick_work_ms": {
+        "mean": 6.712308515111111,
+        "p50": 6.59281,
+        "p95": 8.654399,
+        "p99": 9.792174,
+        "max": 14.474198,
+        "exceed_33_333ms": 0
+      },
+      "authenticated_player_seconds": 30000.000000000025,
+      "alive_fraction": 0.988777655534535,
+      "outbound_ip_bytes_s": 1511741.8733333333,
+      "outbound_ip_bytes_player_s": 15117.418733333321,
+      "generator": {
+        "overall_hz": 29.999892475268556,
+        "minimum_bot_hz": 29.99675913227663,
+        "maximum_bot_hz": 30.00009247588506,
+        "window_s": 299.999075244,
+        "missed_schedules": 0,
+        "wire_input_ports_observed": 100,
+        "wire_overall_input_hz": 29.998,
+        "minimum_wire_port_input_hz": 29.98,
+        "wire_offered_load_gate": true,
+        "kernel_udp_validation_semantics": "Whole-host UDP error deltas on the isolated bot endpoint; positive errors require raw socket-table diagnosis. External Mac NIC/kernel counters unavailable; external accounting is not capacity evidence."
+      },
+      "game_kernel_udp_errors": {},
+      "bots_kernel_udp_errors": {},
+      "bundle_bytes": 541876015
+    },
+    {
+      "run_id": "core-combat-100-r1",
+      "classification": "native-stable-candidate",
+      "collection_format": null,
+      "collector_valid": true,
+      "generator_valid": true,
+      "whole_run_error_gate": true,
+      "tick_hz": 30.003333333333334,
+      "tick_work_ms": {
+        "mean": 12.633057605043884,
+        "p50": 12.326929,
+        "p95": 16.367664,
+        "p99": 20.4852,
+        "max": 52.460077,
+        "exceed_33_333ms": 1
+      },
+      "authenticated_player_seconds": 29999.999999999967,
+      "alive_fraction": 0.8759892850279658,
+      "outbound_ip_bytes_s": 3834620.45,
+      "outbound_ip_bytes_player_s": 38346.20450000004,
+      "generator": {
+        "overall_hz": 29.99987826555679,
+        "minimum_bot_hz": 29.996611604886404,
+        "maximum_bot_hz": 29.999944932101084,
+        "window_s": 300.00055068,
+        "missed_schedules": 0,
+        "wire_input_ports_observed": 100,
+        "wire_overall_input_hz": 29.9927,
+        "minimum_wire_port_input_hz": 29.97,
+        "wire_offered_load_gate": true,
+        "kernel_udp_validation_semantics": "Whole-host UDP error deltas on the isolated bot endpoint; positive errors require raw socket-table diagnosis. External Mac NIC/kernel counters unavailable; external accounting is not capacity evidence."
+      },
+      "game_kernel_udp_errors": {},
+      "bots_kernel_udp_errors": {},
+      "bundle_bytes": 1029245477
+    },
+    {
+      "run_id": "core-clustered-100-r1",
+      "classification": "valid-failure",
+      "collection_format": null,
+      "collector_valid": true,
+      "generator_valid": true,
+      "whole_run_error_gate": false,
+      "tick_hz": 30.0,
+      "tick_work_ms": {
+        "mean": 14.405749619222222,
+        "p50": 13.741469,
+        "p95": 20.549441,
+        "p99": 23.911928,
+        "max": 34.99544,
+        "exceed_33_333ms": 2
+      },
+      "authenticated_player_seconds": 30000.00000000016,
+      "alive_fraction": 0.8219651797347256,
+      "outbound_ip_bytes_s": 4762699.8533333335,
+      "outbound_ip_bytes_player_s": 47626.99853333308,
+      "generator": {
+        "overall_hz": 29.99951782536623,
+        "minimum_bot_hz": 29.99641785108003,
+        "maximum_bot_hz": 29.999751156764116,
+        "window_s": 300.002488453,
+        "missed_schedules": 0,
+        "wire_input_ports_observed": 100,
+        "wire_overall_input_hz": 29.98636666666667,
+        "minimum_wire_port_input_hz": 29.95,
+        "wire_offered_load_gate": true,
+        "kernel_udp_validation_semantics": "Whole-host UDP error deltas on the isolated bot endpoint; positive errors require raw socket-table diagnosis. External Mac NIC/kernel counters unavailable; external accounting is not capacity evidence."
+      },
+      "game_kernel_udp_errors": {
+        "RcvbufErrors": 7962,
+        "SndbufErrors": 212,
+        "InErrors": 7962
+      },
+      "bots_kernel_udp_errors": {},
+      "bundle_bytes": 1198522405
+    },
+    {
+      "run_id": "core-strategy-100-points-recovery",
+      "classification": "native-stable-candidate",
+      "collection_format": "article-points-v1",
+      "collector_valid": true,
+      "generator_valid": true,
+      "whole_run_error_gate": true,
+      "tick_hz": 30.0,
+      "tick_work_ms": {
+        "mean": 11.186883362555555,
+        "p50": 10.987831,
+        "p95": 13.81555,
+        "p99": 15.959659,
+        "max": 31.123188,
+        "exceed_33_333ms": 0
+      },
+      "authenticated_player_seconds": 30000.0,
+      "alive_fraction": 0.8582555377695692,
+      "outbound_ip_bytes_s": 3670419.81,
+      "outbound_ip_bytes_player_s": 36704.1981,
+      "generator": {
+        "overall_hz": 29.99944547291305,
+        "minimum_bot_hz": 29.996945449678552,
+        "maximum_bot_hz": 30.000278813991216,
+        "window_s": 299.997211886,
+        "missed_schedules": 0,
+        "wire_input_ports_observed": 100,
+        "wire_overall_input_hz": 29.981433333333335,
+        "minimum_wire_port_input_hz": 29.963333333333335,
+        "wire_offered_load_gate": true,
+        "kernel_udp_validation_semantics": "Whole-host UDP error deltas on the isolated bot endpoint; positive errors require raw socket-table diagnosis. External Mac NIC/kernel counters unavailable; external accounting is not capacity evidence."
+      },
+      "game_kernel_udp_errors": {},
+      "bots_kernel_udp_errors": {},
+      "bundle_bytes": 6862893
+    }
+  ],
+  "conclusion": "Movement, combat and Strategy passed their single native observation at 100. Clustered has a valid transport/kernel failure at 100; boundary refinement remains pending. These are single observations, not repeated reliability estimates.",
+  "compact_scored_strategy100_bundle_bytes": 6862893,
+  "original_invalid_strategy100_retained": true,
+  "matrix_complete": false
+}

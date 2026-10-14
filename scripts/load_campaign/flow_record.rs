@@ -1,6 +1,7 @@
 //! Full-datagram ENet inspection with bounded retained payload. Original headers are
 //! retained as pcap (128 bytes); command descriptors and full UDP fingerprints are raw
 //! observations, allowing packet matching and reliable sequence/retry/ACK accounting.
+mod article_flow;
 use std::fs::File;
 use std::hash::Hasher;
 use std::io::{self, BufReader, BufWriter, Read, Write};
@@ -60,14 +61,23 @@ fn commands(data: &[u8]) -> io::Result<Vec<[u8; 16]>> {
 
 fn main() -> io::Result<()> {
     let directory = std::env::args().nth(1).expect("evidence directory");
+    let compact = std::env::args().any(|arg| arg == "--article");
+    let mut article = if compact {
+        Some(article_flow::ArticleFlow::new(&directory)?)
+    } else {
+        None
+    };
     let mut input = BufReader::with_capacity(1024 * 1024, io::stdin().lock());
-    let mut headers = BufWriter::with_capacity(
-        1024 * 1024,
-        File::create(format!("{directory}/headers.pcap"))?,
-    );
+    let mut headers: Box<dyn Write> = if compact {
+        Box::new(io::sink())
+    } else {
+        Box::new(BufWriter::new(File::create_new(format!(
+            "{directory}/headers.pcap"
+        ))?))
+    };
     let mut output = BufWriter::with_capacity(
         1024 * 1024,
-        File::create(format!("{directory}/datagrams.bin"))?,
+        File::create_new(format!("{directory}/datagrams.bin"))?,
     );
     let mut global = [0; 24];
     input.read_exact(&mut global)?;
@@ -127,18 +137,43 @@ fn main() -> io::Result<()> {
             }
         };
         let stamp = u64::from(le32(&record)) * 1_000_000_000 + u64::from(le32(&record[4..])) * 1000;
-        output.write_all(&stamp.to_le_bytes())?;
-        output.write_all(&udp[..4])?;
-        output.write_all(&(ip_length as u16).to_le_bytes())?;
-        output.write_all(&(udp_length as u16).to_le_bytes())?;
-        output.write_all(&hash.finish().to_le_bytes())?;
-        output.write_all(&(command_rows.len() as u16).to_le_bytes())?;
-        for row in command_rows {
-            output.write_all(&row)?;
+        if let Some(stats) = article.as_mut() {
+            stats.observe(
+                stamp,
+                be16(&udp[..2]),
+                be16(&udp[2..4]),
+                ip_length as u64,
+                &command_rows,
+            )?;
+        }
+        // The same UDP fingerprint is selected at both endpoints, including retries.
+        // No headers or command descriptors are retained in article mode.
+        if !compact || hash.finish() % 64 == 0 {
+            output.write_all(&stamp.to_le_bytes())?;
+            output.write_all(&udp[..4])?;
+            output.write_all(&(ip_length as u16).to_le_bytes())?;
+            output.write_all(&(udp_length as u16).to_le_bytes())?;
+            output.write_all(&hash.finish().to_le_bytes())?;
+            output.write_all(
+                &(if compact {
+                    0
+                } else {
+                    command_rows.len() as u16
+                })
+                .to_le_bytes(),
+            )?;
+            if !compact {
+                for row in command_rows {
+                    output.write_all(&row)?;
+                }
+            }
         }
     }
     headers.flush()?;
     output.flush()?;
+    if let Some(stats) = article {
+        stats.finish()?;
+    }
     eprintln!("flow recorder packets={packets} parse_errors={parse_errors}");
     Ok(())
 }

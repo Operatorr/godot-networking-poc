@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/one-pass-20261014/core-movement-50-r1",
+  "sha256": {
+    "bots.tar.gz": "209432b6a25c6d0b1e10033d152111001242765d015b4f92846844ed685c3166",
+    "game.tar.gz": "32bd987ddf9a4bbfb76e8da046cbf6b66941904bbd9841ab8ea5fbc1108bb754"
+  },
+  "contents": "Unedited reports/logs, host observations, packet headers and full-datagram ENet descriptors. Retained off both temporary hosts in the ignored local evidence archive. Public copies redact connection addresses; no access records or credentials are published."
+}

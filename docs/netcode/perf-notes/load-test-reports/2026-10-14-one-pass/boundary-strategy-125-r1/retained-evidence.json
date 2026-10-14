@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/one-pass-20261014/boundary-strategy-125-r1",
+  "sha256": {
+    "bots.tar.gz": "31ff20a11c5fa18199b0b1473e3f92509bc26b083960abe6a729ce3381372e42",
+    "game.tar.gz": "9551073f7437a568c238c5d4fb668cf8b15489dcc5ecc2da617ea00e8d9be96e"
+  },
+  "contents": "Curated article graph points, exact counters and bounded diagnostics; only 1/64 fingerprint samples privately retained, no raw packet archive."
+}

@@ -1,0 +1,57 @@
+{
+  "verified_utc": "2026-10-14T10:13:27.829224+00:00",
+  "all_requested_strategy_attempts_finished": true,
+  "updates_restored": true,
+  "fallback_timers_stopped": true,
+  "hosts": {
+    "game": {
+      "qdiscs": [
+        {
+          "kind": "fq_codel",
+          "handle": "8006:",
+          "root": true,
+          "refcnt": 2,
+          "options": {
+            "limit": 10240,
+            "flows": 1024,
+            "quantum": 1514,
+            "target": 4999,
+            "interval": 99999,
+            "memory_limit": 33554432,
+            "ecn": true,
+            "drop_batch": 64
+          }
+        }
+      ],
+      "egress_filters": [],
+      "active_collectors_or_swarm": [],
+      "update_restoration": "Id=apt-daily.timer\nLoadState=loaded\nActiveState=active\nUnitFileState=enabled\n\nId=apt-daily-upgrade.timer\nLoadState=loaded\nActiveState=active\nUnitFileState=enabled\n\nId=apt-daily.service\nLoadState=loaded\nActiveState=inactive\nUnitFileState=static\n\nId=apt-daily-upgrade.service\nLoadState=loaded\nActiveState=inactive\nUnitFileState=static\n",
+      "fallback_timer_state": "ActiveState=inactive"
+    },
+    "bots": {
+      "qdiscs": [
+        {
+          "kind": "fq_codel",
+          "handle": "8006:",
+          "root": true,
+          "refcnt": 2,
+          "options": {
+            "limit": 10240,
+            "flows": 1024,
+            "quantum": 1514,
+            "target": 4999,
+            "interval": 99999,
+            "memory_limit": 33554432,
+            "ecn": true,
+            "drop_batch": 64
+          }
+        }
+      ],
+      "egress_filters": [],
+      "active_collectors_or_swarm": [],
+      "update_restoration": "Id=apt-daily.timer\nLoadState=loaded\nActiveState=active\nUnitFileState=enabled\n\nId=apt-daily-upgrade.timer\nLoadState=loaded\nActiveState=active\nUnitFileState=enabled\n\nId=apt-daily.service\nLoadState=loaded\nActiveState=inactive\nUnitFileState=static\n\nId=apt-daily-upgrade.service\nLoadState=loaded\nActiveState=inactive\nUnitFileState=static\n",
+      "fallback_timer_state": "ActiveState=inactive"
+    }
+  },
+  "remaining_matrix_phases": "Not started by this cleanup; existing campaign state remains unchanged."
+}
