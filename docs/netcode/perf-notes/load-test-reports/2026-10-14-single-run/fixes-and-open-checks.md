@@ -15,8 +15,8 @@ raw failures and earlier classifications remain preserved; the corrected build i
 | Reuse SSH and archive endpoints concurrently | Independent cleanup attempts and per-endpoint timings preserve failure evidence. Unique run IDs, finite capture/trace lifetimes and the full-matrix hold prevent overwrites and accidental restarts. | `77a8af5` / `30ad91f` |
 
 Remote first-record recovery validation passed the whole-run checks: zero unknown-entity
-or reference errors, including warmup. Passing one pilot establishes neither three-repeat
-capacity nor a complete matrix. See [validation](single-run-validation.json).
+or reference errors, including warmup. Passing one pilot does not establish a complete matrix. The user
+now requires one five-minute observation per test rather than three repetitions. See [validation](single-run-validation.json).
 
 ## Checks before full execution
 

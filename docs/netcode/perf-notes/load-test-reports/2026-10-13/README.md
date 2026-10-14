@@ -1,5 +1,9 @@
 # CAX11 load-test campaign — 2026-10-13
 
+> Historical campaign under the original repeat policy. The user amended the current
+> [matrix](https://github.com/Operatorr/godot-networking-poc/issues/30#issuecomment-6145030523)
+> on 2026-10-14 to one run per test; these original observations remain preserved.
+
 **Status: baseline evidence retained; full matrix held for single-run stabilization.**
 This report resolves [Run the new load tests and record results](https://github.com/Operatorr/godot-networking-poc/issues/31)
 only when the agreed matrix and its permitted failure truncations are recorded. The

@@ -8,6 +8,7 @@ import pathlib
 import economics
 import publish
 import run
+import campaign
 
 
 def main():
@@ -36,7 +37,7 @@ def main():
         thousand = forecasts.get("1000", {}).get("decimal", {})
         rows.append({
             "run_id": path.parent.name, "classification": result["classification"],
-            "selected_for_matrix_cell": path.parent.name not in replacements,
+            "selected_for_matrix_cell": path.parent.name not in replacements and result.get("repeat", 1) in campaign.REPETITIONS,
 
             "requested_population": result["requested_bots"], "actual_min": result.get("population_min"), "actual_max": result.get("population_max"),
             "workload": result["behavior"], "profile": result.get("profile", "native"), "variant": result.get("variant", "native"),
@@ -103,14 +104,17 @@ def main():
                "tested_ccu_30day_game_host_USD_conditional", "tested_ccu_year_game_host_USD_conditional")
     for key, group in sorted(grouped.items()):
         selected = [row for row in group if row["selected_for_matrix_cell"]]
-        complete = len({row["repeat"] for row in selected}) >= 3
+        complete = set(campaign.REPETITIONS).issubset({row["repeat"] for row in selected})
         spreads.append({"family": key[0], "workload": key[1], "requested_population": key[2], "profile": key[3], "variant": key[4],
                         "runs": [row["run_id"] for row in group], "classes": [row["classification"] for row in group],
-                        "three_repeats_present": complete,
+                        "required_runs_per_condition": len(campaign.REPETITIONS),
+                        "required_runs_present": complete,
+                        "single_observation_only": len(selected) == 1,
+                        "variation_semantics": "Single-pass matrix; any group spread includes separate control positions or retained historical attempts, not three repeated passes.",
                         "all_collector_valid": all(row["collector_valid"] for row in group),
                         "all_generator_valid": all(row["generator_valid"] for row in group),
                         "selected_matrix_runs": [row["run_id"] for row in selected],
-                        "native_sustainability_demonstrated_all_repeats": complete and key[3] == "native" and all(row["classification"] == "native-stable-candidate" for row in selected),
+                        "native_sustainability_demonstrated_required_runs": complete and key[3] == "native" and all(row["classification"] == "native-stable-candidate" for row in selected),
                         "spread_includes_all_source_rows_even_invalid": True,
                         "metrics": {metric: {"min": min(values), "mean": statistics.mean(values), "median": statistics.median(values), "max": max(values)}
                                     for metric in metrics if (values := [row[metric] for row in group if row.get(metric) is not None])}})

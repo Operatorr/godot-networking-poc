@@ -1,143 +1,140 @@
-# CAX11 run checklist and execution estimate
+# CAX11 run checklist — one run per test
 
-Status: corrected single-run pilot passed operational checks. Full matrix restart is held
-for the user's review of this checklist and estimate. This checklist does not authorize execution.
+Amended by the user on 2026-10-14: **one five-minute run per test**, replacing the three-repeat
+requirement. The [canonical matrix](https://github.com/Operatorr/godot-networking-poc/issues/30#issuecomment-6145030523)
+and controller/coverage checker now use one pass. Earlier runs and their source revisions
+remain historical evidence. The full campaign has not restarted.
 
-The canonical [agreed matrix](https://github.com/Operatorr/godot-networking-poc/issues/30#issuecomment-6145030523)
-remains the specification. Correctness fixes establish a new, separately identified
-baseline. Earlier original/measurement builds and failed runs remain evidence; never
-merge their repeats into a stable rung for the corrected revision.
+## Workloads and population ladder
 
-## Before the full rundown
+| Workload | What bots do | What it exercises |
+| --- | --- | --- |
+| movement | Move without primary fire | Movement/input and state replication |
+| combat | Move and continuously attempt primary fire | Combat, projectiles and event traffic |
+| clustered | Converge near the centre and shoot probabilistically | Dense groups and replication fan-out |
+| strategy | Target, dodge, sprint/dash and use Class abilities | More complete client behavior and ability/event traffic |
 
-- [x] One 50-bot clustered pilot: all joins/stays, valid per-bot offered input, clean
-  captures, no kernel/socket/codec errors throughout warmup and measurement, 30 Hz
-  Tick cadence, p99 7.951 ms, no growing lag/backlog, valid entity recovery.
-  [Validation](single-run-validation.json); game b1266c1, unchanged bot 642c147.
-  Actual end-to-end controller time 637.81 s (10 min 38 s); peak local RSS 580.65 MB.
-- [x] Independent provider graph comparison: same-zone traffic appears around
-  1.1 MBps (roughly 1.0–1.2). Archive screenshot, comparison window and guest IP/interface counters.
-- [ ] Pin game/bot commits, binary hashes, toolchain/config/collector versions and
-  original-build preservation. Keep the corrected revision unchanged for scored runs.
-  Use a fresh corrected-campaign namespace/state; the existing controller defaults to
-  measurement revision 642c147 and reuses earlier cells, so it must be configured explicitly.
-  Diagnostic pilots do not substitute for corrected-build three-repeat core cells.
-- [ ] Report the known sent-versus-ACKed Baseline behavior under delay/loss using
-  reference-miss and recovery counters. The map already defers this doc-versus-code drift;
-  do not silently change protocol ordering or hide it inside capacity classification.
-- [ ] Repeat collection on/off controls on the corrected revision, alternating order
-  across three pairs. Report exporter matched mean/CPU and observer time with world/shared
-  CPU variability. Validate selective impairment at small load and cleanup afterward.
-- [x] Controller fail-fast and failed-attempt retention: local fixtures exercise a failed
-  join hidden before the last five log lines, a failed start with a Phase-2 marker, both
-  endpoint cleanup/archive paths and a successful ramp. Eight Python tests pass. The
-  completed remote pilot's logs pass the read-only status probe. Swarm RuntimeMaxSec and
-  stop-timeout limits are recorded; no new remote failure workload was run.
-  [Validation](controller-failure-validation.json). Interrupted attempts still require
-  review; valid failing workloads are not automatically replaced, and collector-invalid
-  replacements retain originals.
-- [ ] Reserve evidence storage before committing to the campaign. Mac currently has
-  about 53 GiB free; game host about 27 GiB. A 50-bot clustered pair is about 345 MB
-  archived, and larger-population captures are unmeasured. The 8 GiB emergency guard
-  prevents another start but is not a full-campaign storage plan. Never delete the only
-  raw copy; verify off-host checksums before removing remote duplicates.
-- [ ] Review this concrete checklist and estimate with the user before lifting the hold.
+The agreed core ladder is **50 → 100 → 150 → 200 → 250 → 500 → 750 → 999**.
+Run all four workloads at 50/100/150, and **Strategy only at 200 and above**.
+That is **17 core cases: 12 at the lower populations + 5 Strategy cases above 150**,
+for **85 measured minutes + 17 minutes of global warmup**, before ramp/setup/evidence.
+A movement/combat/clustered stop at 150 is a planned limit, not a measured capacity ceiling.
+Failure boundaries are refined only when a tested case actually fails. The executable
+ceiling remains 999; 1000 is a financial extrapolation from a valid Strategy 999 observation.
 
-## Scored cells
+The first 50/100 checkpoint has **8 cases: 4 workloads × 2 populations**, with one run each.
+That is **40 minutes of measurement + 8 minutes of global warmup**, before ramps, setup
+and evidence processing. The existing matching corrected 50-bot clustered pilot is a
+candidate for explicit reuse; preserve its diagnostic provenance and verify the binding
+before scheduling that same condition again.
 
-Every cell restarts the isolated game service, ramps with 100 ms stagger, excludes
-60 seconds of global warmup and measures 300 seconds. Three repeats per cell/group;
-reverse workload/profile/variant order in repeat 2. Every failure and invalid collection
-is retained. Classifications separate generator, collector, server and delivery.
+| Workload | 50 | 100 | 150 | 200 | 250 | 500 | 750 | 999 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| movement | [ ] | [ ] | [ ] | — | — | — | — | — |
+| combat | [ ] | [ ] | [ ] | — | — | — | — | — |
+| clustered | matching pilot available | [ ] | [ ] | — | — | — | — | — |
+| strategy | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
 
-| Phase | Checklist | Maximum five-minute runs |
+## Measurement gates
+
+- [x] Corrected 50-bot clustered pilot: all joins/stays, valid generation/collection,
+  zero kernel/codec/entity-reference errors including warmup, 30 Ticks/s and Tick-work
+  p99 7.951 ms. [Validation](single-run-validation.json). Game b1266c1, bot 642c147.
+- [x] Independent provider graph comparison: about 1.1 MBps at the requested window,
+  consistent with the guest traffic observation. [Comparison](provider-network-comparison.json).
+- [x] Fail-fast controller with both endpoint archives preserved: eight Python tests and
+  the completed pilot's read-only status probe pass. [Validation](controller-failure-validation.json).
+- [ ] Pin game/bot commits, binary/config/toolchain/collector hashes and use a fresh
+  corrected-campaign namespace/state. The generic runner defaults to the older measured
+  game revision; configure it explicitly. Preserve all original builds and raw failures.
+- [ ] Measure collection on/off once each on the corrected revision; report matched
+  mean Tick work, CPU and observer time, with world/shared-host variability. These are
+  different instrumentation conditions, not three repeated pairs. Validate selective
+  impairment and cleanup at small load before the robustness phase.
+- [ ] Record the known sent-versus-ACKed Baseline behavior under impairment using
+  reference-miss and recovery counters; the map defers its doc/code drift.
+- [ ] Check evidence storage at each checkpoint. The last 50-bot pair used about 343 MB
+  archived. Larger populations are unmeasured; the 8 GiB guard is an emergency stop,
+  not a campaign storage estimate. Verify off-host checksums before removing duplicates.
+
+Every scored case restarts the isolated no-API game service, ramps at 100 ms stagger,
+excludes 60 seconds of global warmup and measures 300 seconds. Stop a workload's core
+ladder after its first failed observation; classify generator/collector faults separately
+from server limits. Preserve failed and invalid evidence. Do not rerun passing cells for
+statistical repetition. A changed build or invalid-collection repair is separately identified.
+
+## Remaining phases
+
+| Phase | Conditions, one run each | Maximum five-minute windows |
 | --- | --- | ---: |
-| Core | movement, combat, clustered, strategy at 50, 100, 250, 500, 750, 999; three repeats each rung | 72 |
-| Boundary | Each failed workload: bisect last stable/first failed to <=25 players; three repeats at each new probe; both final sides already repeated | 60 |
-| Idle | 100 and highest stable population, deduplicated; three repeats each | 6 |
-| Network | combat and strategy at 100 (only if native stable) and own highest stable, deduplicated; nine profiles plus native before/after, three repeats | 132 |
-| Transfer | combat, clustered, strategy at 100 and highest common stable, deduplicated; native-before, Snapshot15, AoI600/660, native-after; three repeats | 72 |
-| External | 3–10 genuinely external clients, representative workload, no artificial impairment; matched game-port and interface counters, delayed provider reading | 1 |
-| Admission | Only if movement 999 passes all repeats: 999 established plus one extra join; separate short rejection check | unscored |
+| Core | Four workloads at 50/100/150; Strategy alone at 200/250/500/750/999; truncate tested ladders at failure | 17 |
+| Boundary | Bisect each actually failed workload to <=25 players; at most one new probe for each lower-only workload and five for Strategy | 8 |
+| Idle | 100 and highest passing tested population capped at 150, deduplicated | 2 |
+| Network | combat/strategy × 100 and own highest stable (deduplicate/omit unstable 100) × nine profiles, with one before/after native control per group | 44 |
+| Transfer | combat/clustered/strategy × 100 and highest common stable × Snapshot15 and AoI600/660, with one before/after native control per group | 24 |
+| External | 3–10 genuinely external clients; game-flow/interface accounting and delayed provider reading | 1 |
+| Admission | Only if Strategy 999 passes: 999 established + one extra join, using Strategy; short separate check | unscored |
 
-Core checklist (each box includes repeats 1/2/3):
+All 200+ conditions, including native controls and the admission check, use Strategy.
+Combat network probes and multi-workload transfer comparisons therefore stay at 150 or below.
+The existing native-before/native-after positions remain explicit control checks for
+impairment/transfer groups. The former three repeated passes are removed from every phase.
+Idle/transfer retain the specified 100-player observations even if their native controls
+fail; those observations cannot establish valid savings claims.
 
-| Workload | 50 | 100 | 250 | 500 | 750 | 999 |
-| --- | --- | --- | --- | --- | --- | --- |
-| movement | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
-| combat | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
-| clustered | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
-| strategy | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
+Network profiles, each applied separately per direction:
 
-Stop each workload ladder after completing all three repeats at its first failed rung.
-Generator saturation does not establish a server ceiling. Boundary populations are
-chosen from those results; the existing 25-player rounding algorithm can require five
-probes in the 750–999 interval (not four), so 60 is the conservative boundary allowance.
-Idle and transfer retain the agreed 100-player observations even when native stability
-at 100 is not established; failed controls cannot support valid savings claims.
+- [ ] 25 ms delay
+- [ ] 50 ms delay
+- [ ] 100 ms delay
+- [ ] 50 ms delay +/-5 ms normal jitter
+- [ ] 50 ms delay +/-20 ms normal jitter
+- [ ] 0.1% independent loss
+- [ ] 1% independent loss
+- [ ] 3% independent loss
+- [ ] 50 ms delay +/-20 ms normal jitter plus 1% independent loss
 
-Network profile checklist (each box covers eligible combat/strategy populations and
-three repeats, with native-control brackets per group):
+Transfer comparisons change one setting at a time:
 
-- [ ] 25 ms delay each direction (+50 ms RTT)
-- [ ] 50 ms delay each direction (+100 ms RTT)
-- [ ] 100 ms delay each direction (+200 ms RTT)
-- [ ] 50 ms delay +/-5 ms normal jitter each direction
-- [ ] 50 ms delay +/-20 ms normal jitter each direction
-- [ ] 0.1% independent loss each direction
-- [ ] 1% independent loss each direction
-- [ ] 3% independent loss each direction
-- [ ] 50 ms delay +/-20 ms normal jitter and 1% loss each direction
+- [ ] Snapshot15, preserving Tick/input30 and original AoI
+- [ ] AoI600/660 with LOD near400/mid600, preserving Snapshot30 and Tick/input30
+- [ ] Retain the explicit native-before and native-after controls for comparison/cleanup
 
-Transfer comparison checklist (each box covers combat/clustered/strategy, both required
-populations and three repeats):
+## Updated time estimate
 
-- [ ] Native Snapshot30, AoI1000/1100 control before
-- [ ] Snapshot15 alone; Tick/input30, original AoI
-- [ ] AoI600/660 alone; Snapshot30, LOD near400/mid600
-- [ ] Native control after, with reversed variant order in repeat 2
+The 50/100 core checkpoint contains **8 runs, not 24**. At the latest observed 50-player
+controller time of 637.81 seconds, eight complete runs would take about **85 minutes**,
+including setup, ramp, archiving, downloads and analysis. Add corrected-build preflight
+and the still-unmeasured 100-player processing costs. This is an estimate, not extra
+measurement duration; each scored window remains five minutes. Reusing the matching
+corrected pilot would leave seven new scored cases and reduce the remaining time.
 
-## Time estimate
+If all core ladders pass at 999, the complete amended matrix contains up to **88 scored
+windows**, including its explicit control positions. With the conservative boundary
+allowance, the ceiling is **96**. Early failures/deduplication reduce the actual count.
 
-If all ladders reach 999 and pass, no boundary refinement is needed: 283 scored runs.
-A conservative fully populated ceiling including boundary probes is 343 runs. These are
-conditional maxima; early failures and deduplicated populations shorten the actual list.
-
-| Component | 283-run case | 343-run ceiling |
+| Component | 88-window case | 96-window ceiling |
 | --- | ---: | ---: |
-| Five-minute scored windows alone | 23 h 35 min | 28 h 35 min |
-| Windows plus one-minute warmup, before ramps/setup/evidence | 28 h 18 min | 34 h 18 min |
-| At the observed 50-bot pilot throughput (676.45 s/run) | 53 h 11 min | 64 h 27 min |
+| Measurement only | 7 h 20 min | 8 h |
+| Measurement + one-minute warmup, before ramp/setup/evidence | 8 h 48 min | 9 h 36 min |
+| At the latest observed 50-bot controller throughput | about 15 h 35 min | about 17 h |
 
-The last row includes setup, ramp, archiving, checksummed downloads and analysis at the
-measured 50-bot workload. Higher populations add ramp time and can produce much larger
-captures; it is not a measured upper bound. Use roughly 3–4 days as a provisional planning
-reservation when many high rungs pass, then revise after the 100/250-player stages. Do not
-promise a five-hour complete rundown. Preflight/build/debug time and interruptions are
-additional. With early failures the campaign can be considerably shorter.
+Higher populations may take longer to ramp and generate larger evidence. Update the
+estimate and storage budget after 50/100 before the larger ladder and comparison groups.
+The old 24-run checkpoint and 283/343-window three-repeat estimates are superseded.
 
-A first 50/100 core checkpoint contains up to 24 scored runs: about 4.5 hours at the
-observed 50-player end-to-end throughput, plus corrected-build preflight and larger
-100-player ramp/evidence costs. Reserve roughly 5–6 hours provisionally, stop each
-failed ladder as agreed, and recalculate before going further.
+## Final report
 
-Use explicit stage checkpoints: corrected preflight; complete 50-player core; 100-player
-core; remaining ladders/boundaries/idle; network; transfer; external/admission; audit/report.
-Recompute remaining count, disk headroom and time from completed cells at each checkpoint.
-A saturated generator/collector stops the dependent phase for diagnosis. Keep offered
-load explicit and do not report a server capacity result from invalid observations.
-
-## Final evidence and economic report
-
-- [ ] Exact source-window counters, authenticated/alive player-seconds, app/IP/interface
-  bytes, retransmissions, suppressed sends, delivery gaps/loss and generator validity.
-- [ ] Failed/invalid runs and corrections separated by revision; all repeats and spread.
-- [ ] Lead summary with outbound bytes/s, bytes/player-second, conditional monthly/yearly
-  transfer and costs; measured 100 only, valid 999 scaled 1000/999 only. Otherwise label
-  unmeasured 1000-CCU sensitivity; never extrapolate 50-player fan-out as demonstrated.
-- [ ] Decimal/TiB allowance/rate sensitivity, actual calendar month lengths for 2027,
-  renewed monthly allowance and separate test-bot compute. Account invoice units remain
-  conditional until confirmed; provider network graph independently validates traffic.
-- [ ] Verify required matrix coverage and all raw archive checksums before resolving
+- [ ] Keep source-window counters, authenticated/alive player-seconds, app/IP/interface
+  bytes, retransmissions, suppressed sends, delivery/loss and generator validity.
+- [ ] Separate source revisions and failures. Label each cell a single observation;
+  do not claim measured repeat variability or three-repeat confirmation.
+- [ ] Lead summaries with outbound bytes/s and bytes/player-second, then conditional
+  monthly/yearly external-transfer costs. Use measured 100-player cells for 100 CCU;
+  use a valid Strategy 999-player cell scaled 1000/999 for Strategy 1000 CCU. Higher-population
+  costs for the other workloads remain [MEASURE] sensitivity because their tests stop at 150.
+- [ ] Show decimal/TiB assumptions, calendar month lengths for 2027, monthly allowance
+  renewal and the separate bot-host compute cost. Invoice precision remains conditional.
+- [ ] Audit coverage and raw checksums before resolving
   [Run the new load tests and record results](https://github.com/Operatorr/godot-networking-poc/issues/31).
-  Historical reports stay deferred; CCX13 stays behind CAX11 stabilization/readiness.
+  Historical retrieval and CCX13 remain deferred.

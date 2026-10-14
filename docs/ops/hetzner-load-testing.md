@@ -311,3 +311,11 @@ server metrics/service state were copied to ignored
 `deployment/hetzner/results/smoke-20261013/`. The operator controls the Hetzner lifecycle;
 export later results before deleting hosts and unused paid IPv4s. These smoke artifacts
 verify setup only and do not establish high-population capacity or monthly billable egress.
+
+## Current matrix amendment (2026-10-14)
+
+Follow the amended [Define the new load-test matrix](https://github.com/Operatorr/godot-networking-poc/issues/30#issuecomment-6145030523):
+one five-minute run per test; ladder 50/100/150/200/250/500/750/999. Use all four workloads
+through 150, Strategy only at 200+. There are 17 core cases, totaling 85 measured minutes.
+The lower workloads' planned stop at 150 is not a measured capacity ceiling. Earlier
+three-repeat reports remain historical evidence; do not schedule r2/r3 in the new campaign.

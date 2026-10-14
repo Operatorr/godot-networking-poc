@@ -73,8 +73,7 @@ misses during measurement, Tick cadence 30 Hz and p99 work 7.975 ms. The generat
 collection remained valid with no kernel errors. Whole-run cumulative delivery checks
 still recorded 1,915 unknown-entity observations before the scored window. The
 [separate whole-run replay](pilot-clustered-50-baseline-cache/whole-run-checks-replay.json)
-makes that warmup fault explicit. No run is overwritten or promoted into a corrected
-three-repeat capacity rung. Follow-up revision `b1266c1` applies first-record recovery;
+makes that warmup fault explicit. No run is overwritten; keep the diagnostic revisions separate when selecting current matrix evidence. Follow-up revision `b1266c1` applies first-record recovery;
 its remote five-minute diagnostic passed; details follow below.
 
 ## Completed corrected pilot
@@ -85,7 +84,7 @@ bot `642c147`, held all 50 bots for 300 measured seconds with valid generation/c
 checks include warmup: zero kernel UDP, application send/decode, panic, unknown-entity
 and baseline-reference errors. Dedicated tracing saw zero socket queue/drop events.
 This passes [the single-run operational checks](single-run-validation.json), not a
-three-repeat capacity claim or the full matrix. The legacy bandwidth target still fails.
+complete-matrix claim. The user amended the matrix to one run per test on 2026-10-14. The legacy bandwidth target still fails.
 
 Game outbound IP traffic averaged 1,239,239.707 bytes/s (371,771,912 bytes in the window).
 Twenty-three enqueued Snapshots were absent from first observed wire transmissions;
@@ -99,11 +98,14 @@ The controller took 637.81 s (10 min 38 s), including 58.48 s of analysis, with 
 RSS 580,648,960 bytes. All raw archives are checksummed and copied off the temporary
 hosts. [Pilot comparison CSV](pilot-comparison.csv), [fixes and open checks](fixes-and-open-checks.md)
 and [full run checklist and estimate](run-checklist.md) preserve the scope and next gates.
-The 283-run all-ladders-pass matrix needs 23 h 35 min of measurement alone; at observed
-50-player end-to-end throughput it is about 53 hours, with higher-population costs still
-unmeasured. Reserve roughly 3–4 days provisionally, update at staged checkpoints, and
-plan evidence storage. The full controller remains held; historical reports and CCX13
-remain deferred.
+The user amended the matrix on 2026-10-14 to one run per test. The 50/100 checkpoint is
+now eight cases (40 measured minutes). The revised ladder has all four workloads at
+50/100/150 and Strategy alone at 200/250/500/750/999: 17 core cases (85 measured minutes).
+The complete all-ladders-pass plan has up to 88
+scored windows including explicit control positions. The previous three-repeat estimates
+are superseded by the linked checklist. Higher-population costs remain unmeasured;
+update estimates and storage at checkpoints. The full controller has not restarted;
+historical reports and CCX13 remain deferred.
 
 ## Collection and execution fixes
 

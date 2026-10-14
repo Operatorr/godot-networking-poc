@@ -9,11 +9,38 @@ import publish
 import netem
 
 BEHAVIORS = ["movement", "combat", "clustered", "strategy"]
-POPULATIONS = [50, 100, 250, 500, 750, 999]
+POPULATIONS = [50, 100, 150, 200, 250, 500, 750, 999]
+REPETITIONS = (1,)  # User amendment 2026-10-14: one five-minute run per test.
+PLANNED_POPULATION_LIMIT = {'movement': 150, 'combat': 150, 'clustered': 150, 'strategy': 999}
 STATE = run.RAW / "campaign-state.json"
 
 
+def populations_for_workload(behavior):
+    return [population for population in POPULATIONS if population <= PLANNED_POPULATION_LIMIT[behavior]]
+
+
+def idle_populations(highest):
+    # The user allows only Strategy at 200+; idle controls stay in the lower range.
+    return sorted({100, min(150, max(highest.values(), default=100))})
+
+
+def validate_highest_scope(state):
+    for behavior, population in state.get('highest_stable', {}).items():
+        if behavior not in PLANNED_POPULATION_LIMIT or population > PLANNED_POPULATION_LIMIT[behavior]:
+            raise RuntimeError('Recorded highest population exceeds the planned workload scope: ' + behavior)
+
+
+def core_progress(highest, failed, boundaries=None):
+    return {'highest_stable': highest, 'first_failed': failed, 'boundaries': boundaries or {},
+            'planned_populations_by_workload': {behavior: populations_for_workload(behavior) for behavior in BEHAVIORS},
+            'ladder_stop_reason': {behavior: 'failed-observation' if behavior in failed else
+                'planned-population-limit' if highest.get(behavior) == PLANNED_POPULATION_LIMIT[behavior] else
+                'not-yet-complete' for behavior in BEHAVIORS}}
+
+
 def cell(name, population, behavior, repeat=1, profile="native", variant="native"):
+    if population >= 200 and behavior != 'strategy':
+        raise ValueError('The amended matrix permits only Strategy at 200 or more players')
     replacements_path = run.RAW / "matrix-replacements.json"
     replacements = json.loads(replacements_path.read_text()) if replacements_path.exists() else {}
     name = replacements.get(name, {}).get("selected_run_id", name)
@@ -41,7 +68,8 @@ def stable(result):
 
 
 def repeats(prefix, population, behavior, profile="native", variant="native"):
-    return [cell(f"{prefix}-r{repeat}", population, behavior, repeat, profile, variant) for repeat in range(1, 4)]
+    """Retain the r1 naming convention; schedule only one observation."""
+    return [cell(f"{prefix}-r{repeat}", population, behavior, repeat, profile, variant) for repeat in REPETITIONS]
 
 
 def core():
@@ -53,8 +81,11 @@ def core():
     highest = {}
     failed = {}
     for population in POPULATIONS:
-        for repeat in range(1, 4):
-            order = active if repeat != 2 else list(reversed(active))
+        active = [behavior for behavior in active if population in populations_for_workload(behavior)]
+        if not active:
+            break
+        for repeat in REPETITIONS:
+            order = active
             for behavior in order:
                 result = cell(f"core-{behavior}-{population}-r{repeat}", population, behavior, repeat)
                 results.setdefault((behavior, population), []).append(result)
@@ -65,11 +96,11 @@ def core():
             else:
                 failed[behavior] = {"population": population, "classes": [result["classification"] for result in group]}
                 active.remove(behavior)
-        STATE.write_text(json.dumps({"highest_stable": highest, "first_failed": failed}, indent=2))
+        STATE.write_text(json.dumps(core_progress(highest, failed), indent=2))
         if not active:
             break
     # Refine a valid server failure or generator validity boundary without attributing
-    # generator saturation to the server. Repeated sides remain explicitly classified.
+    # generator saturation to the server. Both boundary sides remain explicitly classified from their single observations.
     boundaries = {}
     for behavior, failure in failed.items():
         lower, upper = highest.get(behavior, 0), failure["population"]
@@ -86,18 +117,17 @@ def core():
             highest[behavior] = lower
         boundaries[behavior] = {"lower": lower, "upper": upper,
                                 "note": "No positive stable population established" if lower == 0 else "Classification of the failed side determines whether this is a server boundary or generator validity boundary"}
-        STATE.write_text(json.dumps({"highest_stable": highest, "first_failed": failed, "boundaries": boundaries}, indent=2))
-    for population in sorted({100, max(highest.values(), default=100)}):
+        STATE.write_text(json.dumps(core_progress(highest, failed, boundaries), indent=2))
+    for population in idle_populations(highest):
         repeats(f"idle-{population}", population, "idle")
-    STATE.write_text(json.dumps({"highest_stable": highest, "first_failed": failed, "boundaries": boundaries, "core_complete": True}, indent=2))
+    STATE.write_text(json.dumps({**core_progress(highest, failed, boundaries), "core_complete": True}, indent=2))
 
 
 def network():
     state = json.loads(STATE.read_text())
-    for repeat in range(1, 4):
+    validate_highest_scope(state)
+    for repeat in REPETITIONS:
         profiles = list(netem.PROFILES)
-        if repeat == 2:
-            profiles.reverse()
         for behavior in ("combat", "strategy"):
             highest = state["highest_stable"].get(behavior, 0)
             for population in sorted({100, highest} - {0}):
@@ -117,11 +147,10 @@ def network():
 
 def transfer():
     state = json.loads(STATE.read_text())
+    validate_highest_scope(state)
     highest = min(state["highest_stable"].get(behavior, 0) for behavior in ("combat", "clustered", "strategy"))
-    for repeat in range(1, 4):
+    for repeat in REPETITIONS:
         variants = ["native", "snapshot15", "aoi600", "native"]
-        if repeat == 2:
-            variants = ["native", "aoi600", "snapshot15", "native"]
         for behavior in ("combat", "clustered", "strategy"):
             for population in sorted({100, highest} - {0}):
                 for index, variant in enumerate(variants):
@@ -141,7 +170,7 @@ def all_phases():
     if not state.get("transfer_complete"):
         transfer()
     state = json.loads(STATE.read_text())
-    state["admission_check_required"] = state["highest_stable"].get("movement") == 999
+    state["admission_check_required"] = state["highest_stable"].get("strategy") == 999
     state["matrix_measurement_phases_complete"] = True
     STATE.write_text(json.dumps(state, indent=2))
     print("Matrix measurement phases complete; inspect evidence, provider reconciliation and conditional admission requirement before resolving issue.", flush=True)
