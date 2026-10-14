@@ -1,0 +1,7 @@
+{
+  "source_run": "boundary-clustered-75-r1",
+  "source_classification": "valid-failure",
+  "rate_bytes_authenticated_player_second": 36287.9003111112,
+  "forecasts": {},
+  "status": "Continuous-use conditional economics. Invalid/failing source rows cannot establish sustainable CCU costs."
+}

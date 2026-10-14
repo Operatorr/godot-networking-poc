@@ -1,5 +1,41 @@
 [
   {
+    "run_id": "boundary-clustered-75-r1",
+    "requested_population": 75,
+    "workload": "clustered",
+    "requested_duration_s": 360,
+    "started_utc": "2026-10-14T08:56:20.411710+00:00",
+    "ended_utc": "2026-10-14T09:03:14.920024+00:00",
+    "classification": "valid-failure",
+    "scored_300s_window_present": true,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/boundary-clustered-75-r1"
+  },
+  {
+    "run_id": "boundary-combat-125-r1",
+    "requested_population": 125,
+    "workload": "combat",
+    "requested_duration_s": 360,
+    "started_utc": "2026-10-14T09:03:25.684553+00:00",
+    "ended_utc": "2026-10-14T09:10:20.937999+00:00",
+    "classification": "valid-failure",
+    "scored_300s_window_present": true,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/boundary-combat-125-r1"
+  },
+  {
+    "run_id": "boundary-strategy-125-r1",
+    "requested_population": 125,
+    "workload": "strategy",
+    "requested_duration_s": 360,
+    "started_utc": "2026-10-14T09:10:31.208330+00:00",
+    "ended_utc": "2026-10-14T09:17:24.762542+00:00",
+    "classification": "generator-invalid",
+    "scored_300s_window_present": true,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/boundary-strategy-125-r1"
+  },
+  {
     "run_id": "core-clustered-100-r1",
     "requested_population": 100,
     "workload": "clustered",
@@ -22,6 +58,18 @@
     "scored_300s_window_present": true,
     "retained_errors": [],
     "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/core-combat-100-r1"
+  },
+  {
+    "run_id": "core-combat-150-r1",
+    "requested_population": 150,
+    "workload": "combat",
+    "requested_duration_s": 360,
+    "started_utc": "2026-10-14T08:41:51.547894+00:00",
+    "ended_utc": "2026-10-14T08:49:02.215154+00:00",
+    "classification": "generator-invalid",
+    "scored_300s_window_present": true,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/core-combat-150-r1"
   },
   {
     "run_id": "core-combat-50-r1",
@@ -108,6 +156,18 @@
     "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/core-strategy-100-r1"
   },
   {
+    "run_id": "core-strategy-150-r1",
+    "requested_population": 150,
+    "workload": "strategy",
+    "requested_duration_s": 360,
+    "started_utc": "2026-10-14T08:49:12.109658+00:00",
+    "ended_utc": "2026-10-14T08:56:08.715449+00:00",
+    "classification": "generator-invalid",
+    "scored_300s_window_present": true,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/core-strategy-150-r1"
+  },
+  {
     "run_id": "core-strategy-50-r1",
     "requested_population": 50,
     "workload": "strategy",
@@ -118,6 +178,30 @@
     "scored_300s_window_present": true,
     "retained_errors": [],
     "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/core-strategy-50-r1"
+  },
+  {
+    "run_id": "idle-100-r1",
+    "requested_population": 100,
+    "workload": "idle",
+    "requested_duration_s": 360,
+    "started_utc": "2026-10-14T09:17:47.197232+00:00",
+    "ended_utc": "2026-10-14T09:24:40.023379+00:00",
+    "classification": "native-stable-candidate",
+    "scored_300s_window_present": true,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/idle-100-r1"
+  },
+  {
+    "run_id": "idle-150-r1",
+    "requested_population": 150,
+    "workload": "idle",
+    "requested_duration_s": 360,
+    "started_utc": "2026-10-14T09:24:49.695566+00:00",
+    "ended_utc": "2026-10-14T09:31:54.508583+00:00",
+    "classification": "native-stable-candidate",
+    "scored_300s_window_present": true,
+    "retained_errors": [],
+    "raw_asset_relative_location": "deployment/hetzner/results/one-pass-20261014/idle-150-r1"
   },
   {
     "run_id": "pilot-clustered-50-recovery",

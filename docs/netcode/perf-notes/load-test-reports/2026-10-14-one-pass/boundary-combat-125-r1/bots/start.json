@@ -1,0 +1,49 @@
+{
+  "utc_ns": 1791968704715400178,
+  "monotonic_ns": 78666837239578,
+  "clock_ticks_s": 100,
+  "page_size": 4096,
+  "stat": "cpu  444297 10900 265815 14884885 4178 0 62898 0 0 0\ncpu0 235302 7861 141594 7418278 1975 0 33823 0 0 0\ncpu1 208995 3038 124221 7466607 2202 0 29075 0 0 0",
+  "net/snmp": "Ip: Forwarding DefaultTTL InReceives InHdrErrors InAddrErrors ForwDatagrams InUnknownProtos InDiscards InDelivers OutRequests OutDiscards OutNoRoutes ReasmTimeout ReasmReqds ReasmOKs ReasmFails FragOKs FragFails FragCreates OutTransmits\nIp: 2 64 34366888 0 13 0 0 0 34335373 48861161 0 1 0 0 0 0 0 0 0 48861161\nIcmp: InMsgs InErrors InCsumErrors InDestUnreachs InTimeExcds InParmProbs InSrcQuenchs InRedirects InEchos InEchoReps InTimestamps InTimestampReps InAddrMasks InAddrMaskReps OutMsgs OutErrors OutRateLimitGlobal OutRateLimitHost OutDestUnreachs OutTimeExcds OutParmProbs OutSrcQuenchs OutRedirects OutEchos OutEchoReps OutTimestamps OutTimestampReps OutAddrMasks OutAddrMaskReps\nIcmp: 335 0 0 0 0 0 0 0 335 0 0 0 0 0 357 0 0 36929 22 0 0 0 0 0 335 0 0 0 0\nIcmpMsg: InType8 OutType0 OutType3\nIcmpMsg: 335 335 22\nTcp: RtoAlgorithm RtoMin RtoMax MaxConn ActiveOpens PassiveOpens AttemptFails EstabResets CurrEstab InSegs OutSegs RetransSegs InErrs OutRsts InCsumErrors\nTcp: 1 200 120000 -1 39 2177 0 1 1 884874 3614380 26396 1 252 0\nUdp: InDatagrams NoPorts InErrors OutDatagrams RcvbufErrors SndbufErrors InCsumErrors IgnoredMulti MemErrors\nUdp: 33487649 36951 3518 47009677 3518 0 0 3 0\nUdpLite: InDatagrams NoPorts InErrors OutDatagrams RcvbufErrors SndbufErrors InCsumErrors IgnoredMulti MemErrors\nUdpLite: 0 0 0 0 0 0 0 0 0\n",
+  "interface": {
+    "tx_bytes": "9603947727\n",
+    "rx_bytes": "20895740424\n",
+    "tx_packets": "48907407\n",
+    "rx_packets": "34449010\n",
+    "rx_dropped": "0\n",
+    "tx_dropped": "0\n"
+  },
+  "processes": {
+    "512452": {
+      "comm": "tcpdump\n",
+      "stat": "512452 (tcpdump) S 512451 512451 512451 0 -1 4194560 358 0 0 0 35 136 0 0 20 0 1 0 7858562 50954240 9746 18446744073709551615 1 1 0 0 0 0 0 0 88579 0 0 0 17 1 0 0 0 0 0 0 0 0 0 0 0 0 0\n",
+      "status": "VmSwap:\t       0 kB"
+    },
+    "512481": {
+      "comm": "tcpdump\n",
+      "stat": "512481 (tcpdump) S 512480 512480 512480 0 -1 4194560 358 0 0 0 15 36 0 0 20 0 1 0 7858866 50982912 9719 18446744073709551615 1 1 0 0 0 0 0 0 88579 0 0 0 17 1 0 0 0 0 0 0 0 0 0 0 0 0 0\n",
+      "status": "VmSwap:\t       0 kB"
+    },
+    "512517": {
+      "comm": "omega-load-test\n",
+      "stat": "512517 (omega-load-test) R 512516 512516 512516 0 -1 4194304 782 0 0 0 2024 1680 0 0 20 0 2 0 7859287 94588928 5612 18446744073709551615 203907524984832 203907528278404 281473907377824 0 0 0 0 4096 1090 0 0 0 17 0 0 0 0 0 0 203907528351376 203907528462960 203908260839424 281473907379271 281473907379614 281473907379614 281473907380152 0\n",
+      "status": "VmSwap:\t       0 kB"
+    }
+  },
+  "swarm_cgroup_cpu": "usage_usec 37050925\nuser_usec 20244341\nsystem_usec 16806584\nnice_usec 0\ncore_sched.force_idle_usec 0\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0\n",
+  "nft_before_utc_ns": 1791968704724927338,
+  "nft": {
+    "rc": 0,
+    "stdout": "{\"nftables\": [{\"metainfo\": {\"version\": \"1.1.6\", \"release_name\": \"Commodore Bullmoose #7\", \"json_schema_version\": 1}}, {\"table\": {\"family\": \"inet\", \"name\": \"omega_measure\", \"handle\": 53}}, {\"chain\": {\"family\": \"inet\", \"table\": \"omega_measure\", \"name\": \"input\", \"handle\": 1, \"type\": \"filter\", \"hook\": \"input\", \"prio\": -150, \"policy\": \"accept\"}}, {\"chain\": {\"family\": \"inet\", \"table\": \"omega_measure\", \"name\": \"output\", \"handle\": 2, \"type\": \"filter\", \"hook\": \"output\", \"prio\": -150, \"policy\": \"accept\"}}, {\"rule\": {\"family\": \"inet\", \"table\": \"omega_measure\", \"chain\": \"input\", \"handle\": 3, \"comment\": \"game_in\", \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"saddr\"}}, \"right\": \"<game-host>\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"udp\", \"field\": \"sport\"}}, \"right\": 8081}}, {\"counter\": {\"packets\": 485368, \"bytes\": 348754453}}]}}, {\"rule\": {\"family\": \"inet\", \"table\": \"omega_measure\", \"chain\": \"input\", \"handle\": 4, \"comment\": \"bot_in\", \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"saddr\"}}, \"right\": \"<game-host>\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"udp\", \"field\": \"dport\"}}, \"right\": 8081}}, {\"counter\": {\"packets\": 0, \"bytes\": 0}}]}}, {\"rule\": {\"family\": \"inet\", \"table\": \"omega_measure\", \"chain\": \"output\", \"handle\": 5, \"comment\": \"game_out\", \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"daddr\"}}, \"right\": \"<game-host>\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"udp\", \"field\": \"sport\"}}, \"right\": 8081}}, {\"counter\": {\"packets\": 0, \"bytes\": 0}}]}}, {\"rule\": {\"family\": \"inet\", \"table\": \"omega_measure\", \"chain\": \"output\", \"handle\": 6, \"comment\": \"bot_out\", \"expr\": [{\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"ip\", \"field\": \"daddr\"}}, \"right\": \"<game-host>\"}}, {\"match\": {\"op\": \"==\", \"left\": {\"payload\": {\"protocol\": \"udp\", \"field\": \"dport\"}}, \"right\": 8081}}, {\"counter\": {\"packets\": 615590, \"bytes\": 62795407}}]}}]}\n",
+    "stderr": ""
+  },
+  "nft_after_utc_ns": 1791968704740781710,
+  "tc": {
+    "rc": 0,
+    "stdout": "[{\"kind\":\"fq_codel\",\"handle\":\"8005:\",\"root\":true,\"refcnt\":2,\"options\":{\"limit\":10240,\"flows\":1024,\"quantum\":1514,\"target\":4999,\"interval\":99999,\"memory_limit\":33554432,\"ecn\":true,\"drop_batch\":64},\"bytes\":1400784823,\"packets\":11765518,\"drops\":0,\"overlimits\":0,\"requeues\":2314,\"backlog\":0,\"qlen\":0,\"maxpacket\":3028,\"drop_overlimit\":0,\"new_flow_count\":9530,\"ecn_mark\":0,\"new_flows_len\":0,\"old_flows_len\":0},{\"kind\":\"clsact\",\"handle\":\"ffff:\",\"parent\":\"ffff:fff1\",\"options\":{},\"bytes\":71487331,\"packets\":615935,\"drops\":0,\"overlimits\":0,\"requeues\":0,\"backlog\":0,\"qlen\":0}]\n",
+    "stderr": ""
+  },
+  "sample_duration_ns": 31792226,
+  "boundary": "start",
+  "target_utc_ns": 1791968704715096864
+}

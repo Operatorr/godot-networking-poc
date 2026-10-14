@@ -1,0 +1,166 @@
+{
+  "run_id": "boundary-strategy-125-r1",
+  "classification": "generator-invalid",
+  "collector_valid": true,
+  "generator_valid": false,
+  "requested_bots": 125,
+  "behavior": "strategy",
+  "profile": "native",
+  "variant": "native",
+  "cpu_report_source_sha256": "c47a6d88e76c1753bed8efa492a25b88da76a3af2b4ab273e30c140439e08087",
+  "hosts": {
+    "game": {
+      "matched_boundary": {
+        "utc_start_ns": 1791969127875576361,
+        "utc_end_ns": 1791969427875609679,
+        "interval_s": 300.000033278,
+        "logical_cpus": 2,
+        "process_cpu_percent_one_core": 52.96666079125154,
+        "swarm_cpu_percent_one_core": null,
+        "host_execution_percent_capacity": 44.7655499165388,
+        "host_execution_percent_one_core": 89.5310998330776,
+        "busiest_core_execution_percent": 45.214622082189926,
+        "steal_percent_capacity": 0.0,
+        "cpu0_execution_percent": 44.3202416918429,
+        "cpu1_execution_percent": 45.214622082189926
+      },
+      "interval_errors": [],
+      "one_second_statistics": {
+        "process_cpu_percent_one_core": {
+          "sample_count": 300,
+          "covered_seconds": 299.92133987799997,
+          "time_weighted_mean": 52.963887152750104,
+          "p95": 57.038859877527074,
+          "p99": 58.62456868464474,
+          "max": 60.59984444366218,
+          "seconds_at_or_above_95_percent": 0,
+          "longest_contiguous_seconds_at_or_above_95_percent": 0.0
+        },
+        "swarm_cpu_percent_one_core": {
+          "sample_count": 0
+        },
+        "host_execution_percent_capacity": {
+          "sample_count": 300,
+          "covered_seconds": 299.92133987799997,
+          "time_weighted_mean": 44.75721971002219,
+          "p95": 48.704663212435236,
+          "p99": 51.23152709359606,
+          "max": 63.775510204081634,
+          "seconds_at_or_above_95_percent": 0,
+          "longest_contiguous_seconds_at_or_above_95_percent": 0.0
+        },
+        "host_execution_percent_one_core": {
+          "sample_count": 300,
+          "covered_seconds": 299.92133987799997,
+          "time_weighted_mean": 89.51443942004438,
+          "p95": 97.40932642487047,
+          "p99": 102.46305418719211,
+          "max": 127.55102040816327,
+          "seconds_at_or_above_95_percent": 38.010795334,
+          "longest_contiguous_seconds_at_or_above_95_percent": 5.033192519
+        },
+        "busiest_core_execution_percent": {
+          "sample_count": 300,
+          "covered_seconds": 299.92133987799997,
+          "time_weighted_mean": 50.23613100496419,
+          "p95": 58.8235294117647,
+          "p99": 63.80952380952381,
+          "max": 70.1923076923077,
+          "seconds_at_or_above_95_percent": 0,
+          "longest_contiguous_seconds_at_or_above_95_percent": 0.0
+        },
+        "steal_percent_capacity": {
+          "sample_count": 300,
+          "covered_seconds": 299.92133987799997,
+          "time_weighted_mean": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "max": 0.0,
+          "seconds_at_or_above_95_percent": 0,
+          "longest_contiguous_seconds_at_or_above_95_percent": 0.0
+        }
+      },
+      "semantics": "1 Hz interval statistics, not instantaneous peaks or repeat confidence intervals. Intervals outside 0.5\u20132.5 s are excluded from peaks/near-95% durations. 95% is a descriptive warning threshold, not proof of CPU saturation. Process CPU sums all threads; tick-thread CPU was not collected separately. Per-core CPU includes all processes on that core; the tick thread may migrate. Executing CPU excludes idle/iowait/steal; steal is reported separately."
+    },
+    "bots": {
+      "matched_boundary": {
+        "utc_start_ns": 1791969127875622064,
+        "utc_end_ns": 1791969427875627918,
+        "interval_s": 300.000005934,
+        "logical_cpus": 2,
+        "process_cpu_percent_one_core": 92.33333150698003,
+        "swarm_cpu_percent_one_core": 92.3316518403466,
+        "host_execution_percent_capacity": 55.56830647202768,
+        "host_execution_percent_one_core": 111.13661294405536,
+        "busiest_core_execution_percent": 56.58596217189039,
+        "steal_percent_capacity": 0.0,
+        "cpu0_execution_percent": 54.5610091589224,
+        "cpu1_execution_percent": 56.58596217189039
+      },
+      "interval_errors": [],
+      "one_second_statistics": {
+        "process_cpu_percent_one_core": {
+          "sample_count": 300,
+          "covered_seconds": 299.726410973,
+          "time_weighted_mean": 92.34087817003622,
+          "p95": 95.92241458767427,
+          "p99": 96.44909636191856,
+          "max": 97.45600459637255,
+          "seconds_at_or_above_95_percent": 49.587464710999996,
+          "longest_contiguous_seconds_at_or_above_95_percent": 11.97743186
+        },
+        "swarm_cpu_percent_one_core": {
+          "sample_count": 300,
+          "covered_seconds": 299.726410973,
+          "time_weighted_mean": 92.3395743143008,
+          "p95": 95.73144174551281,
+          "p99": 96.02579372031549,
+          "max": 96.4896451330368,
+          "seconds_at_or_above_95_percent": 51.639532578,
+          "longest_contiguous_seconds_at_or_above_95_percent": 15.959368218999998
+        },
+        "host_execution_percent_capacity": {
+          "sample_count": 300,
+          "covered_seconds": 299.726410973,
+          "time_weighted_mean": 55.56709820515653,
+          "p95": 58.24742268041237,
+          "p99": 59.067357512953365,
+          "max": 63.90243902439025,
+          "seconds_at_or_above_95_percent": 0,
+          "longest_contiguous_seconds_at_or_above_95_percent": 0.0
+        },
+        "host_execution_percent_one_core": {
+          "sample_count": 300,
+          "covered_seconds": 299.726410973,
+          "time_weighted_mean": 111.13419641031307,
+          "p95": 116.49484536082474,
+          "p99": 118.13471502590673,
+          "max": 127.8048780487805,
+          "seconds_at_or_above_95_percent": 299.726410973,
+          "longest_contiguous_seconds_at_or_above_95_percent": 299.726410973
+        },
+        "busiest_core_execution_percent": {
+          "sample_count": 300,
+          "covered_seconds": 299.726410973,
+          "time_weighted_mean": 78.9812692523121,
+          "p95": 95.91836734693878,
+          "p99": 96.15384615384616,
+          "max": 97.05882352941177,
+          "seconds_at_or_above_95_percent": 28.863083164000003,
+          "longest_contiguous_seconds_at_or_above_95_percent": 9.963173707
+        },
+        "steal_percent_capacity": {
+          "sample_count": 300,
+          "covered_seconds": 299.726410973,
+          "time_weighted_mean": 0.0,
+          "p95": 0.0,
+          "p99": 0.0,
+          "max": 0.0,
+          "seconds_at_or_above_95_percent": 0,
+          "longest_contiguous_seconds_at_or_above_95_percent": 0.0
+        }
+      },
+      "semantics": "1 Hz interval statistics, not instantaneous peaks or repeat confidence intervals. Intervals outside 0.5\u20132.5 s are excluded from peaks/near-95% durations. 95% is a descriptive warning threshold, not proof of CPU saturation. Process CPU sums all threads; tick-thread CPU was not collected separately. Per-core CPU includes all processes on that core; the tick thread may migrate. Executing CPU excludes idle/iowait/steal; steal is reported separately."
+    }
+  }
+}
