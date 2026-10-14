@@ -611,6 +611,10 @@ fn create_full_state_packet(
     tick: u64,
     server_ms: u32,
 ) -> Snapshot {
+    // A received baseline replaces the client's entire entity model. Retaining
+    // entries omitted here (including cap truncation) would let re-entry emit a
+    // partial delta for an entity the receiver no longer knows.
+    cache.cache.clear();
     let mut records = Vec::with_capacity(entities.len().min(STATE_MAX_FULL_ENTITIES));
     for e in entities.iter().take(STATE_MAX_FULL_ENTITIES) {
         records.push(EntityRecord::full(
@@ -788,6 +792,44 @@ mod tests {
         let cache = DeltaStateCache::default();
         let mask = cache.calculate_delta_mask(1, &entity(1, 0.0, 0.0), 5);
         assert_eq!(mask, delta_mask::FULL);
+    }
+
+    #[test]
+    fn replacing_baseline_forgets_entities_absent_from_receiver_model() {
+        let mut cache = DeltaStateCache::default();
+        let kept = entity(1, 0.0, 0.0);
+        let omitted = entity(30001, 10.0, 10.0);
+        create_full_state_packet(&[kept, omitted], &mut cache, 100, 0);
+        let replacement = create_full_state_packet(&[kept], &mut cache, 200, 0);
+        assert_eq!(replacement.entities.len(), 1);
+        // Receiving this baseline replaces the client's model. Re-entry must
+        // establish the omitted entity again, rather than send position only.
+        let reentered = entity(30001, 11.0, 10.0);
+        assert_eq!(
+            cache.calculate_delta_mask(reentered.id, &reentered, 201),
+            delta_mask::FULL
+        );
+    }
+
+    #[test]
+    fn replacing_baseline_forgets_previously_known_truncated_entity() {
+        let mut cache = DeltaStateCache::default();
+        let omitted_id = 10000 + STATE_MAX_FULL_ENTITIES as u16;
+        create_full_state_packet(&[entity(omitted_id, 0.0, 0.0)], &mut cache, 100, 0);
+        let entities: Vec<_> = (10000..=omitted_id)
+            .map(|id| entity(id, 0.0, 0.0))
+            .collect();
+        let replacement = create_full_state_packet(&entities, &mut cache, 200, 0);
+        assert_eq!(replacement.entities.len(), STATE_MAX_FULL_ENTITIES);
+        assert!(!replacement
+            .entities
+            .iter()
+            .any(|record| record.entity_id == omitted_id));
+        let reentered = entity(omitted_id, 1.0, 0.0);
+        assert_eq!(
+            cache.calculate_delta_mask(omitted_id, &reentered, 201),
+            delta_mask::FULL
+        );
     }
 
     #[test]

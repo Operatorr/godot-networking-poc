@@ -1,6 +1,6 @@
 # CAX11 single-run diagnosis and stabilization
 
-**Status: failure reproduced; candidate transport fix awaiting remote validation. The full matrix is held.**
+**Status: transport fix passed the diagnostic; a separate baseline-cache correction awaits remote validation. The full matrix is held.**
 
 On 2026-10-14 the user requested one smooth run and reproducible bug fixes before the
 full rundown, followed by a run checklist and time estimate. The earlier
@@ -21,7 +21,7 @@ observation: the scored window recorded 86 game-host send-buffer errors and no
 receive-buffer errors; the receive failures occurred earlier during warmup. All
 450,000 scheduled Snapshots were enqueued, with 87 absent from observed first
 transmissions. The run retained 72 unknown-entity delta observations and zero
-baseline-reference misses. No transport fix has yet been validated remotely.
+baseline-reference misses. The subsequent transport diagnostic is recorded below.
 
 The game socket's effective receive/send limits were both 212,992 bytes. The pinned
 `rusty_enet` 0.4 standard `UdpSocket` adapter sets nonblocking/broadcast options but
@@ -33,12 +33,30 @@ allowance; record the actual values rather than assuming requested equals effect
 The two transport regression tests failed with the original initialization delegation
 and passed after applying the options. Workspace tests (203 tests), Clippy and formatting
 passed; Clippy retains two existing `collapsible_match` warnings in the unchanged bot.
-The candidate is not yet validated by the remote five-minute workload.
+The remote five-minute workload validated the requested buffers and recorded zero kernel errors, including warmup.
 Its game build is revision `77a8af53d947a41106b0cc3b44a9c340145bd9f1`, ordinary locked
 Arm release with Rust 1.95.0. SHA-256:
 `ae7f7afc130ad647dbd3bd917f91e60d5b16e650f123bdd5d35e0d4d9b36b021`.
 The unchanged bot remains at measurement revision `642c147` and its previously recorded
 hash. Both source checkouts are recorded separately in each pilot's provenance.
+
+
+The [transport diagnostic](pilot-clustered-50-after/steady.json) held all 50 bots at
+30 Ticks/s, with Tick work p99 7.852 ms and zero application send/decode or kernel UDP
+errors. Effective receive/send buffers were 524,288 bytes each. Endpoint packet matching
+found no unmatched packets. Local analysis peaked at 583,270,400 bytes RSS and the whole
+pilot took 676.45 seconds. Seven unknown-entity partial deltas and five enqueued Snapshots
+absent from observed first transmission remain; this is not yet a clean delivery pilot.
+The legacy aspirational bandwidth assertion also fails; this diagnosis does not optimize
+bandwidth to satisfy it.
+
+Two regression tests reproduced a baseline-cache inconsistency: receiving a Baseline
+replaces the receiver's entity model, but the server retained cached entities omitted
+by visibility or the Baseline cap. Their re-entry could emit a partial delta without a
+known entity. Clearing the cache when creating the replacement Baseline makes both tests
+pass. This is a separately recorded correctness fix; a new remote pilot must establish
+whether it removes the observed anomalies. All 205 workspace tests, Clippy and formatting
+pass (the same two existing bot warnings remain).
 
 ## Collection and execution fixes
 
@@ -89,3 +107,13 @@ from game/bot hosts. These differently scoped totals are consistent with externa
 downloads contributing to the provider reading and same-zone game traffic being exempt;
 they are not exact invoice reconciliation. Reporting delay, exact account units and
 transport overhead remain unresolved. [Timestamped snapshot](provider-reconciliation-snapshot.json).
+
+The independent [provider network screenshot](provider-network-20261014.png), supplied
+at 10:56 Taipei, shows yellow outbound around 1.0–1.1 MBps during the 10:29–10:34 scored
+window. Guest game IP traffic averaged 1.132 decimal MB/s (1.080 MiB/s, 9.056 Mbit/s);
+whole-interface TX averaged 1.158 decimal MB/s. Packet rates broadly agree too. These are
+approximate chart readings, without verified chart smoothing or unit base. Hetzner's
+network graph is fetched from the physical host and independently sees this same-zone
+load; its billable allowance meter is a separate measurement. Outbound continuing after
+the workload includes evidence downloads. [Comparison data](provider-network-comparison.json)
+and [provider graph documentation](https://docs.hetzner.com/cloud/servers/faq/).
