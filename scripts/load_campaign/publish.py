@@ -27,7 +27,8 @@ def publish(run_id):
             (target / name).write_text(redact((source / name).read_text()))
     checksums = {}
     for archive_path in source.glob("*.tar.gz"):
-        checksums[archive_path.name] = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+        with archive_path.open('rb') as evidence:
+            checksums[archive_path.name] = hashlib.file_digest(evidence, 'sha256').hexdigest()
         role = archive_path.stem.split(".")[0]
         with tarfile.open(archive_path) as archive:
             for member in archive.getmembers():

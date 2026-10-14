@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Operator-side campaign controller. Access stays in the ignored handoff file."""
 import argparse
+import concurrent.futures
 import datetime
 import hashlib
 import json
+import os
 import pathlib
 import shlex
 import shutil
@@ -18,6 +20,12 @@ KEY = ROOT / "deployment/hetzner/ssh/omega_loadtest_ed25519"
 RAW = ROOT / "deployment/hetzner/results/campaign-20261013"
 REMOTE = "/home/deploy/omega-results/campaign-20261013"
 MEASURED = "/home/deploy/omega-measured/rust/target/release"
+MEASURED_BY_ROLE = {role: MEASURED for role in HOSTS}
+MEASURED_CHECKOUTS = {role: '/home/deploy/omega-measured' for role in HOSTS}
+SSH_OPTIONS = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15',
+               '-o', 'ControlMaster=auto', '-o', 'ControlPersist=300',
+               '-o', f'ControlPath=/tmp/omega-cax11-{os.getuid()}-%C',
+               '-o', 'ServerAliveInterval=30', '-o', 'ServerAliveCountMax=3']
 
 
 def configure(build, variant):
@@ -32,7 +40,7 @@ def configure(build, variant):
     ssh("game", f"sudo -n install -m 0644 {REMOTE}/config-current.json /etc/omega-loadtest/arena.json; "
         "sudo -n mkdir -p /var/lib/omega-measure/current /etc/systemd/system/omega-loadtest-arena.service.d; "
         "sudo -n chown -R deploy:deploy /var/lib/omega-measure")
-    binary = REMOTE + "/original/omega-server" if build == "original" else MEASURED + "/omega-server"
+    binary = REMOTE + "/original/omega-server" if build == "original" else MEASURED_BY_ROLE['game'] + "/omega-server"
     override = "[Service]\nExecStart=\nExecStart=" + binary + " --config /etc/omega-loadtest/arena.json --allow-unsigned-tickets\n"
     override += "UnsetEnvironment=OMEGA_MEASURE_DIR\n" if build in ("original", "instrumented-off") else "Environment=OMEGA_MEASURE_DIR=/var/lib/omega-measure/current\n"
     override += "ReadWritePaths=/var/lib/omega-measure\n"
@@ -45,7 +53,7 @@ def configure(build, variant):
 
 def ssh(role, command, check=True):
     host = HOSTS[role]
-    result = subprocess.run(["ssh", "-i", str(KEY), "-o", "BatchMode=yes", "-o", "ConnectTimeout=15",
+    result = subprocess.run(["ssh", "-i", str(KEY), *SSH_OPTIONS,
                              host["ssh_user"] + "@" + host["ipv4"], command], capture_output=True, text=True)
     if check and result.returncode:
         raise RuntimeError(role + ": " + result.stderr)
@@ -56,12 +64,13 @@ def copy(role, source, destination, download=False):
     host = HOSTS[role]
     address = host["ssh_user"] + "@" + host["ipv4"] + ":"
     partial = str(destination) + ".partial" if download else destination
-    subprocess.run(["scp", "-q", "-i", str(KEY), "-o", "BatchMode=yes",
+    subprocess.run(["scp", "-q", "-i", str(KEY), *SSH_OPTIONS,
                     address + source if download else str(source),
                     str(partial) if download else address + destination], check=True)
     if download:
         expected = ssh(role, "sha256sum " + shlex.quote(source)).split()[0]
-        actual = hashlib.sha256(pathlib.Path(partial).read_bytes()).hexdigest()
+        with pathlib.Path(partial).open('rb') as evidence:
+            actual = hashlib.file_digest(evidence, 'sha256').hexdigest()
         if actual != expected:
             raise RuntimeError("Evidence download checksum mismatch")
         pathlib.Path(partial).replace(destination)
@@ -147,16 +156,18 @@ def run(run_id, bots, behavior, duration=360, collection=True, build="original",
         (local / "boot.log").write_text(ssh("game", f"journalctl _SYSTEMD_INVOCATION_ID={invocation} --no-pager -o short-iso-precise"))
         manifest["service_invocation"] = invocation
         for role in HOSTS:
-            binary_path = REMOTE + "/original/omega-" + ("server" if role == "game" else "load-test") if build == "original" else MEASURED + "/omega-" + ("server" if role == "game" else "load-test")
+            binary_path = REMOTE + "/original/omega-" + ("server" if role == "game" else "load-test") if build == "original" else MEASURED_BY_ROLE[role] + "/omega-" + ("server" if role == "game" else "load-test")
             command = "sha256sum " + binary_path
             command += f"; sha256sum {REMOTE}/host_collect.py {REMOTE}/capture.py {REMOTE}/flow_record.rs {REMOTE}/flow-record"
             if role == "game":
                 command += "; sha256sum /etc/omega-loadtest/arena.json; systemctl cat omega-loadtest-arena.service; systemctl show omega-loadtest-arena.service -p NRestarts -p MainPID -p CPUUsageNSec"
+                command += "; ss -u -a -m -n '( sport = :8081 )'; cat /proc/sys/net/core/rmem_default /proc/sys/net/core/rmem_max /proc/sys/net/core/wmem_default /proc/sys/net/core/wmem_max"
             if build != "original":
-                command += "; git -C /home/deploy/omega-measured rev-parse HEAD; git -C /home/deploy/omega-measured status --short"
+                checkout = shlex.quote(MEASURED_CHECKOUTS[role])
+                command += f"; git -C {checkout} rev-parse HEAD; git -C {checkout} status --short"
             (local / (role + "-run-provenance.txt")).write_text(ssh(role, command))
         directory = REMOTE + "/" + run_id + "/bots"
-        binary = REMOTE + "/original/omega-load-test" if build == "original" else MEASURED + "/omega-load-test"
+        binary = REMOTE + "/original/omega-load-test" if build == "original" else MEASURED_BY_ROLE['bots'] + "/omega-load-test"
         args = [binary, "--server", HOSTS["game"]["ipv4"] + ":8081", "--bots", str(bots), "--behavior", behavior,
                 "--duration", str(duration), "--input-hz", "30", "--seed", "30", "--stagger", "100", "--difficulty", "1.0",
                 "--bandwidth-budget", "0", "--assertions", "strict", "--aoi-exit-radius", "660" if variant == "aoi600" else "1100",
@@ -204,7 +215,9 @@ def run(run_id, bots, behavior, duration=360, collection=True, build="original",
     finally:
         if build not in ("original", "instrumented-off"):
             ssh("game", f"cp /var/lib/omega-measure/current/ticks.csv /var/lib/omega-measure/current/server.ndjson {game_directory}/", check=False)
-        for role in HOSTS:
+        def cleanup_role(role):
+            stages = {}
+            started = time.monotonic()
             (local / (role + "-final-service.txt")).write_text(ssh(role, f"systemctl show {unit}-swarm -p Result -p CPUUsageNSec -p ExecMainStatus; systemctl show omega-loadtest-arena.service -p NRestarts -p MainPID -p Result", check=False))
             ssh(role, f"sudo -n systemctl stop {unit}-swarm {unit}-{role}-collect {unit}-{role}-capture {unit}-{role}-prequeue 2>/dev/null || true", check=False)
             directory = REMOTE + "/" + run_id + "/" + role
@@ -216,14 +229,39 @@ def run(run_id, bots, behavior, duration=360, collection=True, build="original",
             if role in mirrored:
                 import mirror
                 mirror.restore(role)
-            if role in roles:
-                ssh(role, f"sudo -n chown -R deploy:deploy {directory}; tc -s -j qdisc show dev eth0 > {directory}/qdisc-after.json; "
-                    f"tar -czf {REMOTE}/{run_id}-{role}.tar.gz -C {REMOTE}/{run_id} {role}")
-                copy(role, REMOTE + "/" + run_id + "-" + role + ".tar.gz", local / (role + ".tar.gz"), download=True)
-            if collection:
-                ssh(role, "sudo -n nft delete table inet omega_measure 2>/dev/null || true", check=False)
+            stages['stop_and_restore_s'] = time.monotonic() - started
+            try:
+                if role in roles:
+                    started = time.monotonic()
+                    ssh(role, f"sudo -n chown -R deploy:deploy {directory}; tc -s -j qdisc show dev eth0 > {directory}/qdisc-after.json; "
+                        f"tar -czf {REMOTE}/{run_id}-{role}.tar.gz -C {REMOTE}/{run_id} {role}")
+                    stages['archive_s'] = time.monotonic() - started
+                    started = time.monotonic()
+                    copy(role, REMOTE + "/" + run_id + "-" + role + ".tar.gz", local / (role + ".tar.gz"), download=True)
+                    stages['download_and_sha256_s'] = time.monotonic() - started
+            finally:
+                if collection:
+                    ssh(role, "sudo -n nft delete table inet omega_measure 2>/dev/null || true", check=False)
+            return stages
+        # Both endpoints are finished. Preserve and verify their evidence concurrently;
+        # a failure on one endpoint must still allow cleanup on the other endpoint.
+        cleanup_errors = {}
+        manifest['cleanup_stages'] = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            futures = {executor.submit(cleanup_role, role): role for role in HOSTS}
+            for future in concurrent.futures.as_completed(futures):
+                role = futures[future]
+                try:
+                    manifest['cleanup_stages'][role] = future.result()
+                except Exception as error:
+                    cleanup_errors[role] = repr(error)
+                    (local / (role + '-cleanup-error.txt')).write_text(repr(error))
+        if cleanup_errors:
+            manifest['cleanup_errors'] = cleanup_errors
         manifest["ended_utc"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
         (local / "manifest.json").write_text(json.dumps(manifest, indent=2))
+        if cleanup_errors and sys.exc_info()[0] is None:
+            raise RuntimeError('Evidence cleanup/download failed; retained per-endpoint errors: ' + ', '.join(cleanup_errors))
     return local
 
 

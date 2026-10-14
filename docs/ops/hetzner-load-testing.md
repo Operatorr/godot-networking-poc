@@ -108,6 +108,13 @@ IPv6-only host. [Billing FAQ](https://docs.hetzner.com/cloud/billing/faq/),
 
 Only outgoing traffic counts toward traffic billing; incoming traffic and internal traffic
 within a Hetzner network zone are free. Cross-zone traffic is treated as internet traffic.
+Falkenstein, Nuremberg and Helsinki all belong to `eu-central`: moving a bot from
+Falkenstein to Helsinki does not make its public-IP traffic count against the included
+outgoing allowance. Use a client outside Hetzner or a Cloud server in another network
+zone to independently check the provider's external-transfer meter. Evidence downloads
+to the operator also produce billable external egress and must be accounted separately
+from game-port traffic. [Network-zone locations](https://docs.hetzner.com/cloud/general/locations/),
+[same-zone public-IP exemption](https://docs.hetzner.com/cloud/billing/faq/).
 The included TB allowance is a billing quantity, not a guarantee of sustained packet rate
 or bandwidth. [Billing FAQ](https://docs.hetzner.com/cloud/billing/faq/),
 [location billing](https://docs.hetzner.com/cloud/general/locations/).

@@ -19,11 +19,11 @@ pub(crate) use sim::{
 };
 
 use config::ServerConfig;
+use net::transport::EnetUdpSocket;
 use outbox::{Outbox, Target};
 use protocol::{ClientPacket, ServerPacket};
 use rusty_enet as enet;
 use std::collections::HashSet;
-use std::net::UdpSocket;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -184,7 +184,7 @@ fn main() {
         info!("signed session tickets REQUIRED; verifying with configured OMEGA_TICKET_PUBKEY");
     }
 
-    let socket = UdpSocket::bind(("0.0.0.0", config.port)).expect("bind UDP game port");
+    let socket = EnetUdpSocket::bind(("0.0.0.0", config.port)).expect("bind UDP game port");
     let mut host = enet::Host::new(
         socket,
         enet::HostSettings {

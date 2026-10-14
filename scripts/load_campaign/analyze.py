@@ -198,7 +198,10 @@ def summarize(directory):
     result = dict(manifest)
     result["derived_source_sha256"] = ANALYZER_SOURCE_SHA256
     result.pop("command", None)
-    result["archive_sha256"] = {name.name: hashlib.sha256(name.read_bytes()).hexdigest() for name in directory.glob("*.tar.gz")}
+    result["archive_sha256"] = {}
+    for name in directory.glob("*.tar.gz"):
+        with name.open('rb') as evidence:
+            result["archive_sha256"][name.name] = hashlib.file_digest(evidence, 'sha256').hexdigest()
     if not (directory / "window.json").exists():
         result["classification"] = "collector-invalid"
         return result

@@ -1,6 +1,6 @@
 # CAX11 load-test campaign — 2026-10-13
 
-**Status: measurement preflight passed; scored matrix running.**
+**Status: baseline evidence retained; full matrix held for single-run stabilization.**
 This report resolves [Run the new load tests and record results](https://github.com/Operatorr/godot-networking-poc/issues/31)
 only when the agreed matrix and its permitted failure truncations are recorded. The
 [matrix resolution](https://github.com/Operatorr/godot-networking-poc/issues/30#issuecomment-6145030523)
@@ -102,6 +102,14 @@ and lifetime bandwidth remain diagnostic and separate from campaign validity gat
 
 [Matrix coverage](matrix-coverage.json) independently checks required cells and conditional
 admission before issue resolution. A phase flag alone is not completion evidence.
+
+On 2026-10-14 the user requested one smooth run, fixes for reproducible problems,
+provider-meter verification, and a full run checklist with time estimates before
+resuming the rundown. The controller stopped after `core-combat-50-r3` completed;
+its 50-player group passed all three repeats. The next clustered cell was prevented
+by an administrative checkpoint, not executed or classified as a failed workload.
+Subsequent diagnosis and any stabilized build will be recorded separately from this
+baseline campaign. Existing failed/invalid runs remain unchanged evidence.
 
 At the 2026-10-14 01:33 UTC checkpoint, nine selected five-minute core observations and
 the external accounting check were recorded. Movement passed all three 50-player repeats;

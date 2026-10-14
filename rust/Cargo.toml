@@ -24,6 +24,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 metrics = "0.24"
 metrics-exporter-prometheus = "0.18"
+socket2 = "0.6.4"
 
 [profile.release]
 lto = "thin"

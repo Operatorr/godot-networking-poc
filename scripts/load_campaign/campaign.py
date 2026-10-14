@@ -148,4 +148,7 @@ def all_phases():
 
 
 if __name__ == "__main__":
+    hold_path = run.RAW / 'full-matrix-hold.json'
+    if hold_path.exists() and not json.loads(hold_path.read_text()).get('full_matrix_restart_authorized'):
+        raise RuntimeError('Full matrix held by user direction: validate one smooth run and present the checklist/time estimate before restarting')
     {"core": core, "network": network, "transfer": transfer, "all": all_phases}[sys.argv[1]]()
