@@ -1,5 +1,10 @@
 # CAX11 single-run diagnosis and stabilization
 
+Current execution task: [Execute the revised one-pass CAX11 load-test matrix](https://github.com/Operatorr/godot-networking-poc/issues/35).
+[Run the new load tests and record results](https://github.com/Operatorr/godot-networking-poc/issues/31)
+retains the preparation/diagnosis history and final audit. The new task has a fresh handoff;
+creating it does not mean the remaining tests have run.
+
 **Status: corrected 50-bot clustered pilot passed operational checks, including warmup. The full matrix is held for checklist/time-estimate review.**
 
 On 2026-10-14 the user requested one smooth run and reproducible bug fixes before the
