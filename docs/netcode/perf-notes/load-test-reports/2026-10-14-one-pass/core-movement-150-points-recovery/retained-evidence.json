@@ -1,0 +1,8 @@
+{
+  "original_archives_relative_location": "deployment/hetzner/results/one-pass-20261014/core-movement-150-points-recovery",
+  "sha256": {
+    "bots.tar.gz": "1f9067c6be2b08848fa79efe912a08bd41f0d2fd872ae02665e3baa8b139549a",
+    "game.tar.gz": "a86d0cc56fcf2d97f2f2bd04b44110c2cfd43af2036a084b2d6765ef5e7ee4e9"
+  },
+  "contents": "Curated article graph points, exact counters and bounded diagnostics; only 1/64 fingerprint samples privately retained, no raw packet archive."
+}

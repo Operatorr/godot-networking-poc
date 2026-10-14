@@ -54,5 +54,12 @@
       "bots": "f3248dfd6e74b1072db4991092296db2c380fdb49fae6df8592b84cbb1f7c5ea"
     },
     "removed": "Remote unpacked duplicates only; local and remote archives retained"
+  },
+  "core-movement-150-points-recovery": {
+    "archive_sha256": {
+      "game": "a86d0cc56fcf2d97f2f2bd04b44110c2cfd43af2036a084b2d6765ef5e7ee4e9",
+      "bots": "1f9067c6be2b08848fa79efe912a08bd41f0d2fd872ae02665e3baa8b139549a"
+    },
+    "removed": "Remote unpacked duplicates only; local and remote archives retained"
   }
 }

@@ -1,0 +1,8 @@
+{
+  "fallback_after": "24 hours; temporary runtime masks will not remain indefinitely if the operator controller disappears",
+  "timer_units": {
+    "game": "ActiveState=active\nNextElapseUSecMonotonic=1d 21h 34min 35.854543s\n",
+    "bots": "ActiveState=active\nNextElapseUSecMonotonic=1d 21h 32min 50.266232s\n"
+  },
+  "normal_restoration": "Automatic finish watcher restores both hosts immediately after the matrix/accounting/audit sequence stops, unless a newer swarm has taken ownership."
+}
