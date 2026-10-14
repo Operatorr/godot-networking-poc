@@ -21,7 +21,7 @@ def publish(run_id):
     source = run.RAW / run_id
     target = OUTPUT / run_id
     target.mkdir(parents=True, exist_ok=True)
-    for name in ("manifest.json", "steady.json", "window.json", "controller-error.txt", "analysis-error.txt", "foreign-flow-forensics.json", "peer-filter-validation.json", "capture-peer-inventory.json", "boot.log",
+    for name in ("manifest.json", "steady.json", "window.json", "controller-error.txt", "ramp-failure.json", "analysis-error.txt", "foreign-flow-forensics.json", "peer-filter-validation.json", "capture-peer-inventory.json", "boot.log",
                  "game-run-provenance.txt", "bots-run-provenance.txt", "game-final-service.txt", "bots-final-service.txt"):
         if (source / name).exists():
             (target / name).write_text(redact((source / name).read_text()))

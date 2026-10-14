@@ -26,9 +26,12 @@ capacity nor a complete matrix. See [validation](single-run-validation.json).
   misses/recovery under impairment as observed behavior; do not silently change protocol
   ordering during this baseline campaign. No native reference misses were observed in
   the completed pilots. A future ordering correction needs its own revision/comparison.
-- Controller/ramp deadlines currently allow per-bot handshake timeout accumulation.
-  Verify a fail-fast admission/connect-failure path with retained evidence before unattended
-  higher-population runs. Do not change the agreed input rate or stagger to conceal failures.
+- Controller/ramp failure handling is now corrected: inspect the full ramp log for the
+  first start/connect/ticket failure, stop further joins, retain `ramp-failure.json` as
+  unscored evidence and archive both endpoints. A finite swarm lifetime covers controller
+  disappearance. [Local integration fixtures and read-only remote probe](controller-failure-validation.json)
+  verify the implemented path; no remote failed-join benchmark was executed. Successful
+  run input rate, stagger, warmup and measurement duration remain unchanged.
 - Measure full versus light collection overhead on the final selected revision, including
   the clustered workload that exposed socket pressure. Existing movement controls from
   the prior revision do not establish corrected-build overhead or exclude observer effects.

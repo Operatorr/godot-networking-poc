@@ -77,6 +77,25 @@ def copy(role, source, destination, download=False):
         pathlib.Path(partial).replace(destination)
 
 
+def swarm_status_command(directory, inspect_ramp):
+    log = directory + '/bot.log'
+    command = 'tail -5 ' + shlex.quote(log) + '; '
+    if inspect_ramp:
+        # A failed join can leave the last five lines before the next poll.
+        # Inspect the complete ramp log, but return only its first failure.
+        probe = r"""import json, pathlib, re
+p = pathlib.Path(LOG)
+if p.exists():
+    with p.open(errors='replace') as stream:
+        for line in stream:
+            if re.search(r'\bBot \d+ (?:ticket fetch failed|failed to start|failed to connect):', line):
+                print('OMEGA_RAMP_FAILURE ' + json.dumps({'line': line.rstrip()}))
+                break
+""".replace('LOG', repr(log))
+        command += 'python3 -c ' + shlex.quote(probe) + '; '
+    return command + 'cat ' + shlex.quote(directory + '/phase.json') + ' 2>/dev/null; test -f ' + shlex.quote(directory + '/exit-code') + ' && echo FINISHED'
+
+
 def install():
     RAW.mkdir(parents=True, exist_ok=True)
     for role in HOSTS:
@@ -178,15 +197,25 @@ def run(run_id, bots, behavior, duration=360, collection=True, build="original",
             command += f"OMEGA_MEASURE_DIR={directory} "
         command += shlex.join(args)
         manifest["command"] = command
+        runtime_limit = duration + bots * 16 + 120
+        manifest['swarm_runtime_limit_s'] = runtime_limit
+        manifest['ramp_failure_policy'] = 'Abort on first logged start/connect/ticket failure; preserve both endpoint archives as unscored ramp evidence'
         (local / "manifest.json").write_text(json.dumps(manifest, indent=2))
         shell = f"ulimit -n 8192; {command} >{directory}/bot.log 2>&1; result=$?; echo $result >{directory}/exit-code; exit $result"
-        ssh("bots", f"sudo -n systemd-run --quiet --unit={unit}-swarm --uid=deploy /bin/bash -c " + shlex.quote(shell))
+        ssh("bots", f"sudo -n systemd-run --quiet --property=RuntimeMaxSec={runtime_limit} --property=TimeoutStopSec=15 --unit={unit}-swarm --uid=deploy /bin/bash -c " + shlex.quote(shell))
         print(run_id + ": ramp started", flush=True)
         started = time.monotonic()
         phase = None
         while time.monotonic() - started < duration + bots * 16 + 120:
-            status = ssh("bots", f"tail -5 {directory}/bot.log; cat {directory}/phase.json 2>/dev/null; test -f {directory}/exit-code && echo FINISHED", check=False)
+            status = ssh("bots", swarm_status_command(directory, phase is None), check=False)
             if phase is None:
+                for line in status.splitlines():
+                    if line.startswith('OMEGA_RAMP_FAILURE '):
+                        failure = json.loads(line.removeprefix('OMEGA_RAMP_FAILURE '))
+                        failure.update(classification='ramp-failed-unscored', requested_bots=bots,
+                                       elapsed_s=time.monotonic() - started)
+                        (local / 'ramp-failure.json').write_text(json.dumps(failure, indent=2))
+                        raise RuntimeError('Ramp failed; stopping further joins: ' + failure['line'])
                 if build not in ("original", "instrumented-off"):
                     for line in status.splitlines():
                         if line.startswith('{"phase2_utc_ns"'):

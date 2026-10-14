@@ -1,0 +1,21 @@
+{
+  "purpose": "Controller fail-fast validation; no new remote workload",
+  "validated_utc": "2026-10-14T03:34:47.649638+00:00",
+  "controller_source_sha256": "8b40519f1fb5853251532e923a5a5fc95aef3056bcd931bb6ef3c8fd85fd8ef3",
+  "before_fix": {
+    "regression_tests_failed": 2,
+    "observed_failure": "Controller continued after failed join"
+  },
+  "after_fix": {
+    "python_tests_passed": 8,
+    "failed_join_before_last_five_lines": "Immediate abort; both endpoint cleanup/archive paths completed; no scored window",
+    "failed_start_with_phase_two_marker": "Immediate abort before scheduling measurement",
+    "successful_ramp_fixture": "Phase/finished markers retained without false failure"
+  },
+  "read_only_probe_of_completed_remote_pilot": {
+    "finished_marker": true,
+    "phase_two_marker": true,
+    "no_false_ramp_failure": true
+  },
+  "scope": "Local fixtures exercise actual run.run cleanup through mocked SSH/copy; remote probe only reads completed pilot logs. No high-population benchmark or actual remote failed-join attempt was performed."
+}

@@ -28,9 +28,14 @@ merge their repeats into a stable rung for the corrected revision.
 - [ ] Repeat collection on/off controls on the corrected revision, alternating order
   across three pairs. Report exporter matched mean/CPU and observer time with world/shared
   CPU variability. Validate selective impairment at small load and cleanup afterward.
-- [ ] Verify bounded ramp/controller lifetimes, fail-fast reporting, unique run IDs,
-  interrupted-run recovery and archive-error preservation. No automatic replacement of
-  valid failing workloads. Collector-invalid replacements require retained originals.
+- [x] Controller fail-fast and failed-attempt retention: local fixtures exercise a failed
+  join hidden before the last five log lines, a failed start with a Phase-2 marker, both
+  endpoint cleanup/archive paths and a successful ramp. Eight Python tests pass. The
+  completed remote pilot's logs pass the read-only status probe. Swarm RuntimeMaxSec and
+  stop-timeout limits are recorded; no new remote failure workload was run.
+  [Validation](controller-failure-validation.json). Interrupted attempts still require
+  review; valid failing workloads are not automatically replaced, and collector-invalid
+  replacements retain originals.
 - [ ] Reserve evidence storage before committing to the campaign. Mac currently has
   about 53 GiB free; game host about 27 GiB. A 50-bot clustered pair is about 345 MB
   archived, and larger-population captures are unmeasured. The 8 GiB emergency guard

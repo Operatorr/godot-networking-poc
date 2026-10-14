@@ -117,6 +117,13 @@ remain deferred.
 - Hash archives incrementally; avoid allocating an entire archive for each SHA-256 pass.
 - Prevent the full matrix controller from restarting while the user's hold is active.
 
+The controller now detects the first failed join from the complete ramp log, even when
+later success lines push the warning outside the five-line tail. It stops further joins,
+labels the attempt unscored, preserves both endpoint archives, and gives the swarm a
+finite service lifetime. Eight Python tests pass, including full abort/cleanup fixtures
+and a successful-ramp status check. The completed remote pilot's logs also pass the
+read-only probe. [Controller failure validation](controller-failure-validation.json).
+
 These changes do not shorten the five-minute scored window or discard failed evidence.
 The completed pilot took 713.85 seconds overall, including 52.34 seconds of analysis.
 The slower endpoint spent 24.27 seconds archiving and 219.11 seconds downloading and
