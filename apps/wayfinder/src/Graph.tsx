@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { DependencyMap } from "./DependencyMap";
 import { FILTER_LABEL, MapIcon, SearchIcon, StagesIcon } from "./icons";
 import {
@@ -16,12 +16,20 @@ import { TicketPanel } from "./TicketPanel";
 type Props = {
 	map: MapBundle;
 	filter: Filter;
+	filters: ReactNode;
 	selectedId: string | null;
 	onSelect: (id: string | null) => void;
 	onFilter: (filter: Filter) => void;
 };
 
-export function Graph({ map, filter, selectedId, onSelect, onFilter }: Props) {
+export function Graph({
+	map,
+	filter,
+	filters,
+	selectedId,
+	onSelect,
+	onFilter,
+}: Props) {
 	const [mode, setMode] = useState<"stages" | "map">("stages");
 	const [query, setQuery] = useState("");
 	const [direction, setDirection] = useState<Direction>("horizontal");
@@ -107,19 +115,26 @@ export function Graph({ map, filter, selectedId, onSelect, onFilter }: Props) {
 						Dependencies
 					</button>
 				</fieldset>
-				<label className="task-search">
-					<SearchIcon />
-					<input
-						type="search"
-						aria-label="Search tasks"
-						placeholder="Search tasks by title or #issue"
-						value={query}
-						onChange={(event) => setQuery(event.target.value)}
-					/>
-				</label>
-				<span className="result-count" aria-live="polite">
-					{visible.length} of {map.tickets.length} tasks
-				</span>
+				{filters}
+				<div className="search-controls">
+					<label className="task-search">
+						<SearchIcon />
+						<input
+							type="search"
+							aria-label="Search tasks"
+							placeholder="Search tasks or #issue"
+							value={query}
+							onChange={(event) => setQuery(event.target.value)}
+						/>
+					</label>
+					<span
+						className="result-count"
+						aria-live="polite"
+						aria-label={`${visible.length} of ${map.tickets.length} tasks`}
+					>
+						{visible.length} / {map.tickets.length}
+					</span>
+				</div>
 				{mode === "map" ? (
 					<label className="direction-control">
 						Flow{" "}
@@ -288,7 +303,7 @@ export function Graph({ map, filter, selectedId, onSelect, onFilter }: Props) {
 
 export function MapTrigger({ onOpen }: { onOpen: () => void }) {
 	return (
-		<button type="button" className="chip" onClick={onOpen}>
+		<button type="button" className="chip map-brief" onClick={onOpen}>
 			<MapIcon strokeWidth={2} />
 			Map brief
 		</button>

@@ -2,13 +2,20 @@ import { useEffect, useRef, useState } from "react";
 import { AboutTip } from "./AboutTip";
 import { Graph, MapTrigger } from "./Graph";
 import { DisableThemeTransitions } from "./Theme";
-import { FILTER_LABEL, OpenIcon, SyncIcon, kindIcon } from "./icons";
+import { FILTER_LABEL, SyncIcon, kindIcon } from "./icons";
+import { MapCommand } from "./MapCommand";
 import { MapTabs } from "./MapTabs";
-import { type Filter, type Kind, type MapBundle, counts, mapPrompt } from "./model";
-import { MapCommand } from "./Prompt";
+import { type Filter, type MapBundle, counts } from "./model";
 import { loadSnapshot, saveSnapshot } from "./store";
 
-const KINDS: Kind[] = ["resolved", "claimed", "frontier", "blocked"];
+const FILTERS: Filter[] = [
+	"all",
+	"unresolved",
+	"resolved",
+	"claimed",
+	"frontier",
+	"blocked",
+];
 
 // The open map lives in the URL (?map=<issue number>) so links open the same tab.
 function slugFromUrl(): string | null {
@@ -83,6 +90,7 @@ export function App() {
 
 	const map = maps?.find((item) => item.slug === slug) ?? maps?.[0] ?? null;
 	const tally = map ? counts(map.tickets) : null;
+	const mapTitle = map?.title.replace(/^Map:\s*/i, "");
 
 	const selectMap = (next: string) => {
 		setSlug(next);
@@ -107,93 +115,62 @@ export function App() {
 				Skip to map
 			</a>
 			<header className="chrome">
-				{maps && maps.length > 1 ? (
-					<MapTabs maps={maps} current={map?.slug} onSelect={selectMap} />
-				) : null}
-				<div className="chrome-row">
-					<div className="brand">
-						<div className="brand-row">
-							<h1>{map?.title ?? "Wayfinder"}</h1>
-							<AboutTip
-								text={
-									map?.destination ||
-									"Omega Realm decision tickets as a skill tree. Status comes from the GitHub issues labelled wayfinder:map."
-								}
-							/>
-						</div>
-						{map ? <MapCommand id={map.slug} text={mapPrompt(map)} /> : null}
-					</div>
-					<div className="stats" role="group" aria-label="Filter tickets">
-						{tally ? (
-							<>
-								<button
-									type="button"
-									className="chip"
-									aria-pressed={filter === "all"}
-									onClick={() => setFilter("all")}
-								>
-									<span className="n">{tally.total}</span>
-									All
-								</button>
-								<button
-									type="button"
-									className="chip"
-									aria-pressed={filter === "unresolved"}
-									onClick={() =>
-										setFilter((current) =>
-											current === "unresolved" ? "all" : "unresolved",
-										)
-									}
-								>
-									<OpenIcon strokeWidth={2} />
-									<span className="n">{tally.unresolved}</span>
-									Unresolved
-								</button>
-								{KINDS.map((kind) => {
-									const Icon = kindIcon(kind);
-									return (
-										<button
-											key={kind}
-											type="button"
-											className={`chip kind-${kind}`}
-											aria-pressed={filter === kind}
-											onClick={() =>
-												setFilter((current) =>
-													current === kind ? "all" : kind,
-												)
-											}
-										>
-											<Icon strokeWidth={2} />
-											<span className="n">{tally[kind]}</span>
-											{FILTER_LABEL[kind]}
-										</button>
-									);
-								})}
-								<MapTrigger onOpen={() => setSelectedId("map")} />
-							</>
-						) : null}
-						<button
-							type="button"
-							className="chip sync"
-							onClick={() => void sync()}
-							disabled={syncing}
-							aria-busy={syncing}
-							title={
-								error && maps
-									? `Last sync failed: ${error}`
-									: "Fetch the latest issues from GitHub"
-							}
-						>
-							<SyncIcon strokeWidth={2} />
+				<div className="map-navigation">
+					<h1 className="sr-only">{map?.title ?? "Wayfinder"}</h1>
+					{maps?.length ? (
+						<MapTabs maps={maps} current={map?.slug} onSelect={selectMap} />
+					) : (
+						<span className="app-name">Wayfinder</span>
+					)}
+					{map ? (
+						<span className="map-destination" title={map.title}>
+							{mapTitle?.includes(":")
+								? mapTitle.slice(mapTitle.indexOf(":") + 1).trim()
+								: map.destination}
+						</span>
+					) : null}
+					<AboutTip
+						key={map?.slug}
+						text={
+							map?.destination ||
+							map?.title ||
+							"Omega Realm decision tickets as a skill tree."
+						}
+					/>
+				</div>
+				<div className="map-actions">
+					{map ? <MapCommand key={map.slug} slug={map.slug} /> : null}
+					{map ? <MapTrigger onOpen={() => setSelectedId("map")} /> : null}
+					<button
+						type="button"
+						className="chip sync"
+						onClick={() => void sync()}
+						disabled={syncing}
+						aria-busy={syncing}
+						aria-label={
+							syncing
+								? "Syncing issues"
+								: error
+									? "Sync failed, retry"
+									: "Sync issues from GitHub"
+						}
+						title={
+							error
+								? `Last sync failed: ${error}. Retry sync.`
+								: "Fetch the latest issues from GitHub"
+						}
+					>
+						<SyncIcon strokeWidth={2} />
+						<span>
 							{syncing
 								? "Syncing…"
-								: error && maps
-									? "Sync failed, retry"
+								: error
+									? "Retry sync"
 									: syncedAt
 										? `Synced ${ago(now - syncedAt)}`
 										: "Sync"}
-						</button>
-					</div>
+						</span>
+					</button>
 				</div>
 			</header>
 			<main className="stage" id="tree">
@@ -225,6 +202,15 @@ export function App() {
 						filter={filter}
 						selectedId={selectedId}
 						onSelect={setSelectedId}
+						filters={
+							tally ? (
+								<TicketFilters
+									tally={tally}
+									filter={filter}
+									onFilter={setFilter}
+								/>
+							) : null
+						}
 						onFilter={setFilter}
 					/>
 				)}
@@ -236,6 +222,40 @@ export function App() {
 						: `Showing ${tally[filter]} ${FILTER_LABEL[filter].toLowerCase()} ${tally[filter] === 1 ? "ticket" : "tickets"}.`
 					: ""}
 			</div>
+		</div>
+	);
+}
+
+function TicketFilters({
+	tally,
+	filter,
+	onFilter,
+}: {
+	tally: ReturnType<typeof counts>;
+	filter: Filter;
+	onFilter: (filter: Filter) => void;
+}) {
+	return (
+		<div className="stats" role="group" aria-label="Filter tickets">
+			{FILTERS.map((value) => {
+				const Icon =
+					value === "all" || value === "unresolved" ? null : kindIcon(value);
+				return (
+					<button
+						key={value}
+						type="button"
+						className={`chip kind-${value}`}
+						aria-pressed={filter === value}
+						onClick={() => onFilter(filter === value ? "all" : value)}
+					>
+						{Icon ? <Icon strokeWidth={2} /> : null}
+						{FILTER_LABEL[value]}
+						<span className="n">
+							{value === "all" ? tally.total : tally[value]}
+						</span>
+					</button>
+				);
+			})}
 		</div>
 	);
 }

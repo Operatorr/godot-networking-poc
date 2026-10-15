@@ -76,31 +76,3 @@ export function PromptField({ text }: { text: string }) {
 		</div>
 	);
 }
-
-// The map's own run command, shown under the title: the map is an issue too,
-// but it never appears as a card, so this is where its number lives.
-export function MapCommand({ id, text }: { id: string; text: string }) {
-	const { copied, copy } = useCopy(text);
-
-	return (
-		<div className="map-command">
-			<span className="map-id">Map #{id}</span>
-			<button
-				type="button"
-				className="command-btn"
-				title="Copy, then paste into Claude Code to work the next frontier ticket"
-				aria-label={copied ? "Copied" : `Copy ${text}`}
-				onClick={() => void copy()}
-			>
-				<code>{text}</code>
-				<CopyGlyph copied={copied} />
-			</button>
-			<span className="map-command-hint">
-				{copied ? "Copied" : "runs the next frontier ticket"}
-			</span>
-			<div className="status" role="status">
-				{copied ? "Copied" : ""}
-			</div>
-		</div>
-	);
-}

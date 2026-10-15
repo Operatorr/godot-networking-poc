@@ -53,7 +53,7 @@ export function MapTabs({ maps, current, onSelect }: Props) {
 						title={map.title}
 						onClick={() => onSelect(map.slug)}
 					>
-						{tabLabel(map.title)}
+						<span className="tab-label">{tabLabel(map.title)}</span>
 						<span className="n" title="Unresolved tickets">
 							{unresolved}
 						</span>
