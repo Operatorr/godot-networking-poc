@@ -120,8 +120,9 @@ is off; this does not establish causal profiler overhead.
 load in the [matched unprofiled cell](dodge150.md), with lower generator CPU and all
 per-peer delivery gates passing. It is a demonstrated generator improvement, not a
 capacity pass: game send errors and the strict AoI assertion remain failures.
-The next isolated intervention tests send burst allowance, with the optimized bot
-and receive request frozen. Actual remote map occupancy remains unknown.
+The next isolated intervention [tests send burst allowance](SEND-BUFFER-CANDIDATE.md),
+with the optimized bot and receive request frozen. Local ENet startup/configuration
+tests and required workspace checks pass. Actual remote map occupancy remains unknown.
 
 ## Completion state
 

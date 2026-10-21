@@ -23,18 +23,21 @@ pub struct EnetUdpSocket {
     socket: UdpSocket,
     observation: Option<TransportObservation>,
     receive_buffer_override: Option<usize>,
+    send_buffer_override: Option<usize>,
 }
 
 impl EnetUdpSocket {
     pub fn bind(
         address: impl ToSocketAddrs,
         receive_buffer_override: Option<usize>,
+        send_buffer_override: Option<usize>,
     ) -> io::Result<Self> {
         UdpSocket::bind(address).map(|socket| Self {
             socket,
             observation: std::env::var_os("OMEGA_MEASURE_DIR")
                 .map(|_| TransportObservation::default()),
             receive_buffer_override,
+            send_buffer_override,
         })
     }
 
@@ -56,11 +59,12 @@ impl Socket for EnetUdpSocket {
         let receive_bytes = self
             .receive_buffer_override
             .unwrap_or(options.receive_buffer);
+        let send_bytes = self.send_buffer_override.unwrap_or(options.send_buffer);
         native.set_recv_buffer_size(receive_bytes)?;
-        native.set_send_buffer_size(options.send_buffer)?;
+        native.set_send_buffer_size(send_bytes)?;
         tracing::info!(
             requested_receive_bytes = receive_bytes,
-            requested_send_bytes = options.send_buffer,
+            requested_send_bytes = send_bytes,
             effective_receive_bytes = native.recv_buffer_size()?,
             effective_send_bytes = native.send_buffer_size()?,
             "ENet UDP socket buffers initialized"
@@ -111,7 +115,7 @@ mod tests {
 
     #[test]
     fn init_applies_requested_buffers_and_keeps_nonblocking() {
-        let mut socket = EnetUdpSocket::bind(("127.0.0.1", 0), None).unwrap();
+        let mut socket = EnetUdpSocket::bind(("127.0.0.1", 0), None, None).unwrap();
         socket
             .init(SocketOptions {
                 receive_buffer: 16 * 1024,
@@ -129,7 +133,7 @@ mod tests {
 
     #[test]
     fn host_startup_uses_enet_buffer_requests() {
-        let socket = EnetUdpSocket::bind(("127.0.0.1", 0), None).unwrap();
+        let socket = EnetUdpSocket::bind(("127.0.0.1", 0), None, None).unwrap();
         let host = rusty_enet::Host::new(socket, rusty_enet::HostSettings::default()).unwrap();
         let native = SockRef::from(&host.socket().socket);
         assert!(native.recv_buffer_size().unwrap() >= 256 * 1024);
@@ -139,12 +143,12 @@ mod tests {
     #[test]
     fn host_startup_applies_receive_override_without_changing_send_buffer() {
         let normal = rusty_enet::Host::new(
-            EnetUdpSocket::bind(("127.0.0.1", 0), None).unwrap(),
+            EnetUdpSocket::bind(("127.0.0.1", 0), None, None).unwrap(),
             rusty_enet::HostSettings::default(),
         )
         .unwrap();
         let mut overridden = rusty_enet::Host::new(
-            EnetUdpSocket::bind(("127.0.0.1", 0), Some(16 * 1024)).unwrap(),
+            EnetUdpSocket::bind(("127.0.0.1", 0), Some(16 * 1024), None).unwrap(),
             rusty_enet::HostSettings::default(),
         )
         .unwrap();
@@ -171,7 +175,7 @@ mod tests {
 
     #[test]
     fn observed_socket_preserves_datagrams_and_counts_empty_reads() {
-        let mut socket = EnetUdpSocket::bind(("127.0.0.1", 0), None).unwrap();
+        let mut socket = EnetUdpSocket::bind(("127.0.0.1", 0), None, None).unwrap();
         socket.observation = Some(TransportObservation::default());
         socket
             .init(SocketOptions {
@@ -205,5 +209,32 @@ mod tests {
             observation.send_errors + observation.receive_errors + observation.zero_byte_sends,
             0
         );
+    }
+
+    #[test]
+    fn host_startup_applies_send_override_and_preserves_receive_and_nonblocking() {
+        let control = rusty_enet::Host::new(
+            EnetUdpSocket::bind(("127.0.0.1", 0), Some(16 * 1024), None).unwrap(),
+            rusty_enet::HostSettings::default(),
+        )
+        .unwrap();
+        let mut candidate = rusty_enet::Host::new(
+            EnetUdpSocket::bind(("127.0.0.1", 0), Some(16 * 1024), Some(32 * 1024)).unwrap(),
+            rusty_enet::HostSettings::default(),
+        )
+        .unwrap();
+        let native = SockRef::from(&candidate.socket().socket);
+        let normal = SockRef::from(&control.socket().socket);
+        assert!((32 * 1024..=128 * 1024).contains(&native.send_buffer_size().unwrap()));
+        assert!(native.send_buffer_size().unwrap() < normal.send_buffer_size().unwrap());
+        assert_eq!(
+            native.recv_buffer_size().unwrap(),
+            normal.recv_buffer_size().unwrap()
+        );
+        assert!(candidate
+            .socket_mut()
+            .receive(&mut [0; MTU_MAX])
+            .unwrap()
+            .is_none());
     }
 }
