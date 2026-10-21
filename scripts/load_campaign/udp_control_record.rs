@@ -62,8 +62,14 @@ fn commands(data: &[u8]) -> io::Result<Vec<[u8; 16]>> {
             let ticket_len = usize::from(u16::from_le_bytes([body[2], body[3]]));
             if ticket_len == 0 {
                 let name_len = usize::from(body[4]);
-                if let Some(name) = body.get(5..5 + name_len).and_then(|b| std::str::from_utf8(b).ok()) {
-                    if let Some(id) = name.strip_prefix("LoadBot").and_then(|s| s.parse::<u16>().ok()) {
+                if let Some(name) = body
+                    .get(5..5 + name_len)
+                    .and_then(|b| std::str::from_utf8(b).ok())
+                {
+                    if let Some(id) = name
+                        .strip_prefix("LoadBot")
+                        .and_then(|s| s.parse::<u16>().ok())
+                    {
                         row[13..15].copy_from_slice(&id.to_le_bytes());
                         row[15] = 1;
                     }
@@ -74,6 +80,21 @@ fn commands(data: &[u8]) -> io::Result<Vec<[u8; 16]>> {
         offset += size + length;
     }
     Ok(result)
+}
+
+// A checkpoint is evidence of a prefix only. EOF means the supplied pipe ended;
+// controller status and tcpdump loss still decide full-workload capture coverage.
+fn checkpoint(
+    directory: &str,
+    packets: u64,
+    parse_errors: u64,
+    last: Option<u64>,
+    status: &str,
+) -> io::Result<()> {
+    let last = last.map_or("null".into(), |s| s.to_string());
+    let temporary = format!("{directory}/parser-status.tmp");
+    std::fs::write(&temporary, format!("{{\"format\":\"udp-parser-status-v1\",\"status\":\"{status}\",\"packets\":{packets},\"parse_errors\":{parse_errors},\"last_read_record_utc_ns\":{last}}}\n"))?;
+    std::fs::rename(temporary, format!("{directory}/parser-status.json"))
 }
 
 fn main() -> io::Result<()> {
@@ -96,103 +117,133 @@ fn main() -> io::Result<()> {
         1024 * 1024,
         File::create_new(format!("{directory}/datagrams.bin"))?,
     );
-    let mut global = [0; 24];
-    input.read_exact(&mut global)?;
-    if global[..4] != [0xd4, 0xc3, 0xb2, 0xa1] || le32(&global[20..]) != 1 {
-        return Err(io::Error::other(
-            "expected little-endian microsecond Ethernet pcap",
-        ));
-    }
-    global[16..20].copy_from_slice(&128_u32.to_le_bytes());
-    headers.write_all(&global)?;
-    output.write_all(b"ORF1")?;
     let (mut packets, mut parse_errors) = (0_u64, 0_u64);
-    loop {
-        let mut record = [0; 16];
-        match input.read_exact(&mut record) {
-            Ok(()) => {}
-            Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => break,
-            Err(e) => return Err(e),
+    let mut last = None;
+    let mut last_checkpoint = std::time::Instant::now();
+    checkpoint(&directory, packets, parse_errors, last, "running")?;
+    let result = (|| -> io::Result<()> {
+        let mut global = [0; 24];
+        input.read_exact(&mut global)?;
+        if global[..4] != [0xd4, 0xc3, 0xb2, 0xa1] || le32(&global[20..]) != 1 {
+            return Err(io::Error::other(
+                "expected little-endian microsecond Ethernet pcap",
+            ));
         }
-        let cap_len = le32(&record[8..]) as usize;
-        if cap_len > 65536 {
-            return Err(io::Error::other("oversized capture record"));
-        }
-        let mut bytes = vec![0; cap_len];
-        input.read_exact(&mut bytes)?;
-        let retained = cap_len.min(128);
-        let mut retained_record = record;
-        retained_record[8..12].copy_from_slice(&(retained as u32).to_le_bytes());
-        headers.write_all(&retained_record)?;
-        headers.write_all(&bytes[..retained])?;
-        packets += 1;
-        if bytes.len() < 42 || be16(&bytes[12..]) != 0x0800 {
-            parse_errors += 1;
-            continue;
-        }
-        let ip = &bytes[14..];
-        let ip_header = usize::from(ip[0] & 15) * 4;
-        let ip_length = usize::from(be16(&ip[2..]));
-        if ip.len() < ip_length || ip[9] != 17 || ip_header < 20 || ip_header + 8 > ip_length {
-            parse_errors += 1;
-            continue;
-        }
-        let udp = &ip[ip_header..ip_length];
-        let udp_length = usize::from(be16(&udp[4..]));
-        if udp_length < 8 || udp_length > udp.len() {
-            parse_errors += 1;
-            continue;
-        }
-        let payload = &udp[8..udp_length];
-        let mut hash = std::collections::hash_map::DefaultHasher::new();
-        hash.write(payload);
-        let command_rows = match commands(payload) {
-            Ok(rows) => rows,
-            Err(_) => {
-                parse_errors += 1;
-                Vec::new()
+        global[16..20].copy_from_slice(&128_u32.to_le_bytes());
+        headers.write_all(&global)?;
+        output.write_all(b"ORF1")?;
+        loop {
+            if last_checkpoint.elapsed().as_secs() >= 1 {
+                checkpoint(&directory, packets, parse_errors, last, "running")?;
+                output.flush()?;
+                last_checkpoint = std::time::Instant::now();
             }
-        };
-        let stamp = u64::from(le32(&record)) * 1_000_000_000 + u64::from(le32(&record[4..])) * 1000;
-        if let Some(stats) = article.as_mut() {
-            stats.observe(
-                stamp,
-                be16(&udp[..2]),
-                be16(&udp[2..4]),
-                ip_length as u64,
-                &command_rows,
-            )?;
-        }
-        // The same UDP fingerprint is selected at both endpoints, including retries.
-        // No headers or command descriptors are retained in article mode.
-        if !compact || hash.finish() % 64 == 0 {
-            output.write_all(&stamp.to_le_bytes())?;
-            output.write_all(&udp[..4])?;
-            output.write_all(&(ip_length as u16).to_le_bytes())?;
-            output.write_all(&(udp_length as u16).to_le_bytes())?;
-            output.write_all(&hash.finish().to_le_bytes())?;
-            output.write_all(
-                &(if compact {
-                    0
-                } else {
-                    command_rows.len() as u16
-                })
-                .to_le_bytes(),
-            )?;
-            if !compact {
-                for row in command_rows {
-                    output.write_all(&row)?;
+            let mut record = [0; 16];
+            // Distinguish a clean EOF from a truncated pcap record header.
+            match input.read(&mut record[..1]) {
+                Ok(0) => break,
+                Ok(_) => input.read_exact(&mut record[1..])?,
+                Err(e) => return Err(e),
+            }
+            let cap_len = le32(&record[8..]) as usize;
+            if cap_len > 65536 {
+                return Err(io::Error::other("oversized capture record"));
+            }
+            let mut bytes = vec![0; cap_len];
+            input.read_exact(&mut bytes)?;
+            let retained = cap_len.min(128);
+            let mut retained_record = record;
+            retained_record[8..12].copy_from_slice(&(retained as u32).to_le_bytes());
+            headers.write_all(&retained_record)?;
+            headers.write_all(&bytes[..retained])?;
+            packets += 1;
+            let stamp =
+                u64::from(le32(&record)) * 1_000_000_000 + u64::from(le32(&record[4..])) * 1000;
+            last = Some(stamp);
+            if bytes.len() < 42 || be16(&bytes[12..]) != 0x0800 {
+                parse_errors += 1;
+                continue;
+            }
+            let ip = &bytes[14..];
+            let ip_header = usize::from(ip[0] & 15) * 4;
+            let ip_length = usize::from(be16(&ip[2..]));
+            if ip.len() < ip_length || ip[9] != 17 || ip_header < 20 || ip_header + 8 > ip_length {
+                parse_errors += 1;
+                continue;
+            }
+            let udp = &ip[ip_header..ip_length];
+            let udp_length = usize::from(be16(&udp[4..]));
+            if udp_length < 8 || udp_length > udp.len() {
+                parse_errors += 1;
+                continue;
+            }
+            let payload = &udp[8..udp_length];
+            let mut hash = std::collections::hash_map::DefaultHasher::new();
+            hash.write(payload);
+            let command_rows = match commands(payload) {
+                Ok(rows) => rows,
+                Err(_) => {
+                    parse_errors += 1;
+                    Vec::new()
+                }
+            };
+            if let Some(stats) = article.as_mut() {
+                stats.observe(
+                    stamp,
+                    be16(&udp[..2]),
+                    be16(&udp[2..4]),
+                    ip_length as u64,
+                    &command_rows,
+                )?;
+            }
+            // The same UDP fingerprint is selected at both endpoints, including retries.
+            // No headers or command descriptors are retained in article mode.
+            if !compact || hash.finish() % 64 == 0 {
+                output.write_all(&stamp.to_le_bytes())?;
+                output.write_all(&udp[..4])?;
+                output.write_all(&(ip_length as u16).to_le_bytes())?;
+                output.write_all(&(udp_length as u16).to_le_bytes())?;
+                output.write_all(&hash.finish().to_le_bytes())?;
+                output.write_all(
+                    &(if compact {
+                        0
+                    } else {
+                        command_rows.len() as u16
+                    })
+                    .to_le_bytes(),
+                )?;
+                if !compact {
+                    for row in command_rows {
+                        output.write_all(&row)?;
+                    }
                 }
             }
         }
-    }
-    headers.flush()?;
-    output.flush()?;
-    if let Some(stats) = article {
-        stats.finish()?;
-    }
+        Ok(())
+    })();
+    // Preserve complete prefix counters even when a parser/state guard fails.
+    // SIGKILL/OOM can only leave the last running checkpoint, never an EOF claim.
+    let finalization = (|| -> io::Result<()> {
+        headers.flush()?;
+        output.flush()?;
+        if let Some(stats) = article {
+            stats.finish()?;
+        }
+        Ok(())
+    })();
+    checkpoint(
+        &directory,
+        packets,
+        parse_errors,
+        last,
+        if result.is_ok() && finalization.is_ok() {
+            "eof"
+        } else {
+            "error"
+        },
+    )?;
     eprintln!("flow recorder packets={packets} parse_errors={parse_errors}");
-    Ok(())
+    result.and(finalization)
 }
 
 #[cfg(test)]

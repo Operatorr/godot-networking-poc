@@ -28,5 +28,42 @@ class ControlFlowTests(ArticleFlowTests):
         directory, _ = self.replay(True, [(9.1, 40000, payload)])
         self.assertEqual((directory/'port-bot.csv').read_text(), 'port,bot_id\n40000,7\n')
 
+    def test_partial_pcap_is_error_and_retains_prefix_evidence(self):
+        import json
+        import struct
+        import tempfile
+        directory = pathlib.Path(tempfile.mkdtemp(dir=self.temp.name))
+        # One complete valid handshake, then an incomplete record header.
+        body = bytes([1, 7, 0, 0, 10]) + b'LoadBot007'
+        payload = b'\x00\x01' + struct.pack('>BBHH', 0x86, 1, 1, len(body)) + body
+        udp = struct.pack('>HHHH', 40000, 8081, len(payload) + 8, 0) + payload
+        ip = bytearray(20)
+        ip[0] = 0x45
+        ip[9] = 17
+        ip[2:4] = struct.pack('>H', 20 + len(udp))
+        frame = bytes(12) + b'\x08\x00' + ip + udp
+        pcap = struct.pack('<IHHIIII', 0xa1b2c3d4, 2, 4, 0, 0, 65535, 1)
+        pcap += struct.pack('<IIII', 9, 0, len(frame), len(frame)) + frame + b'\x01'
+        result = subprocess.run([str(self.binary), str(directory), '--article'], input=pcap, capture_output=True)
+        self.assertNotEqual(result.returncode, 0)
+        status = json.loads((directory/'parser-status.json').read_text())
+        self.assertEqual(status['status'], 'error')
+        self.assertEqual(status['packets'], 1)
+        self.assertEqual(status['parse_errors'], 0)
+        self.assertEqual(status['last_read_record_utc_ns'], 9_000_000_000)
+        self.assertEqual((directory/'port-bot.csv').read_text(), 'port,bot_id\n40000,7\n')
+        summary = json.loads((directory/'flow-summary.json').read_text())
+        self.assertEqual(summary['format'], 'udp-diagnostic-points-v2')
+        self.assertEqual(summary['reliable_history_bytes'], 4096)
+        self.assertEqual(summary['unclassified_reliable_all_capture'], [0, 0])
+
+    def test_eof_status_does_not_hide_malformed_packets(self):
+        import json
+        directory, _ = self.replay(True, [(9.1, 40000, b'\x00')])
+        status = json.loads((directory/'parser-status.json').read_text())
+        self.assertEqual(status['status'], 'eof')
+        self.assertEqual(status['packets'], 1)
+        self.assertEqual(status['parse_errors'], 1)
+
 if __name__ == '__main__':
     unittest.main()

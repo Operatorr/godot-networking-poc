@@ -38,3 +38,18 @@ The frozen reproduction's bounded log tail contains 3,907 channel-0 warnings for
 in the correctness ticket. The full-run warning count, its CPU cost, and causal
 role in UDP overflow are not yet established; the current profile experiment
 will help discriminate that role. No fix or capacity improvement is claimed here.
+
+## Wire collector stopped at two million reliable commands
+
+**Confirmed measurement defect.** Both instrumented-control readers exhausted the
+per-command history guard. This truncated late wire cadence/retry evidence and
+prevented final port mappings and parser totals. Existing missing values remain
+null. A real-path regression reproduced the same guard failure locally.
+
+[The collector repair](COLLECTOR-REPAIR.md) replaces growing per-command state with
+a bounded per-stream sequence window and labels the changed retry semantics in a
+new evidence format. It incrementally preserves mappings and parser status,
+including failure status for a truncated pcap. Five Rust tests and six replay
+tests pass; remote sustained coverage and collector perturbation remain pending.
+The active bitmap comparison uses the old collector unchanged, so this repair
+cannot contaminate that comparison.
