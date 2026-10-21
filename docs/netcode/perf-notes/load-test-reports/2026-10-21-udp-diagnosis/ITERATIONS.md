@@ -27,6 +27,13 @@ sequentially, with cleanup verified before the next dispatch.
 | Baseline Strategy 200 reproduction | Reproduce the reported failure and identify which process/socket drops datagrams; no performance tuning | Frozen game/bots; native settings; bounded diagnostic; socket observations added | Failed ramp after 38.05 s; peak 189 authenticated; all 172,927 game receive-buffer errors attributed to its socket; 4,178 bot-host errors, at least 3,745 on bot sockets; input cadence unknown | [Full evidence and verified restoration](baseline-reproduction.md) |
 | Frozen-build profile reproduction | Identify dominant CPU work during queue overflow; prediction: transport/replication, logging or generator hot paths distinguish the competing explanations | Same frozen builds/settings; bounded CPU profiling added; diagnostic only | Pending | Separate delegated agent owns one run and restoration |
 
+The first profiling preflight found no installed sampler and launched **zero**
+experiments. A replacement run agent is provisioning compatible perf tools,
+validating bounded recording on a disposable process, then executing the single
+planned frozen-build observation. This does not authorize a kernel upgrade or a
+change to global perf access policy. The bot ramp recorder fix `3b910cd` remains
+excluded from that frozen-build experiment.
+
 ## Ranked hypotheses after reproduction
 
 1. **Serial processing delays reads.** If ENet servicing or replication dominates,

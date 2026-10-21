@@ -11,6 +11,8 @@ terminated during the join ramp, leaving `bots.ndjson` empty. The recorder was
 only called after joining finished. This prevents per-bot offered-load and
 delivery/error analysis exactly when overload prevents the swarm from joining.
 
+Fix revision: [`3b910cd`](https://github.com/Operatorr/godot-networking-poc/commit/3b910cd).
+
 The integration regression `unsettled_join_records_ramp_before_phase_two` starts
 the actual bot binary against a local UDP endpoint that never answers the ENet
 handshake. It failed on the original code because no observations were flushed.
@@ -20,7 +22,8 @@ start or change the 60-second global warmup clock. Additional cumulative observe
 timing includes serialization and flush cost, reported in the following sample.
 
 Validation: `cargo test --workspace`, `cargo clippy --workspace --all-targets`,
-and `cargo fmt --check` passed (existing Clippy warnings remain). Remote matched
+and `cargo fmt --check` passed (existing Clippy warnings remain). The client
+GDExtension rebuild also passed. Remote matched
 observation and causal overhead comparison are pending. This is an instrumentation
 change, not a performance optimization.
 
