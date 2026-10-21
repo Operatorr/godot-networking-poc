@@ -32,6 +32,7 @@ sequentially, with cleanup verified before the next dispatch.
 | Game receive-buffer request, Strategy 200 | Test whether more burst capacity prevents initial overflow and retry amplification, rather than hiding sustained backlog | Game `f1cc5d6`, request 2 MiB; same control bots; collector `994cce8` corrects identity extraction only | Effective 4 MiB delayed first loss to 197–199 players; reached 200 then collapsed. 159,266 socket drops; no capacity pass. | [Evidence and verified cleanup](receive-buffer.md); all 200 live mappings agree, but pre-swarm measurement restart qualifies runtime proof |
 | Sustained Strategy 150 | Test the lower rung with unchanged game/bots and larger receive queue, full warmup and measurement | Same `f1cc5d6` game/control bots/collector; atomic schedule publication and continuous runtime identity proof | All 150 authenticated for 300 s, TickHz 30.0; generator-invalid at 18.34 Hz offered and 15.38–18.22 Hz wire. Zero receive drops, 637 game send-buffer errors; delivery and strict AoI gates also failed. Historical Strategy 100 remains highest validated. | [Evidence and twice-verified cleanup](capacity150.md); full wire coverage, bounded journal prefix supplemented by complete compact counts |
 | Sustained generator profile, incomplete | Distinguish early/late generator hot paths without changing the workload | Same Strategy 150 binaries/settings; two planned bounded generator recordings | Controller aborted at Phase 2 +28.87 s after incorrectly rejecting perf's intentional SIGINT exit. Early 1,699 samples valid, near-30 Hz offered input; no late profile or measurement window. No capacity claim. | [Evidence and two cleanup audits](generator-profile.md); retained early disassembly attribution is qualified, sustained bottleneck unresolved |
+| Corrected sustained generator profile | Obtain the missing late profile using the repaired completion gate | Same frozen Strategy 150 condition, two bounded generator profiles | Full window completed, generator-invalid at 18.213 Hz and 97.68% CPU. Strategy inclusive CPU rose 19.37% → 51.21%; owner-iterator subset 6.26% → 10.62%. Game 264 steady send-buffer errors; nine delivery failures. | [Validated profiles and independent cleanup](generator-profile-fixed.md); no capacity increase, owner occupancy/poll-cycle duration remain unknown |
 
 Local candidate preparation: [linear stale-cache membership](REPLICATION-CANDIDATE.md)
 replaces repeated slice scans with a u16 bitmap. A HashSet trial was rejected for
@@ -108,13 +109,18 @@ The larger receive queue delays loss but does not sustain 200. The
 failed generator validity. Its zero receive drops cannot establish a throughput
 fix at 30 Hz offered load. Atomic publication worked without a service restart.
 
-The first [bounded sustained-generator profile](GENERATOR-PROFILE-PLAN.md) was
-aborted by a new controller defect before its late window. Its usable early
-samples do not locate the sustained limit. The parent will repair and regression-test
-the SIGINT completion gate before one fresh diagnostic attempt with the same plan.
-That repeat is necessary to obtain the missing late profile, not a confirmation
-of a capacity result. No generator behavior, scheduling, game settings or buffers
-will change in that cell.
+The corrected [bounded sustained-generator profile](generator-profile-fixed.md)
+completed both recordings. Its largest resolved late cost is Strategy decision
+work, with hash-map iteration prominent. The earlier controller defect is fixed
+and remotely validated. Cadence falls near Phase 2 +50..60 seconds while profiling
+is off; this does not establish causal profiler overhead.
+
+Source inspection finds that Strategy's nearest-projectile search iterates all
+remembered owners before checking visibility. The next candidate will reverse
+that intersection when the visible table is smaller, preserving the old nearest
+selection and tie behavior. A local real-function timing/differential harness
+precedes the matched remote comparison. Actual remote map occupancy remains
+unknown, so the eventual changed-build result must establish its practical effect.
 
 ## Completion state
 

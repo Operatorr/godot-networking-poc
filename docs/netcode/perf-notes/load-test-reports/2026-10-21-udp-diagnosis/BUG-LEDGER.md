@@ -125,3 +125,12 @@ the false rejection, and changed only the accepted nominal return codes to
 status guards. The source in `e5f5ee0` and private executed copies preserves the
 historical defect; subsequent source contains the repair. Remote validation is
 pending the [corrected diagnostic attempt](GENERATOR-PROFILE-PLAN.md).
+
+The [corrected attempt](generator-profile-fixed.md) completed both profiles and the
+full workload: disposable preflight and live recording statuses all passed the
+same shared gate, followed by successful independent data validation. It remained
+generator-invalid at 18.213 Hz. Separate steady findings include 264 game zero-byte
+sends/SndbufErrors, nine delivery-gate failures, strict AoI failure, two baseline
+reference misses, four unknown delta entities and 349,506 oversized warnings.
+The owner/map hot paths now justify a focused generator search optimization; no
+new capacity or clean-run claim follows from profiling.
