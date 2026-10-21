@@ -199,7 +199,7 @@ fn main() -> io::Result<()> {
             }
             // The same UDP fingerprint is selected at both endpoints, including retries.
             // No headers or command descriptors are retained in article mode.
-            if !compact || hash.finish() % 64 == 0 {
+            if !compact || hash.finish().is_multiple_of(64) {
                 output.write_all(&stamp.to_le_bytes())?;
                 output.write_all(&udp[..4])?;
                 output.write_all(&(ip_length as u16).to_le_bytes())?;

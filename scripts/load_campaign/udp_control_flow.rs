@@ -67,69 +67,6 @@ struct Counts {
     types: BTreeMap<u8, u64>,
 }
 
-#[cfg(test)]
-mod sustained_tests {
-    use super::*;
-
-    #[test]
-    fn sequence_window_tracks_wrap_reorder_and_half_range_ambiguity() {
-        let mut seen = SequenceWindow::default();
-        assert_eq!(seen.observe(65534), Some(false));
-        assert_eq!(seen.observe(0), Some(false));
-        assert_eq!(seen.observe(65535), Some(false));
-        assert_eq!(seen.observe(65534), Some(true));
-        assert_eq!(seen.observe(0), Some(true));
-        assert_eq!(seen.observe(32768), None);
-        assert_eq!(seen.observe(0), Some(true));
-        for n in 1..=65535 {
-            assert_eq!(seen.observe(n), Some(false));
-        }
-        assert_eq!(seen.observe(0), Some(false));
-        assert_eq!(seen.observe(65535), Some(true));
-    }
-
-    #[test]
-    fn sequence_window_matches_bounded_reference_with_jumps_and_reordering() {
-        let mut window = SequenceWindow::default();
-        let mut history = std::collections::HashSet::new();
-        let mut maximum = 0_i64;
-        for i in 0..100_000_i64 {
-            let sequence = if i % 7 == 0 {
-                maximum - 400
-            } else {
-                maximum + i % 200
-            };
-            maximum = maximum.max(sequence);
-            history.retain(|s| *s > maximum - 32768);
-            let expected = !history.insert(sequence);
-            assert_eq!(window.observe(sequence as u16), Some(expected));
-        }
-    }
-
-    #[test]
-    fn sustained_reliable_stream_does_not_exhaust_command_history() {
-        let path = std::env::temp_dir().join(format!("omega-flow-history-{}", std::process::id()));
-        fs::create_dir(&path).unwrap();
-        let mut flow = ArticleFlow::new(path.to_str().unwrap()).unwrap();
-        let result = (|| -> io::Result<()> {
-            for i in 0..2_000_010_u64 {
-                let mut row = [0_u8; 16];
-                row[0] = 0x86; // Reliable application command; sequence wraps repeatedly.
-                row[1] = 1;
-                row[2..4].copy_from_slice(&(i as u16).to_be_bytes());
-                row[6..8].copy_from_slice(&1_u16.to_be_bytes());
-                row[12] = 67;
-                flow.observe(10_000_000_000 + i * 10_000, 8081, 40001, 64, &[row])?;
-            }
-            flow.finish()
-        })();
-        fs::remove_dir_all(path).unwrap();
-        assert!(
-            result.is_ok(),
-            "sustained stream lost its collector: {result:?}"
-        );
-    }
-}
 impl Counts {
     fn json(&self) -> String {
         let types = self
@@ -383,5 +320,69 @@ impl ArticleFlow {
         });
         let mut file = File::create_new(format!("{}/flow-summary.json", self.directory))?;
         writeln!(file,"{{\"format\":\"udp-diagnostic-points-v2\",\"window\":{window},\"sample_modulus\":64,\"retry_semantics\":\"Observed repeated reliable sequence within a 32768-sequence sliding window per direction/port/channel; nearest-half-range extension from observed data only; no time TTL. Assumes no unseen advance of 32768 or more and no port reuse. First means first observed in retained window, not proven original transmission. Not equivalent to v1 60-second history.\",\"unclassified_reliable_all_capture\":[{},{}],\"reliable_streams\":{},\"reliable_history_bytes\":{},\"schedule_observed_utc_ns\":{schedule_stamp},\"out\":{},\"in\":{},\"wire_input_counts_by_port\":{{{inputs}}},\"capture_first_timestamp_ns\":{first},\"capture_last_timestamp_ns\":{},\"max_timestamp_backstep_ns\":{},\"outstanding_semantics\":\"Not collected: cumulative retries and delivery samples retained instead of per-command ACK state\"}}", self.unclassified_total[0],self.unclassified_total[1],self.reliable.len(),self.reliable.len() * 4096,self.counts[0].json(),self.counts[1].json(),self.last,self.backstep)
+    }
+}
+
+#[cfg(test)]
+mod sustained_tests {
+    use super::*;
+
+    #[test]
+    fn sequence_window_tracks_wrap_reorder_and_half_range_ambiguity() {
+        let mut seen = SequenceWindow::default();
+        assert_eq!(seen.observe(65534), Some(false));
+        assert_eq!(seen.observe(0), Some(false));
+        assert_eq!(seen.observe(65535), Some(false));
+        assert_eq!(seen.observe(65534), Some(true));
+        assert_eq!(seen.observe(0), Some(true));
+        assert_eq!(seen.observe(32768), None);
+        assert_eq!(seen.observe(0), Some(true));
+        for n in 1..=65535 {
+            assert_eq!(seen.observe(n), Some(false));
+        }
+        assert_eq!(seen.observe(0), Some(false));
+        assert_eq!(seen.observe(65535), Some(true));
+    }
+
+    #[test]
+    fn sequence_window_matches_bounded_reference_with_jumps_and_reordering() {
+        let mut window = SequenceWindow::default();
+        let mut history = std::collections::HashSet::new();
+        let mut maximum = 0_i64;
+        for i in 0..100_000_i64 {
+            let sequence = if i % 7 == 0 {
+                maximum - 400
+            } else {
+                maximum + i % 200
+            };
+            maximum = maximum.max(sequence);
+            history.retain(|s| *s > maximum - 32768);
+            let expected = !history.insert(sequence);
+            assert_eq!(window.observe(sequence as u16), Some(expected));
+        }
+    }
+
+    #[test]
+    fn sustained_reliable_stream_does_not_exhaust_command_history() {
+        let path = std::env::temp_dir().join(format!("omega-flow-history-{}", std::process::id()));
+        fs::create_dir(&path).unwrap();
+        let mut flow = ArticleFlow::new(path.to_str().unwrap()).unwrap();
+        let result = (|| -> io::Result<()> {
+            for i in 0..2_000_010_u64 {
+                let mut row = [0_u8; 16];
+                row[0] = 0x86; // Reliable application command; sequence wraps repeatedly.
+                row[1] = 1;
+                row[2..4].copy_from_slice(&(i as u16).to_be_bytes());
+                row[6..8].copy_from_slice(&1_u16.to_be_bytes());
+                row[12] = 67;
+                flow.observe(10_000_000_000 + i * 10_000, 8081, 40001, 64, &[row])?;
+            }
+            flow.finish()
+        })();
+        fs::remove_dir_all(path).unwrap();
+        assert!(
+            result.is_ok(),
+            "sustained stream lost its collector: {result:?}"
+        );
     }
 }
