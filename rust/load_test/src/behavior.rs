@@ -526,6 +526,45 @@ fn nearest_healthorb(view: &View) -> Option<(f32, f32)> {
 /// `(x, y, vx, vy)`. Owners are learned from `PROJECTILE_FIRED`; the bot's own shots are excluded
 /// so it never dodges its own fire.
 fn nearest_incoming_projectile(view: &View) -> Option<(f32, f32, f32, f32)> {
+    if view.entities.is_empty() || view.projectile_owners.is_empty() {
+        return None;
+    }
+    // Owners include shots never visible in our AoI. Search the smaller table
+    // instead of probing the entity map for the entire retained shot history.
+    // HashMap traversal depends on capacity, including after removals/clear.
+    if view.projectile_owners.capacity() <= view.entities.capacity() {
+        return nearest_incoming_projectile_by_owner(view);
+    }
+    let mut nearest: Option<(f32, &KnownEntity)> = None;
+    let mut tied = false;
+    for (id, entity) in view.entities {
+        let Some(owner) = view.projectile_owners.get(id) else {
+            continue;
+        };
+        if *owner == view.my_id {
+            continue;
+        }
+        let distance = dist(view.pos, entity.pos);
+        match nearest.map(|(best, _)| distance.total_cmp(&best)) {
+            None | Some(std::cmp::Ordering::Less) => {
+                nearest = Some((distance, entity));
+                tied = false;
+            }
+            Some(std::cmp::Ordering::Equal) => tied = true,
+            Some(std::cmp::Ordering::Greater) => {}
+        }
+    }
+    // Equal distances used to select the first entry in owner-map order. Keep
+    // that exact winner (and dodge direction) rather than introducing a new tie
+    // rule. Only an ambiguous nearest result needs the historical full scan.
+    if tied {
+        nearest_incoming_projectile_by_owner(view)
+    } else {
+        nearest.map(|(_, e)| (e.pos.0, e.pos.1, e.vel.0, e.vel.1))
+    }
+}
+
+fn nearest_incoming_projectile_by_owner(view: &View) -> Option<(f32, f32, f32, f32)> {
     view.projectile_owners
         .iter()
         .filter(|(_, owner)| **owner != view.my_id)
@@ -538,6 +577,158 @@ fn nearest_incoming_projectile(view: &View) -> Option<(f32, f32, f32, f32)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Frozen owner-first implementation: independent oracle for the optimized
+    // intersection, including HashMap iteration ties and f32 total ordering.
+    fn original_nearest(view: &View) -> Option<(f32, f32, f32, f32)> {
+        view.projectile_owners
+            .iter()
+            .filter(|(_, owner)| **owner != view.my_id)
+            .filter_map(|(pid, _)| view.entities.get(pid))
+            .map(|e| (dist(view.pos, e.pos), e))
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, e)| (e.pos.0, e.pos.1, e.vel.0, e.vel.1))
+    }
+
+    fn shot_view_maps(count: u16) -> (HashMap<u16, KnownEntity>, HashMap<u16, u16>) {
+        let owners = (0..count)
+            .map(|i| (10_000 + i, if i % 7 == 0 { 1 } else { 7 }))
+            .collect();
+        let entities = (0..200u16)
+            .map(|i| {
+                (
+                    10_000 + i,
+                    KnownEntity {
+                        pos: (501.0 + f32::from(i), f32::from(i % 7) * 3.0),
+                        vel: (-400.0, f32::from(i)),
+                        anim: 0,
+                        flags: entity_flags::ALIVE,
+                        last_tick: 1,
+                    },
+                )
+            })
+            .collect();
+        (entities, owners)
+    }
+
+    fn shot_bits(shot: Option<(f32, f32, f32, f32)>) -> Option<[u32; 4]> {
+        shot.map(|(x, y, vx, vy)| [x.to_bits(), y.to_bits(), vx.to_bits(), vy.to_bits()])
+    }
+
+    #[test]
+    fn nearest_shot_matches_original_through_visibility_and_owner_churn() {
+        let (mut entities, mut owners) = shot_view_maps(20_000);
+        let mut rng = Pcg32::new(38);
+        for step in 0..2_000 {
+            let id = 10_000 + rng.rand_index(20_000) as u16;
+            match step % 5 {
+                0 => {
+                    owners.insert(id, 1);
+                }
+                1 => {
+                    owners.insert(id, 30_000);
+                }
+                2 => {
+                    owners.remove(&id);
+                }
+                3 => {
+                    entities.remove(&id);
+                }
+                _ => {
+                    entities.insert(
+                        id,
+                        KnownEntity {
+                            pos: (
+                                rng.randf_range(-1000.0, 1000.0) as f32,
+                                rng.randf_range(-1000.0, 1000.0) as f32,
+                            ),
+                            vel: (1.0, 2.0),
+                            anim: 0,
+                            flags: 0,
+                            last_tick: 1,
+                        },
+                    );
+                }
+            }
+            if step == 1_000 {
+                entities.clear();
+            } // Baseline replacement retains owners.
+            let view = empty_view(&entities, &owners);
+            assert_eq!(
+                shot_bits(nearest_incoming_projectile(&view)),
+                shot_bits(original_nearest(&view))
+            );
+        }
+    }
+
+    #[test]
+    fn nearest_shot_preserves_ties_nonfinite_and_sparse_map_behavior() {
+        // Independent randomized map layouts exercise the original tie winner.
+        for _ in 0..32 {
+            let (mut entities, mut owners) = shot_view_maps(20_000);
+            for position in [(500.0, 0.0), (f32::INFINITY, 0.0), (f32::NAN, 0.0)] {
+                for entity in entities.values_mut() {
+                    entity.pos = position;
+                }
+                let view = empty_view(&entities, &owners);
+                assert_eq!(
+                    shot_bits(nearest_incoming_projectile(&view)),
+                    shot_bits(original_nearest(&view))
+                );
+            }
+            owners.retain(|id, _| *id < 10_020); // Large capacity, few live owners.
+            for id in 1..1_000 {
+                entities.insert(id, entities[&10_001]);
+            }
+            let view = empty_view(&entities, &owners);
+            assert_eq!(
+                shot_bits(nearest_incoming_projectile(&view)),
+                shot_bits(original_nearest(&view))
+            );
+            owners.clear();
+            assert_eq!(
+                nearest_incoming_projectile(&empty_view(&entities, &owners)),
+                None
+            );
+        }
+    }
+
+    #[test]
+    #[ignore = "bounded local timing harness; run release with --ignored --nocapture"]
+    fn nearest_shot_history_benchmark() {
+        use std::{hint::black_box, time::Instant};
+        for count in [200, 2_000, 20_000] {
+            let (entities, owners) = shot_view_maps(count);
+            let view = empty_view(&entities, &owners);
+            for (name, search) in [
+                (
+                    "original",
+                    original_nearest as fn(&View) -> Option<(f32, f32, f32, f32)>,
+                ),
+                ("candidate", nearest_incoming_projectile),
+            ] {
+                let start = Instant::now();
+                for _ in 0..2_000 {
+                    black_box(search(black_box(&view)));
+                }
+                eprintln!(
+                    "owners={count} visible={} {name} 2000_searches_ms={:.3}",
+                    entities.len(),
+                    start.elapsed().as_secs_f64() * 1000.0
+                );
+            }
+            let mut behavior = BehaviorState::new(BehaviorKind::Strategy, 1.0, CLASS_MAGE);
+            let mut rng = Pcg32::new(30);
+            let start = Instant::now();
+            for i in 0..2_000 {
+                black_box(behavior.decide(black_box(&view), &mut rng, f64::from(i) / 15.0));
+            }
+            eprintln!(
+                "owners={count} 2000_strategy_decisions_ms={:.3}",
+                start.elapsed().as_secs_f64() * 1000.0
+            );
+        }
+    }
 
     fn empty_view<'a>(
         entities: &'a HashMap<u16, KnownEntity>,

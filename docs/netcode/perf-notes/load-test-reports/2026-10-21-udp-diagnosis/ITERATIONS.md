@@ -115,12 +115,13 @@ work, with hash-map iteration prominent. The earlier controller defect is fixed
 and remotely validated. Cadence falls near Phase 2 +50..60 seconds while profiling
 is off; this does not establish causal profiler overhead.
 
-Source inspection finds that Strategy's nearest-projectile search iterates all
-remembered owners before checking visibility. The next candidate will reverse
-that intersection when the visible table is smaller, preserving the old nearest
-selection and tie behavior. A local real-function timing/differential harness
-precedes the matched remote comparison. Actual remote map occupancy remains
-unknown, so the eventual changed-build result must establish its practical effect.
+[The Strategy dodge-search candidate](DODGE-CANDIDATE.md) reverses the visibility/
+owner intersection when the visible table is smaller, preserving the old nearest
+selection and tie behavior. The local real-function harness shows a large reduction
+in history-heavy search cost; differential tests and workspace checks pass. Actual
+remote map occupancy remains unknown. One unprofiled Strategy 150 observation will
+compare the changed bot against the prior unprofiled cell, with the game/settings
+frozen, to establish whether this restores valid offered load.
 
 ## Completion state
 
