@@ -88,6 +88,16 @@ exhaustion, with measured collector CPU/RSS. It also checks whether collector
 pressure materially perturbed the earlier failure; any performance change is
 first attributed to this instrumentation condition, not game optimization.
 
+## Prepared next intervention
+
+[Receive-buffer control](BUFFER-CANDIDATE.md) adds an opt-in game receive request
+without changing the default. Workspace checks and real socket initialization
+coverage pass. It prepares a later 2 MiB-request condition to distinguish burst
+absorption from throughput/backlog; no remote improvement is claimed.
+[Existing reliable-event counters](RELIABLE-PRESSURE.md) show substantial fan-out
+already before overflow, so baseline fragmentation alone cannot explain the
+application-enqueued reliable volume. Event reliability/recipients are unchanged.
+
 ## Completion state
 
 Investigation in progress. No new capacity claim or root-cause conclusion yet.

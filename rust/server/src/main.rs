@@ -184,7 +184,8 @@ fn main() {
         info!("signed session tickets REQUIRED; verifying with configured OMEGA_TICKET_PUBKEY");
     }
 
-    let socket = EnetUdpSocket::bind(("0.0.0.0", config.port)).expect("bind UDP game port");
+    let socket = EnetUdpSocket::bind(("0.0.0.0", config.port), config.udp_receive_buffer_bytes)
+        .expect("bind UDP game port");
     let mut host = enet::Host::new(
         socket,
         enet::HostSettings {

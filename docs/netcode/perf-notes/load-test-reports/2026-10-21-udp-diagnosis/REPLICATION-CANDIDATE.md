@@ -61,3 +61,12 @@ CPU. If drops or invalid offered load persist, record that outcome and separate
 the remaining transport/generator bottleneck. Keep the instrumented control and
 candidate on identical collector settings and bot executable. No buffer tuning
 is part of this candidate.
+
+## Remote outcome
+
+The [matched bitmap comparison](bitmap-comparison.md) failed its ramp after
+37.56 seconds at a peak of 181 authenticated players. First-overflow intervals
+overlap control; higher-population World Tick timings did not consistently
+improve. This does not demonstrate that stale-cache membership caused the CAX11
+failure or that the local helper speedup raises capacity. The optimization is
+retained for its bounded algorithmic benefit, with no remote capacity claim.

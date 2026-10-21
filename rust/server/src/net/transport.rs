@@ -19,20 +19,27 @@ pub struct TransportObservation {
 }
 
 #[derive(Debug)]
-pub struct EnetUdpSocket(UdpSocket, Option<TransportObservation>);
+pub struct EnetUdpSocket {
+    socket: UdpSocket,
+    observation: Option<TransportObservation>,
+    receive_buffer_override: Option<usize>,
+}
 
 impl EnetUdpSocket {
-    pub fn bind(address: impl ToSocketAddrs) -> io::Result<Self> {
-        UdpSocket::bind(address).map(|socket| {
-            Self(
-                socket,
-                std::env::var_os("OMEGA_MEASURE_DIR").map(|_| TransportObservation::default()),
-            )
+    pub fn bind(
+        address: impl ToSocketAddrs,
+        receive_buffer_override: Option<usize>,
+    ) -> io::Result<Self> {
+        UdpSocket::bind(address).map(|socket| Self {
+            socket,
+            observation: std::env::var_os("OMEGA_MEASURE_DIR")
+                .map(|_| TransportObservation::default()),
+            receive_buffer_override,
         })
     }
 
     pub fn observation(&self) -> Option<&TransportObservation> {
-        self.1.as_ref()
+        self.observation.as_ref()
     }
 }
 
@@ -41,15 +48,18 @@ impl Socket for EnetUdpSocket {
     type Error = io::Error;
 
     fn init(&mut self, options: SocketOptions) -> io::Result<()> {
-        <UdpSocket as Socket>::init(&mut self.0, options)?;
+        <UdpSocket as Socket>::init(&mut self.socket, options)?;
         // rusty_enet 0.4's std socket adapter ignores these options. Apply them
         // here so native startup has ENet's intended burst buffering; do not
         // change the transport's non-blocking send/receive behavior.
-        let native = socket2::SockRef::from(&self.0);
-        native.set_recv_buffer_size(options.receive_buffer)?;
+        let native = socket2::SockRef::from(&self.socket);
+        let receive_bytes = self
+            .receive_buffer_override
+            .unwrap_or(options.receive_buffer);
+        native.set_recv_buffer_size(receive_bytes)?;
         native.set_send_buffer_size(options.send_buffer)?;
         tracing::info!(
-            requested_receive_bytes = options.receive_buffer,
+            requested_receive_bytes = receive_bytes,
             requested_send_bytes = options.send_buffer,
             effective_receive_bytes = native.recv_buffer_size()?,
             effective_send_bytes = native.send_buffer_size()?,
@@ -59,8 +69,8 @@ impl Socket for EnetUdpSocket {
     }
 
     fn send(&mut self, address: SocketAddr, buffer: &[u8]) -> io::Result<usize> {
-        let result = <UdpSocket as Socket>::send(&mut self.0, address, buffer);
-        if let Some(observation) = &mut self.1 {
+        let result = <UdpSocket as Socket>::send(&mut self.socket, address, buffer);
+        if let Some(observation) = &mut self.observation {
             observation.send_calls += 1;
             match &result {
                 Ok(0) if !buffer.is_empty() => observation.zero_byte_sends += 1,
@@ -75,15 +85,15 @@ impl Socket for EnetUdpSocket {
         &mut self,
         buffer: &mut [u8; MTU_MAX],
     ) -> io::Result<Option<(SocketAddr, PacketReceived)>> {
-        if let Some(observation) = &mut self.1 {
+        if let Some(observation) = &mut self.observation {
             let now = Instant::now();
             if let Some(previous) = observation.previous_read.replace(now) {
                 observation.read_gaps.record(now.duration_since(previous));
             }
             observation.receive_calls += 1;
         }
-        let result = <UdpSocket as Socket>::receive(&mut self.0, buffer);
-        if let Some(observation) = &mut self.1 {
+        let result = <UdpSocket as Socket>::receive(&mut self.socket, buffer);
+        if let Some(observation) = &mut self.observation {
             match &result {
                 Ok(Some(_)) => observation.received_datagrams += 1,
                 Ok(None) => observation.empty_reads += 1,
@@ -101,14 +111,14 @@ mod tests {
 
     #[test]
     fn init_applies_requested_buffers_and_keeps_nonblocking() {
-        let mut socket = EnetUdpSocket::bind(("127.0.0.1", 0)).unwrap();
+        let mut socket = EnetUdpSocket::bind(("127.0.0.1", 0), None).unwrap();
         socket
             .init(SocketOptions {
                 receive_buffer: 16 * 1024,
                 send_buffer: 16 * 1024,
             })
             .unwrap();
-        let native = SockRef::from(&socket.0);
+        let native = SockRef::from(&socket.socket);
         // Linux doubles requested sizes for bookkeeping; other platforms may not.
         // A generous bound verifies the request is applied without depending on
         // that accounting convention or accepting an untouched large default.
@@ -119,17 +129,50 @@ mod tests {
 
     #[test]
     fn host_startup_uses_enet_buffer_requests() {
-        let socket = EnetUdpSocket::bind(("127.0.0.1", 0)).unwrap();
+        let socket = EnetUdpSocket::bind(("127.0.0.1", 0), None).unwrap();
         let host = rusty_enet::Host::new(socket, rusty_enet::HostSettings::default()).unwrap();
-        let native = SockRef::from(&host.socket().0);
+        let native = SockRef::from(&host.socket().socket);
         assert!(native.recv_buffer_size().unwrap() >= 256 * 1024);
         assert!(native.send_buffer_size().unwrap() >= 256 * 1024);
     }
 
     #[test]
+    fn host_startup_applies_receive_override_without_changing_send_buffer() {
+        let normal = rusty_enet::Host::new(
+            EnetUdpSocket::bind(("127.0.0.1", 0), None).unwrap(),
+            rusty_enet::HostSettings::default(),
+        )
+        .unwrap();
+        let mut overridden = rusty_enet::Host::new(
+            EnetUdpSocket::bind(("127.0.0.1", 0), Some(16 * 1024)).unwrap(),
+            rusty_enet::HostSettings::default(),
+        )
+        .unwrap();
+        let native = SockRef::from(&overridden.socket().socket);
+        assert!((16 * 1024..=64 * 1024).contains(&native.recv_buffer_size().unwrap()));
+        assert!(
+            native.recv_buffer_size().unwrap()
+                < SockRef::from(&normal.socket().socket)
+                    .recv_buffer_size()
+                    .unwrap()
+        );
+        assert_eq!(
+            native.send_buffer_size().unwrap(),
+            SockRef::from(&normal.socket().socket)
+                .send_buffer_size()
+                .unwrap()
+        );
+        assert!(overridden
+            .socket_mut()
+            .receive(&mut [0; MTU_MAX])
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
     fn observed_socket_preserves_datagrams_and_counts_empty_reads() {
-        let mut socket = EnetUdpSocket::bind(("127.0.0.1", 0)).unwrap();
-        socket.1 = Some(TransportObservation::default());
+        let mut socket = EnetUdpSocket::bind(("127.0.0.1", 0), None).unwrap();
+        socket.observation = Some(TransportObservation::default());
         socket
             .init(SocketOptions {
                 receive_buffer: 16 * 1024,
@@ -138,7 +181,7 @@ mod tests {
             .unwrap();
         let mut buffer = [0; MTU_MAX];
         assert!(socket.receive(&mut buffer).unwrap().is_none());
-        let address = socket.0.local_addr().unwrap();
+        let address = socket.socket.local_addr().unwrap();
         assert_eq!(socket.send(address, b"diagnostic").unwrap(), 10);
         let deadline = Instant::now() + std::time::Duration::from_secs(1);
         loop {

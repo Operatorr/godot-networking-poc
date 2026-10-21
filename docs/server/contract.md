@@ -360,6 +360,13 @@ defaults **on** for the POC (it's the load-test/dev default in `deployment/env/s
 **off** when you require signed tickets; Ed25519 public key via
 `OMEGA_TICKET_PUBKEY` (hex/base64) when enforcement is on.
 
+Optional JSON `udp_receive_buffer_bytes` requests the game socket's `SO_RCVBUF`
+size (1–16,777,216 bytes; numeric JSON values truncate toward zero). Omission keeps
+ENet's 262,144-byte receive request. Invalid values warn and preserve the prior
+request. The send-buffer request is unchanged. Startup logs both requested and
+OS-effective sizes; OS limits/accounting may differ. This is transport tuning,
+not a change to Snapshot budgets, Tick/input rates, or a validated capacity claim.
+
 ## Invariants (enforced in review + tests)
 
 Entity id ranges (players 1–999, projectiles 10000–29999, monsters 30000–39999) · arena bounds
