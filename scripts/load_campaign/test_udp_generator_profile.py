@@ -2,6 +2,7 @@
 import io
 import json
 import pathlib
+import signal
 import tempfile
 import unittest
 from unittest import mock
@@ -10,6 +11,44 @@ import udp_generator_profile_record as recorder
 from udp_generator_profile_journal import scan, message
 
 class GeneratorProfileTests(unittest.TestCase):
+    def test_intentional_sigint_completion_continues_to_late_dispatch(self):
+        # Status from the aborted cell: perf finalized on our SIGINT, but the
+        # systemd dispatch succeeded. Exercise the same gate as the live loop.
+        observation = {
+            'profiles': {'early': {'rc': -signal.SIGINT, 'reason': 'nominal-window-end'},
+                         'late': None},
+            'profile_supervisor': {'profiles': {
+                'early': {'rc': 0, 'dispatch_utc_ns': 0}}},
+        }
+        self.assertIsNone(controller.profile_failure(observation, 29 * 10**9))
+        observation['profiles']['late'] = {'rc': 0, 'reason': 'nominal-window-end'}
+        observation['profile_supervisor']['profiles']['late'] = {
+            'rc': 0, 'dispatch_utc_ns': 180 * 10**9}
+        self.assertIsNone(controller.profile_failure(observation, 210 * 10**9))
+
+    def test_profile_gate_rejects_abnormal_completion(self):
+        for change in ({'rc': -signal.SIGKILL}, {'rc': 1}, {'rc': None},
+                       {'reason': 'perf-exited'}, {'reason': 'controller-stop'},
+                       {'reason': 'forced-kill'}, {'reason': 'soft-size-limit'},
+                       {'reason': 'target-exited'}, {'reason': 'target-identity-changed'},
+                       {'reason': None}, {'error': 'Enable acknowledgement absent'}):
+            with self.subTest(change=change):
+                profile = {'rc': -signal.SIGINT, 'reason': 'nominal-window-end', **change}
+                self.assertEqual(controller.profile_failure({'profiles': {'early': profile}}, 0),
+                                 'early-recording-failed')
+
+    def test_profile_dispatch_and_missing_status_guards_remain_active(self):
+        observation = {'profiles': {'early': None}, 'profile_supervisor': {
+            'profiles': {'early': {'dispatch_utc_ns': 0, 'rc': 0}}}}
+        self.assertIsNone(controller.profile_failure(observation, 30 * 10**9))
+        self.assertEqual(controller.profile_failure(observation, 36 * 10**9),
+                         'early-dispatch-or-status-failed')
+        observation['profile_supervisor']['profiles']['early']['rc'] = 1
+        self.assertEqual(controller.profile_failure(observation, 0),
+                         'early-dispatch-or-status-failed')
+        self.assertEqual(controller.profile_failure({'profile_supervisor': {'error': 'identity'}}, 0),
+                         'identity')
+
     def test_message_encodings(self):
         for value in ('oversized packet',list(b'oversized packet')):
             self.assertEqual(message({'MESSAGE':value}),'oversized packet')

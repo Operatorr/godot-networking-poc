@@ -207,3 +207,9 @@ The parent must decide whether to repair that diagnostic guard and authorize a f
 experiment. Application-delivered input, owner-map occupancy, serial poll-cycle duration,
 exact queue residence and causal instrumentation slowdown remain **null**. **Workloads
 consumed: exactly 1. Late profiles: 0. New validated capacity: none.**
+
+Parent follow-up: the historical controller is committed unchanged in `e5f5ee0`.
+Subsequent source repairs its nominal SIGINT completion gate with a failing-then-
+passing regression and abnormal-exit cases. The report above describes the executed
+cell; it is not retroactively reclassified. See the corrected-attempt amendment in
+[the profile plan](GENERATOR-PROFILE-PLAN.md).

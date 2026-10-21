@@ -219,6 +219,26 @@ def journal(since_ns, until_ns):
     export(pathlib.Path(REMOTE)/'game', since_ns, until_ns)
 
 
+def profile_failure(observation, now_ns):
+    """Shared preflight/live completion gate; absent running results are not failures."""
+    supervisor = observation.get('profile_supervisor') or {}
+    problem = supervisor.get('error')
+    profiles = observation.get('profiles', {})
+    for name, profile in profiles.items():
+        # record() deliberately sends SIGINT to finalize perf at the deadline.
+        # Accept that signal only with nominal completion and no recorder error;
+        # an early signal is labelled perf-exited and must still stop the run.
+        if profile and (profile.get('error') or profile.get('rc') not in (0, -signal.SIGINT)
+                        or profile.get('reason') != 'nominal-window-end'):
+            problem = name + '-recording-failed'
+    for name, dispatch in supervisor.get('profiles', {}).items():
+        if dispatch.get('rc', 0) != 0 or (
+            now_ns - dispatch['dispatch_utc_ns'] > 35e9 and not profiles.get(name)
+        ):
+            problem = name + '-dispatch-or-status-failed'
+    return problem
+
+
 def controller():
     import run
     root = run.ROOT
@@ -522,13 +542,7 @@ def controller():
             if bot_limits and any((int(rb),int(tb)) != (212992,212992) for rb,tb in bot_limits):
                 manifest['controller_abort']='bot-effective-buffers-differ'
                 break
-            profile_problem=(b.get('profile_supervisor') or {}).get('error')
-            for name,profile in b.get('profiles',{}).items():
-                if profile and (profile.get('error') or profile.get('rc')!=0 or profile.get('reason')!='nominal-window-end'):
-                    profile_problem=name+'-recording-failed'
-            for name,dispatch in (b.get('profile_supervisor') or {}).get('profiles',{}).items():
-                if dispatch.get('rc',0)!=0 or (time.time_ns()-dispatch['dispatch_utc_ns']>35e9 and not b.get('profiles',{}).get(name)):
-                    profile_problem=name+'-dispatch-or-status-failed'
+            profile_problem = profile_failure(b, time.time_ns())
             if profile_problem:
                 manifest['controller_abort']='profile-failure:'+profile_problem
                 break

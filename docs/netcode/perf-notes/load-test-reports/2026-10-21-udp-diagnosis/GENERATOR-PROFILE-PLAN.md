@@ -88,3 +88,26 @@ audit cleanup before returning to the parent. Leave remote evidence intact.
 Deliver a compact report and summary, with repeated raw rows private. Historical
 Strategy 100 remains the highest validated population until a later valid capacity
 cell passes all gates. Choose a code intervention only after this diagnostic result.
+
+## Corrected diagnostic attempt after the controller abort
+
+The first cell is preserved in [generator-profile.md](generator-profile.md) and
+commit `e5f5ee0`. It stopped before measurement because live control rejected the
+recorder's deliberate SIGINT completion. The early profile is valid, but the late
+profile remains absent. This is the explicit diagnostic reason for one fresh
+attempt in namespace **`udp-generator-profile-fixed-20261021`**, with unchanged
+workload, profiles, timing and resource bounds above.
+
+The parent reproduced the rejection in the live completion-gate seam and corrected
+it: accept return code 0 or negative SIGINT only when the recorder reports nominal
+window end and no error. Crashes, early/forced stops, size guards, recorder errors,
+dispatch failure and missing terminal status remain failures. The next controller
+must reuse this shared `profile_failure` gate for both disposable sampler preflight
+and live status, and explicitly demonstrate that the actual preflight status passes
+before starting a workload. Successful lifecycle status does not replace subsequent
+raw/decoded sample, loss, stack and data-completeness validation.
+
+Use new controller/report filenames for the fixed attempt, preserving historical
+executed bytes and once-only launch markers. Do not consume a further workload if
+this attempt aborts. The parent will review the resulting evidence before deciding
+any later action.

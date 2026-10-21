@@ -118,3 +118,10 @@ This stopped the workload before the sustained window and late profile.
 capacity claim follows. A corrected gate must accept only the expected nominal
 completion while continuing to reject crashes, forced stops, recorder errors and
 failed/missing dispatch results. Preflight and live control must use that same gate.
+
+The parent extracted the existing live predicate as `profile_failure`, reproduced
+the false rejection, and changed only the accepted nominal return codes to
+`0` / `-SIGINT`. Tests also reject abnormal termination and retain dispatch/missing
+status guards. The source in `e5f5ee0` and private executed copies preserves the
+historical defect; subsequent source contains the repair. Remote validation is
+pending the [corrected diagnostic attempt](GENERATOR-PROFILE-PLAN.md).
