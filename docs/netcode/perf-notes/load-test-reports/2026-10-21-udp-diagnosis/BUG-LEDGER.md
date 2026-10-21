@@ -106,3 +106,15 @@ regression test now handle both forms. Primary bundles remain unchanged. A bound
 were retained and checksum-verified without another workload. The full raw journal
 was not retained locally. Future controllers must use the byte-aware counting path
 and bound retained bytes without truncating the scan used for totals.
+
+## Profiler completion gate rejected an intentional SIGINT
+
+**Confirmed diagnostic controller defect.** The recorder deliberately ends perf
+with SIGINT. The sustained profile's controller required `rc == 0`, rejecting the
+observed `rc == -2` despite `reason=nominal-window-end`, no recorder error and a
+complete usable recording. The disposable sampler had returned the same code.
+This stopped the workload before the sustained window and late profile.
+[Early evidence and limitations](generator-profile.md) remain retained; no new
+capacity claim follows. A corrected gate must accept only the expected nominal
+completion while continuing to reject crashes, forced stops, recorder errors and
+failed/missing dispatch results. Preflight and live control must use that same gate.

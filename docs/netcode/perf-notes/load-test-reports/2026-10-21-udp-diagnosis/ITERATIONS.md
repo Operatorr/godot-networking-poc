@@ -31,6 +31,7 @@ sequentially, with cleanup verified before the next dispatch.
 | Bounded collector, Strategy 200 | Change only wire reader to v2 bounded history; predict complete late coverage and lower collection cost | Same bitmap game/control bots, native settings; collector `30ec792` | Failed ramp at 40.06 s, peak 185 authenticated. Both readers EOF, no malformed/capture loss; mapping defect left per-bot wire cadence unknown. | [Evidence and verified cleanup](bounded-collector.md); capture-child RSS about 39 MiB versus 205 MiB, with unequal resource windows |
 | Game receive-buffer request, Strategy 200 | Test whether more burst capacity prevents initial overflow and retry amplification, rather than hiding sustained backlog | Game `f1cc5d6`, request 2 MiB; same control bots; collector `994cce8` corrects identity extraction only | Effective 4 MiB delayed first loss to 197–199 players; reached 200 then collapsed. 159,266 socket drops; no capacity pass. | [Evidence and verified cleanup](receive-buffer.md); all 200 live mappings agree, but pre-swarm measurement restart qualifies runtime proof |
 | Sustained Strategy 150 | Test the lower rung with unchanged game/bots and larger receive queue, full warmup and measurement | Same `f1cc5d6` game/control bots/collector; atomic schedule publication and continuous runtime identity proof | All 150 authenticated for 300 s, TickHz 30.0; generator-invalid at 18.34 Hz offered and 15.38–18.22 Hz wire. Zero receive drops, 637 game send-buffer errors; delivery and strict AoI gates also failed. Historical Strategy 100 remains highest validated. | [Evidence and twice-verified cleanup](capacity150.md); full wire coverage, bounded journal prefix supplemented by complete compact counts |
+| Sustained generator profile, incomplete | Distinguish early/late generator hot paths without changing the workload | Same Strategy 150 binaries/settings; two planned bounded generator recordings | Controller aborted at Phase 2 +28.87 s after incorrectly rejecting perf's intentional SIGINT exit. Early 1,699 samples valid, near-30 Hz offered input; no late profile or measurement window. No capacity claim. | [Evidence and two cleanup audits](generator-profile.md); retained early disassembly attribution is qualified, sustained bottleneck unresolved |
 
 Local candidate preparation: [linear stale-cache membership](REPLICATION-CANDIDATE.md)
 replaces repeated slice scans with a u16 bitmap. A HashSet trial was rejected for
@@ -107,11 +108,13 @@ The larger receive queue delays loss but does not sustain 200. The
 failed generator validity. Its zero receive drops cannot establish a throughput
 fix at 30 Hz offered load. Atomic publication worked without a service restart.
 
-The next cell is a [bounded sustained-generator profile](GENERATOR-PROFILE-PLAN.md),
-not another capacity attempt. The diagnostic reason for repeating this condition
-is the newly measured sustained generator CPU/cadence limit: the earlier profile
-covered a short ramp on different frozen binaries and cannot locate this limit.
-No generator behavior, scheduling, game settings or buffers will change in that cell.
+The first [bounded sustained-generator profile](GENERATOR-PROFILE-PLAN.md) was
+aborted by a new controller defect before its late window. Its usable early
+samples do not locate the sustained limit. The parent will repair and regression-test
+the SIGINT completion gate before one fresh diagnostic attempt with the same plan.
+That repeat is necessary to obtain the missing late profile, not a confirmation
+of a capacity result. No generator behavior, scheduling, game settings or buffers
+will change in that cell.
 
 ## Completion state
 
