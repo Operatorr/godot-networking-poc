@@ -28,6 +28,12 @@ sequentially, with cleanup verified before the next dispatch.
 | Frozen-build profile reproduction | Identify dominant CPU work during queue overflow; prediction: transport/replication, logging or generator hot paths distinguish the competing explanations | Same frozen builds/settings; bounded 99 Hz CPU profiling added; diagnostic only | Failed ramp after 43.05 s, peak 185 authenticated. Reliable-command removal self CPU rose 1.73% → 11.95% → 52.63% before/after onset/final ten seconds. Broadcast remained substantial. | [Profile evidence and verified restoration](profile-reproduction.md) |
 | Instrumented Strategy 200 control | Align actual read gaps, loop phases and bot ramp cadence with overflow before changing processing or buffers | New opt-in server timings + repaired bot ramp recorder; original settings/buffers; no optimization | Preparing | One sequential run agent; [instrument semantics](INSTRUMENTATION.md) |
 
+Local candidate preparation: [linear stale-cache membership](REPLICATION-CANDIDATE.md)
+replaces repeated slice scans with a u16 bitmap. A HashSet trial was rejected for
+small-set regressions. The candidate improves the bounded local helper timing;
+remote processing/capacity impact is unmeasured. It is excluded from the current
+instrumented control, which builds exact `cc86869`.
+
 The first profiling preflight found no installed sampler and launched **zero**
 experiments. The replacement agent installed `linux-perf 7.0.0-38.38` and two
 debuginfod dependencies, validated recording, and completed exactly one workload.

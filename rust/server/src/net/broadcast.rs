@@ -141,11 +141,20 @@ impl DeltaStateCache {
 
     /// Erase cache entries not in the active set; returns the erased ids (pinned despawns).
     fn cleanup_stale_entities(&mut self, active: &[u16]) -> Vec<u16> {
+        // This runs once per peer per Snapshot. A slice lookup per cached entity
+        // multiplies the visible population by the cache population; build the
+        // membership index once while keeping cache traversal/removal order intact.
+        // Entity ids are u16: an 8 KiB stack bitmap handles every possible id
+        // without allocating or hashing once for each lookup.
+        let mut active_bits = [0_u64; 1024];
+        for &id in active {
+            active_bits[usize::from(id) / 64] |= 1_u64 << (id % 64);
+        }
         let stale: Vec<u16> = self
             .cache
             .keys()
             .copied()
-            .filter(|id| !active.contains(id))
+            .filter(|&id| active_bits[usize::from(id) / 64] & (1_u64 << (id % 64)) == 0)
             .collect();
         for id in &stale {
             self.cache.remove(id);
@@ -795,6 +804,77 @@ mod tests {
         let cache = DeltaStateCache::default();
         let mask = cache.calculate_delta_mask(1, &entity(1, 0.0, 0.0), 5);
         assert_eq!(mask, delta_mask::FULL);
+    }
+
+    #[test]
+    fn stale_cleanup_preserves_live_cache_and_removes_each_departed_entity_once() {
+        let mut cache = DeltaStateCache::default();
+        for id in 10000..12000 {
+            cache.update_cache(id, &entity(id, 1.0, 2.0), 100);
+        }
+        // Include duplicates and a visible entity not yet admitted to the cache.
+        let mut active: Vec<_> = (10000..11900).collect();
+        active.extend([10000, 10001, 30001]);
+        let mut removed = cache.cleanup_stale_entities(&active);
+        removed.sort_unstable();
+        assert_eq!(removed, (11900..12000).collect::<Vec<_>>());
+        assert_eq!(cache.cache.len(), 1900);
+        assert_eq!(cache.last_tick_sent(10000), Some(100));
+        assert_eq!(cache.last_tick_sent(11900), None);
+        assert!(cache.cleanup_stale_entities(&active).is_empty());
+        assert_eq!(cache.cleanup_stale_entities(&[]).len(), 1900);
+        assert!(cache.cache.is_empty());
+    }
+
+    #[test]
+    fn stale_cleanup_handles_all_entity_bands_and_u16_boundaries() {
+        let mut cache = DeltaStateCache::default();
+        let ids = [
+            0,
+            1,
+            999,
+            10000,
+            29999,
+            30000,
+            39999,
+            40000,
+            49999,
+            u16::MAX,
+        ];
+        for id in ids {
+            cache.update_cache(id, &entity(id, 0.0, 0.0), 1);
+        }
+        let kept = [0, 999, 29999, 39999, 49999, u16::MAX];
+        let mut removed = cache.cleanup_stale_entities(&kept);
+        removed.sort_unstable();
+        assert_eq!(removed, vec![1, 10000, 30000, 40000]);
+        for id in kept {
+            assert_eq!(cache.last_tick_sent(id), Some(1));
+        }
+    }
+
+    /// Local mechanism timing only; never a server capacity result.
+    #[test]
+    #[ignore = "bounded release microbenchmark; run manually with --release --ignored --nocapture"]
+    fn benchmark_stale_cleanup() {
+        for size in [256_u16, 1024, 4096] {
+            let mut cache = DeltaStateCache::default();
+            let active: Vec<_> = (10000..10000 + size).collect();
+            for &id in &active {
+                cache.update_cache(id, &entity(id, 1.0, 2.0), 100);
+            }
+            let started = std::time::Instant::now();
+            for _ in 0..500 {
+                assert!(std::hint::black_box(
+                    cache.cleanup_stale_entities(std::hint::black_box(&active))
+                )
+                .is_empty());
+            }
+            println!(
+                "stale_cleanup size={size} iterations=500 elapsed_ns={}",
+                started.elapsed().as_nanos()
+            );
+        }
     }
 
     #[test]
