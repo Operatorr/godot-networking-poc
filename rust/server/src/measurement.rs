@@ -5,6 +5,39 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+/// Cumulative timing buckets: retain interval counts without averaging percentiles.
+#[derive(Debug, Default, serde::Serialize)]
+pub struct Timing {
+    count: u64,
+    total_ns: u128,
+    max_ns: u128,
+    buckets: [u64; 10],
+}
+
+pub const TIMING_BOUNDS_US: [u128; 9] = [100, 500, 1000, 5000, 10000, 20000, 33333, 50000, 100000];
+
+impl Timing {
+    pub fn record(&mut self, elapsed: std::time::Duration) {
+        let ns = elapsed.as_nanos();
+        self.count += 1;
+        self.total_ns += ns;
+        self.max_ns = self.max_ns.max(ns);
+        let bucket = TIMING_BOUNDS_US
+            .iter()
+            .position(|bound| ns <= bound * 1000)
+            .unwrap_or(9);
+        self.buckets[bucket] += 1;
+    }
+}
+
+#[derive(Default, serde::Serialize)]
+pub struct LoopPhases {
+    pub service_and_route: Timing,
+    pub world_tick: Timing,
+    pub outbox_flush: Timing,
+    pub enet_flush: Timing,
+}
+
 #[derive(Default)]
 struct DeferredObservation {
     pending: std::collections::HashMap<usize, std::collections::HashMap<u16, u64>>,
@@ -60,6 +93,7 @@ pub fn remove_peer(peer: usize) {
 }
 
 pub struct Measurement {
+    pub loop_phases: LoopPhases,
     directory: std::path::PathBuf,
     boundaries: Vec<(String, u128)>,
     window_loaded: bool,
@@ -89,6 +123,7 @@ impl Measurement {
         );
         writeln!(ticks, "utc_ns,mono_ns,tick,work_ns,accumulator_lag_s,authenticated,alive,monsters,projectiles,effects,deferred,max_queue_age,budget_pct,peers_evaluated,overflow,mean_x,mean_y,mean_radius_sq,pending_replication,max_deferred_wait_ticks,observer_ns").unwrap();
         Some(Self {
+            loop_phases: LoopPhases::default(),
             directory: directory.to_path_buf(),
             boundaries: Vec::new(),
             window_loaded: false,
@@ -178,7 +213,11 @@ impl Measurement {
         writeln!(self.ticks, "{}", observer.elapsed().as_nanos()).unwrap();
     }
 
-    pub fn sample(&mut self, world: &World) {
+    pub fn sample(
+        &mut self,
+        world: &World,
+        transport: Option<&crate::net::transport::TransportObservation>,
+    ) {
         if !self.window_loaded {
             if let Ok(text) = std::fs::read_to_string(self.directory.join("window.json")) {
                 let window: std::collections::BTreeMap<String, u128> =
@@ -187,7 +226,7 @@ impl Measurement {
                 self.window_loaded = true;
             }
         }
-        self.write_sample(world, "");
+        self.write_sample(world, "", transport);
     }
 
     pub fn check_boundaries(&mut self, world: &World) {
@@ -200,11 +239,16 @@ impl Measurement {
             .collect();
         self.boundaries.retain(|(_, stamp)| *stamp > now);
         for name in due {
-            self.write_sample(world, &name);
+            self.write_sample(world, &name, None);
         }
     }
 
-    fn write_sample(&mut self, world: &World, boundary: &str) {
+    fn write_sample(
+        &mut self,
+        world: &World,
+        boundary: &str,
+        transport: Option<&crate::net::transport::TransportObservation>,
+    ) {
         let mono = self.origin.elapsed().as_nanos();
         let bytes = |counts: &[[u64; 3]; 256]| {
             counts
@@ -224,6 +268,8 @@ impl Measurement {
         writeln!(self.samples, "{}", serde_json::json!({
             "utc_ns": self.epoch_ns + mono, "mono_ns": mono,
             "boundary": boundary,
+            "timing_bounds_us": TIMING_BOUNDS_US, "loop_phases": self.loop_phases,
+            "transport": transport,
             "sent_bytes_by_type_channel": bytes(&self.sent), "received_bytes_by_type_channel": bytes(&self.received),
             "send_errors": self.send_errors, "decode_errors": self.decode_errors,
             "event_sends": self.event_sends.as_slice(), "baselines": self.baselines, "deltas": self.deltas,
