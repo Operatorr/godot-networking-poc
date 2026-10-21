@@ -28,6 +28,7 @@ sequentially, with cleanup verified before the next dispatch.
 | Frozen-build profile reproduction | Identify dominant CPU work during queue overflow; prediction: transport/replication, logging or generator hot paths distinguish the competing explanations | Same frozen builds/settings; bounded 99 Hz CPU profiling added; diagnostic only | Failed ramp after 43.05 s, peak 185 authenticated. Reliable-command removal self CPU rose 1.73% → 11.95% → 52.63% before/after onset/final ten seconds. Broadcast remained substantial. | [Profile evidence and verified restoration](profile-reproduction.md) |
 | Instrumented Strategy 200 control | Align actual read gaps, loop phases and bot ramp cadence with overflow before changing processing or buffers | Exact `cc86869`; original settings/buffers; no optimization | Failed ramp, 43.06 s, peak 182 authenticated. Initial read gaps about 26 ms, late maximum 443 ms; retry/ACK traffic and service work rose sharply. Collector state guard truncated wire evidence at 27.57 s. | [Control evidence and verified restoration](instrumented-control.md) |
 | Bitmap replication candidate, Strategy 200 | Reduce pre-overflow replication cost; predict shorter read gaps and less subsequent retry amplification | Candidate `1d15d84` game; identical `cc86869` bot and control collectors/settings/buffers | Failed ramp at 37.56 s; peak 181 authenticated. No consistent World Tick benefit or later onset; 161,782 game receive drops. | [Comparison and verified restoration](bitmap-comparison.md); old collector again truncated late wire evidence |
+| Bounded collector, Strategy 200 | Change only wire reader to v2 bounded history; predict complete late coverage and lower collection cost | Same bitmap game/control bots, native settings; collector `30ec792` | Failed ramp at 40.06 s, peak 185 authenticated. Both readers EOF, no malformed/capture loss; mapping defect left per-bot wire cadence unknown. | [Evidence and verified cleanup](bounded-collector.md); capture-child RSS about 39 MiB versus 205 MiB, with unequal resource windows |
 
 Local candidate preparation: [linear stale-cache membership](REPLICATION-CANDIDATE.md)
 replaces repeated slice scans with a u16 bitmap. A HashSet trial was rejected for
@@ -81,12 +82,11 @@ from a correlated symptom, and a generator limit from a game-server limit.
 The instrumented control also exposed a collector history guard failure.
 [The bounded-history repair](COLLECTOR-REPAIR.md) reproduces and fixes that local
 failure, preserving prefix evidence and versioning changed retry semantics.
-The completed bitmap comparison froze the old collector at `04faa97`. The next
-observation keeps its exact game/bot binaries and native settings, changing only
-the collector to `30ec792`: predict complete late coverage without command-count
-exhaustion, with measured collector CPU/RSS. It also checks whether collector
-pressure materially perturbed the earlier failure; any performance change is
-first attributed to this instrumentation condition, not game optimization.
+The completed bounded-collector observation retained late coverage without history
+exhaustion and reduced collector resource use. It did not demonstrate a game
+capacity improvement. It exposed a ConnectAuth offset error; an actual-encoder
+regression now reproduces that defect and verifies its correction. Historical
+missing mappings cannot be recovered from retained fingerprints.
 
 ## Prepared next intervention
 
