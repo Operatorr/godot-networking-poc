@@ -99,6 +99,14 @@ absorption from throughput/backlog; no remote improvement is claimed.
 already before overflow, so baseline fragmentation alone cannot explain the
 application-enqueued reliable volume. Event reliability/recipients are unchanged.
 
+## Sustained ladder next step
+
+The larger receive queue delays loss but does not sustain 200. The next planned
+rung is [Strategy 150 with a full warmup/window](CAPACITY-150-PLAN.md), using the
+same existing binaries and buffer condition. Atomic schedule publication and
+runtime identity checks address the observed pre-swarm measurement restart;
+these controller changes are recorded separately from server performance.
+
 ## Completion state
 
 Investigation in progress. No new capacity claim or root-cause conclusion yet.

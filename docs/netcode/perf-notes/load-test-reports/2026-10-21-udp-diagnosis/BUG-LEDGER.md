@@ -68,3 +68,21 @@ at byte 8 and name at byte 9. Tests cover zero/nonzero character IDs, bot IDs,
 non-bot names and truncation; replay fixtures and contract prose are corrected.
 [Details and remote limitations](COLLECTOR-REPAIR.md). No wire format or application
 binary behavior changed, and earlier empty mappings cannot be reconstructed.
+
+## Non-atomic window publication restarted the measured service
+
+**Confirmed controller defect.** The receive-buffer controller copied `window.json`
+directly into the active measurement directory. The server read an empty/partial
+file and its deliberately strict parser panicked before the swarm. Systemd
+restarted it, while the controller retained the old invocation/hash proof. The
+report recovered workload logs and qualifies the replacement's runtime hash as
+inferred; no missing proof is filled in retrospectively.
+
+`atomic_publish.publish_file` now transfers to a sibling `.partial` and renames
+within that directory only after a successful copy. Two filesystem tests reproduce
+partial-reader exposure under direct copying and pass with atomic publication,
+including interrupted initial transfer and paths containing spaces. Future
+controllers must use the helper for every measurement schedule destination,
+reverify PID/invocation/executable hash/buffers immediately before launching bots,
+and treat any subsequent restart as invalidating the cell. Historical executed
+controllers remain unchanged. Remote integration is pending the next cell.
