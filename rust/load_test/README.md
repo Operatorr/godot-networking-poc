@@ -174,6 +174,16 @@ Reports: console summary + `report_<timestamp>.json` in the CWD (`--output` to c
 with config, aggregates, server-reported `SERVER_METRICS`, 5 s time series, and per-bot
 summaries — the same shape as the Python report.
 
+For diagnostic builds, `OMEGA_MEASURE_DIR` enables cumulative per-bot observations
+in `bots.ndjson`. Observations are flushed approximately once per second during
+both join settling and the join stagger, so an aborted ramp retains offered-input
+counts/gaps, delivery and error evidence. Ramp rows have `phase: "ramp"` and
+`phase_s: null`; they never start the post-join warmup/measurement clock. Existing
+post-join rows have `phase: "run"` and retain their original `phase_s` and boundary
+semantics. `completed_observer_ns` and `completed_samples` describe all completed
+observations **before** the current row, including serialization and flush time;
+they do not measure the causal performance perturbation of instrumentation.
+
 ## Regression assertions (`--assertions strict|warn|off`, default warn)
 
 - `aoi_cull` — no bot observes entities beyond `aoi_exit_radius` (+50 u tolerance, 95 % of
