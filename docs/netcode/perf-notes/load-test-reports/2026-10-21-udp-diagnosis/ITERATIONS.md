@@ -25,14 +25,18 @@ sequentially, with cleanup verified before the next dispatch.
 | Experiment | Question/intervention | Build and condition | Outcome | Evidence and cleanup |
 | --- | --- | --- | --- | --- |
 | Baseline Strategy 200 reproduction | Reproduce the reported failure and identify which process/socket drops datagrams; no performance tuning | Frozen game/bots; native settings; bounded diagnostic; socket observations added | Failed ramp after 38.05 s; peak 189 authenticated; all 172,927 game receive-buffer errors attributed to its socket; 4,178 bot-host errors, at least 3,745 on bot sockets; input cadence unknown | [Full evidence and verified restoration](baseline-reproduction.md) |
-| Frozen-build profile reproduction | Identify dominant CPU work during queue overflow; prediction: transport/replication, logging or generator hot paths distinguish the competing explanations | Same frozen builds/settings; bounded CPU profiling added; diagnostic only | Pending | Separate delegated agent owns one run and restoration |
+| Frozen-build profile reproduction | Identify dominant CPU work during queue overflow; prediction: transport/replication, logging or generator hot paths distinguish the competing explanations | Same frozen builds/settings; bounded 99 Hz CPU profiling added; diagnostic only | Failed ramp after 43.05 s, peak 185 authenticated. Reliable-command removal self CPU rose 1.73% → 11.95% → 52.63% before/after onset/final ten seconds. Broadcast remained substantial. | [Profile evidence and verified restoration](profile-reproduction.md) |
+| Instrumented Strategy 200 control | Align actual read gaps, loop phases and bot ramp cadence with overflow before changing processing or buffers | New opt-in server timings + repaired bot ramp recorder; original settings/buffers; no optimization | Preparing | One sequential run agent; [instrument semantics](INSTRUMENTATION.md) |
 
 The first profiling preflight found no installed sampler and launched **zero**
-experiments. A replacement run agent is provisioning compatible perf tools,
-validating bounded recording on a disposable process, then executing the single
-planned frozen-build observation. This does not authorize a kernel upgrade or a
-change to global perf access policy. The bot ramp recorder fix `3b910cd` remains
-excluded from that frozen-build experiment.
+experiments. The replacement agent installed `linux-perf 7.0.0-38.38` and two
+debuginfod dependencies, validated recording, and completed exactly one workload.
+Kernel and perf policy were unchanged. The bot ramp recorder fix `3b910cd` was
+excluded from the frozen-build experiment.
+
+Server timing/socket instrumentation passes the workspace tests, Clippy (existing
+warnings remain), and formatting check. The next control will distinguish its
+observations from the frozen profile; instrumentation itself is not an improvement.
 
 ## Ranked hypotheses after reproduction
 
