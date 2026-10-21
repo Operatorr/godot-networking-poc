@@ -1,5 +1,10 @@
 # Send burst allowance — predeclared Strategy 150 comparison
 
+**Completed:** [the single matched observation](send150.md) recorded zero game
+zero-byte sends and zero UDP errors on both hosts. Offered/wire, population,
+delivery, Tick and backlog gates passed. Strict AoI failed for 24 peers, so no new
+capacity is validated. The predeclared plan below is retained unchanged as history.
+
 [The optimized-generator cell](dodge150.md) supplied valid 30 Hz offered/wire input
 for every peer. Population, Tick and delivery gates passed, but the game recorded
 2,290 steady / 2,295 full-workload SndbufErrors matching nonempty zero-byte sends.

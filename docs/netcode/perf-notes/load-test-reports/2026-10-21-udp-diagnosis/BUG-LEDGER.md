@@ -4,6 +4,11 @@ This is the capacity investigation's defect handoff to
 [Fix load-test-exposed bugs and rerun until a run is clean](https://github.com/Operatorr/godot-networking-poc/issues/39),
 not a resolution of that broader correctness ticket.
 
+**Closing status:** see [the investigation conclusion](CONCLUSION.md) and the final
+section below. Historical pending statements record when findings were discovered;
+subsequent observations supply their validation. No report in this investigation
+is a new capacity pass or a bug-free certificate.
+
 ## Missing bot observations during failed joins
 
 **Confirmed measurement defect.** The [baseline reproduction](baseline-reproduction.md)
@@ -145,3 +150,40 @@ The strict AoI assertion still failed for 19 peers, with six baseline-reference
 misses and eight unknown delta entities affecting peers 91/123, and 349,181 steady
 oversized warnings. No clean-run or capacity certificate follows. The next transport
 comparison leaves the assertion and its thresholds unchanged.
+
+## Send allowance result and remaining correctness plateau
+
+[The final send-buffer observation](send150.md) is generator-valid. Both hosts
+recorded zero UDP errors throughout the workload, including zero game nonempty
+zero-byte sends. Population, delivery, Tick and backlog gates all passed. This
+validates the bounded intervention at Strategy 150, not the exact kernel cause or
+a permanent default change. Original configuration and buffers were restored.
+
+Strict AoI still fails: **24/150 violators**, versus 19 in the comparator. The
+latest run has zero baseline-reference misses and unknown delta entities, but
+there was no corresponding correctness fix; the earlier findings remain unresolved.
+Oversized warnings remain **348,964 steady / 429,554 full workload**. Their cause
+and the existing packet-size invariant remain in the broader correctness ticket.
+
+The focused next task is
+[Diagnose strict AoI failures in the valid-load CAX11 Strategy 150 condition](https://github.com/Operatorr/godot-networking-poc/issues/41),
+which blocks the broader correctness ticket. Source inspection identifies a
+measurement ambiguity, not a proven remote cause: `Bot::apply_snapshot` measures
+incoming entity positions against the bot's current predicted/confirmed `self.pos`,
+and the ordinary delta may omit the observer's own position. Baselines, confirms,
+respawn grace and Snapshot application can therefore carry different times. The
+strict assertion uses a lifetime maximum, including warmup. Existing retained
+maxima cannot identify the offending packet or its authoritative AoI center.
+Server visibility defects and application/transport ordering remain competing
+explanations. The follow-up must preserve the threshold and capture or reproduce
+the actual offending state before declaring the measurement or server fixed.
+
+Measurement repairs completed here: ramp observations, bounded reader history,
+actual-encoder ConnectAuth mapping, atomic schedule publication, byte-aware full
+journal counting with bounded retention, and shared intentional-SIGINT profile
+completion validation. Later cells demonstrate their use; they do not repair
+missing historical evidence. The optimized Strategy search restored valid offered
+load while preserving nearest-choice semantics; it does not establish correctness
+of replication or AoI. Exact application input delivery, queue residence and causal
+instrumentation slowdown remain unknown. Historical Strategy **100** remains the
+highest validated population; no previous invalid or failed result is upgraded.

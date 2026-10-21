@@ -34,6 +34,7 @@ sequentially, with cleanup verified before the next dispatch.
 | Sustained generator profile, incomplete | Distinguish early/late generator hot paths without changing the workload | Same Strategy 150 binaries/settings; two planned bounded generator recordings | Controller aborted at Phase 2 +28.87 s after incorrectly rejecting perf's intentional SIGINT exit. Early 1,699 samples valid, near-30 Hz offered input; no late profile or measurement window. No capacity claim. | [Evidence and two cleanup audits](generator-profile.md); retained early disassembly attribution is qualified, sustained bottleneck unresolved |
 | Corrected sustained generator profile | Obtain the missing late profile using the repaired completion gate | Same frozen Strategy 150 condition, two bounded generator profiles | Full window completed, generator-invalid at 18.213 Hz and 97.68% CPU. Strategy inclusive CPU rose 19.37% → 51.21%; owner-iterator subset 6.26% → 10.62%. Game 264 steady send-buffer errors; nine delivery failures. | [Validated profiles and independent cleanup](generator-profile-fixed.md); no capacity increase, owner occupancy/poll-cycle duration remain unknown |
 | Strategy dodge-search candidate, 150 | Restore valid offered load by searching visible entities before retained owners when smaller, preserving nearest ties | Bot `2c25af7`, same game/config/collectors, unprofiled | Generator valid: every peer 29.993–30.000 Hz offered / 29.843–29.997 Hz wire; bot CPU 78.30%. Population, Tick and delivery pass. Capacity valid-failure: 2,290 steady game send-buffer errors and 19 AoI violators. | [Matched comparison and independent cleanup](dodge150.md); highest validated Strategy remains 100 |
+| Game send-buffer request, Strategy 150 | Test burst allowance while preserving input, delivery and backlog gates | Game `e27db2d`, send request 2 MiB; same optimized bots, receive request and collectors | Zero game zero-byte sends and zero UDP errors on both hosts; all offered/wire, population, delivery, Tick and backlog gates pass. Strict AoI fails for 24 peers. Valid-failure; no capacity increase. | [Matched comparison and independent cleanup](send150.md); effective game buffers 4 MiB each, original settings restored |
 
 Local candidate preparation: [linear stale-cache membership](REPLICATION-CANDIDATE.md)
 replaces repeated slice scans with a u16 bitmap. A HashSet trial was rejected for
@@ -120,12 +121,21 @@ is off; this does not establish causal profiler overhead.
 load in the [matched unprofiled cell](dodge150.md), with lower generator CPU and all
 per-peer delivery gates passing. It is a demonstrated generator improvement, not a
 capacity pass: game send errors and the strict AoI assertion remain failures.
-The next isolated intervention [tests send burst allowance](SEND-BUFFER-CANDIDATE.md),
-with the optimized bot and receive request frozen. Local ENet startup/configuration
-tests and required workspace checks pass. Actual remote map occupancy remains unknown.
+The completed [send burst allowance comparison](send150.md), with the optimized
+bot and receive request frozen, eliminated observed send errors throughout the
+full window without failing delivery/backlog gates. It supports the intervention,
+not an exact kernel-queue cause. Local ENet startup/configuration tests and required
+workspace checks pass. Actual remote map occupancy remains unknown.
 
 ## Completion state
 
-Investigation in progress. No new capacity claim or root-cause conclusion yet.
-Correctness defects discovered here must also be recorded for
+**Investigation concluded at a correctness plateau:** 11 workloads across 12
+delegated tasks (one profiling preflight launched none). The final validated
+Strategy limit remains the historical **100**, not 150 or the transient 200 peak.
+[The conclusion](CONCLUSION.md) separates proven mechanisms, demonstrated
+interventions and remaining unknowns. The next limiting gate has a focused task:
+[Diagnose strict AoI failures in the valid-load CAX11 Strategy 150 condition](https://github.com/Operatorr/godot-networking-poc/issues/41).
+The [defect ledger](BUG-LEDGER.md) hands all correctness findings to
 [Fix load-test-exposed bugs and rerun until a run is clean](https://github.com/Operatorr/godot-networking-poc/issues/39).
+Earlier preparation/pending passages above describe the chronology; the linked
+completed observations and this completion state supersede them.
