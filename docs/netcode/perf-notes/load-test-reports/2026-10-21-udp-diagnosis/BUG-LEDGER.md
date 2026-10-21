@@ -85,4 +85,24 @@ including interrupted initial transfer and paths containing spaces. Future
 controllers must use the helper for every measurement schedule destination,
 reverify PID/invocation/executable hash/buffers immediately before launching bots,
 and treat any subsequent restart as invalidating the cell. Historical executed
-controllers remain unchanged. Remote integration is pending the next cell.
+controllers remain unchanged. The sustained Strategy 150 cell verified atomic
+publication 52.421 seconds before the measured window, with one unchanged runtime
+identity throughout and no panic/restart.
+
+## Sustained Strategy 150 findings and journal export defect
+
+[The sustained observation](capacity150.md) is generator-invalid: every bot offered
+18.34025 Hz, with bot CPU averaging 97.71% of one logical CPU. No new capacity or
+bug-free result is claimed. It also retained 637 game zero-byte sends matching
+SndbufErrors, two bots failing ActionConfirm-age guards, a strict AoI failure,
+7 baseline-reference misses, 15 unknown delta-entity observations and 350,000
+oversized-unreliable warnings during the measured window. Their causes remain
+separate from the proven offered-load failure.
+
+The executed controller's post-run journal exporter assumed `MESSAGE` was a JSON
+string; journald also returned byte arrays. Byte-aware recovery helpers and a
+regression test now handle both forms. Primary bundles remain unchanged. A bounded
+24 MiB raw prefix and complete compact counts over all 427,425 journal records
+were retained and checksum-verified without another workload. The full raw journal
+was not retained locally. Future controllers must use the byte-aware counting path
+and bound retained bytes without truncating the scan used for totals.

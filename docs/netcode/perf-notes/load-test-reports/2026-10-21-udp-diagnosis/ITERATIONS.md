@@ -30,6 +30,7 @@ sequentially, with cleanup verified before the next dispatch.
 | Bitmap replication candidate, Strategy 200 | Reduce pre-overflow replication cost; predict shorter read gaps and less subsequent retry amplification | Candidate `1d15d84` game; identical `cc86869` bot and control collectors/settings/buffers | Failed ramp at 37.56 s; peak 181 authenticated. No consistent World Tick benefit or later onset; 161,782 game receive drops. | [Comparison and verified restoration](bitmap-comparison.md); old collector again truncated late wire evidence |
 | Bounded collector, Strategy 200 | Change only wire reader to v2 bounded history; predict complete late coverage and lower collection cost | Same bitmap game/control bots, native settings; collector `30ec792` | Failed ramp at 40.06 s, peak 185 authenticated. Both readers EOF, no malformed/capture loss; mapping defect left per-bot wire cadence unknown. | [Evidence and verified cleanup](bounded-collector.md); capture-child RSS about 39 MiB versus 205 MiB, with unequal resource windows |
 | Game receive-buffer request, Strategy 200 | Test whether more burst capacity prevents initial overflow and retry amplification, rather than hiding sustained backlog | Game `f1cc5d6`, request 2 MiB; same control bots; collector `994cce8` corrects identity extraction only | Effective 4 MiB delayed first loss to 197–199 players; reached 200 then collapsed. 159,266 socket drops; no capacity pass. | [Evidence and verified cleanup](receive-buffer.md); all 200 live mappings agree, but pre-swarm measurement restart qualifies runtime proof |
+| Sustained Strategy 150 | Test the lower rung with unchanged game/bots and larger receive queue, full warmup and measurement | Same `f1cc5d6` game/control bots/collector; atomic schedule publication and continuous runtime identity proof | All 150 authenticated for 300 s, TickHz 30.0; generator-invalid at 18.34 Hz offered and 15.38–18.22 Hz wire. Zero receive drops, 637 game send-buffer errors; delivery and strict AoI gates also failed. Historical Strategy 100 remains highest validated. | [Evidence and twice-verified cleanup](capacity150.md); full wire coverage, bounded journal prefix supplemented by complete compact counts |
 
 Local candidate preparation: [linear stale-cache membership](REPLICATION-CANDIDATE.md)
 replaces repeated slice scans with a u16 bitmap. A HashSet trial was rejected for
@@ -99,13 +100,18 @@ absorption from throughput/backlog; no remote improvement is claimed.
 already before overflow, so baseline fragmentation alone cannot explain the
 application-enqueued reliable volume. Event reliability/recipients are unchanged.
 
-## Sustained ladder next step
+## Sustained ladder result and next diagnostic
 
-The larger receive queue delays loss but does not sustain 200. The next planned
-rung is [Strategy 150 with a full warmup/window](CAPACITY-150-PLAN.md), using the
-same existing binaries and buffer condition. Atomic schedule publication and
-runtime identity checks address the observed pre-swarm measurement restart;
-these controller changes are recorded separately from server performance.
+The larger receive queue delays loss but does not sustain 200. The
+[Strategy 150 observation](capacity150.md) completed the full warmup/window but
+failed generator validity. Its zero receive drops cannot establish a throughput
+fix at 30 Hz offered load. Atomic publication worked without a service restart.
+
+The next cell is a [bounded sustained-generator profile](GENERATOR-PROFILE-PLAN.md),
+not another capacity attempt. The diagnostic reason for repeating this condition
+is the newly measured sustained generator CPU/cadence limit: the earlier profile
+covered a short ramp on different frozen binaries and cannot locate this limit.
+No generator behavior, scheduling, game settings or buffers will change in that cell.
 
 ## Completion state
 
