@@ -112,3 +112,14 @@ before service restart, verify cleanup independently, checksum bundles and leave
 remote originals intact. A separate agent owns the one run and returns findings
 before the parent chooses any subsequent step. Historical Strategy 100 remains
 the highest validated capacity until a valid cell passes all gates.
+
+## Completed remote comparison
+
+[The one matched cell](dodge150.md) restored every peer to valid offered/wire load:
+29.993–30.000 Hz offered, 29.843–29.997 Hz wire, generator CPU 78.30% versus 97.71%.
+All 150 authenticated, Tick and per-peer delivery gates passed. This supports the
+generator-pressure prediction. The cell remained a capacity failure because of
+2,290 steady game send-buffer errors and 19 strict AoI violators. Actual map size,
+tie frequency and poll-cycle duration remain unknown; no general multiplier is
+claimed. Candidate SHA-256 is identical on both hosts:
+`73b957c7cb090ac8c433aa66dfba983ec8ad62305f527cab83be596dce524b1e`.

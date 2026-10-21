@@ -134,3 +134,14 @@ sends/SndbufErrors, nine delivery-gate failures, strict AoI failure, two baselin
 reference misses, four unknown delta entities and 349,506 oversized warnings.
 The owner/map hot paths now justify a focused generator search optimization; no
 new capacity or clean-run claim follows from profiling.
+
+## Valid offered load exposes remaining send/AoI failures
+
+[The dodge-search comparison](dodge150.md) restored valid offered/wire load at 150,
+and all per-peer delivery gates passed. It retained 2,290 steady / 2,295 full-workload
+game SndbufErrors matching nonempty adapter zero-byte sends. The pinned ENet std
+adapter maps `WouldBlock` to zero; the deeper transmit/drain cause is not measured.
+The strict AoI assertion still failed for 19 peers, with six baseline-reference
+misses and eight unknown delta entities affecting peers 91/123, and 349,181 steady
+oversized warnings. No clean-run or capacity certificate follows. The next transport
+comparison leaves the assertion and its thresholds unchanged.

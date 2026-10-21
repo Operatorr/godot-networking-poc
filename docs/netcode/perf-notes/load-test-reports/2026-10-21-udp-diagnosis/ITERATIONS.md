@@ -33,6 +33,7 @@ sequentially, with cleanup verified before the next dispatch.
 | Sustained Strategy 150 | Test the lower rung with unchanged game/bots and larger receive queue, full warmup and measurement | Same `f1cc5d6` game/control bots/collector; atomic schedule publication and continuous runtime identity proof | All 150 authenticated for 300 s, TickHz 30.0; generator-invalid at 18.34 Hz offered and 15.38–18.22 Hz wire. Zero receive drops, 637 game send-buffer errors; delivery and strict AoI gates also failed. Historical Strategy 100 remains highest validated. | [Evidence and twice-verified cleanup](capacity150.md); full wire coverage, bounded journal prefix supplemented by complete compact counts |
 | Sustained generator profile, incomplete | Distinguish early/late generator hot paths without changing the workload | Same Strategy 150 binaries/settings; two planned bounded generator recordings | Controller aborted at Phase 2 +28.87 s after incorrectly rejecting perf's intentional SIGINT exit. Early 1,699 samples valid, near-30 Hz offered input; no late profile or measurement window. No capacity claim. | [Evidence and two cleanup audits](generator-profile.md); retained early disassembly attribution is qualified, sustained bottleneck unresolved |
 | Corrected sustained generator profile | Obtain the missing late profile using the repaired completion gate | Same frozen Strategy 150 condition, two bounded generator profiles | Full window completed, generator-invalid at 18.213 Hz and 97.68% CPU. Strategy inclusive CPU rose 19.37% → 51.21%; owner-iterator subset 6.26% → 10.62%. Game 264 steady send-buffer errors; nine delivery failures. | [Validated profiles and independent cleanup](generator-profile-fixed.md); no capacity increase, owner occupancy/poll-cycle duration remain unknown |
+| Strategy dodge-search candidate, 150 | Restore valid offered load by searching visible entities before retained owners when smaller, preserving nearest ties | Bot `2c25af7`, same game/config/collectors, unprofiled | Generator valid: every peer 29.993–30.000 Hz offered / 29.843–29.997 Hz wire; bot CPU 78.30%. Population, Tick and delivery pass. Capacity valid-failure: 2,290 steady game send-buffer errors and 19 AoI violators. | [Matched comparison and independent cleanup](dodge150.md); highest validated Strategy remains 100 |
 
 Local candidate preparation: [linear stale-cache membership](REPLICATION-CANDIDATE.md)
 replaces repeated slice scans with a u16 bitmap. A HashSet trial was rejected for
@@ -115,13 +116,12 @@ work, with hash-map iteration prominent. The earlier controller defect is fixed
 and remotely validated. Cadence falls near Phase 2 +50..60 seconds while profiling
 is off; this does not establish causal profiler overhead.
 
-[The Strategy dodge-search candidate](DODGE-CANDIDATE.md) reverses the visibility/
-owner intersection when the visible table is smaller, preserving the old nearest
-selection and tie behavior. The local real-function harness shows a large reduction
-in history-heavy search cost; differential tests and workspace checks pass. Actual
-remote map occupancy remains unknown. One unprofiled Strategy 150 observation will
-compare the changed bot against the prior unprofiled cell, with the game/settings
-frozen, to establish whether this restores valid offered load.
+[The Strategy dodge-search candidate](DODGE-CANDIDATE.md) restored valid offered/wire
+load in the [matched unprofiled cell](dodge150.md), with lower generator CPU and all
+per-peer delivery gates passing. It is a demonstrated generator improvement, not a
+capacity pass: game send errors and the strict AoI assertion remain failures.
+The next isolated intervention tests send burst allowance, with the optimized bot
+and receive request frozen. Actual remote map occupancy remains unknown.
 
 ## Completion state
 
