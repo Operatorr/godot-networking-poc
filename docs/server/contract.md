@@ -145,8 +145,8 @@ dash can't drift the client's cooldown permanently out of phase with the server 
 
 ### ConnectAuth (type 1, ch1)
 
-`[u8 type][u8 protocol_version][u16 ticket_len][ticket bytes][u8 name_len][utf8 name]
-[u8 r][u8 g][u8 b][u8 class][u32 character_id][u32 bandwidth_budget_bps]`
+`[u8 type][u8 protocol_version][u16 ticket_len][ticket bytes][u32 character_id]
+[u8 name_len][utf8 name][u8 r][u8 g][u8 b][u8 class][u32 bandwidth_budget_bps]`
 
 `class` (since protocol v3) is the player class: `0=Zealot, 1=VoidHunter, 2=Engineer,
 3=PlagueSeer, 4=Warrior, 5=Rogue, 6=Mage`. It is **identity metadata chosen by the client** —

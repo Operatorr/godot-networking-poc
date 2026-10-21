@@ -53,3 +53,18 @@ including failure status for a truncated pcap. Five Rust tests and six replay
 tests pass; remote sustained coverage and collector perturbation remain pending.
 The active bitmap comparison uses the old collector unchanged, so this repair
 cannot contaminate that comparison.
+
+## Diagnostic ConnectAuth mapping used the wrong wire offset
+
+**Confirmed measurement defect.** The bounded reader completed but produced empty
+bot maps. The parser and synthetic fixture both omitted the u32 `character_id`
+that the real encoder writes before the name. The contract's prose layout was
+also wrong. This invalidated identity-aligned wire cadence, not the retained
+aggregate input/ACK/packet observations.
+
+The actual protocol encoder now drives a failing-then-passing integration test
+through the diagnostic parser. Corrected extraction reads unsigned name length
+at byte 8 and name at byte 9. Tests cover zero/nonzero character IDs, bot IDs,
+non-bot names and truncation; replay fixtures and contract prose are corrected.
+[Details and remote limitations](COLLECTOR-REPAIR.md). No wire format or application
+binary behavior changed, and earlier empty mappings cannot be reconstructed.

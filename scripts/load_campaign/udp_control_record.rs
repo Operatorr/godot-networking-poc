@@ -15,7 +15,7 @@ fn le32(bytes: &[u8]) -> u32 {
     u32::from_le_bytes(bytes[..4].try_into().unwrap())
 }
 
-fn commands(data: &[u8]) -> io::Result<Vec<[u8; 16]>> {
+pub(crate) fn commands(data: &[u8]) -> io::Result<Vec<[u8; 16]>> {
     if data.len() < 2 {
         return Err(io::Error::other("short ENet header"));
     }
@@ -57,13 +57,14 @@ fn commands(data: &[u8]) -> io::Result<Vec<[u8; 16]>> {
         row[12] = if length > 0 { data[offset + size] } else { 0 };
         // Diagnostic metadata only: map this test's unsigned LoadBot handshake to its port.
         // Payload layout is protocol ConnectAuth; no ticket/name bytes are retained.
-        if kind == 6 && length >= 5 && row[12] == 1 {
+        if kind == 6 && length >= 9 && row[12] == 1 {
             let body = &data[offset + size..offset + size + length];
             let ticket_len = usize::from(u16::from_le_bytes([body[2], body[3]]));
             if ticket_len == 0 {
-                let name_len = usize::from(body[4]);
+                // Type/version/ticket length precede the u32 character_id.
+                let name_len = usize::from(body[8]);
                 if let Some(name) = body
-                    .get(5..5 + name_len)
+                    .get(9..9 + name_len)
                     .and_then(|b| std::str::from_utf8(b).ok())
                 {
                     if let Some(id) = name

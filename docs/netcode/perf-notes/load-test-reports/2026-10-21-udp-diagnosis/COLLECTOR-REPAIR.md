@@ -68,3 +68,26 @@ The combined local Rust test process used 2,457,600 bytes maximum RSS and 0.35 s
 wall time on the development Mac. This is a small-stream synthetic check, not a
 remote collector-overhead measurement or a maximum-stream memory measurement.
 Remote coverage and perturbation must be measured in the next collector condition.
+
+## Remote validation and actual-encoder correction
+
+The [bounded-collector run](bounded-collector.md) completed both readers without
+history exhaustion, malformed packets or capture loss. It retained late wire
+points and reduced measured capture-child RSS to about 39 MiB. It still failed
+bot identity mapping: the original synthetic handshake omitted `character_id`.
+The actual encoder places that u32 before the name, so unsigned name length is at
+byte 8 and the name starts at byte 9 (including the application type byte).
+
+`rust/protocol/tests/diagnostic_handshake.rs` now feeds **the actual
+`ClientPacket::ConnectAuth::encode()` output** through the diagnostic command
+parser. It failed before the offset correction and passes afterward, including
+zero/nonzero character IDs, multiple bot IDs, non-bot names and truncated names.
+The earlier synthetic fixtures and the wire-layout documentation are corrected.
+Only name extraction changes: the reliable sequence history, packet/input/ACK
+counting, fingerprint selection and cadence remain identical to `30ec792`.
+New mapping output and its small I/O cost must still be verified remotely.
+
+All seven integration tests (including the five imported reader tests) and six
+Python replay tests pass. Workspace tests, Clippy (existing warnings), formatting
+and the client extension build pass. Historical empty maps remain unknown; the
+retained fingerprints contain no names from which to reconstruct identities.

@@ -23,7 +23,7 @@ class ControlFlowTests(ArticleFlowTests):
 
     def test_unsigned_handshake_maps_port_without_retaining_name(self):
         import struct
-        body = bytes([1,7,0,0,10]) + b'LoadBot007'
+        body = bytes([1,7,0,0,0,0,0,0,10]) + b'LoadBot007'
         payload = b'\x00\x01' + struct.pack('>BBHH', 0x86, 1, 1, len(body)) + body
         directory, _ = self.replay(True, [(9.1, 40000, payload)])
         self.assertEqual((directory/'port-bot.csv').read_text(), 'port,bot_id\n40000,7\n')
@@ -34,7 +34,7 @@ class ControlFlowTests(ArticleFlowTests):
         import tempfile
         directory = pathlib.Path(tempfile.mkdtemp(dir=self.temp.name))
         # One complete valid handshake, then an incomplete record header.
-        body = bytes([1, 7, 0, 0, 10]) + b'LoadBot007'
+        body = bytes([1, 7, 0, 0, 0, 0, 0, 0, 10]) + b'LoadBot007'
         payload = b'\x00\x01' + struct.pack('>BBHH', 0x86, 1, 1, len(body)) + body
         udp = struct.pack('>HHHH', 40000, 8081, len(payload) + 8, 0) + payload
         ip = bytearray(20)
