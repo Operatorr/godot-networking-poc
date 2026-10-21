@@ -1,0 +1,2035 @@
+{
+  "namespace": "udp-control-20261021",
+  "workload_runs": 1,
+  "classification": "population-collapse-diagnostic-only",
+  "new_validated_capacity": null,
+  "generator_valid": null,
+  "causal_collector_overhead": null,
+  "revision": "cc86869f1cc0f3d5d219e880d08b2cfda312f4eb",
+  "binary_sha256": {
+    "game": "5a36a7aaf3bed4db46efd2a4200c4e02825ef3598d0c4990a672d279c051a202",
+    "bots": "831be66a76278a39513c8c229811a951264604af0ddbc911d2852b9e0f72bbf3"
+  },
+  "preserved_binary_sha256": {
+    "game": "f2bf76c6fa3c28b7fb9b5d52f216061e9c3239999d67bf8a42acadf44dada3a2",
+    "bots": "8af491831304e1ab913089e3b8f1750ea701e4ccd8993d834bcc30ecfa3e8bdf"
+  },
+  "workload": {
+    "requested_bots": 200,
+    "behavior": "strategy",
+    "input_hz": 30,
+    "seed": 30,
+    "stagger_ms": 100,
+    "difficulty": 1.0,
+    "ramp_limit_s": 180,
+    "steady_limit_s": 120,
+    "game_config": {
+      "mode": "arena",
+      "port": 8081,
+      "metrics_port": 9100,
+      "tick_rate": 30,
+      "max_players": 999,
+      "region": "local",
+      "advertise_url": "",
+      "debug_logging": false,
+      "api_server_url": "",
+      "allow_unsigned_tickets": true,
+      "aoi_radius": 1000.0,
+      "aoi_exit_radius": 1100.0,
+      "lod_near_radius": 400.0,
+      "lod_mid_radius": 1000.0,
+      "snapshot_rate_hz": 30,
+      "default_client_bandwidth_bps": 120000,
+      "max_client_bandwidth_bps": 200000,
+      "monster_ai_difficulty": 0.85
+    }
+  },
+  "start_utc_ns": 1792585713430108916,
+  "end_utc_ns": 1792585756486765776,
+  "guard_elapsed_s": 43.05751034698915,
+  "controller_abort": "authenticated-population-below-65-percent-peak",
+  "phase2_reached": true,
+  "phase2_utc_ns": 1792585752758261228,
+  "ticks": {
+    "retained_count": 1684,
+    "active_count": 1183,
+    "authenticated_peak": 182,
+    "alive_peak": 125,
+    "authenticated_at_last_active_tick": 69,
+    "mean_work_ms": 12.67378838123415,
+    "max_work_ms": 41.976576,
+    "work_over_33_333ms_count": 12,
+    "max_accumulator_lag_s": 0.6173958146666678,
+    "max_pending_replication": 7911,
+    "max_deferred_wait_ticks": 10,
+    "observer_mean_us": 26.411160332541566,
+    "observer_max_us": 305.564
+  },
+  "server_final_cumulative": {
+    "decode_errors": 0,
+    "send_errors": 0,
+    "baselines": 1879,
+    "deltas": 142192
+  },
+  "server_transport_last": {
+    "empty_reads": 36535,
+    "read_gaps": {
+      "buckets": [
+        250252,
+        12752,
+        3307,
+        26956,
+        275,
+        254,
+        159,
+        8,
+        7,
+        36
+      ],
+      "count": 294006,
+      "max_ns": 443413725,
+      "total_ns": 56156245831
+    },
+    "receive_calls": 294007,
+    "receive_errors": 0,
+    "received_datagrams": 257472,
+    "send_calls": 315960,
+    "send_errors": 0,
+    "zero_byte_sends": 969
+  },
+  "server_loop_phases_last": {
+    "enet_flush": {
+      "buckets": [
+        506,
+        74,
+        277,
+        715,
+        99,
+        13,
+        0,
+        0,
+        0,
+        0
+      ],
+      "count": 1684,
+      "max_ns": 18172129,
+      "total_ns": 2630668215
+    },
+    "outbox_flush": {
+      "buckets": [
+        27373,
+        257,
+        182,
+        782,
+        105,
+        3,
+        0,
+        0,
+        0,
+        0
+      ],
+      "count": 28702,
+      "max_ns": 11911404,
+      "total_ns": 2993414099
+    },
+    "service_and_route": {
+      "buckets": [
+        22494,
+        3573,
+        343,
+        435,
+        38,
+        62,
+        17,
+        9,
+        16,
+        31
+      ],
+      "count": 27018,
+      "max_ns": 356987298,
+      "total_ns": 11280785747
+    },
+    "world_tick": {
+      "buckets": [
+        521,
+        38,
+        40,
+        299,
+        332,
+        453,
+        1,
+        0,
+        0,
+        0
+      ],
+      "count": 1684,
+      "max_ns": 20256998,
+      "total_ns": 9445765340
+    }
+  },
+  "timing_bounds_us": [
+    100,
+    500,
+    1000,
+    5000,
+    10000,
+    20000,
+    33333,
+    50000,
+    100000
+  ],
+  "hosts": {
+    "game": {
+      "host_start_ns": 1792585700903738949,
+      "host_end_ns": 1792585753918008065,
+      "host_interval_s": 53.014269116,
+      "udp_delta": {
+        "InDatagrams": 257559,
+        "NoPorts": 4730,
+        "InErrors": 149140,
+        "OutDatagrams": 315055,
+        "RcvbufErrors": 149140,
+        "SndbufErrors": 969,
+        "InCsumErrors": 0,
+        "IgnoredMulti": 0,
+        "MemErrors": 0
+      },
+      "sum_max_observed_socket_drops": 149140,
+      "observed_process_socket_count": 1,
+      "sockets_observed_dropping": 1,
+      "effective_rb_values": [
+        524288
+      ],
+      "effective_tb_values": [
+        524288
+      ],
+      "max_sampled_receive_memory": 524256,
+      "max_sampled_recv_q": 524256,
+      "socket_failures": 0,
+      "cpu_active_only": {
+        "matched_boundary": {
+          "utc_start_ns": 1792585713905993969,
+          "utc_end_ns": 1792585753918008065,
+          "interval_s": 40.012014296,
+          "logical_cpus": 2,
+          "process_cpu_percent_one_core": null,
+          "swarm_cpu_percent_one_core": null,
+          "host_execution_percent_capacity": 44.76396488102812,
+          "host_execution_percent_one_core": 89.52792976205625,
+          "busiest_core_execution_percent": 51.47021864790148,
+          "steal_percent_capacity": 0.0,
+          "cpu0_execution_percent": 51.47021864790148,
+          "cpu1_execution_percent": 37.88659793814433
+        },
+        "interval_errors": [],
+        "one_second_statistics": {
+          "process_cpu_percent_one_core": {
+            "sample_count": 38,
+            "covered_seconds": 38.01171852699999,
+            "time_weighted_mean": 66.16380678010066,
+            "p95": 99.98780508734032,
+            "p99": 99.98906079679259,
+            "max": 99.98906079679259,
+            "seconds_at_or_above_95_percent": 13.004697134,
+            "longest_contiguous_seconds_at_or_above_95_percent": 13.004697134
+          },
+          "swarm_cpu_percent_one_core": {
+            "sample_count": 0
+          },
+          "host_execution_percent_capacity": {
+            "sample_count": 40,
+            "covered_seconds": 40.01201429599999,
+            "time_weighted_mean": 44.81470124433485,
+            "p95": 71.14427860696517,
+            "p99": 79.69543147208122,
+            "max": 79.69543147208122,
+            "seconds_at_or_above_95_percent": 0,
+            "longest_contiguous_seconds_at_or_above_95_percent": 0.0
+          },
+          "host_execution_percent_one_core": {
+            "sample_count": 40,
+            "covered_seconds": 40.01201429599999,
+            "time_weighted_mean": 89.6294024886697,
+            "p95": 142.28855721393035,
+            "p99": 159.39086294416245,
+            "max": 159.39086294416245,
+            "seconds_at_or_above_95_percent": 21.008864849000002,
+            "longest_contiguous_seconds_at_or_above_95_percent": 21.008864849000002
+          },
+          "busiest_core_execution_percent": {
+            "sample_count": 40,
+            "covered_seconds": 40.01201429599999,
+            "time_weighted_mean": 62.34959840911561,
+            "p95": 100.0,
+            "p99": 100.0,
+            "max": 100.0,
+            "seconds_at_or_above_95_percent": 14.004816978000001,
+            "longest_contiguous_seconds_at_or_above_95_percent": 11.002864463999998
+          },
+          "steal_percent_capacity": {
+            "sample_count": 40,
+            "covered_seconds": 40.01201429599999,
+            "time_weighted_mean": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "max": 0.0,
+            "seconds_at_or_above_95_percent": 0,
+            "longest_contiguous_seconds_at_or_above_95_percent": 0.0
+          }
+        },
+        "semantics": "1 Hz interval statistics, not instantaneous peaks or repeat confidence intervals. Intervals outside 0.5\u20132.5 s are excluded from peaks/near-95% durations. 95% is a descriptive warning threshold, not proof of CPU saturation. Process CPU sums all threads; tick-thread CPU was not collected separately. Per-core CPU includes all processes on that core; the tick thread may migrate. Executing CPU excludes idle/iowait/steal; steal is reported separately."
+      },
+      "collector_cpu_percent_one_core": {
+        "self": 1.123757829607046,
+        "children": 2.8567252274782833
+      },
+      "interface_delta": {
+        "tx_bytes": 214020039,
+        "rx_bytes": 57297442,
+        "tx_packets": 315203,
+        "rx_packets": 411683,
+        "rx_dropped": 0,
+        "tx_dropped": 0
+      },
+      "onset": {
+        "start_ns": 1792585729908710003,
+        "end_ns": 1792585730908816207,
+        "elapsed_end_since_swarm_s": 17.478707291,
+        "delta": 33,
+        "authenticated_min": 146,
+        "authenticated_max": 153
+      }
+    },
+    "bots": {
+      "host_start_ns": 1792585701392458976,
+      "host_end_ns": 1792585757400403908,
+      "host_interval_s": 56.007944932,
+      "udp_delta": {
+        "InDatagrams": 307919,
+        "NoPorts": 0,
+        "InErrors": 4031,
+        "OutDatagrams": 422192,
+        "RcvbufErrors": 4031,
+        "SndbufErrors": 0,
+        "InCsumErrors": 0,
+        "IgnoredMulti": 0,
+        "MemErrors": 0
+      },
+      "sum_max_observed_socket_drops": 4031,
+      "observed_process_socket_count": 200,
+      "sockets_observed_dropping": 22,
+      "effective_rb_values": [
+        212992
+      ],
+      "effective_tb_values": [
+        212992
+      ],
+      "max_sampled_receive_memory": 212944,
+      "max_sampled_recv_q": 212944,
+      "socket_failures": 0,
+      "cpu_active_only": {
+        "matched_boundary": {
+          "utc_start_ns": 1792585714394646675,
+          "utc_end_ns": 1792585756400250291,
+          "interval_s": 42.005603296,
+          "logical_cpus": 2,
+          "process_cpu_percent_one_core": 52.01686985907587,
+          "swarm_cpu_percent_one_core": 52.10723875517886,
+          "host_execution_percent_capacity": 33.47047434656341,
+          "host_execution_percent_one_core": 66.94094869312681,
+          "busiest_core_execution_percent": 33.463035019455255,
+          "steal_percent_capacity": 0.0,
+          "cpu0_execution_percent": 33.437725849192965,
+          "cpu1_execution_percent": 33.463035019455255
+        },
+        "interval_errors": [],
+        "one_second_statistics": {
+          "process_cpu_percent_one_core": {
+            "sample_count": 42,
+            "covered_seconds": 42.00560329600002,
+            "time_weighted_mean": 52.01686985907584,
+            "p95": 77.99115767450749,
+            "p99": 78.99221002522395,
+            "max": 78.99221002522395,
+            "seconds_at_or_above_95_percent": 0,
+            "longest_contiguous_seconds_at_or_above_95_percent": 0.0
+          },
+          "swarm_cpu_percent_one_core": {
+            "sample_count": 42,
+            "covered_seconds": 42.00560329600002,
+            "time_weighted_mean": 52.107238755178834,
+            "p95": 78.00089226383007,
+            "p99": 79.68904130581355,
+            "max": 79.68904130581355,
+            "seconds_at_or_above_95_percent": 0,
+            "longest_contiguous_seconds_at_or_above_95_percent": 0.0
+          },
+          "host_execution_percent_capacity": {
+            "sample_count": 42,
+            "covered_seconds": 42.00560329600002,
+            "time_weighted_mean": 33.526000227526104,
+            "p95": 56.12244897959184,
+            "p99": 58.46153846153846,
+            "max": 58.46153846153846,
+            "seconds_at_or_above_95_percent": 0,
+            "longest_contiguous_seconds_at_or_above_95_percent": 0.0
+          },
+          "host_execution_percent_one_core": {
+            "sample_count": 42,
+            "covered_seconds": 42.00560329600002,
+            "time_weighted_mean": 67.05200045505221,
+            "p95": 112.24489795918367,
+            "p99": 116.92307692307692,
+            "max": 116.92307692307692,
+            "seconds_at_or_above_95_percent": 8.001380535,
+            "longest_contiguous_seconds_at_or_above_95_percent": 6.000830059
+          },
+          "busiest_core_execution_percent": {
+            "sample_count": 42,
+            "covered_seconds": 42.00560329600002,
+            "time_weighted_mean": 43.449303273004,
+            "p95": 64.64646464646465,
+            "p99": 73.26732673267327,
+            "max": 73.26732673267327,
+            "seconds_at_or_above_95_percent": 0,
+            "longest_contiguous_seconds_at_or_above_95_percent": 0.0
+          },
+          "steal_percent_capacity": {
+            "sample_count": 42,
+            "covered_seconds": 42.00560329600002,
+            "time_weighted_mean": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "max": 0.0,
+            "seconds_at_or_above_95_percent": 0,
+            "longest_contiguous_seconds_at_or_above_95_percent": 0.0
+          }
+        },
+        "semantics": "1 Hz interval statistics, not instantaneous peaks or repeat confidence intervals. Intervals outside 0.5\u20132.5 s are excluded from peaks/near-95% durations. 95% is a descriptive warning threshold, not proof of CPU saturation. Process CPU sums all threads; tick-thread CPU was not collected separately. Per-core CPU includes all processes on that core; the tick thread may migrate. Executing CPU excludes idle/iowait/steal; steal is reported separately."
+      },
+      "collector_cpu_percent_one_core": {
+        "self": 1.2749762571488452,
+        "children": 2.7637578952046096
+      },
+      "interface_delta": {
+        "tx_bytes": 58082895,
+        "rx_bytes": 213928365,
+        "tx_packets": 422327,
+        "rx_packets": 315256,
+        "rx_dropped": 0,
+        "tx_dropped": 0
+      },
+      "onset": {
+        "start_ns": 1792585742398514500,
+        "end_ns": 1792585743398621797,
+        "elapsed_end_since_swarm_s": 29.968512881,
+        "delta": 78,
+        "authenticated_min": 178,
+        "authenticated_max": 181
+      }
+    }
+  },
+  "windows": {
+    "before_onset_10s": {
+      "requested_start_ns": 1792585719908710003,
+      "requested_end_ns": 1792585729908710003,
+      "hosts": {
+        "game": {
+          "start_ns": 1792585720906976439,
+          "end_ns": 1792585729908710003,
+          "udp_delta": {
+            "InDatagrams": 76410,
+            "NoPorts": 0,
+            "InErrors": 0,
+            "OutDatagrams": 56413,
+            "RcvbufErrors": 0,
+            "SndbufErrors": 0,
+            "InCsumErrors": 0,
+            "IgnoredMulti": 0,
+            "MemErrors": 0
+          },
+          "cpu": {
+            "utc_start_ns": 1792585720906976439,
+            "utc_end_ns": 1792585729908710003,
+            "interval_s": 9.001733684,
+            "logical_cpus": 2,
+            "process_cpu_percent_one_core": 44.32479497912683,
+            "swarm_cpu_percent_one_core": null,
+            "host_execution_percent_capacity": 34.359261331841076,
+            "host_execution_percent_one_core": 68.71852266368215,
+            "busiest_core_execution_percent": 41.36771300448431,
+            "steal_percent_capacity": 0.0,
+            "cpu0_execution_percent": 27.293064876957494,
+            "cpu1_execution_percent": 41.36771300448431
+          }
+        },
+        "bots": {
+          "start_ns": 1792585720395321413,
+          "end_ns": 1792585729396339761,
+          "udp_delta": {
+            "InDatagrams": 52496,
+            "NoPorts": 0,
+            "InErrors": 0,
+            "OutDatagrams": 73032,
+            "RcvbufErrors": 0,
+            "SndbufErrors": 0,
+            "InCsumErrors": 0,
+            "IgnoredMulti": 0,
+            "MemErrors": 0
+          },
+          "cpu": {
+            "utc_start_ns": 1792585720395321413,
+            "utc_end_ns": 1792585729396339761,
+            "interval_s": 9.001017748,
+            "logical_cpus": 2,
+            "process_cpu_percent_one_core": 43.2173350715184,
+            "swarm_cpu_percent_one_core": 43.371406537526575,
+            "host_execution_percent_capacity": 28.603730921424532,
+            "host_execution_percent_one_core": 57.207461842849064,
+            "busiest_core_execution_percent": 30.337078651685392,
+            "steal_percent_capacity": 0.0,
+            "cpu0_execution_percent": 30.337078651685392,
+            "cpu1_execution_percent": 26.931818181818183
+          }
+        }
+      },
+      "wire": {
+        "game": {
+          "start_utc_second": 1792585720,
+          "end_utc_second": 1792585729,
+          "complete_utc_seconds": 9,
+          "coverage_complete_for_requested_window": true,
+          "observed_port_seconds": 948,
+          "input_count_nonzero_port_seconds": {
+            "n": 948,
+            "min": 1,
+            "median": 30.0,
+            "p95": 30,
+            "p99": 30,
+            "max": 31
+          },
+          "totals": {
+            "out_packets": 50211,
+            "out_ip_bytes": 30463327,
+            "in_packets": 70647,
+            "in_ip_bytes": 6503882,
+            "input_commands": 27193,
+            "reliable_retry_command_bytes": 132337,
+            "out_acks": 2194,
+            "in_acks": 443299
+          },
+          "bins_10ms": {
+            "out_packets": {
+              "n": 900,
+              "min": 0,
+              "median": 9.5,
+              "p95": 186,
+              "p99": 276,
+              "max": 432
+            },
+            "in_packets": {
+              "n": 900,
+              "min": 16,
+              "median": 65.0,
+              "p95": 176,
+              "p99": 227,
+              "max": 268
+            },
+            "inputs": {
+              "n": 900,
+              "min": 1,
+              "median": 27.0,
+              "p95": 66,
+              "p99": 91,
+              "max": 117
+            },
+            "retry_command_bytes": {
+              "n": 900,
+              "min": 0,
+              "median": 0.0,
+              "p95": 472,
+              "p99": 4993,
+              "max": 6148
+            },
+            "out_acks": {
+              "n": 900,
+              "min": 0,
+              "median": 2.0,
+              "p95": 9,
+              "p99": 12,
+              "max": 15
+            },
+            "in_acks": {
+              "n": 900,
+              "min": 0,
+              "median": 144.0,
+              "p95": 2226,
+              "p99": 3724,
+              "max": 5713
+            }
+          }
+        },
+        "bots": {
+          "start_utc_second": 1792585720,
+          "end_utc_second": 1792585729,
+          "complete_utc_seconds": 9,
+          "coverage_complete_for_requested_window": true,
+          "observed_port_seconds": 948,
+          "input_count_nonzero_port_seconds": {
+            "n": 948,
+            "min": 1,
+            "median": 30.0,
+            "p95": 30,
+            "p99": 30,
+            "max": 31
+          },
+          "totals": {
+            "out_packets": 50251,
+            "out_ip_bytes": 30494032,
+            "in_packets": 70647,
+            "in_ip_bytes": 6503882,
+            "input_commands": 27193,
+            "reliable_retry_command_bytes": 132337,
+            "out_acks": 2194,
+            "in_acks": 443299
+          },
+          "bins_10ms": {
+            "out_packets": {
+              "n": 900,
+              "min": 0,
+              "median": 10.0,
+              "p95": 190,
+              "p99": 276,
+              "max": 434
+            },
+            "in_packets": {
+              "n": 900,
+              "min": 16,
+              "median": 65.0,
+              "p95": 176,
+              "p99": 221,
+              "max": 269
+            },
+            "inputs": {
+              "n": 900,
+              "min": 1,
+              "median": 27.0,
+              "p95": 67,
+              "p99": 88,
+              "max": 117
+            },
+            "retry_command_bytes": {
+              "n": 900,
+              "min": 0,
+              "median": 0.0,
+              "p95": 472,
+              "p99": 4993,
+              "max": 6148
+            },
+            "out_acks": {
+              "n": 900,
+              "min": 0,
+              "median": 2.0,
+              "p95": 8,
+              "p99": 12,
+              "max": 16
+            },
+            "in_acks": {
+              "n": 900,
+              "min": 0,
+              "median": 148.5,
+              "p95": 2156,
+              "p99": 3696,
+              "max": 5594
+            }
+          }
+        }
+      },
+      "server": {
+        "start_ns": 1792585720734216668,
+        "end_ns": 1792585729753951639,
+        "elapsed_s": 9.019734971,
+        "read_gaps": {
+          "count": 84575,
+          "total_ns": 9025544371,
+          "buckets": [
+            79367,
+            513,
+            1,
+            4421,
+            97,
+            170,
+            6,
+            0,
+            0,
+            0
+          ],
+          "cumulative_max_ns_at_end": 25879035
+        },
+        "transport": {
+          "empty_reads": 8917,
+          "receive_calls": 84575,
+          "receive_errors": 0,
+          "received_datagrams": 75658,
+          "send_calls": 55543,
+          "send_errors": 0,
+          "zero_byte_sends": 0
+        },
+        "phases": {
+          "enet_flush": {
+            "count": 270,
+            "total_ns": 471500713,
+            "buckets": [
+              0,
+              0,
+              59,
+              205,
+              6,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "cumulative_max_ns_at_end": 9276247
+          },
+          "outbox_flush": {
+            "count": 4962,
+            "total_ns": 554515174,
+            "buckets": [
+              4618,
+              74,
+              12,
+              254,
+              4,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "cumulative_max_ns_at_end": 6193005
+          },
+          "service_and_route": {
+            "count": 4692,
+            "total_ns": 965368684,
+            "buckets": [
+              2339,
+              2036,
+              149,
+              166,
+              2,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "cumulative_max_ns_at_end": 8993643
+          },
+          "world_tick": {
+            "count": 270,
+            "total_ns": 1872666259,
+            "buckets": [
+              0,
+              0,
+              0,
+              57,
+              199,
+              14,
+              0,
+              0,
+              0,
+              0
+            ],
+            "cumulative_max_ns_at_end": 12569452
+          }
+        }
+      },
+      "bot_scheduler": {
+        "sample_start_ns": 1792585720444369544,
+        "sample_end_ns": 1792585729487741047,
+        "playing_bot_ids": 135,
+        "per_playing_bot_interval_hz": {
+          "n": 905,
+          "min": 29.56398156031794,
+          "median": 29.894632034672156,
+          "p95": 30.884347784348474,
+          "p99": 30.899065021503564,
+          "max": 30.90908278752546
+        },
+        "input_gap_buckets": [
+          0,
+          0,
+          1301,
+          22374,
+          3279,
+          286,
+          0,
+          0
+        ],
+        "missed_schedules": 0,
+        "delivery_age_s": {
+          "snapshot_age_s": {
+            "n": 982,
+            "min": 0.001021688,
+            "median": 0.0165113785,
+            "p95": 0.401386922,
+            "p99": 1.650678465,
+            "max": 3.159334701
+          },
+          "delta_age_s": {
+            "n": 968,
+            "min": 0.001120049,
+            "median": 0.016473957999999997,
+            "p95": 0.382240922,
+            "p99": 1.6029463449999999,
+            "max": 3.559145289
+          },
+          "confirm_age_s": {
+            "n": 967,
+            "min": 0.001134329,
+            "median": 0.016384217,
+            "p95": 0.4130861,
+            "p99": 1.587293654,
+            "max": 3.708823223
+          }
+        }
+      },
+      "aligned_running_bot_wire": null
+    },
+    "after_onset_10s": {
+      "requested_start_ns": 1792585730908816207,
+      "requested_end_ns": 1792585740908816207,
+      "hosts": {
+        "game": {
+          "start_ns": 1792585730908816207,
+          "end_ns": 1792585739914709948,
+          "udp_delta": {
+            "InDatagrams": 88639,
+            "NoPorts": 0,
+            "InErrors": 53900,
+            "OutDatagrams": 124720,
+            "RcvbufErrors": 53900,
+            "SndbufErrors": 885,
+            "InCsumErrors": 0,
+            "IgnoredMulti": 0,
+            "MemErrors": 0
+          },
+          "cpu": {
+            "utc_start_ns": 1792585730908816207,
+            "utc_end_ns": 1792585739914709948,
+            "interval_s": 9.005893861,
+            "logical_cpus": 2,
+            "process_cpu_percent_one_core": 86.49890971660875,
+            "swarm_cpu_percent_one_core": null,
+            "host_execution_percent_capacity": 64.92411467116358,
+            "host_execution_percent_one_core": 129.84822934232716,
+            "busiest_core_execution_percent": 78.34467120181407,
+            "steal_percent_capacity": 0.0,
+            "cpu0_execution_percent": 51.785714285714285,
+            "cpu1_execution_percent": 78.34467120181407
+          }
+        },
+        "bots": {
+          "start_ns": 1792585731396657715,
+          "end_ns": 1792585740398291747,
+          "udp_delta": {
+            "InDatagrams": 124814,
+            "NoPorts": 0,
+            "InErrors": 0,
+            "OutDatagrams": 143894,
+            "RcvbufErrors": 0,
+            "SndbufErrors": 0,
+            "InCsumErrors": 0,
+            "IgnoredMulti": 0,
+            "MemErrors": 0
+          },
+          "cpu": {
+            "utc_start_ns": 1792585731396657715,
+            "utc_end_ns": 1792585740398291747,
+            "interval_s": 9.001633232,
+            "logical_cpus": 2,
+            "process_cpu_percent_one_core": 73.98657364004008,
+            "swarm_cpu_percent_one_core": 74.02738845558866,
+            "host_execution_percent_capacity": 52.29722064662507,
+            "host_execution_percent_one_core": 104.59444129325014,
+            "busiest_core_execution_percent": 52.927927927927925,
+            "steal_percent_capacity": 0.0,
+            "cpu0_execution_percent": 52.927927927927925,
+            "cpu1_execution_percent": 51.60183066361556
+          }
+        }
+      },
+      "wire": {
+        "game": {
+          "start_utc_second": 1792585731,
+          "end_utc_second": 1792585740,
+          "complete_utc_seconds": 9,
+          "coverage_complete_for_requested_window": true,
+          "observed_port_seconds": 1576,
+          "input_count_nonzero_port_seconds": {
+            "n": 1576,
+            "min": 1,
+            "median": 30.0,
+            "p95": 31,
+            "p99": 31,
+            "max": 31
+          },
+          "totals": {
+            "out_packets": 124134,
+            "out_ip_bytes": 80578664,
+            "in_packets": 142491,
+            "in_ip_bytes": 20675467,
+            "input_commands": 45040,
+            "reliable_retry_command_bytes": 13688810,
+            "out_acks": 2429,
+            "in_acks": 1877283
+          },
+          "bins_10ms": {
+            "out_packets": {
+              "n": 900,
+              "min": 0,
+              "median": 97.0,
+              "p95": 427,
+              "p99": 512,
+              "max": 559
+            },
+            "in_packets": {
+              "n": 900,
+              "min": 18,
+              "median": 146.0,
+              "p95": 305,
+              "p99": 478,
+              "max": 590
+            },
+            "inputs": {
+              "n": 900,
+              "min": 0,
+              "median": 36.0,
+              "p95": 128,
+              "p99": 150,
+              "max": 200
+            },
+            "retry_command_bytes": {
+              "n": 900,
+              "min": 0,
+              "median": 0.0,
+              "p95": 116800,
+              "p99": 252783,
+              "max": 291477
+            },
+            "out_acks": {
+              "n": 900,
+              "min": 0,
+              "median": 0.0,
+              "p95": 14,
+              "p99": 20,
+              "max": 43
+            },
+            "in_acks": {
+              "n": 900,
+              "min": 0,
+              "median": 1180.0,
+              "p95": 7261,
+              "p99": 12935,
+              "max": 15508
+            }
+          }
+        },
+        "bots": {
+          "start_utc_second": 1792585731,
+          "end_utc_second": 1792585740,
+          "complete_utc_seconds": 9,
+          "coverage_complete_for_requested_window": true,
+          "observed_port_seconds": 1576,
+          "input_count_nonzero_port_seconds": {
+            "n": 1576,
+            "min": 1,
+            "median": 30.0,
+            "p95": 31,
+            "p99": 31,
+            "max": 31
+          },
+          "totals": {
+            "out_packets": 124134,
+            "out_ip_bytes": 80578664,
+            "in_packets": 142508,
+            "in_ip_bytes": 20676487,
+            "input_commands": 45057,
+            "reliable_retry_command_bytes": 13688810,
+            "out_acks": 2429,
+            "in_acks": 1877283
+          },
+          "bins_10ms": {
+            "out_packets": {
+              "n": 900,
+              "min": 0,
+              "median": 97.0,
+              "p95": 439,
+              "p99": 503,
+              "max": 617
+            },
+            "in_packets": {
+              "n": 900,
+              "min": 22,
+              "median": 146.5,
+              "p95": 304,
+              "p99": 469,
+              "max": 603
+            },
+            "inputs": {
+              "n": 900,
+              "min": 0,
+              "median": 37.0,
+              "p95": 129,
+              "p99": 152,
+              "max": 208
+            },
+            "retry_command_bytes": {
+              "n": 900,
+              "min": 0,
+              "median": 0.0,
+              "p95": 111579,
+              "p99": 251877,
+              "max": 284334
+            },
+            "out_acks": {
+              "n": 900,
+              "min": 0,
+              "median": 0.0,
+              "p95": 15,
+              "p99": 20,
+              "max": 43
+            },
+            "in_acks": {
+              "n": 900,
+              "min": 0,
+              "median": 1191.5,
+              "p95": 7261,
+              "p99": 12731,
+              "max": 15886
+            }
+          }
+        }
+      },
+      "server": {
+        "start_ns": 1792585731754284288,
+        "end_ns": 1792585740542028356,
+        "elapsed_s": 8.787744068,
+        "read_gaps": {
+          "count": 81057,
+          "total_ns": 8576369287,
+          "buckets": [
+            77998,
+            2245,
+            34,
+            604,
+            17,
+            18,
+            120,
+            5,
+            6,
+            10
+          ],
+          "cumulative_max_ns_at_end": 443413725
+        },
+        "transport": {
+          "empty_reads": 1269,
+          "receive_calls": 81057,
+          "receive_errors": 0,
+          "received_datagrams": 79788,
+          "send_calls": 123060,
+          "send_errors": 0,
+          "zero_byte_sends": 847
+        },
+        "phases": {
+          "enet_flush": {
+            "count": 258,
+            "total_ns": 1066143585,
+            "buckets": [
+              0,
+              0,
+              0,
+              189,
+              60,
+              9,
+              0,
+              0,
+              0,
+              0
+            ],
+            "cumulative_max_ns_at_end": 18172129
+          },
+          "outbox_flush": {
+            "count": 958,
+            "total_ns": 1183702924,
+            "buckets": [
+              657,
+              41,
+              1,
+              182,
+              74,
+              3,
+              0,
+              0,
+              0,
+              0
+            ],
+            "cumulative_max_ns_at_end": 11911404
+          },
+          "service_and_route": {
+            "count": 700,
+            "total_ns": 2154056206,
+            "buckets": [
+              102,
+              309,
+              80,
+              171,
+              19,
+              3,
+              5,
+              2,
+              2,
+              7
+            ],
+            "cumulative_max_ns_at_end": 356987298
+          },
+          "world_tick": {
+            "count": 258,
+            "total_ns": 3584434350,
+            "buckets": [
+              0,
+              0,
+              0,
+              0,
+              14,
+              243,
+              1,
+              0,
+              0,
+              0
+            ],
+            "cumulative_max_ns_at_end": 20256998
+          }
+        }
+      },
+      "bot_scheduler": {
+        "sample_start_ns": 1792585731497483439,
+        "sample_end_ns": 1792585740564358258,
+        "playing_bot_ids": 182,
+        "per_playing_bot_interval_hz": {
+          "n": 1567,
+          "min": 28.78609290408933,
+          "median": 29.848321040597483,
+          "p95": 30.866943348919094,
+          "p99": 30.866943348919094,
+          "max": 30.869897889248822
+        },
+        "input_gap_buckets": [
+          84,
+          1382,
+          10997,
+          19239,
+          9399,
+          4980,
+          1202,
+          0
+        ],
+        "missed_schedules": 0,
+        "delivery_age_s": {
+          "snapshot_age_s": {
+            "n": 1590,
+            "min": 0.001384812,
+            "median": 0.02269215,
+            "p95": 0.28421618,
+            "p99": 0.844743835,
+            "max": 3.722696259
+          },
+          "delta_age_s": {
+            "n": 1587,
+            "min": 0.001384772,
+            "median": 0.02513985,
+            "p95": 0.297710813,
+            "p99": 0.90024282,
+            "max": 3.722696419
+          },
+          "confirm_age_s": {
+            "n": 1576,
+            "min": 0.001408011,
+            "median": 0.0952349575,
+            "p95": 0.439207839,
+            "p99": 2.483788123,
+            "max": 3.614290791
+          }
+        }
+      },
+      "aligned_running_bot_wire": null
+    },
+    "last_10s": {
+      "requested_start_ns": 1792585746486765776,
+      "requested_end_ns": 1792585756486765776,
+      "hosts": {
+        "game": {
+          "start_ns": 1792585746916981755,
+          "end_ns": 1792585753918008065,
+          "udp_delta": {
+            "InDatagrams": 34491,
+            "NoPorts": 4730,
+            "InErrors": 15375,
+            "OutDatagrams": 29402,
+            "RcvbufErrors": 15375,
+            "SndbufErrors": 84,
+            "InCsumErrors": 0,
+            "IgnoredMulti": 0,
+            "MemErrors": 0
+          },
+          "cpu": {
+            "utc_start_ns": 1792585746916981755,
+            "utc_end_ns": 1792585753918008065,
+            "interval_s": 7.00102583,
+            "logical_cpus": 2,
+            "process_cpu_percent_one_core": null,
+            "swarm_cpu_percent_one_core": null,
+            "host_execution_percent_capacity": 44.56681350954479,
+            "host_execution_percent_one_core": 89.13362701908957,
+            "busiest_core_execution_percent": 72.85714285714286,
+            "steal_percent_capacity": 0.0,
+            "cpu0_execution_percent": 72.85714285714286,
+            "cpu1_execution_percent": 14.652567975830816
+          }
+        },
+        "bots": {
+          "start_ns": 1792585747399158103,
+          "end_ns": 1792585756400250291,
+          "udp_delta": {
+            "InDatagrams": 22813,
+            "NoPorts": 0,
+            "InErrors": 2140,
+            "OutDatagrams": 59666,
+            "RcvbufErrors": 2140,
+            "SndbufErrors": 0,
+            "InCsumErrors": 0,
+            "IgnoredMulti": 0,
+            "MemErrors": 0
+          },
+          "cpu": {
+            "utc_start_ns": 1792585747399158103,
+            "utc_end_ns": 1792585756400250291,
+            "interval_s": 9.001091788,
+            "logical_cpus": 2,
+            "process_cpu_percent_one_core": 46.54990859648814,
+            "swarm_cpu_percent_one_core": 46.77298153555947,
+            "host_execution_percent_capacity": 26.67416994935284,
+            "host_execution_percent_one_core": 53.34833989870568,
+            "busiest_core_execution_percent": 28.53932584269663,
+            "steal_percent_capacity": 0.0,
+            "cpu0_execution_percent": 28.53932584269663,
+            "cpu1_execution_percent": 24.88738738738739
+          }
+        }
+      },
+      "wire": {
+        "game": {
+          "start_utc_second": 1792585747,
+          "end_utc_second": 1792585741,
+          "complete_utc_seconds": 0,
+          "coverage_complete_for_requested_window": false,
+          "observed_port_seconds": 0,
+          "input_count_nonzero_port_seconds": {
+            "n": 0,
+            "min": null,
+            "median": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "totals": {},
+          "bins_10ms": {
+            "out_packets": {
+              "n": 0,
+              "min": null,
+              "median": null,
+              "p95": null,
+              "p99": null,
+              "max": null
+            },
+            "in_packets": {
+              "n": 0,
+              "min": null,
+              "median": null,
+              "p95": null,
+              "p99": null,
+              "max": null
+            },
+            "inputs": {
+              "n": 0,
+              "min": null,
+              "median": null,
+              "p95": null,
+              "p99": null,
+              "max": null
+            },
+            "retry_command_bytes": {
+              "n": 0,
+              "min": null,
+              "median": null,
+              "p95": null,
+              "p99": null,
+              "max": null
+            },
+            "out_acks": {
+              "n": 0,
+              "min": null,
+              "median": null,
+              "p95": null,
+              "p99": null,
+              "max": null
+            },
+            "in_acks": {
+              "n": 0,
+              "min": null,
+              "median": null,
+              "p95": null,
+              "p99": null,
+              "max": null
+            }
+          }
+        },
+        "bots": {
+          "start_utc_second": 1792585747,
+          "end_utc_second": 1792585741,
+          "complete_utc_seconds": 0,
+          "coverage_complete_for_requested_window": false,
+          "observed_port_seconds": 0,
+          "input_count_nonzero_port_seconds": {
+            "n": 0,
+            "min": null,
+            "median": null,
+            "p95": null,
+            "p99": null,
+            "max": null
+          },
+          "totals": {},
+          "bins_10ms": {
+            "out_packets": {
+              "n": 0,
+              "min": null,
+              "median": null,
+              "p95": null,
+              "p99": null,
+              "max": null
+            },
+            "in_packets": {
+              "n": 0,
+              "min": null,
+              "median": null,
+              "p95": null,
+              "p99": null,
+              "max": null
+            },
+            "inputs": {
+              "n": 0,
+              "min": null,
+              "median": null,
+              "p95": null,
+              "p99": null,
+              "max": null
+            },
+            "retry_command_bytes": {
+              "n": 0,
+              "min": null,
+              "median": null,
+              "p95": null,
+              "p99": null,
+              "max": null
+            },
+            "out_acks": {
+              "n": 0,
+              "min": null,
+              "median": null,
+              "p95": null,
+              "p99": null,
+              "max": null
+            },
+            "in_acks": {
+              "n": 0,
+              "min": null,
+              "median": null,
+              "p95": null,
+              "p99": null,
+              "max": null
+            }
+          }
+        }
+      },
+      "server": {
+        "start_ns": 1792585746757363445,
+        "end_ns": 1792585752884114438,
+        "elapsed_s": 6.126750993,
+        "read_gaps": {
+          "count": 35751,
+          "total_ns": 6326733777,
+          "buckets": [
+            27786,
+            4754,
+            2139,
+            957,
+            82,
+            19,
+            5,
+            2,
+            1,
+            6
+          ],
+          "cumulative_max_ns_at_end": 443413725
+        },
+        "transport": {
+          "empty_reads": 963,
+          "receive_calls": 35751,
+          "receive_errors": 0,
+          "received_datagrams": 34788,
+          "send_calls": 30707,
+          "send_errors": 0,
+          "zero_byte_sends": 84
+        },
+        "phases": {
+          "enet_flush": {
+            "count": 190,
+            "total_ns": 231378086,
+            "buckets": [
+              0,
+              0,
+              111,
+              78,
+              1,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "cumulative_max_ns_at_end": 18172129
+          },
+          "outbox_flush": {
+            "count": 746,
+            "total_ns": 304450505,
+            "buckets": [
+              527,
+              20,
+              93,
+              102,
+              4,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "cumulative_max_ns_at_end": 11911404
+          },
+          "service_and_route": {
+            "count": 556,
+            "total_ns": 3982337304,
+            "buckets": [
+              317,
+              104,
+              18,
+              6,
+              15,
+              59,
+              12,
+              7,
+              8,
+              10
+            ],
+            "cumulative_max_ns_at_end": 356987298
+          },
+          "world_tick": {
+            "count": 190,
+            "total_ns": 994311921,
+            "buckets": [
+              0,
+              0,
+              0,
+              121,
+              62,
+              7,
+              0,
+              0,
+              0,
+              0
+            ],
+            "cumulative_max_ns_at_end": 20256998
+          }
+        }
+      },
+      "bot_scheduler": {
+        "sample_start_ns": 1792585746619940497,
+        "sample_end_ns": 1792585755779362531,
+        "playing_bot_ids": 168,
+        "per_playing_bot_interval_hz": {
+          "n": 1465,
+          "min": 20.57753443151382,
+          "median": 29.805193552989596,
+          "p95": 30.866301647270728,
+          "p99": 30.866301647270728,
+          "max": 30.866301647270728
+        },
+        "input_gap_buckets": [
+          0,
+          132,
+          4532,
+          25564,
+          8754,
+          1157,
+          24,
+          0
+        ],
+        "missed_schedules": 0,
+        "delivery_age_s": {
+          "snapshot_age_s": {
+            "n": 1478,
+            "min": 0.002047337,
+            "median": 1.0610244070000001,
+            "p95": 7.198721772,
+            "p99": 10.688331999,
+            "max": 15.107762975
+          },
+          "delta_age_s": {
+            "n": 1478,
+            "min": 0.002047337,
+            "median": 1.0610832669999999,
+            "p95": 7.199130576,
+            "p99": 10.688332079,
+            "max": 15.107763175
+          },
+          "confirm_age_s": {
+            "n": 1477,
+            "min": 0.002076617,
+            "median": 1.250636075,
+            "p95": 7.790844452,
+            "p99": 15.712278038000001,
+            "max": 18.829708188
+          }
+        }
+      },
+      "aligned_running_bot_wire": null
+    },
+    "workload": {
+      "requested_start_ns": 1792585713430108916,
+      "requested_end_ns": 1792585756486765776,
+      "hosts": {
+        "game": {
+          "start_ns": 1792585713905993969,
+          "end_ns": 1792585753918008065,
+          "udp_delta": {
+            "InDatagrams": 257474,
+            "NoPorts": 4730,
+            "InErrors": 149140,
+            "OutDatagrams": 314987,
+            "RcvbufErrors": 149140,
+            "SndbufErrors": 969,
+            "InCsumErrors": 0,
+            "IgnoredMulti": 0,
+            "MemErrors": 0
+          },
+          "cpu": {
+            "utc_start_ns": 1792585713905993969,
+            "utc_end_ns": 1792585753918008065,
+            "interval_s": 40.012014296,
+            "logical_cpus": 2,
+            "process_cpu_percent_one_core": null,
+            "swarm_cpu_percent_one_core": null,
+            "host_execution_percent_capacity": 44.76396488102812,
+            "host_execution_percent_one_core": 89.52792976205625,
+            "busiest_core_execution_percent": 51.47021864790148,
+            "steal_percent_capacity": 0.0,
+            "cpu0_execution_percent": 51.47021864790148,
+            "cpu1_execution_percent": 37.88659793814433
+          }
+        },
+        "bots": {
+          "start_ns": 1792585714394646675,
+          "end_ns": 1792585756400250291,
+          "udp_delta": {
+            "InDatagrams": 307714,
+            "NoPorts": 0,
+            "InErrors": 4031,
+            "OutDatagrams": 421634,
+            "RcvbufErrors": 4031,
+            "SndbufErrors": 0,
+            "InCsumErrors": 0,
+            "IgnoredMulti": 0,
+            "MemErrors": 0
+          },
+          "cpu": {
+            "utc_start_ns": 1792585714394646675,
+            "utc_end_ns": 1792585756400250291,
+            "interval_s": 42.005603296,
+            "logical_cpus": 2,
+            "process_cpu_percent_one_core": 52.01686985907587,
+            "swarm_cpu_percent_one_core": 52.10723875517886,
+            "host_execution_percent_capacity": 33.47047434656341,
+            "host_execution_percent_one_core": 66.94094869312681,
+            "busiest_core_execution_percent": 33.463035019455255,
+            "steal_percent_capacity": 0.0,
+            "cpu0_execution_percent": 33.437725849192965,
+            "cpu1_execution_percent": 33.463035019455255
+          }
+        }
+      },
+      "wire": {
+        "game": {
+          "start_utc_second": 1792585714,
+          "end_utc_second": 1792585741,
+          "complete_utc_seconds": 27,
+          "coverage_complete_for_requested_window": false,
+          "observed_port_seconds": 3235,
+          "input_count_nonzero_port_seconds": {
+            "n": 3235,
+            "min": 1,
+            "median": 30,
+            "p95": 30,
+            "p99": 31,
+            "max": 31
+          },
+          "totals": {
+            "out_packets": 217870,
+            "out_ip_bytes": 138770131,
+            "in_packets": 269569,
+            "in_ip_bytes": 33761879,
+            "input_commands": 92212,
+            "reliable_retry_command_bytes": 16291035,
+            "out_acks": 5989,
+            "in_acks": 2854355
+          },
+          "bins_10ms": {
+            "out_packets": {
+              "n": 2700,
+              "min": 0,
+              "median": 14.0,
+              "p95": 334,
+              "p99": 469,
+              "max": 617
+            },
+            "in_packets": {
+              "n": 2700,
+              "min": 1,
+              "median": 86.5,
+              "p95": 240,
+              "p99": 398,
+              "max": 590
+            },
+            "inputs": {
+              "n": 2700,
+              "min": 0,
+              "median": 22.0,
+              "p95": 109,
+              "p99": 135,
+              "max": 200
+            },
+            "retry_command_bytes": {
+              "n": 2700,
+              "min": 0,
+              "median": 0.0,
+              "p95": 24577,
+              "p99": 184416,
+              "max": 303546
+            },
+            "out_acks": {
+              "n": 2700,
+              "min": 0,
+              "median": 1.0,
+              "p95": 10,
+              "p99": 16,
+              "max": 43
+            },
+            "in_acks": {
+              "n": 2700,
+              "min": 0,
+              "median": 205.5,
+              "p95": 5019,
+              "p99": 10119,
+              "max": 15508
+            }
+          }
+        },
+        "bots": {
+          "start_utc_second": 1792585714,
+          "end_utc_second": 1792585741,
+          "complete_utc_seconds": 27,
+          "coverage_complete_for_requested_window": false,
+          "observed_port_seconds": 3235,
+          "input_count_nonzero_port_seconds": {
+            "n": 3235,
+            "min": 1,
+            "median": 30,
+            "p95": 30,
+            "p99": 31,
+            "max": 31
+          },
+          "totals": {
+            "out_packets": 217870,
+            "out_ip_bytes": 138770131,
+            "in_packets": 269569,
+            "in_ip_bytes": 33761879,
+            "input_commands": 92212,
+            "reliable_retry_command_bytes": 16291035,
+            "out_acks": 5989,
+            "in_acks": 2854355
+          },
+          "bins_10ms": {
+            "out_packets": {
+              "n": 2700,
+              "min": 0,
+              "median": 15.0,
+              "p95": 339,
+              "p99": 484,
+              "max": 617
+            },
+            "in_packets": {
+              "n": 2700,
+              "min": 1,
+              "median": 87.5,
+              "p95": 240,
+              "p99": 389,
+              "max": 603
+            },
+            "inputs": {
+              "n": 2700,
+              "min": 0,
+              "median": 22.0,
+              "p95": 110,
+              "p99": 136,
+              "max": 208
+            },
+            "retry_command_bytes": {
+              "n": 2700,
+              "min": 0,
+              "median": 0.0,
+              "p95": 26516,
+              "p99": 187150,
+              "max": 311970
+            },
+            "out_acks": {
+              "n": 2700,
+              "min": 0,
+              "median": 1.0,
+              "p95": 10,
+              "p99": 16,
+              "max": 43
+            },
+            "in_acks": {
+              "n": 2700,
+              "min": 0,
+              "median": 217.0,
+              "p95": 4962,
+              "p99": 10142,
+              "max": 15886
+            }
+          }
+        }
+      },
+      "server": {
+        "start_ns": 1792585713730064955,
+        "end_ns": 1792585752884114438,
+        "elapsed_s": 39.154049483,
+        "read_gaps": {
+          "count": 278953,
+          "total_ns": 39154049402,
+          "buckets": [
+            250198,
+            12749,
+            3307,
+            11961,
+            274,
+            254,
+            159,
+            8,
+            7,
+            36
+          ],
+          "cumulative_max_ns_at_end": 443413725
+        },
+        "transport": {
+          "empty_reads": 21517,
+          "receive_calls": 278953,
+          "receive_errors": 0,
+          "received_datagrams": 257436,
+          "send_calls": 315927,
+          "send_errors": 0,
+          "zero_byte_sends": 969
+        },
+        "phases": {
+          "enet_flush": {
+            "count": 1174,
+            "total_ns": 2625825822,
+            "buckets": [
+              2,
+              68,
+              277,
+              715,
+              99,
+              13,
+              0,
+              0,
+              0,
+              0
+            ],
+            "cumulative_max_ns_at_end": 18172129
+          },
+          "outbox_flush": {
+            "count": 13195,
+            "total_ns": 2988543038,
+            "buckets": [
+              11866,
+              257,
+              182,
+              782,
+              105,
+              3,
+              0,
+              0,
+              0,
+              0
+            ],
+            "cumulative_max_ns_at_end": 11911404
+          },
+          "service_and_route": {
+            "count": 12021,
+            "total_ns": 10836860439,
+            "buckets": [
+              7572,
+              3499,
+              343,
+              434,
+              38,
+              62,
+              17,
+              9,
+              16,
+              31
+            ],
+            "cumulative_max_ns_at_end": 356987298
+          },
+          "world_tick": {
+            "count": 1174,
+            "total_ns": 9440353664,
+            "buckets": [
+              11,
+              38,
+              40,
+              299,
+              332,
+              453,
+              1,
+              0,
+              0,
+              0
+            ],
+            "cumulative_max_ns_at_end": 20256998
+          }
+        }
+      },
+      "bot_scheduler": {
+        "sample_start_ns": 1792585713432464456,
+        "sample_end_ns": 1792585755779362531,
+        "playing_bot_ids": 200,
+        "per_playing_bot_interval_hz": {
+          "n": 5446,
+          "min": 20.57753443151382,
+          "median": 29.85007807243145,
+          "p95": 30.866301647270728,
+          "p99": 30.88498290296016,
+          "max": 30.95131763198749
+        },
+        "input_gap_buckets": [
+          202,
+          3318,
+          24397,
+          91287,
+          28244,
+          10255,
+          2607,
+          0
+        ],
+        "missed_schedules": 46,
+        "delivery_age_s": {
+          "snapshot_age_s": {
+            "n": 5641,
+            "min": 0.001021688,
+            "median": 0.019573764,
+            "p95": 4.384116039,
+            "p99": 7.500984504,
+            "max": 15.107762975
+          },
+          "delta_age_s": {
+            "n": 5616,
+            "min": 0.001120049,
+            "median": 0.019686945,
+            "p95": 4.513683284,
+            "p99": 7.501251306,
+            "max": 15.107763175
+          },
+          "confirm_age_s": {
+            "n": 5604,
+            "min": 0.001134329,
+            "median": 0.055623986,
+            "p95": 5.086779445,
+            "p99": 9.486429173,
+            "max": 18.829708188
+          }
+        }
+      },
+      "aligned_running_bot_wire": null
+    }
+  },
+  "bot_samples": 44,
+  "ramp_samples": 40,
+  "ramp_phase_s_all_null": true,
+  "port_to_bot_mapping": null,
+  "collector": {
+    "game": {
+      "resource": {
+        "reason": "capture-exit",
+        "exit_code": 1,
+        "elapsed_s": 35.32635919796303,
+        "children_cpu_s": 3.048829,
+        "self_cpu_s": 0.10067699999999999,
+        "children_maxrss_kib": 205252,
+        "max_retained_sampled_bytes": 352719,
+        "retained_limit_bytes": 50331648,
+        "cgroup_memory_max_bytes": 536870912,
+        "file_limit_bytes": 67108864,
+        "time_limit_s": 300
+      },
+      "retained_files": {
+        "capture.log": 244,
+        "flow-bins.csv": 84302,
+        "input-ports.csv": 64790,
+        "flow-points.csv": 1723,
+        "datagrams.bin": 201660
+      },
+      "first_complete_second": 1792585714,
+      "last_complete_second": 1792585740,
+      "guard": "two-million-reliable-command-state-limit",
+      "packets_captured": 500238,
+      "packets_received_by_filter": 500786,
+      "packets_dropped_by_capture_kernel": 0,
+      "parsed_packets": null,
+      "malformed_packets": null,
+      "port_to_bot_mapping": null,
+      "final_flow_summary": null,
+      "source_sha256": {
+        "capture.py": "be5a45e0e4c14b1d2cd94ed8daa951ba62a6a0a5e7c949a94db19218879d92ca",
+        "host_collect.py": "634fbdf22298c5bb7d86fa1e42536132dad733c0b39d0766a09aaaecb9895b43",
+        "udp_control.py": "3bc29045cbe96907b8ff15d284a0e5cc4437c60e4a086c1375ae36151ab34a1c",
+        "udp_control_capture.py": "c88389f6dec7e5c25bf1cc931f050fdd686acad4b03a48bdfca5ed7dafc5afd0",
+        "udp_control_flow.rs": "c32e6bd5a89c144897df156ea3362259d59ce532966a7aa23eb1d1f1debd7643",
+        "udp_control_record.rs": "4a49e1411994a4012b9ddd74556c78ef9c7f0791b206a7a487148ea91a423e90",
+        "flow-record": "b77b2d6e04b70a5f8ea01b7a906a94eccee8062d65d3fcc27e351e4ba27b3606"
+      }
+    },
+    "bots": {
+      "resource": {
+        "reason": "capture-exit",
+        "exit_code": 1,
+        "elapsed_s": 31.568896965007298,
+        "children_cpu_s": 3.271116,
+        "self_cpu_s": 0.09106099999999999,
+        "children_maxrss_kib": 205208,
+        "max_retained_sampled_bytes": 139301,
+        "retained_limit_bytes": 50331648,
+        "cgroup_memory_max_bytes": 536870912,
+        "file_limit_bytes": 67108864,
+        "time_limit_s": 300
+      },
+      "retained_files": {
+        "capture.log": 244,
+        "flow-bins.csv": 84442,
+        "input-ports.csv": 64790,
+        "flow-points.csv": 1723,
+        "datagrams.bin": 201660
+      },
+      "first_complete_second": 1792585714,
+      "last_complete_second": 1792585740,
+      "guard": "two-million-reliable-command-state-limit",
+      "packets_captured": 500278,
+      "packets_received_by_filter": 500596,
+      "packets_dropped_by_capture_kernel": 0,
+      "parsed_packets": null,
+      "malformed_packets": null,
+      "port_to_bot_mapping": null,
+      "final_flow_summary": null,
+      "source_sha256": {
+        "capture.py": "be5a45e0e4c14b1d2cd94ed8daa951ba62a6a0a5e7c949a94db19218879d92ca",
+        "host_collect.py": "634fbdf22298c5bb7d86fa1e42536132dad733c0b39d0766a09aaaecb9895b43",
+        "udp_control.py": "3bc29045cbe96907b8ff15d284a0e5cc4437c60e4a086c1375ae36151ab34a1c",
+        "udp_control_capture.py": "c88389f6dec7e5c25bf1cc931f050fdd686acad4b03a48bdfca5ed7dafc5afd0",
+        "udp_control_flow.rs": "c32e6bd5a89c144897df156ea3362259d59ce532966a7aa23eb1d1f1debd7643",
+        "udp_control_record.rs": "4a49e1411994a4012b9ddd74556c78ef9c7f0791b206a7a487148ea91a423e90",
+        "flow-record": "b77b2d6e04b70a5f8ea01b7a906a94eccee8062d65d3fcc27e351e4ba27b3606"
+      }
+    }
+  },
+  "cleanup": {
+    "game": {
+      "stopped": true,
+      "restored": true,
+      "control_binary_unchanged": true,
+      "binary_unchanged": true,
+      "qdisc_unchanged": true,
+      "filters_unchanged": true,
+      "firewall_unchanged": true,
+      "closed_states_unchanged": true,
+      "config_unchanged": true,
+      "unit_restored": true,
+      "archive_sha256": "f24962009331110abc48559bc7b8bfc438cb48fe51067095f5faebcbeb1db2be",
+      "remote_evidence_retained": true
+    },
+    "bots": {
+      "stopped": true,
+      "control_binary_unchanged": true,
+      "binary_unchanged": true,
+      "qdisc_unchanged": true,
+      "filters_unchanged": true,
+      "firewall_unchanged": true,
+      "closed_states_unchanged": true,
+      "archive_sha256": "4f4a1be12791944de2fa8385b742ef194e7be4305f7b00bb74532f80c7307578",
+      "remote_evidence_retained": true
+    }
+  },
+  "final_verification": {
+    "bots": {
+      "no_workload_collector_profiler_build_leftovers": true,
+      "frozen_hash_present": true,
+      "utc_ns": 1792585831936408000
+    },
+    "game": {
+      "no_workload_collector_profiler_build_leftovers": true,
+      "frozen_hash_present": true,
+      "utc_ns": 1792585831938181000,
+      "zero_players": true,
+      "preserved_measurement_hashes_verified": true
+    }
+  },
+  "evidence_sha256": {
+    "game.tar.gz": "f24962009331110abc48559bc7b8bfc438cb48fe51067095f5faebcbeb1db2be",
+    "bots.tar.gz": "4f4a1be12791944de2fa8385b742ef194e7be4305f7b00bb74532f80c7307578",
+    "game-build.txt": "540a8fe260fe5d46a051076d65f8675cdb717a3f884fe0900e788087fa3e0952",
+    "bots-build.txt": "540a8fe260fe5d46a051076d65f8675cdb717a3f884fe0900e788087fa3e0952",
+    "game-build-settings.json": "47ea3c300771b518981ef32f78bfc942c1cd08697b54e2e803aa854ca0d097d3",
+    "bots-build-settings.json": "47ea3c300771b518981ef32f78bfc942c1cd08697b54e2e803aa854ca0d097d3",
+    "manifest.json": "49d4b0c9b58a845cfc441a347aeda86552297aa467c0cb92881090fecedb4ddb",
+    "cleanup.json": "7ae3d78c9b3557f24073e86b9b1d2cf97f056c04832086dae75128bd2b2246b9",
+    "final-verification-summary.json": "33083014767a499693e722e4428f9398b1749d5cbf4d9f2fbdae717f2da57519",
+    "preserved-measurement-sha256.txt": "b94a9b6d7f8f8614cc77cb4bb1eb9ea4ff903f6404a346e3c09398e3236c0c2e",
+    "udp_control.executed.py": "3bc29045cbe96907b8ff15d284a0e5cc4437c60e4a086c1375ae36151ab34a1c",
+    "udp_control_capture.executed.py": "c88389f6dec7e5c25bf1cc931f050fdd686acad4b03a48bdfca5ed7dafc5afd0",
+    "udp_control_record.executed.rs": "4a49e1411994a4012b9ddd74556c78ef9c7f0791b206a7a487148ea91a423e90",
+    "udp_control_flow.executed.rs": "c32e6bd5a89c144897df156ea3362259d59ce532966a7aa23eb1d1f1debd7643",
+    "udp_control_analysis.py": "f5c215a805510b0f50f7ca4e26994605d17eb5261e4c057c410a1e5d25f3a348",
+    "test_udp_control_flow.py": "4e490e406b50558f5649df7a4a0895e279fc239359677aca5d3b55c365fa00c6"
+  }
+}
