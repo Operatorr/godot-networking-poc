@@ -66,6 +66,8 @@ pub struct Bot {
     pos: Vec2,
     vel: Vec2,
     seq: u8,
+    last_confirm_tick: Option<u16>,
+    position_source: &'static str,
     last_aim: f32,
     input_interval: f64,
     next_input_at: f64,
@@ -162,6 +164,8 @@ impl Bot {
             pos: Vec2::ZERO,
             vel: Vec2::ZERO,
             seq: 0,
+            last_confirm_tick: None,
+            position_source: "unsynced",
             last_aim: 0.0,
             input_interval: 1.0 / input_hz.max(1.0),
             next_input_at: 0.0,
@@ -334,6 +338,7 @@ impl Bot {
             },
             ServerPacket::Snapshot(s) => self.apply_snapshot(&s, now),
             ServerPacket::ActionConfirm(c) => {
+                self.last_confirm_tick = Some(c.server_tick);
                 if let Some(observation) = &mut self.observation {
                     observation.last_confirm = Some(std::time::Instant::now());
                 }
@@ -341,6 +346,7 @@ impl Bot {
                 // The confirm is the authoritative answer to our input: adopt position and
                 // resources (poor man's reconciliation — bots don't replay).
                 self.pos = Vec2::new(c.position.0, c.position.1);
+                self.position_source = "ActionConfirm";
                 self.pos_synced = true;
                 self.sm.set_resources(c.stamina as f64, c.mana as f64);
                 // Track HP for the strategy AI's orb-seek decision. max_health is the running max
@@ -370,6 +376,7 @@ impl Bot {
                     t::RESPAWN if e.target_id == self.entity_id => {
                         if let protocol::GameEventData::Respawn { x, y } = e.data {
                             self.pos = Vec2::new(x, y);
+                            self.position_source = "RespawnEvent";
                         }
                         self.dead_since = None;
                         self.sm.reset();
@@ -436,7 +443,39 @@ impl Bot {
         {
             if s.is_baseline || !self.pos_synced {
                 self.pos = Vec2::new(p.0, p.1);
+                self.position_source = "SnapshotPrepass";
                 self.pos_synced = true;
+            }
+        }
+
+        // Validate only positions explicitly carried by this Snapshot. A cached own
+        // position, ActionConfirm, or prediction belongs to another simulation time.
+        // Missing same-Snapshot observer state is unknown, never evidence of a pass.
+        let aoi_center = s
+            .entities
+            .iter()
+            .find(|r| {
+                r.entity_id == self.entity_id
+                    && (r.delta_mask & delta_mask::FULL != 0
+                        || r.delta_mask & delta_mask::REMOVED == 0)
+            })
+            .and_then(|r| r.position);
+        for rec in &s.entities {
+            if rec.entity_id == self.entity_id
+                || (rec.delta_mask & delta_mask::FULL == 0
+                    && rec.delta_mask & delta_mask::REMOVED != 0)
+            {
+                continue;
+            }
+            if let Some(p) = rec.position {
+                if let Some(center) = aoi_center {
+                    let distance = Vec2::new(p.0 - center.0, p.1 - center.1).length();
+                    self.metrics.aoi_matched_positions += 1;
+                    self.metrics.max_observed_entity_distance =
+                        self.metrics.max_observed_entity_distance.max(distance);
+                } else {
+                    self.metrics.aoi_unknown_positions += 1;
+                }
             }
         }
 
@@ -481,6 +520,7 @@ impl Bot {
                         self.sm.reset();
                         if let Some(p) = rec.position {
                             self.pos = Vec2::new(p.0, p.1);
+                            self.position_source = "SnapshotRevival";
                         }
                         self.aoi_grace_until = now + 1.0;
                     }
@@ -499,8 +539,31 @@ impl Bot {
                 if let Some(p) = rec.position {
                     let (dx, dy) = (p.0 - self.pos.x, p.1 - self.pos.y);
                     let d = (dx * dx + dy * dy).sqrt();
-                    if d > self.metrics.max_observed_entity_distance {
-                        self.metrics.max_observed_entity_distance = d;
+                    let new_max = d > self.metrics.legacy_max_observed_entity_distance;
+                    self.metrics.legacy_max_observed_entity_distance =
+                        self.metrics.legacy_max_observed_entity_distance.max(d);
+                    if d > 1150.0 && (self.metrics.aoi_anomalies.len() < 16 || new_max) {
+                        let row = serde_json::json!({
+                            "snapshot_tick": s.server_tick, "server_ms": s.server_ms,
+                            "baseline": s.is_baseline, "baseline_tick": s.baseline_tick,
+                            "channel": if s.is_baseline { 1 } else { 0 },
+                            "application_order": self.metrics.state_updates_received,
+                            "receive_time_s": now, "observer_id": self.entity_id,
+                            "entity_id": rec.entity_id, "entity_position": p,
+                            "legacy_observer_position": [self.pos.x, self.pos.y],
+                            "observer_position_source": self.position_source,
+                            "received_packets": self.metrics.packets_received,
+                            "game_events_received": self.metrics.game_events_received,
+                            "legacy_distance": d, "snapshot_observer_position": aoi_center,
+                            "dead_since": self.dead_since, "grace_until": self.aoi_grace_until,
+                            "last_confirm_tick16": self.last_confirm_tick,
+                            "input_sequence": self.seq,
+                        });
+                        if self.metrics.aoi_anomalies.len() <= 16 {
+                            self.metrics.aoi_anomalies.push(row);
+                        } else {
+                            self.metrics.aoi_anomalies[16] = row;
+                        }
                     }
                 }
             }
@@ -563,6 +626,7 @@ impl Bot {
                 aim_dir,
             );
             self.pos = result.position;
+            self.position_source = "Prediction";
             self.vel = result.velocity;
             self.scan_for_monster_hits(now);
         }
@@ -722,4 +786,129 @@ fn color_for(id: u32) -> (u8, u8, u8) {
         64 + ((h >> 8) & 0x7F) as u8 + 64,
         64 + ((h >> 16) & 0x7F) as u8 + 64,
     )
+}
+
+#[cfg(test)]
+mod aoi_tests {
+    use super::*;
+    use protocol::EntityRecord;
+
+    fn bot() -> Bot {
+        let mut b = Bot::connect(
+            1,
+            "127.0.0.1:9".parse().unwrap(),
+            BehaviorKind::Idle,
+            1.0,
+            30.0,
+            0,
+            Some(1),
+            None,
+            0.0,
+        )
+        .unwrap();
+        b.entity_id = 1;
+        b.pos_synced = true;
+        b.pos = Vec2::new(-200.0, 0.0);
+        b
+    }
+
+    fn snapshot(baseline: bool, reverse: bool) -> Snapshot {
+        let mut entities = vec![
+            EntityRecord::full(2, (1000.0, 0.0), 0, entity_flags::ALIVE),
+            EntityRecord::full(1, (0.0, 0.0), 0, entity_flags::ALIVE),
+        ];
+        if reverse {
+            entities.reverse();
+        }
+        Snapshot {
+            server_tick: 10,
+            server_ms: 333,
+            is_baseline: baseline,
+            baseline_tick: (!baseline).then_some(5),
+            entities,
+        }
+    }
+
+    #[test]
+    fn aoi_delta_uses_same_snapshot_center_not_current_prediction() {
+        for reverse in [false, true] {
+            let mut b = bot();
+            let s = snapshot(false, reverse);
+            // Exercise the actual codec -> handler -> Snapshot application -> assertion seam.
+            b.handle_server_packet(
+                ServerPacket::decode(&ServerPacket::Snapshot(s).encode()).unwrap(),
+                2.0,
+            );
+            assert_eq!(b.metrics.max_observed_entity_distance, 1000.0);
+            assert!(
+                crate::assertions::run_all(
+                    &[&b.metrics],
+                    1.0,
+                    &crate::assertions::AssertionConfig::default()
+                )[0]
+                .passed
+            );
+            assert_eq!(b.pos.x, -200.0, "measurement must not alter prediction");
+        }
+    }
+    #[test]
+    fn aoi_missing_observer_is_unknown_even_with_cached_or_confirmed_position() {
+        let mut b = bot();
+        b.handle_server_packet(ServerPacket::Snapshot(snapshot(true, false)), 1.0);
+        let mut delta = snapshot(false, false);
+        delta.entities.retain(|r| r.entity_id != 1);
+        b.handle_server_packet(ServerPacket::Snapshot(delta), 2.0);
+        assert_eq!(b.metrics.aoi_unknown_positions, 1);
+        let result = crate::assertions::run_all(
+            &[&b.metrics],
+            1.0,
+            &crate::assertions::AssertionConfig::default(),
+        );
+        assert!(!result[0].passed);
+        assert!(!result[0].skipped);
+    }
+
+    #[test]
+    fn aoi_respawn_record_order_and_grace_cannot_hide_true_violations() {
+        for baseline in [false, true] {
+            for reverse in [false, true] {
+                let mut b = bot();
+                b.dead_since = Some(0.0);
+                b.aoi_grace_until = 100.0;
+                let mut s = snapshot(baseline, reverse);
+                s.entities
+                    .iter_mut()
+                    .find(|r| r.entity_id == 2)
+                    .unwrap()
+                    .position = Some((1200.0, 0.0));
+                b.handle_server_packet(
+                    ServerPacket::decode(&ServerPacket::Snapshot(s).encode()).unwrap(),
+                    2.0,
+                );
+                assert_eq!(b.metrics.max_observed_entity_distance, 1200.0);
+                assert!(
+                    !crate::assertions::run_all(
+                        &[&b.metrics],
+                        1.0,
+                        &crate::assertions::AssertionConfig::default()
+                    )[0]
+                    .passed
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn aoi_older_baseline_after_delta_uses_its_own_center() {
+        let mut b = bot();
+        let mut newer = snapshot(false, false);
+        newer.server_tick = 11;
+        for r in &mut newer.entities {
+            r.position.as_mut().unwrap().0 += 200.0;
+        }
+        b.handle_server_packet(ServerPacket::Snapshot(newer), 1.0);
+        b.handle_server_packet(ServerPacket::Snapshot(snapshot(true, true)), 2.0);
+        assert_eq!(b.metrics.max_observed_entity_distance, 1000.0);
+        assert_eq!(b.metrics.aoi_matched_positions, 2);
+    }
 }

@@ -531,6 +531,7 @@ impl BroadcastService {
                 snap
             };
             crate::measurement::end_schedule();
+            crate::measurement::audit_aoi_snapshot(&packet, self_entity_id, self_position, false);
             outbox.send(peer, ServerPacket::Snapshot(packet));
         }
 
@@ -560,6 +561,9 @@ impl BroadcastService {
         let snap = create_full_state_packet(all_entities, cache, tick, server_ms);
         if all_entities.len() > STATE_MAX_FULL_ENTITIES {
             self.diagnostics.snapshot_count_overflow += 1;
+        }
+        if let Some(player) = players.get(peer) {
+            crate::measurement::audit_aoi_snapshot(&snap, player.entity_id, player.position, true);
         }
         outbox.send(peer, ServerPacket::Snapshot(snap));
         for p in players.players.iter().filter(|p| p.authenticated) {
@@ -1183,5 +1187,49 @@ mod tests {
             panic!()
         };
         assert!(s.is_baseline);
+    }
+    #[test]
+    fn aoi_audit_matches_wire_and_distinguishes_full_state_bypass() {
+        init_arena_geometry();
+        let mut svc = BroadcastService::new(1000.0, 1100.0, 400.0, 1000.0, 1200);
+        let mut players = PlayerManager::new();
+        let p = players.add_player(1).unwrap();
+        p.authenticated = true;
+        p.position = Vec2::new(-0.19, 0.0);
+        let center = p.position;
+        let id = p.entity_id;
+        let mut outbox = Outbox::new();
+        let entities = vec![
+            entity(id, center.x, center.y),
+            entity(30001, 999.79, 0.0),
+            entity(30002, 1500.0, 0.0),
+        ];
+        svc.broadcast_state_updates(&entities, &players, 100, 3333, &mut outbox);
+        for (_, packet) in outbox.drain() {
+            let ServerPacket::Snapshot(ref s) = packet else {
+                panic!()
+            };
+            let actual = crate::measurement::aoi_packet_bounds(s, id, center);
+            let ServerPacket::Snapshot(wire) = ServerPacket::decode(&packet.encode()).unwrap()
+            else {
+                panic!()
+            };
+            let distances: Vec<_> = wire
+                .entities
+                .iter()
+                .filter(|r| r.entity_id != id)
+                .filter_map(|r| r.position)
+                .map(|p| center.distance_to(Vec2::new(p.0, p.1)))
+                .collect();
+            assert_eq!(actual.0, distances.len() as u64);
+            assert_eq!(actual.1, distances.into_iter().fold(0.0_f32, f32::max));
+            assert!(actual.1 < 1100.0);
+        }
+        svc.handle_full_state_request(1, &entities, &players, 101, 3366, &mut outbox);
+        let packets = outbox.drain();
+        let ServerPacket::Snapshot(s) = &packets[0].1 else {
+            panic!()
+        };
+        assert!(crate::measurement::aoi_packet_bounds(s, id, center).1 > 1150.0);
     }
 }
