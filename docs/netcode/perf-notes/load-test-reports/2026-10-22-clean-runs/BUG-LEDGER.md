@@ -137,3 +137,32 @@ remain unchanged. The controller now refuses existing verification outputs befor
 any host call and supports fresh `--verification-label` values for later audits.
 An actual-verifier regression exercises this preservation guard; restoration and
 all other audit gates remain required.
+
+
+## Matched Strategy 150 round 2 — clean cell
+
+[Round 2](clean-strategy150-r2-20261022.md) is **clean-cell-pass** on `fea24dd`:
+all 36 matrix gates, including automatic recovery, pass. Full/steady correctness
+and UDP counters are zero; 203,603,817 received positions have no unknowns or
+violations. Recovery reaches `step=restored`, without manual intervention; two
+independent 68-command restoration/preservation audits pass. The parent separately
+checked all 36 reported gate values and both local archive hashes against the
+published summary. No historical analyzer or evidence file was rewritten.
+The immutable candidate game hash matches round 1; its bot hash changes only for
+the explicit precision/raw-clock reporting correction. Local helper tests total
+31 clean-run + 42 relevant existing checks, all passing.
+
+The legacy failures remain: 39.66 KB/s and estimated 29.99998120034632 Hz against
+unchanged >=30. Arithmetic is 1,659,604 * 1000 / 55,320,168, with 1 ms timestamps.
+For 150 paired spans, endpoint quantization alone allows approximately
+29.99989985596..30.00006254517 Hz; this interval includes 30 but does not establish
+the exact underlying rate or relabel the failed estimated criterion. Independent
+9,000 Ticks / 300 s passes the separately declared matrix gate.
+
+The [campaign ledger](campaign-ledger.json) tracks the remaining sequential ladder
+and overload cells. All use the now-stabilized 2 MiB requested game socket setting,
+with unchanged input/stagger/warmup/window, native network, AoI and thresholds.
+This is explicitly a new fixed-build condition versus the historical native ladder's
+smaller socket setting. Source/executable identities remain fixed across report-only
+commits; proven binary reuse avoids unnecessary rebuilds. The first remaining
+ladder workload is Idle 100; full campaign and ticket resolution remain pending.

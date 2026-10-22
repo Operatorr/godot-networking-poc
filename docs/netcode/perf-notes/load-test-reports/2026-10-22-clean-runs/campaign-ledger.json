@@ -1,0 +1,134 @@
+{
+  "issue": "https://github.com/Operatorr/godot-networking-poc/issues/39",
+  "status": "in_progress",
+  "candidate_revision": "fea24dd1ec75eb3a5e832e408489943ced88814f",
+  "game_sha256": "de92e120bb863948fc4c55fe525d200ac6ebc0d0d214d453ed3efeab159208db",
+  "bot_sha256": "a4e6e7a60f3890ec63724aae0a4841ad31879a0fcfbc8643e261b11421b76147",
+  "reuse_build_namespace": "clean-strategy150-r2-20261022",
+  "condition": {
+    "config_sha256": "0abd2a9041dc33023ff924cae334ce25683838a0c0726cfd8fcb5a0000332370",
+    "network": "native unimpaired",
+    "game_requested_receive_send_bytes": [
+      2097152,
+      2097152
+    ],
+    "game_effective_receive_send_bytes": [
+      4194304,
+      4194304
+    ],
+    "bot_buffers": "native",
+    "input_hz": 30,
+    "stagger_ms": 100,
+    "warmup_s": 60,
+    "measurement_s": 300,
+    "seed": 30,
+    "difficulty": 1,
+    "note": "The stabilized socket setting differs from the historical native ladder; no historical pass is upgraded."
+  },
+  "completed": [
+    {
+      "namespace": "clean-strategy150-r1-20261022",
+      "candidate": "487b6d9ad21e6d2fd1b1a9cf2b146ef454e9329a",
+      "classification": "valid-failure",
+      "failed_gates": [
+        "autonomous_recovery_succeeded"
+      ],
+      "report": "clean-strategy150-r1-20261022.md"
+    },
+    {
+      "namespace": "clean-strategy150-r2-20261022",
+      "candidate": "fea24dd1ec75eb3a5e832e408489943ced88814f",
+      "classification": "clean-cell-pass",
+      "passed_gate_count": 36,
+      "failed_gates": [],
+      "report": "clean-strategy150-r2-20261022.md"
+    }
+  ],
+  "remaining": [
+    {
+      "behavior": "idle",
+      "population": 100,
+      "namespace": "clean-idle100-r1-20261022",
+      "status": "running",
+      "purpose": "passing ladder rerun"
+    },
+    {
+      "behavior": "idle",
+      "population": 150,
+      "namespace": "clean-idle150-r1-20261022",
+      "status": "pending",
+      "purpose": "passing ladder rerun"
+    },
+    {
+      "behavior": "movement",
+      "population": 50,
+      "namespace": "clean-movement50-r1-20261022",
+      "status": "pending",
+      "purpose": "passing ladder rerun"
+    },
+    {
+      "behavior": "movement",
+      "population": 100,
+      "namespace": "clean-movement100-r1-20261022",
+      "status": "pending",
+      "purpose": "passing ladder rerun"
+    },
+    {
+      "behavior": "movement",
+      "population": 150,
+      "namespace": "clean-movement150-r1-20261022",
+      "status": "pending",
+      "purpose": "passing ladder rerun"
+    },
+    {
+      "behavior": "combat",
+      "population": 50,
+      "namespace": "clean-combat50-r1-20261022",
+      "status": "pending",
+      "purpose": "passing ladder rerun"
+    },
+    {
+      "behavior": "combat",
+      "population": 100,
+      "namespace": "clean-combat100-r1-20261022",
+      "status": "pending",
+      "purpose": "passing ladder rerun"
+    },
+    {
+      "behavior": "clustered",
+      "population": 50,
+      "namespace": "clean-clustered50-r1-20261022",
+      "status": "pending",
+      "purpose": "passing ladder rerun"
+    },
+    {
+      "behavior": "strategy",
+      "population": 50,
+      "namespace": "clean-strategy50-r1-20261022",
+      "status": "pending",
+      "purpose": "passing ladder rerun"
+    },
+    {
+      "behavior": "strategy",
+      "population": 100,
+      "namespace": "clean-strategy100-r1-20261022",
+      "status": "pending",
+      "purpose": "passing ladder rerun"
+    },
+    {
+      "behavior": "strategy",
+      "population": 200,
+      "namespace": "clean-strategy200-r1-20261022",
+      "status": "pending",
+      "purpose": "overload ramp and measured window if ramp completes"
+    }
+  ],
+  "active_task_id": "node:delegated-task:command%3Amcp%3A4e020f92-bc95-449a-b76e-c2bf31fa8660%3Adelegate-task%3Aissue39-clean-idle100-r1-20261022",
+  "final_clean_campaign_certificate": false,
+  "legacy_product_targets": {
+    "bandwidth_kib_per_s": 5,
+    "estimated_tick_hz_min": 30,
+    "thresholds_changed": false,
+    "note": "Retain their actual pass/fail independently from matrix gates; optimization is outside this map."
+  }
+}
