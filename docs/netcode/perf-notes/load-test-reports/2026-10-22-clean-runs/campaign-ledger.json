@@ -42,21 +42,22 @@
       "passed_gate_count": 36,
       "failed_gates": [],
       "report": "clean-strategy150-r2-20261022.md"
+    },
+    {
+      "namespace": "clean-idle100-r1-20261022",
+      "candidate": "fea24dd1ec75eb3a5e832e408489943ced88814f",
+      "classification": "clean-cell-pass",
+      "passed_gate_count": 36,
+      "failed_gates": [],
+      "report": "clean-idle100-r1-20261022.md"
     }
   ],
   "remaining": [
     {
       "behavior": "idle",
-      "population": 100,
-      "namespace": "clean-idle100-r1-20261022",
-      "status": "running",
-      "purpose": "passing ladder rerun"
-    },
-    {
-      "behavior": "idle",
       "population": 150,
       "namespace": "clean-idle150-r1-20261022",
-      "status": "pending",
+      "status": "running",
       "purpose": "passing ladder rerun"
     },
     {
@@ -123,7 +124,7 @@
       "purpose": "overload ramp and measured window if ramp completes"
     }
   ],
-  "active_task_id": "node:delegated-task:command%3Amcp%3A4e020f92-bc95-449a-b76e-c2bf31fa8660%3Adelegate-task%3Aissue39-clean-idle100-r1-20261022",
+  "active_task_id": "node:delegated-task:command%3Amcp%3A4e020f92-bc95-449a-b76e-c2bf31fa8660%3Adelegate-task%3Aissue39-clean-idle150-r1-20261022",
   "final_clean_campaign_certificate": false,
   "legacy_product_targets": {
     "bandwidth_kib_per_s": 5,

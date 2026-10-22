@@ -166,3 +166,24 @@ This is explicitly a new fixed-build condition versus the historical native ladd
 smaller socket setting. Source/executable identities remain fixed across report-only
 commits; proven binary reuse avoids unnecessary rebuilds. The first remaining
 ladder workload is Idle 100; full campaign and ticket resolution remain pending.
+
+
+## Passing ladder: Idle 100
+
+[Idle 100](clean-idle100-r1-20261022.md) passes all 36 matrix gates on the same
+`fea24dd` source and executable pair. Full/steady correctness and UDP counters
+are zero; all 20,079,446 received-AoI records are matched, without unknown,
+empty-observation or violating peers. All 1,095,167 accepted Snapshots reconcile
+through drain. Both labelled 68-command audits pass, and restoration reaches
+`step=restored`. The parent separately verified the 36 gate values, cleanup proof
+and both local workload archive hashes. No host workload or historical analyzer
+was repeated by that parent check.
+
+The legacy bandwidth target still fails at 6.56 KB/s; raw estimated Tick rate
+30.00001887944889 Hz passes unchanged >=30. Authoritative measurement records
+9,000 Ticks / 300 s. The new helper tests distinguish empty Remote entity evidence
+from unknown positions, while both continue to fail closed. Idle's zero action
+inputs still require normal ActionConfirm delivery; all peers pass it. No code
+or threshold change alters the fixed workload source or historical observations.
+The parent reruns the applicable helper tests. Idle 150 is the next single
+sequential workload; the campaign remains incomplete.
