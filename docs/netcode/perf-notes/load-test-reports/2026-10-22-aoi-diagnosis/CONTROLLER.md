@@ -11,3 +11,15 @@ The once-only local namespace reservation prevents another launch. Restoration r
 Before launch, 21 tests passed across `test_aoi150`, `test_aoi150_correlation`, `test_udp_cleanup`, and `test_atomic_publish`. These exercise config identity, runtime/header prerequisites, publication and cleanup flow, and missing/ambiguous/false/true anomaly attribution with f32 distance. Test/source hashes and complete build/environment journals are retained in the ignored build evidence archive.
 
 The server audit scores authoritative emission separately from delivered bot evidence. Standalone strict AoI remains failure/unknown if same-Snapshot observer position is omitted. All retained legacy anomalies require a unique observer/Tick/server_ms match and exact Tick UTC membership. Cumulative emitted baseline/delta counts are reconciled by Tick and final totals; missing evidence cannot pass. No capacity advance is authorized by this observation.
+
+Post-review recovery hardening: setup, teardown and the autonomous timer now use
+the same recovery script. Every restart requires a completed, checksum-verified
+backup of the original measurement files. An interrupted copy can be retried; a
+persistent preservation failure leaves the service stopped with its source
+evidence intact. Each restoration attempt reloads systemd even if an earlier
+attempt already retired the override, then verifies the original executable and
+measurement environment before reporting success or disarming the timer.
+Seven local recovery tests exercise the generated shell with temporary evidence
+and mocked host commands, including partial-copy failure and reload retry.
+This hardening was not run on the remote hosts; the recorded observation and its
+executed-controller hashes above remain historical evidence.

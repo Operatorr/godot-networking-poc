@@ -27,6 +27,9 @@ REMOTE = '/home/deploy/omega-results/' + NAMESPACE
 UNIT = 'omega-' + NAMESPACE
 SERVICE = 'omega-loadtest-arena.service'
 OVERRIDE = '/run/systemd/system/' + SERVICE + '.d/zz-aoi150.conf'
+MEASUREMENT_DIRECTORY = '/var/lib/omega-measure/current'
+NATIVE_CONFIG = '/etc/omega-loadtest/arena.json'
+MEASUREMENT_OVERRIDE = '/etc/systemd/system/' + SERVICE + '.d/measurement.conf'
 BINARIES = {
     'game': '/home/deploy/omega-stabilized-b1266c1/rust/target/release/omega-server',
     'bots': '/home/deploy/omega-measured/rust/target/release/omega-load-test',
@@ -96,6 +99,51 @@ def validate_game_runtime(observed, previous=None, fresh=False):
 
 def dump(path, value):
     pathlib.Path(path).write_text(json.dumps(value, indent=2) + '\n')
+
+
+def recovery_script():
+    """Share preservation between setup, teardown and the autonomous restore timer.
+
+    A failed copy leaves the service stopped and its source evidence intact. The
+    next attempt completes and verifies that backup before permitting any start.
+    """
+    return f'''#!/bin/sh
+set -eu
+service={shlex.quote(SERVICE)}
+measurement={shlex.quote(MEASUREMENT_DIRECTORY)}
+backup={shlex.quote(REMOTE + '/original')}
+override={shlex.quote(OVERRIDE)}
+case "${{1:-restore}}" in preserve|restore) ;; *) exit 2 ;; esac
+systemctl stop "$service"
+if ! test -f "$backup/measurement-verified"; then
+    mkdir -p "$backup/measurement-current"
+    (cd "$measurement"; find . -type f -exec sha256sum {{}} +) > "$backup/measurement-sha256.txt.partial"
+    mv "$backup/measurement-sha256.txt.partial" "$backup/measurement-sha256.txt"
+    cp -a --reflink=auto "$measurement/." "$backup/measurement-current/"
+    (cd "$backup/measurement-current"; sha256sum -c ../measurement-sha256.txt)
+    cp -a {shlex.quote(NATIVE_CONFIG)} "$backup/arena.json"
+    cp -a {shlex.quote(MEASUREMENT_OVERRIDE)} "$backup/measurement.conf"
+    touch "$backup/measurement-verified"
+fi
+(cd "$backup/measurement-current"; sha256sum -c ../measurement-sha256.txt)
+if test "${{1:-restore}}" = preserve; then exit 0; fi
+if test -f "$override"; then
+    mv "$override" {shlex.quote(REMOTE + '/retired-runtime-override.conf')}
+fi
+# Reload even when a previous attempt already retired the override.
+systemctl daemon-reload
+systemctl start "$service"
+pid=$(systemctl show "$service" -p MainPID --value)
+test "$pid" -gt 0
+actual=$(sha256sum "/proc/$pid/exe")
+test "${{actual%% *}}" = {shlex.quote(PINNED['game'])}
+environment=$(systemctl show "$service" -p Environment --value)
+case " $environment " in
+    *" OMEGA_MEASURE_DIR=$measurement "*) ;;
+    *) exit 1 ;;
+esac
+case "$environment" in *OMEGA_AOI_AUDIT=*) exit 1 ;; esac
+'''
 
 
 def collect(role):
@@ -467,20 +515,14 @@ def controller():
             ssh(role, 'source /home/deploy/.cargo/env; rustc --edition=2021 -O ' + REMOTE + '/udp_control_record.rs -o ' + REMOTE + '/flow-record')
             ssh(role, 'sha256sum ' + REMOTE + '/*.py ' + REMOTE + '/*.rs ' + REMOTE + '/flow-record > ' + REMOTE + '/' + role + '/collector-sha256.txt')
         copy('game', local / 'arena-buffer.json', REMOTE + '/arena-buffer.json')
-        restore = '#!/bin/sh\nset -e\nif test -f ' + OVERRIDE + '; then\n systemctl stop ' + SERVICE + '\n mv ' + OVERRIDE + ' ' + REMOTE + '/retired-runtime-override.conf\n systemctl daemon-reload\nfi\nsystemctl start ' + SERVICE + '\n'
+        restore = recovery_script()
         (local / 'restore.sh').write_text(restore)
         copy('game', local / 'restore.sh', REMOTE + '/restore.sh')
         ssh('game', 'sudo -n systemd-run --quiet --unit=' + UNIT + '-restore --on-active=720s /bin/sh ' + REMOTE + '/restore.sh')
         restoration_armed = True
         # Freeze old evidence before any service restart can truncate it.
         game_stopped = True
-        ssh('game', 'sudo -n systemctl stop ' + SERVICE)
-        preserve = ('set -e; cp -a --reflink=auto /var/lib/omega-measure/current ' + REMOTE + '/original/measurement-current; '
-                    'cp -a /etc/omega-loadtest/arena.json ' + REMOTE + '/original/arena.json; '
-                    'cp -a /etc/systemd/system/omega-loadtest-arena.service.d/measurement.conf ' + REMOTE + '/original/measurement.conf; '
-                    'cd /var/lib/omega-measure/current; find . -type f -exec sha256sum {} \\; > ' + REMOTE + '/original/measurement-sha256.txt; '
-                    'cd ' + REMOTE + '/original/measurement-current; sha256sum -c ../measurement-sha256.txt')
-        ssh('game', preserve)
+        ssh('game', 'sudo -n /bin/sh ' + REMOTE + '/restore.sh preserve')
         backup_proof = ssh('game', 'cat ' + REMOTE + '/original/measurement-sha256.txt')
         (local / 'preserved-measurement-sha256.txt').write_text(backup_proof)
         override = '[Service]\nExecStart=\nExecStart=' + EXPERIMENT_BINARIES['game'] + ' --config ' + REMOTE + '/arena-buffer.json --allow-unsigned-tickets\nEnvironment=OMEGA_MEASURE_DIR=' + REMOTE + '/game\nEnvironment=OMEGA_AOI_AUDIT=1\nReadWritePaths=' + REMOTE + '/game\n'
