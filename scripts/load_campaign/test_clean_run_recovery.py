@@ -1,0 +1,160 @@
+"""Run the actual recovery shell with temporary evidence and mocked host commands."""
+import json
+import os
+import pathlib
+import subprocess
+import sys
+import tempfile
+import unittest
+from unittest import mock
+
+import clean_run as live
+
+
+class RecoveryTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = pathlib.Path(self.temp.name)
+        self.measurement = self.root / 'current'
+        self.measurement.mkdir()
+        self.original = {'ticks.csv': b'old tick evidence\n', 'server.ndjson': b'old server evidence\n'}
+        for name, data in self.original.items():
+            (self.measurement / name).write_bytes(data)
+        self.remote = self.root / 'experiment'
+        (self.remote / 'original').mkdir(parents=True)
+        self.override = self.root / 'diagnostic.conf'
+        self.config = self.root / 'arena.json'
+        self.config.write_text('{}')
+        self.native_override = self.root / 'measurement.conf'
+        self.native_override.write_text('original environment')
+        self.state = self.root / 'state.json'
+        self.state.write_text(json.dumps({'cached': 'original', 'calls': [], 'starts': []}))
+        self.bin = self.root / 'bin'
+        self.bin.mkdir()
+        # The command shim performs real local copies and startup truncation. Only
+        # systemd/proc identity and injected copy/reload failures are simulated.
+        shim = '''import hashlib, json, os, pathlib, shutil, sys
+root = pathlib.Path(os.environ['RECOVERY_TEST_ROOT'])
+state_path = root/'state.json'
+s = json.loads(state_path.read_text())
+name = pathlib.Path(sys.argv[0]).name
+args = sys.argv[1:]
+def save(): state_path.write_text(json.dumps(s))
+if name == 'systemctl':
+    s['calls'].append(args); save()
+    if args[0] == 'daemon-reload':
+        fail = root/'fail-reload'
+        if fail.exists(): fail.unlink(); sys.exit(1)
+        s['cached'] = 'diagnostic' if (root/'diagnostic.conf').exists() else 'original'
+    elif args[0] == 'start':
+        s['starts'].append(s['cached'])
+        for f in (root/'current').iterdir():
+            if f.is_file(): f.write_bytes(b'new startup evidence')
+    elif args[0] == 'show':
+        if 'MainPID' in args: print('42')
+        elif 'Environment' in args:
+            print('OMEGA_MEASURE_DIR='+str(root/'current') if s['cached']=='original' else 'OMEGA_AOI_AUDIT=1')
+            if (root/'audit-env').exists(): print('OMEGA_AOI_AUDIT=1')
+    save()
+elif name == 'cp':
+    source, dest = map(pathlib.Path, args[-2:])
+    if source.is_dir():
+        dest.mkdir(parents=True, exist_ok=True)
+        for i, f in enumerate(sorted(source.iterdir())):
+            shutil.copy2(f, dest/f.name)
+            if (root/'fail-copy').exists(): sys.exit(1)
+    else: shutil.copy2(source, dest)
+elif name == 'sha256sum':
+    if args[0].startswith('/proc/'):
+        print(os.environ['RECOVERY_TEST_GAME_HASH']+'  '+args[0])
+    elif args[0] == '-c':
+        for line in pathlib.Path(args[1]).read_text().splitlines():
+            digest, path = line.split('  ', 1)
+            if hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()!=digest: sys.exit(1)
+    else:
+        for path in args: print(hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()+'  '+path)
+'''
+        for name in ('systemctl', 'cp', 'sha256sum'):
+            path = self.bin / name
+            path.write_text('#!' + sys.executable + '\n' + shim)
+            path.chmod(0o755)
+        patches = dict(REMOTE=str(self.remote), OVERRIDE=str(self.override),
+                       MEASUREMENT_DIRECTORY=str(self.measurement),
+                       NATIVE_CONFIG=str(self.config), MEASUREMENT_OVERRIDE=str(self.native_override))
+        with mock.patch.multiple(live, create=True, **patches):
+            script = live.recovery_script()
+        self.script = self.root / 'restore.sh'
+        self.script.write_text(script)
+        self.env = dict(os.environ, PATH=str(self.bin)+os.pathsep+os.environ['PATH'],
+                        RECOVERY_TEST_ROOT=str(self.root), RECOVERY_TEST_GAME_HASH=live.PINNED['game'])
+
+    def run_recovery(self, mode='restore'):
+        return subprocess.run(['/bin/sh', str(self.script), mode], env=self.env,
+                              capture_output=True, text=True)
+
+    def current_state(self):
+        return json.loads(self.state.read_text())
+
+    def assert_original_recoverable(self):
+        backup = self.remote / 'original/measurement-current'
+        for name, data in self.original.items():
+            self.assertTrue((self.measurement/name).read_bytes() == data
+                            or ((backup/name).exists() and (backup/name).read_bytes() == data), name)
+
+    def test_persistent_partial_copy_failure_never_restarts_or_loses_evidence(self):
+        (self.root/'fail-copy').touch()
+        for mode in ('preserve', 'restore', 'restore'):
+            self.assertNotEqual(self.run_recovery(mode).returncode, 0)
+            self.assert_original_recoverable()
+        self.assertEqual(self.current_state()['starts'], [])
+
+    def test_recovery_retries_interrupted_preservation_before_restart(self):
+        (self.root/'fail-copy').touch()
+        self.assertNotEqual(self.run_recovery('preserve').returncode, 0)
+        (self.root/'fail-copy').unlink()
+        result = self.run_recovery()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assert_original_recoverable()
+        self.assertEqual(self.current_state()['starts'], ['original'])
+
+    def test_reload_failure_is_retried_after_override_retirement(self):
+        self.override.write_text('diagnostic')
+        state = self.current_state() | {'cached': 'diagnostic'}
+        self.state.write_text(json.dumps(state))
+        (self.root/'fail-reload').touch()
+        self.assertNotEqual(self.run_recovery().returncode, 0)
+        self.assertFalse(self.override.exists())
+        result = self.run_recovery()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.current_state()['starts'], ['original'])
+        self.assert_original_recoverable()
+
+    def test_preserve_mode_verifies_backup_without_starting(self):
+        result = self.run_recovery('preserve')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.current_state()['starts'], [])
+        backup = self.remote/'original/measurement-current'
+        for name, data in self.original.items():
+            self.assertEqual((backup/name).read_bytes(), data)
+
+    def test_runtime_identity_failure_cannot_report_restoration_success(self):
+        self.env['RECOVERY_TEST_GAME_HASH'] = 'wrong-build'
+        self.assertNotEqual(self.run_recovery().returncode, 0)
+        self.assert_original_recoverable()
+
+    def test_damaged_verified_backup_prevents_restart(self):
+        self.assertEqual(self.run_recovery('preserve').returncode, 0)
+        (self.remote/'original/measurement-current/ticks.csv').write_text('corrupt')
+        self.assertNotEqual(self.run_recovery().returncode, 0)
+        self.assertEqual(self.current_state()['starts'], [])
+        self.assert_original_recoverable()
+
+    def test_leftover_audit_environment_cannot_report_success(self):
+        (self.root/'audit-env').touch()
+        self.assertNotEqual(self.run_recovery().returncode, 0)
+        self.assert_original_recoverable()
+
+
+if __name__ == '__main__':
+    unittest.main()
