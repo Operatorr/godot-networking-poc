@@ -218,7 +218,7 @@ instrumentation slowdown remain unknown. Historical Strategy **100** remains the
 highest validated population; no previous invalid or failed result is upgraded.
 
 
-## Focused AoI follow-up — local correction, remote validation pending
+## Focused AoI follow-up — measurement defect fixed; clean validation still open
 
 [The focused diagnosis plan](../2026-10-22-aoi-diagnosis/PLAN.md) records a
 **confirmed measurement defect**, fixed locally in `4c33a3e`: an incoming delta
@@ -237,8 +237,33 @@ packet quantization and full-state selection. **Full-state reply AoI bypass is
 confirmed in a regression but unchanged**; bots do not request it, so it does not
 explain this workload and remains a broader correctness concern.
 
-Exactly one matched remote observation is delegated; results and cleanup are pending.
-Historical `send150` maxima do not retain enough provenance to establish their
-cause retrospectively. No historical result is upgraded, no new capacity is
-validated, and this is not a bug-free certificate. The broader correctness ticket
-remains open.
+[The matched diagnostic](../2026-10-22-aoi-diagnosis/REPORT.md), committed in
+`d52f4f9`, completed exactly one 60+300-second Strategy 150 observation with the
+unchanged config and diagnostic game/bot revision `4c33a3e`. All 225 retained
+legacy anomalies uniquely matched the authoritative center and were mixed-time
+false positives (217 ramp/warmup, 8 steady). The largest legacy distance was
+1947.792969 versus 816.216980 at the authoritative center. This is a bounded sample,
+not a census of anomaly events. All 1,660,210 emitted Snapshot audit rows reconciled
+with 404 cumulative server samples and final counts; maximum distance 1100.1205,
+zero above the unchanged 1150-unit bound. Cleanup and preservation audits passed;
+the parent independently verified both archive hashes and local diagnostic tests.
+
+**Remaining limitations / handoff:** standalone strict AoI fails as unknown for all
+150 bots (29,723,783 positional observations lack a same-Snapshot observer). The
+separate authoritative audit validates emission, not delivery. Offered cadence
+passed, but wire input for bots 49/61 was 29.66/29.626667 Hz, below 29.7: this
+observation is generator-invalid, not a successful valid-load reproduction.
+That deficit is unresolved; no causal instrumentation slowdown is established.
+All other capacity gates passed except strict AoI. Oversized warnings remain
+402,565 lifetime / 322,978 steady. Baseline misses/unknown entities were zero in
+this run, which does not fix or explain prior occurrences. Exact application input
+delivery and queue residence remain unknown.
+
+**Historical interpretation:** `send150` lifetime maxima lack provenance, so this
+run cannot retrospectively prove all historical violations false. Historical AoI
+pass/fail outputs from the mixed-time checker are not reliable standalone proof
+of visibility correctness; no old run is upgraded or newly certified. Historical
+Strategy 100 remains the recorded highest validated capacity, not a new clean-build
+certificate. The focused diagnosis is resolved with these limits; the existing
+broader correctness work owns trustworthy complete validation, the wire deficit,
+remaining packet/replication findings and the final valid-load clean rerun.
