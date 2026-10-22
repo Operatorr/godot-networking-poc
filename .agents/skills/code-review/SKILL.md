@@ -10,9 +10,9 @@ Find actionable faults without the cost of an exhaustive audit. Review three sep
 ## Boundaries
 
 - Review only unless the user asks for fixes. Do not merge as part of review unless separately requested.
-- Report all supported Critical, High, and Medium findings, without a count target. Zero findings is valid after completing coverage. Skip cosmetic preferences and linter-enforced style.
+- Report all supported Critical, High, Medium, and Low findings, without a count target. Low means lower impact, not lower confidence; apply the same evidence requirements at every severity. Zero findings is valid after completing coverage. Skip cosmetic preferences and linter-enforced style.
 - One review round, at most two children, no recursive delegation, no per-file fan-out. Do not automatically invoke `deep-review` or repeat until clean.
-- Use configured, focused checks. No tool installations, broad scanner batteries, or expensive full suites by default. Spend effort on reachable failure scenarios and cross-file contracts.
+- Use configured, focused checks. No tool installations, broad scanner batteries, or expensive full suites by default. Spend effort on reachable failure scenarios and cross-file contracts. Include actionable Low findings encountered during these passes; do not add agents or a separate minor-issue sweep.
 - A direct GitHub PR URL permits one summary comment unless the user says "do not post", "review only", "don't comment", or "terminal only". PR numbers, branches, and local files remain terminal-only unless posting is explicitly requested. Children never post.
 
 ## 1. Pin the target and scope
@@ -100,7 +100,7 @@ Before concluding, regardless of finding count, challenge the highest-risk remai
 
 ## 5. Report and deliver
 
-Read [REFERENCE.md](REFERENCE.md) for the compact report and posting template. Keep **Bugs**, **Standards**, and **Spec** as separate sections, ordered by severity within each. Close with the worst confirmed issue **per axis**, or `none confirmed`, `no spec available`, or `incomplete` as applicable. Do not blend the axes into an overall score or let one passing axis cancel another's failure.
+Read [REFERENCE.md](REFERENCE.md) for the compact report and posting template. Keep **Bugs**, **Standards**, and **Spec** as separate sections, ordered by severity within each. Retain verified Low findings below higher-severity findings in their axis, labelled non-blocking where applicable; do not silently discard them during aggregation or replace them with a count. Close with the worst confirmed issue **per axis**, or `none confirmed`, `no spec available`, or `incomplete` as applicable. Do not blend the axes into an overall score or let one passing axis cancel another's failure.
 
 Each finding includes severity, exact path/lines, evidence, trigger/consequence, fix direction, and how to verify. Quote the rule or requirement for Standards/Spec. A suggested patch or implementation handoff is optional when useful or requested, not mandatory boilerplate.
 
@@ -108,8 +108,9 @@ Severity reflects actual impact and reachability:
 
 - **Critical:** reachable severe compromise, widespread outage, or irreversible data loss.
 - **High:** broken core flow, serious authorization/data-integrity fault, or material compatibility/performance regression.
-- **Medium:** concrete limited-impact malfunction or actionable rule/requirement breach. Missing tests qualify only for a named material regression scenario or explicit repo requirement; prefer reporting the underlying bug with its regression test.
-- **Low/Nit:** cosmetic preference or speculative cleanup; omit. Do not inflate severity to retain it.
+- **Medium:** material malfunction or rule/requirement breach that meaningfully impairs a supported flow. Missing tests qualify only for a named material regression scenario or explicit repo requirement; prefer reporting the underlying bug with its regression test.
+- **Low:** verified minor behavioral defect or explicit rule/requirement violation with a concrete consequence, such as a localized control remaining untranslated or ambiguous download names without data loss. Non-blocking by default, unless an applicable repo rule makes it blocking. Assess impact rather than treating these examples as fixed severity assignments.
+- **Nit:** cosmetic preference, stylistic polish, or speculative cleanup without a concrete consequence; omit from normal review. Use `deep-review` for nitpick coverage. Do not inflate severity to retain it.
 
 Include snapshot/scope, reviewed versus excluded/unreviewed files, representative behavior traces and callers checked, check results, and unresolved limits. Say **no confirmed findings within the reviewed scope**, not "safe to merge" based on green CI. Never claim guaranteed bug detection.
 

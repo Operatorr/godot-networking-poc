@@ -1,6 +1,8 @@
 # Code Review Report
 
-Use this structure for local output and the single GitHub summary comment. Findings belong to separate axes; severity definitions live in [SKILL.md](SKILL.md). Keep coverage concise but substantive: name the scenarios examined, not just how many tests passed.
+Use this structure for local output and the single GitHub summary comment. Findings belong to separate axes; severity definitions live in [SKILL.md](SKILL.md). List verified Low findings individually after higher-severity findings within each axis, marked non-blocking by default. Preserve their evidence, consequence, fix direction, and verification scenario; do not suppress them under a Medium cutoff. Nit findings are excluded.
+
+Keep coverage concise but substantive: name the scenarios examined, not just how many tests passed.
 
 ```markdown
 # Code Review
