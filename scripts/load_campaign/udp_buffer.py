@@ -506,7 +506,10 @@ def controller():
             except Exception as error:
                 cleanup.setdefault(role, {})['verification_error'] = type(error).__name__
         manifest['ended_utc'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        dump(local / 'manifest.json', manifest)
+        try:
+            dump(local / 'manifest.json', manifest)
+        except Exception as error:
+            cleanup.setdefault('controller', {})['manifest_write_error'] = type(error).__name__
         dump(local / 'cleanup.json', cleanup)
         print(json.dumps({'completed': True, 'controller_abort': manifest.get('controller_abort'),
                           'guard_reason': ((manifest.get('guard_result') or {}).get('reason') or {}).get('kind'),

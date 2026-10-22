@@ -458,20 +458,23 @@ def controller():
                         '{ test "$(systemctl show ' + UNIT + '-' + suffix + ' -p ActiveState --value)" = inactive; }')
                 except Exception as error:
                     cleanup.setdefault(role, {})['profile_stop_error'] = str(error)
-            try:
-                ssh(role, 'sudo -n ss -u -a -m -n -p -e > ' + REMOTE + '/' + role + '/final-sockets.txt; cat /proc/net/snmp > ' + REMOTE + '/' + role + '/final-snmp.txt')
-                if role == 'bots':
-                    # A completed transient swarm may already have been unloaded.
-                    ssh(role, 'sudo -n systemctl stop ' + UNIT + '-swarm || '
-                        '{ test "$(systemctl show ' + UNIT + '-swarm -p ActiveState --value)" = inactive; }')
-                else:
-                    ssh(role, 'sudo -n systemctl stop ' + SERVICE)
-                    if manifest.get('service_invocation'):
-                        ssh(role, 'journalctl _SYSTEMD_INVOCATION_ID=' + manifest['service_invocation'] + ' --no-pager -o short-iso-precise -n 4000 > ' + REMOTE + '/game/game.log')
-                ssh(role, 'sudo -n systemctl stop ' + UNIT + '-' + role + '-collect')
-                cleanup.setdefault(role, {})['stopped'] = True
-            except Exception as error:
-                cleanup.setdefault(role, {})['stop_error'] = str(error)
+            # Evidence collection must not prevent any independent release.
+            actions = [('final_socket_snapshot', 'sudo -n ss -u -a -m -n -p -e > ' + REMOTE + '/' + role + '/final-sockets.txt; cat /proc/net/snmp > ' + REMOTE + '/' + role + '/final-snmp.txt')]
+            if role == 'bots':
+                actions.append(('swarm_stop', 'sudo -n systemctl stop ' + UNIT + '-swarm || { test "$(systemctl show ' + UNIT + '-swarm -p ActiveState --value)" = inactive; }'))
+            elif game_stopped:
+                actions.append(('game_stop', 'sudo -n systemctl stop ' + SERVICE))
+                if manifest.get('service_invocation'):
+                    actions.append(('game_log', 'journalctl _SYSTEMD_INVOCATION_ID=' + manifest['service_invocation'] + ' --no-pager -o short-iso-precise -n 4000 > ' + REMOTE + '/game/game.log'))
+            for suffix in ('collect',):
+                unit = UNIT + '-' + role + '-' + suffix
+                actions.append((suffix + '_stop', 'sudo -n systemctl stop ' + unit + ' || { test "$(systemctl show ' + unit + ' -p ActiveState --value)" = inactive; }'))
+            for label, command in actions:
+                try:
+                    ssh(role, command)
+                    cleanup.setdefault(role, {})[label] = True
+                except Exception as error:
+                    cleanup.setdefault(role, {})[label + '_error'] = type(error).__name__
         if game_stopped:
             try:
                 if override_installed:
@@ -510,7 +513,10 @@ def controller():
             except Exception as error:
                 cleanup.setdefault(role, {})['verification_error'] = type(error).__name__
         manifest['ended_utc'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        dump(local / 'manifest.json', manifest)
+        try:
+            dump(local / 'manifest.json', manifest)
+        except Exception as error:
+            cleanup.setdefault('controller', {})['manifest_write_error'] = type(error).__name__
         dump(local / 'cleanup.json', cleanup)
         print(json.dumps({'completed': True, 'controller_abort': manifest.get('controller_abort'),
                           'guard_reason': ((manifest.get('guard_result') or {}).get('reason') or {}).get('kind'),

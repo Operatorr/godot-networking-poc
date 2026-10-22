@@ -564,7 +564,10 @@ def controller():
         raise
     finally:
         manifest.setdefault('controller_decision_utc_ns',time.time_ns())
-        dump(local/'manifest.json',manifest)
+        try:
+            dump(local/'manifest.json',manifest)
+        except Exception as error:
+            cleanup.setdefault('controller', {})['manifest_write_error'] = type(error).__name__
         def clean(role,label,command):
             cleanup.setdefault(role,{})
             try:
@@ -584,8 +587,8 @@ def controller():
         for role in staged:
             clean(role,'final_socket_snapshot','sudo -n ss -u -a -m -n -p -e > '+REMOTE+'/'+role+'/final-sockets.txt; cat /proc/net/snmp > '+REMOTE+'/'+role+'/final-snmp.txt')
         if game_stopped and bots_exited:
-            clean('game','game_stop','sudo -n systemctl stop '+SERVICE)
-            manifest['game_stopped_utc_ns']=time.time_ns()
+            if clean('game','game_stop','sudo -n systemctl stop '+SERVICE):
+                manifest['game_stopped_utc_ns']=time.time_ns()
         for role in staged:
             for suffix in ('capture','collect'):
                 clean(role,suffix+'_stop','sudo -n systemctl stop '+UNIT+'-'+role+'-'+suffix+'; test "$(systemctl show '+UNIT+'-'+role+'-'+suffix+' -p MainPID --value)" = 0')
@@ -641,7 +644,10 @@ def controller():
             except Exception as error:
                 cleanup.setdefault(role, {})['verification_error'] = type(error).__name__
         manifest['ended_utc'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        dump(local / 'manifest.json', manifest)
+        try:
+            dump(local / 'manifest.json', manifest)
+        except Exception as error:
+            cleanup.setdefault('controller', {})['manifest_write_error'] = type(error).__name__
         dump(local / 'cleanup.json', cleanup)
         print(json.dumps({'completed': True, 'controller_abort': manifest.get('controller_abort'),
                           'guard_reason': ((manifest.get('guard_result') or {}).get('reason') or {}).get('kind'),

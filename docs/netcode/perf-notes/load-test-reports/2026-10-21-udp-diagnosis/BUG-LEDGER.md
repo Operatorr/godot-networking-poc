@@ -9,6 +9,35 @@ section below. Historical pending statements record when findings were discovere
 subsequent observations supply their validation. No report in this investigation
 is a new capacity pass or a bug-free certificate.
 
+## Controller cleanup defects found during PR review
+
+The restored review workflow confirmed three failure paths using the actual
+controller teardown statements with mocked hosts, without another remote run:
+
+- In `udp_generator_profile`, `udp_generator_profile_fixed`, `udp_dodge150` and
+  `udp_send150`, a failed bot stop left `game_stopped_utc_ns` absent. Journal
+  argument construction then raised before restoration and cleanup publication.
+- In `udp_baseline`, `udp_control`, `udp_bitmap` and `udp_profile`, a failed final
+  socket snapshot skipped swarm and collector termination because those actions
+  shared one exception handler.
+- In those same four earlier controllers, a staging failure before the original
+  service was stopped still caused cleanup to stop it. The ownership flag remained
+  false, so restoration was skipped and no restore timer had yet been armed.
+
+Current controller sources now attempt each release independently, stop the game
+only after taking ownership, and require a successful game stop before recording
+its timestamp. An unavailable journal interval is recorded explicitly and does
+not block restoration. Manifest-write failures cannot prevent resource cleanup
+or the separate cleanup-result write. The sibling checks include all eleven
+controller families, including the already-independent bounded/buffer variants.
+
+`test_udp_cleanup.py` covers ordinary teardown, failed socket collection, bot stop,
+game stop, journal export, manifest writes and partial setup. The tests execute
+the complete real cleanup bodies with mocked dependencies; they reproduced the
+failures before the fixes. Historical executed copies, private archives and
+reported observations remain unchanged. These are local recovery fixes, not
+another capacity measurement or a retrospective validation of a failed run.
+
 ## Missing bot observations during failed joins
 
 **Confirmed measurement defect.** The [baseline reproduction](baseline-reproduction.md)
