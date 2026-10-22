@@ -96,6 +96,13 @@ def configure_cell(cell):
     POPULATION = cell['population']; BEHAVIOR = cell['behavior']
 
 
+def measurement_limit_bytes():
+    # A stricter resource abort for this opt-in diagnostic, never a validity pass.
+    # 96 MiB payload + <=24 MiB journal + similarly bounded archive, original
+    # 12 MiB backup/executable/helper copies fit the proven post-reclaim headroom.
+    return 96*1024**2 if CELL.get('native_diagnostic') == 'v1' else 1024**3
+
+
 def source_identity():
     return {'revision':command(['git','-C',CANDIDATE_CHECKOUT,'rev-parse','HEAD']).strip(),
             'status':command(['git','-C',CANDIDATE_CHECKOUT,'status','--porcelain']).strip(),
@@ -611,7 +618,7 @@ def controller():
                 'input_hz': 30, 'seed': 30, 'stagger_ms': 100, 'difficulty': 1.0,
                 'game_config': candidate_config, 'config_proof': config_proof, 'pinned': PINNED,
                 'ramp_input_cadence': 'collected; analyze separately', 'generator_valid': None,
-                'native_diagnostic': CELL.get('native_diagnostic',False), 'classification': 'pending-scored-observation', 'intervention': 'Pinned correctness candidate game and bots; emission audit disabled; send150 config unchanged; compact measurement and repaired v2 wire collector', 'workloads_launched': 0, 'collector_cadence_s': 1,
+                'native_diagnostic': CELL.get('native_diagnostic',False), 'game_evidence_abort_bytes':measurement_limit_bytes(), 'classification': 'pending-scored-observation', 'intervention': 'Pinned correctness candidate game and bots; emission audit disabled; send150 config unchanged; compact measurement and repaired v2 wire collector', 'workloads_launched': 0, 'collector_cadence_s': 1,
                 'capture_duration_change_s': [300, 600], 'host_limit_s': 600, 'workload_limit_s': 550, 'restoration_limit_s': 720, 'poll_sleep_s': 2, 'map_polling': 'combined with existing status query; no extra map SSH reads', 'collector_overhead_effect': None, 'packet_capture': 'compact-article-plus-per-port-1Hz',
                 'experiment_binary_sha256': {r: s['experiment_binary'].split()[0] for r, s in states.items()},
                 'candidate_revision': CANDIDATE_REVISION, 'bot_revision': BOT_REVISION, 'expected_bot_sha256': EXPECTED_BOT, 'collector_revision': COLLECTOR_REVISION,
@@ -733,8 +740,8 @@ def controller():
             g,b = observations['game'],observations['bots']
             validate_source_identity(b.get('source_identity'))
             validate_game_runtime(g, fresh)
-            if g.get('measurement_bytes', 0) > 1024**3:
-                manifest['controller_abort']='measurement-evidence-over-1GiB'
+            if g.get('measurement_bytes', 0) > measurement_limit_bytes():
+                manifest['controller_abort']='measurement-evidence-over-resource-limit'
                 break
             for role,obs in observations.items():
                 if obs['parser'].get('status') != 'running' or obs.get('capture_resource'):

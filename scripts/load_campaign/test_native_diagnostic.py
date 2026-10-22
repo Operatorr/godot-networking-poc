@@ -13,6 +13,7 @@ class NativeDispatchTests(unittest.TestCase):
         live.configure_cell(self.cell)
     def test_matched_condition_and_explicit_version_required(self):
         self.assertEqual(live.diagnostic_environment({'diagnostic_environment':{'OMEGA_NATIVE_DIAG':'v1'}}),{'OMEGA_NATIVE_DIAG':'v1'})
+        self.assertEqual(live.measurement_limit_bytes(),96*1024**2)
         for change in [dict(namespace='clean-idle150-r1-20261022'),dict(population=100),dict(behavior='movement'),dict(native_diagnostic=True),dict(native_diagnostic='v2')]:
             with self.assertRaises(ValueError):live.configure_cell(self.cell|change)
         for env in [{},{'OMEGA_NATIVE_DIAG':'v2'},{'OMEGA_NATIVE_DIAG':'v1','OTHER':'x'}]:
@@ -20,6 +21,7 @@ class NativeDispatchTests(unittest.TestCase):
     def test_off_path_is_off_and_inherited_flag_is_rejected(self):
         live.configure_cell({k:v for k,v in self.cell.items() if k!='native_diagnostic'})
         self.assertEqual(live.diagnostic_environment({}),{})
+        self.assertEqual(live.measurement_limit_bytes(),1024**3)
         with mock.patch.object(pathlib.Path,'read_bytes',return_value=b'OMEGA_NATIVE_DIAG=v1\0'):
             with self.assertRaises(RuntimeError):live.validate_diagnostic_runtime(42)
     def test_runtime_required_and_versioned(self):
