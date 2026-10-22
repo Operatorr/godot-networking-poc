@@ -52,6 +52,13 @@ pub struct BotMetrics {
     pub enet_packet_loss: f64,
     /// Farthest replicated entity ever observed (AoI cull assertion input).
     pub max_observed_entity_distance: f32,
+    /// Incoming positional records with / without an explicit same-Snapshot observer position.
+    pub aoi_matched_positions: u64,
+    pub aoi_unknown_positions: u64,
+    /// Historical mixed-time check retained for causal comparison, never a correctness gate.
+    pub legacy_max_observed_entity_distance: f32,
+    /// First 16 legacy violations plus the latest lifetime maximum (bounded).
+    pub aoi_anomalies: Vec<Value>,
     /// Latest SERVER_METRICS packet, with the elapsed-seconds timestamp it arrived at.
     pub latest_server_metrics: Option<(f64, ServerMetrics)>,
 }
@@ -87,6 +94,10 @@ impl BotMetrics {
             "decode_failures": self.decode_failures,
             "send_failures": self.send_failures,
             "enet_packet_loss_pct": round2(self.enet_packet_loss * 100.0),
+            "aoi_matched_positions": self.aoi_matched_positions,
+            "aoi_unknown_positions": self.aoi_unknown_positions,
+            "legacy_max_observed_entity_distance": self.legacy_max_observed_entity_distance,
+            "aoi_anomalies": self.aoi_anomalies,
             "max_observed_entity_distance": round1(self.max_observed_entity_distance as f64),
             "error_count": self.error_count,
             "panic_count": self.panic_count,

@@ -53,16 +53,13 @@ pub fn run_all(
 /// must pass (the tolerance absorbs the exit-hysteresis race on fast movers).
 fn assert_aoi_cull(metrics: &[&BotMetrics], cfg: &AssertionConfig) -> AssertionResult {
     let threshold = cfg.aoi_exit_radius + AOI_TOLERANCE_UNITS;
-    let eligible: Vec<&&BotMetrics> = metrics
-        .iter()
-        .filter(|m| m.max_observed_entity_distance > 0.0)
-        .collect();
+    let eligible: Vec<&&BotMetrics> = metrics.iter().collect();
     if eligible.is_empty() {
         return AssertionResult {
             name: "aoi_cull",
-            passed: true,
-            skipped: true,
-            message: "skipped: no entity observations".into(),
+            passed: false,
+            skipped: false,
+            message: "unknown: no matched entity observations".into(),
             details: Value::Null,
         };
     }
@@ -71,21 +68,28 @@ fn assert_aoi_cull(metrics: &[&BotMetrics], cfg: &AssertionConfig) -> AssertionR
         .filter(|m| (m.max_observed_entity_distance as f64) > threshold)
         .map(|m| json!({"bot_id": m.bot_id, "max_distance": m.max_observed_entity_distance}))
         .collect();
+    let unknown: Vec<u32> = eligible
+        .iter()
+        .filter(|m| m.aoi_unknown_positions > 0 || m.aoi_matched_positions == 0)
+        .map(|m| m.bot_id)
+        .collect();
     let pass_ratio = (eligible.len() - violators.len()) as f64 / eligible.len() as f64;
     AssertionResult {
         name: "aoi_cull",
-        passed: pass_ratio >= AOI_BOT_PASS_RATIO,
+        passed: unknown.is_empty() && pass_ratio >= AOI_BOT_PASS_RATIO,
         skipped: false,
         message: format!(
-            "{}/{} bots within {threshold:.0} u ({:.0}% required)",
+            "{}/{} bots within {threshold:.0} u ({:.0}% required); {} bot(s) with unknown observations",
             eligible.len() - violators.len(),
             eligible.len(),
-            AOI_BOT_PASS_RATIO * 100.0
+            AOI_BOT_PASS_RATIO * 100.0,
+            unknown.len()
         ),
         details: json!({
             "threshold": threshold,
             "eligible_bots": eligible.len(),
             "violators": violators,
+            "unknown_bots": unknown,
         }),
     }
 }
@@ -176,14 +180,16 @@ mod tests {
     fn aoi_cull_skips_without_observations_and_fails_on_violators() {
         let a = bot(1);
         let r = run_all(&[&a], 10.0, &AssertionConfig::default());
-        assert!(r[0].skipped);
+        assert!(!r[0].passed);
 
         let mut b = bot(2);
+        b.aoi_matched_positions = 1;
         b.max_observed_entity_distance = 2000.0;
         let r = assert_aoi_cull(&[&b], &AssertionConfig::default());
         assert!(!r.passed);
 
         let mut c = bot(3);
+        c.aoi_matched_positions = 1;
         c.max_observed_entity_distance = 1100.0;
         let r = assert_aoi_cull(&[&c], &AssertionConfig::default());
         assert!(r.passed);

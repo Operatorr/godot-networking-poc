@@ -1,0 +1,1428 @@
+{
+  "namespace": "aoi150-20261022",
+  "threshold": 1150,
+  "window": {
+    "start": 1792649355818655145,
+    "end": 1792649655818655145
+  },
+  "semantics": "Server rows describe pre-outbox constructed Snapshots; emitted baselines/deltas count successful enqueue. Delivery is separate. Tick UTC from ticks.csv defines steady membership. Bot aggregates/anomalies are lifetime.",
+  "groups": {
+    "lifetime": {
+      "rows": 1660210,
+      "records": 211999863,
+      "positions": 202467700,
+      "baselines": 9723,
+      "deltas": 1650487,
+      "full_requests": 0,
+      "violations": 0,
+      "max_distance": 1100.1205
+    },
+    "steady": {
+      "rows": 1350000,
+      "records": 174084820,
+      "positions": 166176114,
+      "baselines": 7590,
+      "deltas": 1342410,
+      "full_requests": 0,
+      "violations": 0,
+      "max_distance": 1100.1205
+    },
+    "outside_steady": {
+      "rows": 310210,
+      "records": 37915043,
+      "positions": 36291586,
+      "baselines": 2133,
+      "deltas": 308077,
+      "full_requests": 0,
+      "violations": 0,
+      "max_distance": 1100.0929
+    },
+    "unknown_tick": {
+      "rows": 0,
+      "records": 0,
+      "positions": 0,
+      "baselines": 0,
+      "deltas": 0,
+      "full_requests": 0,
+      "violations": 0,
+      "max_distance": 0.0
+    }
+  },
+  "duplicate_audit_keys": 0,
+  "row_guard": 2000000,
+  "audit_guard_exhausted": false,
+  "metric_reconciliation": {
+    "all_samples_match_exact_tick_prefix": true,
+    "final_sample_utc_ns": 1792649665249938897,
+    "final_sample_players": 0,
+    "final_sample_send_errors": 0,
+    "audit_minus_final_metrics": {
+      "baselines": 0,
+      "deltas": 0
+    },
+    "final_totals_exact": true,
+    "record_count_limit": "No independent emitted-record metric; audit record and positional totals are retained. Snapshot coverage is reconciled separately by baseline/delta counts.",
+    "sample_count": 404,
+    "boundary_and_final_samples": [
+      {
+        "utc_ns": 1792649355841873348,
+        "boundary": "start",
+        "baselines": 2133,
+        "deltas": 308077,
+        "exact_audit_prefix": true,
+        "timestamp_consistent": true,
+        "timestamp_expected_baselines": 2133,
+        "timestamp_expected_deltas": 308077,
+        "matched_last_emission_ticks": [
+          2790
+        ],
+        "last_prefix_tick_utc_ns": 1792649355816514440
+      },
+      {
+        "utc_ns": 1792649655841060912,
+        "boundary": "end",
+        "baselines": 9723,
+        "deltas": 1650487,
+        "exact_audit_prefix": true,
+        "timestamp_consistent": true,
+        "timestamp_expected_baselines": 9723,
+        "timestamp_expected_deltas": 1650487,
+        "matched_last_emission_ticks": [
+          11790
+        ],
+        "last_prefix_tick_utc_ns": 1792649655817137384
+      },
+      {
+        "utc_ns": 1792649665249938897,
+        "boundary": "",
+        "baselines": 9723,
+        "deltas": 1650487,
+        "exact_audit_prefix": true,
+        "timestamp_consistent": true,
+        "timestamp_expected_baselines": 9723,
+        "timestamp_expected_deltas": 1650487,
+        "matched_last_emission_ticks": [
+          11790
+        ],
+        "last_prefix_tick_utc_ns": 1792649655817137384
+      }
+    ],
+    "nonmatching_samples": []
+  },
+  "authoritative_emission_validated": true,
+  "bot_lifetime": {
+    "count": 150,
+    "matched_positions": 171890687,
+    "unknown_positions": 29723783,
+    "max_matched_distance_rounded": 1100.1,
+    "max_legacy_distance": 1947.79296875,
+    "per_bot": [
+      {
+        "bot_id": 1,
+        "aoi_matched_positions": 1174082,
+        "aoi_unknown_positions": 190374,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1110.6480712890625
+      },
+      {
+        "bot_id": 2,
+        "aoi_matched_positions": 1190326,
+        "aoi_unknown_positions": 184603,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1105.556396484375
+      },
+      {
+        "bot_id": 3,
+        "aoi_matched_positions": 1132825,
+        "aoi_unknown_positions": 235952,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1128.643310546875
+      },
+      {
+        "bot_id": 4,
+        "aoi_matched_positions": 1259296,
+        "aoi_unknown_positions": 117284,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1120.5782470703125
+      },
+      {
+        "bot_id": 5,
+        "aoi_matched_positions": 1300787,
+        "aoi_unknown_positions": 132443,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1109.7647705078125
+      },
+      {
+        "bot_id": 6,
+        "aoi_matched_positions": 1047166,
+        "aoi_unknown_positions": 260382,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1105.6002197265625
+      },
+      {
+        "bot_id": 7,
+        "aoi_matched_positions": 1211460,
+        "aoi_unknown_positions": 190165,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1100.4427490234375
+      },
+      {
+        "bot_id": 8,
+        "aoi_matched_positions": 1128301,
+        "aoi_unknown_positions": 249947,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1115.33203125
+      },
+      {
+        "bot_id": 9,
+        "aoi_matched_positions": 1141844,
+        "aoi_unknown_positions": 226665,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1116.1229248046875
+      },
+      {
+        "bot_id": 10,
+        "aoi_matched_positions": 1191803,
+        "aoi_unknown_positions": 181928,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1130.0181884765625
+      },
+      {
+        "bot_id": 11,
+        "aoi_matched_positions": 1202537,
+        "aoi_unknown_positions": 200312,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1168.27197265625
+      },
+      {
+        "bot_id": 12,
+        "aoi_matched_positions": 1036731,
+        "aoi_unknown_positions": 314953,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1110.044921875
+      },
+      {
+        "bot_id": 13,
+        "aoi_matched_positions": 1137316,
+        "aoi_unknown_positions": 191879,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1100.6424560546875
+      },
+      {
+        "bot_id": 14,
+        "aoi_matched_positions": 1173001,
+        "aoi_unknown_positions": 171787,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1128.3673095703125
+      },
+      {
+        "bot_id": 15,
+        "aoi_matched_positions": 1122204,
+        "aoi_unknown_positions": 231814,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1118.813720703125
+      },
+      {
+        "bot_id": 16,
+        "aoi_matched_positions": 1129964,
+        "aoi_unknown_positions": 188432,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1113.4783935546875
+      },
+      {
+        "bot_id": 17,
+        "aoi_matched_positions": 1164646,
+        "aoi_unknown_positions": 187695,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1111.645751953125
+      },
+      {
+        "bot_id": 18,
+        "aoi_matched_positions": 1201372,
+        "aoi_unknown_positions": 200612,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1111.9437255859375
+      },
+      {
+        "bot_id": 19,
+        "aoi_matched_positions": 1116167,
+        "aoi_unknown_positions": 195744,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1122.7138671875
+      },
+      {
+        "bot_id": 20,
+        "aoi_matched_positions": 1271315,
+        "aoi_unknown_positions": 131884,
+        "max_observed_entity_distance": 1100.1,
+        "legacy_max_observed_entity_distance": 1121.6046142578125
+      },
+      {
+        "bot_id": 21,
+        "aoi_matched_positions": 1116865,
+        "aoi_unknown_positions": 210275,
+        "max_observed_entity_distance": 1100.1,
+        "legacy_max_observed_entity_distance": 1152.4871826171875
+      },
+      {
+        "bot_id": 22,
+        "aoi_matched_positions": 1102132,
+        "aoi_unknown_positions": 180579,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1102.835693359375
+      },
+      {
+        "bot_id": 23,
+        "aoi_matched_positions": 1254190,
+        "aoi_unknown_positions": 149331,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1121.3243408203125
+      },
+      {
+        "bot_id": 24,
+        "aoi_matched_positions": 1091483,
+        "aoi_unknown_positions": 265842,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1127.2760009765625
+      },
+      {
+        "bot_id": 25,
+        "aoi_matched_positions": 1232539,
+        "aoi_unknown_positions": 156775,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1109.4761962890625
+      },
+      {
+        "bot_id": 26,
+        "aoi_matched_positions": 1247383,
+        "aoi_unknown_positions": 161023,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1116.5146484375
+      },
+      {
+        "bot_id": 27,
+        "aoi_matched_positions": 1112157,
+        "aoi_unknown_positions": 245432,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1103.154296875
+      },
+      {
+        "bot_id": 28,
+        "aoi_matched_positions": 1133065,
+        "aoi_unknown_positions": 179143,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1114.9281005859375
+      },
+      {
+        "bot_id": 29,
+        "aoi_matched_positions": 1163915,
+        "aoi_unknown_positions": 187604,
+        "max_observed_entity_distance": 1099.9,
+        "legacy_max_observed_entity_distance": 1117.620849609375
+      },
+      {
+        "bot_id": 30,
+        "aoi_matched_positions": 1119165,
+        "aoi_unknown_positions": 202613,
+        "max_observed_entity_distance": 1099.9,
+        "legacy_max_observed_entity_distance": 1112.779052734375
+      },
+      {
+        "bot_id": 31,
+        "aoi_matched_positions": 1140302,
+        "aoi_unknown_positions": 201746,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1108.374267578125
+      },
+      {
+        "bot_id": 32,
+        "aoi_matched_positions": 1215292,
+        "aoi_unknown_positions": 171163,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1131.942626953125
+      },
+      {
+        "bot_id": 33,
+        "aoi_matched_positions": 1066828,
+        "aoi_unknown_positions": 279945,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1106.9847412109375
+      },
+      {
+        "bot_id": 34,
+        "aoi_matched_positions": 1208151,
+        "aoi_unknown_positions": 200968,
+        "max_observed_entity_distance": 1099.9,
+        "legacy_max_observed_entity_distance": 1138.7982177734375
+      },
+      {
+        "bot_id": 35,
+        "aoi_matched_positions": 1217376,
+        "aoi_unknown_positions": 176090,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1109.9345703125
+      },
+      {
+        "bot_id": 36,
+        "aoi_matched_positions": 1139388,
+        "aoi_unknown_positions": 229681,
+        "max_observed_entity_distance": 1099.9,
+        "legacy_max_observed_entity_distance": 1136.767578125
+      },
+      {
+        "bot_id": 37,
+        "aoi_matched_positions": 1138978,
+        "aoi_unknown_positions": 181748,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1138.1304931640625
+      },
+      {
+        "bot_id": 38,
+        "aoi_matched_positions": 1236654,
+        "aoi_unknown_positions": 166154,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1114.283447265625
+      },
+      {
+        "bot_id": 39,
+        "aoi_matched_positions": 1041419,
+        "aoi_unknown_positions": 282086,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1100.336181640625
+      },
+      {
+        "bot_id": 40,
+        "aoi_matched_positions": 1203325,
+        "aoi_unknown_positions": 178262,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1116.86572265625
+      },
+      {
+        "bot_id": 41,
+        "aoi_matched_positions": 1222947,
+        "aoi_unknown_positions": 182106,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1113.7216796875
+      },
+      {
+        "bot_id": 42,
+        "aoi_matched_positions": 1055144,
+        "aoi_unknown_positions": 225276,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1119.5697021484375
+      },
+      {
+        "bot_id": 43,
+        "aoi_matched_positions": 1245956,
+        "aoi_unknown_positions": 141296,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1114.9378662109375
+      },
+      {
+        "bot_id": 44,
+        "aoi_matched_positions": 1212706,
+        "aoi_unknown_positions": 183603,
+        "max_observed_entity_distance": 1100.1,
+        "legacy_max_observed_entity_distance": 1125.4617919921875
+      },
+      {
+        "bot_id": 45,
+        "aoi_matched_positions": 1110259,
+        "aoi_unknown_positions": 231844,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1112.4625244140625
+      },
+      {
+        "bot_id": 46,
+        "aoi_matched_positions": 1098806,
+        "aoi_unknown_positions": 173147,
+        "max_observed_entity_distance": 1100.1,
+        "legacy_max_observed_entity_distance": 1117.6243896484375
+      },
+      {
+        "bot_id": 47,
+        "aoi_matched_positions": 1229609,
+        "aoi_unknown_positions": 131329,
+        "max_observed_entity_distance": 1099.9,
+        "legacy_max_observed_entity_distance": 1129.8919677734375
+      },
+      {
+        "bot_id": 48,
+        "aoi_matched_positions": 1152224,
+        "aoi_unknown_positions": 223165,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1179.685791015625
+      },
+      {
+        "bot_id": 49,
+        "aoi_matched_positions": 1213703,
+        "aoi_unknown_positions": 149358,
+        "max_observed_entity_distance": 1100.1,
+        "legacy_max_observed_entity_distance": 1239.9583740234375
+      },
+      {
+        "bot_id": 50,
+        "aoi_matched_positions": 1189040,
+        "aoi_unknown_positions": 157337,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1121.245361328125
+      },
+      {
+        "bot_id": 51,
+        "aoi_matched_positions": 1038395,
+        "aoi_unknown_positions": 275469,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1118.2935791015625
+      },
+      {
+        "bot_id": 52,
+        "aoi_matched_positions": 1125987,
+        "aoi_unknown_positions": 185905,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1188.7862548828125
+      },
+      {
+        "bot_id": 53,
+        "aoi_matched_positions": 1190259,
+        "aoi_unknown_positions": 184570,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1138.0340576171875
+      },
+      {
+        "bot_id": 54,
+        "aoi_matched_positions": 1130269,
+        "aoi_unknown_positions": 207209,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1122.1390380859375
+      },
+      {
+        "bot_id": 55,
+        "aoi_matched_positions": 1050677,
+        "aoi_unknown_positions": 211300,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1135.62841796875
+      },
+      {
+        "bot_id": 56,
+        "aoi_matched_positions": 1131201,
+        "aoi_unknown_positions": 198230,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1110.0555419921875
+      },
+      {
+        "bot_id": 57,
+        "aoi_matched_positions": 1049773,
+        "aoi_unknown_positions": 249123,
+        "max_observed_entity_distance": 1099.9,
+        "legacy_max_observed_entity_distance": 1136.2857666015625
+      },
+      {
+        "bot_id": 58,
+        "aoi_matched_positions": 1230194,
+        "aoi_unknown_positions": 168664,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1126.2491455078125
+      },
+      {
+        "bot_id": 59,
+        "aoi_matched_positions": 1181903,
+        "aoi_unknown_positions": 157901,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1135.0107421875
+      },
+      {
+        "bot_id": 60,
+        "aoi_matched_positions": 1113244,
+        "aoi_unknown_positions": 256246,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1114.9605712890625
+      },
+      {
+        "bot_id": 61,
+        "aoi_matched_positions": 1133510,
+        "aoi_unknown_positions": 194883,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1147.969970703125
+      },
+      {
+        "bot_id": 62,
+        "aoi_matched_positions": 1130105,
+        "aoi_unknown_positions": 214918,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1127.93017578125
+      },
+      {
+        "bot_id": 63,
+        "aoi_matched_positions": 1146823,
+        "aoi_unknown_positions": 259381,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1118.6375732421875
+      },
+      {
+        "bot_id": 64,
+        "aoi_matched_positions": 1074070,
+        "aoi_unknown_positions": 237492,
+        "max_observed_entity_distance": 1100.1,
+        "legacy_max_observed_entity_distance": 1132.1566162109375
+      },
+      {
+        "bot_id": 65,
+        "aoi_matched_positions": 1215743,
+        "aoi_unknown_positions": 145427,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1110.0406494140625
+      },
+      {
+        "bot_id": 66,
+        "aoi_matched_positions": 1136187,
+        "aoi_unknown_positions": 227698,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1115.873779296875
+      },
+      {
+        "bot_id": 67,
+        "aoi_matched_positions": 1163296,
+        "aoi_unknown_positions": 182918,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1149.133056640625
+      },
+      {
+        "bot_id": 68,
+        "aoi_matched_positions": 1240445,
+        "aoi_unknown_positions": 170138,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1111.16943359375
+      },
+      {
+        "bot_id": 69,
+        "aoi_matched_positions": 1178215,
+        "aoi_unknown_positions": 228808,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1167.265380859375
+      },
+      {
+        "bot_id": 70,
+        "aoi_matched_positions": 1173725,
+        "aoi_unknown_positions": 189869,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1132.5592041015625
+      },
+      {
+        "bot_id": 71,
+        "aoi_matched_positions": 1115918,
+        "aoi_unknown_positions": 180824,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1127.6610107421875
+      },
+      {
+        "bot_id": 72,
+        "aoi_matched_positions": 1004248,
+        "aoi_unknown_positions": 269511,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1111.9481201171875
+      },
+      {
+        "bot_id": 73,
+        "aoi_matched_positions": 1286220,
+        "aoi_unknown_positions": 138203,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1135.543701171875
+      },
+      {
+        "bot_id": 74,
+        "aoi_matched_positions": 1256617,
+        "aoi_unknown_positions": 159462,
+        "max_observed_entity_distance": 1100.1,
+        "legacy_max_observed_entity_distance": 1141.26123046875
+      },
+      {
+        "bot_id": 75,
+        "aoi_matched_positions": 1112438,
+        "aoi_unknown_positions": 230937,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1115.387939453125
+      },
+      {
+        "bot_id": 76,
+        "aoi_matched_positions": 1182234,
+        "aoi_unknown_positions": 211464,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1117.6859130859375
+      },
+      {
+        "bot_id": 77,
+        "aoi_matched_positions": 1117153,
+        "aoi_unknown_positions": 199868,
+        "max_observed_entity_distance": 1100.1,
+        "legacy_max_observed_entity_distance": 1108.320556640625
+      },
+      {
+        "bot_id": 78,
+        "aoi_matched_positions": 1028876,
+        "aoi_unknown_positions": 229891,
+        "max_observed_entity_distance": 1100.1,
+        "legacy_max_observed_entity_distance": 1127.907470703125
+      },
+      {
+        "bot_id": 79,
+        "aoi_matched_positions": 1174521,
+        "aoi_unknown_positions": 163541,
+        "max_observed_entity_distance": 1099.9,
+        "legacy_max_observed_entity_distance": 1107.81689453125
+      },
+      {
+        "bot_id": 80,
+        "aoi_matched_positions": 1168899,
+        "aoi_unknown_positions": 199448,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1270.9722900390625
+      },
+      {
+        "bot_id": 81,
+        "aoi_matched_positions": 1056475,
+        "aoi_unknown_positions": 264059,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1116.397705078125
+      },
+      {
+        "bot_id": 82,
+        "aoi_matched_positions": 1164171,
+        "aoi_unknown_positions": 174709,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1343.1541748046875
+      },
+      {
+        "bot_id": 83,
+        "aoi_matched_positions": 1177560,
+        "aoi_unknown_positions": 169921,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1173.3414306640625
+      },
+      {
+        "bot_id": 84,
+        "aoi_matched_positions": 1048190,
+        "aoi_unknown_positions": 269059,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1116.088623046875
+      },
+      {
+        "bot_id": 85,
+        "aoi_matched_positions": 1184105,
+        "aoi_unknown_positions": 166539,
+        "max_observed_entity_distance": 1100.1,
+        "legacy_max_observed_entity_distance": 1143.1939697265625
+      },
+      {
+        "bot_id": 86,
+        "aoi_matched_positions": 1117946,
+        "aoi_unknown_positions": 199847,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1103.8763427734375
+      },
+      {
+        "bot_id": 87,
+        "aoi_matched_positions": 1182448,
+        "aoi_unknown_positions": 208203,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1103.46435546875
+      },
+      {
+        "bot_id": 88,
+        "aoi_matched_positions": 1182633,
+        "aoi_unknown_positions": 164275,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1143.5863037109375
+      },
+      {
+        "bot_id": 89,
+        "aoi_matched_positions": 1056029,
+        "aoi_unknown_positions": 236290,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1154.804931640625
+      },
+      {
+        "bot_id": 90,
+        "aoi_matched_positions": 1137173,
+        "aoi_unknown_positions": 274971,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1121.4620361328125
+      },
+      {
+        "bot_id": 91,
+        "aoi_matched_positions": 1138591,
+        "aoi_unknown_positions": 181398,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1130.7274169921875
+      },
+      {
+        "bot_id": 92,
+        "aoi_matched_positions": 1166512,
+        "aoi_unknown_positions": 169986,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1121.8890380859375
+      },
+      {
+        "bot_id": 93,
+        "aoi_matched_positions": 1109824,
+        "aoi_unknown_positions": 252851,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1136.7218017578125
+      },
+      {
+        "bot_id": 94,
+        "aoi_matched_positions": 1170684,
+        "aoi_unknown_positions": 166125,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1238.7080078125
+      },
+      {
+        "bot_id": 95,
+        "aoi_matched_positions": 1255031,
+        "aoi_unknown_positions": 116029,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1101.8177490234375
+      },
+      {
+        "bot_id": 96,
+        "aoi_matched_positions": 1099027,
+        "aoi_unknown_positions": 248766,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1125.4425048828125
+      },
+      {
+        "bot_id": 97,
+        "aoi_matched_positions": 1088965,
+        "aoi_unknown_positions": 176585,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1117.29638671875
+      },
+      {
+        "bot_id": 98,
+        "aoi_matched_positions": 1187315,
+        "aoi_unknown_positions": 195023,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1102.09765625
+      },
+      {
+        "bot_id": 99,
+        "aoi_matched_positions": 1187227,
+        "aoi_unknown_positions": 208024,
+        "max_observed_entity_distance": 1100.1,
+        "legacy_max_observed_entity_distance": 1116.7259521484375
+      },
+      {
+        "bot_id": 100,
+        "aoi_matched_positions": 1168836,
+        "aoi_unknown_positions": 162045,
+        "max_observed_entity_distance": 1100.1,
+        "legacy_max_observed_entity_distance": 1251.9322509765625
+      },
+      {
+        "bot_id": 101,
+        "aoi_matched_positions": 1222983,
+        "aoi_unknown_positions": 144812,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1108.05810546875
+      },
+      {
+        "bot_id": 102,
+        "aoi_matched_positions": 1108789,
+        "aoi_unknown_positions": 208135,
+        "max_observed_entity_distance": 1100.1,
+        "legacy_max_observed_entity_distance": 1106.1322021484375
+      },
+      {
+        "bot_id": 103,
+        "aoi_matched_positions": 1128614,
+        "aoi_unknown_positions": 195952,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1122.1507568359375
+      },
+      {
+        "bot_id": 104,
+        "aoi_matched_positions": 1146102,
+        "aoi_unknown_positions": 186859,
+        "max_observed_entity_distance": 1099.9,
+        "legacy_max_observed_entity_distance": 1106.657958984375
+      },
+      {
+        "bot_id": 105,
+        "aoi_matched_positions": 1067700,
+        "aoi_unknown_positions": 295065,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1132.7059326171875
+      },
+      {
+        "bot_id": 106,
+        "aoi_matched_positions": 1136621,
+        "aoi_unknown_positions": 191089,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1112.3658447265625
+      },
+      {
+        "bot_id": 107,
+        "aoi_matched_positions": 1189030,
+        "aoi_unknown_positions": 160158,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1108.8992919921875
+      },
+      {
+        "bot_id": 108,
+        "aoi_matched_positions": 1101862,
+        "aoi_unknown_positions": 245023,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1111.8739013671875
+      },
+      {
+        "bot_id": 109,
+        "aoi_matched_positions": 1197397,
+        "aoi_unknown_positions": 168692,
+        "max_observed_entity_distance": 1099.9,
+        "legacy_max_observed_entity_distance": 1118.9493408203125
+      },
+      {
+        "bot_id": 110,
+        "aoi_matched_positions": 1175104,
+        "aoi_unknown_positions": 159295,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1245.0400390625
+      },
+      {
+        "bot_id": 111,
+        "aoi_matched_positions": 1043793,
+        "aoi_unknown_positions": 217657,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1157.27734375
+      },
+      {
+        "bot_id": 112,
+        "aoi_matched_positions": 1159108,
+        "aoi_unknown_positions": 198608,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1110.3431396484375
+      },
+      {
+        "bot_id": 113,
+        "aoi_matched_positions": 1220274,
+        "aoi_unknown_positions": 152364,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1107.0965576171875
+      },
+      {
+        "bot_id": 114,
+        "aoi_matched_positions": 1065211,
+        "aoi_unknown_positions": 265209,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1377.9163818359375
+      },
+      {
+        "bot_id": 115,
+        "aoi_matched_positions": 1151444,
+        "aoi_unknown_positions": 146269,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1102.64111328125
+      },
+      {
+        "bot_id": 116,
+        "aoi_matched_positions": 1152113,
+        "aoi_unknown_positions": 188376,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1125.2972412109375
+      },
+      {
+        "bot_id": 117,
+        "aoi_matched_positions": 1051906,
+        "aoi_unknown_positions": 276712,
+        "max_observed_entity_distance": 1100.1,
+        "legacy_max_observed_entity_distance": 1328.4324951171875
+      },
+      {
+        "bot_id": 118,
+        "aoi_matched_positions": 1172236,
+        "aoi_unknown_positions": 120444,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1115.4232177734375
+      },
+      {
+        "bot_id": 119,
+        "aoi_matched_positions": 1172400,
+        "aoi_unknown_positions": 173826,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1301.89794921875
+      },
+      {
+        "bot_id": 120,
+        "aoi_matched_positions": 1109371,
+        "aoi_unknown_positions": 253765,
+        "max_observed_entity_distance": 1099.9,
+        "legacy_max_observed_entity_distance": 1273.86669921875
+      },
+      {
+        "bot_id": 121,
+        "aoi_matched_positions": 1220990,
+        "aoi_unknown_positions": 143136,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1111.9326171875
+      },
+      {
+        "bot_id": 122,
+        "aoi_matched_positions": 1234785,
+        "aoi_unknown_positions": 159835,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1255.3983154296875
+      },
+      {
+        "bot_id": 123,
+        "aoi_matched_positions": 1012458,
+        "aoi_unknown_positions": 259303,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1118.7467041015625
+      },
+      {
+        "bot_id": 124,
+        "aoi_matched_positions": 1114689,
+        "aoi_unknown_positions": 159773,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1133.535888671875
+      },
+      {
+        "bot_id": 125,
+        "aoi_matched_positions": 1073878,
+        "aoi_unknown_positions": 196972,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1129.041015625
+      },
+      {
+        "bot_id": 126,
+        "aoi_matched_positions": 1106982,
+        "aoi_unknown_positions": 225958,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1293.3104248046875
+      },
+      {
+        "bot_id": 127,
+        "aoi_matched_positions": 1108625,
+        "aoi_unknown_positions": 174100,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1127.2139892578125
+      },
+      {
+        "bot_id": 128,
+        "aoi_matched_positions": 1150952,
+        "aoi_unknown_positions": 167981,
+        "max_observed_entity_distance": 1100.1,
+        "legacy_max_observed_entity_distance": 1147.87744140625
+      },
+      {
+        "bot_id": 129,
+        "aoi_matched_positions": 1027610,
+        "aoi_unknown_positions": 224728,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1116.023193359375
+      },
+      {
+        "bot_id": 130,
+        "aoi_matched_positions": 1166162,
+        "aoi_unknown_positions": 147415,
+        "max_observed_entity_distance": 1100.1,
+        "legacy_max_observed_entity_distance": 1829.3310546875
+      },
+      {
+        "bot_id": 131,
+        "aoi_matched_positions": 1135029,
+        "aoi_unknown_positions": 189714,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1122.7313232421875
+      },
+      {
+        "bot_id": 132,
+        "aoi_matched_positions": 1155986,
+        "aoi_unknown_positions": 220976,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1158.009765625
+      },
+      {
+        "bot_id": 133,
+        "aoi_matched_positions": 1092268,
+        "aoi_unknown_positions": 187606,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1129.0338134765625
+      },
+      {
+        "bot_id": 134,
+        "aoi_matched_positions": 1126232,
+        "aoi_unknown_positions": 193178,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1143.9345703125
+      },
+      {
+        "bot_id": 135,
+        "aoi_matched_positions": 956522,
+        "aoi_unknown_positions": 297766,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1240.041748046875
+      },
+      {
+        "bot_id": 136,
+        "aoi_matched_positions": 1156020,
+        "aoi_unknown_positions": 130706,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1121.699951171875
+      },
+      {
+        "bot_id": 137,
+        "aoi_matched_positions": 1147847,
+        "aoi_unknown_positions": 198952,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1165.0299072265625
+      },
+      {
+        "bot_id": 138,
+        "aoi_matched_positions": 1120363,
+        "aoi_unknown_positions": 225134,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1121.3443603515625
+      },
+      {
+        "bot_id": 139,
+        "aoi_matched_positions": 1130231,
+        "aoi_unknown_positions": 176022,
+        "max_observed_entity_distance": 1100.1,
+        "legacy_max_observed_entity_distance": 1947.79296875
+      },
+      {
+        "bot_id": 140,
+        "aoi_matched_positions": 1179706,
+        "aoi_unknown_positions": 166622,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1164.9019775390625
+      },
+      {
+        "bot_id": 141,
+        "aoi_matched_positions": 1096774,
+        "aoi_unknown_positions": 236883,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1123.3939208984375
+      },
+      {
+        "bot_id": 142,
+        "aoi_matched_positions": 1229292,
+        "aoi_unknown_positions": 165562,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1125.984619140625
+      },
+      {
+        "bot_id": 143,
+        "aoi_matched_positions": 1203701,
+        "aoi_unknown_positions": 173658,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1112.5550537109375
+      },
+      {
+        "bot_id": 144,
+        "aoi_matched_positions": 1011251,
+        "aoi_unknown_positions": 258009,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1105.6944580078125
+      },
+      {
+        "bot_id": 145,
+        "aoi_matched_positions": 1199248,
+        "aoi_unknown_positions": 158675,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1410.3408203125
+      },
+      {
+        "bot_id": 146,
+        "aoi_matched_positions": 1061528,
+        "aoi_unknown_positions": 195859,
+        "max_observed_entity_distance": 1100.1,
+        "legacy_max_observed_entity_distance": 1109.27587890625
+      },
+      {
+        "bot_id": 147,
+        "aoi_matched_positions": 1151111,
+        "aoi_unknown_positions": 178291,
+        "max_observed_entity_distance": 1099.9,
+        "legacy_max_observed_entity_distance": 1208.2779541015625
+      },
+      {
+        "bot_id": 148,
+        "aoi_matched_positions": 1132921,
+        "aoi_unknown_positions": 192258,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1103.7744140625
+      },
+      {
+        "bot_id": 149,
+        "aoi_matched_positions": 1113424,
+        "aoi_unknown_positions": 213821,
+        "max_observed_entity_distance": 1100.0,
+        "legacy_max_observed_entity_distance": 1118.8123779296875
+      },
+      {
+        "bot_id": 150,
+        "aoi_matched_positions": 1098013,
+        "aoi_unknown_positions": 232801,
+        "max_observed_entity_distance": 1099.9,
+        "legacy_max_observed_entity_distance": 1117.46875
+      }
+    ]
+  },
+  "delivered_record_coverage": {
+    "reported_state_updates": 1652423,
+    "reported_baselines": 9723,
+    "reported_remote_positions": 201614470,
+    "audit_emitted_remote_positions": 202467700,
+    "limits": "Aggregate delivered observations are not a per-record delivery census; omitted same-Snapshot centers remain unknown. No server per-record successful-send metric exists."
+  },
+  "strict_assertions_unmodified": [
+    {
+      "details": {
+        "eligible_bots": 150,
+        "threshold": 1150.0,
+        "unknown_bots": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          38,
+          39,
+          40,
+          41,
+          42,
+          43,
+          44,
+          45,
+          46,
+          47,
+          48,
+          49,
+          50,
+          51,
+          52,
+          53,
+          54,
+          55,
+          56,
+          57,
+          58,
+          59,
+          60,
+          61,
+          62,
+          63,
+          64,
+          65,
+          66,
+          67,
+          68,
+          69,
+          70,
+          71,
+          72,
+          73,
+          74,
+          75,
+          76,
+          77,
+          78,
+          79,
+          80,
+          81,
+          82,
+          83,
+          84,
+          85,
+          86,
+          87,
+          88,
+          89,
+          90,
+          91,
+          92,
+          93,
+          94,
+          95,
+          96,
+          97,
+          98,
+          99,
+          100,
+          101,
+          102,
+          103,
+          104,
+          105,
+          106,
+          107,
+          108,
+          109,
+          110,
+          111,
+          112,
+          113,
+          114,
+          115,
+          116,
+          117,
+          118,
+          119,
+          120,
+          121,
+          122,
+          123,
+          124,
+          125,
+          126,
+          127,
+          128,
+          129,
+          130,
+          131,
+          132,
+          133,
+          134,
+          135,
+          136,
+          137,
+          138,
+          139,
+          140,
+          141,
+          142,
+          143,
+          144,
+          145,
+          146,
+          147,
+          148,
+          149,
+          150
+        ],
+        "violators": []
+      },
+      "message": "150/150 bots within 1150 u (95% required); 150 bot(s) with unknown observations",
+      "name": "aoi_cull",
+      "passed": false,
+      "skipped": false
+    },
+    {
+      "details": {
+        "failing_bots": []
+      },
+      "message": "no decode failures",
+      "name": "decode_clean",
+      "passed": true,
+      "skipped": false
+    },
+    {
+      "details": null,
+      "message": "skipped: no --rate-budget configured",
+      "name": "per_peer_budget",
+      "passed": true,
+      "skipped": true
+    }
+  ],
+  "legacy_anomaly_count": 225,
+  "legacy_classifications": {
+    "legacy-mixed-time-false-positive": 225
+  },
+  "all_retained_anomalies_uniquely_attributed": true,
+  "legacy_classifications_by_tick_period": {
+    "steady": {
+      "legacy-mixed-time-false-positive": 8
+    },
+    "outside_steady": {
+      "legacy-mixed-time-false-positive": 217
+    },
+    "unknown": {}
+  },
+  "legacy_timing_counts": {
+    "ramp_or_warmup": 217,
+    "steady": 8,
+    "after_window": 0
+  },
+  "maximum_legacy_anomaly": {
+    "application_order": 9,
+    "baseline": false,
+    "baseline_tick": 944,
+    "channel": 0,
+    "dead_since": null,
+    "entity_id": 11,
+    "entity_position": [
+      -1000.0,
+      -1000.0
+    ],
+    "game_events_received": 2615,
+    "grace_until": 0.0,
+    "input_sequence": 113,
+    "last_confirm_tick16": 945,
+    "legacy_distance": 1947.79296875,
+    "legacy_observer_position": [
+      -119.77662658691406,
+      737.5568237304688
+    ],
+    "observer_id": 139,
+    "observer_position_source": "Prediction",
+    "receive_time_s": 19.366476433,
+    "received_packets": 2630,
+    "server_ms": 35201,
+    "snapshot_observer_position": [
+      -931.7999877929688,
+      -186.60000610351562
+    ],
+    "snapshot_tick": 1056,
+    "bot_id": 139,
+    "classification": "legacy-mixed-time-false-positive",
+    "match_count": 1,
+    "authoritative_distance_f32": 816.2169799804688,
+    "authoritative_center": [
+      -931.807,
+      -186.63672
+    ],
+    "emitted_snapshot_max_distance": 1067.3904,
+    "entity_within_emitted_max": true,
+    "baseline_matches": true,
+    "tick_utc_ns": 1792649298017207572,
+    "period": "outside_steady"
+  },
+  "full_attribution_evidence": {
+    "path": "deployment/hetzner/results/aoi150-20261022/aoi150-full-correlation.json",
+    "sha256": "80c0a8766c4e668370e80dd2b3a0258702462e3293184ff905d59db1e094a8d1",
+    "retained_anomalies": 225
+  }
+}

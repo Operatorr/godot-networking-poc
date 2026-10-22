@@ -117,6 +117,18 @@ impl Measurement {
         DEFERRED.with(|slot| *slot.borrow_mut() = Some(DeferredObservation::default()));
         std::fs::create_dir_all(&directory).expect("create measurement directory");
         let directory = std::path::Path::new(&directory);
+        if std::env::var_os("OMEGA_AOI_AUDIT").is_some() {
+            let mut writer = BufWriter::with_capacity(
+                1024 * 1024,
+                File::create(directory.join("aoi.csv")).expect("create AoI audit"),
+            );
+            writeln!(
+                writer,
+                "tick,server_ms,observer,x,y,baseline,full_request,records,positions,max_distance"
+            )
+            .unwrap();
+            AOI_AUDIT.with(|slot| *slot.borrow_mut() = Some(AoiAudit { writer, rows: 0 }));
+        }
         let mut ticks = BufWriter::with_capacity(
             1024 * 1024,
             File::create(directory.join("ticks.csv")).expect("create raw Tick evidence"),
@@ -149,6 +161,11 @@ impl Measurement {
 
     pub fn tick(&mut self, world: &World, tick_start: Instant, work_ns: u128, lag: f64) {
         let observer = Instant::now();
+        AOI_AUDIT.with(|slot| {
+            if let Some(audit) = slot.borrow_mut().as_mut() {
+                audit.writer.flush().expect("flush AoI audit");
+            }
+        });
         let mono = tick_start.duration_since(self.origin).as_nanos();
         let mut authenticated = 0;
         let mut alive = 0;
@@ -306,4 +323,74 @@ mod tests {
         end_schedule();
         DEFERRED.with(|slot| assert!(slot.borrow().as_ref().unwrap().pending[&7].is_empty()));
     }
+}
+
+// Opt-in, bounded same-Tick AoI evidence. One row per constructed Snapshot, so
+// an omitted observer record never has to be reconstructed from another Tick.
+// Enabled alongside OMEGA_MEASURE_DIR only for this diagnostic condition.
+thread_local! {
+    static AOI_AUDIT: std::cell::RefCell<Option<AoiAudit>> = const { std::cell::RefCell::new(None) };
+}
+struct AoiAudit {
+    writer: BufWriter<File>,
+    rows: u64,
+}
+
+pub(crate) fn aoi_packet_bounds(
+    snapshot: &protocol::Snapshot,
+    observer: u16,
+    center: sim_core::Vec2,
+) -> (u64, f32) {
+    let mut count = 0;
+    let mut maximum = 0.0_f32;
+    for r in &snapshot.entities {
+        if r.entity_id == observer {
+            continue;
+        }
+        if let Some((x, y)) = r.position {
+            // Use the coordinates the receiver actually decodes, including truncation.
+            let wire = sim_core::Vec2::new(
+                protocol::dequant_coord(protocol::quant_coord(x)),
+                protocol::dequant_coord(protocol::quant_coord(y)),
+            );
+            maximum = maximum.max(center.distance_to(wire));
+            count += 1;
+        }
+    }
+    (count, maximum)
+}
+
+pub fn audit_aoi_snapshot(
+    snapshot: &protocol::Snapshot,
+    observer: u16,
+    center: sim_core::Vec2,
+    full_request: bool,
+) {
+    AOI_AUDIT.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        let Some(audit) = slot.as_mut() else {
+            return;
+        };
+        assert!(
+            audit.rows < 2_000_000,
+            "AoI audit row bound exhausted; observation invalid"
+        );
+        let (count, maximum) = aoi_packet_bounds(snapshot, observer, center);
+        writeln!(
+            audit.writer,
+            "{},{},{},{},{},{},{},{},{},{}",
+            snapshot.server_tick,
+            snapshot.server_ms,
+            observer,
+            center.x,
+            center.y,
+            snapshot.is_baseline,
+            full_request,
+            snapshot.entities.len(),
+            count,
+            maximum
+        )
+        .expect("write AoI audit");
+        audit.rows += 1;
+    });
 }

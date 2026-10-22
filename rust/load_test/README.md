@@ -188,6 +188,13 @@ they do not measure the causal performance perturbation of instrumentation.
 
 - `aoi_cull` — no bot observes entities beyond `aoi_exit_radius` (+50 u tolerance, 95 % of
   bots must pass). `--aoi-exit-radius` if the server config differs from the 1100 default.
+  Distances use explicit observer/entity positions from the same Snapshot. A delta
+  without the observer's position is **unknown**, and any unknown (or no observations)
+  prevents a strict pass. Cached positions and ActionConfirms are not contemporaneous
+  substitutes. Reports retain matched/unknown counts and a diagnostic legacy maximum.
+  These are lifetime metrics, including warmup. Opt-in server `OMEGA_AOI_AUDIT=1`
+  alongside `OMEGA_MEASURE_DIR` supplies separate authoritative emission evidence in
+  `aoi.csv`; it does not make the standalone bot assertion complete or prove delivery.
 - `decode_clean` — every received server packet must decode strictly (successor of
   `batch_decode_clean`; any failure means codec drift).
 - `per_peer_budget` — received bytes/s per bot ≤ `--rate-budget` (0 skips). Pair with
