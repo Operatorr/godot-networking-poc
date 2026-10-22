@@ -7,24 +7,80 @@ import json
 import os
 import pathlib
 import re
+import shlex
 import subprocess
 import sys
 import time
 
 import run
 
+BASE_REVISION = 'cc86869f1cc0f3d5d219e880d08b2cfda312f4eb'
+
+
+def validate_revision(revision, cwd=None):
+    """Allow report-only HEAD advances, but bundle only a reachable exact commit."""
+    if not re.fullmatch(r'[0-9a-f]{40}', revision):
+        raise ValueError('Full immutable revision required')
+    resolved = subprocess.check_output(
+        ['git', 'rev-parse', '--verify', revision+'^{commit}'], cwd=cwd, text=True).strip()
+    if resolved != revision:
+        raise ValueError('Candidate must identify the exact commit, not a tag')
+    subprocess.run(['git', 'merge-base', '--is-ancestor', revision, 'HEAD'], cwd=cwd, check=True)
+    subprocess.run(['git', 'merge-base', '--is-ancestor', BASE_REVISION, revision], cwd=cwd, check=True)
+    if revision == BASE_REVISION:
+        raise ValueError('Candidate must be included beyond the bundle prerequisite')
+    return resolved
+
+
+def load_reuse_proof(namespace, revision, results_root):
+    if not re.fullmatch(r'clean-[a-z0-9-]{1,65}', namespace):
+        raise ValueError('Invalid reuse namespace')
+    directory = results_root/(namespace+'-build')
+    proof = json.loads((directory/'build-proof.json').read_text())
+    expected_path = '/home/deploy/omega-'+namespace
+    for role in ('game', 'bots'):
+        row = proof[role]
+        if row['revision'] != revision or row['path'] != expected_path:
+            raise ValueError('Reuse requires the same exact revision and proven checkout')
+        if any(not re.fullmatch(r'[0-9a-f]{64}', row[k]) for k in ('sha256','bot_sha256')):
+            raise ValueError('Invalid prior binary hash')
+    if any(proof['game'][k] != proof['bots'][k] for k in ('revision','path','sha256','bot_sha256')):
+        raise ValueError('Prior both-host identities disagree')
+    return proof
+
+
+def reuse_binaries_command(source, destination, revision, game_sha, bot_sha):
+    """Verify frozen source and both binaries before AND after real-file copies."""
+    q = shlex.quote
+    verify = ('test "$(git -C {s} rev-parse HEAD)" = {r}; '
+              'test -z "$(git -C {s} status --porcelain)"; ').format(s=q(source),r=q(revision))
+    for name, digest in (('omega-server',game_sha),('omega-load-test',bot_sha)):
+        path = source+'/rust/target/release/'+name
+        verify += ('test -f {p}; test ! -L {p}; '
+                   'test "$(sha256sum {p} | cut -d " " -f 1)" = {h}; ').format(p=q(path),h=q(digest))
+    command = verify+'mkdir -p '+q(destination+'/rust/target/release')+'; '
+    for name in ('omega-server','omega-load-test'):
+        src = source+'/rust/target/release/'+name
+        dst = destination+'/rust/target/release/'+name
+        command += ('test ! -e {d}; test ! -L {d}; cp --reflink=auto {s} {d}; test ! -L {d}; '
+                    'test ! {s} -ef {d}; ').format(s=q(src),d=q(dst))
+    return command+verify
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--revision', required=True)
     parser.add_argument('--namespace', default='clean-strategy150-r1-20261022')
+    parser.add_argument('--reuse-build-namespace', help='Future cells only: copy verified same-revision binaries into a fresh checkout')
     args = parser.parse_args()
     if not re.fullmatch(r'[0-9a-f]{40}', args.revision):
         parser.error('Full immutable revision required')
     if not re.fullmatch(r'clean-[a-z0-9-]{1,65}', args.namespace):
         parser.error('Invalid namespace')
     assert subprocess.check_output(['git','branch','--show-current'],text=True).strip() == 'fix/load-test-clean-runs'
-    assert subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip() == args.revision
+    validate_revision(args.revision)
+    reuse = load_reuse_proof(args.reuse_build_namespace, args.revision,
+                           run.ROOT/'deployment/hetzner/results') if args.reuse_build_namespace else None
     os.umask(0o077)
     directory = run.ROOT/'deployment/hetzner/results'/(args.namespace+'-build')
     directory.mkdir(mode=0o700,exist_ok=False)
@@ -93,28 +149,43 @@ def main():
     try:
         with concurrent.futures.ThreadPoolExecutor(2) as pool:list(pool.map(inventory,('game','bots')))
         bundle = directory/'candidate.bundle'
-        subprocess.run(['git','bundle','create',str(bundle),'cc86869f1cc0f3d5d219e880d08b2cfda312f4eb..HEAD'],check=True,capture_output=True)
+        subprocess.run(['git','bundle','create',str(bundle),BASE_REVISION+'..HEAD'],check=True,capture_output=True)
+        subprocess.run(['git','bundle','verify',str(bundle)],check=True,capture_output=True)
+        bundle_head = subprocess.check_output(['git','bundle','list-heads',str(bundle),'HEAD'],text=True).split()[0]
+        subprocess.run(['git','merge-base','--is-ancestor',args.revision,bundle_head],check=True,capture_output=True)
         source = dict(revision=args.revision,tree=subprocess.check_output(['git','rev-parse',args.revision+'^{tree}'],text=True).strip(),
                       bundle_sha256=hashlib.sha256(bundle.read_bytes()).hexdigest(),
                       source_archive_sha256=hashlib.sha256(subprocess.check_output(['git','archive',args.revision])).hexdigest(),
+                      bundle_head=bundle_head,
+                      candidate_reachable_from_bundle_head=True, bundle_verified=True,
+                      reused_build_proof_sha256=(hashlib.sha256((run.ROOT/'deployment/hetzner/results'/
+                          (args.reuse_build_namespace+'-build')/'build-proof.json').read_bytes()).hexdigest() if reuse else None),
                       local_utc_ns=time.time_ns())
         (directory/'toolchain-and-source-proof.json').write_text(json.dumps(source,indent=2))
         def build(role):
             run.copy(role,bundle,remote_bundle)
             command = ('set -e; source /home/deploy/.cargo/env; test ! -e {d}; '
                 'git clone --shared --no-checkout /home/deploy/omega-udp-control-cc86869 {d}; '
-                'git -C {d} fetch {b} HEAD; git -C {d} checkout --detach {r}; '
+                'git -C {d} fetch {b} HEAD; git -C {d} cat-file -e {r}^{{commit}}; '
+                'git -C {d} merge-base --is-ancestor {r} FETCH_HEAD; git -C {d} checkout --detach {r}; '
                 'test -z "$(git -C {d} status --porcelain)"; test "$(git -C {d} rev-parse HEAD)" = {r}; '
-                'cd {d}/rust; rustc -Vv; cargo -V; uname -a; '
-                'cargo build --release --locked -j 2 -p omega-server -p omega-load-test; '
-                'sha256sum target/release/omega-server target/release/omega-load-test; '
-                'git status --porcelain').format(d=dest,b=remote_bundle,r=args.revision)
+                'cd {d}/rust; rustc -Vv; cargo -V; uname -a; ').format(d=dest,b=remote_bundle,r=args.revision)
+            if reuse:
+                row = reuse[role]
+                command += reuse_binaries_command(row['path'],dest,args.revision,row['sha256'],row['bot_sha256'])
+            else:
+                command += 'cargo build --release --locked -j 2 -p omega-server -p omega-load-test; '
+            command += 'sha256sum target/release/omega-server target/release/omega-load-test; git status --porcelain'
             output=ssh(role,command,1200)
             proof=dict(revision=args.revision,path=dest,sha256=ssh(role,'sha256sum '+dest+'/rust/target/release/omega-server').split()[0],
                        bot_sha256=ssh(role,'sha256sum '+dest+'/rust/target/release/omega-load-test').split()[0],
-                       build_argv=['cargo','build','--release','--locked','-j','2','-p','omega-server','-p','omega-load-test'],
+                       build_argv=[] if reuse else ['cargo','build','--release','--locked','-j','2','-p','omega-server','-p','omega-load-test'],
+                       build_mode='verified-real-file-copy' if reuse else 'native-build',
+                       reused_from=({'namespace':args.reuse_build_namespace,'proof':reuse[role]} if reuse else None),
                        build_stdout=output,utc_ns=time.time_ns())
             (directory/(role+'-build.json')).write_text(json.dumps(proof,indent=2))
+            if reuse and any(proof[k] != reuse[role][k] for k in ('sha256','bot_sha256')):
+                raise RuntimeError(role+' copied artifact mismatch')
             print(role+' pinned release build passed',flush=True)
             return proof
         with concurrent.futures.ThreadPoolExecutor(2) as pool:proofs=dict(zip(('game','bots'),pool.map(build,('game','bots'))))

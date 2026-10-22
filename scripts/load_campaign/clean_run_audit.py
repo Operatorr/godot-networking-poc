@@ -11,6 +11,36 @@ import time
 import run
 
 
+def audit_paths(local, label):
+    if not re.fullmatch(r'[a-z0-9-]{1,48}',label):
+        raise ValueError('Invalid preservation audit label')
+    paths={role:local/(role+'-'+label+'-preservation-raw.json') for role in ('game','bots')}
+    paths['summary']=local/(('independent-prebuild' if label=='independent' else label)+'-preservation-audit.json')
+    paths['commands']=local/(label+'-audit-commands.ndjson')
+    if any(path.exists() for path in paths.values()):
+        raise FileExistsError('Preservation audit exists; choose a fresh label')
+    return paths
+
+
+def bounded_ssh(role, command, journal):
+    host=run.HOSTS[role]
+    try:
+        result=subprocess.run(['ssh','-i',str(run.KEY),*run.SSH_OPTIONS,
+            host['ssh_user']+'@'+host['ipv4'],command],capture_output=True,text=True,timeout=90)
+        row=dict(utc_ns=time.time_ns(),role=role,command=command,returncode=result.returncode,
+                 stdout=result.stdout,stderr=result.stderr)
+    except subprocess.TimeoutExpired as error:
+        decode=lambda v:v.decode(errors='replace') if isinstance(v,bytes) else v
+        row=dict(utc_ns=time.time_ns(),role=role,command=command,timeout_s=90,
+                 stdout=decode(error.stdout),stderr=decode(error.stderr))
+        with journal.open('a') as stream:stream.write(json.dumps(row)+'\n')
+        raise RuntimeError(role+' audit timed out; exact private evidence retained') from None
+    with journal.open('a') as stream:stream.write(json.dumps(row)+'\n')
+    if result.returncode:
+        raise RuntimeError(role+' audit command failed; exact private evidence retained')
+    return result.stdout
+
+
 def hashes(text):
     result={}
     for line in text.splitlines():
@@ -24,10 +54,26 @@ def hashes(text):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--namespace',default='clean-strategy150-r1-20261022')
+    parser.add_argument('--verification-label',default='independent')
+    parser.add_argument('--restoration-label',help='Also run the complete restoration verifier with this fresh label')
     args=parser.parse_args()
     if not re.fullmatch(r'clean-[a-z0-9-]{1,65}',args.namespace):parser.error('Invalid namespace')
     local=run.ROOT/'deployment/hetzner/results'/args.namespace
     build=local.with_name(args.namespace+'-build')
+    paths=audit_paths(local,args.verification_label)
+    # Reserve this whole composite audit before its first host call.
+    paths['commands'].touch(exist_ok=False)
+    if args.restoration_label:
+        import clean_run
+        manifest=json.loads((local/'manifest.json').read_text())
+        clean_run.load_cell(args.namespace,manifest['requested_bots'],manifest['behavior'])
+        clean_run.verification_paths(local,args.restoration_label)
+        original_ssh=run.ssh
+        try:
+            run.ssh=lambda role,command:bounded_ssh(role,command,paths['commands'])
+            clean_run.verify(args.restoration_label)
+        finally:
+            run.ssh=original_ssh
     results={}
     for role in ('game','bots'):
         before=json.loads((build/(role+'-before.json')).read_text())
@@ -38,25 +84,36 @@ def main():
             'units':"systemctl list-units --all --no-legend 'omega-*'",
             'queues':'sudo -n ss -u -a -m -n -p -e',
         }
+        if role=='game':
+            commands['measurement_backups']=(
+                'set -e; count=0; for d in /home/deploy/omega-results/clean-*/original; do '
+                'if test -f "$d/measurement-verified"; then '
+                'printf "BACKUP %s\\n" "$d"; '
+                '(cd "$d/measurement-current"; sha256sum -c ../measurement-sha256.txt); '
+                'count=$((count+1)); fi; done; test "$count" -gt 0')
+            commands['native_config_backups']=(
+                'cmp /etc/omega-loadtest/arena.json '+str(pathlib.PurePosixPath('/home/deploy/omega-results')/args.namespace/'original/arena.json')+' && '
+                'cmp /etc/systemd/system/omega-loadtest-arena.service.d/measurement.conf '+str(pathlib.PurePosixPath('/home/deploy/omega-results')/args.namespace/'original/measurement.conf'))
         raw={}
         for key,command in commands.items():
-            host=run.HOSTS[role]
-            result=subprocess.run(['ssh','-i',str(run.KEY),*run.SSH_OPTIONS,host['ssh_user']+'@'+host['ipv4'],command],capture_output=True,text=True,timeout=90)
-            raw[key]=dict(command=command,returncode=result.returncode,stdout=result.stdout,stderr=result.stderr)
-            (local/(role+'-independent-preservation-raw.json')).write_text(json.dumps(raw,indent=2))
-            if result.returncode:raise RuntimeError(role+' audit command failed; exact private evidence retained')
+            output=bounded_ssh(role,command,paths['commands'])
+            raw[key]=dict(command=command,returncode=0,stdout=output)
+            paths[role].write_text(json.dumps(raw,indent=2))
         checks={key:all(hashes(raw[key]['stdout']).get(path)==digest for path,digest in hashes(before[key]).items())
                 for key in ('artifacts','prior_archives','closed_states')}
         active=[line for line in raw['units']['stdout'].splitlines() if re.search(r'\sactive\s',line) and not (role=='game' and line.strip().startswith('omega-loadtest-arena.service '))]
         checks['no_active_other_workload_units']=not active
         checks['no_bot_sockets']='omega-load-test' not in raw['queues']['stdout']
         checks['queues_quiet']=all(int(v)==0 for pair in re.findall(r'UNCONN\s+(\d+)\s+(\d+)\s+.*omega-',raw['queues']['stdout']) for v in pair)
+        if role=='game':
+            checks['original_measurement_backups_verified']=bool(raw['measurement_backups']['stdout'])
+            checks['native_config_backups_equal']=True
         results[role]=dict(utc_ns=time.time_ns(),checks=checks,
             original_artifact_count=len(hashes(before['artifacts'])),
             original_archive_count=len(hashes(before['prior_archives'])),
             current_archive_sha256=hashlib.sha256((local/(role+'.tar.gz')).read_bytes()).hexdigest(),
-            raw_sha256=hashlib.sha256((local/(role+'-independent-preservation-raw.json')).read_bytes()).hexdigest())
-    (local/'independent-prebuild-preservation-audit.json').write_text(json.dumps(results,indent=2))
+            raw_sha256=hashlib.sha256(paths[role].read_bytes()).hexdigest())
+    paths['summary'].write_text(json.dumps(results,indent=2))
     if not all(all(row['checks'].values()) for row in results.values()):raise RuntimeError('Independent preservation/queue audit failed')
     print('Independent preservation and queue audit passed on both hosts')
     return results
