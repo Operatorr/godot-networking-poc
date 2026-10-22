@@ -187,3 +187,34 @@ inputs still require normal ActionConfirm delivery; all peers pass it. No code
 or threshold change alters the fixed workload source or historical observations.
 The parent reruns the applicable helper tests. Idle 150 is the next single
 sequential workload; the campaign remains incomplete.
+
+
+## Idle 150 round 1 — generator validity blocks the ladder
+
+[Idle 150](clean-idle150-r1-20261022.md) is **generator-invalid**: 35/36 matrix
+gates pass; only per-peer mapped wire cadence fails, for 122/150 peers on both
+captures. Wire is 28.62–29.86 Hz versus offered 29.98235–29.99902 Hz. Full/steady
+correctness, UDP and AoI counters remain zero, all received positions are matched,
+and both restoration/preservation audits pass. The parent independently verified
+the single failed gate and both workload archive hashes. No capacity pass or
+clean-cell certificate is issued. The remaining ladder is held for diagnosis.
+
+The pinned ENet code documents adaptive shedding of unreliable packets after
+queue admission. A deterministic local lossless-link test using the actual 0.4.0
+engine reproduces 10,700 accepted queue submissions but only 10,699 socket sends;
+all socket sends arrive. A stable-delay control sends all 10,700. Its observed
+throttle minimum is 28 (scale 32) during the varying-delay condition. This proves
+a possible transport mechanism and that queue admission is not a wire guarantee;
+it does **not** reproduce the remote deficit's magnitude or attribute the
+historical run. Throttle settings remain unchanged.
+
+Ranked, falsifiable diagnostic hypotheses: (1) native adaptive throttle sheds
+queued inputs before Socket::send; submission-to-socket differences should follow
+throttle state, with no native send failures. (2) queue-flush delays retain inputs;
+service gaps and pending age should explain differences that later drain.
+(3) collector counting misses inputs; socket input-command counts would exceed
+both capture counts after accounting for timestamp boundaries. Existing evidence
+cannot distinguish these paths. A bounded matched diagnostic will compare queue
+admission, actual socket sends and both captures without weakening the rate gate,
+changing packet reliability or disabling congestion behavior. Exact application
+input delivery remains unknown.
