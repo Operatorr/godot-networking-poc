@@ -394,6 +394,37 @@ impl Bot {
     }
 
     fn apply_snapshot(&mut self, s: &Snapshot, now: f64) {
+        // Validate only positions explicitly carried by this Snapshot. A cached own
+        // position, ActionConfirm, or prediction belongs to another simulation time.
+        // Missing same-Snapshot observer state is unknown, never evidence of a pass.
+        let aoi_center = s
+            .entities
+            .iter()
+            .find(|r| {
+                r.entity_id == self.entity_id
+                    && (r.delta_mask & delta_mask::FULL != 0
+                        || r.delta_mask & delta_mask::REMOVED == 0)
+            })
+            .and_then(|r| r.position);
+        for rec in &s.entities {
+            if rec.entity_id == self.entity_id
+                || (rec.delta_mask & delta_mask::FULL == 0
+                    && rec.delta_mask & delta_mask::REMOVED != 0)
+            {
+                continue;
+            }
+            if let Some(p) = rec.position {
+                if let Some(center) = aoi_center {
+                    let distance = Vec2::new(p.0 - center.0, p.1 - center.1).length();
+                    self.metrics.aoi_matched_positions += 1;
+                    self.metrics.max_observed_entity_distance =
+                        self.metrics.max_observed_entity_distance.max(distance);
+                } else {
+                    self.metrics.aoi_unknown_positions += 1;
+                }
+            }
+        }
+
         // Channels 0 and 1 have independent delivery order. A newer reliable
         // Baseline retires old deltas; applying them could resurrect entities.
         if self.last_baseline_tick.is_some_and(|tick| {
@@ -460,37 +491,6 @@ impl Bot {
                 self.pos = Vec2::new(p.0, p.1);
                 self.position_source = "SnapshotPrepass";
                 self.pos_synced = true;
-            }
-        }
-
-        // Validate only positions explicitly carried by this Snapshot. A cached own
-        // position, ActionConfirm, or prediction belongs to another simulation time.
-        // Missing same-Snapshot observer state is unknown, never evidence of a pass.
-        let aoi_center = s
-            .entities
-            .iter()
-            .find(|r| {
-                r.entity_id == self.entity_id
-                    && (r.delta_mask & delta_mask::FULL != 0
-                        || r.delta_mask & delta_mask::REMOVED == 0)
-            })
-            .and_then(|r| r.position);
-        for rec in &s.entities {
-            if rec.entity_id == self.entity_id
-                || (rec.delta_mask & delta_mask::FULL == 0
-                    && rec.delta_mask & delta_mask::REMOVED != 0)
-            {
-                continue;
-            }
-            if let Some(p) = rec.position {
-                if let Some(center) = aoi_center {
-                    let distance = Vec2::new(p.0 - center.0, p.1 - center.1).length();
-                    self.metrics.aoi_matched_positions += 1;
-                    self.metrics.max_observed_entity_distance =
-                        self.metrics.max_observed_entity_distance.max(distance);
-                } else {
-                    self.metrics.aoi_unknown_positions += 1;
-                }
             }
         }
 
@@ -808,6 +808,27 @@ fn color_for(id: u32) -> (u8, u8, u8) {
 mod aoi_tests {
     use super::*;
     use protocol::EntityRecord;
+
+    #[test]
+    fn retired_snapshot_is_still_checked_as_received_aoi_evidence() {
+        let mut b = bot();
+        b.last_baseline_tick = Some(200);
+        let s = Snapshot {
+            server_tick: 199,
+            server_ms: 6567,
+            is_baseline: false,
+            baseline_tick: Some(100),
+            entities: vec![
+                EntityRecord::full(1, (0.0, 0.0), 0, 1),
+                EntityRecord::full(30001, (1200.0, 0.0), 0, 1),
+            ],
+        };
+        b.apply_snapshot(&s, 7.0);
+        assert_eq!(b.metrics.aoi_matched_positions, 1);
+        assert_eq!(b.metrics.max_observed_entity_distance, 1200.0);
+        assert_eq!(b.metrics.stale_snapshots_ignored, 1);
+        assert!(!b.entities.contains_key(&30001));
+    }
 
     #[test]
     fn late_previous_channel_delta_cannot_recreate_entities_after_baseline() {

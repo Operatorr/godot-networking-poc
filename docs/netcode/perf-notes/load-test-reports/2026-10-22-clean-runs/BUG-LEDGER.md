@@ -17,6 +17,13 @@ the remaining matched observations and final ladder/overload rerun. Prior
 | Full-state recovery bypasses AoI | Existing audit reproduced >1150-unit recovery records; `aoi_audit_matches_wire_and_full_state_recovery_respects_aoi` failed before fix | Share AoI radius/hysteresis predicate with broadcast; filter identity replay to included players | Pending; prior diagnostic bots made no requests |
 | Tick estimator divides ramp/drain span by fixed run duration | `tick_rate_pairs_snapshot_clocks_even_when_ramp_and_drain_extend_the_run` failed with original estimator and passed after repair | Pair each bot's first/last Snapshot Ticks with those same server monotonic timestamps; aggregate matching spans; absent clock stays unknown (0 estimate) | Pending |
 
+Before the first remote workload, the parent caught and corrected an introduced
+coverage gap: retired packets were rejected before received-AoI observation.
+`retired_snapshot_is_still_checked_as_received_aoi_evidence` failed first, then
+passed when same-Snapshot validation moved ahead of the application-order guard.
+A retired packet can now fail AoI without mutating the entity model. This is part
+of the pinned campaign candidate, not a retrospective remote measurement.
+
 Local checks: workspace tests pass; Clippy passes with the two pre-existing bot
 match warnings; formatting and client extension rebuild pass. Godot replication
 regression and real ENet smoke pass after editor import. A 20-bot, 15-second local
