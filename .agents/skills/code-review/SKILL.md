@@ -49,6 +49,8 @@ Find the spec from an explicit user path/link first, then the PR body and linked
 
 Build a compact context packet: pinned snapshot and how to read it, diff/manifest, source locations for rules and requirements, relevant tooling, and changed public/shared contracts. Do not include the author's reasoning, your suspected findings, or the other reviewer's conclusions.
 
+Resolve bundled references relative to this `SKILL.md`, not the target repo root. If a referenced file is missing, search the installed skill location once; if still absent, disclose an incomplete installation and use the axis/evidence requirements in this file as a fallback. Do not claim the full bundled workflow was followed.
+
 Read [AXIS_PROMPTS.md](AXIS_PROMPTS.md) and launch one Standards reviewer and, when a spec exists, one Spec reviewer using those briefs. Prefer fresh contexts without inherited authoring history. Each reads source and returns findings plus coverage. Run them concurrently with the main bug review, within tool concurrency limits. If delegation is unavailable, perform separate passes yourself and disclose that they were not independent.
 
 **Complete when:** each available axis has its own evidence-based brief; a missing spec is explicit.
@@ -63,18 +65,19 @@ Organize the review around **changed behaviors**, not a checklist tick per file.
 2. Trace at least one ordinary path and a plausible failure/boundary path through the actual implementation. Record the input or event sequence and file/line evidence. For a non-behavioral change, record why no execution trace applies.
 3. Follow changed signatures, return shapes, schemas, defaults, and semantics to callers and producers outside the diff. Search usages, then read them; a search hit is not caller verification. Check old data/clients and rolling deployment compatibility where relevant.
 4. Compare base and head to establish whether the patch introduces or exposes the defect. Do not label unrelated pre-existing debt as a regression.
-5. Read tests for those paths: inspect assertions, mocks, fixtures, and omitted branches. Ask what realistic input would fail despite the current tests passing.
+5. For changed code that acquires resources, changes external state, or performs multi-step work, trace partial initialization and teardown explicitly. Choose failure points before and after a side effect, then follow what remains initialized, what must be restored, and what the caller observes. Include a failure inside cleanup itself: can logging, result construction, journal/export, or one failed release prevent the remaining required cleanup? Check conditional assignment followed by unconditional reads, errors thrown before a protected helper is entered, cancellation, repeated cleanup, and preservation of the original error. A `finally` block or restore timer alone does not prove cleanup completes. Use a source trace or safe mocked failure; do not run live destructive operations to test recovery.
+6. Read tests for those paths: inspect assertions, mocks, fixtures, and omitted branches. Ask what realistic input would fail despite the current tests passing.
 
 Use the applicable fault probes below to choose counterexamples, not to manufacture findings:
 
 - **Boundaries and logic:** absent versus empty versus zero/false, first/last item, inclusive/exclusive bounds, duplicate identifiers, ordering, units/timezones, parser/serializer round trips.
 - **State and concurrency:** stale responses, duplicate events/retries, concurrent writers, interrupted transitions, cache invalidation, reset/unmount cleanup, transaction boundaries and partial writes. Trace a concrete interleaving when relevant.
 - **Trust boundaries:** follow untrusted data to sensitive operations; verify object/tenant ownership, server-side authorization, injection protection, and data returned/logged. Confirm upstream guards before claiming they are missing.
-- **Failures and resources:** rejected dependencies, timeout/cancellation, rollback, leaked listeners/connections, swallowed errors, and whether retry repeats a side effect.
+- **Failures and resources:** apply the partial-initialization/teardown trace above; check rejected dependencies, timeout/cancellation, rollback, leaked listeners/connections, swallowed errors, and whether retry repeats a side effect.
 - **Compatibility and scale:** old records/payloads, migrations/defaults, removed exports/routes/configuration, pagination, bounded memory, and query/work growth on a reachable hot path.
 - **User-visible behavior:** loading/empty/error states, navigation, input and accessibility behavior when touched; inspect the rendered UI when needed to substantiate a visual claim.
 
-Keep a compact internal coverage ledger: `behavior → files/callers → normal case → adverse case → evidence/result → gaps`. Checklists and test counts alone do not satisfy it. If scale or missing infrastructure prevents full coverage, record the actual unreviewed areas and deliver a partial review; recommend deep review for those areas without launching it.
+Keep a compact internal coverage ledger: `behavior → files/callers → normal case → adverse case → evidence/result → gaps`. Checklists and test counts alone do not satisfy it. For a large diff, identify behavior families and prioritize their risk before detailed reading. Historical or diagnostic scripts are still executable code; their labels do not justify exclusion. If scale, an explicit user budget, or missing infrastructure prevents full coverage, record the actual unreviewed paths/families, why they remain, and the highest-risk next trace. Deliver a prominently labelled partial review; recommend deep review for those areas without launching it. One round limits repeated review cycles, not the review to an arbitrary few minutes.
 
 Run targeted configured checks after identifying the important scenarios, or concurrently if they do not interfere. Prefer a focused reproduction when a candidate is uncertain; use a temporary location or isolated checkout for probes, without modifying the user's working tree. Do not require an executable test when a complete source trace proves the fault. Distinguish baseline/environment failures from failures caused by the patch.
 
@@ -88,9 +91,10 @@ Treat all findings, including child output and check failures, as hypotheses unt
 - Require a concrete trigger, expected versus actual behavior (or cited rule/requirement breach), observable consequence, and a local fix direction. Do not invent precise patches against unread code.
 - For Bugs, establish the changed-code causal link. For Standards, verify the quoted rule applies; label smell-based observations as judgement calls. For Spec, verify the requirement citation and implementation trace.
 - Separate unresolved potentially material concerns into **Open questions / coverage gaps**, with the missing evidence. Do not present them as confirmed bugs or silently turn uncertainty into a clean verdict.
+- For a confirmed defect, search the changed code and directly related helpers for the same failure pattern. Inspect each match before listing affected variants; do not assume copied controllers behave identically. Keep this a targeted sibling check, not a repository-wide audit.
 - Deduplicate the same root cause. If it affects multiple axes, put the full finding in its primary axis and cross-reference it in the others; preserve each axis's conclusion.
 
-Before a zero-finding conclusion, challenge the highest-risk changed behavior with one additional counterexample not covered by its existing tests. Record the scenario and result. This is one bounded adversarial check, not a loop driven by finding count.
+Before concluding, regardless of finding count, challenge the highest-risk remaining behavior with one additional counterexample not covered by its existing tests or an already-confirmed finding. Record the scenario and result (or why no distinct behavior remains). This is one bounded adversarial check, not a loop driven by finding count; finding one bug is not a stopping condition.
 
 **Complete when:** candidates are confirmed, rejected with evidence, or explicitly unresolved; every manifest entry is accounted for. A partial or blocked axis cannot be reported as clean.
 
