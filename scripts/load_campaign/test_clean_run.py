@@ -5,6 +5,7 @@ import io
 import json
 import pathlib
 import types
+import tempfile
 import unittest
 from unittest import mock
 
@@ -33,7 +34,7 @@ class CleanRunTests(unittest.TestCase):
             export.assert_called_once_with(1,2);controller.assert_not_called()
         with mock.patch.object(live,'verify') as verify,mock.patch.object(live,'controller') as controller:
             live.dispatch(types.SimpleNamespace(mode='verify'))
-            verify.assert_called_once();controller.assert_not_called()
+            verify.assert_called_once_with('final');controller.assert_not_called()
 
     def test_both_source_and_config_required_in_every_runtime(self):
         row={'source_identity':dict(revision=live.CANDIDATE_REVISION,status='',game_sha256='a'*64,bot_sha256='b'*64),
@@ -130,6 +131,27 @@ class CleanRunTests(unittest.TestCase):
             passing=analysis.wire_deficits(full,directory)
             self.assertEqual(passing[0]['failed_wire_hosts'],[])
             self.assertEqual(passing[0]['deficit_hosts'],['game','bots'])
+
+
+class VerificationPreservationTests(unittest.TestCase):
+    def test_repeated_verification_refuses_existing_outputs(self):
+        import run
+        with tempfile.TemporaryDirectory() as folder:
+            checkout = pathlib.Path(folder)
+            root = checkout/'deployment/hetzner/results'/live.NAMESPACE
+            root.mkdir(parents=True)
+            (root/'manifest.json').write_text('{}')
+            for role in ('game','bots'):
+                (root/(role+'-before.json')).write_text('{}')
+            outputs = live.verification_paths(root, 'final')
+            outputs['game'].write_bytes(b'prior host audit')
+            with mock.patch.object(run, 'ROOT', checkout), mock.patch.object(run, 'ssh') as ssh:
+                with self.assertRaises(FileExistsError):
+                    live.verify()
+                ssh.assert_not_called()
+            fresh = live.verification_paths(root, 'parent-r2')
+            self.assertNotEqual(outputs['summary'], fresh['summary'])
+            self.assertEqual(outputs['game'].read_bytes(), b'prior host audit')
 
 
 if __name__ == '__main__':unittest.main()

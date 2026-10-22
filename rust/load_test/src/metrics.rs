@@ -140,6 +140,8 @@ pub struct Aggregated {
     pub avg_bandwidth_per_player_kbps: f64,
     pub avg_state_updates_per_bot: f64,
     pub estimated_server_tick_rate: f64,
+    pub tick_rate_span_ticks: u64,
+    pub tick_rate_span_ms: u64,
     pub packet_loss_pct: f64,
     pub total_errors: u64,
     pub total_decode_failures: u64,
@@ -231,6 +233,8 @@ where
         // The requested run duration excludes ramp/drain and is not this denominator.
         agg.estimated_server_tick_rate = observed_ticks as f64 * 1000.0 / observed_ms as f64;
     }
+    agg.tick_rate_span_ticks = observed_ticks;
+    agg.tick_rate_span_ms = observed_ms;
     agg.avg_state_updates_per_bot = total_state_updates as f64 / metrics.len() as f64;
     if !loss_samples.is_empty() {
         agg.packet_loss_pct = loss_samples.iter().sum::<f64>() / loss_samples.len() as f64 * 100.0;
@@ -292,8 +296,8 @@ pub fn evaluate_success(agg: &Aggregated) -> Vec<Criterion> {
         },
         Criterion {
             key: "server_tick_rate",
-            criterion: format!("Server tick rate > {SERVER_FPS_MIN:.0} Hz"),
-            value: format!("{:.1} Hz", agg.estimated_server_tick_rate),
+            criterion: format!("Server tick rate >= {SERVER_FPS_MIN:.0} Hz"),
+            value: format!("{} Hz", agg.estimated_server_tick_rate),
             passed: agg.estimated_server_tick_rate >= SERVER_FPS_MIN,
         },
     ]
@@ -421,6 +425,10 @@ pub fn report_json(
             "packet_loss_pct": round2(agg.packet_loss_pct),
             "bandwidth_per_player_kbps": round2(agg.avg_bandwidth_per_player_kbps),
             "estimated_tick_rate": round1(agg.estimated_server_tick_rate),
+            "estimated_tick_rate_raw": agg.estimated_server_tick_rate,
+            "tick_rate_span_ticks": agg.tick_rate_span_ticks,
+            "tick_rate_span_ms": agg.tick_rate_span_ms,
+            "tick_rate_clock_resolution_ms": 1,
             "total_packets_sent": agg.total_packets_sent,
             "total_packets_received": agg.total_packets_received,
         },
@@ -514,6 +522,27 @@ mod tests {
         let samples: Vec<f64> = (1..=100).map(|i| i as f64).collect();
         assert_eq!(percentile(&samples, 0.95), 96.0); // sorted[int(100*0.95)] = sorted[95]
         assert_eq!(percentile(&[], 0.95), 0.0);
+    }
+
+    #[test]
+    fn tick_criterion_retains_the_raw_value_that_decides_failure() {
+        let agg = Aggregated {
+            estimated_server_tick_rate: 29.99991,
+            ..Default::default()
+        };
+        let c = evaluate_success(&agg)
+            .into_iter()
+            .find(|c| c.key == "server_tick_rate")
+            .unwrap();
+        assert!(!c.passed);
+        assert_eq!(c.value, "29.99991 Hz");
+        assert_eq!(c.criterion, "Server tick rate >= 30 Hz");
+        let report = report_json(&agg, vec![], "test", 0, &[], &[]);
+        assert_eq!(report["aggregated"]["estimated_tick_rate_raw"], 29.99991);
+        assert_eq!(
+            report["success_criteria"]["server_tick_rate"]["passed"],
+            false
+        );
     }
 
     #[test]

@@ -52,7 +52,14 @@ if name == 'systemctl':
         for f in (root/'current').iterdir():
             if f.is_file(): f.write_bytes(b'new startup evidence')
     elif args[0] == 'show':
-        if 'MainPID' in args: print('42')
+        if 'MainPID' in args:
+            s['pid_queries'] = s.get('pid_queries', 0) + 1
+            print('0' if (root/'delayed-pid').exists() and s['pid_queries']==1 else
+                  '43' if (root/'changed-pid').exists() and s['pid_queries']>1 else '42')
+        elif 'ActiveState' in args: print('active')
+        elif 'NRestarts' in args:
+            s['restart_queries'] = s.get('restart_queries', 0) + 1
+            print('1' if (root/'restarted').exists() and s['restart_queries']>1 else '0')
         elif 'Environment' in args:
             print('OMEGA_MEASURE_DIR='+str(root/'current') if s['cached']=='original' else 'OMEGA_AOI_AUDIT=1')
             if (root/'audit-env').exists(): print('OMEGA_AOI_AUDIT=1')
@@ -67,7 +74,9 @@ elif name == 'cp':
     else: shutil.copy2(source, dest)
 elif name == 'sha256sum':
     if args[0].startswith('/proc/'):
-        print(os.environ['RECOVERY_TEST_GAME_HASH']+'  '+args[0])
+        s['hash_queries'] = s.get('hash_queries', 0) + 1; save()
+        digest = 'pre-exec-image' if (root/'delayed-exec').exists() and s['hash_queries']==1 else os.environ['RECOVERY_TEST_GAME_HASH']
+        print(digest+'  '+args[0])
     elif args[0] == '-c':
         for line in pathlib.Path(args[1]).read_text().splitlines():
             digest, path = line.split('  ', 1)
@@ -81,7 +90,8 @@ elif name == 'sha256sum':
             path.chmod(0o755)
         patches = dict(REMOTE=str(self.remote), OVERRIDE=str(self.override),
                        MEASUREMENT_DIRECTORY=str(self.measurement),
-                       NATIVE_CONFIG=str(self.config), MEASUREMENT_OVERRIDE=str(self.native_override))
+                       NATIVE_CONFIG=str(self.config), MEASUREMENT_OVERRIDE=str(self.native_override),
+                       RESTORE_READY_ATTEMPTS=4)
         with mock.patch.multiple(live, create=True, **patches):
             script = live.recovery_script()
         self.script = self.root / 'restore.sh'
@@ -140,7 +150,9 @@ elif name == 'sha256sum':
 
     def test_runtime_identity_failure_cannot_report_restoration_success(self):
         self.env['RECOVERY_TEST_GAME_HASH'] = 'wrong-build'
-        self.assertNotEqual(self.run_recovery().returncode, 0)
+        result = self.run_recovery()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('result=1 step=await-pinned-executable', result.stderr)
         self.assert_original_recoverable()
 
     def test_damaged_verified_backup_prevents_restart(self):
@@ -154,6 +166,31 @@ elif name == 'sha256sum':
         (self.root/'audit-env').touch()
         self.assertNotEqual(self.run_recovery().returncode, 0)
         self.assert_original_recoverable()
+
+    def test_simple_service_can_publish_pid_after_start_returns(self):
+        (self.root/'delayed-pid').touch()
+        result = self.run_recovery()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.current_state()['starts'], ['original'])
+        self.assert_original_recoverable()
+
+    def test_simple_service_pre_exec_image_is_not_final_identity(self):
+        (self.root/'delayed-exec').touch()
+        result = self.run_recovery()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.current_state()['starts'], ['original'])
+        self.assert_original_recoverable()
+
+    def test_service_restart_or_pid_change_cannot_be_hidden_by_readiness_retry(self):
+        for marker in ('restarted', 'changed-pid'):
+            with self.subTest(marker=marker):
+                (self.root/marker).touch()
+                self.state.write_text(json.dumps({'cached':'original','calls':[],'starts':[]}))
+                result = self.run_recovery()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('result=1 step=await-pinned-executable', result.stderr)
+                self.assertEqual(self.current_state()['starts'], ['original'])
+                (self.root/marker).unlink()
 
 
 if __name__ == '__main__':

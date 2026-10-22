@@ -51,6 +51,7 @@ EXPERIMENT_BINARIES = {'game': CANDIDATE_CHECKOUT + '/rust/target/release/omega-
 POPULATION = 150
 BEHAVIOR = 'strategy'
 CELL = None
+RESTORE_READY_ATTEMPTS = 50
 EXPECTED_CONTROL = {
     'game': '5a36a7aaf3bed4db46efd2a4200c4e02825ef3598d0c4990a672d279c051a202',
     'bots': '831be66a76278a39513c8c229811a951264604af0ddbc911d2852b9e0f72bbf3',
@@ -165,12 +166,16 @@ def recovery_script():
     """
     return f'''#!/bin/sh
 set -eu
+step=initialization
+trap 'rc=$?; printf "OMEGA_RECOVERY result=%s step=%s\\n" "$rc" "$step" >&2' 0
 service={shlex.quote(SERVICE)}
 measurement={shlex.quote(MEASUREMENT_DIRECTORY)}
 backup={shlex.quote(REMOTE + '/original')}
 override={shlex.quote(OVERRIDE)}
 case "${{1:-restore}}" in preserve|restore) ;; *) exit 2 ;; esac
+step=stop-service
 systemctl stop "$service"
+step=preserve-measurement
 if ! test -f "$backup/measurement-verified"; then
     mkdir -p "$backup/measurement-current"
     (cd "$measurement"; find . -type f -exec sha256sum {{}} +) > "$backup/measurement-sha256.txt.partial"
@@ -183,22 +188,54 @@ if ! test -f "$backup/measurement-verified"; then
 fi
 (cd "$backup/measurement-current"; sha256sum -c ../measurement-sha256.txt)
 if test "${{1:-restore}}" = preserve; then exit 0; fi
+step=retire-override
 if test -f "$override"; then
     mv "$override" {shlex.quote(REMOTE + '/retired-runtime-override.conf')}
 fi
 # Reload even when a previous attempt already retired the override.
+step=reload-unit
 systemctl daemon-reload
+step=start-service
 systemctl start "$service"
-pid=$(systemctl show "$service" -p MainPID --value)
-test "$pid" -gt 0
-actual=$(sha256sum "/proc/$pid/exe")
-test "${{actual%% *}}" = {shlex.quote(PINNED['game'])}
+step=verify-environment
 environment=$(systemctl show "$service" -p Environment --value)
 case " $environment " in
     *" OMEGA_MEASURE_DIR=$measurement "*) ;;
     *) exit 1 ;;
 esac
 case "$environment" in *OMEGA_AOI_AUDIT=*) exit 1 ;; esac
+step=await-pinned-executable
+# Type=simple may return from start before execve. Require two matching
+# identity observations, bounded in time; never hide a restart or PID change.
+restarts=$(systemctl show "$service" -p NRestarts --value)
+case "$restarts" in ''|*[!0-9]*) exit 1 ;; esac
+attempt=0
+first_pid=0
+matches=0
+while test "$attempt" -lt {RESTORE_READY_ATTEMPTS}; do
+    attempt=$((attempt + 1))
+    state=$(systemctl show "$service" -p ActiveState --value)
+    case "$state" in active|activating) ;; *) exit 1 ;; esac
+    test "$(systemctl show "$service" -p NRestarts --value)" = "$restarts"
+    pid=$(systemctl show "$service" -p MainPID --value)
+    case "$pid" in ''|*[!0-9]*) exit 1 ;; esac
+    actual=unavailable
+    if test "$pid" -gt 0; then
+        if test "$first_pid" -eq 0; then first_pid=$pid; fi
+        test "$pid" = "$first_pid"
+        actual=$(sha256sum "/proc/$pid/exe" 2>/dev/null || true)
+        actual=${{actual%% *}}
+    fi
+    printf "OMEGA_RECOVERY attempt=%s state=%s pid=%s exe_sha256=%s\\n" "$attempt" "$state" "$pid" "$actual"
+    if test "$state" = active && test "$actual" = {shlex.quote(PINNED['game'])}; then
+        matches=$((matches + 1))
+        if test "$matches" -ge 2; then step=restored; exit 0; fi
+    else
+        matches=0
+    fi
+    sleep 0.1
+done
+exit 1
 '''
 
 
@@ -845,10 +882,21 @@ def controller():
                           'cleanup_archive_roles': [r for r in cleanup if 'archive_sha256' in cleanup[r]]}), flush=True)
 
 
-def verify():
+def verification_paths(local, label):
+    if not re.fullmatch(r'[a-z0-9-]{1,48}', label):
+        raise ValueError('Invalid verification label')
+    paths = {role:local/(role+'-'+label+'-verification.json') for role in ('game','bots')}
+    paths['summary'] = local/(label+'-verification-summary.json')
+    if any(path.exists() for path in paths.values()):
+        raise FileExistsError('Verification evidence exists; use a fresh --verification-label')
+    return paths
+
+
+def verify(label='final'):
     """Read-only independent final audit; no workload can be launched here."""
     import run
     local = run.ROOT / 'deployment/hetzner/results' / NAMESPACE
+    outputs = verification_paths(local, label)
     manifest = json.loads((local / 'manifest.json').read_text())
     results = {}
     for role in ('game', 'bots'):
@@ -891,7 +939,7 @@ def verify():
         if role == 'game' and not manifest.get('experiment_service_start_ns'):
             commands['preserved'] = 'echo not-restarted'
         raw = {key: run.ssh(role, cmd) for key, cmd in commands.items()}
-        dump(local / (role + '-final-verification.json'), raw)
+        dump(outputs[role], raw)
         competing = []
         for line in raw['processes'].splitlines()[1:]:
             parts = line.split(None, 2)
@@ -930,7 +978,7 @@ def verify():
                 aoi_audit_environment_removed='OMEGA_AOI_AUDIT=' not in raw['current_measurement'],
                 candidate_source_clean=raw['candidate_source'].strip() == CANDIDATE_REVISION)
         results[role] = summary
-    dump(local/'final-verification-summary.json',results)
+    dump(outputs['summary'],results)
     if any(v is False for r in results.values() for v in r.values()) or any(r['competing_or_owned_processes'] for r in results.values()):
         raise RuntimeError('Independent cleanup verification failed; private evidence retained')
     print('Independent final verification passed on both hosts; no workload launched')
@@ -947,7 +995,7 @@ def dispatch(args):
     elif args.mode == 'collect':
         collect(args.role)
     elif args.mode == 'verify':
-        verify()
+        verify(getattr(args, 'verification_label', 'final'))
     elif args.mode == 'swarm':
         swarm()
     elif args.mode == 'run':
@@ -972,6 +1020,7 @@ if __name__ == '__main__':
     parser.add_argument('--namespace', default=NAMESPACE)
     parser.add_argument('--population', type=int, default=150)
     parser.add_argument('--behavior', default='strategy')
+    parser.add_argument('--verification-label', default='final')
     args = parser.parse_args()
     load_cell(args.namespace, args.population, args.behavior)
     dispatch(args)
