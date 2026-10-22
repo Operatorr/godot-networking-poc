@@ -9,6 +9,10 @@ use tracing::warn;
 #[derive(Debug, Clone)]
 pub struct ServerConfig {
     pub port: u16,
+    /// Optional SO_RCVBUF request; None preserves ENet's default request.
+    pub udp_receive_buffer_bytes: Option<usize>,
+    /// Optional SO_SNDBUF request; None preserves ENet's default request.
+    pub udp_send_buffer_bytes: Option<usize>,
     pub tick_rate: u32,
     pub max_players: usize,
     pub region: String,
@@ -46,6 +50,8 @@ impl Default for ServerConfig {
     fn default() -> Self {
         Self {
             port: 8081,
+            udp_receive_buffer_bytes: None,
+            udp_send_buffer_bytes: None,
             tick_rate: 30,
             max_players: 100,
             region: "local".into(),
@@ -146,6 +152,24 @@ impl ServerConfig {
                     } else {
                         self.port = x as u16;
                     }
+                }
+            }
+            "udp_receive_buffer_bytes" => {
+                // Check before casting: other integer helpers intentionally accept
+                // legacy float JSON, but oversized buffer requests must not wrap.
+                if let Some(bytes) = v.as_f64().filter(|n| (1.0..=16_777_216.0).contains(n)) {
+                    self.udp_receive_buffer_bytes = Some(bytes.trunc() as usize);
+                } else {
+                    warn!(
+                        "udp_receive_buffer_bytes must be in 1..=16777216; keeping prior request"
+                    );
+                }
+            }
+            "udp_send_buffer_bytes" => {
+                if let Some(bytes) = v.as_f64().filter(|n| (1.0..=16_777_216.0).contains(n)) {
+                    self.udp_send_buffer_bytes = Some(bytes.trunc() as usize);
+                } else {
+                    warn!("udp_send_buffer_bytes must be in 1..=16777216; keeping prior request");
                 }
             }
             "tick_rate" => {
@@ -349,5 +373,55 @@ impl ServerConfig {
             );
             self.backstop_grace_ticks = grace_floor;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn send_buffer_is_independent_and_rejects_invalid_requests_before_casting() {
+        let mut config = ServerConfig::default();
+        assert_eq!(config.udp_send_buffer_bytes, None);
+        config.apply_key("udp_receive_buffer_bytes", &serde_json::json!(65_536));
+        for invalid in [
+            serde_json::json!(0),
+            serde_json::json!(-1),
+            serde_json::json!(u64::MAX),
+            serde_json::json!(16_777_217),
+            serde_json::json!("2097152"),
+            serde_json::Value::Null,
+        ] {
+            config.apply_key("udp_send_buffer_bytes", &invalid);
+            assert_eq!(config.udp_send_buffer_bytes, None);
+        }
+        config.apply_key("udp_send_buffer_bytes", &serde_json::json!(2_097_152.9));
+        config.validate();
+        assert_eq!(config.udp_send_buffer_bytes, Some(2_097_152));
+        config.apply_key("udp_send_buffer_bytes", &serde_json::json!(0));
+        assert_eq!(config.udp_send_buffer_bytes, Some(2_097_152));
+        assert_eq!(config.udp_receive_buffer_bytes, Some(65_536));
+    }
+
+    #[test]
+    fn receive_buffer_is_opt_in_and_rejects_invalid_requests_before_casting() {
+        let mut config = ServerConfig::default();
+        assert_eq!(config.udp_receive_buffer_bytes, None);
+        for invalid in [
+            serde_json::json!(0),
+            serde_json::json!(-1),
+            serde_json::json!(u64::MAX),
+            serde_json::json!(16_777_217),
+            serde_json::json!("2097152"),
+        ] {
+            config.apply_key("udp_receive_buffer_bytes", &invalid);
+            assert_eq!(config.udp_receive_buffer_bytes, None);
+        }
+        config.apply_key("udp_receive_buffer_bytes", &serde_json::json!(2_097_152.0));
+        config.validate();
+        assert_eq!(config.udp_receive_buffer_bytes, Some(2_097_152));
+        config.apply_key("udp_receive_buffer_bytes", &serde_json::json!(0));
+        assert_eq!(config.udp_receive_buffer_bytes, Some(2_097_152));
     }
 }

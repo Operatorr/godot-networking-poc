@@ -1,7 +1,7 @@
 //! Passive, opt-in input/delivery observations, cumulative between timestamped samples.
 use std::fs::File;
 use std::io::{BufWriter, Write};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 // Upper bounds in ms; final bucket is >100. These are counts, never averaged quantiles.
 pub const GAP_BOUNDS_MS: [f64; 7] = [10.0, 20.0, 30.0, 35.0, 40.0, 50.0, 100.0];
@@ -72,6 +72,9 @@ pub struct Recorder {
     pub directory: std::path::PathBuf,
     origin: Instant,
     epoch_ns: u128,
+    next_ramp_sample: Duration,
+    completed_samples: u64,
+    completed_observer_ns: u128,
 }
 
 impl Recorder {
@@ -89,6 +92,9 @@ impl Recorder {
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_nanos(),
+            next_ramp_sample: Duration::ZERO,
+            completed_samples: 0,
+            completed_observer_ns: 0,
         })
     }
 
@@ -102,11 +108,37 @@ impl Recorder {
     }
 
     pub fn sample(&mut self, bots: &[crate::bot::Bot], phase_s: f64, boundary: &str) {
+        self.sample_phase(bots, Some(phase_s), "run", boundary);
+    }
+
+    /// Keep failed joins observable without changing the post-join measurement clock.
+    pub fn sample_ramp(&mut self, bots: &[crate::bot::Bot]) {
+        let elapsed = self.origin.elapsed();
+        if elapsed >= self.next_ramp_sample {
+            self.sample_phase(bots, None, "ramp", "");
+            // Do not catch up missed observations in a burst after a long poll.
+            self.next_ramp_sample = self.origin.elapsed() + Duration::from_secs(1);
+        }
+    }
+
+    fn sample_phase(
+        &mut self,
+        bots: &[crate::bot::Bot],
+        phase_s: Option<f64>,
+        phase: &str,
+        boundary: &str,
+    ) {
+        let observer_start = Instant::now();
         let mono = self.origin.elapsed().as_nanos();
         let observations: Vec<_> = bots.iter().map(|bot| bot.observation()).collect();
         writeln!(self.writer, "{}", serde_json::json!({"utc_ns": self.epoch_ns + mono, "mono_ns": mono,
-            "phase_s": phase_s, "boundary": boundary, "gap_bounds_ms": GAP_BOUNDS_MS, "bots": observations})).unwrap();
+            "phase": phase, "phase_s": phase_s, "boundary": boundary,
+            "completed_samples": self.completed_samples, "completed_observer_ns": self.completed_observer_ns,
+            "gap_bounds_ms": GAP_BOUNDS_MS, "bots": observations})).unwrap();
         self.writer.flush().unwrap();
+        // The next row reports completed observation cost, including serialization/flush.
+        self.completed_samples += 1;
+        self.completed_observer_ns += observer_start.elapsed().as_nanos();
     }
 }
 

@@ -1,0 +1,64 @@
+{
+  "namespace": "udp-profile-20261021",
+  "experiment_started": false,
+  "profile_samples": null,
+  "remote_mutations": false,
+  "hosts": {
+    "game": {
+      "gates": {
+        "pinned_binary": true,
+        "disk_at_least_8_gib": true,
+        "idle_ownership": true,
+        "native_qdisc": true,
+        "no_filters": true,
+        "no_measurement_firewall": true,
+        "remote_namespace_absent": true,
+        "baseline_bundle_verified": true,
+        "zero_players": true,
+        "one_game_process": true,
+        "native_config": true,
+        "updates_idle": true,
+        "maintenance_timers_active": true
+      },
+      "disk_available_bytes": 17342197760,
+      "sampler_paths": [
+        "/usr/bin/strace"
+      ],
+      "perf_installed": false,
+      "baseline_bundle_sha256": "e318b27876da5f60ad623162ba046e93c54c2a1f8d932f51aebe5a56d454c838"
+    },
+    "bots": {
+      "gates": {
+        "pinned_binary": true,
+        "disk_at_least_8_gib": true,
+        "idle_ownership": true,
+        "native_qdisc": true,
+        "no_filters": true,
+        "no_measurement_firewall": true,
+        "remote_namespace_absent": true,
+        "baseline_bundle_verified": true,
+        "updates_idle": true,
+        "maintenance_timers_active": true
+      },
+      "disk_available_bytes": 25197932544,
+      "sampler_paths": [
+        "/usr/bin/strace"
+      ],
+      "perf_installed": false,
+      "baseline_bundle_sha256": "43af964645432973d162bdc2aab4b82364ee8285b877469e34504f45dd99e42d"
+    }
+  },
+  "status": "blocked-no-validated-cpu-sampler",
+  "execution_implemented": false,
+  "finished_utc": "2026-10-21T11:56:32.226398+00:00",
+  "profile_coverage_s": null,
+  "profile_lost_samples": null,
+  "profile_overhead": null,
+  "top_symbols_before_onset": null,
+  "top_symbols_after_onset": null,
+  "read_gap_distribution": null,
+  "ramp_input_cadence": null,
+  "generator_valid": null,
+  "experiment_count": 0,
+  "preflight_evidence": "deployment/hetzner/results/udp-profile-20261021/preflight-20261021T115614867733Z"
+}

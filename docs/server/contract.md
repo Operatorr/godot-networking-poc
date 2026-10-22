@@ -145,8 +145,8 @@ dash can't drift the client's cooldown permanently out of phase with the server 
 
 ### ConnectAuth (type 1, ch1)
 
-`[u8 type][u8 protocol_version][u16 ticket_len][ticket bytes][u8 name_len][utf8 name]
-[u8 r][u8 g][u8 b][u8 class][u32 character_id][u32 bandwidth_budget_bps]`
+`[u8 type][u8 protocol_version][u16 ticket_len][ticket bytes][u32 character_id]
+[u8 name_len][utf8 name][u8 r][u8 g][u8 b][u8 class][u32 bandwidth_budget_bps]`
 
 `class` (since protocol v3) is the player class: `0=Zealot, 1=VoidHunter, 2=Engineer,
 3=PlagueSeer, 4=Warrior, 5=Rogue, 6=Mage`. It is **identity metadata chosen by the client** —
@@ -359,6 +359,14 @@ Config: `server_config.json`-compatible keys + env/CLI overrides; `--allow-unsig
 defaults **on** for the POC (it's the load-test/dev default in `deployment/env/server.env`),
 **off** when you require signed tickets; Ed25519 public key via
 `OMEGA_TICKET_PUBKEY` (hex/base64) when enforcement is on.
+
+Optional JSON `udp_receive_buffer_bytes` and `udp_send_buffer_bytes` independently
+request the game socket's `SO_RCVBUF` and `SO_SNDBUF` sizes (1–16,777,216 bytes;
+numeric JSON values truncate toward zero). Omission keeps ENet's 262,144-byte
+request for that direction. Invalid values warn and preserve the prior request.
+Non-blocking I/O semantics are unchanged. Startup logs both requested and
+OS-effective sizes; OS limits/accounting may differ. This is transport tuning,
+not a change to Snapshot budgets, Tick/input rates, or a validated capacity claim.
 
 ## Invariants (enforced in review + tests)
 

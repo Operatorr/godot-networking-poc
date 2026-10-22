@@ -1,0 +1,108 @@
+{
+  "source": "udp-bitmap-20261021 game/server.ndjson; bots/workload-start.json",
+  "workload_start_utc_ns": 1792586825992005729,
+  "windows": [
+    {
+      "requested_elapsed_window_s": [
+        5,
+        15
+      ],
+      "first_sample_utc_ns": 1792586831077617082,
+      "last_sample_utc_ns": 1792586840088146951,
+      "sample_span_s": 9.010529869,
+      "event_sends": {
+        "1": 48142,
+        "3": 5342,
+        "9": 32100,
+        "10": 7226,
+        "11": 13372,
+        "12": 146105,
+        "13": 64981,
+        "14": 9691,
+        "15": 672
+      },
+      "source_events": {
+        "1": 512,
+        "3": 55,
+        "9": 7145,
+        "10": 78,
+        "11": 148,
+        "12": 1580,
+        "13": 672,
+        "14": 106,
+        "15": 672
+      },
+      "baseline_sends": 247,
+      "baseline_application_bytes": 200335,
+      "event_application_bytes": 4700505
+    },
+    {
+      "requested_elapsed_window_s": [
+        15,
+        20
+      ],
+      "first_sample_utc_ns": 1792586841090612950,
+      "last_sample_utc_ns": 1792586845099801496,
+      "sample_span_s": 4.009188546,
+      "event_sends": {
+        "1": 73445,
+        "3": 6290,
+        "9": 37041,
+        "10": 9182,
+        "11": 12195,
+        "12": 172577,
+        "13": 132404,
+        "14": 9880,
+        "15": 880
+      },
+      "source_events": {
+        "1": 490,
+        "3": 42,
+        "9": 4539,
+        "10": 61,
+        "11": 81,
+        "12": 1151,
+        "13": 880,
+        "14": 66,
+        "15": 880
+      },
+      "baseline_sends": 105,
+      "baseline_application_bytes": 117195,
+      "event_application_bytes": 5866205
+    },
+    {
+      "requested_elapsed_window_s": [
+        20,
+        25
+      ],
+      "first_sample_utc_ns": 1792586846102289135,
+      "last_sample_utc_ns": 1792586850571239551,
+      "sample_span_s": 4.468950416,
+      "event_sends": {
+        "1": 111137,
+        "3": 10849,
+        "9": 38736,
+        "10": 11583,
+        "11": 11911,
+        "12": 237269,
+        "13": 186226,
+        "14": 9937,
+        "15": 1044
+      },
+      "source_events": {
+        "1": 623,
+        "3": 61,
+        "9": 2132,
+        "10": 65,
+        "11": 67,
+        "12": 1329,
+        "13": 1044,
+        "14": 56,
+        "15": 1044
+      },
+      "baseline_sends": 93,
+      "baseline_application_bytes": 102743,
+      "event_application_bytes": 7501919
+    }
+  ]
+}

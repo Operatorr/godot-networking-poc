@@ -1,0 +1,141 @@
+# CAX11 UDP diagnosis and capacity iterations
+
+Task: [Diagnose UDP receive-buffer errors and increase validated CAX11 capacity](https://github.com/Operatorr/godot-networking-poc/issues/38).
+Parent: [Article: load testing Omega Realm & why realtime games cap at ~64 players](https://github.com/Operatorr/godot-networking-poc/issues/23).
+
+## Scope and baseline
+
+This investigation preserves the closed one-pass campaign. It diagnoses the UDP
+receive-buffer failures, compares justified changes, and measures sustained capacity.
+Each remote experiment has a separate agent; experiments on the shared pair run
+sequentially, with cleanup verified before the next dispatch.
+
+- Frozen game: `b1266c1`, SHA-256 `f2bf76c6fa3c28b7fb9b5d52f216061e9c3239999d67bf8a42acadf44dada3a2`.
+- Frozen bots: `642c147`, SHA-256 `8af491831304e1ab913089e3b8f1750ea701e4ccd8993d834bcc30ecfa3e8bdf`.
+- Historical highest passing Strategy population: **100**. The 176–191 peaks
+  in later overload ramps are not sustained capacity observations.
+- Private evidence namespace: `deployment/hetzner/results/udp-diagnosis-20261021/`.
+- Capacity conditions: original Strategy/Class mix/AoI/Snapshot/budgets, 30 Hz
+  input and Tick, 100 ms join stagger, 60 s global warmup, 300 s measurement.
+  Instrumentation, buffer changes and timing changes are separate conditions.
+- Missing observations remain unknown; a short diagnostic is never a capacity pass.
+
+## Iteration ledger
+
+| Experiment | Question/intervention | Build and condition | Outcome | Evidence and cleanup |
+| --- | --- | --- | --- | --- |
+| Baseline Strategy 200 reproduction | Reproduce the reported failure and identify which process/socket drops datagrams; no performance tuning | Frozen game/bots; native settings; bounded diagnostic; socket observations added | Failed ramp after 38.05 s; peak 189 authenticated; all 172,927 game receive-buffer errors attributed to its socket; 4,178 bot-host errors, at least 3,745 on bot sockets; input cadence unknown | [Full evidence and verified restoration](baseline-reproduction.md) |
+| Frozen-build profile reproduction | Identify dominant CPU work during queue overflow; prediction: transport/replication, logging or generator hot paths distinguish the competing explanations | Same frozen builds/settings; bounded 99 Hz CPU profiling added; diagnostic only | Failed ramp after 43.05 s, peak 185 authenticated. Reliable-command removal self CPU rose 1.73% → 11.95% → 52.63% before/after onset/final ten seconds. Broadcast remained substantial. | [Profile evidence and verified restoration](profile-reproduction.md) |
+| Instrumented Strategy 200 control | Align actual read gaps, loop phases and bot ramp cadence with overflow before changing processing or buffers | Exact `cc86869`; original settings/buffers; no optimization | Failed ramp, 43.06 s, peak 182 authenticated. Initial read gaps about 26 ms, late maximum 443 ms; retry/ACK traffic and service work rose sharply. Collector state guard truncated wire evidence at 27.57 s. | [Control evidence and verified restoration](instrumented-control.md) |
+| Bitmap replication candidate, Strategy 200 | Reduce pre-overflow replication cost; predict shorter read gaps and less subsequent retry amplification | Candidate `1d15d84` game; identical `cc86869` bot and control collectors/settings/buffers | Failed ramp at 37.56 s; peak 181 authenticated. No consistent World Tick benefit or later onset; 161,782 game receive drops. | [Comparison and verified restoration](bitmap-comparison.md); old collector again truncated late wire evidence |
+| Bounded collector, Strategy 200 | Change only wire reader to v2 bounded history; predict complete late coverage and lower collection cost | Same bitmap game/control bots, native settings; collector `30ec792` | Failed ramp at 40.06 s, peak 185 authenticated. Both readers EOF, no malformed/capture loss; mapping defect left per-bot wire cadence unknown. | [Evidence and verified cleanup](bounded-collector.md); capture-child RSS about 39 MiB versus 205 MiB, with unequal resource windows |
+| Game receive-buffer request, Strategy 200 | Test whether more burst capacity prevents initial overflow and retry amplification, rather than hiding sustained backlog | Game `f1cc5d6`, request 2 MiB; same control bots; collector `994cce8` corrects identity extraction only | Effective 4 MiB delayed first loss to 197–199 players; reached 200 then collapsed. 159,266 socket drops; no capacity pass. | [Evidence and verified cleanup](receive-buffer.md); all 200 live mappings agree, but pre-swarm measurement restart qualifies runtime proof |
+| Sustained Strategy 150 | Test the lower rung with unchanged game/bots and larger receive queue, full warmup and measurement | Same `f1cc5d6` game/control bots/collector; atomic schedule publication and continuous runtime identity proof | All 150 authenticated for 300 s, TickHz 30.0; generator-invalid at 18.34 Hz offered and 15.38–18.22 Hz wire. Zero receive drops, 637 game send-buffer errors; delivery and strict AoI gates also failed. Historical Strategy 100 remains highest validated. | [Evidence and twice-verified cleanup](capacity150.md); full wire coverage, bounded journal prefix supplemented by complete compact counts |
+| Sustained generator profile, incomplete | Distinguish early/late generator hot paths without changing the workload | Same Strategy 150 binaries/settings; two planned bounded generator recordings | Controller aborted at Phase 2 +28.87 s after incorrectly rejecting perf's intentional SIGINT exit. Early 1,699 samples valid, near-30 Hz offered input; no late profile or measurement window. No capacity claim. | [Evidence and two cleanup audits](generator-profile.md); retained early disassembly attribution is qualified, sustained bottleneck unresolved |
+| Corrected sustained generator profile | Obtain the missing late profile using the repaired completion gate | Same frozen Strategy 150 condition, two bounded generator profiles | Full window completed, generator-invalid at 18.213 Hz and 97.68% CPU. Strategy inclusive CPU rose 19.37% → 51.21%; owner-iterator subset 6.26% → 10.62%. Game 264 steady send-buffer errors; nine delivery failures. | [Validated profiles and independent cleanup](generator-profile-fixed.md); no capacity increase, owner occupancy/poll-cycle duration remain unknown |
+| Strategy dodge-search candidate, 150 | Restore valid offered load by searching visible entities before retained owners when smaller, preserving nearest ties | Bot `2c25af7`, same game/config/collectors, unprofiled | Generator valid: every peer 29.993–30.000 Hz offered / 29.843–29.997 Hz wire; bot CPU 78.30%. Population, Tick and delivery pass. Capacity valid-failure: 2,290 steady game send-buffer errors and 19 AoI violators. | [Matched comparison and independent cleanup](dodge150.md); highest validated Strategy remains 100 |
+| Game send-buffer request, Strategy 150 | Test burst allowance while preserving input, delivery and backlog gates | Game `e27db2d`, send request 2 MiB; same optimized bots, receive request and collectors | Zero game zero-byte sends and zero UDP errors on both hosts; all offered/wire, population, delivery, Tick and backlog gates pass. Strict AoI fails for 24 peers. Valid-failure; no capacity increase. | [Matched comparison and independent cleanup](send150.md); effective game buffers 4 MiB each, original settings restored |
+
+Local candidate preparation: [linear stale-cache membership](REPLICATION-CANDIDATE.md)
+replaces repeated slice scans with a u16 bitmap. A HashSet trial was rejected for
+small-set regressions. The candidate improves the bounded local helper timing;
+remote comparison did not demonstrate a capacity benefit. It remains a local
+algorithmic improvement, not an established cause/fix for CAX11 overflow.
+
+The first profiling preflight found no installed sampler and launched **zero**
+experiments. The replacement agent installed `linux-perf 7.0.0-38.38` and two
+debuginfod dependencies, validated recording, and completed exactly one workload.
+Kernel and perf policy were unchanged. The bot ramp recorder fix `3b910cd` was
+excluded from the frozen-build experiment.
+
+Server timing/socket instrumentation passes the workspace tests, Clippy (existing
+warnings remain), and formatting check. The next control will distinguish its
+observations from the frozen profile; instrumentation itself is not an improvement.
+
+## Ranked hypotheses after reproduction
+
+1. **Serial processing delays reads.** If ENet servicing or replication dominates,
+   CPU profiles and read gaps should locate that work while receive queues fill;
+   reducing the identified work should reduce gaps and drops at matched load.
+2. **Reliable traffic amplifies initial loss.** Retries and transport CPU should rise
+   after the first drops; an intervention reducing the initial pressure should also
+   prevent the feedback, rather than merely postpone it.
+3. **Generator polling falls behind or bunches inputs.** Per-bot scheduling gaps
+   should deteriorate during the ramp. Missing ramp observations currently prevent
+   this test; recording during join is a separate instrumentation change.
+4. **Warnings or measurement I/O contribute to stalls.** Profiles should expose
+   logging/collector work; any suppression experiment must retain independent
+   error counters and be labelled separately from an optimized capacity build.
+
+The reproduced immediate mechanism is game-socket receive-queue overflow. Its
+processing cause is unresolved. Interface/qdisc/checksum deltas were zero in the
+baseline; that does not establish the causal order within each one-second sample.
+
+## Required evidence per comparison
+
+Record executable/configuration hashes, compiler/kernel and effective buffers;
+authenticated/living population and per-peer offered/wire cadence throughout the
+ramp and steady state; first drop and socket attribution; game/bot CPU and steal;
+Tick work/deadlines; queue/delivery/retry behavior; exact errors and missing values;
+collector overhead; classification; and highest passing sustained population.
+
+Rank falsifiable hypotheses after reproduction. State the prediction and the
+single-factor intervention before each experiment. Distinguish a proven mechanism
+from a correlated symptom, and a generator limit from a game-server limit.
+
+## Collector prerequisite for sustained validation
+
+The instrumented control also exposed a collector history guard failure.
+[The bounded-history repair](COLLECTOR-REPAIR.md) reproduces and fixes that local
+failure, preserving prefix evidence and versioning changed retry semantics.
+The completed bounded-collector observation retained late coverage without history
+exhaustion and reduced collector resource use. It did not demonstrate a game
+capacity improvement. It exposed a ConnectAuth offset error; an actual-encoder
+regression now reproduces that defect and verifies its correction. Historical
+missing mappings cannot be recovered from retained fingerprints.
+
+## Prepared next intervention
+
+[Receive-buffer control](BUFFER-CANDIDATE.md) adds an opt-in game receive request
+without changing the default. Workspace checks and real socket initialization
+coverage pass. It prepares a later 2 MiB-request condition to distinguish burst
+absorption from throughput/backlog; no remote improvement is claimed.
+[Existing reliable-event counters](RELIABLE-PRESSURE.md) show substantial fan-out
+already before overflow, so baseline fragmentation alone cannot explain the
+application-enqueued reliable volume. Event reliability/recipients are unchanged.
+
+## Sustained ladder result and next diagnostic
+
+The larger receive queue delays loss but does not sustain 200. The
+[Strategy 150 observation](capacity150.md) completed the full warmup/window but
+failed generator validity. Its zero receive drops cannot establish a throughput
+fix at 30 Hz offered load. Atomic publication worked without a service restart.
+
+The corrected [bounded sustained-generator profile](generator-profile-fixed.md)
+completed both recordings. Its largest resolved late cost is Strategy decision
+work, with hash-map iteration prominent. The earlier controller defect is fixed
+and remotely validated. Cadence falls near Phase 2 +50..60 seconds while profiling
+is off; this does not establish causal profiler overhead.
+
+[The Strategy dodge-search candidate](DODGE-CANDIDATE.md) restored valid offered/wire
+load in the [matched unprofiled cell](dodge150.md), with lower generator CPU and all
+per-peer delivery gates passing. It is a demonstrated generator improvement, not a
+capacity pass: game send errors and the strict AoI assertion remain failures.
+The completed [send burst allowance comparison](send150.md), with the optimized
+bot and receive request frozen, eliminated observed send errors throughout the
+full window without failing delivery/backlog gates. It supports the intervention,
+not an exact kernel-queue cause. Local ENet startup/configuration tests and required
+workspace checks pass. Actual remote map occupancy remains unknown.
+
+## Completion state
+
+**Investigation concluded at a correctness plateau:** 11 workloads across 12
+delegated tasks (one profiling preflight launched none). The final validated
+Strategy limit remains the historical **100**, not 150 or the transient 200 peak.
+[The conclusion](CONCLUSION.md) separates proven mechanisms, demonstrated
+interventions and remaining unknowns. The next limiting gate has a focused task:
+[Diagnose strict AoI failures in the valid-load CAX11 Strategy 150 condition](https://github.com/Operatorr/godot-networking-poc/issues/41).
+The [defect ledger](BUG-LEDGER.md) hands all correctness findings to
+[Fix load-test-exposed bugs and rerun until a run is clean](https://github.com/Operatorr/godot-networking-poc/issues/39).
+Earlier preparation/pending passages above describe the chronology; the linked
+completed observations and this completion state supersede them.

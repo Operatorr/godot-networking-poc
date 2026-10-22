@@ -184,7 +184,12 @@ fn main() {
         info!("signed session tickets REQUIRED; verifying with configured OMEGA_TICKET_PUBKEY");
     }
 
-    let socket = EnetUdpSocket::bind(("0.0.0.0", config.port)).expect("bind UDP game port");
+    let socket = EnetUdpSocket::bind(
+        ("0.0.0.0", config.port),
+        config.udp_receive_buffer_bytes,
+        config.udp_send_buffer_bytes,
+    )
+    .expect("bind UDP game port");
     let mut host = enet::Host::new(
         socket,
         enet::HostSettings {
@@ -250,6 +255,7 @@ fn main() {
     }
 
     while !shutdown.load(Ordering::SeqCst) {
+        let service_start = collector.measurement.as_ref().map(|_| Instant::now());
         // Drain ENet events (handlers run between ticks, in arrival order).
         loop {
             match host.service() {
@@ -308,7 +314,17 @@ fn main() {
                 }
             }
         }
+        if let (Some(measure), Some(started)) = (&mut collector.measurement, service_start) {
+            measure
+                .loop_phases
+                .service_and_route
+                .record(started.elapsed());
+        }
+        let flush_start = collector.measurement.as_ref().map(|_| Instant::now());
         flush_outbox(&mut outbox, &mut host, &connected, &mut collector);
+        if let (Some(measure), Some(started)) = (&mut collector.measurement, flush_start) {
+            measure.loop_phases.outbox_flush.record(started.elapsed());
+        }
         if let Some(measure) = &mut collector.measurement {
             measure.check_boundaries(&world);
         }
@@ -322,8 +338,19 @@ fn main() {
             tick_timer -= tick_interval;
             let tick_start = Instant::now();
             world.tick(now_ms(start), &mut outbox);
+            if let Some(measure) = &mut collector.measurement {
+                measure.loop_phases.world_tick.record(tick_start.elapsed());
+            }
+            let flush_start = collector.measurement.as_ref().map(|_| Instant::now());
             flush_outbox(&mut outbox, &mut host, &connected, &mut collector);
+            if let (Some(measure), Some(started)) = (&mut collector.measurement, flush_start) {
+                measure.loop_phases.outbox_flush.record(started.elapsed());
+            }
+            let flush_start = collector.measurement.as_ref().map(|_| Instant::now());
             host.flush();
+            if let (Some(measure), Some(started)) = (&mut collector.measurement, flush_start) {
+                measure.loop_phases.enet_flush.record(started.elapsed());
+            }
             let work = tick_start.elapsed();
             collector.record_tick_time(work.as_secs_f64() * 1000.0);
             if let Some(measure) = &mut collector.measurement {
@@ -336,7 +363,7 @@ fn main() {
         if t_ms.saturating_sub(last_metrics_ms) >= 1000 {
             last_metrics_ms = t_ms;
             if let Some(measure) = &mut collector.measurement {
-                measure.sample(&world);
+                measure.sample(&world, host.socket().observation());
             }
             let entity_count =
                 world.projectiles.count() + world.monsters.count() + world.world_entities.count();

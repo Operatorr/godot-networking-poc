@@ -484,6 +484,9 @@ fn main() {
         let idx = bots.len() - 1;
         while !bots[idx].is_settled() && !stop.load(Ordering::SeqCst) {
             poll_all(&mut bots, now());
+            if let Some(recorder) = &mut recorder {
+                recorder.sample_ramp(&bots);
+            }
             std::thread::sleep(Duration::from_millis(1));
         }
         if bots[idx].phase == Phase::Failed {
@@ -500,6 +503,9 @@ fn main() {
         let stagger_until = now() + args.stagger_ms / 1000.0;
         while now() < stagger_until && !stop.load(Ordering::SeqCst) {
             poll_all(&mut bots, now());
+            if let Some(recorder) = &mut recorder {
+                recorder.sample_ramp(&bots);
+            }
             std::thread::sleep(Duration::from_millis(1));
         }
     }
