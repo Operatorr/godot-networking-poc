@@ -75,6 +75,7 @@ def received_aoi(report, population):
     candidates = [r for r in assertions if r.get('name') == 'aoi_cull']
     result = {'complete_peer_rows':len(rows)==population and {r.get('bot_id') for r in rows}==set(range(1,population+1)),
               'matched_positions':None, 'unknown_positions':None, 'unknown_peer_ids':[],
+              'no_remote_entity_observation_peer_ids':[],
               'above_threshold_peer_ids':None, 'threshold':1150, 'strict_default_pass':False,
               'all_peer_zero_unknown':False,'no_actual_above_1150':False}
     counts_known = result['complete_peer_rows'] and all(type(r.get('aoi_unknown_positions')) is int and
@@ -82,8 +83,9 @@ def received_aoi(report, population):
     if counts_known:
         result['matched_positions']=sum(r['aoi_matched_positions'] for r in rows)
         result['unknown_positions']=sum(r['aoi_unknown_positions'] for r in rows)
-        result['unknown_peer_ids']=[r['bot_id'] for r in rows if r['aoi_unknown_positions']!=0 or r['aoi_matched_positions']<=0]
-        result['all_peer_zero_unknown']=not result['unknown_peer_ids']
+        result['unknown_peer_ids']=[r['bot_id'] for r in rows if r['aoi_unknown_positions']!=0]
+        result['no_remote_entity_observation_peer_ids']=[r['bot_id'] for r in rows if r['aoi_matched_positions']==0 and r['aoi_unknown_positions']==0]
+        result['all_peer_zero_unknown']=not result['unknown_peer_ids'] and all(r['aoi_matched_positions']>0 for r in rows)
     if len(candidates)==1:
         assertion=candidates[0]; details=assertion.get('details') or {}
         schema=(details.get('threshold')==1150 and details.get('eligible_bots')==population

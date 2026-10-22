@@ -66,6 +66,15 @@ def bracket(observations,a,b):
 def histdiff(a,b):
     return {'count':b['count']-a['count'],'total_ns':b['total_ns']-a['total_ns'],'buckets':[y-x for x,y in zip(a['buckets'],b['buckets'])],'cumulative_max_ns_at_end':b['max_ns']}
 
+def delivery_evidence(first,last,observed):
+    """Every behavior sends inputs and receives confirms, including zero-action Idle."""
+    ages={k:dist([v[k] for v in observed if v]) for k in ('snapshot_age_s','confirm_age_s')}
+    complete=bool(observed) and all(v and v['phase']=='Running' and v['snapshot_age_s'] is not None and v['confirm_age_s'] is not None for v in observed)
+    passed=(complete and last['snapshots']>first['snapshots'] and last['confirms']>first['confirms']
+        and ages['snapshot_age_s']['p99']<.250 and ages['confirm_age_s']['p99']<.500
+        and max(ages['snapshot_age_s']['max'],ages['confirm_age_s']['max'])<1)
+    return dict(ages_s=ages,delivery_samples_complete=complete,delivery_gate=passed)
+
 def host_window(h,a,b):
     pair=bracket(h,a,b)
     if not pair:return {'complete_bracket':False}
@@ -191,8 +200,8 @@ def main():
         wire=out['periods'].get('steady_window',{}).get('wire',{})
         for v in y['bots']:
             i=v['id'];u=old[i];observed=[next((v for v in row['bots'] if v['id']==i),None) for row in deliveryrows]
-            ages={k:dist([v[k] for v in observed if v]) for k in ('snapshot_age_s','confirm_age_s')}
-            samplecomplete=bool(observed) and all(v and v['phase']=='Running' and v['snapshot_age_s'] is not None and v['confirm_age_s'] is not None for v in observed)
+            delivery=delivery_evidence(u,v,observed)
+            ages=delivery['ages_s'];samplecomplete=delivery['delivery_samples_complete']
             entry={'id':i,'offered_input_hz':(v['inputs']-u['inputs'])/seconds,'boundary_duration_s':seconds,'inputs':[u['inputs'],v['inputs']],'snapshots':[u['snapshots'],v['snapshots']],'confirms':[u['confirms'],v['confirms']],'missed_schedules':v['missed_schedules']-u['missed_schedules'],'input_gaps':[b-a for a,b in zip(u['input_gaps'],v['input_gaps'])],'cumulative_input_gap_max_ms':v['input_gap_max_ms'],'ages_s':ages,'delivery_samples_complete':samplecomplete,'errors_delta':{k:v[k]-u[k] for k in ('baseline_reference_misses','unknown_delta_entities','decode_failures','send_failures','panics')},'wire_input_hz':{},'complete_second_wire_hz_lower_bound':{}}
             for role in maps:
                 port=next((p for p,identity in maps[role].items() if identity==i),None)
@@ -201,7 +210,7 @@ def main():
                 fs=out['collector'][role]['flow_summary']
                 exact=fs.get('wire_input_counts_by_port',{}).get(str(port))
                 entry['wire_input_hz'][role]=exact/300 if exact is not None and fs.get('window')==window else None
-            entry['delivery_gate']=samplecomplete and v['snapshots']>u['snapshots'] and v['confirms']>u['confirms'] and ages['snapshot_age_s']['p99']<.250 and ages['confirm_age_s']['p99']<.500 and max(ages['snapshot_age_s']['max'],ages['confirm_age_s']['max'])<1
+            entry['delivery_gate']=delivery['delivery_gate']
             perbot.append(entry)
     out['per_bot']=perbot
     out['generator_summary']={'offered_hz':dist([r['offered_input_hz'] for r in perbot]),'wire_hz':{role:dist([r['wire_input_hz'][role] for r in perbot]) for role in maps},'missed_schedules':sum(r['missed_schedules'] for r in perbot) if perbot else None,'delivery_failing_bot_ids':[r['id'] for r in perbot if not r['delivery_gate']],'input_gap_histogram':[sum(r['input_gaps'][i] for r in perbot) for i in range(8)] if perbot else None}
