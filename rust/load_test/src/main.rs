@@ -14,6 +14,7 @@ mod behavior;
 mod bot;
 mod measurement;
 mod metrics;
+mod native_diagnostic;
 mod rng;
 mod ticket;
 

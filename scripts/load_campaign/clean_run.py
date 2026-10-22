@@ -80,6 +80,10 @@ def configure_cell(cell):
     for key in ('game_sha256','bot_sha256'):
         if not re.fullmatch(r'[0-9a-f]{64}',cell[key]):
             raise ValueError('Exact binary hashes required')
+    if cell.get('native_diagnostic', False) is not False:
+        if (cell.get('native_diagnostic') != 'v1' or cell['namespace'] != 'clean-idle150-audit-r1-20261022'
+                or cell['population'] != 150 or cell['behavior'] != 'idle'):
+            raise ValueError('Native diagnostic requires the one authorized Idle150 condition')
     CELL = dict(cell)
     NAMESPACE = cell['namespace']; REMOTE = '/home/deploy/omega-results/' + NAMESPACE
     UNIT = 'omega-' + NAMESPACE
@@ -292,6 +296,8 @@ def swarm():
     for key in ('OMEGA_TICKET_API', 'OMEGA_LOAD_TEST_SECRET'):
         env.pop(key, None)
     env['OMEGA_MEASURE_DIR'] = str(directory)
+    env.pop('OMEGA_NATIVE_DIAG', None)
+    env.update(diagnostic_environment(spec))
     validate_invocation(spec)
     stopped = False
 
@@ -309,6 +315,7 @@ def swarm():
         dump(directory / 'workload-start.json', {'pid': child.pid, 'utc_ns': time.time_ns(), 'runtime_sha256': hashlib.sha256(pathlib.Path(f'/proc/{child.pid}/exe').read_bytes()).hexdigest(), 'identity': identity(child.pid)})
         try:
             validate_bot_identity(identity(child.pid))
+            validate_diagnostic_runtime(child.pid)
             while child.poll() is None:
                 log = (directory / 'bot.log').read_text(errors='replace')
                 hit = next((line for line in log.splitlines() if failure.search(line)), None)
@@ -393,6 +400,7 @@ def status(role):
         start=read('workload-start.json')
         if start and pathlib.Path('/proc/'+str(start['pid'])).exists():
             result['bot_identity']=identity(start['pid'])
+            result['native_diagnostic_environment']=validate_diagnostic_runtime(start['pid'])
         row=tail_json(d/'bots.ndjson')
         result['bots_stamp']=row['utc_ns'] if row else None
         result['sockets']=command(['sudo','-n','ss','-u','-a','-m','-n','-p','-e'])
@@ -412,7 +420,28 @@ def identity(pid):
             'exe_path': os.readlink(p / 'exe')}
 
 
+def diagnostic_environment(spec):
+    expected = {'OMEGA_NATIVE_DIAG':'v1'} if CELL.get('native_diagnostic') == 'v1' else {}
+    if spec.get('diagnostic_environment', {}) != expected:
+        raise RuntimeError('Native diagnostic dispatch/environment mismatch')
+    return expected
+
+
+def validate_diagnostic_runtime(pid):
+    observed = {}
+    for item in pathlib.Path('/proc',str(pid),'environ').read_bytes().split(b'\0'):
+        if item.startswith(b'OMEGA_NATIVE_DIAG='):
+            if 'OMEGA_NATIVE_DIAG' in observed:
+                raise RuntimeError('Duplicate native diagnostic environment')
+            observed['OMEGA_NATIVE_DIAG'] = item.split(b'=',1)[1].decode('ascii')
+    expected = diagnostic_environment({'diagnostic_environment':{'OMEGA_NATIVE_DIAG':'v1'}}) if CELL.get('native_diagnostic')=='v1' else {}
+    if observed != expected:
+        raise RuntimeError('Native diagnostic runtime environment mismatch')
+    return observed
+
+
 def validate_invocation(spec):
+    diagnostic_environment(spec)
     if spec['argv'][0] != EXPERIMENT_BINARIES['bots']:
         raise RuntimeError('Bot executable path mismatch')
     if hashlib.sha256(pathlib.Path(spec['argv'][0]).read_bytes()).hexdigest() != EXPECTED_BOT:
@@ -582,7 +611,7 @@ def controller():
                 'input_hz': 30, 'seed': 30, 'stagger_ms': 100, 'difficulty': 1.0,
                 'game_config': candidate_config, 'config_proof': config_proof, 'pinned': PINNED,
                 'ramp_input_cadence': 'collected; analyze separately', 'generator_valid': None,
-                'classification': 'pending-scored-observation', 'intervention': 'Pinned correctness candidate game and bots; emission audit disabled; send150 config unchanged; compact measurement and repaired v2 wire collector', 'workloads_launched': 0, 'collector_cadence_s': 1,
+                'native_diagnostic': CELL.get('native_diagnostic',False), 'classification': 'pending-scored-observation', 'intervention': 'Pinned correctness candidate game and bots; emission audit disabled; send150 config unchanged; compact measurement and repaired v2 wire collector', 'workloads_launched': 0, 'collector_cadence_s': 1,
                 'capture_duration_change_s': [300, 600], 'host_limit_s': 600, 'workload_limit_s': 550, 'restoration_limit_s': 720, 'poll_sleep_s': 2, 'map_polling': 'combined with existing status query; no extra map SSH reads', 'collector_overhead_effect': None, 'packet_capture': 'compact-article-plus-per-port-1Hz',
                 'experiment_binary_sha256': {r: s['experiment_binary'].split()[0] for r, s in states.items()},
                 'candidate_revision': CANDIDATE_REVISION, 'bot_revision': BOT_REVISION, 'expected_bot_sha256': EXPECTED_BOT, 'collector_revision': COLLECTOR_REVISION,
@@ -669,7 +698,7 @@ def controller():
                 '--input-hz', '30', '--seed', '30', '--stagger', '100', '--difficulty', '1.0',
                 '--bandwidth-budget', '0', '--assertions', 'strict', '--aoi-exit-radius', '1100',
                 '--output', REMOTE + '/bots/bot.json']
-        dump(local / 'invocation.json', {'argv': argv})
+        dump(local / 'invocation.json', {'argv': argv, 'diagnostic_environment':({'OMEGA_NATIVE_DIAG':'v1'} if CELL.get('native_diagnostic')=='v1' else {})})
         copy('bots', local / 'invocation.json', REMOTE + '/bots/invocation.json')
         manifest['command'] = shlex.join(argv)
         ssh('bots', 'python3 '+REMOTE+'/clean_run.py validate')
@@ -1021,6 +1050,9 @@ if __name__ == '__main__':
     parser.add_argument('--population', type=int, default=150)
     parser.add_argument('--behavior', default='strategy')
     parser.add_argument('--verification-label', default='final')
+    parser.add_argument('--native-diagnostic', action='store_true')
     args = parser.parse_args()
     load_cell(args.namespace, args.population, args.behavior)
+    if args.native_diagnostic:
+        configure_cell(CELL | {'native_diagnostic':'v1'})
     dispatch(args)

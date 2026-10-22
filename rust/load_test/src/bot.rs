@@ -52,7 +52,7 @@ pub struct Bot {
     pub phase: Phase,
     pub metrics: BotMetrics,
     pub entity_id: u16,
-    host: enet::Host<UdpSocket>,
+    host: enet::Host<crate::native_diagnostic::ObservedSocket>,
     peer_key: usize,
     behavior: BehaviorState,
     rng: Pcg32,
@@ -113,8 +113,12 @@ impl Bot {
         now: f64,
     ) -> std::io::Result<Self> {
         let socket = UdpSocket::bind(("0.0.0.0", 0))?;
+        let diagnostic = crate::native_diagnostic::Diagnostic::from_env(id)?;
         let mut host = enet::Host::new(
-            socket,
+            crate::native_diagnostic::ObservedSocket {
+                inner: socket,
+                diagnostic,
+            },
             enet::HostSettings {
                 peer_limit: 1,
                 channel_limit: protocol::CHANNEL_COUNT,
@@ -264,8 +268,26 @@ impl Bot {
 
     fn drain_events(&mut self, now: f64) {
         loop {
-            let event = match self.host.service() {
-                Ok(Some(event)) => event.no_ref(),
+            let diagnostic = self.host.socket().diagnostic.clone();
+            let started = diagnostic.as_ref().map(|d| {
+                d.begin_service(
+                    d.has_pending()
+                        .then(|| d.observe_peer(self.host.peer(enet::PeerID(self.peer_key))))
+                        .flatten(),
+                )
+            });
+            let result = self.host.service().map(|event| event.map(|e| e.no_ref()));
+            if let (Some(d), Some(started)) = (&diagnostic, started) {
+                d.end_service(
+                    d.needs_post()
+                        .then(|| d.observe_peer(self.host.peer(enet::PeerID(self.peer_key))))
+                        .flatten(),
+                    started,
+                    result.is_err(),
+                );
+            }
+            let event = match result {
+                Ok(Some(event)) => event,
                 Ok(None) => return,
                 Err(e) => {
                     self.fail(format!("enet service error: {e:?}"));
@@ -719,7 +741,15 @@ impl Bot {
 
     fn send(&mut self, packet: &ClientPacket) {
         let bytes = packet.encode();
-        let enet_packet = if packet.reliable() {
+        let diagnostic = self
+            .host
+            .socket()
+            .diagnostic
+            .clone()
+            .filter(|_| matches!(packet, ClientPacket::PlayerInput(_)));
+        let enet_packet = if let Some(d) = &diagnostic {
+            d.packet(&bytes)
+        } else if packet.reliable() {
             enet::Packet::reliable(bytes.as_slice())
         } else {
             enet::Packet::unreliable(bytes.as_slice())
@@ -727,6 +757,9 @@ impl Bot {
         let peer = self.host.peer_mut(enet::PeerID(self.peer_key));
         match peer.send(packet.channel(), &enet_packet) {
             Ok(()) => {
+                if let Some(d) = &diagnostic {
+                    d.admitted();
+                }
                 if let Some(observation) = &mut self.observation {
                     observation.sent[bytes[0] as usize] += bytes.len() as u64;
                     if let ClientPacket::PlayerInput(input) = packet {
@@ -773,7 +806,8 @@ impl Bot {
         };
         let age =
             |stamp: Option<std::time::Instant>| stamp.map(|value| value.elapsed().as_secs_f64());
-        serde_json::json!({
+        let native = self.host.socket().diagnostic.as_ref().map(|d| d.snapshot());
+        let mut row = serde_json::json!({
             "id": self.id, "phase": format!("{:?}", self.phase), "alive": self.dead_since.is_none(),
             "inputs": observation.inputs, "missed_schedules": observation.missed_schedules,
             "shoot_inputs": observation.shoot_inputs, "ability_inputs": observation.ability_inputs,
@@ -790,7 +824,11 @@ impl Bot {
             "panics": self.metrics.panic_count, "baselines": self.metrics.baselines_received,
             "snapshots": self.metrics.state_updates_received, "confirms": self.metrics.action_confirms_received,
             "stale_snapshots_ignored": self.metrics.stale_snapshots_ignored,
-        })
+        });
+        if let Some(native) = native {
+            row["native_diagnostic"] = native;
+        }
+        row
     }
 }
 
