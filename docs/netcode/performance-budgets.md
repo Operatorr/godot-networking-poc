@@ -89,13 +89,13 @@ It is enforced by the priority scheduler in `rust/server/src/net/broadcast.rs`
 
 - Each peer gets a per-tick byte budget = `clamp(advertised_bandwidth_bps / snapshot_rate, 256, 1200)`,
   derived at join from the client's `ConnectAuth.bandwidth_budget_bps` (`World::handle_connect_auth`,
-  `rust/server/src/sim/world.rs`; defaults `default/min/max_client_bandwidth_bps` = 120k/24k/200k bps in
+  `rust/server/src/sim/world.rs`; defaults `default/min/max_client_bandwidth_bps` = 120k/24k/200k bytes/s (legacy `bps` names) in
   `rust/server/src/config.rs`).
 - Entity records are admitted greedily in priority order; pinned items (the player's own entity)
-  bypass the budget; smaller items can still fit after a larger one is rejected (no early break).
+  bypass the soft budget and consume packet space; every delta reserves its header and stays below 1200 B. If pinned removals cannot fit, a reliable Baseline replaces the set. Smaller items can still fit after a larger one is rejected (no early break).
 - **Baselines are exempt** from the budget — they ride ch1 reliable and may exceed the MTU
   (fragmentation is fine there). The server only emits deltas against an **acked** baseline, so no
-  delta can reference a baseline the client doesn't hold. Baseline interval 100 ticks, resend 30 ticks
+  delta can reference a baseline the client doesn't hold. Baseline interval 100 Ticks; ENet retransmits reliably while deltas wait for the exact ACK
   (`DELTA_FULL_STATE_INTERVAL`, `rust/server/src/net/broadcast.rs`; see [`../server/contract.md`](../server/contract.md)).
 - Diagnostics (`entities_deferred_per_tick`, `max_queue_age_ticks`, `peers_at_budget_pct`,
   `peers_evaluated`, `snapshot_count_overflow`) are populated per tick and ride the `SERVER_METRICS`

@@ -32,6 +32,10 @@ pub struct BotMetrics {
     pub respawn_requests_sent: u64,
     pub first_server_tick: Option<u32>,
     pub last_server_tick: u32,
+    pub first_server_ms: Option<u32>,
+    pub last_server_ms: u32,
+    /// Obsolete channel-0 packets delivered after a newer reliable Baseline.
+    pub stale_snapshots_ignored: u64,
     pub connection_time_ms: f64,
     /// Reached the authenticated Running state at least once.
     pub connected_ok: bool,
@@ -86,6 +90,7 @@ impl BotMetrics {
             "bytes_sent": self.bytes_sent,
             "bytes_received": self.bytes_received,
             "state_updates_received": self.state_updates_received,
+            "stale_snapshots_ignored": self.stale_snapshots_ignored,
             "baselines_received": self.baselines_received,
             "action_confirms_received": self.action_confirms_received,
             "game_events_received": self.game_events_received,
@@ -172,8 +177,8 @@ where
     let mut all_latencies: Vec<f64> = Vec::new();
     let mut loss_samples: Vec<f64> = Vec::new();
     let mut total_state_updates: u64 = 0;
-    let mut tick_min: Option<u32> = None;
-    let mut tick_max: u32 = 0;
+    let mut observed_ticks = 0u64;
+    let mut observed_ms = 0u64;
     let mut latest_sm: Option<&(f64, ServerMetrics)> = None;
 
     for m in &metrics {
@@ -187,9 +192,12 @@ where
             loss_samples.push(m.enet_packet_loss);
         }
         total_state_updates += m.state_updates_received;
-        if let Some(t) = m.first_server_tick {
-            tick_min = Some(tick_min.map_or(t, |cur| cur.min(t)));
-            tick_max = tick_max.max(m.last_server_tick);
+        if let (Some(t), Some(ms)) = (m.first_server_tick, m.first_server_ms) {
+            let elapsed = m.last_server_ms.wrapping_sub(ms);
+            if m.last_server_tick > t && elapsed > 0 {
+                observed_ticks += u64::from(m.last_server_tick - t);
+                observed_ms += u64::from(elapsed);
+            }
         }
         agg.total_packets_sent += m.packets_sent;
         agg.total_packets_received += m.packets_received;
@@ -218,16 +226,10 @@ where
         let total = (agg.total_bytes_sent + agg.total_bytes_received) as f64;
         agg.avg_bandwidth_per_player_kbps = total / agg.connected_bots as f64 / duration / 1024.0;
     }
-    if let Some(min) = tick_min {
-        if duration > 0.0 && tick_max > min {
-            // Bias note: `tick_max - min` is the span of server ticks SEEN across the swarm, but
-            // `duration` is the run window. Because bots spawn staggered (the first bot sees ticks
-            // the last never will) and tear down within a fixed drain window, the observed span
-            // can run slightly short of `duration * true_tick_rate`, so this estimate is a mild
-            // UNDER-count of the real tick rate — not an exact measurement. The server-reported
-            // `avg_tick_time_ms` is the authoritative figure; this is a sanity cross-check.
-            agg.estimated_server_tick_rate = (tick_max - min) as f64 / duration;
-        }
+    if observed_ms > 0 {
+        // Pair each Tick span with the server's monotonic clock on those same Snapshots.
+        // The requested run duration excludes ramp/drain and is not this denominator.
+        agg.estimated_server_tick_rate = observed_ticks as f64 * 1000.0 / observed_ms as f64;
     }
     agg.avg_state_updates_per_bot = total_state_updates as f64 / metrics.len() as f64;
     if !loss_samples.is_empty() {
@@ -520,6 +522,8 @@ mod tests {
             connected_ok: true,
             first_server_tick: Some(100),
             last_server_tick: 400,
+            first_server_ms: Some(1000),
+            last_server_ms: 11000,
             latencies_ms: vec![10.0, 20.0],
             ..Default::default()
         };
@@ -537,5 +541,41 @@ mod tests {
         assert!((agg.latency_avg_ms - 15.0).abs() < 1e-9);
         // (10240 + 0) bytes / 1 connected bot / 10 s / 1024 = 1 KB/s
         assert!((agg.avg_bandwidth_per_player_kbps - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn tick_rate_pairs_snapshot_clocks_even_when_ramp_and_drain_extend_the_run() {
+        let first = BotMetrics {
+            connected_ok: true,
+            first_server_tick: Some(100),
+            last_server_tick: 1000,
+            first_server_ms: Some(1000),
+            last_server_ms: 31000,
+            ..Default::default()
+        };
+        let last = BotMetrics {
+            connected_ok: true,
+            first_server_tick: Some(700),
+            last_server_tick: 1030,
+            first_server_ms: Some(21000),
+            last_server_ms: 32000,
+            ..Default::default()
+        };
+        for duration in [10.0, 20.0, 30.0] {
+            assert!(
+                (aggregate([&first, &last], duration).estimated_server_tick_rate - 30.0).abs()
+                    < 1e-9
+            );
+        }
+        let missing_clock = BotMetrics {
+            connected_ok: true,
+            first_server_tick: Some(100),
+            last_server_tick: 1000,
+            ..Default::default()
+        };
+        assert_eq!(
+            aggregate([&missing_clock], 10.0).estimated_server_tick_rate,
+            0.0
+        );
     }
 }

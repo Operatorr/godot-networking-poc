@@ -67,6 +67,7 @@ pub struct Bot {
     vel: Vec2,
     seq: u8,
     last_confirm_tick: Option<u16>,
+    last_baseline_tick: Option<u32>,
     position_source: &'static str,
     last_aim: f32,
     input_interval: f64,
@@ -165,6 +166,7 @@ impl Bot {
             vel: Vec2::ZERO,
             seq: 0,
             last_confirm_tick: None,
+            last_baseline_tick: None,
             position_source: "unsynced",
             last_aim: 0.0,
             input_interval: 1.0 / input_hz.max(1.0),
@@ -324,8 +326,6 @@ impl Bot {
                 Some(ok) if a.result == protocol::types::auth_result_code::OK => {
                     self.entity_id = ok.entity_id;
                     self.server_tick_rate = ok.tick_rate.max(1);
-                    self.metrics.first_server_tick.get_or_insert(ok.server_tick);
-                    self.metrics.last_server_tick = ok.server_tick;
                     self.metrics.connected_ok = true;
                     self.metrics.connection_time_ms = (now - self.connect_started_at) * 1000.0;
                     self.phase = Phase::Running;
@@ -394,6 +394,16 @@ impl Bot {
     }
 
     fn apply_snapshot(&mut self, s: &Snapshot, now: f64) {
+        // Channels 0 and 1 have independent delivery order. A newer reliable
+        // Baseline retires old deltas; applying them could resurrect entities.
+        if self.last_baseline_tick.is_some_and(|tick| {
+            (s.is_baseline && s.server_tick < tick)
+                || s.baseline_tick
+                    .is_some_and(|reference| reference < tick || s.server_tick <= tick)
+        }) {
+            self.metrics.stale_snapshots_ignored += 1;
+            return;
+        }
         if let Some(observation) = &mut self.observation {
             crate::measurement::observe_gap(
                 &mut observation.last_snapshot,
@@ -421,9 +431,14 @@ impl Bot {
         }
         self.metrics.state_updates_received += 1;
         self.metrics.first_server_tick.get_or_insert(s.server_tick);
-        self.metrics.last_server_tick = self.metrics.last_server_tick.max(s.server_tick);
+        self.metrics.first_server_ms.get_or_insert(s.server_ms);
+        if s.server_tick >= self.metrics.last_server_tick {
+            self.metrics.last_server_tick = s.server_tick;
+            self.metrics.last_server_ms = s.server_ms;
+        }
 
         if s.is_baseline {
+            self.last_baseline_tick = Some(s.server_tick);
             self.metrics.baselines_received += 1;
             // A baseline is the full AoI state: replace the world model and ack it.
             self.entities.clear();
@@ -774,6 +789,7 @@ impl Bot {
             "decode_failures": self.metrics.decode_failures, "send_failures": self.metrics.send_failures,
             "panics": self.metrics.panic_count, "baselines": self.metrics.baselines_received,
             "snapshots": self.metrics.state_updates_received, "confirms": self.metrics.action_confirms_received,
+            "stale_snapshots_ignored": self.metrics.stale_snapshots_ignored,
         })
     }
 }
@@ -792,6 +808,42 @@ fn color_for(id: u32) -> (u8, u8, u8) {
 mod aoi_tests {
     use super::*;
     use protocol::EntityRecord;
+
+    #[test]
+    fn late_previous_channel_delta_cannot_recreate_entities_after_baseline() {
+        let mut b = bot();
+        for (tick, entities) in [
+            (100, vec![EntityRecord::full(30001, (10.0, 0.0), 0, 1)]),
+            (200, vec![]),
+        ] {
+            let packet = ServerPacket::Snapshot(Snapshot {
+                server_tick: tick,
+                server_ms: tick * 33,
+                is_baseline: true,
+                baseline_tick: None,
+                entities,
+            });
+            let ServerPacket::Snapshot(s) = ServerPacket::decode(&packet.encode()).unwrap() else {
+                panic!()
+            };
+            b.apply_snapshot(&s, f64::from(tick) / 30.0);
+        }
+        let packet = ServerPacket::Snapshot(Snapshot {
+            server_tick: 199,
+            server_ms: 6567,
+            is_baseline: false,
+            baseline_tick: Some(100),
+            entities: vec![EntityRecord::full(30001, (11.0, 0.0), 0, 1)],
+        });
+        let ServerPacket::Snapshot(s) = ServerPacket::decode(&packet.encode()).unwrap() else {
+            panic!()
+        };
+        b.apply_snapshot(&s, 7.0);
+        assert!(
+            !b.entities.contains_key(&30001),
+            "late ch0 state resurrected a retired entity"
+        );
+    }
 
     fn bot() -> Bot {
         let mut b = Bot::connect(
@@ -856,6 +908,8 @@ mod aoi_tests {
         let mut b = bot();
         b.handle_server_packet(ServerPacket::Snapshot(snapshot(true, false)), 1.0);
         let mut delta = snapshot(false, false);
+        delta.server_tick = 11;
+        delta.baseline_tick = Some(10);
         delta.entities.retain(|r| r.entity_id != 1);
         b.handle_server_packet(ServerPacket::Snapshot(delta), 2.0);
         assert_eq!(b.metrics.aoi_unknown_positions, 1);

@@ -5,8 +5,9 @@
 //!
 //! Budget accounting deviates from the GDScript's fixed 10/3-byte size table in one way:
 //! predicted sizes are the REAL bit-level record sizes of the redesigned protocol (D3), so the
-//! budget reflects actual wire bytes. Semantics (greedy admission in priority order, pinned
-//! removals bypass-and-consume, deferral keeps entries dirty) are identical.
+//! budget includes the header and byte rounding. Pinned removals and the observer position
+//! bypass the soft peer allowance but never the hard unreliable limit. Oversized removal
+//! sets use an atomic reliable Baseline; deferred fields stay dirty.
 
 use crate::outbox::Outbox;
 use crate::player::{PeerKey, PlayerManager};
@@ -16,11 +17,14 @@ use sim_core::Vec2;
 use std::collections::HashMap;
 
 pub const DELTA_FULL_STATE_INTERVAL: u64 = 100;
-pub const BASELINE_ACK_TIMEOUT_TICKS: u64 = 30;
 /// Position-equality epsilon: half the 0.1-unit wire quantization step, strict `<` per axis.
 pub const POSITION_EPSILON: f32 = 0.05;
-/// Full-state entity cap carried from the old 65535-byte frame (per-packet diagnostic parity).
-pub const STATE_MAX_FULL_ENTITIES: usize = 7280;
+/// Full-state replies must fit the receiver's decoder count limit.
+pub const STATE_MAX_FULL_ENTITIES: usize = protocol::types::MAX_SNAPSHOT_ENTITIES;
+/// Includes packet type, clocks, flags, Baseline reference and entity count.
+const DELTA_HEADER_BYTES: usize = 16;
+const MAX_DELTA_RECORD_BITS: usize =
+    (protocol::MAX_UNRELIABLE_PAYLOAD - 1 - DELTA_HEADER_BYTES) * 8;
 
 // Scheduler constants (extraction server-tick §2.3).
 const PRIORITY_PLAYER: i64 = 10;
@@ -163,15 +167,11 @@ impl DeltaStateCache {
     }
 
     pub fn needs_full_state_for_interval(&self, tick: u64) -> bool {
-        tick - self.baseline_tick >= DELTA_FULL_STATE_INTERVAL
+        self.baseline_tick == 0 || tick - self.baseline_tick >= DELTA_FULL_STATE_INTERVAL
     }
 
-    pub fn needs_baseline_resend(&self, tick: u64) -> bool {
-        if self.baseline_tick == 0 {
-            return false;
-        }
+    pub fn is_baseline_pending(&self) -> bool {
         self.pending_baseline_tick > 0
-            && tick - self.pending_baseline_tick >= BASELINE_ACK_TIMEOUT_TICKS
     }
 
     fn reset_baseline(&mut self, tick: u64) {
@@ -180,10 +180,8 @@ impl DeltaStateCache {
     }
 
     pub fn mark_baseline_acked(&mut self, acked: u64) {
-        if acked >= self.acked_baseline_tick {
+        if self.pending_baseline_tick > 0 && acked == self.pending_baseline_tick {
             self.acked_baseline_tick = acked;
-        }
-        if acked >= self.pending_baseline_tick {
             self.pending_baseline_tick = 0;
         }
     }
@@ -287,13 +285,15 @@ fn change_bonus(mask: u8) -> i64 {
     bonus
 }
 
-/// Greedy admission in (priority desc, entity_id asc) order; pinned entries bypass AND consume
-/// the budget; no early break (smaller items may still fit); `max_bytes == 0` disables.
+/// Admit pinned entries first, then (priority desc, entity_id asc). Pinned entries bypass
+/// the soft budget and consume space; every entry obeys the hard packet limit.
 fn schedule(candidates: &mut [Candidate], max_bytes: usize) -> (Vec<usize>, ScheduleStats, usize) {
     candidates.sort_by(|a, b| {
-        b.priority
-            .cmp(&a.priority)
-            .then(a.entity_id.cmp(&b.entity_id))
+        b.pinned.cmp(&a.pinned).then(
+            b.priority
+                .cmp(&a.priority)
+                .then(a.entity_id.cmp(&b.entity_id)),
+        )
     });
     let max_bits = max_bytes * 8;
     let mut bits = 0usize;
@@ -302,7 +302,8 @@ fn schedule(candidates: &mut [Candidate], max_bytes: usize) -> (Vec<usize>, Sche
     for c in candidates.iter() {
         stats.max_queue_age_ticks = stats.max_queue_age_ticks.max(c.ticks_since_last_sent);
         let fits = max_bits == 0 || bits + c.encoded_bits <= max_bits;
-        if c.pinned || fits {
+        let hard_fits = bits + c.encoded_bits <= MAX_DELTA_RECORD_BITS;
+        if hard_fits && (c.pinned || fits) {
             crate::measurement::observe_candidate(c.entity_id, false);
             selected.push(c.index);
             bits += c.encoded_bits;
@@ -386,6 +387,15 @@ impl BroadcastService {
         }
     }
 
+    fn in_aoi(&self, position: Vec2, observer: Vec2, previously_visible: bool) -> bool {
+        let radius = if previously_visible {
+            self.aoi_exit_radius.max(self.aoi_radius)
+        } else {
+            self.aoi_radius
+        };
+        self.aoi_radius <= 0.0 || observer.distance_squared_to(position) <= radius * radius
+    }
+
     /// Per-snapshot-tick broadcast: one STATE_UPDATE per authenticated peer.
     #[allow(clippy::too_many_arguments)]
     pub fn broadcast_state_updates(
@@ -427,12 +437,6 @@ impl BroadcastService {
         for (i, e) in all_entities.iter().enumerate() {
             grid.insert(i, e.position);
         }
-        let enter_sq = self.aoi_radius * self.aoi_radius;
-        let exit_sq = if self.aoi_exit_radius > self.aoi_radius {
-            self.aoi_exit_radius * self.aoi_exit_radius
-        } else {
-            enter_sq
-        };
 
         let mut tick_total_deferred = 0u64;
         let mut tick_max_queue_age = 0u64;
@@ -440,6 +444,15 @@ impl BroadcastService {
         let mut tick_peers_evaluated = 0u64;
 
         for (peer, self_entity_id, self_position) in peers {
+            // ENet retransmits the reliable Baseline. Do not advance its cache or emit
+            // dependent channel-0 deltas until the receiver has applied and ACKed it.
+            if self
+                .delta_caches
+                .get(&peer)
+                .is_some_and(DeltaStateCache::is_baseline_pending)
+            {
+                continue;
+            }
             // HashSet membership for the per-entity hysteresis check (was Vec::contains → O(n²)).
             let prev_visible: std::collections::HashSet<u16> = self
                 .visible_entities
@@ -459,12 +472,7 @@ impl BroadcastService {
                         continue;
                     }
                     let dist_sq = self_position.distance_squared_to(e.position);
-                    let threshold_sq = if prev_visible.contains(&e.id) {
-                        exit_sq
-                    } else {
-                        enter_sq
-                    };
-                    if dist_sq > threshold_sq {
+                    if !self.in_aoi(e.position, self_position, prev_visible.contains(&e.id)) {
                         continue;
                     }
                     visible.push((idx, self.classify_lod(dist_sq)));
@@ -495,13 +503,13 @@ impl BroadcastService {
             self.visible_entities.insert(peer, current_visible);
 
             let cache = self.delta_caches.entry(peer).or_default();
-            let needs_baseline =
-                cache.needs_full_state_for_interval(tick) || cache.needs_baseline_resend(tick);
+            let needs_baseline = cache.needs_full_state_for_interval(tick);
 
             crate::measurement::begin_schedule(peer, tick);
-            let packet = if needs_baseline && removed_entity_ids.is_empty() {
-                let entities: Vec<EntityData> =
+            let packet = if needs_baseline {
+                let mut entities: Vec<EntityData> =
                     visible.iter().map(|(i, _)| all_entities[*i]).collect();
+                entities.sort_by_key(|e| e.id != self_entity_id);
                 let snap = create_full_state_packet(&entities, cache, tick, server_ms);
                 if entities.len() > STATE_MAX_FULL_ENTITIES {
                     self.diagnostics.snapshot_count_overflow += 1;
@@ -521,6 +529,7 @@ impl BroadcastService {
                     server_ms,
                     &removed_entity_ids,
                     peer_max,
+                    self_entity_id,
                 );
                 tick_peers_evaluated += 1;
                 tick_total_deferred += stats.deferred as u64;
@@ -546,8 +555,8 @@ impl BroadcastService {
         };
     }
 
-    /// REQUEST_FULL_STATE reply: ALL entities, no AoI filter; counts as a Baseline; then a
-    /// PLAYER_INFO replay for every authenticated player (Authority-sync recovery).
+    /// REQUEST_FULL_STATE recovery uses the same AoI and hysteresis as broadcasts.
+    /// Replay identity only for players in that recovery set.
     pub fn handle_full_state_request(
         &mut self,
         peer: PeerKey,
@@ -557,16 +566,44 @@ impl BroadcastService {
         server_ms: u32,
         outbox: &mut Outbox,
     ) {
+        let Some(player) = players.get(peer).filter(|p| p.authenticated) else {
+            return;
+        };
+        let previous: std::collections::HashSet<_> = self
+            .visible_entities
+            .get(&peer)
+            .into_iter()
+            .flatten()
+            .copied()
+            .collect();
+        let mut entities: Vec<_> = all_entities
+            .iter()
+            .copied()
+            .filter(|e| {
+                e.id == player.entity_id
+                    || self.in_aoi(e.position, player.position, previous.contains(&e.id))
+            })
+            .collect();
+        entities.sort_by_key(|e| e.id != player.entity_id);
+        let visible: std::collections::HashSet<_> = entities
+            .iter()
+            .take(STATE_MAX_FULL_ENTITIES)
+            .map(|e| e.id)
+            .collect();
+        self.visible_entities
+            .insert(peer, visible.iter().copied().collect());
         let cache = self.delta_caches.entry(peer).or_default();
-        let snap = create_full_state_packet(all_entities, cache, tick, server_ms);
-        if all_entities.len() > STATE_MAX_FULL_ENTITIES {
+        let snap = create_full_state_packet(&entities, cache, tick, server_ms);
+        if entities.len() > STATE_MAX_FULL_ENTITIES {
             self.diagnostics.snapshot_count_overflow += 1;
         }
-        if let Some(player) = players.get(peer) {
-            crate::measurement::audit_aoi_snapshot(&snap, player.entity_id, player.position, true);
-        }
+        crate::measurement::audit_aoi_snapshot(&snap, player.entity_id, player.position, true);
         outbox.send(peer, ServerPacket::Snapshot(snap));
-        for p in players.players.iter().filter(|p| p.authenticated) {
+        for p in players
+            .players
+            .iter()
+            .filter(|p| p.authenticated && visible.contains(&p.entity_id))
+        {
             outbox.send(
                 peer,
                 player_info_event(
@@ -651,6 +688,7 @@ fn create_full_state_packet(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn create_delta_packet(
     all_entities: &[EntityData],
     visible: &[(usize, u8)],
@@ -659,6 +697,7 @@ fn create_delta_packet(
     server_ms: u32,
     removed_entity_ids: &[u16],
     peer_max_bytes: usize,
+    observer_id: u16,
 ) -> (Snapshot, ScheduleStats) {
     struct Staged {
         record: EntityRecord,
@@ -694,7 +733,12 @@ fn create_delta_packet(
     for &(idx, lod) in visible {
         let e = &all_entities[idx];
         active_entity_ids.push(e.id);
-        let mask = cache.calculate_delta_mask(e.id, e, tick);
+        let mut mask = cache.calculate_delta_mask(e.id, e, tick);
+        // Every received positional record needs its same-Snapshot AoI center,
+        // including while the observer is stationary or budget pressure is high.
+        if e.id == observer_id && mask & delta_mask::FULL == 0 {
+            mask |= delta_mask::POSITION;
+        }
         if mask == 0 {
             continue; // unchanged entities cost zero bytes
         }
@@ -731,7 +775,7 @@ fn create_delta_packet(
                 + change_bonus(mask),
             encoded_bits: bits,
             ticks_since_last_sent: ticks_since,
-            pinned: false,
+            pinned: e.id == observer_id,
         });
     }
 
@@ -757,7 +801,27 @@ fn create_delta_packet(
         });
     }
 
-    let (selected, stats, _bits) = schedule(&mut candidates, peer_max_bytes);
+    if candidates
+        .iter()
+        .filter(|c| c.pinned)
+        .map(|c| c.encoded_bits)
+        .sum::<usize>()
+        > MAX_DELTA_RECORD_BITS
+    {
+        // An atomic reliable replacement retires every removed entity without
+        // fragmenting an unreliable packet or forgetting deferred removals.
+        let mut entities: Vec<_> = visible.iter().map(|(i, _)| all_entities[*i]).collect();
+        entities.sort_by_key(|e| e.id != observer_id);
+        return (
+            create_full_state_packet(&entities, cache, tick, server_ms),
+            ScheduleStats::default(),
+        );
+    }
+    let record_budget = peer_max_bytes
+        .min(protocol::MAX_UNRELIABLE_PAYLOAD - 1)
+        .saturating_sub(DELTA_HEADER_BYTES)
+        .max(1);
+    let (selected, stats, _bits) = schedule(&mut candidates, record_budget);
     let mut records = Vec::with_capacity(selected.len());
     for idx in selected {
         let s = &staged[idx];
@@ -782,6 +846,64 @@ fn create_delta_packet(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn delta_budget_includes_header_and_pinned_removals() {
+        let entities: Vec<_> = (1..=300).map(|id| entity(id, 0.0, 0.0)).collect();
+        let visible: Vec<_> = (0..entities.len()).map(|i| (i, LOD_NEAR)).collect();
+        for removals in [0, 500] {
+            let mut cache = DeltaStateCache::default();
+            create_full_state_packet(&entities, &mut cache, 100, 0);
+            cache.mark_baseline_acked(100);
+            let moved: Vec<_> = entities.iter().map(|e| entity(e.id, 1.0, 0.0)).collect();
+            let removed: Vec<_> = (10000..10000 + removals).collect();
+            let (snap, _) =
+                create_delta_packet(&moved, &visible, &mut cache, 101, 0, &removed, 1200, 1);
+            let packet = ServerPacket::Snapshot(snap);
+            if !matches!(&packet, ServerPacket::Snapshot(s) if s.is_baseline) {
+                assert!(packet.encode().len() < protocol::MAX_UNRELIABLE_PAYLOAD);
+            }
+            ServerPacket::decode(&packet.encode()).unwrap();
+        }
+    }
+
+    #[test]
+    fn delta_waits_for_exact_baseline_ack_and_carries_observer_position() {
+        init_arena_geometry();
+        let mut svc = BroadcastService::new(1000.0, 1100.0, 400.0, 1000.0, 1200);
+        let mut players = PlayerManager::new();
+        let p = players.add_player(1).unwrap();
+        p.authenticated = true;
+        p.position = Vec2::ZERO;
+        let id = p.entity_id;
+        let entities = [entity(id, 0.0, 0.0), entity(30001, 10.0, 0.0)];
+        let mut outbox = Outbox::new();
+        svc.broadcast_state_updates(&entities, &players, 100, 0, &mut outbox);
+        outbox.drain();
+        for ack in [0, 99, 101, u64::MAX] {
+            svc.mark_baseline_acked(1, ack);
+            svc.broadcast_state_updates(&entities, &players, 101, 0, &mut outbox);
+            assert!(outbox.drain().is_empty(), "delta before exact ACK {ack}");
+        }
+        svc.mark_baseline_acked(1, 100);
+        svc.broadcast_state_updates(&entities, &players, 102, 0, &mut outbox);
+        let packets = outbox.drain();
+        let ServerPacket::Snapshot(s) = &packets[0].1 else {
+            panic!()
+        };
+        assert_eq!(s.baseline_tick, Some(100));
+        assert!(s
+            .entities
+            .iter()
+            .any(|r| r.entity_id == id && r.position == Some((0.0, 0.0))));
+    }
+
+    #[test]
+    fn maximum_baseline_roundtrips_through_real_decoder() {
+        let entities: Vec<_> = (10000..19000).map(|id| entity(id, 0.0, 0.0)).collect();
+        let s = create_full_state_packet(&entities, &mut DeltaStateCache::default(), 100, 0);
+        ServerPacket::decode(&ServerPacket::Snapshot(s).encode()).unwrap();
+    }
 
     /// sim_core debug_asserts each thread set its world geometry before any bounds/obstacle read
     /// (arena.rs contract). PlayerManager spawn placement reads geometry, so the broadcast tests
@@ -934,8 +1056,17 @@ mod tests {
             0,
             &[],
             1200,
+            1,
         );
-        assert_eq!(dropped.entities[0].delta_mask, delta_mask::FULL);
+        assert_eq!(
+            dropped
+                .entities
+                .iter()
+                .find(|r| r.entity_id == 30001)
+                .unwrap()
+                .delta_mask,
+            delta_mask::FULL
+        );
         // ENet or the path drops this unreliable Snapshot. The receiver still
         // only knows the baseline's player; the next record must initialize it.
         let moved = entity(30001, 11.0, 10.0);
@@ -947,8 +1078,17 @@ mod tests {
             0,
             &[],
             1200,
+            1,
         );
-        assert_eq!(recovery.entities[0].delta_mask, delta_mask::FULL);
+        assert_eq!(
+            recovery
+                .entities
+                .iter()
+                .find(|r| r.entity_id == 30001)
+                .unwrap()
+                .delta_mask,
+            delta_mask::FULL
+        );
         create_full_state_packet(&[kept, moved], &mut cache, 200, 0);
         cache.mark_baseline_acked(200);
         let changed = entity(30001, 12.0, 10.0);
@@ -984,18 +1124,18 @@ mod tests {
     }
 
     #[test]
-    fn baseline_ack_and_resend_flow() {
+    fn baseline_ack_requires_current_pending_tick() {
         let mut cache = DeltaStateCache::default();
-        assert!(!cache.needs_baseline_resend(50)); // never sent one
+        assert!(!cache.is_baseline_pending());
         cache.reset_baseline(100);
-        assert!(!cache.needs_baseline_resend(120));
-        assert!(cache.needs_baseline_resend(130)); // 30 un-acked ticks
+        assert!(cache.is_baseline_pending());
+        cache.mark_baseline_acked(101);
+        assert!(cache.is_baseline_pending());
         cache.mark_baseline_acked(100);
-        assert!(!cache.needs_baseline_resend(200));
-        // Stale acks are ignored.
+        assert!(!cache.is_baseline_pending());
         cache.reset_baseline(300);
         cache.mark_baseline_acked(100);
-        assert!(cache.needs_baseline_resend(330));
+        assert!(cache.is_baseline_pending());
     }
 
     #[test]
@@ -1089,7 +1229,7 @@ mod tests {
         };
         assert!(!s.is_baseline);
         assert_eq!(s.baseline_tick, Some(100));
-        assert_eq!(s.entities.len(), 0);
+        assert_eq!(s.entities.len(), 1);
 
         // Monster moves → position-only delta.
         let entities2 = vec![entity(self_id, 0.0, 600.0), entity(30005, 104.0, 600.0)];
@@ -1098,9 +1238,9 @@ mod tests {
         let ServerPacket::Snapshot(s) = &msgs[0].1 else {
             panic!()
         };
-        assert_eq!(s.entities.len(), 1);
-        assert_eq!(s.entities[0].entity_id, 30005);
-        assert_eq!(s.entities[0].delta_mask, delta_mask::POSITION);
+        assert_eq!(s.entities.len(), 2);
+        let monster = s.entities.iter().find(|r| r.entity_id == 30005).unwrap();
+        assert_eq!(monster.delta_mask, delta_mask::POSITION);
 
         // Monster leaves the entity set entirely → stale-cache pinned REMOVED.
         let entities3 = vec![entity(self_id, 0.0, 600.0)];
@@ -1109,7 +1249,7 @@ mod tests {
         let ServerPacket::Snapshot(s) = &msgs[0].1 else {
             panic!()
         };
-        assert_eq!(s.entities.len(), 1);
+        assert_eq!(s.entities.len(), 2);
         assert_eq!(s.entities[0].delta_mask, delta_mask::REMOVED);
         assert_eq!(s.entities[0].entity_id, 30005);
     }
@@ -1134,6 +1274,7 @@ mod tests {
         };
         assert_eq!(s.entities.len(), 2, "exactly-on-radius entity is visible");
 
+        svc.mark_baseline_acked(1, 100);
         // Move to 1050 — outside enter but inside exit: visible by hysteresis.
         let entities2 = vec![entity(self_id, 0.0, 0.0), entity(30001, 1050.0, 0.0)];
         svc.broadcast_state_updates(&entities2, &players, 101, 0, &mut outbox);
@@ -1152,44 +1293,39 @@ mod tests {
     }
 
     #[test]
-    fn baseline_deferred_when_removals_pending() {
+    fn reliable_baseline_replaces_entities_even_when_removals_are_pending() {
         init_arena_geometry();
         let mut svc = BroadcastService::new(1000.0, 1100.0, 400.0, 1000.0, 1200);
         let mut players = PlayerManager::new();
         let p = players.add_player(1).unwrap();
         p.authenticated = true;
-        p.position = Vec2::new(0.0, 0.0);
-        let self_id = players.players[0].entity_id;
+        p.position = Vec2::ZERO;
+        let id = p.entity_id;
         let mut outbox = Outbox::new();
-
-        // Establish visibility of a monster pre-baseline.
-        let entities = vec![entity(self_id, 0.0, 0.0), entity(30001, 500.0, 0.0)];
-        svc.broadcast_state_updates(&entities, &players, 50, 0, &mut outbox);
-        outbox.drain();
-        // At tick 150 a baseline is due, but the monster exits AoI the same tick ⇒ delta sent
-        // instead (gotcha #3); the IS_DELTA packet carries the OLD baseline_tick (0).
-        let entities2 = vec![entity(self_id, 0.0, 0.0), entity(30001, 1200.0, 0.0)];
-        svc.broadcast_state_updates(&entities2, &players, 150, 0, &mut outbox);
-        let msgs = outbox.drain();
-        let ServerPacket::Snapshot(s) = &msgs[0].1 else {
-            panic!()
-        };
-        assert!(
-            !s.is_baseline,
-            "baseline must defer while AoI exits are pending"
+        svc.broadcast_state_updates(
+            &[entity(id, 0.0, 0.0), entity(30001, 500.0, 0.0)],
+            &players,
+            50,
+            0,
+            &mut outbox,
         );
-        assert_eq!(s.baseline_tick, Some(0));
-        // Next tick (no removals): the true baseline goes out.
-        let entities3 = vec![entity(self_id, 0.0, 0.0)];
-        svc.broadcast_state_updates(&entities3, &players, 151, 0, &mut outbox);
-        let msgs = outbox.drain();
-        let ServerPacket::Snapshot(s) = &msgs[0].1 else {
-            panic!()
-        };
-        assert!(s.is_baseline);
+        let packets = outbox.drain();
+        assert!(matches!(&packets[0].1, ServerPacket::Snapshot(s) if s.is_baseline));
+        svc.mark_baseline_acked(1, 50);
+        svc.broadcast_state_updates(
+            &[entity(id, 0.0, 0.0), entity(30001, 1200.0, 0.0)],
+            &players,
+            150,
+            0,
+            &mut outbox,
+        );
+        let packets = outbox.drain();
+        assert!(
+            matches!(&packets[0].1, ServerPacket::Snapshot(s) if s.is_baseline && s.entities.len() == 1)
+        );
     }
     #[test]
-    fn aoi_audit_matches_wire_and_distinguishes_full_state_bypass() {
+    fn aoi_audit_matches_wire_and_full_state_recovery_respects_aoi() {
         init_arena_geometry();
         let mut svc = BroadcastService::new(1000.0, 1100.0, 400.0, 1000.0, 1200);
         let mut players = PlayerManager::new();
@@ -1230,6 +1366,6 @@ mod tests {
         let ServerPacket::Snapshot(s) = &packets[0].1 else {
             panic!()
         };
-        assert!(crate::measurement::aoi_packet_bounds(s, id, center).1 > 1150.0);
+        assert!(crate::measurement::aoi_packet_bounds(s, id, center).1 < 1100.0);
     }
 }
