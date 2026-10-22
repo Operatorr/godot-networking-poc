@@ -216,3 +216,29 @@ load while preserving nearest-choice semantics; it does not establish correctnes
 of replication or AoI. Exact application input delivery, queue residence and causal
 instrumentation slowdown remain unknown. Historical Strategy **100** remains the
 highest validated population; no previous invalid or failed result is upgraded.
+
+
+## Focused AoI follow-up — local correction, remote validation pending
+
+[The focused diagnosis plan](../2026-10-22-aoi-diagnosis/PLAN.md) records a
+**confirmed measurement defect**, fixed locally in `4c33a3e`: an incoming delta
+with observer (0,0) and entity (1000,0) was measured as 1200 units against current
+prediction (-200,0). The regression failed before the correction at the actual
+codec/application/assertion seam, then passed. Same-Snapshot observer positions
+now drive the check independently of prediction, record order and respawn grace.
+Missing observer positions are explicitly unknown and block a standalone strict
+pass. A per-emitted-Snapshot audit supplies separate authoritative-center evidence;
+it neither changes the wire nor certifies delivery.
+
+Workspace tests, Clippy (two existing load-test warnings), formatting and the client
+extension rebuild passed. Tests also cover missing own state despite cached state,
+older Baseline arrival, record order/respawn grace, true violations, actual server
+packet quantization and full-state selection. **Full-state reply AoI bypass is
+confirmed in a regression but unchanged**; bots do not request it, so it does not
+explain this workload and remains a broader correctness concern.
+
+Exactly one matched remote observation is delegated; results and cleanup are pending.
+Historical `send150` maxima do not retain enough provenance to establish their
+cause retrospectively. No historical result is upgraded, no new capacity is
+validated, and this is not a bug-free certificate. The broader correctness ticket
+remains open.
