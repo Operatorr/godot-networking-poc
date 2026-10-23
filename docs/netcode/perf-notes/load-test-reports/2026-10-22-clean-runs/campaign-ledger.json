@@ -135,7 +135,7 @@
       "purpose": "overload ramp and measured window if ramp completes"
     }
   ],
-  "active_task_id": null,
+  "active_task_id": "node:delegated-task:command%3Amcp%3A4e020f92-bc95-449a-b76e-c2bf31fa8660%3Adelegate-task%3Aissue39-idle150-wire-audit-r2-20261023",
   "final_clean_campaign_certificate": false,
   "legacy_product_targets": {
     "bandwidth_kib_per_s": 5,
