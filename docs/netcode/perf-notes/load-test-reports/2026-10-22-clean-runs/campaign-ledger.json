@@ -136,7 +136,7 @@
       "behavior": "combat",
       "population": 100,
       "namespace": "clean-combat100-r2-20261023",
-      "status": "ready_after_terminal_status_fix",
+      "status": "in_progress",
       "purpose": "matched validation of terminal proc-read correction and passing ladder rerun"
     },
     {
@@ -168,7 +168,7 @@
       "purpose": "overload ramp and measured window if ramp completes"
     }
   ],
-  "active_task_id": null,
+  "active_task_id": "node:delegated-task:command%3Amcp%3A98779699-ac57-402b-ad13-e36558c5cc0a%3Adelegate-task%3Aissue39-clean-combat100-r2-20261023",
   "final_clean_campaign_certificate": false,
   "legacy_product_targets": {
     "bandwidth_kib_per_s": 5,
