@@ -61,6 +61,17 @@
       ],
       "report": "clean-idle150-r1-20261022.md",
       "requires_followup": true
+    },
+    {
+      "namespace": "clean-idle150-r2-20261023",
+      "candidate": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
+      "classification": "generator-invalid",
+      "passed_gate_count": 35,
+      "failed_gates": [
+        "mapped_wire_29_7hz"
+      ],
+      "report": "clean-idle150-r2-20261023.md",
+      "requires_followup": true
     }
   ],
   "remaining": [
@@ -135,7 +146,7 @@
       "purpose": "overload ramp and measured window if ramp completes"
     }
   ],
-  "active_task_id": "node:delegated-task:command%3Amcp%3A4e020f92-bc95-449a-b76e-c2bf31fa8660%3Adelegate-task%3Aissue39-clean-idle150-r2-20261023",
+  "active_task_id": null,
   "final_clean_campaign_certificate": false,
   "legacy_product_targets": {
     "bandwidth_kib_per_s": 5,
@@ -143,7 +154,7 @@
     "thresholds_changed": false,
     "note": "Retain their actual pass/fail independently from matrix gates; optimization is outside this map."
   },
-  "active_investigation": "Matched ordinary Idle150 with native diagnostics disabled; assess offered cadence and retain unchanged wire gate",
+  "active_investigation": "Existing strict classification retained pending offered-load/wire interpretation; independently rerun Movement50",
   "active_diagnostic_namespace": null,
   "diagnostic_attempts": [
     {
@@ -194,5 +205,7 @@
   ],
   "storage_recovery_report": "storage-recovery-20261023.md",
   "latest_storage_recovery_report": "storage-recovery-r2-20261023.md",
-  "next_observation_namespace": "clean-idle150-r2-20261023"
+  "next_observation_namespace": "clean-movement50-r1-20261023",
+  "classification_proposal": "CLASSIFICATION-PROPOSAL.md",
+  "classification_decision": "pending_user_interpretation"
 }
