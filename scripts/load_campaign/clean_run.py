@@ -509,9 +509,19 @@ def status(role):
         result['phase']=read('phase.json')
         result['guard']=read('guard-result.json')
         start=read('workload-start.json')
-        if start and pathlib.Path('/proc/'+str(start['pid'])).exists():
-            result['bot_identity']=identity(start['pid'])
-            result['native_diagnostic_environment']=validate_diagnostic_runtime(start['pid'])
+        result['bot_identity']=None
+        if start:
+            # Proc entries can disappear between any two reads, including while
+            # the watchdog is reaping a completed swarm. Report unavailable
+            # identity to the live/terminal checks instead of crashing status.
+            try:
+                observed_identity=identity(start['pid'])
+                environment=validate_diagnostic_runtime(start['pid'])
+            except FileNotFoundError:
+                pass
+            else:
+                result['bot_identity']=observed_identity
+                result['native_diagnostic_environment']=environment
         row=tail_json(d/'bots.ndjson')
         if compact_ordinary():
             result['ordinary_measurement']=validate_ordinary_measurement(d)
