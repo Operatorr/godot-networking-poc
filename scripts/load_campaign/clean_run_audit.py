@@ -2,13 +2,22 @@
 """Independent read-only preservation audit against the prebuild inventory."""
 import argparse
 import hashlib
+import inspect
 import json
 import pathlib
 import re
+import shlex
 import subprocess
 import time
 
 import run
+import closed_measurement_archive
+
+
+def measurement_backups_command(root='/home/deploy/omega-results'):
+    source = inspect.getsource(closed_measurement_archive)
+    source += '\nprint(json.dumps(verify_all('+repr(str(root))+')))\n'
+    return 'sudo -n python3 -c '+shlex.quote(source)
 
 
 def audit_paths(local, label):
@@ -85,12 +94,7 @@ def main():
             'queues':'sudo -n ss -u -a -m -n -p -e',
         }
         if role=='game':
-            commands['measurement_backups']=(
-                'set -e; count=0; for d in /home/deploy/omega-results/clean-*/original; do '
-                'if test -f "$d/measurement-verified"; then '
-                'printf "BACKUP %s\\n" "$d"; '
-                '(cd "$d/measurement-current"; sha256sum -c ../measurement-sha256.txt); '
-                'count=$((count+1)); fi; done; test "$count" -gt 0')
+            commands['measurement_backups']=measurement_backups_command()
             commands['native_config_backups']=(
                 'cmp /etc/omega-loadtest/arena.json '+str(pathlib.PurePosixPath('/home/deploy/omega-results')/args.namespace/'original/arena.json')+' && '
                 'cmp /etc/systemd/system/omega-loadtest-arena.service.d/measurement.conf '+str(pathlib.PurePosixPath('/home/deploy/omega-results')/args.namespace/'original/measurement.conf'))
