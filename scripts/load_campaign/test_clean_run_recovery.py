@@ -83,8 +83,11 @@ elif name == 'sha256sum':
             if hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()!=digest: sys.exit(1)
     else:
         for path in args: print(hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()+'  '+path)
+elif name == 'python3':
+    if (root/'fail-rename').exists() and 'os.rename(' in args[-1]: sys.exit(1)
+    os.execv(sys.executable,[sys.executable,*args])
 '''
-        for name in ('systemctl', 'cp', 'sha256sum'):
+        for name in ('systemctl', 'cp', 'sha256sum', 'python3'):
             path = self.bin / name
             path.write_text('#!' + sys.executable + '\n' + shim)
             path.chmod(0o755)
@@ -92,6 +95,7 @@ elif name == 'sha256sum':
                        MEASUREMENT_DIRECTORY=str(self.measurement),
                        NATIVE_CONFIG=str(self.config), MEASUREMENT_OVERRIDE=str(self.native_override),
                        RESTORE_READY_ATTEMPTS=4)
+        self.patches = patches
         with mock.patch.multiple(live, create=True, **patches):
             script = live.recovery_script()
         self.script = self.root / 'restore.sh'
@@ -109,8 +113,58 @@ elif name == 'sha256sum':
     def assert_original_recoverable(self):
         backup = self.remote / 'original/measurement-current'
         for name, data in self.original.items():
-            self.assertTrue((self.measurement/name).read_bytes() == data
+            self.assertTrue(((self.measurement/name).exists() and (self.measurement/name).read_bytes() == data)
                             or ((backup/name).exists() and (backup/name).read_bytes() == data), name)
+
+    def use_atomic_preservation(self):
+        with mock.patch.multiple(live, create=True, **self.patches), mock.patch.object(live,'CELL',
+                {'native_diagnostic':'v1','measurement_preservation':'rename-v1'}):
+            self.script.write_text(live.recovery_script())
+
+    def test_atomic_preservation_moves_original_inodes_without_copying_payload(self):
+        self.use_atomic_preservation()
+        original_inodes={name:(self.measurement/name).stat().st_ino for name in self.original}
+        result=self.run_recovery('preserve')
+        self.assertEqual(result.returncode,0,result.stderr)
+        backup=self.remote/'original/measurement-current'
+        self.assertEqual({name:(backup/name).stat().st_ino for name in self.original},original_inodes)
+        self.assertFalse(self.measurement.exists())
+        self.assertEqual(self.current_state()['starts'],[])
+        result=self.run_recovery()
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertTrue(self.measurement.is_dir())
+        self.assert_original_recoverable()
+
+    def test_atomic_preservation_can_resume_after_rename_before_verified_marker(self):
+        self.use_atomic_preservation()
+        backup=self.remote/'original/measurement-current'
+        import hashlib
+        manifest=self.remote/'original/measurement-sha256.txt'
+        manifest.write_text(''.join(hashlib.sha256(data).hexdigest()+'  ./'+name+'\n' for name,data in self.original.items()))
+        self.measurement.rename(backup)
+        result=self.run_recovery()
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assert_original_recoverable()
+
+    def test_atomic_preservation_rejects_conflicting_or_corrupted_partial_backup(self):
+        self.use_atomic_preservation()
+        backup=self.remote/'original/measurement-current';backup.mkdir()
+        (backup/'ticks.csv').write_text('unverified conflict')
+        self.assertNotEqual(self.run_recovery().returncode,0)
+        self.assertEqual(self.current_state()['starts'],[])
+        for name,data in self.original.items():self.assertEqual((self.measurement/name).read_bytes(),data)
+
+    def test_failed_atomic_rename_never_falls_back_to_copy_or_starts_service(self):
+        self.use_atomic_preservation()
+        (self.root/'fail-rename').touch()
+        self.assertNotEqual(self.run_recovery().returncode,0)
+        self.assertEqual(self.current_state()['starts'],[])
+        self.assertFalse((self.remote/'original/measurement-current').exists())
+        for name,data in self.original.items():self.assertEqual((self.measurement/name).read_bytes(),data)
+        (self.root/'fail-rename').unlink()
+        result=self.run_recovery()
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assert_original_recoverable()
 
     def test_persistent_partial_copy_failure_never_restarts_or_loses_evidence(self):
         (self.root/'fail-copy').touch()

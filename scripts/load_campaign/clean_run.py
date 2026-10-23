@@ -80,6 +80,9 @@ def configure_cell(cell):
     for key in ('game_sha256','bot_sha256'):
         if not re.fullmatch(r'[0-9a-f]{64}',cell[key]):
             raise ValueError('Exact binary hashes required')
+    preservation = cell.get('measurement_preservation', 'copy')
+    if preservation not in ('copy', 'rename-v1') or (preservation == 'rename-v1' and cell.get('native_diagnostic') != 'v1'):
+        raise ValueError('Atomic measurement preservation requires an explicit native diagnostic')
     if cell.get('native_diagnostic', False) is not False:
         if (cell.get('native_diagnostic') != 'v1' or cell['namespace'] not in
                 ('clean-idle150-audit-r1-20261022','clean-idle150-audit-r2-20261023')
@@ -180,9 +183,31 @@ def dump(path, value):
 def recovery_script():
     """Share preservation between setup, teardown and the autonomous restore timer.
 
-    A failed copy leaves the service stopped and its source evidence intact. The
-    next attempt completes and verifies that backup before permitting any start.
+    A failed preservation leaves the service stopped and its evidence intact.
+    Opt-in same-filesystem rename retains original inodes without another copy.
     """
+    atomic = bool(CELL and CELL.get('measurement_preservation') == 'rename-v1')
+    preserve = f'''if ! test -e "$backup/measurement-current"; then
+    (cd "$measurement"; find . -type f -exec sha256sum {{}} +) > "$backup/measurement-sha256.txt.partial"
+    mv "$backup/measurement-sha256.txt.partial" "$backup/measurement-sha256.txt"
+    python3 -c {shlex.quote('import os; os.rename('+repr(MEASUREMENT_DIRECTORY)+','+repr(REMOTE+'/original/measurement-current')+')')}
+fi
+test ! -e "$measurement"
+test -f "$backup/measurement-sha256.txt"
+''' if atomic else '''mkdir -p "$backup/measurement-current"
+    (cd "$measurement"; find . -type f -exec sha256sum {} +) > "$backup/measurement-sha256.txt.partial"
+    mv "$backup/measurement-sha256.txt.partial" "$backup/measurement-sha256.txt"
+    cp -a --reflink=auto "$measurement/." "$backup/measurement-current/"
+'''
+    recreate = ''
+    if atomic:
+        code = ('import os,pathlib,stat; p=pathlib.Path('+repr(MEASUREMENT_DIRECTORY)+'); '
+                's=os.stat('+repr(REMOTE+'/original/measurement-current')+'); '
+                'assert not p.is_symlink(); '
+                'created=not p.exists(); p.mkdir(exist_ok=True); '
+                'os.chown(p,s.st_uid,s.st_gid) if created else None; '
+                'os.chmod(p,stat.S_IMODE(s.st_mode)) if created else None')
+        recreate = 'step=recreate-measurement-directory\npython3 -c '+shlex.quote(code)+'\n'
     return f'''#!/bin/sh
 set -eu
 step=initialization
@@ -196,10 +221,7 @@ step=stop-service
 systemctl stop "$service"
 step=preserve-measurement
 if ! test -f "$backup/measurement-verified"; then
-    mkdir -p "$backup/measurement-current"
-    (cd "$measurement"; find . -type f -exec sha256sum {{}} +) > "$backup/measurement-sha256.txt.partial"
-    mv "$backup/measurement-sha256.txt.partial" "$backup/measurement-sha256.txt"
-    cp -a --reflink=auto "$measurement/." "$backup/measurement-current/"
+    {preserve}
     (cd "$backup/measurement-current"; sha256sum -c ../measurement-sha256.txt)
     cp -a {shlex.quote(NATIVE_CONFIG)} "$backup/arena.json"
     cp -a {shlex.quote(MEASUREMENT_OVERRIDE)} "$backup/measurement.conf"
@@ -207,6 +229,7 @@ if ! test -f "$backup/measurement-verified"; then
 fi
 (cd "$backup/measurement-current"; sha256sum -c ../measurement-sha256.txt)
 if test "${{1:-restore}}" = preserve; then exit 0; fi
+{recreate}
 step=retire-override
 if test -f "$override"; then
     mv "$override" {shlex.quote(REMOTE + '/retired-runtime-override.conf')}
@@ -301,6 +324,23 @@ def collect(role):
             output.write(json.dumps(sample) + '\n')
             output.flush()
             time.sleep(max(0, 1 - (time.monotonic() - before)))
+
+
+def bot_runtime_problem(observed, window, now_ns):
+    """Check bot status separately from the asynchronous terminal guard result."""
+    if observed.get('guard'):
+        return None
+    terminal = window is not None and now_ns >= window['end']
+    if terminal and now_ns >= window['end'] + 10_000_000_000:
+        return 'bot-terminal-result-timeout'
+    if observed.get('phase') and not terminal and not observed.get('bot_identity'):
+        return 'bot-runtime-identity-missing'
+    limits = re.findall(r'omega-load-test[^\n]*\n\s*skmem:\(r\d+,rb(\d+),t\d+,tb(\d+)', observed['sockets'])
+    if observed.get('phase') and not terminal and len(limits) != POPULATION:
+        return 'bot-socket-observations-incomplete'
+    if limits and any((int(rb),int(tb)) != (212992,212992) for rb,tb in limits):
+        return 'bot-effective-buffers-differ'
+    return None
 
 
 def swarm():
@@ -776,18 +816,12 @@ def controller():
                     manifest['controller_abort'] = role+'-mapping-not-unique'
                     break
             if manifest.get('controller_abort'): break
-            if b.get('phase') and not b.get('guard') and not b.get('bot_identity'):
-                manifest['controller_abort']='bot-runtime-identity-missing'
-                break
             if b.get('bot_identity'):
                 validate_bot_identity(b['bot_identity'], manifest.get('bot_identity'))
                 manifest['bot_identity']=b['bot_identity']
-            bot_limits = re.findall(r'omega-load-test[^\n]*\n\s*skmem:\(r\d+,rb(\d+),t\d+,tb(\d+)', b['sockets'])
-            if b.get('phase') and not b.get('guard') and len(bot_limits) != POPULATION:
-                manifest['controller_abort']='bot-socket-observations-incomplete'
-                break
-            if bot_limits and any((int(rb),int(tb)) != (212992,212992) for rb,tb in bot_limits):
-                manifest['controller_abort']='bot-effective-buffers-differ'
+            problem = bot_runtime_problem(b, manifest.get('window'), time.time_ns())
+            if problem:
+                manifest['controller_abort']=problem
                 break
             if b.get('guard'):
                 manifest['guard_result'] = b['guard']
