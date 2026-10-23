@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exact R4/R5 independent read-only release audits after automatic restoration."""
+"""Exact diagnostic/ordinary read-only release audits after automatic restoration."""
 import hashlib
 import inspect
 import json
@@ -43,7 +43,7 @@ def main(namespace=r3.NAMESPACE):
     ns=namespace;p=run.ROOT/'deployment/hetzner/results'/ns;pre=p.with_name(ns+'-preflight');b=p.with_name(ns+'-build')
     assert (p/'cleanup.json').exists()
     proofs={f.parent.name.removesuffix('-build'):json.loads(f.read_text()) for f in p.parent.glob('clean-*-build/build-proof.json')}
-    round_name={r3.NAMESPACES[0]:'r4',r3.NAMESPACES[1]:'r5',r3.NAMESPACES[2]:'ordinary-r2'}[ns]
+    round_name=r3.ROUND_NAMES[ns]
     for preservation,restoration,label in (('independent','final',round_name+'-release-a'),(round_name+'-independent-recheck',round_name+'-final-recheck',round_name+'-release-b')):
         started=time.time_ns();sys.argv=['audit','--namespace',ns,'--verification-label',preservation,'--restoration-label',restoration]
         result=audit.main();journal=p/(preservation+'-audit-commands.ndjson');extra={}
@@ -115,7 +115,7 @@ def idle_release(namespace=r3.NAMESPACE):
     P=run.ROOT/'deployment/hetzner/results'/ns;PRE=P.with_name(ns+'-preflight');B=P.with_name(ns+'-build')
     assert not (P/'manifest.json').exists() and not (P/'cleanup.json').exists()
     proofs={f.parent.name.removesuffix('-build'):json.loads(f.read_text()) for f in P.parent.glob('clean-*-build/build-proof.json')}
-    round_name={r3.NAMESPACES[0]:'r4',r3.NAMESPACES[1]:'r5',r3.NAMESPACES[2]:'ordinary-r2'}[ns]
+    round_name=r3.ROUND_NAMES[ns]
     for label in (round_name+'-idle-release-a',round_name+'-idle-release-b'):
      started=time.time_ns();primary=idle.main(label,ns);journal=PRE/(label+'-idle-audit-commands.ndjson');extra={}
      for role in ('game','bots'):
@@ -127,8 +127,14 @@ def idle_release(namespace=r3.NAMESPACE):
        row=proof[role]
        if row.get('checkout_mode')=='rust-only-cone':
         sparse[name]=json.loads(audit.bounded_ssh(role,build.sparse_source_proof_command(row['path'],row['revision']),journal))
-      paths=[proofs[ns][role]['path']+'/rust/target/release/'+n for n in ('omega-server','omega-load-test')]
-      elf=json.loads(audit.bounded_ssh(role,r3.elf_identity_command(paths),journal))
+      # A first-budget abort has no new checkout. Prove every existing real
+      # executable and dependency in either case, without requiring staging.
+      elf={};dependencies={}
+      for name,proof in proofs.items():
+       paths=[proof[role]['path']+'/rust/target/release/'+n for n in ('omega-server','omega-load-test')]
+       elf[name]=json.loads(audit.bounded_ssh(role,r3.elf_identity_command(paths,native_cargo_artifact=name!=ns),journal))
+       dependencies[name]=audit.bounded_ssh(role,'ldd '+paths[0]+'; ldd '+paths[1],journal)
+       assert 'not found' not in dependencies[name]
       recoveries={}
       for old in sorted(P.parent.glob('clean-*/restore.sh')):
        remote='/home/deploy/omega-results/'+old.parent.name+'/restore.sh'
@@ -136,7 +142,7 @@ def idle_release(namespace=r3.NAMESPACE):
        if role=='game':assert digest.split()[0]==hashlib.sha256(old.read_bytes()).hexdigest(),remote
        recoveries[old.parent.name]=digest.split()[0]
       details=dict(all_prior_original_files_unchanged=True,original_file_count=len(before),actual_sparse_blobs=sparse,
-                   fresh_binary_elf_and_one_link_proofs=elf,frozen_recoveries=recoveries)
+                   fresh_binary_elf_and_one_link_proofs=elf,dependencies=dependencies,frozen_recoveries=recoveries)
       if role=='game':
        old=json.loads((B/'storage-before-staging.json').read_text())['measurement']['measurement']
        details['original_measurement']=json.loads(audit.bounded_ssh(role,current_measurement_command(old),journal))

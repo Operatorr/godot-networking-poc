@@ -63,11 +63,15 @@ OLD_GAME = '/home/deploy/omega-udp-buffer-f1cc5d6/rust/target/release/omega-serv
 OLD_GAME_SHA = 'dd0bd322940ac9cff94e8e5191c0a4a22606634f647dfffd8953bf47570d1b56'
 COMPARATOR_CONFIG_SHA = '642b257dc4248a24286132facbca1c9994dfef69b7d380c9da38caff08819183'
 ORDINARY_IDLE150_R2 = 'clean-idle150-r2-20261023'
+ORDINARY_SPECS = {
+    ORDINARY_IDLE150_R2: (150, 'idle', 'idle150-compact-v1'),
+    'clean-movement50-r1-20261023': (50, 'movement', 'movement50-compact-v1'),
+}
 
 
 def compact_ordinary():
-    return bool(CELL and NAMESPACE == ORDINARY_IDLE150_R2 and
-                CELL.get('evidence_profile') == 'idle150-compact-v1')
+    return bool(CELL and NAMESPACE in ORDINARY_SPECS and
+                CELL.get('evidence_profile') == ORDINARY_SPECS[NAMESPACE][2])
 
 
 def configure_cell(cell):
@@ -87,19 +91,20 @@ def configure_cell(cell):
         if not re.fullmatch(r'[0-9a-f]{64}',cell[key]):
             raise ValueError('Exact binary hashes required')
     preservation = cell.get('measurement_preservation', 'copy')
-    ordinary = cell['namespace'] == ORDINARY_IDLE150_R2
+    ordinary = cell['namespace'] in ORDINARY_SPECS
     if ordinary:
+        population, behavior, profile = ORDINARY_SPECS[cell['namespace']]
         if (cell.get('native_diagnostic', False) is not False or
-                cell.get('evidence_profile') != 'idle150-compact-v1' or
+                cell.get('evidence_profile') != profile or
                 cell['revision'] != 'a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf' or
                 cell['game_sha256'] != 'de92e120bb863948fc4c55fe525d200ac6ebc0d0d214d453ed3efeab159208db' or
                 cell['bot_sha256'] != '56c2139ebf042680febccca48c2b5b3d036bce2eadc4ea385f6f52ae5812ed67' or
-                cell['population'] != 150 or cell['behavior'] != 'idle' or preservation != 'rename-v1' or
+                cell['population'] != population or cell['behavior'] != behavior or preservation != 'rename-v1' or
                 cell.get('native_build_origin') != 'bots' or
                 cell.get('game_artifact_mode') != 'verified-existing-build-copy'):
-            raise ValueError('Ordinary R2 requires the exact pinned compact Idle150 condition with native flag absent')
+            raise ValueError('Ordinary cell requires its exact pinned compact condition with native flag absent')
     elif cell.get('evidence_profile') is not None:
-        raise ValueError('Compact ordinary profile is restricted to exact Idle150 R2')
+        raise ValueError('Compact ordinary profile is restricted to exact authorized ordinary cells')
     if preservation not in ('copy', 'rename-v1') or (preservation == 'rename-v1' and cell.get('native_diagnostic') != 'v1' and not ordinary):
         raise ValueError('Atomic measurement preservation requires an explicit native diagnostic')
     if cell.get('native_diagnostic', False) is not False:
@@ -170,10 +175,10 @@ def load_cell(namespace, population=150, behavior='strategy'):
             raise RuntimeError('Build proof does not belong to this fresh namespace')
         configure_cell(dict(namespace=namespace,population=population,behavior=behavior,
                             revision=game['revision'],game_sha256=game['sha256'],bot_sha256=game['bot_sha256'],
-                            **(dict(evidence_profile='idle150-compact-v1',measurement_preservation='rename-v1',
-                                    native_diagnostic=False) if namespace == ORDINARY_IDLE150_R2 else {}),
+                            **(dict(evidence_profile=ORDINARY_SPECS[namespace][2],measurement_preservation='rename-v1',
+                                    native_diagnostic=False) if namespace in ORDINARY_SPECS else {}),
                             **({k:game[k] for k in ('native_build_origin','game_artifact_mode')}
-                               if namespace in ('clean-idle150-audit-r3-20261023','clean-idle150-audit-r4-20261023','clean-idle150-audit-r5-20261023',ORDINARY_IDLE150_R2) else {})))
+                               if namespace in ('clean-idle150-audit-r3-20261023','clean-idle150-audit-r4-20261023','clean-idle150-audit-r5-20261023') or namespace in ORDINARY_SPECS else {})))
 
 
 def make_config(comparator_bytes):

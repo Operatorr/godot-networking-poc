@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exact R4/R5 verified R3 build copies and additive storage proof. No compilation/workloads."""
+"""Exact diagnostic/ordinary verified R3 copies and storage proof. No compilation/workloads."""
 import concurrent.futures
 import hashlib
 import json
@@ -14,7 +14,10 @@ import native_diagnostic_storage as storage
 import run
 
 NAMESPACE = 'clean-idle150-audit-r4-20261023'
-NAMESPACES = (NAMESPACE, 'clean-idle150-audit-r5-20261023', 'clean-idle150-r2-20261023')
+ROUND_NAMES = {NAMESPACE: 'r4', 'clean-idle150-audit-r5-20261023': 'r5',
+               'clean-idle150-r2-20261023': 'ordinary-r2',
+               'clean-movement50-r1-20261023': 'ordinary-movement50-r1'}
+NAMESPACES = tuple(ROUND_NAMES)
 REUSE_NAMESPACE = 'clean-idle150-audit-r3-20261023'
 BOT_SHA = '56c2139ebf042680febccca48c2b5b3d036bce2eadc4ea385f6f52ae5812ed67'
 REVISION = 'a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf'
@@ -83,7 +86,7 @@ print(json.dumps(result))
 
 
 def prepare(namespace=NAMESPACE):
-    if namespace not in NAMESPACES:raise ValueError("Only exact R4/R5 namespaces")
+    if namespace not in NAMESPACES:raise ValueError("Only exact authorized reuse namespaces")
     connection_options();os.umask(0o077)
     pre=run.ROOT/'deployment/hetzner/results'/(namespace+'-preflight')
     directory=pre.with_name(namespace+'-build');directory.mkdir(exist_ok=False)
@@ -192,7 +195,7 @@ def prepare(namespace=NAMESPACE):
 
 def validate_reuse(namespace,revision,reuse_namespace,proof):
     if namespace not in NAMESPACES or revision!=REVISION or reuse_namespace!=REUSE_NAMESPACE:
-        raise ValueError('Only exact R4/R5 from proven R3 source and binaries')
+        raise ValueError('Only exact authorized copies from proven R3 source and binaries')
     for role in ('game','bots'):
         row=proof[role]
         if (row['revision']!=REVISION or row['path']!='/home/deploy/omega-'+REUSE_NAMESPACE or
