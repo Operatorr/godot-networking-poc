@@ -14,7 +14,7 @@ import native_diagnostic_storage as storage
 import run
 
 NAMESPACE = 'clean-idle150-audit-r4-20261023'
-NAMESPACES = (NAMESPACE, 'clean-idle150-audit-r5-20261023')
+NAMESPACES = (NAMESPACE, 'clean-idle150-audit-r5-20261023', 'clean-idle150-r2-20261023')
 REUSE_NAMESPACE = 'clean-idle150-audit-r3-20261023'
 BOT_SHA = '56c2139ebf042680febccca48c2b5b3d036bce2eadc4ea385f6f52ae5812ed67'
 REVISION = 'a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf'

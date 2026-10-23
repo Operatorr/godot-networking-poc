@@ -43,7 +43,7 @@ def main(namespace=r3.NAMESPACE):
     ns=namespace;p=run.ROOT/'deployment/hetzner/results'/ns;pre=p.with_name(ns+'-preflight');b=p.with_name(ns+'-build')
     assert (p/'cleanup.json').exists()
     proofs={f.parent.name.removesuffix('-build'):json.loads(f.read_text()) for f in p.parent.glob('clean-*-build/build-proof.json')}
-    round_name='r5' if ns==r3.NAMESPACES[1] else 'r4'
+    round_name={r3.NAMESPACES[0]:'r4',r3.NAMESPACES[1]:'r5',r3.NAMESPACES[2]:'ordinary-r2'}[ns]
     for preservation,restoration,label in (('independent','final',round_name+'-release-a'),(round_name+'-independent-recheck',round_name+'-final-recheck',round_name+'-release-b')):
         started=time.time_ns();sys.argv=['audit','--namespace',ns,'--verification-label',preservation,'--restoration-label',restoration]
         result=audit.main();journal=p/(preservation+'-audit-commands.ndjson');extra={}
@@ -115,7 +115,7 @@ def idle_release(namespace=r3.NAMESPACE):
     P=run.ROOT/'deployment/hetzner/results'/ns;PRE=P.with_name(ns+'-preflight');B=P.with_name(ns+'-build')
     assert not (P/'manifest.json').exists() and not (P/'cleanup.json').exists()
     proofs={f.parent.name.removesuffix('-build'):json.loads(f.read_text()) for f in P.parent.glob('clean-*-build/build-proof.json')}
-    round_name='r5' if ns==r3.NAMESPACES[1] else 'r4'
+    round_name={r3.NAMESPACES[0]:'r4',r3.NAMESPACES[1]:'r5',r3.NAMESPACES[2]:'ordinary-r2'}[ns]
     for label in (round_name+'-idle-release-a',round_name+'-idle-release-b'):
      started=time.time_ns();primary=idle.main(label,ns);journal=PRE/(label+'-idle-audit-commands.ndjson');extra={}
      for role in ('game','bots'):

@@ -18,7 +18,7 @@ NS='clean-idle150-audit-r1-20261022'
 
 
 def main(label, namespace=NS):
-    if namespace not in (NS,'clean-idle150-audit-r2-20261023','clean-idle150-audit-r3-20261023','clean-idle150-audit-r4-20261023','clean-idle150-audit-r5-20261023'):
+    if namespace not in (NS,'clean-idle150-audit-r2-20261023','clean-idle150-audit-r3-20261023','clean-idle150-audit-r4-20261023','clean-idle150-audit-r5-20261023','clean-idle150-r2-20261023'):
         raise ValueError('Only the exact authorized unlaunched diagnostic namespaces')
     if not re.fullmatch(r'[a-z0-9-]{1,40}',label):raise ValueError('Invalid exclusive audit label')
     p=run.ROOT/'deployment/hetzner/results'/namespace

@@ -62,6 +62,12 @@ EXPECTED_CANDIDATE = ''
 OLD_GAME = '/home/deploy/omega-udp-buffer-f1cc5d6/rust/target/release/omega-server'
 OLD_GAME_SHA = 'dd0bd322940ac9cff94e8e5191c0a4a22606634f647dfffd8953bf47570d1b56'
 COMPARATOR_CONFIG_SHA = '642b257dc4248a24286132facbca1c9994dfef69b7d380c9da38caff08819183'
+ORDINARY_IDLE150_R2 = 'clean-idle150-r2-20261023'
+
+
+def compact_ordinary():
+    return bool(CELL and NAMESPACE == ORDINARY_IDLE150_R2 and
+                CELL.get('evidence_profile') == 'idle150-compact-v1')
 
 
 def configure_cell(cell):
@@ -81,7 +87,20 @@ def configure_cell(cell):
         if not re.fullmatch(r'[0-9a-f]{64}',cell[key]):
             raise ValueError('Exact binary hashes required')
     preservation = cell.get('measurement_preservation', 'copy')
-    if preservation not in ('copy', 'rename-v1') or (preservation == 'rename-v1' and cell.get('native_diagnostic') != 'v1'):
+    ordinary = cell['namespace'] == ORDINARY_IDLE150_R2
+    if ordinary:
+        if (cell.get('native_diagnostic', False) is not False or
+                cell.get('evidence_profile') != 'idle150-compact-v1' or
+                cell['revision'] != 'a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf' or
+                cell['game_sha256'] != 'de92e120bb863948fc4c55fe525d200ac6ebc0d0d214d453ed3efeab159208db' or
+                cell['bot_sha256'] != '56c2139ebf042680febccca48c2b5b3d036bce2eadc4ea385f6f52ae5812ed67' or
+                cell['population'] != 150 or cell['behavior'] != 'idle' or preservation != 'rename-v1' or
+                cell.get('native_build_origin') != 'bots' or
+                cell.get('game_artifact_mode') != 'verified-existing-build-copy'):
+            raise ValueError('Ordinary R2 requires the exact pinned compact Idle150 condition with native flag absent')
+    elif cell.get('evidence_profile') is not None:
+        raise ValueError('Compact ordinary profile is restricted to exact Idle150 R2')
+    if preservation not in ('copy', 'rename-v1') or (preservation == 'rename-v1' and cell.get('native_diagnostic') != 'v1' and not ordinary):
         raise ValueError('Atomic measurement preservation requires an explicit native diagnostic')
     if cell.get('native_diagnostic', False) is not False:
         if (cell.get('native_diagnostic') != 'v1' or cell['namespace'] not in
@@ -117,7 +136,7 @@ def measurement_limit_bytes():
     # A stricter resource abort for this opt-in diagnostic, never a validity pass.
     # Separate additive storage preflight covers the measured original backup,
     # staging, journal, role-only archive and margin above the unchanged guard.
-    if CELL.get('native_diagnostic') == 'v1' and NAMESPACE in ('clean-idle150-audit-r4-20261023','clean-idle150-audit-r5-20261023'):
+    if (CELL.get('native_diagnostic') == 'v1' and NAMESPACE in ('clean-idle150-audit-r4-20261023','clean-idle150-audit-r5-20261023')) or compact_ordinary():
         return 16*1024**2
     if CELL.get('native_diagnostic') == 'v1' and NAMESPACE == 'clean-idle150-audit-r3-20261023':
         return 32*1024**2
@@ -151,8 +170,10 @@ def load_cell(namespace, population=150, behavior='strategy'):
             raise RuntimeError('Build proof does not belong to this fresh namespace')
         configure_cell(dict(namespace=namespace,population=population,behavior=behavior,
                             revision=game['revision'],game_sha256=game['sha256'],bot_sha256=game['bot_sha256'],
+                            **(dict(evidence_profile='idle150-compact-v1',measurement_preservation='rename-v1',
+                                    native_diagnostic=False) if namespace == ORDINARY_IDLE150_R2 else {}),
                             **({k:game[k] for k in ('native_build_origin','game_artifact_mode')}
-                               if namespace in ('clean-idle150-audit-r3-20261023','clean-idle150-audit-r4-20261023','clean-idle150-audit-r5-20261023') else {})))
+                               if namespace in ('clean-idle150-audit-r3-20261023','clean-idle150-audit-r4-20261023','clean-idle150-audit-r5-20261023',ORDINARY_IDLE150_R2) else {})))
 
 
 def make_config(comparator_bytes):
@@ -384,7 +405,11 @@ def swarm():
         dump(directory / 'workload-start.json', {'pid': child.pid, 'utc_ns': time.time_ns(), 'runtime_sha256': hashlib.sha256(pathlib.Path(f'/proc/{child.pid}/exe').read_bytes()).hexdigest(), 'identity': identity(child.pid)})
         try:
             validate_bot_identity(identity(child.pid))
-            validate_diagnostic_runtime(child.pid)
+            environment_proof = validate_diagnostic_runtime(child.pid)
+            if compact_ordinary():
+                dump(directory / 'ordinary-runtime-environment.json',
+                     {'pid':child.pid,'utc_ns':time.time_ns(),'native_flag_absent':True,
+                      'observed_native_environment':environment_proof,'proof_source':'actual /proc/PID/environ'})
             while child.poll() is None:
                 log = (directory / 'bot.log').read_text(errors='replace')
                 hit = next((line for line in log.splitlines() if failure.search(line)), None)
@@ -471,6 +496,8 @@ def status(role):
             result['bot_identity']=identity(start['pid'])
             result['native_diagnostic_environment']=validate_diagnostic_runtime(start['pid'])
         row=tail_json(d/'bots.ndjson')
+        if compact_ordinary():
+            result['ordinary_measurement']=validate_ordinary_measurement(d)
         result['bots_stamp']=row['utc_ns'] if row else None
         result['sockets']=command(['sudo','-n','ss','-u','-a','-m','-n','-p','-e'])
     print(json.dumps(result))
@@ -494,6 +521,22 @@ def diagnostic_environment(spec):
     if spec.get('diagnostic_environment', {}) != expected:
         raise RuntimeError('Native diagnostic dispatch/environment mismatch')
     return expected
+
+
+def validate_ordinary_measurement(directory):
+    """Bounded live guard; full ordinary rows are independently checked offline."""
+    traces=[p.name for p in directory.iterdir() if p.name.startswith('native-')]
+    if traces:
+        raise RuntimeError('Native trace present in ordinary measurement')
+    row=tail_json(directory/'bots.ndjson')
+    def native_fields(value):
+        if isinstance(value, dict):
+            return any(k.startswith('native_diagnostic') or native_fields(v) for k,v in value.items())
+        return isinstance(value,list) and any(native_fields(v) for v in value)
+    if native_fields(row):
+        raise RuntimeError('Native diagnostic fields present in ordinary measurement')
+    return {'native_trace_files_absent':True,'native_fields_absent':True,
+            'ordinary_row_observed':row is not None}
 
 
 def validate_diagnostic_runtime(pid):
@@ -780,7 +823,7 @@ def controller():
         # Freeze and validate the exact recovery script before any remote staging.
         (local/'restore.sh').write_text(recovery_script())
         subprocess.run(['/bin/sh','-n',str(local/'restore.sh')],check=True)
-    if CELL.get('native_diagnostic') == 'v1' and NAMESPACE in ('clean-idle150-audit-r4-20261023','clean-idle150-audit-r5-20261023'):
+    if (CELL.get('native_diagnostic') == 'v1' and NAMESPACE in ('clean-idle150-audit-r4-20261023','clean-idle150-audit-r5-20261023')) or compact_ordinary():
         import native_diagnostic_r4 as r4
         r4.check(ssh,16*1024**2,local/'storage-preflight.json')
         (local/'restore.sh').write_text(recovery_script())
