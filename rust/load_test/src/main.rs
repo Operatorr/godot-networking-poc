@@ -578,6 +578,11 @@ fn main() {
     for b in &mut bots {
         b.force_close();
     }
+    if let Some(recorder) = &mut recorder {
+        // Keep `end` as the measurement endpoint. This separate terminal row closes
+        // pending-input retirement and transport counters across disconnect/reset.
+        recorder.sample(&bots, now() - run_started, "drained");
+    }
 
     let elapsed = now() - run_started;
     let effective_duration = if duration > 0 && !stop.load(Ordering::SeqCst) {

@@ -358,3 +358,26 @@ fn actual_peer_whitelist_is_numeric_and_fails_closed_on_format_changes() {
         assert!(whitelist(&changed).is_none());
     }
 }
+
+#[test]
+#[ignore = "manual timing probe; no timing threshold in correctness checks"]
+fn profile_actual_peer_numeric_observer() {
+    let host = Host::new(
+        std::net::UdpSocket::bind("127.0.0.1:0").unwrap(),
+        HostSettings {
+            peer_limit: 1,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let peer = host.peer(PeerID(0));
+    let count = 100_000;
+    let started = std::time::Instant::now();
+    for _ in 0..count {
+        std::hint::black_box(native_diagnostic::peer_state(std::hint::black_box(peer)).unwrap());
+    }
+    println!(
+        "numeric_peer_observer calls={count} ns_per_call={}",
+        started.elapsed().as_nanos() / count
+    );
+}

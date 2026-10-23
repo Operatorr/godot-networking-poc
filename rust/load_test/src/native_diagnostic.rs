@@ -40,20 +40,27 @@ pub const FIELDS: [&str; 12] = [
 /// Pointer-valued queue fields are NOT queue lengths; they are never extracted.
 pub fn whitelist(debug: &str) -> Option<[u32; 12]> {
     let mut out = [0; 12];
-    for (i, field) in FIELDS.iter().enumerate() {
-        let key = format!("{field}: ");
-        let mut values = debug.match_indices(&key);
-        let (at, _) = values.next()?;
-        if values.next().is_some() || (at > 0 && !debug[..at].ends_with([',', ' '])) {
+    let mut seen = [false; 12];
+    // One pass over the transient Debug string. Repeated substring scans and
+    // per-field key allocations were a significant part of observer CPU cost.
+    for item in debug.split([',', '{', '}']) {
+        let Some((key, value)) = item.trim().split_once(": ") else {
+            continue;
+        };
+        let Some(i) = FIELDS.iter().position(|field| *field == key) else {
+            continue;
+        };
+        if seen[i] {
             return None;
         }
-        let value = debug[at + key.len()..].split([',', '}']).next()?.trim();
+        seen[i] = true;
+        let value = value.trim();
         if value.is_empty() || !value.bytes().all(|b| b.is_ascii_digit()) {
             return None;
         }
         out[i] = value.parse().ok()?;
     }
-    if out[0] > 32 || out[1] >= 32 || out[2] > 32 {
+    if !seen.iter().all(|v| *v) || out[0] > 32 || out[1] >= 32 || out[2] > 32 {
         return None;
     }
     Some(out)
