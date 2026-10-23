@@ -11,6 +11,9 @@ import native_diagnostic_storage as old
 import clean_run_build as build
 
 class R3Tests(unittest.TestCase):
+    @unittest.skipUnless((pathlib.Path(__file__).resolve().parents[2]/'deployment/hetzner/results'/
+                         (r3.NAMESPACE+'-build')/'native-transit/omega-load-test').is_file(),
+                         'Manual real-artifact regression requires retained private R3 transit')
     def test_direct_elf_proof_uses_actual_new_native_binaries_without_file_utility(self):
         root=pathlib.Path(__file__).resolve().parents[2]
         transit=root/'deployment/hetzner/results'/ (r3.NAMESPACE+'-build')/'native-transit'
@@ -78,6 +81,9 @@ class R3Tests(unittest.TestCase):
 
 
 class RealRecorderBoundaryTests(unittest.TestCase):
+    @unittest.skipUnless(all((pathlib.Path(__file__).resolve().parents[2]/'rust/target/debug'/name).is_file()
+                             for name in ('omega-server','omega-load-test')),
+                         'Real recorder regression requires built local CLI executables')
     def test_actual_cli_drained_row_does_not_replace_measurement_endpoints(self):
         import os,socket,time
         import clean_run_scoring as scoring

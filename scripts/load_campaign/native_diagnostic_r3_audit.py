@@ -53,6 +53,12 @@ def main():
             originals=json.loads(audit.bounded_ssh(role,'sudo -n python3 -c '+shlex.quote(ORIGINALS_CODE),journal))
             previous=json.loads((b/(role+'-originals-before.json')).read_text())
             assert all(originals.get(k)==v for k,v in previous.items()),'Historical original backup damaged'
+            backup='/home/deploy/omega-results/'+ns+'/original/'
+            if role=='game':
+                assert originals[backup+'measurement-sha256.txt']['sha256']==hashlib.sha256((p/'preserved-measurement-sha256.txt').read_bytes()).hexdigest()
+                assert originals[backup+'measurement-verified']['sha256']==hashlib.sha256(b'').hexdigest()
+                restore_sha=audit.bounded_ssh(role,'sha256sum /home/deploy/omega-results/'+ns+'/restore.sh',journal).split()[0]
+                assert restore_sha==hashlib.sha256((p/'restore.sh').read_bytes()).hexdigest()
             baseline=json.loads((b/(role+'-before.json')).read_text())
             raw={k:audit.bounded_ssh(role,c,journal) for k,c in dict(
                 maintenance='systemctl show apt-daily.timer apt-daily-upgrade.timer apt-daily.service apt-daily-upgrade.service -p Id -p ActiveState -p UnitFileState',
@@ -77,7 +83,9 @@ print(json.dumps(dict(same_filesystem_atomic_rename_proven=True,original_inodes_
                 raw['rename']=json.loads(audit.bounded_ssh(role,'sudo -n python3 -c '+shlex.quote(code),journal))
                 env=audit.bounded_ssh(role,'systemctl show omega-loadtest-arena.service -p Environment --value',journal)
                 assert 'OMEGA_NATIVE_DIAG=' not in env and 'OMEGA_AOI_AUDIT=' not in env
-            extra[role]=dict(all_candidates=candidates,sparse=sparse,prior_original_file_count=len(previous),all_prior_original_files_unchanged=True,raw=raw)
+            extra[role]=dict(all_candidates=candidates,sparse=sparse,prior_original_file_count=len(previous),all_prior_original_files_unchanged=True,
+                frozen_current_backup_manifest_and_marker_verified=True if role=='game' else None,
+                frozen_recovery_sha256=restore_sha if role=='game' else None,raw=raw)
         summary=dict(label=label,started_utc_ns=started,ended_utc_ns=time.time_ns(),checks_pass=all(all(v['checks'].values()) for v in result.values()),
             restoration_label=restoration,preservation_label=preservation,bounded_command_count=len(journal.read_text().splitlines()),command_timeout_s=90,
             commands_sha256=hashlib.sha256(journal.read_bytes()).hexdigest(),extra=extra)
