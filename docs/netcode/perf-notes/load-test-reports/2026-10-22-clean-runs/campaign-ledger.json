@@ -93,8 +93,8 @@
     {
       "behavior": "movement",
       "population": 100,
-      "namespace": "clean-movement100-r1-20261022",
-      "status": "pending",
+      "namespace": "clean-movement100-r1-20261023",
+      "status": "in_progress",
       "purpose": "passing ladder rerun"
     },
     {
@@ -147,7 +147,7 @@
       "purpose": "overload ramp and measured window if ramp completes"
     }
   ],
-  "active_task_id": null,
+  "active_task_id": "node:delegated-task:command%3Amcp%3A4e020f92-bc95-449a-b76e-c2bf31fa8660%3Adelegate-task%3Aissue39-clean-movement100-r1-20261023",
   "final_clean_campaign_certificate": false,
   "legacy_product_targets": {
     "bandwidth_kib_per_s": 5,
@@ -208,5 +208,12 @@
   "latest_storage_recovery_report": "storage-recovery-r2-20261023.md",
   "next_observation_namespace": "clean-movement100-r1-20261023",
   "classification_proposal": "CLASSIFICATION-PROPOSAL.md",
-  "classification_decision": "pending_user_interpretation"
+  "classification_decision": "pending_user_interpretation",
+  "ordinary_observation_build": {
+    "revision": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
+    "game_sha256": "de92e120bb863948fc4c55fe525d200ac6ebc0d0d214d453ed3efeab159208db",
+    "bot_sha256": "56c2139ebf042680febccca48c2b5b3d036bce2eadc4ea385f6f52ae5812ed67",
+    "native_diagnostic": false,
+    "note": "Game binary unchanged; bot includes post-drain measurement and disabled opt-in native observer. Earlier fixed-candidate observations retain their original identities."
+  }
 }
