@@ -68,6 +68,7 @@ ORDINARY_SPECS = {
     ORDINARY_IDLE150_R2: (150, 'idle', 'idle150-compact-v1'),
     'clean-movement50-r1-20261023': (50, 'movement', 'movement50-compact-v1'),
     'clean-movement100-r1-20261023': (100, 'movement', 'movement100-compact-v1'),
+    'clean-movement150-r1-20261023': (150, 'movement', 'movement150-compact-v1'),
 }
 
 
@@ -96,6 +97,8 @@ def configure_cell(cell):
             raise ValueError('Exact binary hashes required')
     preservation = cell.get('measurement_preservation', 'copy')
     ordinary = cell['namespace'] in ORDINARY_SPECS
+    if cell['namespace'] == 'clean-movement150-r1-20261023' and cell.get('classification_version') != 'offered-load-v2':
+        raise ValueError('Movement150 requires explicit offered-load-v2 policy')
     if ordinary:
         population, behavior, profile = ORDINARY_SPECS[cell['namespace']]
         if (cell.get('native_diagnostic', False) is not False or
@@ -179,6 +182,7 @@ def load_cell(namespace, population=150, behavior='strategy'):
             raise RuntimeError('Build proof does not belong to this fresh namespace')
         configure_cell(dict(namespace=namespace,population=population,behavior=behavior,
                             revision=game['revision'],game_sha256=game['sha256'],bot_sha256=game['bot_sha256'],
+                            **(dict(classification_version='offered-load-v2') if namespace == 'clean-movement150-r1-20261023' else {}),
                             **(dict(evidence_profile=ORDINARY_SPECS[namespace][2],measurement_preservation='rename-v1',
                                     native_diagnostic=False) if namespace in ORDINARY_SPECS else {}),
                             **({k:game[k] for k in ('native_build_origin','game_artifact_mode')}
