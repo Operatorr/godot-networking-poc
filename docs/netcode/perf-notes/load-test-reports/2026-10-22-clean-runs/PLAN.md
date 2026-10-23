@@ -33,6 +33,7 @@ measurement. All cited article numbers must identify the surviving build/conditi
 
 The ladder stop applies per workload. A failed Idle150 control remains classified
 and uncertified while independent required workloads may start at their own first
-rung. They retain the existing strict gates. An offered-load versus wire-delivery
-classification interpretation is pending; no proposal changes current scoring.
+rung. They retain the existing strict gates. The user approved offered-load-v2: future manifests separate generator validity
+from wire delivery while retaining every gate and non-pass for a wire deficit.
+Historical strict-v1 classifications remain unchanged.
 The final ticket still requires the full mandated rerun and findings assessment.

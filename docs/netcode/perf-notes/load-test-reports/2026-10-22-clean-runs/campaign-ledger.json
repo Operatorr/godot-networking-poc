@@ -80,6 +80,14 @@
       "passed_gate_count": 36,
       "failed_gates": [],
       "report": "clean-movement50-r1-20261023.md"
+    },
+    {
+      "namespace": "clean-movement100-r1-20261023",
+      "candidate": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
+      "classification": "clean-cell-pass",
+      "passed_gate_count": 36,
+      "failed_gates": [],
+      "report": "clean-movement100-r1-20261023.md"
     }
   ],
   "remaining": [
@@ -88,13 +96,6 @@
       "population": 150,
       "namespace": "clean-idle150-r1-20261022",
       "status": "classification_pending",
-      "purpose": "passing ladder rerun"
-    },
-    {
-      "behavior": "movement",
-      "population": 100,
-      "namespace": "clean-movement100-r1-20261023",
-      "status": "in_progress",
       "purpose": "passing ladder rerun"
     },
     {
@@ -147,7 +148,7 @@
       "purpose": "overload ramp and measured window if ramp completes"
     }
   ],
-  "active_task_id": "node:delegated-task:command%3Amcp%3A4e020f92-bc95-449a-b76e-c2bf31fa8660%3Adelegate-task%3Aissue39-clean-movement100-r1-20261023",
+  "active_task_id": null,
   "final_clean_campaign_certificate": false,
   "legacy_product_targets": {
     "bandwidth_kib_per_s": 5,
@@ -155,7 +156,7 @@
     "thresholds_changed": false,
     "note": "Retain their actual pass/fail independently from matrix gates; optimization is outside this map."
   },
-  "active_investigation": "Continue the Movement ladder at 100 with unchanged strict gates; Idle150 classification interpretation pending",
+  "active_investigation": "Continue Movement150 with offered-load-v2 and unchanged numeric gates",
   "active_diagnostic_namespace": null,
   "diagnostic_attempts": [
     {
@@ -205,15 +206,16 @@
     }
   ],
   "storage_recovery_report": "storage-recovery-20261023.md",
-  "latest_storage_recovery_report": "storage-recovery-r2-20261023.md",
-  "next_observation_namespace": "clean-movement100-r1-20261023",
+  "latest_storage_recovery_report": "storage-recovery-r3-20261023.md",
+  "next_observation_namespace": "clean-movement150-r1-20261023",
   "classification_proposal": "CLASSIFICATION-PROPOSAL.md",
-  "classification_decision": "pending_user_interpretation",
+  "classification_decision": "user_approved_versioned_separation_2026-10-23",
   "ordinary_observation_build": {
     "revision": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
     "game_sha256": "de92e120bb863948fc4c55fe525d200ac6ebc0d0d214d453ed3efeab159208db",
     "bot_sha256": "56c2139ebf042680febccca48c2b5b3d036bce2eadc4ea385f6f52ae5812ed67",
     "native_diagnostic": false,
     "note": "Game binary unchanged; bot includes post-drain measurement and disabled opt-in native observer. Earlier fixed-candidate observations retain their original identities."
-  }
+  },
+  "classification_version": "offered-load-v2"
 }
