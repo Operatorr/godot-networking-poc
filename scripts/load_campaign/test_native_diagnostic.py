@@ -56,6 +56,17 @@ class NativeDispatchTests(unittest.TestCase):
             self.assertEqual(live.validate_diagnostic_runtime(42),{'OMEGA_NATIVE_DIAG':'v1'})
 
 class NativeReplayTests(unittest.TestCase):
+    def test_counter_witness_with_changed_throttle_remains_ambiguous(self):
+        import native_diagnostic_analysis as replay
+        def record(pre,post,counter=21,after=28):
+            return (1,2,0,1,0,pre,counter,post,after,5,0)
+        rows=[record(27,27),record(27,28),record(27,27,21,29)]
+        result=replay.throttle_trace_classification(rows)
+        self.assertEqual(result['single_step_pre_predicate'],2)
+        self.assertEqual(result['stable_throttle_single_step'],1)
+        self.assertEqual(result['throttle_changed'],1)
+        self.assertEqual(len(result['ambiguous']),2)
+        self.assertEqual(result['ambiguous'][0]['reason'],'throttle-changed')
     def test_combined_storage_includes_original_copy_archive_and_unchanged_guard(self):
         import native_diagnostic_storage as storage
         # The old free>8GiB check passes, but the additive allowance must fail.
@@ -81,6 +92,8 @@ class NativeReplayTests(unittest.TestCase):
             p.write_bytes(b'ORF1'+replay.DATAGRAM.pack(99,1234,8081,80,60,64,0))
             known=collections.Counter({(1234,64):1})
             self.assertEqual(replay.capture_inputs(p,known),known)
+            self.assertEqual(replay.capture_inputs(p,known,(99,100)),known)
+            self.assertEqual(replay.capture_inputs(p,known,(0,99)),{})
             p.write_bytes(p.read_bytes()+b'x')
             with self.assertRaises(ValueError):replay.capture_inputs(p,known)
     def test_resource_reclaimer_cannot_target_original_or_evidence(self):
