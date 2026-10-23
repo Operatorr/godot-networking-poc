@@ -1,0 +1,1281 @@
+{
+  "schema": 1,
+  "namespace": "clean-idle150-audit-r4-20261023",
+  "issue": "https://github.com/Operatorr/godot-networking-poc/issues/39",
+  "classification": "resource-blocked-before-workload",
+  "remote_diagnosis_complete": false,
+  "controller_attempts": 1,
+  "workloads_launched": 0,
+  "workload_launch_attempted": false,
+  "repeat_workloads": 0,
+  "reservation_preserved": true,
+  "remote_workload_evidence_namespace_created": false,
+  "source_and_binary_copies_staged": true,
+  "ladder_advanced": false,
+  "no_clean_or_capacity_claim": true,
+  "campaign_candidate_unchanged": "fea24dd1ec75eb3a5e832e408489943ced88814f",
+  "instrumented_source_revision": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
+  "controller_revision": "fb2e23263dd9b7a54ecfa21c6a15b17a076705f9",
+  "executed_controller_sha256": "b44096724e84896b9b251dfaa569ef232aad306a3d11c9d418bc0a992ad4d3d9",
+  "source_and_build": {
+    "native_build_origin": "bots",
+    "native_origin_namespace": "clean-idle150-audit-r3-20261023",
+    "build_mode": "verified-existing-build-copy",
+    "new_native_package_compilations": 0,
+    "both_host_build_identities": {
+      "game": {
+        "revision": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
+        "path": "/home/deploy/omega-clean-idle150-audit-r4-20261023",
+        "sha256": "de92e120bb863948fc4c55fe525d200ac6ebc0d0d214d453ed3efeab159208db",
+        "bot_sha256": "56c2139ebf042680febccca48c2b5b3d036bce2eadc4ea385f6f52ae5812ed67",
+        "build_mode": "verified-existing-build-copy",
+        "game_artifact_mode": "verified-existing-build-copy",
+        "native_build_origin": "bots",
+        "new_compilation": false,
+        "build_argv": [],
+        "reused_from": {
+          "namespace": "clean-idle150-audit-r3-20261023",
+          "proof": {
+            "revision": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
+            "path": "/home/deploy/omega-clean-idle150-audit-r3-20261023",
+            "sha256": "de92e120bb863948fc4c55fe525d200ac6ebc0d0d214d453ed3efeab159208db",
+            "bot_sha256": "56c2139ebf042680febccca48c2b5b3d036bce2eadc4ea385f6f52ae5812ed67",
+            "native_build_origin": "bots",
+            "game_artifact_mode": "verifiednativebot-hostcopy",
+            "build_mode": "verifiednativebot-hostcopy",
+            "build_argv": [],
+            "checkout_mode": "rust-only-cone",
+            "sparse_source_proof": {
+              "revision": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
+              "status": "",
+              "cone": true,
+              "specification": "/*\n!/*/\n/rust/\n",
+              "directories": [
+                "rust"
+              ],
+              "tracked_file_count": 76,
+              "rust_file_count": 62,
+              "rust_tree": "b8d9c9f40e57c229d9be392317c0bc9e8d99b31c",
+              "all_materialized_blobs_verified": true,
+              "shared_object_alternates": "/home/deploy/omega-realm/.git/objects\n",
+              "specification_sha256": "2d189224b3c941b40b7ba2682e53aacf4a059bce1dcf8c03bfb49ceebae10166"
+            },
+            "dependencies": "\tlinux-vdso.so.1 (0x0000e308aaadf000)\n\tlibgcc_s.so.1 => /usr/lib/aarch64-linux-gnu/libgcc_s.so.1 (0x0000e308aa4a0000)\n\tlibm.so.6 => /usr/lib/aarch64-linux-gnu/libm.so.6 (0x0000e308aa3d0000)\n\tlibc.so.6 => /usr/lib/aarch64-linux-gnu/libc.so.6 (0x0000e308aa200000)\n\t/lib/ld-linux-aarch64.so.1 (0x0000e308aaa90000)\n\tlinux-vdso.so.1 (0x0000f64f4406c000)\n\tlibgcc_s.so.1 => /usr/lib/aarch64-linux-gnu/libgcc_s.so.1 (0x0000f64f43c80000)\n\tlibm.so.6 => /usr/lib/aarch64-linux-gnu/libm.so.6 (0x0000f64f43bb0000)\n\tlibc.so.6 => /usr/lib/aarch64-linux-gnu/libc.so.6 (0x0000f64f439e0000)\n\t/lib/ld-linux-aarch64.so.1 (0x0000f64f44030000)\n",
+            "file_identity": {
+              "/home/deploy/omega-clean-idle150-audit-r3-20261023/rust/target/release/omega-server": {
+                "format": "ELF64",
+                "endianness": "little",
+                "machine": "AArch64",
+                "type": 3,
+                "osabi": 0,
+                "links": 1,
+                "bytes": 8176744
+              },
+              "/home/deploy/omega-clean-idle150-audit-r3-20261023/rust/target/release/omega-load-test": {
+                "format": "ELF64",
+                "endianness": "little",
+                "machine": "AArch64",
+                "type": 3,
+                "osabi": 0,
+                "links": 1,
+                "bytes": 4713280
+              }
+            },
+            "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2\ncargo 1.95.0 (f2d3ce0bd 2026-03-21)\nLinux CAX11-game-server 7.0.0-30-generic #30-Ubuntu SMP PREEMPT_DYNAMIC Fri Jul 31 18:09:26 UTC 2026 aarch64 GNU/Linux\nldd (Ubuntu GLIBC 2.43-2ubuntu2.4) 2.43\n",
+            "binary_bytes": {
+              "omega-server": 8176744,
+              "omega-load-test": 4713280
+            },
+            "utc_ns": 1792728891000461000,
+            "proof_completion": "identity only; no repeated native build or binary transfer"
+          }
+        },
+        "checkout_mode": "rust-only-cone",
+        "sparse_source_proof": {
+          "revision": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
+          "status": "",
+          "cone": true,
+          "specification": "/*\n!/*/\n/rust/\n",
+          "directories": [
+            "rust"
+          ],
+          "tracked_file_count": 76,
+          "rust_file_count": 62,
+          "rust_tree": "b8d9c9f40e57c229d9be392317c0bc9e8d99b31c",
+          "all_materialized_blobs_verified": true,
+          "shared_object_alternates": "/home/deploy/omega-realm/.git/objects\n",
+          "specification_sha256": "2d189224b3c941b40b7ba2682e53aacf4a059bce1dcf8c03bfb49ceebae10166"
+        },
+        "file_identity": {
+          "/home/deploy/omega-clean-idle150-audit-r4-20261023/rust/target/release/omega-server": {
+            "format": "ELF64",
+            "endianness": "little",
+            "machine": "AArch64",
+            "type": 3,
+            "osabi": 0,
+            "links": 1,
+            "bytes": 8176744
+          },
+          "/home/deploy/omega-clean-idle150-audit-r4-20261023/rust/target/release/omega-load-test": {
+            "format": "ELF64",
+            "endianness": "little",
+            "machine": "AArch64",
+            "type": 3,
+            "osabi": 0,
+            "links": 1,
+            "bytes": 4713280
+          }
+        },
+        "dependencies": "\tlinux-vdso.so.1 (0x0000fba0558c6000)\n\tlibgcc_s.so.1 => /usr/lib/aarch64-linux-gnu/libgcc_s.so.1 (0x0000fba055290000)\n\tlibm.so.6 => /usr/lib/aarch64-linux-gnu/libm.so.6 (0x0000fba0551c0000)\n\tlibc.so.6 => /usr/lib/aarch64-linux-gnu/libc.so.6 (0x0000fba054ff0000)\n\t/lib/ld-linux-aarch64.so.1 (0x0000fba055880000)\n\tlinux-vdso.so.1 (0x0000fd8d40cdc000)\n\tlibgcc_s.so.1 => /usr/lib/aarch64-linux-gnu/libgcc_s.so.1 (0x0000fd8d408f0000)\n\tlibm.so.6 => /usr/lib/aarch64-linux-gnu/libm.so.6 (0x0000fd8d40820000)\n\tlibc.so.6 => /usr/lib/aarch64-linux-gnu/libc.so.6 (0x0000fd8d40650000)\n\t/lib/ld-linux-aarch64.so.1 (0x0000fd8d40ca0000)\n",
+        "binary_bytes": {
+          "omega-server": 8176744,
+          "omega-load-test": 4713280
+        },
+        "utc_ns": 1792731777746661000
+      },
+      "bots": {
+        "revision": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
+        "path": "/home/deploy/omega-clean-idle150-audit-r4-20261023",
+        "sha256": "de92e120bb863948fc4c55fe525d200ac6ebc0d0d214d453ed3efeab159208db",
+        "bot_sha256": "56c2139ebf042680febccca48c2b5b3d036bce2eadc4ea385f6f52ae5812ed67",
+        "build_mode": "verified-existing-build-copy",
+        "game_artifact_mode": "verified-existing-build-copy",
+        "native_build_origin": "bots",
+        "new_compilation": false,
+        "build_argv": [],
+        "reused_from": {
+          "namespace": "clean-idle150-audit-r3-20261023",
+          "proof": {
+            "revision": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
+            "path": "/home/deploy/omega-clean-idle150-audit-r3-20261023",
+            "sha256": "de92e120bb863948fc4c55fe525d200ac6ebc0d0d214d453ed3efeab159208db",
+            "bot_sha256": "56c2139ebf042680febccca48c2b5b3d036bce2eadc4ea385f6f52ae5812ed67",
+            "native_build_origin": "bots",
+            "game_artifact_mode": "verifiednativebot-hostcopy",
+            "build_mode": "native-build",
+            "build_argv": [
+              "cargo",
+              "build",
+              "--release",
+              "--locked",
+              "-j",
+              "2",
+              "-p",
+              "omega-server",
+              "-p",
+              "omega-load-test"
+            ],
+            "checkout_mode": "rust-only-cone",
+            "sparse_source_proof": {
+              "revision": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
+              "status": "",
+              "cone": true,
+              "specification": "/*\n!/*/\n/rust/\n",
+              "directories": [
+                "rust"
+              ],
+              "tracked_file_count": 76,
+              "rust_file_count": 62,
+              "rust_tree": "b8d9c9f40e57c229d9be392317c0bc9e8d99b31c",
+              "all_materialized_blobs_verified": true,
+              "shared_object_alternates": "/home/deploy/omega-realm/.git/objects\n",
+              "specification_sha256": "2d189224b3c941b40b7ba2682e53aacf4a059bce1dcf8c03bfb49ceebae10166"
+            },
+            "dependencies": "\tlinux-vdso.so.1 (0x0000e1054b499000)\n\tlibgcc_s.so.1 => /usr/lib/aarch64-linux-gnu/libgcc_s.so.1 (0x0000e1054ae60000)\n\tlibm.so.6 => /usr/lib/aarch64-linux-gnu/libm.so.6 (0x0000e1054ad90000)\n\tlibc.so.6 => /usr/lib/aarch64-linux-gnu/libc.so.6 (0x0000e1054abc0000)\n\t/lib/ld-linux-aarch64.so.1 (0x0000e1054b450000)\n\tlinux-vdso.so.1 (0x0000f5bfdf2ec000)\n\tlibgcc_s.so.1 => /usr/lib/aarch64-linux-gnu/libgcc_s.so.1 (0x0000f5bfdef00000)\n\tlibm.so.6 => /usr/lib/aarch64-linux-gnu/libm.so.6 (0x0000f5bfdee30000)\n\tlibc.so.6 => /usr/lib/aarch64-linux-gnu/libc.so.6 (0x0000f5bfdec60000)\n\t/lib/ld-linux-aarch64.so.1 (0x0000f5bfdf2b0000)\n",
+            "file_identity": {
+              "/home/deploy/omega-clean-idle150-audit-r3-20261023/rust/target/release/omega-server": {
+                "format": "ELF64",
+                "endianness": "little",
+                "machine": "AArch64",
+                "type": 3,
+                "osabi": 0,
+                "links": 2,
+                "bytes": 8176744
+              },
+              "/home/deploy/omega-clean-idle150-audit-r3-20261023/rust/target/release/omega-load-test": {
+                "format": "ELF64",
+                "endianness": "little",
+                "machine": "AArch64",
+                "type": 3,
+                "osabi": 0,
+                "links": 2,
+                "bytes": 4713280
+              }
+            },
+            "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2\ncargo 1.95.0 (f2d3ce0bd 2026-03-21)\nLinux CAX11-bot-server 7.0.0-30-generic #30-Ubuntu SMP PREEMPT_DYNAMIC Fri Jul 31 18:09:26 UTC 2026 aarch64 GNU/Linux\nldd (Ubuntu GLIBC 2.43-2ubuntu2.4) 2.43\n",
+            "binary_bytes": {
+              "omega-server": 8176744,
+              "omega-load-test": 4713280
+            },
+            "utc_ns": 1792728979364196000,
+            "proof_completion": "identity only; no repeated native build or binary transfer"
+          }
+        },
+        "checkout_mode": "rust-only-cone",
+        "sparse_source_proof": {
+          "revision": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
+          "status": "",
+          "cone": true,
+          "specification": "/*\n!/*/\n/rust/\n",
+          "directories": [
+            "rust"
+          ],
+          "tracked_file_count": 76,
+          "rust_file_count": 62,
+          "rust_tree": "b8d9c9f40e57c229d9be392317c0bc9e8d99b31c",
+          "all_materialized_blobs_verified": true,
+          "shared_object_alternates": "/home/deploy/omega-realm/.git/objects\n",
+          "specification_sha256": "2d189224b3c941b40b7ba2682e53aacf4a059bce1dcf8c03bfb49ceebae10166"
+        },
+        "file_identity": {
+          "/home/deploy/omega-clean-idle150-audit-r4-20261023/rust/target/release/omega-server": {
+            "format": "ELF64",
+            "endianness": "little",
+            "machine": "AArch64",
+            "type": 3,
+            "osabi": 0,
+            "links": 1,
+            "bytes": 8176744
+          },
+          "/home/deploy/omega-clean-idle150-audit-r4-20261023/rust/target/release/omega-load-test": {
+            "format": "ELF64",
+            "endianness": "little",
+            "machine": "AArch64",
+            "type": 3,
+            "osabi": 0,
+            "links": 1,
+            "bytes": 4713280
+          }
+        },
+        "dependencies": "\tlinux-vdso.so.1 (0x0000e79dbb908000)\n\tlibgcc_s.so.1 => /usr/lib/aarch64-linux-gnu/libgcc_s.so.1 (0x0000e79dbb2d0000)\n\tlibm.so.6 => /usr/lib/aarch64-linux-gnu/libm.so.6 (0x0000e79dbb200000)\n\tlibc.so.6 => /usr/lib/aarch64-linux-gnu/libc.so.6 (0x0000e79dbb030000)\n\t/lib/ld-linux-aarch64.so.1 (0x0000e79dbb8c0000)\n\tlinux-vdso.so.1 (0x0000e8077762d000)\n\tlibgcc_s.so.1 => /usr/lib/aarch64-linux-gnu/libgcc_s.so.1 (0x0000e80777230000)\n\tlibm.so.6 => /usr/lib/aarch64-linux-gnu/libm.so.6 (0x0000e80777160000)\n\tlibc.so.6 => /usr/lib/aarch64-linux-gnu/libc.so.6 (0x0000e80776f90000)\n\t/lib/ld-linux-aarch64.so.1 (0x0000e807775e0000)\n",
+        "binary_bytes": {
+          "omega-server": 8176744,
+          "omega-load-test": 4713280
+        },
+        "utc_ns": 1792731796159771000
+      }
+    },
+    "source_proof": {
+      "revision": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
+      "tree": "3f94c3a0066ed8d7b990ba3a4ab0ad1f7bd3d0af",
+      "bundle_sha256": "d7d64d0aac99fe21bbd2970c17538d1f5d1a9715a68e5396b7f785f9477259e2",
+      "bundle_verified": true,
+      "checkout_mode": "rust-only-cone",
+      "native_build_origin": "bots",
+      "game_artifact_mode": "verified-existing-build-copy",
+      "build_mode": "verified-existing-build-copy",
+      "reuse_namespace": "clean-idle150-audit-r3-20261023",
+      "reused_build_proof_sha256": "cb3ebade3d46da24f680de238d475e216939032ae33afd2d929abf177da514da",
+      "pair_cap_bytes": 20971520,
+      "new_compilation": false,
+      "staging_bytes": 32859040
+    },
+    "helper_provenance": {
+      "controller_revision": "fb2e23263dd9b7a54ecfa21c6a15b17a076705f9",
+      "utc_ns": 1792731589844135000,
+      "files": {
+        "clean_run.py": "b44096724e84896b9b251dfaa569ef232aad306a3d11c9d418bc0a992ad4d3d9",
+        "clean_run_build.py": "d88909094e59ffee8b3d91febe507f322cbc960643fdf8c05bdfcac001b72cf9",
+        "clean_run_audit.py": "1c2b2115fec1a605245a0df02840513480ebfd686683a6905fcfb94185fc33c4",
+        "native_diagnostic_r4.py": "1c45a7f910094806e040759c882590c61306cd31a1fed6e0e8e24771a3dd6b51",
+        "native_diagnostic_r4_audit.py": "3966810e3543d36bb7546ed019f6fe2ab74cad9b20b96ba1178f7aa515274ffa",
+        "native_diagnostic_preflight_audit.py": "fa19b30f2708ce3c7e2fc998bdf28b1f7ee924e74511f23f79a58ac0db437ba5",
+        "native_diagnostic_storage.py": "0418cfcb276f8a807e2efe4e34fcc050a735667bd3aa6d10fd2cbc53d3a90916",
+        "atomic_publish.py": "8e21da2763d5ddb065e6c55f567da259ed1abbff3709d56067cae57ecd449908",
+        "clean_run_analysis.py": "98ff2ebf1bc80b5ed8c11e32c56bd7722c25f33e226d2ed9ec355f23b406e76d",
+        "clean_run_scoring.py": "4cace3cc5a91f7933070bda25f8bac9025e594e7cadccb84c0e26e50f2934718",
+        "native_diagnostic_analysis.py": "d2ebfaacdd84e280333f21f47faaa14afcfcf6df7b8444f11565470b67bd6da4",
+        "run.py": "8304f21dd3cc1f320f18a865b891fbcc22cf0567843d6c2af05ab5cdfa415d0a"
+      }
+    },
+    "r3_native_object_manifest_sha256": "674896677b2883bb0dd0c0c717eaf80b60f0d017d18a033bc1f2fd3dd2266e0c",
+    "materialized_rust_files": 62,
+    "materialized_root_files": 14,
+    "new_executable_link_count": 1,
+    "note": "R3 compiled both locked packages only on bots; R4 makes independent real-file copies on both hosts. Original native Cargo artifact links remain retained on R3 bots. No R4 native compilation is claimed."
+  },
+  "intended_condition": {
+    "behavior": "idle",
+    "population": 150,
+    "input_hz": 30,
+    "stagger_ms": 100,
+    "seed": 30,
+    "difficulty": 1,
+    "warmup_s": 60,
+    "measurement_s": 300,
+    "config_sha256": "0abd2a9041dc33023ff924cae334ce25683838a0c0726cfd8fcb5a0000332370",
+    "game_requested_rx_tx_bytes": 2097152,
+    "game_intended_effective_rx_tx_bytes": 4194304,
+    "native_bot_rx_tx_bytes": 212992,
+    "native_network": true,
+    "native_diagnostic": "v1",
+    "measurement_preservation": "rename-v1",
+    "aoi_emission_audit": false,
+    "perf": false,
+    "executed": false
+  },
+  "storage": {
+    "before_any_remote_source_binary_staging": {
+      "free_bytes": 8750489600,
+      "unchanged_guard_bytes": 8589934592,
+      "allowances": {
+        "original_measurement_additional_payload": 0,
+        "staging_and_original_executable": 40969120,
+        "live_game_payload": 16777216,
+        "journal": 25165824,
+        "role_only_archive": 44040192,
+        "margin": 33554432
+      },
+      "combined_bytes": 160506784,
+      "remaining_above_guard_after_allowance": 48224,
+      "passed": true,
+      "measurement": {
+        "free_bytes": 8750489600,
+        "same_device": true,
+        "real_directories": true,
+        "measurement": {
+          "device": 2049,
+          "inode": 410180,
+          "uid": 1000,
+          "gid": 1000,
+          "mode": 493,
+          "files": {
+            "server.ndjson": {
+              "bytes": 2665778,
+              "sha256": "a290ea005a70b6f69f9dde7cb79e9706b39dcda0b37d716b82cb238f529a19df",
+              "inode": 410182,
+              "device": 2049
+            },
+            "ticks.csv": {
+              "bytes": 6467158,
+              "sha256": "05a9d9cb412851ee0ecec2a0ee769205ec2b108bca3c256b8fac6e76b1d9b564",
+              "inode": 410181,
+              "device": 2049
+            }
+          }
+        },
+        "staging_bytes": 40969120
+      }
+    },
+    "before_workload_staging": {
+      "free_bytes": 8731684864,
+      "unchanged_guard_bytes": 8589934592,
+      "allowances": {
+        "original_measurement_additional_payload": 0,
+        "staging_and_original_executable": 24887296,
+        "live_game_payload": 16777216,
+        "journal": 25165824,
+        "role_only_archive": 44040192,
+        "margin": 33554432
+      },
+      "combined_bytes": 144424960,
+      "remaining_above_guard_after_allowance": -2674688,
+      "passed": false,
+      "measurement": {
+        "free_bytes": 8731684864,
+        "same_device": true,
+        "real_directories": true,
+        "measurement": {
+          "device": 2049,
+          "inode": 410180,
+          "uid": 1000,
+          "gid": 1000,
+          "mode": 493,
+          "files": {
+            "server.ndjson": {
+              "bytes": 3137846,
+              "sha256": "a8cc59ab65950550f5206305bd1c3a41cd1e12864eab03a8c91afe0b9693645e",
+              "inode": 410182,
+              "device": 2049
+            },
+            "ticks.csv": {
+              "bytes": 7619112,
+              "sha256": "2d52e58dbdfa37efc558c8000a25e0686aed5e6bb46244bfc8b2f35d0cede1aa",
+              "inode": 410181,
+              "device": 2049
+            }
+          }
+        },
+        "staging_bytes": 24887296
+      }
+    },
+    "unchanged_guard_bytes": 8589934592,
+    "ordinary_live_cap_bytes": 1073741824,
+    "r1_r2_live_cap_bytes": 100663296,
+    "r3_live_cap_bytes": 33554432,
+    "r4_live_cap_bytes": 16777216,
+    "journal_bytes": 25165824,
+    "role_only_archive_bytes": 44040192,
+    "unchanged_margin_bytes": 33554432,
+    "original_measurement_additional_payload_allowance": 0,
+    "same_device_realpath_inode_and_hash_proof": {
+      "free_bytes": 8750489600,
+      "same_device": true,
+      "real_directories": true,
+      "measurement": {
+        "device": 2049,
+        "inode": 410180,
+        "uid": 1000,
+        "gid": 1000,
+        "mode": 493,
+        "files": {
+          "server.ndjson": {
+            "bytes": 2665778,
+            "sha256": "a290ea005a70b6f69f9dde7cb79e9706b39dcda0b37d716b82cb238f529a19df",
+            "inode": 410182,
+            "device": 2049
+          },
+          "ticks.csv": {
+            "bytes": 6467158,
+            "sha256": "05a9d9cb412851ee0ecec2a0ee769205ec2b108bca3c256b8fac6e76b1d9b564",
+            "inode": 410181,
+            "device": 2049
+          }
+        }
+      },
+      "staging_bytes": 40969120
+    },
+    "rename_executed": false,
+    "original_executable_logical_bytes": 8107672,
+    "original_executable_allocated_allowance_bytes": 8110080,
+    "binary_logical_bytes": {
+      "omega-server": 8176744,
+      "omega-load-test": 4713280
+    },
+    "bundle_bytes": 999932,
+    "staging_explanation": "Complete 4KiB-rounded sparse source blobs, two real executable copies, uploaded bundle plus fetched objects, and 16MiB directories/index/refs/source/collector/config/manifest allowance; original executable added separately. Second budget reserves 16MiB remaining workload staging plus that original executable.",
+    "free_bytes_change_between_budgets": 18804736,
+    "free_space_change_exact_attribution": null,
+    "no_cleanup_or_deletion": true,
+    "no_package_change": true,
+    "no_guard_or_margin_reduction": true
+  },
+  "blocker": {
+    "type": "RuntimeError",
+    "error": "R4 additive storage cannot fit above unchanged 8 GiB guard",
+    "utc_ns": 1792732100662991000
+  },
+  "zero_launch_proof": {
+    "utc_ns": 1792732155493717000,
+    "controller_attempts": 1,
+    "reservation_preserved": true,
+    "workloads_launched": 0,
+    "manifest_absent": true,
+    "remote_workload_staging_and_service_mutation_commands": [],
+    "controller_command_count": 58,
+    "controller_commands_sha256": "83cdbfe815a226d22740b68b07b10fa11ab730db64a15d785e289f24c57361f8",
+    "native_condition_executed": false
+  },
+  "gates": {
+    "all_requested_authenticated": null,
+    "application_errors_zero": null,
+    "autonomous_recovery_succeeded": null,
+    "bot_buffers_unchanged": null,
+    "bots_all_observed_udp_and_socket_errors_zero": null,
+    "bots_full_workload_udp_errors_zero": null,
+    "bots_udp_errors_zero": null,
+    "candidate_bot_runtime_identity": null,
+    "candidate_game_runtime_and_buffers": null,
+    "collectors_clean": null,
+    "complete_300s_common_coverage": null,
+    "delivery": null,
+    "ending_lag": null,
+    "full_replication_counters_cover_final_snapshot": null,
+    "full_transport_errors_zero": null,
+    "full_workload_oversized_panics_suppression_zero": null,
+    "full_workload_replication_and_bot_errors_zero": null,
+    "game_all_observed_udp_and_socket_errors_zero": null,
+    "game_full_workload_udp_errors_zero": null,
+    "game_udp_errors_zero": null,
+    "identity_mapping": null,
+    "independent_final_cleanup_verified": null,
+    "journal_error_counts_complete": null,
+    "mapped_wire_29_7hz": null,
+    "per_identity_offered_29_7hz": null,
+    "received_aoi_all_peers_zero_unknown": null,
+    "received_aoi_default95_policy": null,
+    "received_aoi_no_actual_above1150": null,
+    "replication_backlog": null,
+    "runtime_identity": null,
+    "server_full_and_steady_errors_zero": null,
+    "steady_window_oversized_panics_suppression_zero": null,
+    "steady_window_replication_and_bot_errors_zero": null,
+    "strict_enabled_assertions": null,
+    "tick_hz": null,
+    "tick_work_p99": null
+  },
+  "gates_scored": false,
+  "gate_count": 36,
+  "passed_gate_count": 0,
+  "failed_gates": null,
+  "gate_semantics": "All 36 original names and predicates remain enabled. None was scored without a workload; null is unobserved, never a passing zero.",
+  "counters": {
+    "full_workload": {
+      "created": null,
+      "admitted": null,
+      "native_input_attempts": null,
+      "native_input_full_handoffs": null,
+      "retired": null,
+      "pending": null,
+      "trace_records": null,
+      "trace_bytes": null,
+      "no_attempt": null,
+      "stable_equal_throttle_plus7_predicate_witnesses": null,
+      "changed_transition_ambiguous": null,
+      "zero_returns": null,
+      "partial_returns": null,
+      "send_errors": null,
+      "receive_errors": null,
+      "parser_errors": null,
+      "observer_cost_ns": null,
+      "capture_input_commands_game": null,
+      "capture_input_commands_bots": null,
+      "application_delivery": null,
+      "offered_hz_per_identity": null,
+      "wire_hz_per_identity": null,
+      "ticks": null,
+      "tick_work": null,
+      "received_aoi_matched": null,
+      "received_aoi_unknown": null,
+      "received_aoi_above1150": null,
+      "empty_observer_peers": null,
+      "snapshot_delivery": null,
+      "confirm_delivery": null,
+      "replication_backlog": null,
+      "udp_errors": null,
+      "socket_errors": null,
+      "journal_errors": null
+    },
+    "steady_window": {
+      "created": null,
+      "admitted": null,
+      "native_input_attempts": null,
+      "native_input_full_handoffs": null,
+      "retired": null,
+      "pending": null,
+      "trace_records": null,
+      "trace_bytes": null,
+      "no_attempt": null,
+      "stable_equal_throttle_plus7_predicate_witnesses": null,
+      "changed_transition_ambiguous": null,
+      "zero_returns": null,
+      "partial_returns": null,
+      "send_errors": null,
+      "receive_errors": null,
+      "parser_errors": null,
+      "observer_cost_ns": null,
+      "capture_input_commands_game": null,
+      "capture_input_commands_bots": null,
+      "application_delivery": null,
+      "offered_hz_per_identity": null,
+      "wire_hz_per_identity": null,
+      "ticks": null,
+      "tick_work": null,
+      "received_aoi_matched": null,
+      "received_aoi_unknown": null,
+      "received_aoi_above1150": null,
+      "empty_observer_peers": null,
+      "snapshot_delivery": null,
+      "confirm_delivery": null,
+      "replication_backlog": null,
+      "udp_errors": null,
+      "socket_errors": null,
+      "journal_errors": null
+    },
+    "drain": {
+      "created": null,
+      "admitted": null,
+      "native_input_attempts": null,
+      "native_input_full_handoffs": null,
+      "retired": null,
+      "pending": null,
+      "trace_records": null,
+      "trace_bytes": null,
+      "no_attempt": null,
+      "stable_equal_throttle_plus7_predicate_witnesses": null,
+      "changed_transition_ambiguous": null,
+      "zero_returns": null,
+      "partial_returns": null,
+      "send_errors": null,
+      "receive_errors": null,
+      "parser_errors": null,
+      "observer_cost_ns": null,
+      "capture_input_commands_game": null,
+      "capture_input_commands_bots": null,
+      "application_delivery": null,
+      "offered_hz_per_identity": null,
+      "wire_hz_per_identity": null,
+      "ticks": null,
+      "tick_work": null,
+      "received_aoi_matched": null,
+      "received_aoi_unknown": null,
+      "received_aoi_above1150": null,
+      "empty_observer_peers": null,
+      "snapshot_delivery": null,
+      "confirm_delivery": null,
+      "replication_backlog": null,
+      "udp_errors": null,
+      "socket_errors": null,
+      "journal_errors": null
+    }
+  },
+  "native_closed_lifetime_proven": false,
+  "post_drain_snapshot_observed": false,
+  "native_observability_limits": {
+    "native_queue_lengths": null,
+    "receive_truncation": null,
+    "application_delivery": null,
+    "retirement_timestamp": "Post-service record-write observation, not actual Drop time",
+    "fingerprint_sample_modulus": 64,
+    "sampled_fingerprints_cannot_prove_all_identity_or_no_drops": true,
+    "observer_measured_sections_not_causal_total_overhead": true
+  },
+  "legacy_harness_criteria": {
+    "bandwidth": {
+      "predicate": "strict < 5 KiB/s",
+      "value": null,
+      "passed": null
+    },
+    "estimated_tick_rate": {
+      "predicate": "raw float >= 30 Hz",
+      "span_ticks": null,
+      "span_ms": null,
+      "value": null,
+      "passed": null,
+      "clock_resolution_ms": 1
+    }
+  },
+  "local_validation": {
+    "python_checks": 69,
+    "passed": true,
+    "real_cli_drain_regression": true,
+    "monitor_publication_retained_delay_regressions": true,
+    "exact_r4_dispatch_failed_before_passed_after": true,
+    "no_historical_analyzer_replay": true,
+    "rust_changed": false,
+    "rust_checks_repeated": false,
+    "retained_parent_rust_checks": {
+      "passed": 240,
+      "ignored": 3,
+      "clippy": "green with two old warnings",
+      "fmt": "green",
+      "extension": "green"
+    }
+  },
+  "historical_limitations": {
+    "r1": "Zero-launch preflight; sealed.",
+    "r2": "One generator-invalid workload; 21,991 stable throttle witnesses and 222 changed-throttle ambiguous events; game capture 11 full/7 steady below native; full drain unproven.",
+    "r3": "One warmup abort; 83 stable throttle witnesses, zero observed ambiguous transitions, native/capture prefix differs by one command at a boundary; final suffix, steady window and drain unknown.",
+    "controller_fix": "32b48bd is retained, including continue/requery after publication and unchanged 10s lead, but R4 did not remotely validate it.",
+    "laptop_probe": "7.98 to 5.22 us is not proof of a remote cadence fix.",
+    "historical_cause": "UNKNOWN"
+  },
+  "restoration": {
+    "automatic_required": false,
+    "automatic_executed": false,
+    "reason": "No remote workload staging or original service/config/unit/environment mutation.",
+    "hosts_released": true,
+    "audits": {
+      "r4-idle-release-a": {
+        "label": "r4-idle-release-a",
+        "checks_pass": true,
+        "started_utc_ns": 1792732154393484000,
+        "ended_utc_ns": 1792732430201211000,
+        "command_timeout_s": 90,
+        "bounded_command_count": 63,
+        "commands_sha256": "7f51931f7756d38c6910374cd300392edb21df0d3ab1a82153adef5a8ae79c01",
+        "primary": {
+          "label": "r4-idle-release-a",
+          "scope": "unlaunched preflight idle/preservation proof; no restoration or workload certificate",
+          "checks_pass": true,
+          "hosts": {
+            "game": {
+              "utc_ns": 1792732267689647000,
+              "checks": {
+                "artifacts": true,
+                "prior_archives": true,
+                "closed_states": true,
+                "source_and_top_level_hashes": true,
+                "disk_above_8GiB": true,
+                "diagnostic_never_staged": true,
+                "native_qdisc": true,
+                "empty_filters": true,
+                "buffers_unchanged": true,
+                "maintenance_unchanged": true,
+                "no_bot_sockets": true,
+                "queues_quiet": true,
+                "firewall_unchanged": true,
+                "no_active_workload_units": true,
+                "no_competing_or_owned_processes": true,
+                "original_service_active": true,
+                "original_executable": true,
+                "original_config": true,
+                "original_unit": true,
+                "diagnostic_environments_absent": true,
+                "zero_players": true,
+                "ordinary_effective_buffers": true,
+                "prior_measurement_backups_verified": true
+              },
+              "command_count": 24,
+              "failed_checks": [],
+              "raw_sha256": "1457b47f2b19616ed22c9d5612c41d5034d543eeb77e794f8e0b7ba5db5a95c0",
+              "original_artifact_count": 27,
+              "original_archive_count": 87,
+              "free_bytes": 8731414528
+            },
+            "bots": {
+              "utc_ns": 1792732354028911000,
+              "checks": {
+                "artifacts": true,
+                "prior_archives": true,
+                "closed_states": true,
+                "source_and_top_level_hashes": true,
+                "disk_above_8GiB": true,
+                "diagnostic_never_staged": true,
+                "native_qdisc": true,
+                "empty_filters": true,
+                "buffers_unchanged": true,
+                "maintenance_unchanged": true,
+                "no_bot_sockets": true,
+                "queues_quiet": true,
+                "firewall_unchanged": true,
+                "no_active_workload_units": true,
+                "no_competing_or_owned_processes": true
+              },
+              "command_count": 16,
+              "failed_checks": [],
+              "raw_sha256": "df258b7a1b1ec4e6176335f3a2aa674261b8f8aba8860fa1a12554e3f80adc44",
+              "original_artifact_count": 22,
+              "original_archive_count": 88,
+              "free_bytes": 18569019392
+            }
+          },
+          "commands_sha256": "cc20a2e11f1a2ea62429193c3bd62d417449fbb281cb0cf7ae3e4e255818c8c8"
+        },
+        "extra": {
+          "game": {
+            "all_prior_original_files_unchanged": true,
+            "original_file_count": 116,
+            "actual_sparse_blobs": {
+              "clean-idle150-audit-r2-20261023": {
+                "revision": "ab535731b21860fcfdc3654288dd8821eaa63450",
+                "status": "",
+                "cone": true,
+                "specification": "/*\n!/*/\n/rust/\n",
+                "directories": [
+                  "rust"
+                ],
+                "tracked_file_count": 75,
+                "rust_file_count": 61,
+                "rust_tree": "94e03de6be62482b9f12aa1d6d95b1383a1307a9",
+                "all_materialized_blobs_verified": true,
+                "shared_object_alternates": "/home/deploy/omega-realm/.git/objects\n",
+                "specification_sha256": "2d189224b3c941b40b7ba2682e53aacf4a059bce1dcf8c03bfb49ceebae10166"
+              },
+              "clean-idle150-audit-r4-20261023": {
+                "revision": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
+                "status": "",
+                "cone": true,
+                "specification": "/*\n!/*/\n/rust/\n",
+                "directories": [
+                  "rust"
+                ],
+                "tracked_file_count": 76,
+                "rust_file_count": 62,
+                "rust_tree": "b8d9c9f40e57c229d9be392317c0bc9e8d99b31c",
+                "all_materialized_blobs_verified": true,
+                "shared_object_alternates": "/home/deploy/omega-realm/.git/objects\n",
+                "specification_sha256": "2d189224b3c941b40b7ba2682e53aacf4a059bce1dcf8c03bfb49ceebae10166"
+              },
+              "clean-idle150-audit-r3-20261023": {
+                "revision": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
+                "status": "",
+                "cone": true,
+                "specification": "/*\n!/*/\n/rust/\n",
+                "directories": [
+                  "rust"
+                ],
+                "tracked_file_count": 76,
+                "rust_file_count": 62,
+                "rust_tree": "b8d9c9f40e57c229d9be392317c0bc9e8d99b31c",
+                "all_materialized_blobs_verified": true,
+                "shared_object_alternates": "/home/deploy/omega-realm/.git/objects\n",
+                "specification_sha256": "2d189224b3c941b40b7ba2682e53aacf4a059bce1dcf8c03bfb49ceebae10166"
+              }
+            },
+            "fresh_binary_elf_and_one_link_proofs": {
+              "/home/deploy/omega-clean-idle150-audit-r4-20261023/rust/target/release/omega-server": {
+                "format": "ELF64",
+                "endianness": "little",
+                "machine": "AArch64",
+                "type": 3,
+                "osabi": 0,
+                "links": 1,
+                "bytes": 8176744
+              },
+              "/home/deploy/omega-clean-idle150-audit-r4-20261023/rust/target/release/omega-load-test": {
+                "format": "ELF64",
+                "endianness": "little",
+                "machine": "AArch64",
+                "type": 3,
+                "osabi": 0,
+                "links": 1,
+                "bytes": 4713280
+              }
+            },
+            "frozen_recoveries": {
+              "clean-idle100-r1-20261022": "6bb548e0a0f1029be4656e5c85a1089a3537ee77bde3e3cf6a1a4b97890de043",
+              "clean-idle150-audit-r2-20261023": "d6a1c0c10ea539ba30aef013990e08f124c84b9081b21906a4f9f701b706ab3b",
+              "clean-idle150-audit-r3-20261023": "00dbed2c180be4540b2f4f89bca76161823701f629702b7ab0d940a172ebc38f",
+              "clean-idle150-r1-20261022": "bed1d94d82f087139a41b25f79d3f92712e8f94db058914959869b8f2b7932f3",
+              "clean-strategy150-r1-20261022": "2fa0bbb70cd5cdb014f94ef5af87f31468f372c17903635e7814111d56598ff7",
+              "clean-strategy150-r2-20261022": "1d4efc6da28bbc283f7d6a8797531f0d474162a226d66eb9088977e79c5ebfab"
+            },
+            "original_measurement": {
+              "original_current_directory_untouched": true,
+              "owner_group_mode_unchanged": true,
+              "prefix": {
+                "server.ndjson": {
+                  "before_bytes": 2665778,
+                  "current_bytes": 3514739,
+                  "prefix_sha256": "a290ea005a70b6f69f9dde7cb79e9706b39dcda0b37d716b82cb238f529a19df",
+                  "inode": 410182
+                },
+                "ticks.csv": {
+                  "before_bytes": 6467158,
+                  "current_bytes": 8538889,
+                  "prefix_sha256": "05a9d9cb412851ee0ecec2a0ee769205ec2b108bca3c256b8fac6e76b1d9b564",
+                  "inode": 410181
+                }
+              }
+            }
+          },
+          "bots": {
+            "all_prior_original_files_unchanged": true,
+            "original_file_count": 19,
+            "actual_sparse_blobs": {
+              "clean-idle150-audit-r2-20261023": {
+                "revision": "ab535731b21860fcfdc3654288dd8821eaa63450",
+                "status": "",
+                "cone": true,
+                "specification": "/*\n!/*/\n/rust/\n",
+                "directories": [
+                  "rust"
+                ],
+                "tracked_file_count": 75,
+                "rust_file_count": 61,
+                "rust_tree": "94e03de6be62482b9f12aa1d6d95b1383a1307a9",
+                "all_materialized_blobs_verified": true,
+                "shared_object_alternates": "/home/deploy/omega-realm/.git/objects\n",
+                "specification_sha256": "2d189224b3c941b40b7ba2682e53aacf4a059bce1dcf8c03bfb49ceebae10166"
+              },
+              "clean-idle150-audit-r4-20261023": {
+                "revision": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
+                "status": "",
+                "cone": true,
+                "specification": "/*\n!/*/\n/rust/\n",
+                "directories": [
+                  "rust"
+                ],
+                "tracked_file_count": 76,
+                "rust_file_count": 62,
+                "rust_tree": "b8d9c9f40e57c229d9be392317c0bc9e8d99b31c",
+                "all_materialized_blobs_verified": true,
+                "shared_object_alternates": "/home/deploy/omega-realm/.git/objects\n",
+                "specification_sha256": "2d189224b3c941b40b7ba2682e53aacf4a059bce1dcf8c03bfb49ceebae10166"
+              },
+              "clean-idle150-audit-r3-20261023": {
+                "revision": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
+                "status": "",
+                "cone": true,
+                "specification": "/*\n!/*/\n/rust/\n",
+                "directories": [
+                  "rust"
+                ],
+                "tracked_file_count": 76,
+                "rust_file_count": 62,
+                "rust_tree": "b8d9c9f40e57c229d9be392317c0bc9e8d99b31c",
+                "all_materialized_blobs_verified": true,
+                "shared_object_alternates": "/home/deploy/omega-realm/.git/objects\n",
+                "specification_sha256": "2d189224b3c941b40b7ba2682e53aacf4a059bce1dcf8c03bfb49ceebae10166"
+              }
+            },
+            "fresh_binary_elf_and_one_link_proofs": {
+              "/home/deploy/omega-clean-idle150-audit-r4-20261023/rust/target/release/omega-server": {
+                "format": "ELF64",
+                "endianness": "little",
+                "machine": "AArch64",
+                "type": 3,
+                "osabi": 0,
+                "links": 1,
+                "bytes": 8176744
+              },
+              "/home/deploy/omega-clean-idle150-audit-r4-20261023/rust/target/release/omega-load-test": {
+                "format": "ELF64",
+                "endianness": "little",
+                "machine": "AArch64",
+                "type": 3,
+                "osabi": 0,
+                "links": 1,
+                "bytes": 4713280
+              }
+            },
+            "frozen_recoveries": {
+              "clean-idle100-r1-20261022": "absent",
+              "clean-idle150-audit-r2-20261023": "absent",
+              "clean-idle150-audit-r3-20261023": "absent",
+              "clean-idle150-r1-20261022": "absent",
+              "clean-strategy150-r1-20261022": "absent",
+              "clean-strategy150-r2-20261022": "absent"
+            }
+          }
+        },
+        "scope": "Unlaunched R4 idle/preservation proof; service never stopped and no R4 restoration was needed"
+      },
+      "r4-idle-release-b": {
+        "label": "r4-idle-release-b",
+        "checks_pass": true,
+        "started_utc_ns": 1792732430205009000,
+        "ended_utc_ns": 1792732704726449000,
+        "command_timeout_s": 90,
+        "bounded_command_count": 63,
+        "commands_sha256": "de877ae22beaa75e3964d5554598043f972005a3993492ce7c7c22d12887f049",
+        "primary": {
+          "label": "r4-idle-release-b",
+          "scope": "unlaunched preflight idle/preservation proof; no restoration or workload certificate",
+          "checks_pass": true,
+          "hosts": {
+            "game": {
+              "utc_ns": 1792732543044045000,
+              "checks": {
+                "artifacts": true,
+                "prior_archives": true,
+                "closed_states": true,
+                "source_and_top_level_hashes": true,
+                "disk_above_8GiB": true,
+                "diagnostic_never_staged": true,
+                "native_qdisc": true,
+                "empty_filters": true,
+                "buffers_unchanged": true,
+                "maintenance_unchanged": true,
+                "no_bot_sockets": true,
+                "queues_quiet": true,
+                "firewall_unchanged": true,
+                "no_active_workload_units": true,
+                "no_competing_or_owned_processes": true,
+                "original_service_active": true,
+                "original_executable": true,
+                "original_config": true,
+                "original_unit": true,
+                "diagnostic_environments_absent": true,
+                "zero_players": true,
+                "ordinary_effective_buffers": true,
+                "prior_measurement_backups_verified": true
+              },
+              "command_count": 24,
+              "failed_checks": [],
+              "raw_sha256": "c18822239e85e1a25dc1f762e6a07ff4bea8e1d14b291a4c5720f3557e4f824b",
+              "original_artifact_count": 27,
+              "original_archive_count": 87,
+              "free_bytes": 8730116096
+            },
+            "bots": {
+              "utc_ns": 1792732629624748000,
+              "checks": {
+                "artifacts": true,
+                "prior_archives": true,
+                "closed_states": true,
+                "source_and_top_level_hashes": true,
+                "disk_above_8GiB": true,
+                "diagnostic_never_staged": true,
+                "native_qdisc": true,
+                "empty_filters": true,
+                "buffers_unchanged": true,
+                "maintenance_unchanged": true,
+                "no_bot_sockets": true,
+                "queues_quiet": true,
+                "firewall_unchanged": true,
+                "no_active_workload_units": true,
+                "no_competing_or_owned_processes": true
+              },
+              "command_count": 16,
+              "failed_checks": [],
+              "raw_sha256": "1eb5c7d3641d2b7b3fd1be784aebbdc5b2883dc49612aa363746bbea16ddd63b",
+              "original_artifact_count": 22,
+              "original_archive_count": 88,
+              "free_bytes": 18568949760
+            }
+          },
+          "commands_sha256": "c07d96a8fbc3f19836540c4b237b20f8167d3c57ecf7a5c7e0059ad33f5e60ef"
+        },
+        "extra": {
+          "game": {
+            "all_prior_original_files_unchanged": true,
+            "original_file_count": 116,
+            "actual_sparse_blobs": {
+              "clean-idle150-audit-r2-20261023": {
+                "revision": "ab535731b21860fcfdc3654288dd8821eaa63450",
+                "status": "",
+                "cone": true,
+                "specification": "/*\n!/*/\n/rust/\n",
+                "directories": [
+                  "rust"
+                ],
+                "tracked_file_count": 75,
+                "rust_file_count": 61,
+                "rust_tree": "94e03de6be62482b9f12aa1d6d95b1383a1307a9",
+                "all_materialized_blobs_verified": true,
+                "shared_object_alternates": "/home/deploy/omega-realm/.git/objects\n",
+                "specification_sha256": "2d189224b3c941b40b7ba2682e53aacf4a059bce1dcf8c03bfb49ceebae10166"
+              },
+              "clean-idle150-audit-r4-20261023": {
+                "revision": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
+                "status": "",
+                "cone": true,
+                "specification": "/*\n!/*/\n/rust/\n",
+                "directories": [
+                  "rust"
+                ],
+                "tracked_file_count": 76,
+                "rust_file_count": 62,
+                "rust_tree": "b8d9c9f40e57c229d9be392317c0bc9e8d99b31c",
+                "all_materialized_blobs_verified": true,
+                "shared_object_alternates": "/home/deploy/omega-realm/.git/objects\n",
+                "specification_sha256": "2d189224b3c941b40b7ba2682e53aacf4a059bce1dcf8c03bfb49ceebae10166"
+              },
+              "clean-idle150-audit-r3-20261023": {
+                "revision": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
+                "status": "",
+                "cone": true,
+                "specification": "/*\n!/*/\n/rust/\n",
+                "directories": [
+                  "rust"
+                ],
+                "tracked_file_count": 76,
+                "rust_file_count": 62,
+                "rust_tree": "b8d9c9f40e57c229d9be392317c0bc9e8d99b31c",
+                "all_materialized_blobs_verified": true,
+                "shared_object_alternates": "/home/deploy/omega-realm/.git/objects\n",
+                "specification_sha256": "2d189224b3c941b40b7ba2682e53aacf4a059bce1dcf8c03bfb49ceebae10166"
+              }
+            },
+            "fresh_binary_elf_and_one_link_proofs": {
+              "/home/deploy/omega-clean-idle150-audit-r4-20261023/rust/target/release/omega-server": {
+                "format": "ELF64",
+                "endianness": "little",
+                "machine": "AArch64",
+                "type": 3,
+                "osabi": 0,
+                "links": 1,
+                "bytes": 8176744
+              },
+              "/home/deploy/omega-clean-idle150-audit-r4-20261023/rust/target/release/omega-load-test": {
+                "format": "ELF64",
+                "endianness": "little",
+                "machine": "AArch64",
+                "type": 3,
+                "osabi": 0,
+                "links": 1,
+                "bytes": 4713280
+              }
+            },
+            "frozen_recoveries": {
+              "clean-idle100-r1-20261022": "6bb548e0a0f1029be4656e5c85a1089a3537ee77bde3e3cf6a1a4b97890de043",
+              "clean-idle150-audit-r2-20261023": "d6a1c0c10ea539ba30aef013990e08f124c84b9081b21906a4f9f701b706ab3b",
+              "clean-idle150-audit-r3-20261023": "00dbed2c180be4540b2f4f89bca76161823701f629702b7ab0d940a172ebc38f",
+              "clean-idle150-r1-20261022": "bed1d94d82f087139a41b25f79d3f92712e8f94db058914959869b8f2b7932f3",
+              "clean-strategy150-r1-20261022": "2fa0bbb70cd5cdb014f94ef5af87f31468f372c17903635e7814111d56598ff7",
+              "clean-strategy150-r2-20261022": "1d4efc6da28bbc283f7d6a8797531f0d474162a226d66eb9088977e79c5ebfab"
+            },
+            "original_measurement": {
+              "original_current_directory_untouched": true,
+              "owner_group_mode_unchanged": true,
+              "prefix": {
+                "server.ndjson": {
+                  "before_bytes": 2665778,
+                  "current_bytes": 3862445,
+                  "prefix_sha256": "a290ea005a70b6f69f9dde7cb79e9706b39dcda0b37d716b82cb238f529a19df",
+                  "inode": 410182
+                },
+                "ticks.csv": {
+                  "before_bytes": 6467158,
+                  "current_bytes": 9387381,
+                  "prefix_sha256": "05a9d9cb412851ee0ecec2a0ee769205ec2b108bca3c256b8fac6e76b1d9b564",
+                  "inode": 410181
+                }
+              }
+            }
+          },
+          "bots": {
+            "all_prior_original_files_unchanged": true,
+            "original_file_count": 19,
+            "actual_sparse_blobs": {
+              "clean-idle150-audit-r2-20261023": {
+                "revision": "ab535731b21860fcfdc3654288dd8821eaa63450",
+                "status": "",
+                "cone": true,
+                "specification": "/*\n!/*/\n/rust/\n",
+                "directories": [
+                  "rust"
+                ],
+                "tracked_file_count": 75,
+                "rust_file_count": 61,
+                "rust_tree": "94e03de6be62482b9f12aa1d6d95b1383a1307a9",
+                "all_materialized_blobs_verified": true,
+                "shared_object_alternates": "/home/deploy/omega-realm/.git/objects\n",
+                "specification_sha256": "2d189224b3c941b40b7ba2682e53aacf4a059bce1dcf8c03bfb49ceebae10166"
+              },
+              "clean-idle150-audit-r4-20261023": {
+                "revision": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
+                "status": "",
+                "cone": true,
+                "specification": "/*\n!/*/\n/rust/\n",
+                "directories": [
+                  "rust"
+                ],
+                "tracked_file_count": 76,
+                "rust_file_count": 62,
+                "rust_tree": "b8d9c9f40e57c229d9be392317c0bc9e8d99b31c",
+                "all_materialized_blobs_verified": true,
+                "shared_object_alternates": "/home/deploy/omega-realm/.git/objects\n",
+                "specification_sha256": "2d189224b3c941b40b7ba2682e53aacf4a059bce1dcf8c03bfb49ceebae10166"
+              },
+              "clean-idle150-audit-r3-20261023": {
+                "revision": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
+                "status": "",
+                "cone": true,
+                "specification": "/*\n!/*/\n/rust/\n",
+                "directories": [
+                  "rust"
+                ],
+                "tracked_file_count": 76,
+                "rust_file_count": 62,
+                "rust_tree": "b8d9c9f40e57c229d9be392317c0bc9e8d99b31c",
+                "all_materialized_blobs_verified": true,
+                "shared_object_alternates": "/home/deploy/omega-realm/.git/objects\n",
+                "specification_sha256": "2d189224b3c941b40b7ba2682e53aacf4a059bce1dcf8c03bfb49ceebae10166"
+              }
+            },
+            "fresh_binary_elf_and_one_link_proofs": {
+              "/home/deploy/omega-clean-idle150-audit-r4-20261023/rust/target/release/omega-server": {
+                "format": "ELF64",
+                "endianness": "little",
+                "machine": "AArch64",
+                "type": 3,
+                "osabi": 0,
+                "links": 1,
+                "bytes": 8176744
+              },
+              "/home/deploy/omega-clean-idle150-audit-r4-20261023/rust/target/release/omega-load-test": {
+                "format": "ELF64",
+                "endianness": "little",
+                "machine": "AArch64",
+                "type": 3,
+                "osabi": 0,
+                "links": 1,
+                "bytes": 4713280
+              }
+            },
+            "frozen_recoveries": {
+              "clean-idle100-r1-20261022": "absent",
+              "clean-idle150-audit-r2-20261023": "absent",
+              "clean-idle150-audit-r3-20261023": "absent",
+              "clean-idle150-r1-20261022": "absent",
+              "clean-strategy150-r1-20261022": "absent",
+              "clean-strategy150-r2-20261022": "absent"
+            }
+          }
+        },
+        "scope": "Unlaunched R4 idle/preservation proof; service never stopped and no R4 restoration was needed"
+      }
+    },
+    "original_service_never_stopped": true,
+    "original_measurement_never_renamed": true
+  },
+  "local_historical_preservation": {
+    "utc_ns": 1792732735472909000,
+    "original_file_count": 6070,
+    "changed_or_missing": [],
+    "passed": true,
+    "prior_r3_census_count": 5696,
+    "parent_changes_relative_to_prior_r3_census": [
+      "docs/netcode/perf-notes/load-test-reports/2026-10-22-clean-runs/campaign-ledger.json",
+      "docs/netcode/perf-notes/load-test-reports/2026-10-22-clean-runs/BUG-LEDGER.md"
+    ],
+    "parent_updates_after_initial_census": [],
+    "parent_ledger_revision": "850ec432f3aec01733081ff799e8ff44308edcd6",
+    "scope": "Fresh 6070-file baseline includes the parent ledger and bug-ledger updates; it does not claim byte equality to those two older R3 census entries."
+  },
+  "private_archives": {
+    "clean-idle150-audit-r4-20261023-build.tar.gz": {
+      "sha256": "a0858707e9cc060cdde9869e9f2d05e2d46d575fa153424f3db6578fc7ec14a1",
+      "bytes": 1051723,
+      "file_members_verified": 16,
+      "local_path": "deployment/hetzner/results/clean-idle150-audit-r4-20261023-build.tar.gz"
+    },
+    "clean-idle150-audit-r4-20261023-preflight.tar.gz": {
+      "sha256": "ccf509d65acd6904c7da3acdf871bd4fb49074c7bae6de580f8e4c0189a9e722",
+      "bytes": 694591,
+      "file_members_verified": 44,
+      "local_path": "deployment/hetzner/results/clean-idle150-audit-r4-20261023-preflight.tar.gz"
+    },
+    "clean-idle150-audit-r4-20261023-controller-blocked.tar.gz": {
+      "sha256": "ec4934c6e43fdfab1fdcfb0392be2fc050ab3ecdff07cc2a88547e2224fe7264",
+      "bytes": 78147,
+      "file_members_verified": 17,
+      "local_path": "deployment/hetzner/results/clean-idle150-audit-r4-20261023-controller-blocked.tar.gz"
+    }
+  },
+  "offline_bundle_validation": {
+    "clean-idle150-audit-r4-20261023-build.tar.gz": {
+      "real_isolated_extraction": true,
+      "no_symlinks_or_hardlinks": true,
+      "file_members_verified": 16
+    },
+    "clean-idle150-audit-r4-20261023-preflight.tar.gz": {
+      "real_isolated_extraction": true,
+      "no_symlinks_or_hardlinks": true,
+      "file_members_verified": 44
+    },
+    "clean-idle150-audit-r4-20261023-controller-blocked.tar.gz": {
+      "real_isolated_extraction": true,
+      "no_symlinks_or_hardlinks": true,
+      "file_members_verified": 17
+    }
+  },
+  "remote_workload_archives": null,
+  "local_workload_archives": null,
+  "historical_idle150_cause": "UNKNOWN",
+  "application_delivery": null,
+  "no_pr_push_issue_map_plan_or_parent_ledger_edit": true,
+  "unresolved": [
+    "Storage allowance is short by 2,674,688 B; no retry or cleanup is authorized.",
+    "All remote full/steady/drain diagnostic and validity results remain unknown.",
+    "R4 did not exercise repaired publication/requery behavior, natural terminal guard, post-force_close drained row, or atomic measurement preservation.",
+    "Native adaptive shedding is specified possible behavior and strong retained prefix evidence only; no historical causal attribution or magnitude.",
+    "Admission, native attempt/full handoff, capture record and application delivery remain distinct. Changed throttle transitions remain ambiguous; sampled fingerprints are partial evidence.",
+    "Parent campaign/ticket closure and remaining ladder cells remain pending."
+  ],
+  "evidence_sha256": {
+    "deployment/hetzner/results/clean-idle150-audit-r4-20261023-build/build-proof.json": "ebd0f955ef74496f412fa052c1203b8a146ac7fdc87313b96e5c23fc812aada6",
+    "deployment/hetzner/results/clean-idle150-audit-r4-20261023-build/storage-before-staging.json": "e5001dd1bbdf14184e3a02f50229a7dca160187e30ea0fb37c25f1660751df6d",
+    "deployment/hetzner/results/clean-idle150-audit-r4-20261023-build/toolchain-and-source-proof.json": "7e269e02aa1815e6923b143a8f963c91540b7b2642e7f6dcf813623533cce2da",
+    "deployment/hetzner/results/clean-idle150-audit-r4-20261023/storage-preflight.json": "50ba2df52b6d38360d75bd0977af83294647b3787512a2fb5bea0fce6efefaa2",
+    "deployment/hetzner/results/clean-idle150-audit-r4-20261023/controller-error.json": "e970412d65f218a725db431c733a73e1348ad61cb8b451344c6a5923eac7b3af",
+    "deployment/hetzner/results/clean-idle150-audit-r4-20261023/clean_run.executed.py": "b44096724e84896b9b251dfaa569ef232aad306a3d11c9d418bc0a992ad4d3d9",
+    "deployment/hetzner/results/clean-idle150-audit-r4-20261023/launch-reserved.json": "b35501c346b419649375f93109b8affd9a9872509be67a094a3c77c1383220e8",
+    "deployment/hetzner/results/clean-idle150-audit-r4-20261023/offline-bundle-validation.json": "7c4b8c2cba869c1e920bf630613013c89fdb543de1eea28859fbe9247fa077fb",
+    "deployment/hetzner/results/clean-idle150-audit-r4-20261023-preflight/executed-helper-provenance.json": "de8d270189512bc8c5c076b0ba35e5961a70b097fdcb2c56288ffed9bbaa76b4",
+    "deployment/hetzner/results/clean-idle150-audit-r4-20261023-preflight/local-preservation-before.json": "655a3dc71cc22d9b8dfbc32ea2b3b1ab8c976a1198f89d2dd5dbcdde4af96950",
+    "deployment/hetzner/results/clean-idle150-audit-r4-20261023-preflight/local-preservation-controller-baseline.json": "fdcb9a345280ce88fb819adfd3d8adbb132cfdac482e9dfcb589404d10e5f1d9",
+    "deployment/hetzner/results/clean-idle150-audit-r4-20261023-preflight/local-preservation-after.json": "c5da368ff0f7b59e0f669944daa3388a8b10ce84f2f1878ea873530ea195d8d3",
+    "deployment/hetzner/results/clean-idle150-audit-r4-20261023-preflight/workload-launch-count-proof.json": "7e859f1c7af1927532012e0eff4ef69eeec38ecbea570fc7a19684ae748108e1",
+    "deployment/hetzner/results/clean-idle150-audit-r4-20261023-preflight/helper-tests.log": "91dbdacd53c315e54836daa494b2e13435d040be8ff15e1394b6a2326251629a",
+    "deployment/hetzner/results/clean-idle150-audit-r4-20261023-preflight/r4_idle_release.py": "9b5a0788186c87581fdf8954f4a476e393e10a7dac9de935702e8153b01bbe5b",
+    "deployment/hetzner/results/clean-idle150-audit-r4-20261023-preflight/controller_entry.py": "01295a40efc18b5aeee443041acee972b2cd5041f6dbd9d5b1be72b5b46f9903",
+    "deployment/hetzner/results/clean-idle150-audit-r4-20261023-preflight/controller-invocation.json": "f3ce22e809467c0f221fd1dab001754959f8121fa3d9bf5725f37b232a561ab2",
+    "deployment/hetzner/results/clean-idle150-audit-r4-20261023-preflight/publish_r4_blocked.py": "c110b45769c9a5fed4fcbf9699eed7be2ab8d0a51b84b2f5f63b4a03d1068220",
+    "deployment/hetzner/results/clean-idle150-audit-r4-20261023-preflight/r4-idle-release-a-composite-audit.json": "1c05a668dae377b834d5722136858f24e18f445012d490457cc15eb2f10d99d7",
+    "deployment/hetzner/results/clean-idle150-audit-r4-20261023-preflight/r4-idle-release-b-composite-audit.json": "65ecfdf738a297cec212ed9c35c6ea87aa592813542dd1022995cf8239f73a97"
+  }
+}
