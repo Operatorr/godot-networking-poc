@@ -21,6 +21,13 @@ class R3Tests(unittest.TestCase):
         self.assertEqual(len(proof),2)
         self.assertTrue(all(v['machine']=='AArch64' and v['links']==1 for v in proof.values()))
         with tempfile.TemporaryDirectory() as tmp:
+            import os
+            linked=pathlib.Path(tmp)/'native';linked.write_bytes(pathlib.Path(paths[0]).read_bytes())
+            os.link(linked,pathlib.Path(tmp)/'cargo-object')
+            self.assertNotEqual(subprocess.run(shlex.split(r3.elf_identity_command([str(linked)])),capture_output=True).returncode,0)
+            native=subprocess.run(shlex.split(r3.elf_identity_command([str(linked)],native_cargo_artifact=True)),capture_output=True,text=True)
+            self.assertEqual(native.returncode,0,native.stderr)
+            self.assertEqual(json.loads(native.stdout)[str(linked)]['links'],2)
             bad=pathlib.Path(tmp)/'bad';bad.write_bytes(b'not-elf')
             self.assertNotEqual(subprocess.run(shlex.split(r3.elf_identity_command([str(bad)])),capture_output=True).returncode,0)
 

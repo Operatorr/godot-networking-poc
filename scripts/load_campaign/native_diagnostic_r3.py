@@ -63,18 +63,19 @@ def check(ssh, staging_bytes, output):
     return result
 
 
-def elf_identity_command(paths):
+def elf_identity_command(paths, native_cargo_artifact=False):
     code = """import pathlib,struct,json
 result={}
 for name in PATHS:
- p=pathlib.Path(name);assert p.is_file() and not p.is_symlink() and p.stat().st_nlink==1
+ p=pathlib.Path(name);assert p.is_file() and not p.is_symlink()
+ assert NATIVE or p.stat().st_nlink==1
  with p.open('rb') as stream:header=stream.read(64)
  assert header[:6]==b'\\x7fELF\\x02\\x01' and len(header)==64
  kind,machine,version=struct.unpack_from('<HHI',header,16)
  assert machine==183 and version==1 and kind in (2,3)
  result[name]=dict(format='ELF64',endianness='little',machine='AArch64',type=kind,osabi=header[7],links=p.stat().st_nlink,bytes=p.stat().st_size)
 print(json.dumps(result))
-""".replace('PATHS',repr(list(paths)))
+""".replace('PATHS',repr(list(paths))).replace('NATIVE',repr(native_cargo_artifact))
     return 'python3 -c '+shlex.quote(code)
 
 
@@ -190,6 +191,14 @@ def complete_proof():
     expected={'omega-server':GAME_SHA,'omega-load-test':'56c2139ebf042680febccca48c2b5b3d036bce2eadc4ea385f6f52ae5812ed67'}
     proofs={}
     for role in ('game','bots'):
+        checkpoint=directory/(role+'-build.json')
+        if checkpoint.exists():
+            row=json.loads(checkpoint.read_text())
+            assert row['revision']==REVISION and row['path']==dest
+            assert row['sha256']==expected['omega-server'] and row['bot_sha256']==expected['omega-load-test']
+            assert row['sparse_source_proof']['all_materialized_blobs_verified']
+            proofs[role]=row
+            continue
         sizes={}
         for name,digest in expected.items():
             path=dest+'/rust/target/release/'+name
@@ -204,7 +213,7 @@ def complete_proof():
             build_argv=['cargo','build','--release','--locked','-j','2','-p','omega-server','-p','omega-load-test'] if role=='bots' else [],
             checkout_mode='rust-only-cone',sparse_source_proof=sparse,
             dependencies=ssh(role,'ldd '+dest+'/rust/target/release/omega-server; ldd '+dest+'/rust/target/release/omega-load-test'),
-            file_identity=json.loads(ssh(role,elf_identity_command([dest+'/rust/target/release/'+n for n in expected]))),
+            file_identity=json.loads(ssh(role,elf_identity_command([dest+'/rust/target/release/'+n for n in expected],native_cargo_artifact=role=='bots'))),
             toolchain=baseline['toolchain'],binary_bytes=sizes,utc_ns=time.time_ns(),
             proof_completion='identity only; no repeated native build or binary transfer')
         with (directory/(role+'-build.json')).open('x') as stream:json.dump(row,stream,indent=2)
