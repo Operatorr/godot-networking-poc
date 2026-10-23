@@ -52,3 +52,19 @@ class NativeReplayTests(unittest.TestCase):
             with mock.patch.object(resources.shutil,'rmtree') as delete:
                 with self.assertRaises(ValueError):resources.reclaim({'path':path})
                 delete.assert_not_called()
+
+class BlockedPreflightAuditTests(unittest.TestCase):
+    def test_exclusive_labels_and_launched_state_fail_before_any_host_call(self):
+        import native_diagnostic_preflight_audit as blocked
+        with tempfile.TemporaryDirectory() as temp:
+            root=pathlib.Path(temp);base=root/'deployment/hetzner/results';pre=base/(blocked.NS+'-preflight');pre.mkdir(parents=True)
+            current=base/blocked.NS;current.mkdir()
+            with mock.patch.object(blocked.run,'ROOT',root),mock.patch.object(blocked.audit,'bounded_ssh') as ssh:
+                with self.assertRaises(ValueError):blocked.main('../bad')
+                out=pre/'old-idle-audit.json';out.write_text('preserved')
+                with self.assertRaises(FileExistsError):blocked.main('old')
+                self.assertEqual(out.read_text(),'preserved')
+                (current/'manifest.json').write_text('{}')
+                with self.assertRaises(ValueError):blocked.main('fresh')
+                self.assertFalse((pre/'fresh-idle-audit-commands.ndjson').exists())
+                ssh.assert_not_called()
