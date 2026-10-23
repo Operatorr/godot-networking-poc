@@ -108,6 +108,20 @@
       "passed_gate_count": 36,
       "failed_gates": [],
       "report": "clean-combat50-r1-20261023.md"
+    },
+    {
+      "namespace": "clean-combat100-r1-20261023",
+      "candidate": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
+      "classification": "aborted-valid-failure",
+      "classification_version": "offered-load-v2",
+      "strict_classification": "aborted-valid-failure",
+      "passed_gate_count": 36,
+      "failed_gates": [],
+      "clean_cell_pass": false,
+      "capacity_pass": false,
+      "requires_followup": true,
+      "finding": "terminal proc executable read FileNotFoundError; fixed in a25b8ce, matched rerun pending",
+      "report": "clean-combat100-r1-20261023.md"
     }
   ],
   "remaining": [
@@ -121,9 +135,9 @@
     {
       "behavior": "combat",
       "population": 100,
-      "namespace": "clean-combat100-r1-20261023",
-      "status": "in_progress",
-      "purpose": "passing ladder rerun"
+      "namespace": "clean-combat100-r2-20261023",
+      "status": "ready_after_terminal_status_fix",
+      "purpose": "matched validation of terminal proc-read correction and passing ladder rerun"
     },
     {
       "behavior": "clustered",
@@ -154,7 +168,7 @@
       "purpose": "overload ramp and measured window if ramp completes"
     }
   ],
-  "active_task_id": "node:delegated-task:command%3Amcp%3A98779699-ac57-402b-ad13-e36558c5cc0a%3Adelegate-task%3Aissue39-clean-combat100-r1-20261023",
+  "active_task_id": null,
   "final_clean_campaign_certificate": false,
   "legacy_product_targets": {
     "bandwidth_kib_per_s": 5,
@@ -162,7 +176,7 @@
     "thresholds_changed": false,
     "note": "Retain their actual pass/fail independently from matrix gates; optimization is outside this map."
   },
-  "active_investigation": "Continue Combat100 with offered-load-v2 and unchanged numeric gates",
+  "active_investigation": "Validate terminal proc-read correction in one matched Combat100 R2",
   "active_diagnostic_namespace": null,
   "diagnostic_attempts": [
     {
@@ -212,8 +226,8 @@
     }
   ],
   "storage_recovery_report": "storage-recovery-20261023.md",
-  "latest_storage_recovery_report": "storage-recovery-r3-20261023.md",
-  "next_observation_namespace": "clean-combat100-r1-20261023",
+  "latest_storage_recovery_report": "storage-recovery-r4-20261023.md",
+  "next_observation_namespace": "clean-combat100-r2-20261023",
   "classification_proposal": "CLASSIFICATION-PROPOSAL.md",
   "classification_decision": "user_approved_versioned_separation_2026-10-23",
   "ordinary_observation_build": {
