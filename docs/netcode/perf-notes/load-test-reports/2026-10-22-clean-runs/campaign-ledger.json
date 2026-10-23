@@ -79,14 +79,14 @@
       "behavior": "idle",
       "population": 150,
       "namespace": "clean-idle150-r1-20261022",
-      "status": "diagnosis_required",
+      "status": "classification_pending",
       "purpose": "passing ladder rerun"
     },
     {
       "behavior": "movement",
       "population": 50,
-      "namespace": "clean-movement50-r1-20261022",
-      "status": "pending",
+      "namespace": "clean-movement50-r1-20261023",
+      "status": "in_progress",
       "purpose": "passing ladder rerun"
     },
     {
@@ -146,7 +146,7 @@
       "purpose": "overload ramp and measured window if ramp completes"
     }
   ],
-  "active_task_id": null,
+  "active_task_id": "node:delegated-task:command%3Amcp%3A4e020f92-bc95-449a-b76e-c2bf31fa8660%3Adelegate-task%3Aissue39-clean-movement50-r1-20261023",
   "final_clean_campaign_certificate": false,
   "legacy_product_targets": {
     "bandwidth_kib_per_s": 5,

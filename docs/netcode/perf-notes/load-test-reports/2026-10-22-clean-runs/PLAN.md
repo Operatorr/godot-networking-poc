@@ -29,3 +29,10 @@ Do not skip a new finding, weaken a gate, or close the ticket after a partial re
 The bug ledger records each classification, fix, regression and matched validation,
 then explicitly marks earlier results affected by changed behavior or invalid
 measurement. All cited article numbers must identify the surviving build/condition.
+
+
+The ladder stop applies per workload. A failed Idle150 control remains classified
+and uncertified while independent required workloads may start at their own first
+rung. They retain the existing strict gates. An offered-load versus wire-delivery
+classification interpretation is pending; no proposal changes current scoring.
+The final ticket still requires the full mandated rerun and findings assessment.
