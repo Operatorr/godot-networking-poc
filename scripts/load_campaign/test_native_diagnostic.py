@@ -101,7 +101,7 @@ class NativeReplayTests(unittest.TestCase):
             self.assertEqual(replay.read_records(p)[0][9],1)
             p.write_bytes(p.read_bytes()+b'x')
             with self.assertRaises(ValueError):replay.read_records(p)
-            p.write_bytes(b'ORF1'+replay.DATAGRAM.pack(99,1234,8081,80,60,64,0))
+            p.write_bytes(b'ORF1'+replay.DATAGRAM.pack(99,b'\x04\xd2\x1f\x91',80,60,64,0))
             known=collections.Counter({(1234,64):1})
             self.assertEqual(replay.capture_inputs(p,known),known)
             self.assertEqual(replay.capture_inputs(p,known,(99,100)),known)
@@ -131,3 +131,34 @@ class BlockedPreflightAuditTests(unittest.TestCase):
                 with self.assertRaises(ValueError):blocked.main('fresh')
                 self.assertFalse((pre/'fresh-idle-audit-commands.ndjson').exists())
                 ssh.assert_not_called()
+
+
+class NativeRecorderInteropTests(unittest.TestCase):
+    def test_native_capture_reader_matches_actual_frozen_recorder_network_order_ports(self):
+        import collections,json,struct,subprocess
+        import analyze
+        import native_diagnostic_analysis as replay
+        with tempfile.TemporaryDirectory() as temp:
+            root=pathlib.Path(temp)
+            repo=pathlib.Path(__file__).resolve().parents[2]
+            for name in ('udp_control_record.rs','udp_control_flow.rs'):
+                (root/name).write_bytes(subprocess.check_output(['git','-C',str(repo),'show',
+                    live.COLLECTOR_REVISION+':scripts/load_campaign/'+name]))
+            binary=root/'recorder'
+            subprocess.run(['rustc','--edition=2021','-O',str(root/'udp_control_record.rs'),'-o',str(binary)],
+                           check=True,capture_output=True)
+            directory=root/'capture';directory.mkdir()
+            (directory/'window.json').write_text(json.dumps(dict(start=10_250_000_000,end=12_250_000_000)))
+            pcap=bytearray(struct.pack('<IHHIIII',0xa1b2c3d4,2,4,0,0,65535,1))
+            for i in range(2000):
+                payload=b'\x00\x01'+struct.pack('>BBHHH',7,2,i,i,22)+b'\x02'+bytes(21)
+                udp=struct.pack('>HHHH',40000,8081,len(payload)+8,0)+payload
+                ip=bytearray(20);ip[0]=0x45;ip[9]=17;ip[2:4]=struct.pack('>H',20+len(udp))
+                frame=bytes(12)+b'\x08\x00'+ip+udp
+                pcap+=struct.pack('<IIII',10+i//1000,(i%1000)*1000,len(frame),len(frame))+frame
+            subprocess.run([str(binary),str(directory),'--article'],input=pcap,check=True,capture_output=True)
+            with (directory/'datagrams.bin').open('rb') as stream:rows=list(analyze.records(stream))
+            self.assertGreater(len(rows),0)
+            expected=collections.Counter((r[1],r[5]) for r in rows)
+            self.assertTrue(all(r[1:3]==(40000,8081) for r in rows))
+            self.assertEqual(replay.capture_inputs(directory/'datagrams.bin',expected),expected)

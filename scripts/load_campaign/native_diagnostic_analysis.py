@@ -12,7 +12,8 @@ import pathlib
 import struct
 
 RECORD=struct.Struct('<QQQQQIIIIII')
-DATAGRAM=struct.Struct('<QHHHHQH')
+# Recorder writes timestamp/lengths/hash LE, but copies UDP ports in network order.
+DATAGRAM=struct.Struct('<Q4sHHQH')
 ERRORS=('trace_limit','pending_limit','write_errors','untracked_retirement','whitelist_errors',
         'parser_errors','duplicate_input_attempt','unmatched_socket_input','socket_zero',
         'socket_partial','socket_errors','receive_errors','receive_partial','service_errors')
@@ -28,7 +29,8 @@ def capture_timestamps(path, known):
         if stream.read(4)!=b'ORF1':raise ValueError('Capture magic')
         while raw:=stream.read(DATAGRAM.size):
             if len(raw)!=DATAGRAM.size:raise ValueError('Capture record truncation')
-            stamp,source,target,ip_len,udp_len,fingerprint,commands=DATAGRAM.unpack(raw)
+            stamp,ports,ip_len,udp_len,fingerprint,commands=DATAGRAM.unpack(raw)
+            source,target=struct.unpack('>HH',ports)
             if commands:raise ValueError('Expected compact v2 capture')
             key=(source,fingerprint)
             if target==8081 and key in known:result[key].append(stamp)
