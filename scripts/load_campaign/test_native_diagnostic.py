@@ -56,6 +56,18 @@ class NativeDispatchTests(unittest.TestCase):
             self.assertEqual(live.validate_diagnostic_runtime(42),{'OMEGA_NATIVE_DIAG':'v1'})
 
 class NativeReplayTests(unittest.TestCase):
+    def test_sampled_fingerprint_timestamps_keep_exact_boundary_crossings(self):
+        import native_diagnostic_analysis as replay
+        rows=[(1,3,99,1,64,32,0,32,7,1,1),
+              (1,3,99,2,64,32,0,32,7,1,2), # two inputs in one datagram
+              (1,3,101,3,128,32,0,32,7,1,3)]
+        captured={(1234,64):[100],(1234,128):[102]}
+        r=replay.fingerprint_timing(rows,captured,1234,(100,200))
+        self.assertEqual(r['paired_sampled_datagrams'],2)
+        self.assertEqual(r['unpaired_sampled_datagrams'],0)
+        self.assertEqual(r['capture_minus_native_ns']['min'],1)
+        self.assertEqual(len(r['exact_window_membership_differences']),1)
+        self.assertFalse(r['exact_window_membership_differences'][0]['native_in_window'])
     def test_counter_witness_with_changed_throttle_remains_ambiguous(self):
         import native_diagnostic_analysis as replay
         def record(pre,post,counter=21,after=28):

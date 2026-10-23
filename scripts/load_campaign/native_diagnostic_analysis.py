@@ -22,8 +22,8 @@ def read_records(path):
     if len(data)%RECORD.size or len(data)>16384*64:raise ValueError('Native trace truncated/oversized')
     return list(RECORD.iter_unpack(data))
 
-def capture_inputs(path, known, window=None):
-    result=collections.Counter()
+def capture_timestamps(path, known):
+    result=collections.defaultdict(list)
     with path.open('rb') as stream:
         if stream.read(4)!=b'ORF1':raise ValueError('Capture magic')
         while raw:=stream.read(DATAGRAM.size):
@@ -31,8 +31,35 @@ def capture_inputs(path, known, window=None):
             stamp,source,target,ip_len,udp_len,fingerprint,commands=DATAGRAM.unpack(raw)
             if commands:raise ValueError('Expected compact v2 capture')
             key=(source,fingerprint)
-            if target==8081 and key in known and (window is None or window[0]<=stamp<window[1]):result[key]+=1
+            if target==8081 and key in known:result[key].append(stamp)
     return result
+
+
+def capture_inputs(path, known, window=None):
+    counts={key:sum(window is None or window[0]<=stamp<window[1] for stamp in stamps)
+            for key,stamps in capture_timestamps(path,known).items()}
+    return collections.Counter({k:n for k,n in counts.items() if n})
+
+
+def fingerprint_timing(native, captured, port, window):
+    stamps=collections.defaultdict(list)
+    for attempt,fingerprint in set((r[2],r[4]) for r in native if r[4]%64==0):
+        stamps[(port,fingerprint)].append(attempt)
+    offsets=[];crossings=[];unpaired=0
+    start,end=window
+    for key,attempts in stamps.items():
+        seen=sorted(captured.get(key,[]));attempts.sort()
+        unpaired+=abs(len(seen)-len(attempts))
+        for sent,stamp in zip(attempts,seen):
+            offsets.append(stamp-sent)
+            if (start<=sent<end)!=(start<=stamp<end):
+                crossings.append(dict(fingerprint=key[1],native_ns=sent,capture_ns=stamp,
+                                      native_in_window=start<=sent<end,capture_in_window=start<=stamp<end))
+    offsets.sort()
+    return dict(paired_sampled_datagrams=len(offsets),unpaired_sampled_datagrams=unpaired,
+                capture_minus_native_ns=dict(min=min(offsets,default=None),max=max(offsets,default=None),
+                    p99=offsets[(len(offsets)*99+99)//100-1] if offsets else None),
+                exact_window_membership_differences=crossings)
 
 
 def throttle_trace_classification(records):
@@ -78,8 +105,8 @@ def analyze(directory, manifest):
         path=d/'bots'/f'native-{i}.bin';records=read_records(path);c=diag['counts'];counts=collections.Counter(r[9] for r in records)
         native=[r for r in records if r[9]==1]
         window=[r for r in native if start<=r[2]<end]
-        for r in native:
-            if r[4]%64==0:fingerprints[mappings['bots'][i],r[4]]+=1
+        for attempt,fingerprint in set((r[2],r[4]) for r in native if r[4]%64==0):
+            fingerprints[mappings['bots'][i],fingerprint]+=1
         error={k:c.get(k,0) for k in ERRORS};errors.update(error);cost+=diag['completed_observer_ns']
         full=dict(created=c.get('created',0),admitted=c.get('admitted',0),retired=len(records),socket_input_handoffs=len(native),
             socket_input_attempts=sum(r[9] in (1,2,3,4) for r in records),
@@ -121,20 +148,23 @@ def analyze(directory, manifest):
             max_service_bracket_ns=diag['max_service_bracket_ns'],last_numeric_peer=diag['last_numeric_peer'],
             accounting=accounting,trace_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),trace_bytes=path.stat().st_size)
         peers.append(peer);total.update(full)
-    capture={role:capture_inputs(d/role/'datagrams.bin',fingerprints) for role in ('game','bots')}
-    window_capture={role:capture_inputs(d/role/'datagrams.bin',fingerprints,(start,end)) for role in capture}
+    capture_times={role:capture_timestamps(d/role/'datagrams.bin',fingerprints) for role in ('game','bots')}
+    capture={role:collections.Counter({k:len(v) for k,v in raw.items()}) for role,raw in capture_times.items()}
+    window_capture={role:collections.Counter({k:sum(start<=t<end for t in v) for k,v in raw.items()}) for role,raw in capture_times.items()}
     for peer in peers:
         port=mappings['bots'][peer['id']]
         records=read_records(d/'bots'/f"native-{peer['id']}.bin")
-        sampled=collections.Counter((port,r[4]) for r in records if r[9]==1 and r[4]%64==0)
-        sampled_window=collections.Counter((port,r[4]) for r in records if r[9]==1 and r[4]%64==0 and start<=r[2]<end)
+        native=[r for r in records if r[9]==1]
+        sampled=collections.Counter((port,fp) for at,fp in set((r[2],r[4]) for r in native if r[4]%64==0))
+        sampled_window=collections.Counter((port,fp) for at,fp in set((r[2],r[4]) for r in native if r[4]%64==0 and start<=r[2]<end))
         def reconciliation(expected,actual):
             selected=collections.Counter({k:v for k,v in actual.items() if k[0]==port})
-            return dict(native_sampled_inputs=sum(expected.values()),capture_records=sum(selected.values()),
+            return dict(native_sampled_input_datagrams=sum(expected.values()),capture_records=sum(selected.values()),
                         missing=sum((expected-selected).values()),extra=sum((selected-expected).values()))
         peer['sampled_fingerprint_reconciliation']={role:dict(
             full=reconciliation(sampled,capture[role]),
-            exact_window=reconciliation(sampled_window,window_capture[role])) for role in capture}
+            exact_window=reconciliation(sampled_window,window_capture[role]),
+            timing=fingerprint_timing(native,capture_times[role],port,(start,end))) for role in capture}
     matched={role:dict(native_sampled_input_datagrams=sum(fingerprints.values()),capture_matched=sum(capture[role].values()),
         missing=sum((fingerprints-capture[role]).values()),extra=sum((capture[role]-fingerprints).values())) for role in capture}
     checks.update(all_native_accounting=all(p['accounting'] for p in peers),all_observer_and_socket_error_counters_zero=not any(errors.values()),
@@ -146,6 +176,8 @@ def analyze(directory, manifest):
     return dict(schema=2,checks=checks,evidence_complete=all(checks.values()),full=dict(total),errors=dict(errors),peers=peers,
         window=dict(start_ns=start,end_ns=end,duration_ns=end-start),
         final_observation_utc_ns=observations[-1]['utc_ns'],
+        fingerprint_sample_modulus=64,
+        retirement_timestamp_semantics='Post-service record write observes tracked-buffer retirement; it is not the exact Drop instant. Boundary pending counts are inferred from these timestamp brackets. Final pending count is directly observed. Native queue lengths are unavailable.',
         sampled_fingerprint_reconciliation=matched,completed_observer_ns=cost,
         record_bytes=sum(p['trace_bytes'] for p in peers),
         semantics='Native attempts timestamped immediately before unchanged Socket::send; successful full-length returns are socket handoffs. Native/capture windows use different clock sources and capture timestamps have microsecond resolution. Whole-run sampled full-UDP fingerprints are matched independently of the collector command parser. Exact application delivery remains unknown. Pending input-buffer lifecycle is measured; native queue lengths and reliable queue occupancy remain unknown. Instrumentation cost is measured internally and may alter overhead; no historical causal attribution follows.')
