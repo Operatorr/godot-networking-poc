@@ -135,7 +135,7 @@
       "purpose": "overload ramp and measured window if ramp completes"
     }
   ],
-  "active_task_id": "node:delegated-task:command%3Amcp%3A4e020f92-bc95-449a-b76e-c2bf31fa8660%3Adelegate-task%3Aissue39-idle150-wire-audit-r4-20261023",
+  "active_task_id": null,
   "final_clean_campaign_certificate": false,
   "legacy_product_targets": {
     "bandwidth_kib_per_s": 5,
@@ -144,7 +144,7 @@
     "note": "Retain their actual pass/fail independently from matrix gates; optimization is outside this map."
   },
   "active_investigation": "Validate cached-status publication correction, native final-drain evidence and terminal natural exit on the unchanged instrumented source",
-  "active_diagnostic_namespace": "clean-idle150-audit-r4-20261023",
+  "active_diagnostic_namespace": "clean-idle150-audit-r5-20261023",
   "diagnostic_attempts": [
     {
       "namespace": "clean-idle150-audit-r1-20261022",
@@ -170,7 +170,16 @@
       "passed_gate_count": 14,
       "measurement_observed": false,
       "report": "clean-idle150-audit-r3-20261023.md"
+    },
+    {
+      "namespace": "clean-idle150-audit-r4-20261023",
+      "classification": "resource-blocked-before-workload",
+      "remote_workloads": 0,
+      "gate_count": 36,
+      "gates_scored": false,
+      "report": "clean-idle150-audit-r4-20261023.md"
     }
   ],
-  "storage_recovery_report": "storage-recovery-20261023.md"
+  "storage_recovery_report": "storage-recovery-20261023.md",
+  "latest_storage_recovery_report": "storage-recovery-r2-20261023.md"
 }

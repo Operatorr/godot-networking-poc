@@ -247,3 +247,10 @@ Disk headroom remains bounded. `4db3cf2` adds an explicit diagnostic-only `renam
 The child also corrected offline steady journal scoring: an unobserved scheduled interval can no longer pass its zero-error gate merely because it contains no rows. The actual aborted recorder regression failed before correction and passes after requiring complete coverage. Original derived outputs remain sealed; no historical result was upgraded.
 
 Automatic restoration and two independent 81-command audits pass, including the first remote `rename-v1` backup/inode/manifest/recovery proof. All 5,696 earlier local files remain unchanged. Native final drain, terminal natural-exit handling, steady workload correctness and cadence remain unobserved; a separately owned fresh diagnostic is still required. All 83 retained prefix no-attempt retirements match stable native throttle witnesses, while application delivery, historical cause and total causal observer overhead remain unknown. No extra remote workload was performed by the parent checks.
+
+
+## Native diagnostic round 4 — resource block before launch
+
+[R4](clean-idle150-audit-r4-20261023.md) launched zero workloads: the second additive allowance was short by 2,674,688 bytes after fresh source/binary staging. All 36 gates remain unscored; steady, final-drain and controller matched validation remain unobserved. Both independent 63-command idle/preservation audits pass and all 6,070 prior local files are unchanged. The parent separately verifies the zero-launch/null-gate summary. No new code defect or performance result is inferred.
+
+[Second storage recovery](storage-recovery-r2-20261023.md) recovers 261,967,872 bytes of regenerated APT metadata/download caches, with installed-package database and 29 executable hashes unchanged. Cargo caches remain intact. The unchanged 8 GiB reserve and R4 evidence/margin allowances remain; a fresh independent run must pass its complete new preflight. R4 remains sealed and is never retried in place.
