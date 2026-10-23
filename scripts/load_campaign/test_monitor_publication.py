@@ -19,7 +19,7 @@ class PublicationMonitorTests(unittest.TestCase):
             if role=='game':
                 clock['polls']+=1
                 if clock['polls']>1: clock['ns']=phase+361_000_000_000
-            common=dict(parser={'status':'running'},capture_resource=None,host_fresh=True,mapping=[(4001,1),(4002,2)])
+            common=dict(utc_ns=clock['ns'],parser={'status':'running'},capture_resource=None,host_fresh=True,mapping=[(4001,1),(4002,2)])
             if role=='game':return json.dumps(common|dict(server={'utc_ns':clock['ns']-sample_age_ns,'players':[1,2]},measurement_bytes=100))
             return json.dumps(common|dict(phase={'phase2_utc_ns':phase},guard=({'reason':None,'exit':1} if clock['polls']>1 else None),
                 bot_identity=identity,sockets='omega-load-test\n skmem:(r0,rb212992,t0,tb212992)\nomega-load-test\n skmem:(r0,rb212992,t0,tb212992)',

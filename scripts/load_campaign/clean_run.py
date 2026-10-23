@@ -604,8 +604,11 @@ def monitor_workload(local, manifest, fresh, ssh, copy):
         with concurrent.futures.ThreadPoolExecutor(2) as pool:
             futures = {role: pool.submit(ssh, role, 'python3 ' + REMOTE + '/clean_run.py status --role ' + role) for role in ('game','bots')}
             observations = {role: json.loads(f.result()) for role,f in futures.items()}
+        poll_end = time.time_ns()
+        expired = [role for role,obs in observations.items() if poll_end-obs['utc_ns'] > 10e9]
         with (local / 'status-polls.ndjson').open('a') as output:
-            output.write(json.dumps({'start_ns':poll_start, 'end_ns':time.time_ns(), 'observations':observations})+'\n')
+            output.write(json.dumps({'start_ns':poll_start, 'end_ns':poll_end,
+                                     'observations':observations, 'expired_status_roles':expired})+'\n')
         g,b = observations['game'],observations['bots']
         validate_source_identity(b.get('source_identity'))
         validate_game_runtime(g, fresh)
@@ -635,12 +638,18 @@ def monitor_workload(local, manifest, fresh, ssh, copy):
             manifest['guard_result'] = b['guard']
             break
         sample = g.get('server')
-        if not sample or time.time_ns()-sample['utc_ns'] > 10e9:
+        # A recorder can be fresh when read while the SSH reply (or its pair)
+        # takes much longer. Check its age at acquisition, then reacquire both
+        # expired replies before using them for population/mapping decisions.
+        if not sample or g['utc_ns']-sample['utc_ns'] > 10e9:
             manifest['controller_abort']='game-observation-stale-over-10s'
             break
-        if b.get('bots_stamp') and time.time_ns()-b['bots_stamp'] > 10e9:
+        if b.get('bots_stamp') and b['utc_ns']-b['bots_stamp'] > 10e9:
             manifest['controller_abort']='bot-observation-stale-over-10s'
             break
+        if expired:
+            manifest['expired_status_refreshes']=manifest.get('expired_status_refreshes',0)+1
+            continue
         population=len(sample['players']);peak=max(peak,population)
         collapsed=collapsed+1 if peak>=100 and population<.65*peak else 0
         if collapsed>=2:
