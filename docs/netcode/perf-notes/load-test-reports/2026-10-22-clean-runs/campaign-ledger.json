@@ -135,7 +135,7 @@
       "purpose": "overload ramp and measured window if ramp completes"
     }
   ],
-  "active_task_id": "node:delegated-task:command%3Amcp%3A4e020f92-bc95-449a-b76e-c2bf31fa8660%3Adelegate-task%3Aissue39-idle150-wire-audit-r2-20261023",
+  "active_task_id": null,
   "final_clean_campaign_certificate": false,
   "legacy_product_targets": {
     "bandwidth_kib_per_s": 5,
@@ -143,14 +143,25 @@
     "thresholds_changed": false,
     "note": "Retain their actual pass/fail independently from matrix gates; optimization is outside this map."
   },
-  "active_investigation": "Idle 150 offered-to-wire cadence deficit; do not advance the ladder until classified",
-  "active_diagnostic_namespace": "clean-idle150-audit-r2-20261023",
+  "active_investigation": "Close native post-drain evidence, validate lower observer cost and terminal controller correction; offered/wire cadence remains unresolved",
+  "active_diagnostic_namespace": "clean-idle150-audit-r3-20261023",
   "diagnostic_attempts": [
     {
       "namespace": "clean-idle150-audit-r1-20261022",
       "classification": "resource-blocked-before-launch",
       "remote_workloads": 0,
       "report": "clean-idle150-audit-r1-20261022.md"
+    },
+    {
+      "namespace": "clean-idle150-audit-r2-20261023",
+      "classification": "aborted-generator-invalid",
+      "remote_workloads": 1,
+      "passed_gate_count": 34,
+      "failed_gates": [
+        "mapped_wire_29_7hz",
+        "per_identity_offered_29_7hz"
+      ],
+      "report": "clean-idle150-audit-r2-20261023.md"
     }
   ],
   "storage_recovery_report": "storage-recovery-20261023.md"
