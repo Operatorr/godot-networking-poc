@@ -66,6 +66,7 @@ ORDINARY_IDLE150_R2 = 'clean-idle150-r2-20261023'
 ORDINARY_SPECS = {
     ORDINARY_IDLE150_R2: (150, 'idle', 'idle150-compact-v1'),
     'clean-movement50-r1-20261023': (50, 'movement', 'movement50-compact-v1'),
+    'clean-movement100-r1-20261023': (100, 'movement', 'movement100-compact-v1'),
 }
 
 
