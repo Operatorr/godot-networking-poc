@@ -52,3 +52,6 @@ restoration path, unique audit labels, bounded collectors and complete byte-awar
 journal counts. Finish with automatic restoration, two independent bounded audits,
 prior binary/archive/closed-state preservation and matching evidence hashes. Do
 not advance another ladder cell or close the parent ticket in this diagnostic.
+
+
+R5 closes native packet lifetime through drain and reconciles all per-peer lifetime native handoffs with both capture command counts. Stable native throttle witnesses account for a substantial subset of retirements without Socket attempts; remaining transitions, teardown events and exact-window differences remain qualified. The diagnostic also fails offered cadence, so it cannot certify ordinary valid-load behavior. The next matched ordinary Idle150 run uses the same source/executables with the native flag absent, retaining original input and transport settings and all gates. It tests observer-load dependence without changing congestion semantics. No additional native instrumentation is needed for that comparison.

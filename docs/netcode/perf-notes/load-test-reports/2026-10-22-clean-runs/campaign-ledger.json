@@ -135,7 +135,7 @@
       "purpose": "overload ramp and measured window if ramp completes"
     }
   ],
-  "active_task_id": "node:delegated-task:command%3Amcp%3A4e020f92-bc95-449a-b76e-c2bf31fa8660%3Adelegate-task%3Aissue39-idle150-wire-audit-r5-20261023",
+  "active_task_id": null,
   "final_clean_campaign_certificate": false,
   "legacy_product_targets": {
     "bandwidth_kib_per_s": 5,
@@ -143,8 +143,8 @@
     "thresholds_changed": false,
     "note": "Retain their actual pass/fail independently from matrix gates; optimization is outside this map."
   },
-  "active_investigation": "Validate cached-status publication correction, native final-drain evidence and terminal natural exit on the unchanged instrumented source",
-  "active_diagnostic_namespace": "clean-idle150-audit-r5-20261023",
+  "active_investigation": "Matched ordinary Idle150 with native diagnostics disabled; assess offered cadence and retain unchanged wire gate",
+  "active_diagnostic_namespace": null,
   "diagnostic_attempts": [
     {
       "namespace": "clean-idle150-audit-r1-20261022",
@@ -178,8 +178,21 @@
       "gate_count": 36,
       "gates_scored": false,
       "report": "clean-idle150-audit-r4-20261023.md"
+    },
+    {
+      "namespace": "clean-idle150-audit-r5-20261023",
+      "classification": "generator-invalid",
+      "remote_workloads": 1,
+      "passed_gate_count": 34,
+      "failed_gates": [
+        "mapped_wire_29_7hz",
+        "per_identity_offered_29_7hz"
+      ],
+      "native_lifetime_closed": true,
+      "report": "clean-idle150-audit-r5-20261023.md"
     }
   ],
   "storage_recovery_report": "storage-recovery-20261023.md",
-  "latest_storage_recovery_report": "storage-recovery-r2-20261023.md"
+  "latest_storage_recovery_report": "storage-recovery-r2-20261023.md",
+  "next_observation_namespace": "clean-idle150-r2-20261023"
 }
