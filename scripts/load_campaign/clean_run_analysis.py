@@ -130,7 +130,9 @@ def augment_clean_gates(full, directory):
             for key in ('baseline_reference_misses','unknown_delta_entities','decode_failures','send_failures','panics')}
         g[period+'_replication_and_bot_errors_zero']=bool(errors) and len(full.get('per_bot',[]))==controller.POPULATION and all(errors.get(k)==0 for k in ('baseline_reference_misses','unknown_delta_entities','decode_failures','send_failures','panics'))
         journal=full.get('journal_errors',{}).get(period,{})
-        g[period+'_oversized_panics_suppression_zero']=all(journal.get(k)==0 for k in ('oversized_warnings','panics','suppressed_notice_count'))
+        g[period+'_oversized_panics_suppression_zero']=(
+            (period!='steady_window' or g.get('complete_300s_common_coverage') is True)
+            and all(journal.get(k)==0 for k in ('oversized_warnings','panics','suppressed_notice_count')))
     for role in ('game','bots'):
         g[role+'_all_observed_udp_and_socket_errors_zero']=(full.get('hosts',{}).get(role,{}).get('all_observed_socket_drop_sum')==0 and
             all(full.get('hosts',{}).get(role,{}).get('all_host_udp_delta',{}).get(k)==0 for k in ('RcvbufErrors','SndbufErrors','InErrors','MemErrors','InCsumErrors')))

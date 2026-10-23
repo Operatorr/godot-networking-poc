@@ -110,4 +110,20 @@ class RealRecorderBoundaryTests(unittest.TestCase):
                 finally:
                     server.terminate();server.wait(timeout=5)
 
+class AbortedJournalEvidenceTests(unittest.TestCase):
+    @unittest.skipUnless((pathlib.Path(__file__).resolve().parents[2]/'deployment/hetzner/results'/
+                         r3.NAMESPACE/'full-analysis.first.json').is_file(),
+                         'Real aborted-recorder regression requires retained private R3 archive')
+    def test_actual_unobserved_window_cannot_pass_zero_journal_error_gate(self):
+        import clean_run_analysis as analysis
+        root=pathlib.Path(__file__).resolve().parents[2]
+        p=root/'deployment/hetzner/results'/r3.NAMESPACE
+        full=json.loads((p/'full-analysis.first.json').read_text())
+        self.assertFalse(full['gates']['complete_300s_common_coverage'])
+        self.assertEqual(full['journal_errors']['steady_window']['panics'],0)
+        analysis.augment_clean_gates(full,p/'extracted')
+        self.assertFalse(full['gates']['steady_window_oversized_panics_suppression_zero'])
+        self.assertTrue(full['gates']['full_workload_oversized_panics_suppression_zero'])
+
+
 if __name__=='__main__':unittest.main()

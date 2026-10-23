@@ -97,7 +97,7 @@ class CleanRunTests(unittest.TestCase):
         for row in report['per_bot']:row.update(state_updates_received=100,stale_snapshots_ignored=1)
         observed=[dict(boundary=b,bots=[dict(id=i,snapshots=100,stale_snapshots_ignored=1) for i in (1,2)]) for b in ('start','end')]
         def full():
-            return dict(gates={'existing_campaign_gates':True},collector_valid=True,generator_valid=True,
+            return dict(gates={'existing_campaign_gates':True,'complete_300s_common_coverage':True},collector_valid=True,generator_valid=True,
                 full_workload_bot_errors=dict(zero),per_bot=[dict(id=i,errors_delta=dict(zero)) for i in (1,2)],
                 journal_errors={p:dict(oversized_warnings=0,panics=0,suppressed_notice_count=0) for p in ('full_workload','steady_window')},
                 hosts={role:dict(all_observed_socket_drop_sum=0,all_host_udp_delta=dict(udp)) for role in ('game','bots')},
@@ -106,6 +106,10 @@ class CleanRunTests(unittest.TestCase):
         with mock.patch.object(analysis.base,'load',return_value=report),mock.patch.object(analysis.base,'rows',return_value=observed):
             clean=full();analysis.augment_clean_gates(clean,pathlib.Path('/unused'))
             self.assertEqual(clean['classification'],'clean-cell-pass')
+            unobserved=full();unobserved['gates']['complete_300s_common_coverage']=False
+            analysis.augment_clean_gates(unobserved,pathlib.Path('/unused'))
+            self.assertFalse(unobserved['gates']['steady_window_oversized_panics_suppression_zero'])
+            self.assertEqual(unobserved['classification'],'valid-failure')
             report['per_bot'][0]['state_updates_received']=101
             missing=full();analysis.augment_clean_gates(missing,pathlib.Path('/unused'))
             self.assertEqual(missing['classification'],'valid-failure')
