@@ -21,7 +21,8 @@ ROUND_NAMES = {NAMESPACE: 'r4', 'clean-idle150-audit-r5-20261023': 'r5',
                'clean-movement150-r1-20261023': 'ordinary-movement150-r1',
                'clean-combat50-r1-20261023': 'ordinary-combat50-r1',
                'clean-combat100-r1-20261023': 'ordinary-combat100-r1',
-               'clean-combat100-r2-20261023': 'ordinary-combat100-r2'}
+               'clean-combat100-r2-20261023': 'ordinary-combat100-r2',
+               'clean-combat100-r3-20261023': 'ordinary-combat100-r3'}
 NAMESPACES = tuple(ROUND_NAMES)
 REUSE_NAMESPACE = 'clean-idle150-audit-r3-20261023'
 BOT_SHA = '56c2139ebf042680febccca48c2b5b3d036bce2eadc4ea385f6f52ae5812ed67'
