@@ -51,6 +51,7 @@ EXPERIMENT_BINARIES = {'game': CANDIDATE_CHECKOUT + '/rust/target/release/omega-
 POPULATION = 150
 BEHAVIOR = 'strategy'
 CELL = None
+CLASSIFICATION_VERSIONS = ('strict-v1', 'offered-load-v2')
 RESTORE_READY_ATTEMPTS = 50
 EXPECTED_CONTROL = {
     'game': '5a36a7aaf3bed4db46efd2a4200c4e02825ef3598d0c4990a672d279c051a202',
@@ -80,6 +81,8 @@ def configure_cell(cell):
     global CELL, NAMESPACE, REMOTE, UNIT, OVERRIDE, CANDIDATE_CHECKOUT, BOT_CHECKOUT
     global CANDIDATE_REVISION, BOT_REVISION, EXPECTED_CANDIDATE, EXPECTED_BOT
     global EXPERIMENT_BINARIES, POPULATION, BEHAVIOR
+    if cell.get('classification_version', 'strict-v1') not in CLASSIFICATION_VERSIONS:
+        raise ValueError('Unsupported classification version')
     if not re.fullmatch(r'clean-[a-z0-9-]{1,65}', cell['namespace']):
         raise ValueError('Invalid clean-run namespace')
     if type(cell['population']) is not int or not 1 <= cell['population'] <= 500:
@@ -838,6 +841,7 @@ def controller():
     manifest = {'namespace': NAMESPACE, 'requested_bots': POPULATION, 'behavior': BEHAVIOR,
                 'ramp_limit_s': RAMP_SECONDS, 'steady_limit_s': STEADY_SECONDS,
                 'input_hz': 30, 'seed': 30, 'stagger_ms': 100, 'difficulty': 1.0,
+                'classification_version':CELL.get('classification_version','strict-v1'),
                 'game_config': candidate_config, 'config_proof': config_proof, 'pinned': PINNED,
                 'ramp_input_cadence': 'collected; analyze separately', 'generator_valid': None,
                 'measurement_preservation':CELL.get('measurement_preservation','copy'), 'native_build_origin':CELL.get('native_build_origin'), 'game_artifact_mode':CELL.get('game_artifact_mode'), 'native_diagnostic': CELL.get('native_diagnostic',False), 'game_evidence_abort_bytes':measurement_limit_bytes(), 'classification': 'pending-scored-observation', 'intervention': 'Pinned correctness candidate game and bots; emission audit disabled; send150 config unchanged; compact measurement and repaired v2 wire collector', 'workloads_launched': 0, 'collector_cadence_s': 1,
@@ -1201,9 +1205,12 @@ if __name__ == '__main__':
     parser.add_argument('--behavior', default='strategy')
     parser.add_argument('--verification-label', default='final')
     parser.add_argument('--native-diagnostic', action='store_true')
+    parser.add_argument('--classification-version', choices=CLASSIFICATION_VERSIONS)
     parser.add_argument('--measurement-preservation', choices=('copy','rename-v1'),default='copy')
     args = parser.parse_args()
     load_cell(args.namespace, args.population, args.behavior)
+    if args.classification_version:
+        configure_cell(CELL | {'classification_version':args.classification_version})
     if args.native_diagnostic:
         configure_cell(CELL | {'native_diagnostic':'v1','measurement_preservation':args.measurement_preservation})
     dispatch(args)

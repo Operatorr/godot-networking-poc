@@ -149,10 +149,34 @@ def augment_clean_gates(full, directory):
 
 
 def classify(full):
+    version=full.get('classification_version','strict-v1')
+    if version not in controller.CLASSIFICATION_VERSIONS:
+        raise ValueError('Unsupported classification version')
     full['failed_gates']=[k for k,v in full['gates'].items() if v is not True]
+    if version=='offered-load-v2':
+        gates=full['gates']
+        full['offered_load_valid']=(full.get('collector_valid') is True and
+                                    gates.get('per_identity_offered_29_7hz') is True)
+        full['wire_delivery_pass']=gates.get('mapped_wire_29_7hz') if type(gates.get('mapped_wire_29_7hz')) is bool else None
+        # Only the wire predicate moves out of generator validity. Preserve the
+        # existing collector, per-peer offered-rate and bot UDP prerequisites.
+        full['generator_valid']=full['offered_load_valid'] and all(gates.get(k) is True
+            for k in ('bots_udp_errors_zero','bots_full_workload_udp_errors_zero'))
+        full['strict_generator_valid']=full['generator_valid'] and full['wire_delivery_pass'] is True
     clean=not full['failed_gates'] and not full.get('controller_abort') and not full.get('controller_error') and not full.get('guard_reason')
+    if version=='offered-load-v2':
+        clean=clean and bool(full['gates']) and full.get('collector_valid') is True and full['generator_valid']
     full['classification']=('collector-invalid' if not full.get('collector_valid') else 'generator-invalid' if not full.get('generator_valid') else 'clean-cell-pass' if clean else 'valid-failure')
+    if version=='offered-load-v2':
+        full['strict_classification']=('collector-invalid' if not full.get('collector_valid') else 'generator-invalid' if not full['strict_generator_valid'] else 'clean-cell-pass' if clean else 'valid-failure')
+        if (full['generator_valid'] and full['wire_delivery_pass'] is False and
+                full['failed_gates']==['mapped_wire_29_7hz'] and not full.get('guard_reason')):
+            full['classification']='valid-offered-load-wire-deficit'
+        full['clean_cell_pass']=clean
+        full['capacity_pass']=clean
     if full.get('controller_abort') or full.get('controller_error'):full['classification']='aborted-'+full['classification']
+    if version=='offered-load-v2' and (full.get('controller_abort') or full.get('controller_error')):
+        full['strict_classification']='aborted-'+full['strict_classification']
     full['highest_passing_population_this_observation']=controller.POPULATION if clean else None
 
 
@@ -189,6 +213,10 @@ def missing_live_identity_polls(polls, window):
 
 
 def main():
+    manifest=base.load(P/'manifest.json',{})
+    version=manifest.get('classification_version','strict-v1')
+    if version not in controller.CLASSIFICATION_VERSIONS:
+        raise ValueError('Unsupported classification version')
     d=P/'extracted';d.mkdir(exist_ok=True)
     cleanup=base.load(P/'final-verification-summary.json',{})
     original_cleanup=base.load(P/'cleanup.json',{})
@@ -216,7 +244,7 @@ def main():
     base.POPULATION=controller.POPULATION;base.IDS=set(range(1,controller.POPULATION+1))
     full=base.main()
     full['journal_recovery']={'primary_export_byte_aware':True,'complete_scan':bool(journal and journal.get('complete_scan')),'raw_retention_complete':bool(journal and journal.get('complete'))}
-    manifest=base.load(P/'manifest.json',{})
+    full['classification_version']=version
     phase=base.load(d/'bots/phase.json',{}).get('phase2_utc_ns')
     polls=base.rows(P/'status-polls.ndjson')
     identities=[r['observations']['bots'].get('bot_identity') for r in polls]
@@ -254,6 +282,10 @@ def main():
     classify(full)
     (P/'full-analysis.json').write_text(json.dumps(full)+'\n')
     public={k:full.get(k) for k in ('namespace','workloads_launched','classification','window','workload_start_ns','workload_end_ns','controller_decision_ns','controller_abort','controller_error','guard_reason','gates','failed_gates','generator_summary','full_workload_bot_errors','server_errors','settings','runtime_proof','polling','bot_observer_cost','cleanup','boundary_lateness_ms','collector_valid','generator_valid')}
+    public['classification_version']=full['classification_version']
+    if full['classification_version']=='offered-load-v2':
+        public.update({k:full[k] for k in ('offered_load_valid','wire_delivery_pass','strict_generator_valid',
+                       'strict_classification','clean_cell_pass','capacity_pass')})
     public['recovery_finding']={k:recovery.get(k) for k in ('original_restore_exit','original_restore_error','cause','timer_disarmed_after_verified_original_state','owned_active_units_absent','game_archive_completion')}
     public['legacy_harness_criteria']=full.get('legacy_harness_criteria')
     public['bot_aggregated']=full.get('bot_aggregated')
