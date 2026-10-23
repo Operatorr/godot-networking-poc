@@ -85,7 +85,7 @@ def configure_cell(cell):
         raise ValueError('Atomic measurement preservation requires an explicit native diagnostic')
     if cell.get('native_diagnostic', False) is not False:
         if (cell.get('native_diagnostic') != 'v1' or cell['namespace'] not in
-                ('clean-idle150-audit-r1-20261022','clean-idle150-audit-r2-20261023','clean-idle150-audit-r3-20261023','clean-idle150-audit-r4-20261023')
+                ('clean-idle150-audit-r1-20261022','clean-idle150-audit-r2-20261023','clean-idle150-audit-r3-20261023','clean-idle150-audit-r4-20261023','clean-idle150-audit-r5-20261023')
                 or cell['population'] != 150 or cell['behavior'] != 'idle'):
             raise ValueError('Native diagnostic requires the one authorized Idle150 condition')
         if cell['namespace'] == 'clean-idle150-audit-r2-20261023' and (
@@ -93,12 +93,12 @@ def configure_cell(cell):
                 cell['game_sha256'] != 'de92e120bb863948fc4c55fe525d200ac6ebc0d0d214d453ed3efeab159208db' or
                 cell['bot_sha256'] != 'a9325ad1bd90a24e3d1bdb08ce049fb5734d67471010af6f5425b104bda2f042'):
             raise ValueError('Native R2 requires the exact proven source and executable identities')
-        if cell['namespace'] in ('clean-idle150-audit-r3-20261023','clean-idle150-audit-r4-20261023') and (
+        if cell['namespace'] in ('clean-idle150-audit-r3-20261023','clean-idle150-audit-r4-20261023','clean-idle150-audit-r5-20261023') and (
                 cell['revision'] != 'a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf' or
                 cell['game_sha256'] != 'de92e120bb863948fc4c55fe525d200ac6ebc0d0d214d453ed3efeab159208db' or
                 cell['bot_sha256'] != '56c2139ebf042680febccca48c2b5b3d036bce2eadc4ea385f6f52ae5812ed67' or preservation != 'rename-v1'):
             raise ValueError('Native R3 requires the exact new source, binaries and rename-v1')
-    if cell.get('native_diagnostic') == 'v1' and cell['namespace'] == 'clean-idle150-audit-r4-20261023':
+    if cell.get('native_diagnostic') == 'v1' and cell['namespace'] in ('clean-idle150-audit-r4-20261023','clean-idle150-audit-r5-20261023'):
         if cell.get('native_build_origin') != 'bots' or cell.get('game_artifact_mode') != 'verified-existing-build-copy':
             raise ValueError('R4 requires explicit verified-existing-build-copy with R3 native bots origin')
     CELL = dict(cell)
@@ -117,7 +117,7 @@ def measurement_limit_bytes():
     # A stricter resource abort for this opt-in diagnostic, never a validity pass.
     # Separate additive storage preflight covers the measured original backup,
     # staging, journal, role-only archive and margin above the unchanged guard.
-    if CELL.get('native_diagnostic') == 'v1' and NAMESPACE == 'clean-idle150-audit-r4-20261023':
+    if CELL.get('native_diagnostic') == 'v1' and NAMESPACE in ('clean-idle150-audit-r4-20261023','clean-idle150-audit-r5-20261023'):
         return 16*1024**2
     if CELL.get('native_diagnostic') == 'v1' and NAMESPACE == 'clean-idle150-audit-r3-20261023':
         return 32*1024**2
@@ -152,7 +152,7 @@ def load_cell(namespace, population=150, behavior='strategy'):
         configure_cell(dict(namespace=namespace,population=population,behavior=behavior,
                             revision=game['revision'],game_sha256=game['sha256'],bot_sha256=game['bot_sha256'],
                             **({k:game[k] for k in ('native_build_origin','game_artifact_mode')}
-                               if namespace in ('clean-idle150-audit-r3-20261023','clean-idle150-audit-r4-20261023') else {})))
+                               if namespace in ('clean-idle150-audit-r3-20261023','clean-idle150-audit-r4-20261023','clean-idle150-audit-r5-20261023') else {})))
 
 
 def make_config(comparator_bytes):
@@ -780,7 +780,7 @@ def controller():
         # Freeze and validate the exact recovery script before any remote staging.
         (local/'restore.sh').write_text(recovery_script())
         subprocess.run(['/bin/sh','-n',str(local/'restore.sh')],check=True)
-    if CELL.get('native_diagnostic') == 'v1' and NAMESPACE == 'clean-idle150-audit-r4-20261023':
+    if CELL.get('native_diagnostic') == 'v1' and NAMESPACE in ('clean-idle150-audit-r4-20261023','clean-idle150-audit-r5-20261023'):
         import native_diagnostic_r4 as r4
         r4.check(ssh,16*1024**2,local/'storage-preflight.json')
         (local/'restore.sh').write_text(recovery_script())

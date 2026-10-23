@@ -97,4 +97,51 @@ class R4Tests(unittest.TestCase):
             with self.assertRaises(ValueError):r3.validate_reuse(*args,proof)
 
 
+    def test_exact_r5_dispatch_and_reuse_preserve_r4(self):
+        import clean_run as live
+        ns='clean-idle150-audit-r5-20261023'
+        cell=dict(namespace=ns,revision=r3.REVISION,population=150,behavior='idle',
+                  game_sha256=r3.GAME_SHA,bot_sha256=r3.BOT_SHA,native_diagnostic='v1',
+                  measurement_preservation='rename-v1',native_build_origin='bots',
+                  game_artifact_mode='verified-existing-build-copy')
+        live.configure_cell(cell)
+        self.assertEqual(live.measurement_limit_bytes(),16*1024**2)
+        row=dict(revision=r3.REVISION,path='/home/deploy/omega-'+r3.REUSE_NAMESPACE,
+                 sha256=r3.GAME_SHA,bot_sha256=r3.BOT_SHA,native_build_origin='bots')
+        proof={role:copy.deepcopy(row) for role in ('game','bots')}
+        r3.validate_reuse(ns,r3.REVISION,r3.REUSE_NAMESPACE,proof)
+        for change in (dict(namespace=ns+'-retry'),dict(revision='0'*40),
+                       dict(bot_sha256=build.NATIVE_HASHES[1]),dict(game_sha256='0'*64),
+                       dict(population=100),dict(behavior='strategy'),
+                       dict(measurement_preservation='copy'),dict(native_build_origin='game'),
+                       dict(game_artifact_mode='native-build')):
+            with self.assertRaises(ValueError):live.configure_cell(cell|change)
+        with self.assertRaises(ValueError):r3.validate_reuse(ns+'-retry',r3.REVISION,r3.REUSE_NAMESPACE,proof)
+        for role in proof:
+            for key,value in dict(revision='0'*40,path='/tmp/wrong',sha256='0'*64,
+                                  bot_sha256=build.NATIVE_HASHES[1],native_build_origin='game').items():
+                bad=copy.deepcopy(proof);bad[role][key]=value
+                with self.assertRaises(ValueError):r3.validate_reuse(ns,r3.REVISION,r3.REUSE_NAMESPACE,bad)
+        live.configure_cell(cell|dict(namespace=r3.NAMESPACE))
+        self.assertEqual(live.measurement_limit_bytes(),16*1024**2)
+
+
+    def test_idle_current_directory_probe_executes_and_checks_inode_and_prefix(self):
+        import hashlib
+        import native_diagnostic_r4_audit as release
+        with tempfile.TemporaryDirectory() as tmp:
+            root=pathlib.Path(tmp).resolve();data=root/'data';data.write_bytes(b'preserved')
+            st=root.stat();fs=data.stat()
+            import stat
+            proof=dict(device=st.st_dev,inode=st.st_ino,uid=st.st_uid,gid=st.st_gid,
+                       mode=stat.S_IMODE(st.st_mode),files=dict(data=dict(bytes=9,
+                       sha256=hashlib.sha256(b'preserved').hexdigest(),inode=fs.st_ino,device=fs.st_dev)))
+            command=release.current_measurement_command(proof).removeprefix('sudo -n ').replace('/var/lib/omega-measure/current',str(root))
+            result=subprocess.run(shlex.split(command),capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertTrue(json.loads(result.stdout)['original_current_directory_untouched'])
+            data.write_bytes(b'changed')
+            self.assertNotEqual(subprocess.run(shlex.split(command),capture_output=True).returncode,0)
+
+
 if __name__=='__main__':unittest.main()

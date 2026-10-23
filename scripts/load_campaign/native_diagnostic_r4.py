@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exact R4 verified R3 build copies and additive storage proof. No compilation/workloads."""
+"""Exact R4/R5 verified R3 build copies and additive storage proof. No compilation/workloads."""
 import concurrent.futures
 import hashlib
 import json
@@ -14,6 +14,7 @@ import native_diagnostic_storage as storage
 import run
 
 NAMESPACE = 'clean-idle150-audit-r4-20261023'
+NAMESPACES = (NAMESPACE, 'clean-idle150-audit-r5-20261023')
 REUSE_NAMESPACE = 'clean-idle150-audit-r3-20261023'
 BOT_SHA = '56c2139ebf042680febccca48c2b5b3d036bce2eadc4ea385f6f52ae5812ed67'
 REVISION = 'a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf'
@@ -81,11 +82,12 @@ print(json.dumps(result))
     return 'python3 -c '+shlex.quote(code)
 
 
-def prepare():
+def prepare(namespace=NAMESPACE):
+    if namespace not in NAMESPACES:raise ValueError("Only exact R4/R5 namespaces")
     connection_options();os.umask(0o077)
-    pre=run.ROOT/'deployment/hetzner/results'/(NAMESPACE+'-preflight')
-    directory=pre.with_name(NAMESPACE+'-build');directory.mkdir(exist_ok=False)
-    dest='/home/deploy/omega-'+NAMESPACE;remote_bundle='/home/deploy/'+NAMESPACE+'.bundle'
+    pre=run.ROOT/'deployment/hetzner/results'/(namespace+'-preflight')
+    directory=pre.with_name(namespace+'-build');directory.mkdir(exist_ok=False)
+    dest='/home/deploy/omega-'+namespace;remote_bundle='/home/deploy/'+namespace+'.bundle'
     journal=directory/'commands.ndjson'
     ssh=lambda role,command:audit.bounded_ssh(role,command,journal)
     commands=dict(processes='ps -eo pid,comm,args',units="systemctl list-units --all --no-legend 'omega-*'",
@@ -97,7 +99,7 @@ def prepare():
         artifacts="find /home/deploy/omega-* -maxdepth 5 -path '*/target/release/omega-*' -type f ! -name '*.d' -exec sha256sum {} \\; | sort",
         prior_archives="find /home/deploy/omega-results -maxdepth 2 -type f \\( -name '*.tar.gz' -o -name '*sha256*' \\) -exec sha256sum {} \\; | sort",
         closed_states="find /home/deploy/omega-results/campaign-20261013 /home/deploy/omega-results/one-pass-20261014 -maxdepth 1 -name '*state*.json' -exec sha256sum {} \\;",
-        namespace_absent='test ! -e /home/deploy/omega-results/'+NAMESPACE+' && test ! -e '+dest+' && test ! -L '+dest+' && echo absent',
+        namespace_absent='test ! -e /home/deploy/omega-results/'+namespace+' && test ! -e '+dest+' && test ! -L '+dest+' && echo absent',
         maintenance='systemctl show apt-daily.timer apt-daily-upgrade.timer apt-daily.service apt-daily-upgrade.service -p Id -p ActiveState -p UnitFileState',
         qdisc='tc -j qdisc show dev eth0',egress='tc -j filter show dev eth0 egress',ingress='tc -j filter show dev eth0 ingress',nft='sudo -n nft list ruleset')
     def inventory(role):
@@ -134,7 +136,7 @@ def prepare():
     subprocess.run(['git','bundle','create',str(bundle),build.BASE_REVISION+'..HEAD'],check=True,capture_output=True)
     subprocess.run(['git','bundle','verify',str(bundle)],check=True,capture_output=True)
     reuse=build.load_reuse_proof(REUSE_NAMESPACE,REVISION,pre.parent)
-    validate_reuse(NAMESPACE,REVISION,REUSE_NAMESPACE,reuse)
+    validate_reuse(namespace,REVISION,REUSE_NAMESPACE,reuse)
     sizes={}
     for role in ('game','bots'):
         src=reuse[role]['path']
@@ -185,12 +187,12 @@ def prepare():
         with (directory/(role+'-build.json')).open('x') as stream:json.dump(row,stream,indent=2)
         proofs[role]=row
     with (directory/'build-proof.json').open('x') as stream:json.dump(proofs,stream,indent=2)
-    print('Both R4 independent real-file copies verified; R3 native origin bots; no new compilation or workload',flush=True)
+    print(namespace+': both independent real-file copies verified; R3 native origin bots; no new compilation or workload',flush=True)
 
 
 def validate_reuse(namespace,revision,reuse_namespace,proof):
-    if namespace!=NAMESPACE or revision!=REVISION or reuse_namespace!=REUSE_NAMESPACE:
-        raise ValueError('Only exact R4 from proven R3 source and binaries')
+    if namespace not in NAMESPACES or revision!=REVISION or reuse_namespace!=REUSE_NAMESPACE:
+        raise ValueError('Only exact R4/R5 from proven R3 source and binaries')
     for role in ('game','bots'):
         row=proof[role]
         if (row['revision']!=REVISION or row['path']!='/home/deploy/omega-'+REUSE_NAMESPACE or
@@ -198,4 +200,8 @@ def validate_reuse(namespace,revision,reuse_namespace,proof):
             raise ValueError('R3 reuse identity or native origin mismatch')
 
 
-if __name__=='__main__':prepare()
+if __name__=='__main__':
+    import argparse
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--namespace',choices=NAMESPACES,default=NAMESPACE)
+    prepare(parser.parse_args().namespace)
