@@ -98,6 +98,16 @@
       "passed_gate_count": 36,
       "failed_gates": [],
       "report": "clean-movement150-r1-20261023.md"
+    },
+    {
+      "namespace": "clean-combat50-r1-20261023",
+      "candidate": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
+      "classification": "clean-cell-pass",
+      "classification_version": "offered-load-v2",
+      "strict_classification": "clean-cell-pass",
+      "passed_gate_count": 36,
+      "failed_gates": [],
+      "report": "clean-combat50-r1-20261023.md"
     }
   ],
   "remaining": [
@@ -110,16 +120,9 @@
     },
     {
       "behavior": "combat",
-      "population": 50,
-      "namespace": "clean-combat50-r1-20261023",
-      "status": "in_progress",
-      "purpose": "passing ladder rerun"
-    },
-    {
-      "behavior": "combat",
       "population": 100,
-      "namespace": "clean-combat100-r1-20261022",
-      "status": "pending",
+      "namespace": "clean-combat100-r1-20261023",
+      "status": "ready_for_separate_test_agent",
       "purpose": "passing ladder rerun"
     },
     {
@@ -151,7 +154,7 @@
       "purpose": "overload ramp and measured window if ramp completes"
     }
   ],
-  "active_task_id": "node:delegated-task:command%3Amcp%3A98779699-ac57-402b-ad13-e36558c5cc0a%3Adelegate-task%3Aissue39-clean-combat50-r1-20261023",
+  "active_task_id": null,
   "final_clean_campaign_certificate": false,
   "legacy_product_targets": {
     "bandwidth_kib_per_s": 5,
@@ -159,7 +162,7 @@
     "thresholds_changed": false,
     "note": "Retain their actual pass/fail independently from matrix gates; optimization is outside this map."
   },
-  "active_investigation": "Continue Combat50 with offered-load-v2 and unchanged numeric gates",
+  "active_investigation": "Continue Combat100 with offered-load-v2 and unchanged numeric gates",
   "active_diagnostic_namespace": null,
   "diagnostic_attempts": [
     {
@@ -210,7 +213,7 @@
   ],
   "storage_recovery_report": "storage-recovery-20261023.md",
   "latest_storage_recovery_report": "storage-recovery-r3-20261023.md",
-  "next_observation_namespace": "clean-combat50-r1-20261023",
+  "next_observation_namespace": "clean-combat100-r1-20261023",
   "classification_proposal": "CLASSIFICATION-PROPOSAL.md",
   "classification_decision": "user_approved_versioned_separation_2026-10-23",
   "ordinary_observation_build": {
