@@ -11,6 +11,51 @@ import clean_run_build as build
 
 
 class RevisionTests(unittest.TestCase):
+    def test_sparse_reuse_requires_exact_new_namespace_revision_and_proven_hashes(self):
+        row = dict(revision=build.NATIVE_REVISION,sha256=build.NATIVE_HASHES[0],bot_sha256=build.NATIVE_HASHES[1])
+        proof = dict(game=dict(row),bots=dict(row))
+        args = [build.NATIVE_R2,build.NATIVE_REVISION,'clean-idle150-audit-r1-20261022',proof]
+        build.validate_sparse_reuse(*args)
+        for index,value in ((0,'clean-idle150-audit-r1-20261022'),(0,'clean-other'),
+                            (1,'0'*40),(2,'clean-other'),(3,None)):
+            bad=list(args);bad[index]=value
+            with self.assertRaises(ValueError):build.validate_sparse_reuse(*bad)
+        for key in ('revision','sha256','bot_sha256'):
+            wrong = dict(game=row,bots=row|{key:'0'*len(row[key])})
+            with self.assertRaises(ValueError):build.validate_sparse_reuse(*args[:3],wrong)
+
+    def test_real_sparse_checkout_complete_rust_blobs_and_boundary_before_checkout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=pathlib.Path(tmp);source=root/'source';source.mkdir()
+            def git(*args):
+                return subprocess.check_output(['git','-C',str(source),*args],text=True,stderr=subprocess.DEVNULL).strip()
+            git('init','-q');git('config','user.name','Fixture');git('config','user.email','fixture@example.invalid')
+            for name in ('rust/Cargo.toml','rust/Cargo.lock','rust/server/src/main.rs',
+                         'rust/protocol/src/lib.rs','client/assets/large','docs/manual.md','AGENTS.md'):
+                p=source/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(name)
+            git('add','.');git('commit','-qm','source');revision=git('rev-parse','HEAD')
+            bundle=root/'source.bundle';git('bundle','create',str(bundle),'HEAD')
+            destination=root/'sparse'
+            command=build.checkout_command(str(source),str(destination),str(bundle),revision,True)
+            self.assertLess(command.index('sparse-checkout set rust'),command.index('checkout --detach'))
+            result=subprocess.run(['/bin/sh','-ec',command],capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertFalse((destination/'client').exists());self.assertFalse((destination/'docs').exists())
+            def proof(rev=revision):
+                return subprocess.run(['/bin/sh','-ec',build.sparse_source_proof_command(str(destination),rev)],capture_output=True,text=True)
+            result=proof();self.assertEqual(result.returncode,0,result.stderr)
+            row=json.loads(result.stdout)
+            self.assertEqual(row['rust_file_count'],4);self.assertTrue(row['all_materialized_blobs_verified'])
+            self.assertEqual(row['specification'],'/*\n!/*/\n/rust/\n')
+            self.assertTrue(row['shared_object_alternates'])
+            self.assertNotEqual(proof('0'*40).returncode,0)
+            f=destination/'rust/Cargo.lock';f.write_text('wrong contents')
+            self.assertNotEqual(proof().returncode,0)
+            f.write_text('rust/Cargo.lock');(destination/'client').mkdir()
+            self.assertNotEqual(proof().returncode,0)
+            ordinary=build.checkout_command(str(source),str(root/'full'),str(bundle),revision)
+            self.assertNotIn('sparse-checkout',ordinary)
+
     def test_prior_proof_requires_exact_both_host_revision_path_and_hashes(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp)

@@ -11,6 +11,30 @@ class NativeDispatchTests(unittest.TestCase):
         self.cell=dict(namespace='clean-idle150-audit-r1-20261022',population=150,behavior='idle',
             revision='5'*40,game_sha256='a'*64,bot_sha256='b'*64,native_diagnostic='v1')
         live.configure_cell(self.cell)
+    def test_fresh_r2_dispatch_requires_exact_source_binaries_and_own_build_proof(self):
+        import clean_run_build as build
+        cell=self.cell|dict(namespace=build.NATIVE_R2,revision=build.NATIVE_REVISION,
+                           game_sha256=build.NATIVE_HASHES[0],bot_sha256=build.NATIVE_HASHES[1])
+        live.configure_cell(cell)
+        self.assertEqual(live.REMOTE,'/home/deploy/omega-results/'+build.NATIVE_R2)
+        self.assertIn(build.NATIVE_R2,live.EXPERIMENT_BINARIES['bots'])
+        for key in ('revision','game_sha256','bot_sha256'):
+            with self.assertRaises(ValueError):live.configure_cell(cell|{key:'0'*len(cell[key])})
+        with tempfile.TemporaryDirectory() as temp:
+            root=pathlib.Path(temp);script=root/'scripts/load_campaign/clean_run.py'
+            script.parent.mkdir(parents=True)
+            directory=root/'deployment/hetzner/results'/(build.NATIVE_R2+'-build');directory.mkdir(parents=True)
+            import json
+            row=dict(revision=build.NATIVE_REVISION,sha256=build.NATIVE_HASHES[0],bot_sha256=build.NATIVE_HASHES[1],
+                     path='/home/deploy/omega-clean-idle150-audit-r1-20261022')
+            f=directory/'build-proof.json';f.write_text(json.dumps(dict(game=row,bots=row)))
+            with mock.patch.object(live,'__file__',str(script)):
+                with self.assertRaises(RuntimeError):live.load_cell(build.NATIVE_R2,150,'idle')
+                row['path']='/home/deploy/omega-'+build.NATIVE_R2
+                f.write_text(json.dumps(dict(game=row,bots=row)))
+                live.load_cell(build.NATIVE_R2,150,'idle')
+                live.configure_cell(live.CELL|dict(native_diagnostic='v1'))
+                self.assertEqual(live.CELL,cell)
     def test_matched_condition_and_explicit_version_required(self):
         self.assertEqual(live.diagnostic_environment({'diagnostic_environment':{'OMEGA_NATIVE_DIAG':'v1'}}),{'OMEGA_NATIVE_DIAG':'v1'})
         self.assertEqual(live.measurement_limit_bytes(),96*1024**2)
@@ -32,6 +56,20 @@ class NativeDispatchTests(unittest.TestCase):
             self.assertEqual(live.validate_diagnostic_runtime(42),{'OMEGA_NATIVE_DIAG':'v1'})
 
 class NativeReplayTests(unittest.TestCase):
+    def test_combined_storage_includes_original_copy_archive_and_unchanged_guard(self):
+        import native_diagnostic_storage as storage
+        # The old free>8GiB check passes, but the additive allowance must fail.
+        r=storage.budget(storage.GUARD+500_000_000,196_087_808,40_000_000)
+        self.assertFalse(r['passed'])
+        self.assertEqual(r['unchanged_guard_bytes'],8*1024**3)
+        self.assertEqual(r['allowances']['original_measurement_copy'],196_087_808)
+        self.assertEqual(r['allowances']['live_game_payload'],96*1024**2)
+        self.assertEqual(r['allowances']['journal'],24*1024**2)
+        exact=storage.GUARD+r['combined_bytes']
+        self.assertTrue(storage.budget(exact,196_087_808,40_000_000)['passed'])
+        self.assertFalse(storage.budget(exact-1,196_087_808,40_000_000)['passed'])
+        for args in ((-1,0,0),(1,True,0),(1,0,0.0)):
+            with self.assertRaises(ValueError):storage.budget(*args)
     def test_binary_caps_truncation_and_independent_compact_fingerprints(self):
         import native_diagnostic_analysis as replay
         import collections

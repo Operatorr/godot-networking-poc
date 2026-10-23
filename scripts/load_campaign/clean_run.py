@@ -81,9 +81,15 @@ def configure_cell(cell):
         if not re.fullmatch(r'[0-9a-f]{64}',cell[key]):
             raise ValueError('Exact binary hashes required')
     if cell.get('native_diagnostic', False) is not False:
-        if (cell.get('native_diagnostic') != 'v1' or cell['namespace'] != 'clean-idle150-audit-r1-20261022'
+        if (cell.get('native_diagnostic') != 'v1' or cell['namespace'] not in
+                ('clean-idle150-audit-r1-20261022','clean-idle150-audit-r2-20261023')
                 or cell['population'] != 150 or cell['behavior'] != 'idle'):
             raise ValueError('Native diagnostic requires the one authorized Idle150 condition')
+        if cell['namespace'] == 'clean-idle150-audit-r2-20261023' and (
+                cell['revision'] != 'ab535731b21860fcfdc3654288dd8821eaa63450' or
+                cell['game_sha256'] != 'de92e120bb863948fc4c55fe525d200ac6ebc0d0d214d453ed3efeab159208db' or
+                cell['bot_sha256'] != 'a9325ad1bd90a24e3d1bdb08ce049fb5734d67471010af6f5425b104bda2f042'):
+            raise ValueError('Native R2 requires the exact proven source and executable identities')
     CELL = dict(cell)
     NAMESPACE = cell['namespace']; REMOTE = '/home/deploy/omega-results/' + NAMESPACE
     UNIT = 'omega-' + NAMESPACE
@@ -98,8 +104,8 @@ def configure_cell(cell):
 
 def measurement_limit_bytes():
     # A stricter resource abort for this opt-in diagnostic, never a validity pass.
-    # 96 MiB payload + <=24 MiB journal + similarly bounded archive, original
-    # 12 MiB backup/executable/helper copies fit the proven post-reclaim headroom.
+    # Separate additive storage preflight covers the measured original backup,
+    # staging, journal, role-only archive and margin above the unchanged guard.
     return 96*1024**2 if CELL.get('native_diagnostic') == 'v1' else 1024**3
 
 
@@ -126,6 +132,8 @@ def load_cell(namespace, population=150, behavior='strategy'):
         game, bots = proof['game'], proof['bots']
         if any(game[k] != bots[k] for k in ('revision','sha256','bot_sha256','path')):
             raise RuntimeError('Both-host build identities disagree')
+        if game['path'] != '/home/deploy/omega-'+namespace:
+            raise RuntimeError('Build proof does not belong to this fresh namespace')
         configure_cell(dict(namespace=namespace,population=population,behavior=behavior,
                             revision=game['revision'],game_sha256=game['sha256'],bot_sha256=game['bot_sha256']))
 
@@ -490,13 +498,23 @@ def controller():
             raise RuntimeError(role + ' remote command failed; see private commands.ndjson')
         return result.stdout
 
-    def copy(role, source, destination):
+    def copy(role, source, destination, download=False):
         host = run.HOSTS[role]
+        partial = str(destination)+'.partial' if download else destination
+        address = host['ssh_user']+'@'+host['ipv4']+':'
         result = subprocess.run(['scp', '-q', '-i', str(run.KEY), *run.SSH_OPTIONS,
-                                 str(source), host['ssh_user'] + '@' + host['ipv4'] + ':' + destination],
-                                capture_output=True, text=True, timeout=60)
+                                 address+source if download else str(source),
+                                 partial if download else address+destination],
+                                capture_output=True, text=True, timeout=120 if download else 60)
         if result.returncode:
-            raise RuntimeError(role + ' upload failed')
+            raise RuntimeError(role + ' bounded transfer failed')
+        if download:
+            expected=ssh(role,'sha256sum '+shlex.quote(source)).split()[0]
+            with pathlib.Path(partial).open('rb') as stream:
+                actual=hashlib.file_digest(stream,'sha256').hexdigest()
+            if expected != actual:
+                raise RuntimeError(role+' downloaded evidence hash mismatch')
+            pathlib.Path(partial).replace(destination)
 
     def snapshot(role, label):
         commands = {
@@ -612,6 +630,9 @@ def controller():
     config_bytes = (json.dumps(candidate_config, indent=2) + '\n').encode()
     (local / 'arena-buffer.json').write_bytes(config_bytes)
     dump(local / 'config-proof.json', config_proof)
+    if CELL.get('native_diagnostic') == 'v1' and NAMESPACE == 'clean-idle150-audit-r2-20261023':
+        import native_diagnostic_storage as storage
+        storage.check(ssh,BINARIES['game'],16*1024**2,local/'storage-preflight.json')
     dump(local / 'preflight-proof.json', {'passed': True, 'utc_ns': time.time_ns(), 'pinned': PINNED})
     manifest = {'namespace': NAMESPACE, 'requested_bots': POPULATION, 'behavior': BEHAVIOR,
                 'ramp_limit_s': RAMP_SECONDS, 'steady_limit_s': STEADY_SECONDS,
@@ -898,8 +919,8 @@ def controller():
                 if not cleanup[role]['owned_active_units_absent']:
                     raise RuntimeError('Owned units still active; refusing archive')
                 ssh(role, 'sudo -n chown -R deploy:deploy ' + REMOTE + '/' + role + '; tar -czf ' + REMOTE + '/' + role + '.tar.gz -C ' + REMOTE + ' ' + role)
-                # run.copy verifies remote/local SHA-256 before its atomic rename.
-                run.copy(role, REMOTE + '/' + role + '.tar.gz', local / (role + '.tar.gz'), download=True)
+                # Bounded transfer verifies remote/local SHA-256 before atomic rename.
+                copy(role, REMOTE + '/' + role + '.tar.gz', local / (role + '.tar.gz'), download=True)
                 cleanup[role]['archive_sha256'] = hashlib.sha256((local / (role + '.tar.gz')).read_bytes()).hexdigest()
                 cleanup[role]['archive_remote_sha256'] = ssh(role, 'sha256sum ' + REMOTE + '/' + role + '.tar.gz').split()[0]
                 if cleanup[role]['archive_remote_sha256'] != cleanup[role]['archive_sha256']:

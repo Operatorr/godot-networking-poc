@@ -17,10 +17,12 @@ import run
 NS='clean-idle150-audit-r1-20261022'
 
 
-def main(label):
+def main(label, namespace=NS):
+    if namespace not in (NS,'clean-idle150-audit-r2-20261023'):
+        raise ValueError('Only the two authorized unlaunched diagnostic namespaces')
     if not re.fullmatch(r'[a-z0-9-]{1,40}',label):raise ValueError('Invalid exclusive audit label')
-    p=run.ROOT/'deployment/hetzner/results'/NS
-    pre=p.with_name(NS+'-preflight');build=p.with_name(NS+'-build')
+    p=run.ROOT/'deployment/hetzner/results'/namespace
+    pre=p.with_name(namespace+'-preflight');build=p.with_name(namespace+'-build')
     out=pre/(label+'-idle-audit.json');journal=pre/(label+'-idle-audit-commands.ndjson')
     if out.exists() or journal.exists():raise FileExistsError('Use a fresh audit label')
     if (p/'manifest.json').exists():raise ValueError('Not an unlaunched preflight')
@@ -48,7 +50,7 @@ def main(label):
             'nft':'sudo -n nft list ruleset',
             'buffers':'sysctl net.core.rmem_default net.core.rmem_max net.core.wmem_default net.core.wmem_max',
             'maintenance':'systemctl show apt-daily.timer apt-daily-upgrade.timer apt-daily.service apt-daily-upgrade.service -p Id -p ActiveState -p UnitFileState',
-            'namespace_absent':'test ! -e /home/deploy/omega-results/'+NS+' && echo absent',
+            'namespace_absent':'test ! -e /home/deploy/omega-results/'+namespace+' && echo absent',
         }
         if role=='game':
             commands.update(
@@ -109,4 +111,5 @@ def main(label):
     return summary
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--label',required=True);main(p.parse_args().label)
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--label',required=True);p.add_argument('--namespace',default=NS)
+    args=p.parse_args();main(args.label,args.namespace)

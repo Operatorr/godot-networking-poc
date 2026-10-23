@@ -15,6 +15,63 @@ import time
 import run
 
 BASE_REVISION = 'cc86869f1cc0f3d5d219e880d08b2cfda312f4eb'
+NATIVE_R2 = 'clean-idle150-audit-r2-20261023'
+NATIVE_REVISION = 'ab535731b21860fcfdc3654288dd8821eaa63450'
+NATIVE_HASHES = ('de92e120bb863948fc4c55fe525d200ac6ebc0d0d214d453ed3efeab159208db',
+                 'a9325ad1bd90a24e3d1bdb08ce049fb5734d67471010af6f5425b104bda2f042')
+
+
+def validate_sparse_reuse(namespace, revision, reuse_namespace, proof):
+    if (namespace != NATIVE_R2 or revision != NATIVE_REVISION or
+            reuse_namespace != 'clean-idle150-audit-r1-20261022' or proof is None or
+            any(tuple(proof[r][k] for k in ('sha256', 'bot_sha256')) != NATIVE_HASHES
+                or proof[r]['revision'] != revision for r in ('game', 'bots'))):
+        raise ValueError('Rust-only sparse reuse is restricted to the exact proven native R2 build')
+
+
+def checkout_command(source, destination, bundle, revision, sparse=False):
+    """Set cone specification BEFORE checkout; ordinary full-checkout path is unchanged."""
+    q = shlex.quote
+    command = ('test ! -e {d}; test ! -L {d}; git clone --shared --no-checkout {s} {d}; '
+               'git -C {d} fetch {b} HEAD; git -C {d} cat-file -e {r}^{{commit}}; '
+               'git -C {d} merge-base --is-ancestor {r} FETCH_HEAD; ').format(
+                   d=q(destination), s=q(source), b=q(bundle), r=q(revision))
+    if sparse:
+        command += ('git -C {d} sparse-checkout init --cone; '
+                    'git -C {d} sparse-checkout set rust; ').format(d=q(destination))
+    return command + 'git -C '+q(destination)+' checkout --detach '+q(revision)+'; '
+
+
+def sparse_source_proof_command(destination, revision):
+    # Hash actual bytes of EVERY materialized tracked file, including skip-worktree
+    # entries; status alone could hide edits. Expected blobs come from pinned Git.
+    code = '''import hashlib,json,pathlib,subprocess
+p=pathlib.Path(DESTINATION)
+def git(*args):return subprocess.check_output(['git','-C',str(p),*args])
+assert git('rev-parse','HEAD').decode().strip()==REVISION
+assert not git('status','--porcelain').strip()
+assert git('config','--bool','core.sparseCheckoutCone').strip()==b'true'
+assert git('sparse-checkout','list').decode().splitlines()==['rust']
+expected=[];rust=[]
+for entry in git('ls-tree','-rz','--full-tree',REVISION).split(b'\\0'):
+ if not entry:continue
+ meta,name=entry.split(b'\\t',1);mode,kind,oid=meta.split();name=name.decode()
+ if name.startswith('rust/') or '/' not in name:
+  f=p/name
+  assert kind==b'blob' and f.is_file() and not f.is_symlink(),name
+  content=f.read_bytes()
+  assert hashlib.sha1(b'blob '+str(len(content)).encode()+b'\\0'+content).hexdigest()==oid.decode(),name
+  expected.append(name)
+  if name.startswith('rust/'):rust.append(name)
+assert rust and 'rust/Cargo.lock' in rust and 'rust/Cargo.toml' in rust
+assert {f.name for f in p.iterdir() if f.is_dir()}=={'.git','rust'}
+print(json.dumps(dict(revision=REVISION,status='',cone=True,specification=(p/'.git/info/sparse-checkout').read_text(),
+ directories=['rust'],tracked_file_count=len(expected),rust_file_count=len(rust),
+ rust_tree=git('rev-parse','HEAD:rust').decode().strip(),all_materialized_blobs_verified=True,
+ shared_object_alternates=(p/'.git/objects/info/alternates').read_text(),
+ specification_sha256=hashlib.sha256((p/'.git/info/sparse-checkout').read_bytes()).hexdigest())))
+'''.replace('DESTINATION', repr(destination)).replace('REVISION', repr(revision))
+    return 'python3 -c '+shlex.quote(code)
 
 
 def validate_revision(revision, cwd=None):
@@ -72,6 +129,8 @@ def main():
     parser.add_argument('--revision', required=True)
     parser.add_argument('--namespace', default='clean-strategy150-r1-20261022')
     parser.add_argument('--reuse-build-namespace', help='Future cells only: copy verified same-revision binaries into a fresh checkout')
+    parser.add_argument('--rust-only-sparse-checkout', action='store_true',
+                        help='Exact native R2 only: materialize the complete Rust cone before verified binary reuse')
     args = parser.parse_args()
     if not re.fullmatch(r'[0-9a-f]{40}', args.revision):
         parser.error('Full immutable revision required')
@@ -81,6 +140,8 @@ def main():
     validate_revision(args.revision)
     reuse = load_reuse_proof(args.reuse_build_namespace, args.revision,
                            run.ROOT/'deployment/hetzner/results') if args.reuse_build_namespace else None
+    if args.rust_only_sparse_checkout:
+        validate_sparse_reuse(args.namespace, args.revision, args.reuse_build_namespace, reuse)
     os.umask(0o077)
     directory = run.ROOT/'deployment/hetzner/results'/(args.namespace+'-build')
     directory.mkdir(mode=0o700,exist_ok=False)
@@ -158,16 +219,36 @@ def main():
                       source_archive_sha256=hashlib.sha256(subprocess.check_output(['git','archive',args.revision])).hexdigest(),
                       bundle_head=bundle_head,
                       candidate_reachable_from_bundle_head=True, bundle_verified=True,
+                      checkout_mode='rust-only-cone' if args.rust_only_sparse_checkout else 'full',
                       reused_build_proof_sha256=(hashlib.sha256((run.ROOT/'deployment/hetzner/results'/
                           (args.reuse_build_namespace+'-build')/'build-proof.json').read_bytes()).hexdigest() if reuse else None),
                       local_utc_ns=time.time_ns())
         (directory/'toolchain-and-source-proof.json').write_text(json.dumps(source,indent=2))
+        if args.rust_only_sparse_checkout:
+            import native_diagnostic_storage as storage
+            # Before the first remote write: full sparse source/bundle/binary staging,
+            # original executable + measured evidence preservation and bounded run.
+            copied_binary_bytes = sum(int(ssh('game','stat -c %s '+reuse['game']['path']+
+                                             '/rust/target/release/'+name))
+                                      for name in ('omega-server','omega-load-test'))
+            allowance = storage.sparse_checkout_allowance(args.revision,bundle.stat().st_size,copied_binary_bytes)
+            storage.check(ssh,'/home/deploy/omega-stabilized-b1266c1/rust/target/release/omega-server',
+                          allowance,directory/'storage-before-staging.json')
         def build(role):
-            run.copy(role,bundle,remote_bundle)
-            command = ('set -e; source /home/deploy/.cargo/env; test ! -e {d}; '
-                'git clone --shared --no-checkout /home/deploy/omega-udp-control-cc86869 {d}; '
-                'git -C {d} fetch {b} HEAD; git -C {d} cat-file -e {r}^{{commit}}; '
-                'git -C {d} merge-base --is-ancestor {r} FETCH_HEAD; git -C {d} checkout --detach {r}; '
+            if args.rust_only_sparse_checkout:
+                host=run.HOSTS[role]
+                transfer=subprocess.run(['scp','-q','-i',str(run.KEY),*run.SSH_OPTIONS,
+                    str(bundle),host['ssh_user']+'@'+host['ipv4']+':'+remote_bundle],
+                    capture_output=True,text=True,timeout=60)
+                if transfer.returncode:
+                    raise RuntimeError(role+' bounded bundle upload failed')
+                if ssh(role,'sha256sum '+remote_bundle).split()[0] != source['bundle_sha256']:
+                    raise RuntimeError(role+' uploaded bundle hash mismatch')
+            else:
+                run.copy(role,bundle,remote_bundle)
+            command = 'set -e; source /home/deploy/.cargo/env; '+checkout_command(
+                '/home/deploy/omega-udp-control-cc86869',dest,remote_bundle,args.revision,args.rust_only_sparse_checkout)
+            command += (
                 'test -z "$(git -C {d} status --porcelain)"; test "$(git -C {d} rev-parse HEAD)" = {r}; '
                 'cd {d}/rust; rustc -Vv; cargo -V; uname -a; ').format(d=dest,b=remote_bundle,r=args.revision)
             if reuse:
@@ -181,6 +262,9 @@ def main():
                        bot_sha256=ssh(role,'sha256sum '+dest+'/rust/target/release/omega-load-test').split()[0],
                        build_argv=[] if reuse else ['cargo','build','--release','--locked','-j','2','-p','omega-server','-p','omega-load-test'],
                        build_mode='verified-real-file-copy' if reuse else 'native-build',
+                       checkout_mode='rust-only-cone' if args.rust_only_sparse_checkout else 'full',
+                       sparse_source_proof=(json.loads(ssh(role,sparse_source_proof_command(dest,args.revision)))
+                                            if args.rust_only_sparse_checkout else None),
                        reused_from=({'namespace':args.reuse_build_namespace,'proof':reuse[role]} if reuse else None),
                        build_stdout=output,utc_ns=time.time_ns())
             (directory/(role+'-build.json')).write_text(json.dumps(proof,indent=2))
