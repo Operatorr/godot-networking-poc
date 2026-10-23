@@ -122,6 +122,41 @@
       "requires_followup": true,
       "finding": "terminal proc executable read FileNotFoundError; fixed in a25b8ce, matched rerun pending",
       "report": "clean-combat100-r1-20261023.md"
+    },
+    {
+      "namespace": "clean-combat100-r2-20261023",
+      "candidate": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
+      "classification": "aborted-collector-invalid",
+      "classification_version": "offered-load-v2",
+      "strict_classification": "aborted-collector-invalid",
+      "passed_gate_count": 16,
+      "failed_gates": [
+        "complete_300s_common_coverage",
+        "per_identity_offered_29_7hz",
+        "mapped_wire_29_7hz",
+        "delivery",
+        "all_requested_authenticated",
+        "game_udp_errors_zero",
+        "bots_udp_errors_zero",
+        "tick_hz",
+        "replication_backlog",
+        "application_errors_zero",
+        "strict_enabled_assertions",
+        "bot_buffers_unchanged",
+        "received_aoi_default95_policy",
+        "received_aoi_all_peers_zero_unknown",
+        "received_aoi_no_actual_above1150",
+        "full_replication_counters_cover_final_snapshot",
+        "full_workload_replication_and_bot_errors_zero",
+        "steady_window_replication_and_bot_errors_zero",
+        "steady_window_oversized_panics_suppression_zero",
+        "server_full_and_steady_errors_zero"
+      ],
+      "clean_cell_pass": false,
+      "capacity_pass": false,
+      "requires_followup": true,
+      "finding": "Delayed paired status replies aged cached observations; fixed in a85635c, matched rerun pending",
+      "report": "clean-combat100-r2-20261023.md"
     }
   ],
   "remaining": [
@@ -135,9 +170,9 @@
     {
       "behavior": "combat",
       "population": 100,
-      "namespace": "clean-combat100-r2-20261023",
-      "status": "in_progress",
-      "purpose": "matched validation of terminal proc-read correction and passing ladder rerun"
+      "namespace": "clean-combat100-r3-20261023",
+      "status": "ready_after_delayed_status_fix",
+      "purpose": "matched validation of delayed status/proc-read corrections and passing ladder rerun"
     },
     {
       "behavior": "clustered",
@@ -168,7 +203,7 @@
       "purpose": "overload ramp and measured window if ramp completes"
     }
   ],
-  "active_task_id": "node:delegated-task:command%3Amcp%3A98779699-ac57-402b-ad13-e36558c5cc0a%3Adelegate-task%3Aissue39-clean-combat100-r2-20261023",
+  "active_task_id": null,
   "final_clean_campaign_certificate": false,
   "legacy_product_targets": {
     "bandwidth_kib_per_s": 5,
@@ -176,7 +211,7 @@
     "thresholds_changed": false,
     "note": "Retain their actual pass/fail independently from matrix gates; optimization is outside this map."
   },
-  "active_investigation": "Validate terminal proc-read correction in one matched Combat100 R2",
+  "active_investigation": "Validate delayed status refresh and terminal handling in one matched Combat100 R3",
   "active_diagnostic_namespace": null,
   "diagnostic_attempts": [
     {
@@ -227,7 +262,7 @@
   ],
   "storage_recovery_report": "storage-recovery-20261023.md",
   "latest_storage_recovery_report": "storage-recovery-r4-20261023.md",
-  "next_observation_namespace": "clean-combat100-r2-20261023",
+  "next_observation_namespace": "clean-combat100-r3-20261023",
   "classification_proposal": "CLASSIFICATION-PROPOSAL.md",
   "classification_decision": "user_approved_versioned_separation_2026-10-23",
   "ordinary_observation_build": {
