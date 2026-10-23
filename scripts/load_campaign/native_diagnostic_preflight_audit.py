@@ -62,11 +62,7 @@ def main(label, namespace=NS):
                 exe='pid=$(systemctl show omega-loadtest-arena.service -p MainPID --value); sha256sum /proc/$pid/exe',
                 metrics='curl -fsS --max-time 3 http://127.0.0.1:9100/metrics',
                 original_measurement_bytes='du -s -B1 /var/lib/omega-measure/current',
-                original_measurement_backups=(
-                    'set -e; count=0; for d in /home/deploy/omega-results/clean-*/original; do '
-                    'if test -f "$d/measurement-verified"; then printf "BACKUP %s\\n" "$d"; '
-                    '(cd "$d/measurement-current"; sha256sum -c ../measurement-sha256.txt); '
-                    'count=$((count+1)); fi; done; test "$count" -gt 0'))
+                original_measurement_backups=audit.measurement_backups_command())
         raw={k:audit.bounded_ssh(role,c,journal) for k,c in commands.items()}
         checks={k:all(audit.hashes(raw[k]).get(path)==digest for path,digest in audit.hashes(baseline[k]).items())
                 for k in ('artifacts','prior_archives','closed_states')}
