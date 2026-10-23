@@ -85,7 +85,7 @@ def configure_cell(cell):
         raise ValueError('Atomic measurement preservation requires an explicit native diagnostic')
     if cell.get('native_diagnostic', False) is not False:
         if (cell.get('native_diagnostic') != 'v1' or cell['namespace'] not in
-                ('clean-idle150-audit-r1-20261022','clean-idle150-audit-r2-20261023')
+                ('clean-idle150-audit-r1-20261022','clean-idle150-audit-r2-20261023','clean-idle150-audit-r3-20261023')
                 or cell['population'] != 150 or cell['behavior'] != 'idle'):
             raise ValueError('Native diagnostic requires the one authorized Idle150 condition')
         if cell['namespace'] == 'clean-idle150-audit-r2-20261023' and (
@@ -93,6 +93,11 @@ def configure_cell(cell):
                 cell['game_sha256'] != 'de92e120bb863948fc4c55fe525d200ac6ebc0d0d214d453ed3efeab159208db' or
                 cell['bot_sha256'] != 'a9325ad1bd90a24e3d1bdb08ce049fb5734d67471010af6f5425b104bda2f042'):
             raise ValueError('Native R2 requires the exact proven source and executable identities')
+        if cell['namespace'] == 'clean-idle150-audit-r3-20261023' and (
+                cell['revision'] != 'a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf' or
+                cell['game_sha256'] != 'de92e120bb863948fc4c55fe525d200ac6ebc0d0d214d453ed3efeab159208db' or
+                cell['bot_sha256'] != '56c2139ebf042680febccca48c2b5b3d036bce2eadc4ea385f6f52ae5812ed67' or preservation != 'rename-v1'):
+            raise ValueError('Native R3 requires the exact new source, binaries and rename-v1')
     CELL = dict(cell)
     NAMESPACE = cell['namespace']; REMOTE = '/home/deploy/omega-results/' + NAMESPACE
     UNIT = 'omega-' + NAMESPACE
@@ -109,6 +114,8 @@ def measurement_limit_bytes():
     # A stricter resource abort for this opt-in diagnostic, never a validity pass.
     # Separate additive storage preflight covers the measured original backup,
     # staging, journal, role-only archive and margin above the unchanged guard.
+    if CELL.get('native_diagnostic') == 'v1' and NAMESPACE == 'clean-idle150-audit-r3-20261023':
+        return 32*1024**2
     return 96*1024**2 if CELL.get('native_diagnostic') == 'v1' else 1024**3
 
 
@@ -138,7 +145,9 @@ def load_cell(namespace, population=150, behavior='strategy'):
         if game['path'] != '/home/deploy/omega-'+namespace:
             raise RuntimeError('Build proof does not belong to this fresh namespace')
         configure_cell(dict(namespace=namespace,population=population,behavior=behavior,
-                            revision=game['revision'],game_sha256=game['sha256'],bot_sha256=game['bot_sha256']))
+                            revision=game['revision'],game_sha256=game['sha256'],bot_sha256=game['bot_sha256'],
+                            **({k:game[k] for k in ('native_build_origin','game_artifact_mode')}
+                               if namespace=='clean-idle150-audit-r3-20261023' else {})))
 
 
 def make_config(comparator_bytes):
@@ -673,13 +682,19 @@ def controller():
     if CELL.get('native_diagnostic') == 'v1' and NAMESPACE == 'clean-idle150-audit-r2-20261023':
         import native_diagnostic_storage as storage
         storage.check(ssh,BINARIES['game'],16*1024**2,local/'storage-preflight.json')
+    if CELL.get('native_diagnostic') == 'v1' and NAMESPACE == 'clean-idle150-audit-r3-20261023':
+        import native_diagnostic_r3 as r3
+        r3.check(ssh,16*1024**2,local/'storage-preflight.json')
+        # Freeze and validate the exact recovery script before any remote staging.
+        (local/'restore.sh').write_text(recovery_script())
+        subprocess.run(['/bin/sh','-n',str(local/'restore.sh')],check=True)
     dump(local / 'preflight-proof.json', {'passed': True, 'utc_ns': time.time_ns(), 'pinned': PINNED})
     manifest = {'namespace': NAMESPACE, 'requested_bots': POPULATION, 'behavior': BEHAVIOR,
                 'ramp_limit_s': RAMP_SECONDS, 'steady_limit_s': STEADY_SECONDS,
                 'input_hz': 30, 'seed': 30, 'stagger_ms': 100, 'difficulty': 1.0,
                 'game_config': candidate_config, 'config_proof': config_proof, 'pinned': PINNED,
                 'ramp_input_cadence': 'collected; analyze separately', 'generator_valid': None,
-                'native_diagnostic': CELL.get('native_diagnostic',False), 'game_evidence_abort_bytes':measurement_limit_bytes(), 'classification': 'pending-scored-observation', 'intervention': 'Pinned correctness candidate game and bots; emission audit disabled; send150 config unchanged; compact measurement and repaired v2 wire collector', 'workloads_launched': 0, 'collector_cadence_s': 1,
+                'measurement_preservation':CELL.get('measurement_preservation','copy'), 'native_build_origin':CELL.get('native_build_origin'), 'game_artifact_mode':CELL.get('game_artifact_mode'), 'native_diagnostic': CELL.get('native_diagnostic',False), 'game_evidence_abort_bytes':measurement_limit_bytes(), 'classification': 'pending-scored-observation', 'intervention': 'Pinned correctness candidate game and bots; emission audit disabled; send150 config unchanged; compact measurement and repaired v2 wire collector', 'workloads_launched': 0, 'collector_cadence_s': 1,
                 'capture_duration_change_s': [300, 600], 'host_limit_s': 600, 'workload_limit_s': 550, 'restoration_limit_s': 720, 'poll_sleep_s': 2, 'map_polling': 'combined with existing status query; no extra map SSH reads', 'collector_overhead_effect': None, 'packet_capture': 'compact-article-plus-per-port-1Hz',
                 'experiment_binary_sha256': {r: s['experiment_binary'].split()[0] for r, s in states.items()},
                 'candidate_revision': CANDIDATE_REVISION, 'bot_revision': BOT_REVISION, 'expected_bot_sha256': EXPECTED_BOT, 'collector_revision': COLLECTOR_REVISION,
@@ -709,7 +724,10 @@ def controller():
             ssh(role, 'sha256sum ' + REMOTE + '/*.py ' + REMOTE + '/*.rs ' + REMOTE + '/flow-record > ' + REMOTE + '/' + role + '/collector-sha256.txt')
         copy('game', local / 'arena-buffer.json', REMOTE + '/arena-buffer.json')
         restore = recovery_script()
-        (local / 'restore.sh').write_text(restore)
+        if (local/'restore.sh').exists():
+            if (local/'restore.sh').read_text() != restore:raise RuntimeError('Frozen recovery script changed')
+        else:
+            (local / 'restore.sh').write_text(restore)
         copy('game', local / 'restore.sh', REMOTE + '/restore.sh')
         ssh('game', 'sudo -n systemd-run --quiet --unit=' + UNIT + '-restore --on-active=720s /bin/sh ' + REMOTE + '/restore.sh')
         restoration_armed = True
@@ -1113,8 +1131,9 @@ if __name__ == '__main__':
     parser.add_argument('--behavior', default='strategy')
     parser.add_argument('--verification-label', default='final')
     parser.add_argument('--native-diagnostic', action='store_true')
+    parser.add_argument('--measurement-preservation', choices=('copy','rename-v1'),default='copy')
     args = parser.parse_args()
     load_cell(args.namespace, args.population, args.behavior)
     if args.native_diagnostic:
-        configure_cell(CELL | {'native_diagnostic':'v1'})
+        configure_cell(CELL | {'native_diagnostic':'v1','measurement_preservation':args.measurement_preservation})
     dispatch(args)

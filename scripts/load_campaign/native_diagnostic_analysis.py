@@ -88,6 +88,17 @@ def analyze(directory, manifest):
         raise ValueError('Analysis requires real isolated copies')
     observations=[json.loads(line) for line in (d/'bots/bots.ndjson').read_text().splitlines()]
     final={b['id']:b['native_diagnostic'] for b in observations[-1]['bots']}
+    endpoints=[]
+    for row in observations:
+        if row.get('boundary') not in ('start','end','drained'):continue
+        counts=collections.Counter();phases=collections.Counter()
+        for bot in row['bots']:
+            phases[bot['phase']]+=1
+            diag=bot.get('native_diagnostic')
+            if isinstance(diag,dict):
+                counts.update(diag['counts']);counts['pending_inputs']+=diag['pending_inputs']
+        endpoints.append(dict(boundary=row['boundary'],utc_ns=row['utc_ns'],mono_ns=row['mono_ns'],
+                              phases=dict(phases),native_counts=dict(counts)))
     mappings={}
     lifetime_capture={}
     for role in ('game','bots'):
@@ -178,6 +189,8 @@ def analyze(directory, manifest):
     return dict(schema=2,checks=checks,evidence_complete=all(checks.values()),full=dict(total),errors=dict(errors),peers=peers,
         window=dict(start_ns=start,end_ns=end,duration_ns=end-start),
         final_observation_utc_ns=observations[-1]['utc_ns'],
+        final_observation_boundary=observations[-1].get('boundary'),native_observation_endpoints=endpoints,
+        post_drain_snapshot_observed=observations[-1].get('boundary')=='drained',
         fingerprint_sample_modulus=64,
         retirement_timestamp_semantics='Post-service record write observes tracked-buffer retirement; it is not the exact Drop instant. Boundary pending counts are inferred from these timestamp brackets. Final pending count is directly observed. Native queue lengths are unavailable.',
         sampled_fingerprint_reconciliation=matched,completed_observer_ns=cost,

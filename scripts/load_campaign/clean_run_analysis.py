@@ -108,7 +108,7 @@ def augment_clean_gates(full, directory):
     g['received_aoi_all_peers_zero_unknown']=aoi['all_peer_zero_unknown']
     g['received_aoi_no_actual_above1150']=aoi['no_actual_above_1150']
     observed=base.rows(directory/'bots/bots.ndjson')
-    endpoints={r['boundary']:r for r in observed if r.get('boundary')}
+    endpoints=base.measurement_boundaries(observed)
     stale_full=sum(r['stale_snapshots_ignored'] for r in report.get('per_bot',[])) if aoi['complete_peer_rows'] and all('stale_snapshots_ignored' in r for r in report['per_bot']) else None
     stale_steady=None
     if set(endpoints)=={'start','end'}:
@@ -177,6 +177,15 @@ def wire_deficits(full, directory):
     return result
 
 
+def missing_live_identity_polls(polls, window):
+    # Match the controller decision clock when one status query straddles teardown.
+    # Guard publication remains required independently by the unchanged gates.
+    return [r['start_ns'] for r in polls if r['observations']['bots'].get('phase')
+            and not r['observations']['bots'].get('guard')
+            and not r['observations']['bots'].get('bot_identity')
+            and (window is None or r['end_ns'] < window['end'])]
+
+
 def main():
     d=P/'extracted';d.mkdir(exist_ok=True)
     cleanup=base.load(P/'final-verification-summary.json',{})
@@ -211,7 +220,7 @@ def main():
     identities=[r['observations']['bots'].get('bot_identity') for r in polls]
     identified=[r for r in identities if r]
     runtime_ok=bool(identified) and all(r==identified[0] and r['exe_sha256']==controller.EXPECTED_BOT and r['exe_path']==controller.EXPERIMENT_BINARIES['bots'] for r in identified)
-    missing=[r['start_ns'] for r in polls if r['observations']['bots'].get('phase') and not r['observations']['bots'].get('guard') and not r['observations']['bots'].get('bot_identity')]
+    missing=missing_live_identity_polls(polls,manifest.get('window'))
     runtime_ok=runtime_ok and not missing
     if full['workloads_launched']:
         full['gates']['candidate_bot_runtime_identity']=runtime_ok

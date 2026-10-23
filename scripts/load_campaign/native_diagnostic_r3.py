@@ -63,6 +63,21 @@ def check(ssh, staging_bytes, output):
     return result
 
 
+def elf_identity_command(paths):
+    code = """import pathlib,struct,json
+result={}
+for name in PATHS:
+ p=pathlib.Path(name);assert p.is_file() and not p.is_symlink() and p.stat().st_nlink==1
+ with p.open('rb') as stream:header=stream.read(64)
+ assert header[:6]==b'\\x7fELF\\x02\\x01' and len(header)==64
+ kind,machine,version=struct.unpack_from('<HHI',header,16)
+ assert machine==183 and version==1 and kind in (2,3)
+ result[name]=dict(format='ELF64',endianness='little',machine='AArch64',type=kind,osabi=header[7],links=p.stat().st_nlink,bytes=p.stat().st_size)
+print(json.dumps(result))
+""".replace('PATHS',repr(list(paths)))
+    return 'python3 -c '+shlex.quote(code)
+
+
 def prepare():
     connection_options();os.umask(0o077)
     pre=run.ROOT/'deployment/hetzner/results'/(NAMESPACE+'-preflight')
@@ -161,20 +176,42 @@ def prepare():
         ssh('game','chmod 755 '+remote+'; test ! -L '+remote+'; test "$(stat -c %h '+remote+')" = 1')
         assert ssh('game','sha256sum '+remote).split()[0]==digests[name]
     transfer('bots',dest+'/rust/target/native-build.log',directory/'native-build.log',True)
+    complete_proof()
+
+
+def complete_proof():
+    """Resume identity-only collection after a missing file utility; no build or transfer."""
+    connection_options()
+    directory=run.ROOT/'deployment/hetzner/results'/(NAMESPACE+'-build')
+    if (directory/'build-proof.json').exists():raise FileExistsError('Build proof sealed')
+    dest='/home/deploy/omega-'+NAMESPACE
+    ssh=lambda role,command:audit.bounded_ssh(role,command,directory/'proof-completion-commands.ndjson')
+    assert ssh('bots','cat '+dest+'/rust/target/native-build.exit').strip()=='0'
+    expected={'omega-server':GAME_SHA,'omega-load-test':'56c2139ebf042680febccca48c2b5b3d036bce2eadc4ea385f6f52ae5812ed67'}
     proofs={}
     for role in ('game','bots'):
+        sizes={}
+        for name,digest in expected.items():
+            path=dest+'/rust/target/release/'+name
+            assert ssh(role,'sha256sum '+path).split()[0]==digest
+            sizes[name]=int(ssh(role,'stat -c %s '+path))
+        assert sum(sizes.values())<=PAIR_CAP
         sparse=json.loads(ssh(role,build.sparse_source_proof_command(dest,REVISION)))
-        # Build logs live outside tracked source and are excluded by status proof below.
-        row=dict(revision=REVISION,path=dest,sha256=digests[names[0]],bot_sha256=digests[names[1]],
-            native_build_origin='bots',game_artifact_mode='verified-native-bot-host-copy',
-            build_mode='native-build' if role=='bots' else 'verified-native-bot-host-copy',
+        baseline=json.loads((directory/(role+'-before.json')).read_text())
+        row=dict(revision=REVISION,path=dest,sha256=expected['omega-server'],bot_sha256=expected['omega-load-test'],
+            native_build_origin='bots',game_artifact_mode='verifiednativebot-hostcopy',
+            build_mode='native-build' if role=='bots' else 'verifiednativebot-hostcopy',
             build_argv=['cargo','build','--release','--locked','-j','2','-p','omega-server','-p','omega-load-test'] if role=='bots' else [],
             checkout_mode='rust-only-cone',sparse_source_proof=sparse,
             dependencies=ssh(role,'ldd '+dest+'/rust/target/release/omega-server; ldd '+dest+'/rust/target/release/omega-load-test'),
-            file_identity=ssh(role,'file '+dest+'/rust/target/release/omega-server '+dest+'/rust/target/release/omega-load-test'),
-            toolchain=inventories[role]['toolchain'],binary_bytes=sizes,utc_ns=time.time_ns())
-        (directory/(role+'-build.json')).write_text(json.dumps(row,indent=2));proofs[role]=row
-    (directory/'build-proof.json').write_text(json.dumps(proofs,indent=2))
-    print(json.dumps(dict(build_passed=True,source=REVISION,game_sha256=digests[names[0]],bot_sha256=digests[names[1]],native_build_origin='bots')),flush=True)
+            file_identity=json.loads(ssh(role,elf_identity_command([dest+'/rust/target/release/'+n for n in expected]))),
+            toolchain=baseline['toolchain'],binary_bytes=sizes,utc_ns=time.time_ns(),
+            proof_completion='identity only; no repeated native build or binary transfer')
+        with (directory/(role+'-build.json')).open('x') as stream:json.dump(row,stream,indent=2)
+        proofs[role]=row
+    objects=ssh('bots','find '+dest+'/rust/target/release -type f -exec sha256sum {} \\;')
+    with (directory/'native-object-manifest.txt').open('x') as stream:stream.write(objects)
+    with (directory/'build-proof.json').open('x') as stream:json.dump(proofs,stream,indent=2)
+    print(json.dumps(dict(build_passed=True,source=REVISION,game_sha256=expected['omega-server'],bot_sha256=expected['omega-load-test'],native_build_origin='bots')),flush=True)
 
 if __name__=='__main__':prepare()

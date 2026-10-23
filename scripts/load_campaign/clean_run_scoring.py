@@ -86,6 +86,10 @@ def host_window(h,a,b):
     for s in sock:totals[s['pid'],s['inode']]=max(totals.get((s['pid'],s['inode']),0),s['d'])
     return {'complete_bracket':True,'start_ns':first['utc_ns'],'end_ns':last['utc_ns'],'udp_delta':{k:y[k]-x[k] for k in x},'cpu':summary,'max_socket_receive_bytes':max((s['r'] for s in sock),default=None),'socket_drops_cumulative_max_sum':sum(totals.values()),'rb_values':sorted({s['rb'] for s in sock}),'tb_values':sorted({s['tb'] for s in sock}),'interface_delta':{k:int(last['interface'][k])-int(first['interface'][k]) for k in first['interface']},'maximum_host_sample_gap_s':max(((y['utc_ns']-x['utc_ns'])/NS for x,y in zip(selected,selected[1:])),default=None)}
 
+def measurement_boundaries(rows):
+    return {r['boundary']:r for r in rows if r.get('boundary') in ('start','end')}
+
+
 def main():
     manifest=load(P/'manifest.json',{})
     d=P/'extracted';d.mkdir(exist_ok=True)
@@ -190,7 +194,7 @@ def main():
                 result['wire']['hosts'][role]={'totals':{k:sum(r[k] for r in fp) for k in fp[0] if k!='utc_second'} if fp else {},'bins_10ms':{k:dist([r[k] for r in bins]) for k in ('in_packets','out_packets','inputs','retry_command_bytes','in_acks','out_acks')}}
         out['periods'][name]=result
     # Exact cumulative observation endpoints, distinct from raw timestamp coverage.
-    botbounds={r['boundary']:r for r in bots if r.get('boundary')}
+    botbounds=measurement_boundaries(bots)
     serverbounds={r['boundary']:r for r in server if r.get('boundary')}
     out['boundary_lateness_ms']={role:{name:(r['utc_ns']-window[name])/1e6 for name,r in bounds.items() if window and name in window} for role,bounds in (('bots',botbounds),('game',serverbounds))}
     perbot=[]

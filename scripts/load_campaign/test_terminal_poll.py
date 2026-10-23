@@ -19,3 +19,13 @@ class TerminalPollTests(unittest.TestCase):
         self.assertEqual(live.bot_runtime_problem(observed,window,window['end']+1),'bot-effective-buffers-differ')
         observed['guard']={'reason':None,'exit':1}
         self.assertIsNone(live.bot_runtime_problem(observed,window,window['end']+20_000_000_000))
+
+class TerminalAnalysisTests(unittest.TestCase):
+    def test_real_status_poll_crossing_end_is_not_missing_live_identity(self):
+        import clean_run_analysis as analysis
+        end=360_000_000_001
+        def poll(start,finish,identity=None,guard=None):
+            return dict(start_ns=start,end_ns=finish,observations={'bots':dict(phase={'phase2_utc_ns':1},guard=guard,bot_identity=identity,sockets='')})
+        rows=[poll(end-10,end-1),poll(end-1,end+254_454_820),poll(end+1,end+2,guard={'reason':None,'exit':1})]
+        self.assertEqual(analysis.missing_live_identity_polls(rows,dict(end=end)),[end-10])
+        self.assertEqual(analysis.missing_live_identity_polls(rows,None),[end-10,end-1])
