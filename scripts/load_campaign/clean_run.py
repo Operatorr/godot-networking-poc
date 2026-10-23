@@ -518,6 +518,93 @@ def validate_bot_identity(observed, previous=None):
         raise RuntimeError('Bot runtime identity changed')
 
 
+def monitor_workload(local, manifest, fresh, ssh, copy):
+    """Monitor one already-launched workload; all remote calls remain bounded by caller."""
+    started = time.monotonic()
+    peak = collapsed = 0
+    scheduled = False
+    while time.monotonic() - started < 550:
+        poll_start = time.time_ns()
+        with concurrent.futures.ThreadPoolExecutor(2) as pool:
+            futures = {role: pool.submit(ssh, role, 'python3 ' + REMOTE + '/clean_run.py status --role ' + role) for role in ('game','bots')}
+            observations = {role: json.loads(f.result()) for role,f in futures.items()}
+        with (local / 'status-polls.ndjson').open('a') as output:
+            output.write(json.dumps({'start_ns':poll_start, 'end_ns':time.time_ns(), 'observations':observations})+'\n')
+        g,b = observations['game'],observations['bots']
+        validate_source_identity(b.get('source_identity'))
+        validate_game_runtime(g, fresh)
+        if g.get('measurement_bytes', 0) > measurement_limit_bytes():
+            manifest['controller_abort']='measurement-evidence-over-resource-limit'
+            break
+        for role,obs in observations.items():
+            if obs['parser'].get('status') != 'running' or obs.get('capture_resource'):
+                manifest['controller_abort'] = role+'-collector-failed-or-ended'
+                break
+            if not obs['host_fresh']:
+                manifest['controller_abort'] = role+'-host-collector-stale'
+                break
+            pairs = obs['mapping']
+            if len({x[0] for x in pairs}) != len(pairs) or len({x[1] for x in pairs}) != len(pairs):
+                manifest['controller_abort'] = role+'-mapping-not-unique'
+                break
+        if manifest.get('controller_abort'): break
+        if b.get('bot_identity'):
+            validate_bot_identity(b['bot_identity'], manifest.get('bot_identity'))
+            manifest['bot_identity']=b['bot_identity']
+        problem = bot_runtime_problem(b, manifest.get('window'), time.time_ns())
+        if problem:
+            manifest['controller_abort']=problem
+            break
+        if b.get('guard'):
+            manifest['guard_result'] = b['guard']
+            break
+        sample = g.get('server')
+        if not sample or time.time_ns()-sample['utc_ns'] > 10e9:
+            manifest['controller_abort']='game-observation-stale-over-10s'
+            break
+        if b.get('bots_stamp') and time.time_ns()-b['bots_stamp'] > 10e9:
+            manifest['controller_abort']='bot-observation-stale-over-10s'
+            break
+        population=len(sample['players']);peak=max(peak,population)
+        collapsed=collapsed+1 if peak>=100 and population<.65*peak else 0
+        if collapsed>=2:
+            manifest['controller_abort']='authenticated-population-below-65-percent-peak'
+            break
+        if b.get('phase') and not scheduled:
+            phase = b['phase']['phase2_utc_ns']
+            window = {'start':phase+60_000_000_000, 'end':phase+360_000_000_000}
+            if time.time_ns() >= window['start']-10_000_000_000:
+                raise RuntimeError('Insufficient schedule publication lead time')
+            dump(local/'window.json',window)
+            for role in ('game','bots'):
+                publish_file(copy,ssh,role,local/'window.json',REMOTE+'/'+role+'/window.json')
+            manifest['window'] = window
+            manifest['window_published_ns'] = time.time_ns()
+            scheduled = True
+            dump(local/'manifest.json',manifest)
+            if manifest['window_published_ns'] >= window['start']-10_000_000_000:
+                manifest['controller_abort']='window-publication-missed-lead-time'
+                break
+            print('Phase 2 reached; exact 60s warmup / 300s window published atomically',flush=True)
+            # Publishing may block for multiple seconds. Reacquire BOTH status
+            # samples before evaluating any later freshness/mapping/runtime gate.
+            continue
+        if scheduled:
+            # Handshakes precede Phase 2; allow one bounded capture flush interval.
+            if time.time_ns() >= manifest['window']['start']-50_000_000_000:
+                gm,bm = dict(g['mapping']),dict(b['mapping'])
+                if len(gm)!=POPULATION or len(bm)!=POPULATION or gm!=bm or set(gm.values())!=set(range(1,POPULATION+1)):
+                    manifest['controller_abort']='identity-mapping-incomplete-or-disagrees'
+                    break
+        if int(time.monotonic()-started)//30 > int(max(0,time.monotonic()-started-4))//30:
+            print('Observation ongoing: authenticated='+str(population),flush=True)
+        time.sleep(2)
+    else:
+        manifest['controller_abort']='overall-time-limit'
+    manifest['controller_decision_utc_ns']=time.time_ns()
+    manifest['controller_observed_peak']=peak
+
+
 def controller():
     import run
     root = run.ROOT
@@ -806,83 +893,7 @@ def controller():
         manifest['workloads_launched'] = 1
         dump(local / 'manifest.json', manifest)
         print('Single pinned clean-run workload started', flush=True)
-        started = time.monotonic()
-        peak = collapsed = 0
-        scheduled = False
-        while time.monotonic() - started < 550:
-            poll_start = time.time_ns()
-            with concurrent.futures.ThreadPoolExecutor(2) as pool:
-                futures = {role: pool.submit(ssh, role, 'python3 ' + REMOTE + '/clean_run.py status --role ' + role) for role in ('game','bots')}
-                observations = {role: json.loads(f.result()) for role,f in futures.items()}
-            with (local / 'status-polls.ndjson').open('a') as output:
-                output.write(json.dumps({'start_ns':poll_start, 'end_ns':time.time_ns(), 'observations':observations})+'\n')
-            g,b = observations['game'],observations['bots']
-            validate_source_identity(b.get('source_identity'))
-            validate_game_runtime(g, fresh)
-            if g.get('measurement_bytes', 0) > measurement_limit_bytes():
-                manifest['controller_abort']='measurement-evidence-over-resource-limit'
-                break
-            for role,obs in observations.items():
-                if obs['parser'].get('status') != 'running' or obs.get('capture_resource'):
-                    manifest['controller_abort'] = role+'-collector-failed-or-ended'
-                    break
-                if not obs['host_fresh']:
-                    manifest['controller_abort'] = role+'-host-collector-stale'
-                    break
-                pairs = obs['mapping']
-                if len({x[0] for x in pairs}) != len(pairs) or len({x[1] for x in pairs}) != len(pairs):
-                    manifest['controller_abort'] = role+'-mapping-not-unique'
-                    break
-            if manifest.get('controller_abort'): break
-            if b.get('bot_identity'):
-                validate_bot_identity(b['bot_identity'], manifest.get('bot_identity'))
-                manifest['bot_identity']=b['bot_identity']
-            problem = bot_runtime_problem(b, manifest.get('window'), time.time_ns())
-            if problem:
-                manifest['controller_abort']=problem
-                break
-            if b.get('guard'):
-                manifest['guard_result'] = b['guard']
-                break
-            if b.get('phase') and not scheduled:
-                phase = b['phase']['phase2_utc_ns']
-                window = {'start':phase+60_000_000_000, 'end':phase+360_000_000_000}
-                if time.time_ns() >= window['start']-10_000_000_000:
-                    raise RuntimeError('Insufficient schedule publication lead time')
-                dump(local/'window.json',window)
-                for role in ('game','bots'):
-                    publish_file(copy,ssh,role,local/'window.json',REMOTE+'/'+role+'/window.json')
-                manifest['window'] = window
-                manifest['window_published_ns'] = time.time_ns()
-                scheduled = True
-                dump(local/'manifest.json',manifest)
-                print('Phase 2 reached; exact 60s warmup / 300s window published atomically',flush=True)
-            if scheduled:
-                # Handshakes precede Phase 2; allow one bounded capture flush interval.
-                if time.time_ns() >= manifest['window']['start']-50_000_000_000:
-                    gm,bm = dict(g['mapping']),dict(b['mapping'])
-                    if len(gm)!=POPULATION or len(bm)!=POPULATION or gm!=bm or set(gm.values())!=set(range(1,POPULATION+1)):
-                        manifest['controller_abort']='identity-mapping-incomplete-or-disagrees'
-                        break
-            sample = g.get('server')
-            if not sample or time.time_ns()-sample['utc_ns'] > 10e9:
-                manifest['controller_abort']='game-observation-stale-over-10s'
-                break
-            if b.get('bots_stamp') and time.time_ns()-b['bots_stamp'] > 10e9:
-                manifest['controller_abort']='bot-observation-stale-over-10s'
-                break
-            population=len(sample['players']);peak=max(peak,population)
-            collapsed=collapsed+1 if peak>=100 and population<.65*peak else 0
-            if collapsed>=2:
-                manifest['controller_abort']='authenticated-population-below-65-percent-peak'
-                break
-            if int(time.monotonic()-started)//30 > int(max(0,time.monotonic()-started-4))//30:
-                print('Observation ongoing: authenticated='+str(population),flush=True)
-            time.sleep(2)
-        else:
-            manifest['controller_abort']='overall-time-limit'
-        manifest['controller_decision_utc_ns']=time.time_ns()
-        manifest['controller_observed_peak']=peak
+        monitor_workload(local, manifest, fresh, ssh, copy)
     except Exception as error:
         manifest['controller_error'] = str(error)
         raise

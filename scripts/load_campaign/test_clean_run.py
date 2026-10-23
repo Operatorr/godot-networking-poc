@@ -52,7 +52,7 @@ class CleanRunTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):live.validate_game_runtime(row|{'source_identity':None})
 
     def test_audit_disabled_and_once_only_launch_and_cell_dispatch(self):
-        source=inspect.getsource(live.controller)
+        source=inspect.getsource(live.controller)+inspect.getsource(live.monitor_workload)
         self.assertIn("local.mkdir(mode=0o700, exist_ok=False)",source)
         self.assertEqual(source.count("'-swarm --uid=deploy"),1)
         self.assertIn('UnsetEnvironment=OMEGA_AOI_AUDIT',source)
