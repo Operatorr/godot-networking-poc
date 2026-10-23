@@ -218,3 +218,10 @@ cannot distinguish these paths. A bounded matched diagnostic will compare queue
 admission, actual socket sends and both captures without weakening the rate gate,
 changing packet reliability or disabling congestion behavior. Exact application
 input delivery remains unknown.
+
+
+## Native diagnostic preflight and storage recovery
+
+The [first native diagnostic](clean-idle150-audit-r1-20261022.md) launched zero workloads: an early SSH timeout and insufficient preservation-copy headroom stopped it. Both independent idle/preservation audits passed. All remote causal counts remain unknown; its opt-in real-ENet observer tests pass locally. This does not classify the historical wire deficit.
+
+The parent subsequently recovered 360,927,232 bytes of regenerable APT caches, with the installed-package database and all inventoried executable hashes unchanged; see [storage recovery proof](storage-recovery-20261023.md). A separate child will own one fresh-namespace diagnostic using the same proven instrumented binaries, an economical new Rust source checkout and a full new resource/ownership preflight. The original reservation, evidence and blocked classification remain intact. The ladder is still held.

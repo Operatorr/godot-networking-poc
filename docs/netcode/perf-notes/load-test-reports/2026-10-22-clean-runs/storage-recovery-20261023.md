@@ -1,0 +1,11 @@
+# Diagnostic storage recovery
+
+The [first Idle150 diagnostic](clean-idle150-audit-r1-20261022.md) completed zero remote workloads and remains archived as blocked before launch. Its reservation and evidence are unchanged. Native causal accounting remains unobserved.
+
+The parent recovered **360,927,232 bytes** on the game host by running documented APT 3.2.0 `clean` and `distclean`, then unlinking only `/var/cache/apt/pkgcache.bin` and `srcpkgcache.bin`. These are regenerable package downloads and indexes; future package operations may need `apt-get update`. No installed package was removed or changed. The installed package database hash and all **23 inventoried top-level executable hashes** match before and after. Package-manager lock probes showed no owner before cleanup. No historical source, binary, raw evidence, analysis, archive or journal was deleted. Cargo caches were retained.
+
+Available space increased **8,770,527,232 → 9,131,454,464 bytes**, leaving **541,519,872 bytes above the unchanged 8 GiB guard** at that observation. This is resource headroom, not a workload or restoration certificate. New preflight must budget the measured original-directory backup, bounded live evidence, journal, archive and staging before launching; it must abort if their combined allowance does not fit.
+
+The next diagnostic receives a fresh namespace, `clean-idle150-audit-r2-20261023`, and a new exclusive reservation. It may reuse both verified binaries from the proven `ab535731b21860fcfdc3654288dd8821eaa63450` build. A fresh Rust-only sparse source checkout avoids copying unrelated client assets and documents into another remote build directory; full Rust source identity, clean status, pinned revision and both executable hashes remain mandatory. Existing frozen checkouts are untouched. All measurement and transport validity gates remain unchanged. The held ladder and campaign remain incomplete.
+
+Private exact command/output journal: `deployment/hetzner/results/issue39-storage-audit-20261023.ndjson`, SHA-256 **`9759ecaa2ae08bc60326eccb68531b3dd20436325fe2401988d34410ba688c41`**. It records inventory, local APT documentation, lock checks, exact cleanup commands and before/after preservation proof. The original diagnostic archives are never replayed or overwritten.
