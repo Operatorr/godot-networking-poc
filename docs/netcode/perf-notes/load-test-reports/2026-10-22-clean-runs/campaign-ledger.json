@@ -246,11 +246,11 @@
       "behavior": "strategy",
       "population": 200,
       "namespace": "clean-strategy200-r1-20261024",
-      "status": "pending",
+      "status": "in_progress",
       "purpose": "overload ramp and measured window if ramp completes"
     }
   ],
-  "active_task_id": null,
+  "active_task_id": "node:delegated-task:command%3Amcp%3A98779699-ac57-402b-ad13-e36558c5cc0a%3Adelegate-task%3Aissue39-clean-strategy200-r1-20261024",
   "final_clean_campaign_certificate": false,
   "legacy_product_targets": {
     "bandwidth_kib_per_s": 5,
@@ -331,6 +331,8 @@
     "additional_cell": "Strategy200 overload, only after clean Strategy100 and full original preflights",
     "automatic_retry_on_new_block_or_defect": false,
     "deadline_behavior": "Report incomplete and launch no further workloads; complete safe restoration/evidence if necessary",
-    "historical_classifications_and_gates_unchanged": true
+    "historical_classifications_and_gates_unchanged": true,
+    "final_attempt_dispatched": true,
+    "further_attempts_after_this": 0
   }
 }
