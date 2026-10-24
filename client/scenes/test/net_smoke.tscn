@@ -20,6 +20,7 @@ var _failed := false
 
 
 func _ready() -> void:
+	add_child(InterpolationController.new())  # Applies and ACKs reliable Baselines.
 	print(\"[NetSmoke] Starting against %s\" % SERVER_HOST)
 	GameManager.player_data[\"character_name\"] = \"SmokeTester\"
 	NetworkManager.server_message_received.connect(_on_server_message)

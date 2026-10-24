@@ -116,8 +116,21 @@ snapshot carries it; the client feeds the same EMA filter (first sample direct, 
 using ENet-native RTT for the half-trip estimate. Mask precedence on decode: FULL before REMOVED.
 Mask 0 entities are omitted by the encoder (cost zero bits). Entity order is not meaningful.
 Baseline packets set `BASELINE`, never `IS_DELTA`; the client acks with `BaselineAck{server_tick}`.
-Delta/baseline cadence and ack/resend as built: 100-tick baseline interval, 30-tick resend,
-per-peer budget clamp 256..1200 B, baselines exempt from the budget.
+The first Snapshot is a reliable Baseline; subsequent Baselines are due every 100 Ticks.
+Deltas pause until the exact pending Baseline Tick is acknowledged. ENet owns reliable
+retransmission; the application does not replace an unacknowledged Baseline on a timer.
+Receivers discard deltas from retired Baselines after a newer channel-1 Baseline arrives.
+The peer allowance is clamped to 256..`max_snapshot_bytes`; each delta includes its 16-byte
+header, byte rounding and an explicit observer position, and is strictly below 1200 B.
+Pinned removals consume space before ordinary records. If the pinned set cannot fit the
+hard limit, an atomic reliable Baseline replaces it. Baselines are budget-exempt, capped
+at the decoder's 4096 entities, with the observer first. Full-state recovery uses the same
+AoI/hysteresis selection and replays identity only for included players.
+
+`bandwidth_budget_bps` and `*_client_bandwidth_bps` are legacy names for **bytes per second**,
+matching the Godot client's advertised budget. Their wire/config names and values are retained;
+there is no bits-to-bytes conversion. This is a Snapshot scheduling allowance, not a strict
+whole-connection rate limiter (reliable Baselines and Game events are exempt).
 
 ### PlayerInput (type 2, ch2) — 22 B (was 18 B; protocol v4 adds the cursor)
 
@@ -372,7 +385,7 @@ not a change to Snapshot budgets, Tick/input rates, or a validated capacity clai
 
 Entity id ranges (players 1–999, projectiles 10000–29999, monsters 30000–39999) · arena bounds
 ±1000, walls ±1005 (visual; sim clamps center to ±1000) · 0.1-unit position quantization ·
-delta-vs-baseline with acks · per-peer byte budget with 256 B floor / 1200 B cap, baselines
+delta-vs-baseline with acks · per-peer byte budget with 256 B soft floor / <1200 B hard packet cap, baselines
 exempt · hit-authority invariants (server skips `owner_id >= 30000` in its player-collision
 pass; `LocalHitReport` applies only to the reporter's own entity and rejects player-owned
 projectiles; monster `PROJECTILE_FIRED` carries non-zero projectile id; client tests against

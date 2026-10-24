@@ -203,6 +203,14 @@ func _process_state_update(data: Dictionary) -> void:
 	var is_delta := (state_flags & PacketTypes.STATE_FLAG_IS_DELTA) != 0
 	var is_baseline := (state_flags & PacketTypes.STATE_FLAG_BASELINE) != 0
 
+	# Reliable Baselines and unreliable deltas use independent ENet channels.
+	# Discard retired channel-0 state before it can recreate removed entities or
+	# trigger a spurious full-state request after a newer Baseline arrived.
+	if is_delta and (baseline_tick < last_baseline_tick or server_tick <= last_baseline_tick):
+		return
+	if is_baseline and server_tick < last_baseline_tick:
+		return
+
 	# Handle baseline tick tracking for delta validation
 	if is_baseline:
 		last_baseline_tick = server_tick
@@ -210,12 +218,10 @@ func _process_state_update(data: Dictionary) -> void:
 		_full_state_request_time = 0
 		_full_state_retry_count = 0
 		needs_full_state_sync = false
-		# Ack the Baseline so the server can clear its resend timer (#14). The forced
+		# Ack the Baseline so the server can release dependent deltas. The forced
 		# Baseline is sent as a FULL-STATE packet and carries NO baseline_tick on the
 		# wire, so we ack server_tick (the tick we tagged the Baseline with), NOT
-		# data.baseline_tick. Fires once per received Baseline. INERT on today's
-		# WebSocket/TCP transport (baselines are never dropped); forward-looking
-		# scaffold for the UDP transport (#12). send_to_server no-ops if disconnected.
+		# data.baseline_tick. ENet retransmits the reliable Baseline until delivered.
 		NetworkManager.send_to_server(NetworkManager.MessageType.BASELINE_ACK, {"baseline_tick": server_tick})
 		if debug_logging:
 			print("[Interpolation] Received baseline packet at tick %d" % server_tick)
@@ -226,6 +232,7 @@ func _process_state_update(data: Dictionary) -> void:
 				print("[Interpolation] Delta chain broken: expected baseline %d, got %d" % [last_baseline_tick, baseline_tick])
 			needs_full_state_sync = true
 			_request_full_state_sync()
+			return
 
 	# Update tick tracking
 	if server_tick > current_server_tick:
@@ -304,10 +311,10 @@ func _process_state_update(data: Dictionary) -> void:
 		# Store reconstructed state for future delta reconstruction (TASK-021)
 		_update_last_known_state(entity_id, reconstructed_data)
 
-	# Check for despawns (entities we know about but weren't in this update)
-	# Note: In delta mode, entities with no changes are not sent, so don't despawn them
+	# A reliable Baseline replaces the authoritative entity set immediately.
+	# Deltas omit unchanged entities; other full Snapshots keep the missing-update grace.
 	if not is_delta:
-		_check_for_despawns()
+		_check_for_despawns(is_baseline)
 
 	if debug_logging and entities.size() > 0:
 		var remote_count := entities_in_last_update.size()
@@ -458,7 +465,7 @@ func _handle_entity_update(
 	missing_update_count[entity_id] = 0
 
 
-func _check_for_despawns() -> void:
+func _check_for_despawns(immediate: bool = false) -> void:
 	var entities_to_despawn: Array[int] = []
 
 	for entity_id: int in entity_buffers.keys():
@@ -469,7 +476,7 @@ func _check_for_despawns() -> void:
 			var buffer: EntityStateBuffer = entity_buffers[entity_id]
 			buffer.despawn_pending = true
 
-			if missing_update_count[entity_id] >= DESPAWN_THRESHOLD:
+			if immediate or missing_update_count[entity_id] >= DESPAWN_THRESHOLD:
 				entities_to_despawn.append(entity_id)
 
 	# Process despawns
