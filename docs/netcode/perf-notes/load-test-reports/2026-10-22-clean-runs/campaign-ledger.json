@@ -316,5 +316,15 @@
   "classification_version": "offered-load-v2",
   "latest_storage_compaction_report": "storage-compaction-r3-20261024.md",
   "latest_storage_archive_report": "storage-idle-preservation-r1-20261024.md",
-  "active_maintenance_namespace": null
+  "active_maintenance_namespace": null,
+  "progress_scorecard": "PROGRESS-SCORECARD.md",
+  "bounded_finish_policy": {
+    "checkpoint_utc": "2026-10-24T08:35:00Z",
+    "current_task": "clean-strategy100-r3-20261024",
+    "maximum_additional_workload_attempts": 1,
+    "additional_cell": "Strategy200 overload, only after clean Strategy100 and full original preflights",
+    "automatic_retry_on_new_block_or_defect": false,
+    "deadline_behavior": "Report incomplete and launch no further workloads; complete safe restoration/evidence if necessary",
+    "historical_classifications_and_gates_unchanged": true
+  }
 }
