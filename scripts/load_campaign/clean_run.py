@@ -77,12 +77,13 @@ ORDINARY_SPECS = {
     'clean-strategy50-r1-20261024': (50, 'strategy', 'strategy50-compact-v1'),
     'clean-strategy100-r1-20261024': (100, 'strategy', 'strategy100-compact-v1'),
     'clean-strategy100-r2-20261024': (100, 'strategy', 'strategy100-compact-v1'),
+    'clean-strategy100-r3-20261024': (100, 'strategy', 'strategy100-compact-v1'),
 }
 OFFERED_V2_NAMESPACES = ('clean-movement150-r1-20261023', 'clean-combat50-r1-20261023',
                          'clean-combat100-r1-20261023', 'clean-combat100-r2-20261023',
                          'clean-combat100-r3-20261023', 'clean-clustered50-r1-20261023',
                          'clean-strategy50-r1-20261024', 'clean-strategy100-r1-20261024',
-                         'clean-strategy100-r2-20261024')
+                         'clean-strategy100-r2-20261024', 'clean-strategy100-r3-20261024')
 
 
 def compact_ordinary():
