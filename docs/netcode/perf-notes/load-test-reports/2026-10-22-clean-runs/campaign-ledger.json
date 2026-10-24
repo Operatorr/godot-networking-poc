@@ -202,9 +202,10 @@
       ],
       "clean_cell_pass": false,
       "capacity_pass": false,
-      "requires_followup": true,
+      "requires_followup": false,
       "finding": "Live stat/hash probe captured inconsistent prefix lengths while original recorder appended; maintained acquisition corrected with generated-command regression; matched R2 required",
-      "report": "clean-strategy100-r1-20261024.md"
+      "report": "clean-strategy100-r1-20261024.md",
+      "followup_report": "clean-strategy100-r3-20261024.md"
     },
     {
       "namespace": "clean-strategy100-r2-20261024",
@@ -216,9 +217,21 @@
       "gates_scored": false,
       "clean_cell_pass": false,
       "capacity_pass": false,
-      "requires_followup": true,
+      "requires_followup": false,
       "finding": "Second unchanged complete storage allowance short118784 bytes; zero launches and all workload gates null",
-      "report": "clean-strategy100-r2-20261024.md"
+      "report": "clean-strategy100-r2-20261024.md",
+      "followup_report": "clean-strategy100-r3-20261024.md"
+    },
+    {
+      "namespace": "clean-strategy100-r3-20261024",
+      "candidate": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
+      "classification": "clean-cell-pass",
+      "classification_version": "offered-load-v2",
+      "strict_classification": "clean-cell-pass",
+      "passed_gate_count": 36,
+      "failed_gates": [],
+      "report": "clean-strategy100-r3-20261024.md",
+      "local_census_qualification": "Parent documentation commit58f1341 adds finish policy; original failed census retained, other13756files unchanged"
     }
   ],
   "remaining": [
@@ -231,20 +244,13 @@
     },
     {
       "behavior": "strategy",
-      "population": 100,
-      "namespace": "clean-strategy100-r3-20261024",
-      "status": "in_progress",
-      "purpose": "passing ladder rerun"
-    },
-    {
-      "behavior": "strategy",
       "population": 200,
-      "namespace": "clean-strategy200-r1-20261022",
+      "namespace": "clean-strategy200-r1-20261024",
       "status": "pending",
       "purpose": "overload ramp and measured window if ramp completes"
     }
   ],
-  "active_task_id": "node:delegated-task:command%3Amcp%3A98779699-ac57-402b-ad13-e36558c5cc0a%3Adelegate-task%3Aissue39-clean-strategy100-r3-20261024",
+  "active_task_id": null,
   "final_clean_campaign_certificate": false,
   "legacy_product_targets": {
     "bandwidth_kib_per_s": 5,
@@ -252,7 +258,7 @@
     "thresholds_changed": false,
     "note": "Retain their actual pass/fail independently from matrix gates; optimization is outside this map."
   },
-  "active_investigation": "Matched Strategy100 R3 after bounded prefix-acquisition fix; regenerated APT caches reclaimed, all numerical/resource gates unchanged",
+  "active_investigation": "Final single Strategy200 overload assessment under bounded finish policy; no automatic retries",
   "active_diagnostic_namespace": null,
   "diagnostic_attempts": [
     {
@@ -303,7 +309,7 @@
   ],
   "storage_recovery_report": "storage-recovery-20261023.md",
   "latest_storage_recovery_report": "storage-recovery-r5-20261024.md",
-  "next_observation_namespace": "clean-strategy100-r3-20261024",
+  "next_observation_namespace": "clean-strategy200-r1-20261024",
   "classification_proposal": "CLASSIFICATION-PROPOSAL.md",
   "classification_decision": "user_approved_versioned_separation_2026-10-23",
   "ordinary_observation_build": {
