@@ -72,6 +72,7 @@ pub struct ConnectAuth {
     /// 6=Mage). Identity metadata chosen by the client; the codec accepts any u8 — the
     /// SERVER clamps (values > 6 are treated as 0).
     pub class: u8,
+    /// Legacy wire name: bytes per second (B/s), not bits/s. Zero selects the server default.
     pub bandwidth_budget_bps: u32,
 }
 

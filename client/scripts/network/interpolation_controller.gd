@@ -203,6 +203,14 @@ func _process_state_update(data: Dictionary) -> void:
 	var is_delta := (state_flags & PacketTypes.STATE_FLAG_IS_DELTA) != 0
 	var is_baseline := (state_flags & PacketTypes.STATE_FLAG_BASELINE) != 0
 
+	# Reliable Baselines and unreliable deltas use independent ENet channels.
+	# Discard retired channel-0 state before it can recreate removed entities or
+	# trigger a spurious full-state request after a newer Baseline arrived.
+	if is_delta and (baseline_tick < last_baseline_tick or server_tick <= last_baseline_tick):
+		return
+	if is_baseline and server_tick < last_baseline_tick:
+		return
+
 	# Handle baseline tick tracking for delta validation
 	if is_baseline:
 		last_baseline_tick = server_tick
@@ -210,12 +218,10 @@ func _process_state_update(data: Dictionary) -> void:
 		_full_state_request_time = 0
 		_full_state_retry_count = 0
 		needs_full_state_sync = false
-		# Ack the Baseline so the server can clear its resend timer (#14). The forced
+		# Ack the Baseline so the server can release dependent deltas. The forced
 		# Baseline is sent as a FULL-STATE packet and carries NO baseline_tick on the
 		# wire, so we ack server_tick (the tick we tagged the Baseline with), NOT
-		# data.baseline_tick. Fires once per received Baseline. INERT on today's
-		# WebSocket/TCP transport (baselines are never dropped); forward-looking
-		# scaffold for the UDP transport (#12). send_to_server no-ops if disconnected.
+		# data.baseline_tick. ENet retransmits the reliable Baseline until delivered.
 		NetworkManager.send_to_server(NetworkManager.MessageType.BASELINE_ACK, {"baseline_tick": server_tick})
 		if debug_logging:
 			print("[Interpolation] Received baseline packet at tick %d" % server_tick)
@@ -226,6 +232,7 @@ func _process_state_update(data: Dictionary) -> void:
 				print("[Interpolation] Delta chain broken: expected baseline %d, got %d" % [last_baseline_tick, baseline_tick])
 			needs_full_state_sync = true
 			_request_full_state_sync()
+			return
 
 	# Update tick tracking
 	if server_tick > current_server_tick:
