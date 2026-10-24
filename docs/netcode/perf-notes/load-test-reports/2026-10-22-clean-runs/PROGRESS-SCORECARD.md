@@ -39,3 +39,9 @@ From this checkpoint there is one current task and at most one further workload 
 At 2026-10-24 06:49 UTC, all **22 attempts have final reports**: 19 launched workloads and three pre-workload blocks. Ten clean results give **52.6% yield among launched workloads**, or **45.5% among all attempts**. Clean distinct-cell coverage is **10/12 = 83.3%**. Strategy100 is now validated; Idle150 remains a retained deficit and the single Strategy200 overload assessment is outstanding. The local census qualification from the parent documentation edit is retained in the R3 report.
 
 Matched Strategy100 R1 → R3 observations: **Tick work p99 −3.24%** (14.619642 → 14.146315 ms); **Snapshot age p95 −2.38%** (29.180649 → 28.485562 ms); **bandwidth +0.74%** (31.703594591 → 31.937993191 KiB/s); actual Tick rate unchanged at 30 Hz. These are descriptive differences between single observations with identical runtime binaries. The established improvement is correct prefix acquisition and a clean matched execution, not a proven performance effect. The final one-attempt allowance and 08:35 UTC reporting checkpoint remain unchanged.
+
+## Final update — remote testing stopped
+
+Strategy200 R1 completed as aborted-collector-invalid before measurement. Final totals: **23 attempts, 20 launched workloads, three pre-workload blocks, ten clean results**. Clean workload yield is **50.0%**; attempt yield **43.5%**; clean distinct-cell coverage **10/12 = 83.3%**. One zero-workload maintenance task remains separate. These are full-campaign totals, not rolling 24-hour totals.
+
+The final overload attempt produced no valid complete-window KPI comparison, so its percentage improvement is **N/A**. Both hosts are restored and released. The bounded attempt allowance is exhausted; there is no further automatic retry, clean campaign certificate or issue closure. See [FINAL-ASSESSMENT.md](FINAL-ASSESSMENT.md) for the final evidence, limitations and separately reviewed future decision.

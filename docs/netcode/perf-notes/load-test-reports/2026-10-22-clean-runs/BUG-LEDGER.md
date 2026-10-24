@@ -1,6 +1,7 @@
 # Correctness fixes and rerun ledger
 
-Status: **open; no clean-build certificate**. The [campaign plan](PLAN.md) owns
+Status: **stopped incomplete; issue open; no clean-build certificate**. See the
+[final bounded assessment](FINAL-ASSESSMENT.md). The [campaign plan](PLAN.md) owns
 the remaining matched observations and final ladder/overload rerun. Prior
 [UDP diagnosis](../2026-10-21-udp-diagnosis/BUG-LEDGER.md) and
 [AoI diagnosis](../2026-10-22-aoi-diagnosis/REPORT.md) remain immutable evidence.
@@ -375,3 +376,9 @@ The net observed game free-space gain is 141,643,776 bytes, but the post-commit 
 Natural guard is collected 3.960644264 s after endpoint, one unavailable identity, no missing-guard grace and zero expiry refreshes; exact proc-read ordering remains unproved. Automatic restoration and both 153-command release audits pass; hosts are released. There are 19 archived historical backups plus the new loose R3 backup. All 155 Python checks, 33 independent analysis and 12 capture checks pass. The local census remains failed for the parent’s concurrent documentation commit `58f1341`, which adds only scorecard/finish-policy fields to campaign-ledger.json. All prior fields/classifications and the other 13,756 historical files remain unchanged. The failed census and its qualification remain sealed; parent documentation will be frozen during the final child’s census interval.
 
 Against matched Strategy100 R1, Tick work p99 changes **14.619642 → 14.146315 ms (−3.24%)**, received Snapshot age p95 **29.180649 → 28.485562 ms (−2.38%)**, bandwidth **31.703594591 → 31.937993191 KiB/s (+0.74%)**. These are observed run-to-run differences with unchanged runtime binaries, not demonstrated causal speedups/regressions. Actual Tick rate remains 30 Hz; zero-to-zero correctness counts have no percentage reduction. Legacy bandwidth and raw Tick 29.999999179336818 Hz fail independently. R1/R2 remain sealed non-passes. Ten of twelve planned cells have clean observations (83.3%); one final Strategy200 attempt remains under the recorded bounded finish policy.
+
+## Final Strategy200 assessment and stop
+
+[Strategy200 R1](clean-strategy200-r1-20261024.md) used exactly one workload and no retry. Classification is aborted-collector-invalid under both policies: 10/36 predicates pass; measurement coverage is zero. Population reached 200 then fell to 81/80; abort was 28.702 seconds before measurement. Receive-buffer errors were 135,913 on game and 299 on bots. Both-host loss prevents isolating a clean server-capacity limit; no new underlying game-code defect is proved. Final lifetime/steady correctness, AoI and KPI comparisons remain unknown. The auxiliary full-window checker failure is retained.
+
+Automatic restoration and two 157-command audits passed; both hosts released; all 14,340 historical local files unchanged. Parent independently verified both workload archive hashes and all 40 file members. The one final attempt allowance is exhausted. No retry or further cell follows; issue remains open and the campaign is stopped incomplete.

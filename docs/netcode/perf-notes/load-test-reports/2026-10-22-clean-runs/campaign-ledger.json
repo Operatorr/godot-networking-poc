@@ -1,6 +1,6 @@
 {
   "issue": "https://github.com/Operatorr/godot-networking-poc/issues/39",
-  "status": "in_progress",
+  "status": "stopped_incomplete",
   "candidate_revision": "fea24dd1ec75eb3a5e832e408489943ced88814f",
   "game_sha256": "de92e120bb863948fc4c55fe525d200ac6ebc0d0d214d453ed3efeab159208db",
   "bot_sha256": "a4e6e7a60f3890ec63724aae0a4841ad31879a0fcfbc8643e261b11421b76147",
@@ -232,6 +232,46 @@
       "failed_gates": [],
       "report": "clean-strategy100-r3-20261024.md",
       "local_census_qualification": "Parent documentation commit58f1341 adds finish policy; original failed census retained, other13756files unchanged"
+    },
+    {
+      "namespace": "clean-strategy200-r1-20261024",
+      "candidate": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
+      "classification": "aborted-collector-invalid",
+      "classification_version": "offered-load-v2",
+      "strict_classification": "aborted-collector-invalid",
+      "passed_gate_count": 10,
+      "failed_gates": [
+        "complete_300s_common_coverage",
+        "per_identity_offered_29_7hz",
+        "mapped_wire_29_7hz",
+        "delivery",
+        "all_requested_authenticated",
+        "game_udp_errors_zero",
+        "bots_udp_errors_zero",
+        "tick_hz",
+        "tick_work_p99",
+        "ending_lag",
+        "replication_backlog",
+        "application_errors_zero",
+        "strict_enabled_assertions",
+        "bot_buffers_unchanged",
+        "game_full_workload_udp_errors_zero",
+        "bots_full_workload_udp_errors_zero",
+        "received_aoi_default95_policy",
+        "received_aoi_all_peers_zero_unknown",
+        "received_aoi_no_actual_above1150",
+        "full_replication_counters_cover_final_snapshot",
+        "full_workload_replication_and_bot_errors_zero",
+        "steady_window_replication_and_bot_errors_zero",
+        "steady_window_oversized_panics_suppression_zero",
+        "game_all_observed_udp_and_socket_errors_zero",
+        "bots_all_observed_udp_and_socket_errors_zero",
+        "server_full_and_steady_errors_zero"
+      ],
+      "remote_workloads": 1,
+      "clean_cell_pass": false,
+      "capacity_pass": false,
+      "report": "clean-strategy200-r1-20261024.md"
     }
   ],
   "remaining": [
@@ -246,11 +286,11 @@
       "behavior": "strategy",
       "population": 200,
       "namespace": "clean-strategy200-r1-20261024",
-      "status": "in_progress",
+      "status": "aborted_collector_invalid_requires_separate_plan",
       "purpose": "overload ramp and measured window if ramp completes"
     }
   ],
-  "active_task_id": "node:delegated-task:command%3Amcp%3A98779699-ac57-402b-ad13-e36558c5cc0a%3Adelegate-task%3Aissue39-clean-strategy200-r1-20261024",
+  "active_task_id": null,
   "final_clean_campaign_certificate": false,
   "legacy_product_targets": {
     "bandwidth_kib_per_s": 5,
@@ -258,7 +298,7 @@
     "thresholds_changed": false,
     "note": "Retain their actual pass/fail independently from matrix gates; optimization is outside this map."
   },
-  "active_investigation": "Final single Strategy200 overload assessment under bounded finish policy; no automatic retries",
+  "active_investigation": null,
   "active_diagnostic_namespace": null,
   "diagnostic_attempts": [
     {
@@ -309,7 +349,7 @@
   ],
   "storage_recovery_report": "storage-recovery-20261023.md",
   "latest_storage_recovery_report": "storage-recovery-r5-20261024.md",
-  "next_observation_namespace": "clean-strategy200-r1-20261024",
+  "next_observation_namespace": null,
   "classification_proposal": "CLASSIFICATION-PROPOSAL.md",
   "classification_decision": "user_approved_versioned_separation_2026-10-23",
   "ordinary_observation_build": {
@@ -333,6 +373,17 @@
     "deadline_behavior": "Report incomplete and launch no further workloads; complete safe restoration/evidence if necessary",
     "historical_classifications_and_gates_unchanged": true,
     "final_attempt_dispatched": true,
-    "further_attempts_after_this": 0
+    "further_attempts_after_this": 0,
+    "final_attempt_completed": true,
+    "remote_testing_stopped": true
+  },
+  "final_assessment": "FINAL-ASSESSMENT.md",
+  "campaign_totals": {
+    "test_attempts": 23,
+    "launched_workloads": 20,
+    "pre_workload_blocks": 3,
+    "clean_results": 10,
+    "planned_distinct_cells": 12,
+    "clean_distinct_cells": 10
   }
 }
