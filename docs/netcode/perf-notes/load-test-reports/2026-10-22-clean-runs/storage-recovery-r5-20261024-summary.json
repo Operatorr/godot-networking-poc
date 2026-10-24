@@ -1,0 +1,19 @@
+{
+  "schema": "regenerated-apt-cache-recovery-v1",
+  "workloads": 0,
+  "free_before": 8725979136,
+  "free_after": 8987914240,
+  "recovered_bytes": 261935104,
+  "unchanged_guard_bytes": 8589934592,
+  "protected_files_unchanged": 286,
+  "protected_fingerprint": "e38464f75306259e1e9bd521228f832ba2e231dd2227a680330c860f55485b62",
+  "package_status_sha256": "eb588df6c94c76a1167eceb2152ac3df7f0e82835ebfcb04f2467c2b2eb5e989",
+  "service_identity_unchanged": true,
+  "config_sha256": "bac0bf8947937a334b4fd9e814e1e3a4e15b9753fd3f1c02e185285d26f0d68c",
+  "evidence_sha256": {
+    "inventory.json": "c6f888d364710f271082e13711288c2c9f7fc471eed12d0ab291cba6c78ab9df",
+    "executed.py": "70281f90c2dd11e3e0f0244c060ec72d8a47a096e15e7799488145018f3e9ecf",
+    "cleanup-commands.ndjson": "4bf5e3e62f3baba53d55132e8c41020b845112ce7c6e2fabef7e754d6d37d32c",
+    "cleanup-proof.json": "877822f63d36cbdfeeff61290b3207889ed957bc25a2f1e5411b7a12a9915a3c"
+  }
+}

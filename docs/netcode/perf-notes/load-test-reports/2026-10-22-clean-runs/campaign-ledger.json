@@ -205,6 +205,20 @@
       "requires_followup": true,
       "finding": "Live stat/hash probe captured inconsistent prefix lengths while original recorder appended; maintained acquisition corrected with generated-command regression; matched R2 required",
       "report": "clean-strategy100-r1-20261024.md"
+    },
+    {
+      "namespace": "clean-strategy100-r2-20261024",
+      "candidate": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
+      "classification": "resource-blocked-before-workload",
+      "classification_version": "offered-load-v2",
+      "remote_workloads": 0,
+      "gate_count": 36,
+      "gates_scored": false,
+      "clean_cell_pass": false,
+      "capacity_pass": false,
+      "requires_followup": true,
+      "finding": "Second unchanged complete storage allowance short118784 bytes; zero launches and all workload gates null",
+      "report": "clean-strategy100-r2-20261024.md"
     }
   ],
   "remaining": [
@@ -218,8 +232,8 @@
     {
       "behavior": "strategy",
       "population": 100,
-      "namespace": "clean-strategy100-r2-20261024",
-      "status": "in_progress",
+      "namespace": "clean-strategy100-r3-20261024",
+      "status": "pending",
       "purpose": "passing ladder rerun"
     },
     {
@@ -230,7 +244,7 @@
       "purpose": "overload ramp and measured window if ramp completes"
     }
   ],
-  "active_task_id": "node:delegated-task:command%3Amcp%3A98779699-ac57-402b-ad13-e36558c5cc0a%3Adelegate-task%3Aissue39-clean-strategy100-r2-20261024",
+  "active_task_id": null,
   "final_clean_campaign_certificate": false,
   "legacy_product_targets": {
     "bandwidth_kib_per_s": 5,
@@ -238,7 +252,7 @@
     "thresholds_changed": false,
     "note": "Retain their actual pass/fail independently from matrix gates; optimization is outside this map."
   },
-  "active_investigation": "Matched Strategy100 R2 after fixed live-prefix acquisition; all19 closed original backups archived and verified; narrow storage requires both fresh complete allowances",
+  "active_investigation": "Matched Strategy100 R3 after bounded prefix-acquisition fix; regenerated APT caches reclaimed, all numerical/resource gates unchanged",
   "active_diagnostic_namespace": null,
   "diagnostic_attempts": [
     {
@@ -288,8 +302,8 @@
     }
   ],
   "storage_recovery_report": "storage-recovery-20261023.md",
-  "latest_storage_recovery_report": "storage-recovery-r4-20261023.md",
-  "next_observation_namespace": "clean-strategy100-r2-20261024",
+  "latest_storage_recovery_report": "storage-recovery-r5-20261024.md",
+  "next_observation_namespace": "clean-strategy100-r3-20261024",
   "classification_proposal": "CLASSIFICATION-PROPOSAL.md",
   "classification_decision": "user_approved_versioned_separation_2026-10-23",
   "ordinary_observation_build": {
