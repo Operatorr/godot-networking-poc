@@ -311,10 +311,10 @@ func _process_state_update(data: Dictionary) -> void:
 		# Store reconstructed state for future delta reconstruction (TASK-021)
 		_update_last_known_state(entity_id, reconstructed_data)
 
-	# Check for despawns (entities we know about but weren't in this update)
-	# Note: In delta mode, entities with no changes are not sent, so don't despawn them
+	# A reliable Baseline replaces the authoritative entity set immediately.
+	# Deltas omit unchanged entities; other full Snapshots keep the missing-update grace.
 	if not is_delta:
-		_check_for_despawns()
+		_check_for_despawns(is_baseline)
 
 	if debug_logging and entities.size() > 0:
 		var remote_count := entities_in_last_update.size()
@@ -465,7 +465,7 @@ func _handle_entity_update(
 	missing_update_count[entity_id] = 0
 
 
-func _check_for_despawns() -> void:
+func _check_for_despawns(immediate: bool = false) -> void:
 	var entities_to_despawn: Array[int] = []
 
 	for entity_id: int in entity_buffers.keys():
@@ -476,7 +476,7 @@ func _check_for_despawns() -> void:
 			var buffer: EntityStateBuffer = entity_buffers[entity_id]
 			buffer.despawn_pending = true
 
-			if missing_update_count[entity_id] >= DESPAWN_THRESHOLD:
+			if immediate or missing_update_count[entity_id] >= DESPAWN_THRESHOLD:
 				entities_to_despawn.append(entity_id)
 
 	# Process despawns

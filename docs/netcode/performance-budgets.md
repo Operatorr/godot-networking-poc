@@ -113,8 +113,11 @@ It is enforced by the priority scheduler in `rust/server/src/net/broadcast.rs`
 - **Server-reported (echoed from the latest `ServerMetrics` packet):** avg/max tick time, player count,
   entity count, total bytes out, avg bandwidth/client. Printed but **not** gated.
 
-The estimated tick rate is `(tick_max - tick_min) / duration` and is a mild **under-count** (bias noted
-in source); the server-reported `avg_tick_time_ms` is the authoritative figure, this is a sanity cross-check.
+The estimated Tick rate is `1000 × sum(last_snapshot_tick - first_snapshot_tick) /
+sum(last_snapshot_server_ms - first_snapshot_server_ms)`, pairing each bot's Tick span with the
+server-clock span from those same Snapshots (with wrapping millisecond subtraction). Bots without
+a positive Tick and clock span contribute neither. Requested run duration is not the denominator;
+reports expose the raw estimate, summed spans and 1 ms clock resolution alongside the unchanged gate.
 
 ## Still missing
 

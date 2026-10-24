@@ -6,6 +6,7 @@ This change extracts the server/client/bot correctness fixes from the load campa
 
 - Delta packet budgets include the header, rounding and pinned records; unreliable payloads remain below 1200 bytes. Oversized pinned sets use a reliable Baseline.
 - Dependent deltas wait for the exact pending Baseline ACK. ENet handles reliable retransmission. Old channel-0 deltas cannot recreate entities after a newer Baseline.
+- The Godot client immediately retires entities omitted from a reliable Baseline through its normal visual teardown path; entities still present retain their interpolation buffers and visuals.
 - Received AoI checks use the observer position carried in that same Snapshot, including retired Snapshots before discard.
 - Baselines obey the decoder entity-count cap; full-state recovery uses AoI selection and corresponding identity replay.
 - The load-test Tick estimate pairs Snapshot Tick spans with their server-clock spans. Reports expose the raw estimate, numerator, denominator and clock resolution without changing acceptance thresholds.
