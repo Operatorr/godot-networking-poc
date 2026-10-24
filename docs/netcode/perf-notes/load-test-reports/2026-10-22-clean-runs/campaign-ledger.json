@@ -230,7 +230,7 @@
       "purpose": "overload ramp and measured window if ramp completes"
     }
   ],
-  "active_task_id": null,
+  "active_task_id": "node:delegated-task:command%3Amcp%3A98779699-ac57-402b-ad13-e36558c5cc0a%3Adelegate-task%3Aissue39-idle-measurement-maintenance-r1-20261024",
   "final_clean_campaign_certificate": false,
   "legacy_product_targets": {
     "bandwidth_kib_per_s": 5,
@@ -238,7 +238,7 @@
     "thresholds_changed": false,
     "note": "Retain their actual pass/fail independently from matrix gates; optimization is outside this map."
   },
-  "active_investigation": "Preserve and rotate growing original idle measurements under automatic recovery; archive closed backups before a separate matched Strategy100 R2",
+  "active_investigation": "Exclusive zero-workload guarded idle-measurement rotation and verified archive preservation; separate Strategy100 R2 pending full fresh storage allowance",
   "active_diagnostic_namespace": null,
   "diagnostic_attempts": [
     {
@@ -301,5 +301,6 @@
   },
   "classification_version": "offered-load-v2",
   "latest_storage_compaction_report": "storage-compaction-r3-20261024.md",
-  "latest_storage_archive_report": "storage-closed-backup-archives-r2-20261024.md"
+  "latest_storage_archive_report": "storage-closed-backup-archives-r2-20261024.md",
+  "active_maintenance_namespace": "clean-idle-maintenance-r1-20261024"
 }
