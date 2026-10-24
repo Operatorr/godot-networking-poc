@@ -2,6 +2,7 @@
 """Exact diagnostic/ordinary verified R3 copies and storage proof. No compilation/workloads."""
 import concurrent.futures
 import hashlib
+import inspect
 import json
 import os
 import pathlib
@@ -42,16 +43,36 @@ def connection_options():
                        '-o','ControlPath=none','-o','ServerAliveInterval=15','-o','ServerAliveCountMax=3']
 
 
+def measurement_prefix(path):
+    """Hash the exact fstat-sized prefix even while the recorder appends."""
+    with path.open('rb') as stream:
+        before = os.fstat(stream.fileno())
+        remaining = before.st_size
+        sha = hashlib.sha256()
+        while remaining:
+            data = stream.read(min(remaining, 1024**2))
+            if not data:
+                raise RuntimeError('Measurement file shrank during prefix acquisition')
+            sha.update(data)
+            remaining -= len(data)
+        after = path.stat()
+        if ((after.st_dev, after.st_ino) != (before.st_dev, before.st_ino)
+                or after.st_size < before.st_size or path.is_symlink()):
+            raise RuntimeError('Measurement file changed during prefix acquisition')
+    return dict(bytes=before.st_size, sha256=sha.hexdigest(),
+                inode=before.st_ino, device=before.st_dev)
+
+
 def rename_probe_command(staging_bytes):
     if type(staging_bytes) is not int or staging_bytes <= 0:
         raise ValueError('Positive staging allowance required')
-    code = '''import os,pathlib,json,hashlib,subprocess,stat
+    code = 'import os,pathlib,json,hashlib,subprocess,stat\n'+inspect.getsource(measurement_prefix)+'''
 p=pathlib.Path('/var/lib/omega-measure/current');dst=pathlib.Path('/home/deploy/omega-results')
 for d in (p,p.parent,dst,dst.parent):assert d.is_dir() and not d.is_symlink() and d.resolve()==d,str(d)
 assert p.stat().st_dev==dst.stat().st_dev
 fs=list(p.rglob('*'));assert all(not f.is_symlink() and (f.is_file() or f.is_dir()) for f in fs)
 s=p.stat();v=os.statvfs(dst)
-files={str(f.relative_to(p)):dict(bytes=f.stat().st_size,sha256=hashlib.file_digest(f.open('rb'),'sha256').hexdigest(),inode=f.stat().st_ino,device=f.stat().st_dev) for f in fs if f.is_file()}
+files={str(f.relative_to(p)):measurement_prefix(f) for f in fs if f.is_file()}
 print(json.dumps(dict(free_bytes=v.f_bavail*v.f_frsize,same_device=True,real_directories=True,measurement=dict(device=s.st_dev,inode=s.st_ino,uid=s.st_uid,gid=s.st_gid,mode=stat.S_IMODE(s.st_mode),files=files),staging_bytes=STAGING+((pathlib.Path('/home/deploy/omega-stabilized-b1266c1/rust/target/release/omega-server').stat().st_size+4095)//4096)*4096)))
 '''.replace('STAGING',repr(staging_bytes))
     return 'python3 -c '+shlex.quote(code)

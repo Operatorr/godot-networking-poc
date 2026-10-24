@@ -189,6 +189,22 @@
       "passed_gate_count": 36,
       "failed_gates": [],
       "report": "clean-strategy50-r1-20261024.md"
+    },
+    {
+      "namespace": "clean-strategy100-r1-20261024",
+      "candidate": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
+      "classification": "valid-failure",
+      "classification_version": "offered-load-v2",
+      "strict_classification": "valid-failure",
+      "passed_gate_count": 35,
+      "failed_gates": [
+        "independent_final_cleanup_verified"
+      ],
+      "clean_cell_pass": false,
+      "capacity_pass": false,
+      "requires_followup": true,
+      "finding": "Live stat/hash probe captured inconsistent prefix lengths while original recorder appended; maintained acquisition corrected with generated-command regression; matched R2 required",
+      "report": "clean-strategy100-r1-20261024.md"
     }
   ],
   "remaining": [
@@ -202,8 +218,8 @@
     {
       "behavior": "strategy",
       "population": 100,
-      "namespace": "clean-strategy100-r1-20261024",
-      "status": "in_progress",
+      "namespace": "clean-strategy100-r2-20261024",
+      "status": "pending_storage_maintenance",
       "purpose": "passing ladder rerun"
     },
     {
@@ -214,7 +230,7 @@
       "purpose": "overload ramp and measured window if ramp completes"
     }
   ],
-  "active_task_id": "node:delegated-task:command%3Amcp%3A98779699-ac57-402b-ad13-e36558c5cc0a%3Adelegate-task%3Aissue39-clean-strategy100-r1-20261024",
+  "active_task_id": null,
   "final_clean_campaign_certificate": false,
   "legacy_product_targets": {
     "bandwidth_kib_per_s": 5,
@@ -222,7 +238,7 @@
     "thresholds_changed": false,
     "note": "Retain their actual pass/fail independently from matrix gates; optimization is outside this map."
   },
-  "active_investigation": "Continue Strategy100 with unchanged gates and all17 historical backups verified as archives",
+  "active_investigation": "Preserve and rotate growing original idle measurements under automatic recovery; archive closed backups before a separate matched Strategy100 R2",
   "active_diagnostic_namespace": null,
   "diagnostic_attempts": [
     {
@@ -273,7 +289,7 @@
   ],
   "storage_recovery_report": "storage-recovery-20261023.md",
   "latest_storage_recovery_report": "storage-recovery-r4-20261023.md",
-  "next_observation_namespace": "clean-strategy100-r1-20261024",
+  "next_observation_namespace": "clean-strategy100-r2-20261024",
   "classification_proposal": "CLASSIFICATION-PROPOSAL.md",
   "classification_decision": "user_approved_versioned_separation_2026-10-23",
   "ordinary_observation_build": {
@@ -284,6 +300,6 @@
     "note": "Game binary unchanged; bot includes post-drain measurement and disabled opt-in native observer. Earlier fixed-candidate observations retain their original identities."
   },
   "classification_version": "offered-load-v2",
-  "latest_storage_compaction_report": "storage-compaction-r2-20261023.md",
+  "latest_storage_compaction_report": "storage-compaction-r3-20261024.md",
   "latest_storage_archive_report": "storage-closed-backup-archives-r2-20261024.md"
 }

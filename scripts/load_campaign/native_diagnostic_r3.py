@@ -11,6 +11,7 @@ import time
 import clean_run_audit as audit
 import clean_run_build as build
 import native_diagnostic_storage as storage
+from native_diagnostic_r4 import rename_probe_command
 import run
 
 NAMESPACE = 'clean-idle150-audit-r3-20261023'
@@ -25,21 +26,6 @@ BOT_BUILD_ALLOWANCE = 2*1024**3
 def connection_options():
     run.SSH_OPTIONS = ['-o','BatchMode=yes','-o','ConnectTimeout=15','-o','ControlMaster=no',
                        '-o','ControlPath=none','-o','ServerAliveInterval=15','-o','ServerAliveCountMax=3']
-
-
-def rename_probe_command(staging_bytes):
-    if type(staging_bytes) is not int or staging_bytes <= 0:
-        raise ValueError('Positive staging allowance required')
-    code = '''import os,pathlib,json,hashlib,subprocess,stat
-p=pathlib.Path('/var/lib/omega-measure/current');dst=pathlib.Path('/home/deploy/omega-results')
-for d in (p,p.parent,dst,dst.parent):assert d.is_dir() and not d.is_symlink() and d.resolve()==d,str(d)
-assert p.stat().st_dev==dst.stat().st_dev
-fs=list(p.rglob('*'));assert all(not f.is_symlink() and (f.is_file() or f.is_dir()) for f in fs)
-s=p.stat();v=os.statvfs(dst)
-files={str(f.relative_to(p)):dict(bytes=f.stat().st_size,sha256=hashlib.file_digest(f.open('rb'),'sha256').hexdigest(),inode=f.stat().st_ino,device=f.stat().st_dev) for f in fs if f.is_file()}
-print(json.dumps(dict(free_bytes=v.f_bavail*v.f_frsize,same_device=True,real_directories=True,measurement=dict(device=s.st_dev,inode=s.st_ino,uid=s.st_uid,gid=s.st_gid,mode=stat.S_IMODE(s.st_mode),files=files),staging_bytes=STAGING+((pathlib.Path('/home/deploy/omega-stabilized-b1266c1/rust/target/release/omega-server').stat().st_size+4095)//4096)*4096)))
-'''.replace('STAGING',repr(staging_bytes))
-    return 'python3 -c '+shlex.quote(code)
 
 
 def budget(measurement):

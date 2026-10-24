@@ -1,0 +1,7 @@
+# Third verified duplicate-tree compaction
+
+Before another workload, the parent removed only redundant loose game working trees from completed Clustered50 R1, Strategy50 R1 and Strategy100 R1. All 57 files were checked member by member against each unchanged remote/local role archive and untouched local extraction. Their 22,904,832 bytes remain preserved in those complete archives. Original measurement backups, source, binaries and every other protected file remain intact.
+
+Free disk increased from 8,592,248,832 to 8,615,153,664 bytes. All 278 other protected files retained fingerprint `245d04ad8355291c990826fa613332be8688ba209d921b6c1602535bef0e10ff`. The local archive proof SHA-256 is `1488cf4c708c8b216014e68c6da816490aec849cf3a765968d2a1e29e4726d69`. Exact inventory, executed removal script, bounded command journal and proof are retained under private `deployment/hetzner/results/issue39-loose-archive-compaction-r3-20261024*`.
+
+This reclaim-only operation adds no payload on the game host. Its duplicate-removal script requires positive free space rather than a full staging reserve so that already-verified duplicate copies can be reclaimed near the guard. The workload/staging **8 GiB reserve and all additive allowances remain unchanged**. No workload ran, historical analyzer was replayed, result was reclassified or setting changed. Original idle measurement growth still requires separate preservation maintenance before a new full preflight can pass.
