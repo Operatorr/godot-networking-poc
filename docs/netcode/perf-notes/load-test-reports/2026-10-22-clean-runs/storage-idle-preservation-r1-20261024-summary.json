@@ -1,0 +1,358 @@
+{
+  "namespace": "clean-idle-maintenance-r1-20261024",
+  "workloads": 0,
+  "bots": 0,
+  "load_experiments": 0,
+  "hosts_released": true,
+  "restored_original_service": true,
+  "recovery_timer_inactive": true,
+  "unchanged_guard_bytes": 8589934592,
+  "new_archived_originals": [
+    "clean-strategy100-r1-20261024",
+    "clean-idle-maintenance-r1-20261024"
+  ],
+  "archived_backup_count": 19,
+  "loose_backup_count": 0,
+  "raw_logical_bytes": 180594260,
+  "raw_allocated_bytes": 180629504,
+  "raw_removal_observed_gain": 180625408,
+  "archive_bytes": 36130540,
+  "archive_and_proof_allocation_bound": 36143104,
+  "free_before": 8611823616,
+  "free_after_install": 8754839552,
+  "current_free": {
+    "game": 8753467392,
+    "bots": 17480146944
+  },
+  "future_full_allowance": {
+    "free_bytes": 8753487872,
+    "unchanged_guard_bytes": 8589934592,
+    "allowances": {
+      "original_measurement_additional_payload": 0,
+      "staging_and_original_executable": 42148314,
+      "live_game_payload": 16777216,
+      "journal": 25165824,
+      "role_only_archive": 44040192,
+      "margin": 33554432
+    },
+    "combined_bytes": 161685978,
+    "remaining_above_guard_after_allowance": 1867302,
+    "passed": true,
+    "measurement": {
+      "free_bytes": 8753487872,
+      "same_device": true,
+      "real_directories": true,
+      "measurement": {
+        "device": 2049,
+        "inode": 410180,
+        "uid": 1000,
+        "gid": 1000,
+        "mode": 493,
+        "files": {
+          "server.ndjson": {
+            "bytes": 646019,
+            "sha256": "6b1b873fcccc3e96f40cbdf4828aacd1944574c092413ef698ba5f424cc052be",
+            "inode": 410182,
+            "device": 2049
+          },
+          "ticks.csv": {
+            "bytes": 1549490,
+            "sha256": "f881cf3f933fadd07ad71f4f4719604c7ba8f3068b9724446a04aaace4762dba",
+            "inode": 410181,
+            "device": 2049
+          }
+        }
+      },
+      "staging_bytes": 42148314
+    },
+    "actual_profile": "native-r4 ordinary Strategy100, unchanged full allowances",
+    "local_only_bundle_bytes": 1589529,
+    "local_only_bundle_sha256": "b0f8522f9af38200ae1f7bb5d9fa1b22d51561d9e6bb2dfd9cb74eeb1ece3080",
+    "bundle_head": "96b4221c07013db8288f3b1d2ff988ec0d91dbc5",
+    "pinned_runtime_source": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
+    "binary_pair_bytes": 12890024,
+    "no_remote_staging": true
+  },
+  "mirror": "/home/deploy/omega-preservation-mirror/clean-idle-maintenance-r1-20261024",
+  "local": "/Users/opera/Godot Projects/godot-networking-poc/deployment/hetzner/results/issue39-idle-measurement-maintenance-r1-20261024",
+  "local_historical_files_unchanged": 13179,
+  "audits": {
+    "release-b": {
+      "label": "release-b",
+      "checks_pass": true,
+      "hosts": {
+        "game": {
+          "checks_pass": true,
+          "prior_protected_files_unchanged": 368,
+          "explicit_closed_raw_files_replaced": 2,
+          "source_proofs": 20,
+          "sparse_materialized_byte_proofs": 15,
+          "executable_elf_and_dependency_proofs": 53,
+          "free_bytes": 8754204672,
+          "archived_backup_count": 19,
+          "raw_sha256": "e5110715044a86f204f07f998f873dd54cebf9aac0453dd7a46ec6d3a0452e50"
+        },
+        "bots": {
+          "checks_pass": true,
+          "prior_protected_files_unchanged": 179,
+          "explicit_closed_raw_files_replaced": 0,
+          "source_proofs": 20,
+          "sparse_materialized_byte_proofs": 15,
+          "executable_elf_and_dependency_proofs": 48,
+          "free_bytes": 17480298496,
+          "archived_backup_count": null,
+          "raw_sha256": "f6804e80e18b65a6ad95dcc5b8750f760fe6ae04dbd9c0a309dd98a406773ff8"
+        }
+      },
+      "workloads": 0,
+      "command_timeout_s": 90,
+      "command_count": 13,
+      "commands_sha256": "c82297d654e0131dc04ebc6ae46f98bffa718c1e35988458e31d15d9f9ce87fc"
+    },
+    "release-c": {
+      "label": "release-c",
+      "checks_pass": true,
+      "hosts": {
+        "game": {
+          "checks_pass": true,
+          "prior_protected_files_unchanged": 368,
+          "explicit_closed_raw_files_replaced": 2,
+          "source_proofs": 20,
+          "sparse_materialized_byte_proofs": 15,
+          "executable_elf_and_dependency_proofs": 53,
+          "free_bytes": 8753885184,
+          "archived_backup_count": 19,
+          "raw_sha256": "2cc9cd7a8d9566916cfbe0b9bdf7c07eea4b83fc7154536e21c82105055cd6c7"
+        },
+        "bots": {
+          "checks_pass": true,
+          "prior_protected_files_unchanged": 179,
+          "explicit_closed_raw_files_replaced": 0,
+          "source_proofs": 20,
+          "sparse_materialized_byte_proofs": 15,
+          "executable_elf_and_dependency_proofs": 48,
+          "free_bytes": 17480220672,
+          "archived_backup_count": null,
+          "raw_sha256": "d9ac233d217e900f370088f27ea18cc182cb0d2950dd3bcbd3eb7bbab622c354"
+        }
+      },
+      "workloads": 0,
+      "command_timeout_s": 90,
+      "command_count": 13,
+      "commands_sha256": "481940d29db3178cac94cb4628ccb6486791d522cfb0e3f3bfa55a20661a5ede"
+    }
+  },
+  "archive_identities": {
+    "clean-strategy100-r1-20261024": {
+      "archive_sha256": "4b282752f93ce86e7f4621071b070d6f19289d73a91772411ea2eee5e4d82294",
+      "archive_bytes": 32484480,
+      "proof_sha256": "33887be81a2112ff56de3fd9cbfb05f80e36d0916ee876c645da8900f4b75231",
+      "manifest_sha256": "3b85c45ab75121683f6d308ad1c829c19877af7ce9b5c8ccbe1a2d7fafd26fa4"
+    },
+    "clean-idle-maintenance-r1-20261024": {
+      "archive_sha256": "162ab6c477b90c5e113327208e9a797ca4bdbb0477f2e333e5751bc6ff0e31e5",
+      "archive_bytes": 3646060,
+      "proof_sha256": "8726e187c0f3027e40820d5be6c5b0ffa82312ce37345c4fffbf51f811eecb99",
+      "manifest_sha256": "856193ce967d736e965d21de1944c41fad65b824540bbc697ac21b5241648afa"
+    }
+  },
+  "limitations": [
+    "Idle recorder continues growing; allowance is a point-in-time measurement.",
+    "Original archived inode/device values are historical metadata, not live loose inodes.",
+    "Old recovery scripts remain frozen and cannot run until loose trees are restored.",
+    "No runtime gates or workload classifications were evaluated.",
+    "Future bundle cost was measured at 96b4221; the next workload must calculate its own full fresh allowance at its actual committed HEAD. The narrow residual is consumed by continued idle recording."
+  ],
+  "observed_net_game_free_change": 141643776,
+  "schema": "idle-measurement-preservation-maintenance-v1",
+  "runtime_identity": {
+    "source": "a1abdf8c9ada3efc164d4225de8c0ecf3f5c75bf",
+    "candidate_game_sha256": "de92e120bb863948fc4c55fe525d200ac6ebc0d0d214d453ed3efeab159208db",
+    "candidate_bot_sha256": "56c2139ebf042680febccca48c2b5b3d036bce2eadc4ea385f6f52ae5812ed67",
+    "original_game_sha256": "f2bf76c6fa3c28b7fb9b5d52f216061e9c3239999d67bf8a42acadf44dada3a2",
+    "original_config_sha256": "bac0bf8947937a334b4fd9e814e1e3a4e15b9753fd3f1c02e185285d26f0d68c",
+    "effective_receive_send_bytes": [
+      524288,
+      524288
+    ],
+    "measurement_directory": "/var/lib/omega-measure/current"
+  },
+  "archive_proofs": {
+    "clean-strategy100-r1-20261024": {
+      "schema": "closed-measurement-archive-v1",
+      "namespace": "clean-strategy100-r1-20261024",
+      "inventory": {
+        "files": {
+          "server.ndjson": {
+            "device": 2049,
+            "inode": 410218,
+            "uid": 1000,
+            "gid": 1000,
+            "mode": 420,
+            "bytes": 46676037,
+            "sha256": "d8b5af7c8cb999a0ae0ddb2f4980c5d7f9a3e9b9219ee849949dcb60432ebdf4"
+          },
+          "ticks.csv": {
+            "device": 2049,
+            "inode": 410217,
+            "uid": 1000,
+            "gid": 1000,
+            "mode": 420,
+            "bytes": 115758192,
+            "sha256": "d66463456d29254f8f52a5b9b4272c04b2f24fb8a9eec63df46e91c70df6a56a"
+          }
+        },
+        "directories": {
+          ".": {
+            "device": 2049,
+            "inode": 410216,
+            "uid": 1000,
+            "gid": 1000,
+            "mode": 493
+          }
+        }
+      },
+      "archive_bytes": 32484480,
+      "archive_sha256": "4b282752f93ce86e7f4621071b070d6f19289d73a91772411ea2eee5e4d82294",
+      "manifest_sha256": "3b85c45ab75121683f6d308ad1c829c19877af7ce9b5c8ccbe1a2d7fafd26fa4",
+      "closed_unit_states": {
+        "omega-clean-strategy100-r1-20261024-restore.timer": "inactive",
+        "omega-clean-strategy100-r1-20261024-restore.service": "inactive"
+      },
+      "frozen_recovery_sha256": "45a679c1ac4b7f1cc9fcbc26e792fe2f84fa161b21c6617ca9c6d6988f731f10"
+    },
+    "clean-idle-maintenance-r1-20261024": {
+      "schema": "closed-measurement-archive-v1",
+      "namespace": "clean-idle-maintenance-r1-20261024",
+      "inventory": {
+        "files": {
+          "server.ndjson": {
+            "device": 2049,
+            "inode": 392527,
+            "uid": 1000,
+            "gid": 1000,
+            "mode": 420,
+            "bytes": 5281185,
+            "sha256": "6fa949fdb86807c46ca5d694b44024ae9cd91bd771ff40125df64fd98b62ab44"
+          },
+          "ticks.csv": {
+            "device": 2049,
+            "inode": 392526,
+            "uid": 1000,
+            "gid": 1000,
+            "mode": 420,
+            "bytes": 12878846,
+            "sha256": "cfd4cc5f9c47a82961858c672785ee546b857b5b8805606a53e639e7cdaf1e34"
+          }
+        },
+        "directories": {
+          ".": {
+            "device": 2049,
+            "inode": 392519,
+            "uid": 1000,
+            "gid": 1000,
+            "mode": 493
+          }
+        }
+      },
+      "archive_bytes": 3646060,
+      "archive_sha256": "162ab6c477b90c5e113327208e9a797ca4bdbb0477f2e333e5751bc6ff0e31e5",
+      "manifest_sha256": "856193ce967d736e965d21de1944c41fad65b824540bbc697ac21b5241648afa",
+      "closed_unit_states": {
+        "omega-clean-idle-maintenance-r1-20261024-restore.timer": "inactive",
+        "omega-clean-idle-maintenance-r1-20261024-restore.service": "inactive"
+      },
+      "frozen_recovery_sha256": "e642e858418cb6140ac417c68fce3a2af2f0bcfda4550a2fbfb5969ee375539d"
+    }
+  },
+  "recovery": {
+    "timer_delay_seconds": 120,
+    "automatic_recovery_timeout_seconds": 75,
+    "primary_timeout_seconds": 70,
+    "lock_wait_seconds": 20,
+    "restore_script_sha256": "e642e858418cb6140ac417c68fce3a2af2f0bcfda4550a2fbfb5969ee375539d",
+    "guarded_wrapper_sha256": "efd425fcfde9de17f2eb7843997accdf02fa75a03e8fd842c234f20bd906a88b",
+    "arm": {
+      "armed": true,
+      "recovery_sha256": "e642e858418cb6140ac417c68fce3a2af2f0bcfda4550a2fbfb5969ee375539d",
+      "timer": "ActiveState=active\nNextElapseUSecMonotonic=1w 3d 17h 31min 28.142231s\n"
+    },
+    "disarm": {
+      "timer": "inactive",
+      "recovery_service": "inactive"
+    },
+    "final_units": {
+      "service": "ActiveState=inactive\nResult=success\nExecMainStartTimestampMonotonic=0\n",
+      "timer": "ActiveState=inactive\nLastTriggerUSecMonotonic=0\nResult=success\n"
+    },
+    "two_original_observations_after_restart": true,
+    "same_device_original_directory_inode": 392519,
+    "recreated_directory_inode": 410180,
+    "original_directory_device": 2049,
+    "uid": 1000,
+    "gid": 1000,
+    "mode": 493
+  },
+  "evidence_sha256": {
+    "bots-before.json": "3cba5254cf860396110c2dda32c3b111127df865abea17cab31f9e56a4dca696",
+    "bots-release-b-raw.json": "f6804e80e18b65a6ad95dcc5b8750f760fe6ae04dbd9c0a309dd98a406773ff8",
+    "bots-release-c-raw.json": "d9ac233d217e900f370088f27ea18cc182cb0d2950dd3bcbd3eb7bbab622c354",
+    "commands.ndjson": "7b8c2cab15c028a236a3ed53c9e795966e36fe978c902692e691b1f496e6c13f",
+    "controller-final-1da4adc8d1eef9dc3e9034bd9f4aafb7003044bf367aa94a15a4ed2e53ca1e29.py": "1da4adc8d1eef9dc3e9034bd9f4aafb7003044bf367aa94a15a4ed2e53ca1e29",
+    "controller-release-c-1da4adc8d1eef9dc3e9034bd9f4aafb7003044bf367aa94a15a4ed2e53ca1e29.py": "1da4adc8d1eef9dc3e9034bd9f4aafb7003044bf367aa94a15a4ed2e53ca1e29",
+    "executed.py": "71a7d25559664b0656ff22b2512bb89b625556bf27e8a2b517c0f0e298a2b204",
+    "final-host-snapshots.json": "9943fe024e6cb99a14a1cfb1531929b17b35a8d09305dd56f4206f4528394e94",
+    "final.ndjson": "62e43255858a32c857ebedcae02a86287e9d056f4a0333f1eff07307099f5c24",
+    "future-strategy100-allowance.json": "7680279a42a948cde000f6333ba28df28cc5744fcd8e152c92387bac73f6fca6",
+    "game-archive-upload-allowance.json": "9019b44d2f961326efe442452680244e00af4219235391eaaa53845d4b35bafc",
+    "game-before.json": "483a3ce03f32335b6d718c5d13862a3503f4d2db89a4a5eb3867a9007706b18f",
+    "game-installed-proof.json": "d9557b01e3c6b501fc51fb293f09975c93ea0929ad30492f24689d3778f1b54b",
+    "game-release-b-raw.json": "e5110715044a86f204f07f998f873dd54cebf9aac0453dd7a46ec6d3a0452e50",
+    "game-release-c-raw.json": "2cc9cd7a8d9566916cfbe0b9bdf7c07eea4b83fc7154536e21c82105055cd6c7",
+    "guarded-restore.sh": "efd425fcfde9de17f2eb7843997accdf02fa75a03e8fd842c234f20bd906a88b",
+    "historical-local-after-proof.json": "5b02359a5b4262e174887c1bc3fbdd5918cd704be0c83e7a0d2fcd3f5799c3e6",
+    "historical-local-before.json": "ace6140e075c10facfe75ba1358d2b49c214a60989aca36e3713759e21c25a30",
+    "local-complete-proof.json": "850fc3aaee6865beca250676728a44e731785c5f092a74b635febfb1911d937c",
+    "mirror-allowance.json": "f8e9fb45de1246fd4ae724c4d0967ac398e68d39df3d33109e08517039ff477c",
+    "mirror-complete-proof.json": "6e9a7fda242034e20799e16a5344e9159f19b328808737752ac972e76aaa109f",
+    "post-rotation.json": "808de5884df4afdee3c9d6368769e1a04f30c55936178fddf222bead002380e9",
+    "pre-reclaim-mirror-recheck.json": "6e9a7fda242034e20799e16a5344e9159f19b328808737752ac972e76aaa109f",
+    "preservation-transition.ndjson": "f8a43d2242b496768ef38b75267efd7574d2c31f3b2272cbe67e7aafc9f958fd",
+    "reclaim-result.json": "0ab9640f89aa1e22453ca13a0e22a11ad86c68247c404ed3547ad6737ab937e7",
+    "recovery-armed.json": "99d93561ef0c3fe48e42300e8a111d4eafb16fb7852c9ce2fed96aeed13eec88",
+    "recovery-disarmed.json": "e8f60efdfe3720af1e940d7a378247f411236643ce646992dad1bcdfc418352f",
+    "recovery-final-unit-state.json": "3060dd5f1934ac4cca155acd250f4a023472b97c28c7b96cafeda57b6e149b40",
+    "release-a.ndjson": "42eb8a4dabf5d800fa0393940d6eead724683e702970d2007d35ee63b77c611e",
+    "release-b-summary.json": "650374b31b86b0be0a57caf1b0daccf0b6afd46e96ee5d8609274253b5635927",
+    "release-b.ndjson": "c82297d654e0131dc04ebc6ae46f98bffa718c1e35988458e31d15d9f9ce87fc",
+    "release-c-summary.json": "3f838d4bc2f197ae0c6988e8c03aef7c98b6322b7bb88958f7153b68e57cf635",
+    "release-c.ndjson": "481940d29db3178cac94cb4628ccb6486791d522cfb0e3f3bfa55a20661a5ede",
+    "restoration-output.json": "faa5a5b4c2198584b0e183bbb2dd4e7dda581e286211b7e8e6471f396724003a",
+    "restore.sh": "e642e858418cb6140ac417c68fce3a2af2f0bcfda4550a2fbfb5969ee375539d",
+    "restored-twice.json": "36c03158aa722af7748295eeed493cde626833b1433695d1ec10be7a7f848e19",
+    "summary.json": "793ad1a69419a3b7a25fcb9df09ff420378c094106b1d37325addd12b501a023",
+    "transition-plan.json": "ce613e33532839e1c8fc62b341b2c44e3974b659e63fb0d58b769c59279a2e25"
+  },
+  "helper_sha256": "1da4adc8d1eef9dc3e9034bd9f4aafb7003044bf367aa94a15a4ed2e53ca1e29",
+  "test_file_sha256": "480437ad4ec28e32a63952423b6abce2f05b652b41e3c047d130944016f664c0",
+  "tests": [
+    {
+      "command": "python3 -m unittest discover -s scripts/load_campaign -p test_clean_run_recovery.py",
+      "passed": 14
+    },
+    {
+      "command": "python3 -m unittest discover -s scripts/load_campaign -p test_idle_measurement_maintenance.py",
+      "passed": 3
+    }
+  ],
+  "retained_nonpassing_checks": [
+    {
+      "evidence": "commands.ndjson",
+      "reason": "First metrics request immediately after successful pinned restart did not yet contain players_online gauge; fresh two checks passed without another restart."
+    },
+    {
+      "evidence": "release-a.ndjson",
+      "reason": "Local selected-copy comparison expected only mirrored preservation files but game original also retains unchanged omega-server; corrected to compare every selected member while protected census independently verifies that binary."
+    }
+  ]
+}
