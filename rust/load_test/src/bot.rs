@@ -194,6 +194,12 @@ impl Bot {
         !matches!(self.phase, Phase::Connecting | Phase::Authing)
     }
 
+    /// Consume the bot (dropping its socket/ENet host) and keep only its plain-data metrics —
+    /// the one thing that crosses from a swarm shard thread back to the reporter.
+    pub fn into_metrics(self) -> BotMetrics {
+        self.metrics
+    }
+
     pub fn is_terminal(&self) -> bool {
         matches!(self.phase, Phase::Closed | Phase::Failed)
     }

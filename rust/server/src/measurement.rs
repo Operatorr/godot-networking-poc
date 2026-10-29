@@ -34,8 +34,47 @@ impl Timing {
 pub struct LoopPhases {
     pub service_and_route: Timing,
     pub world_tick: Timing,
+    /// Subset of `world_tick`: entity collection + per-peer Snapshot scheduling/encoding
+    /// (`World::last_snapshot_build`). `world_tick - snapshot_build` is the pure simulation cost.
+    pub snapshot_build: Timing,
     pub outbox_flush: Timing,
     pub enet_flush: Timing,
+}
+
+/// This process's cumulative CPU time and resident memory, read from procfs at 1 Hz so a run
+/// report can say "the server used N% of one core" without an external sampler. Linux only;
+/// other platforms report `None` and the report falls back to the host sampler.
+#[derive(Debug, Default, serde::Serialize)]
+pub struct ProcessSample {
+    pub user_s: f64,
+    pub system_s: f64,
+    pub rss_bytes: u64,
+    pub threads: u64,
+}
+
+pub fn process_sample() -> Option<ProcessSample> {
+    #[cfg(target_os = "linux")]
+    {
+        let stat = std::fs::read_to_string("/proc/self/stat").ok()?;
+        // Field 2 (comm) may contain spaces; everything after the closing paren is whitespace-split.
+        let rest = &stat[stat.rfind(')')? + 2..];
+        let fields: Vec<&str> = rest.split_whitespace().collect();
+        // After `comm`, index 0 = state (field 3), so utime (14) is index 11, stime (15) is 12,
+        // num_threads (20) is 17, rss pages (24) is 21.
+        let ticks_per_s = 100.0; // CLK_TCK on every mainstream Linux
+        let utime: f64 = fields.get(11)?.parse().ok()?;
+        let stime: f64 = fields.get(12)?.parse().ok()?;
+        let threads: u64 = fields.get(17)?.parse().ok()?;
+        let rss_pages: u64 = fields.get(21)?.parse().ok()?;
+        return Some(ProcessSample {
+            user_s: utime / ticks_per_s,
+            system_s: stime / ticks_per_s,
+            rss_bytes: rss_pages * 4096,
+            threads,
+        });
+    }
+    #[allow(unreachable_code)]
+    None
 }
 
 #[derive(Default)]
@@ -287,6 +326,8 @@ impl Measurement {
             "boundary": boundary,
             "timing_bounds_us": TIMING_BOUNDS_US, "loop_phases": self.loop_phases,
             "transport": transport,
+            "process": process_sample(),
+            "tick": world.tick_count,
             "sent_bytes_by_type_channel": bytes(&self.sent), "received_bytes_by_type_channel": bytes(&self.received),
             "send_errors": self.send_errors, "decode_errors": self.decode_errors,
             "event_sends": self.event_sends.as_slice(), "baselines": self.baselines, "deltas": self.deltas,

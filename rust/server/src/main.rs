@@ -340,6 +340,10 @@ fn main() {
             world.tick(now_ms(start), &mut outbox);
             if let Some(measure) = &mut collector.measurement {
                 measure.loop_phases.world_tick.record(tick_start.elapsed());
+                measure
+                    .loop_phases
+                    .snapshot_build
+                    .record(world.last_snapshot_build);
             }
             let flush_start = collector.measurement.as_ref().map(|_| Instant::now());
             flush_outbox(&mut outbox, &mut host, &connected, &mut collector);

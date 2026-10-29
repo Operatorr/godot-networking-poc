@@ -82,3 +82,6 @@ api/bin/
 
 # CMS Website
 /web
+
+# quick_stress.sh run artifacts (reports, logs, raw telemetry) — never committed
+loadtest-runs/

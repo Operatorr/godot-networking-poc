@@ -92,6 +92,13 @@ const SCENARIOS: &[Scenario] = &[
         behavior: BehaviorKind::Strategy,
         description: "Gameplay bots (10 bots, run until stopped)",
     },
+    Scenario {
+        name: "quick",
+        bots: 100,
+        duration: 60,
+        behavior: BehaviorKind::Strategy,
+        description: "Fast iteration run (100 gameplay bots, 1 min) — see scripts/quick_stress.sh",
+    },
 ];
 
 const USAGE: &str = "\
@@ -105,8 +112,11 @@ OPTIONS:
     -b, --bots <N>             Number of bots to spawn
     -d, --duration <SECS>      Test duration in seconds (0 = run until Ctrl-C)
         --scenario <NAME>      baseline | target | stress | idle | movement |
-                               combat | clustered | strategy
+                               combat | clustered | strategy | quick
         --stagger <MS>         Milliseconds between bot connections (default: 100)
+        --threads <N>          OS threads the swarm is sharded over (default: 1). Bots are
+                               dealt round-robin; the global join cadence stays one bot per
+                               --stagger. Use >1 so the generator never saturates one core.
         --behavior <NAME>      default | idle | movement | combat | clustered | strategy
         --difficulty <0..1>    Bot tactical difficulty (default: 1.0)
         --input-hz <HZ>        Input send rate (default: 30, like the real client)
@@ -130,6 +140,7 @@ SCENARIOS:
     target    - 100 bots, 5 minutes (validate success metrics)
     stress    - 200 bots, 5 minutes (find breaking point; needs max_players >= 200)
     strategy  - 10 gameplay bots, run until interrupted
+    quick     - 100 gameplay bots, 1 minute (the fast hill-climb loop)
 
 EXAMPLES:
     omega-load-test --scenario baseline
@@ -143,6 +154,8 @@ struct Args {
     duration: Option<u64>,
     scenario: Option<&'static Scenario>,
     stagger_ms: f64,
+    /// Worker threads the swarm is sharded over (bot ids dealt round-robin).
+    threads: usize,
     output: Option<String>,
     behavior: Option<BehaviorKind>,
     difficulty: f64,
@@ -179,6 +192,7 @@ fn parse_args() -> Result<Args, String> {
         duration: None,
         scenario: None,
         stagger_ms: 100.0,
+        threads: 1,
         output: None,
         behavior: None,
         difficulty: 1.0,
@@ -233,6 +247,14 @@ fn parse_args() -> Result<Args, String> {
                 args.stagger_ms = value(&mut i)?
                     .parse()
                     .map_err(|e| format!("--stagger: {e}"))?
+            }
+            "--threads" => {
+                args.threads = value(&mut i)?
+                    .parse()
+                    .map_err(|e| format!("--threads: {e}"))?;
+                if args.threads == 0 {
+                    return Err("--threads: must be >= 1".into());
+                }
             }
             "--output" | "-o" => args.output = Some(value(&mut i)?),
             "--behavior" => {
@@ -376,7 +398,6 @@ fn main() {
 
     let start = Instant::now();
     let mut recorder = measurement::Recorder::from_env();
-    let now = || start.elapsed().as_secs_f64();
     info!(
         "Starting load test: {bot_count} bots, {} duration, behavior={}, difficulty={:.2}, server={}",
         if duration == 0 { "until interrupted".into() } else { format!("{duration}s") },
@@ -416,7 +437,7 @@ fn main() {
                 "Signed-ticket auth ENABLED via {url} (region={})",
                 args.region
             );
-            Some(TicketClient::new(url, secret.clone(), args.region.clone()))
+            Some((url.clone(), secret.clone(), args.region.clone()))
         }
         (Some(_), None) => {
             error!(
@@ -428,167 +449,81 @@ fn main() {
         (None, _) => None,
     };
 
-    info!("Phase 1: Spawning bots...");
-    let mut bots: Vec<Bot> = Vec::with_capacity(bot_count);
-    let mut stillborn: Vec<metrics::BotMetrics> = Vec::new();
-    for i in 0..bot_count {
-        if stop.load(Ordering::SeqCst) {
-            break;
-        }
-        // Authenticated runs mint one ticket per bot just before connect (well within the
-        // API's short TTL). A fetch failure makes that bot stillborn; the swarm continues.
-        let bot_ticket = if let Some(tc) = &ticket_client {
-            let character_id = SYNTHETIC_ID_BASE + i as u32 + 1;
-            match tc.fetch(character_id) {
-                Ok(t) => Some(t),
-                Err(e) => {
-                    warn!("Bot {} ticket fetch failed: {e}", i + 1);
-                    stillborn.push(metrics::BotMetrics {
-                        bot_id: i as u32 + 1,
-                        behavior: behavior.name(),
-                        error_count: 1,
-                        last_error: format!("ticket fetch failed: {e}"),
-                        ..Default::default()
-                    });
-                    continue;
-                }
-            }
-        } else {
-            None
-        };
-        match Bot::connect(
-            i as u32 + 1,
-            server_addr,
-            behavior,
-            args.difficulty,
-            args.input_hz,
-            args.bandwidth_budget,
-            args.seed,
-            bot_ticket,
-            now(),
-        ) {
-            Ok(b) => bots.push(b),
-            Err(e) => {
-                warn!("Bot {} failed to start: {e}", i + 1);
-                stillborn.push(metrics::BotMetrics {
-                    bot_id: i as u32 + 1,
-                    behavior: behavior.name(),
-                    error_count: 1,
-                    last_error: e.to_string(),
-                    ..Default::default()
-                });
-                continue;
-            }
-        }
-        // Settle this bot (poll everyone meanwhile), then stagger before the next connect.
-        let idx = bots.len() - 1;
-        while !bots[idx].is_settled() && !stop.load(Ordering::SeqCst) {
-            poll_all(&mut bots, now());
-            if let Some(recorder) = &mut recorder {
-                recorder.sample_ramp(&bots);
-            }
-            std::thread::sleep(Duration::from_millis(1));
-        }
-        if bots[idx].phase == Phase::Failed {
-            warn!(
-                "Bot {} failed to connect: {}",
-                i + 1,
-                bots[idx].metrics.last_error
-            );
-        }
-        let connected = bots.iter().filter(|b| b.phase == Phase::Running).count();
-        if (i + 1) % 10 == 0 {
-            info!("Connected {connected}/{} bots...", i + 1);
-        }
-        let stagger_until = now() + args.stagger_ms / 1000.0;
-        while now() < stagger_until && !stop.load(Ordering::SeqCst) {
-            poll_all(&mut bots, now());
-            if let Some(recorder) = &mut recorder {
-                recorder.sample_ramp(&bots);
-            }
-            std::thread::sleep(Duration::from_millis(1));
-        }
+    // ── Phases 1–3 run per shard, on their own OS threads ───────────────────────────────────
+    // Each shard owns a disjoint set of bot ids (dealt round-robin) and runs the whole
+    // spawn → run → disconnect lifecycle on its thread. Bots never cross threads: every Bot
+    // (socket, ENet host, sim state) is created and dropped on the shard that polls it; only
+    // the plain-data BotMetrics come back. The global join cadence stays one bot per
+    // --stagger: bot i (0-based) connects at i × stagger from swarm start whichever shard owns it.
+    let shard_count = args.threads.min(bot_count.max(1));
+    if shard_count > 1 {
+        info!("Sharding {bot_count} bots over {shard_count} threads");
     }
-    let connected = bots.iter().filter(|b| b.phase == Phase::Running).count();
-    info!(
-        "Spawned {} bots, {connected} connected successfully",
-        bots.len() + stillborn.len()
-    );
-
-    // ── Phase 2: run ────────────────────────────────────────────────────────────────────────
-    let mut time_series: Vec<Value> = Vec::new();
-    let run_started = now();
-    if let Some(recorder) = &recorder {
-        recorder.phase2();
+    let shard_config = Arc::new(ShardConfig {
+        server_addr,
+        behavior,
+        difficulty: args.difficulty,
+        input_hz: args.input_hz,
+        bandwidth_budget: args.bandwidth_budget,
+        seed: args.seed,
+        stagger_s: args.stagger_ms / 1000.0,
+        duration,
+        ticket: ticket_client,
+        bot_count,
+        shard_count,
+    });
+    let spawned_total = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let connected_total = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    if recorder.is_some() && shard_count > 1 {
+        warn!("OMEGA_MEASURE_DIR is set but --threads > 1: per-bot observations are only recorded on single-threaded swarms; skipping");
+        recorder = None;
     }
+    let mut handles = Vec::with_capacity(shard_count);
+    for shard in 0..shard_count {
+        let cfg = shard_config.clone();
+        let stop = stop.clone();
+        let spawned_total = spawned_total.clone();
+        let connected_total = connected_total.clone();
+        let recorder = if shard == 0 { recorder.take() } else { None };
+        handles.push(
+            std::thread::Builder::new()
+                .name(format!("swarm-{shard}"))
+                .spawn(move || {
+                    run_shard(
+                        shard,
+                        &cfg,
+                        start,
+                        stop,
+                        spawned_total,
+                        connected_total,
+                        recorder,
+                    )
+                })
+                .expect("spawn swarm thread"),
+        );
+    }
+    let mut all_owned: Vec<metrics::BotMetrics> = Vec::with_capacity(bot_count);
+    let mut shard_series: Vec<Vec<Value>> = Vec::with_capacity(shard_count);
+    let mut run_elapsed: f64 = 0.0;
+    for handle in handles {
+        let outcome = handle.join().expect("swarm thread panicked");
+        all_owned.extend(outcome.metrics);
+        shard_series.push(outcome.time_series);
+        run_elapsed = run_elapsed.max(outcome.run_elapsed);
+    }
+    all_owned.sort_by_key(|m| m.bot_id);
+    let time_series = merge_time_series(shard_series);
+    let connected = all_owned.iter().filter(|m| m.connected_ok).count();
     if connected == 0 {
         error!("No bots connected! Aborting test.");
-    } else {
-        info!(
-            "Phase 2: Running test for {} with {connected} bots...",
-            if duration == 0 {
-                "until interrupted".into()
-            } else {
-                format!("{duration} seconds")
-            }
-        );
-        let mut next_sample_at = run_started + 5.0;
-        let mut next_observation_at = run_started;
-        let mut measured_started = false;
-        while !stop.load(Ordering::SeqCst)
-            && (duration == 0 || now() - run_started < duration as f64)
-        {
-            poll_all(&mut bots, now());
-            if let Some(recorder) = &mut recorder {
-                let elapsed = now() - run_started;
-                if elapsed >= 60.0 && !measured_started {
-                    recorder.sample(&bots, elapsed, "start");
-                    measured_started = true;
-                } else if now() >= next_observation_at {
-                    recorder.sample(&bots, elapsed, "");
-                    next_observation_at = now() + 1.0;
-                }
-            }
-            if now() >= next_sample_at {
-                next_sample_at += 5.0;
-                time_series.push(sample_time_series(&bots, now() - run_started));
-            }
-            std::thread::sleep(Duration::from_millis(1));
-        }
-        if stop.load(Ordering::SeqCst) {
-            info!("Interrupted; disconnecting bots...");
-        }
     }
 
-    // ── Phase 3: disconnect + collect ───────────────────────────────────────────────────────
-    if let Some(recorder) = &mut recorder {
-        recorder.sample(&bots, now() - run_started, "end");
-    }
-    info!("Phase 3: Collecting metrics...");
-    let t = now();
-    for b in &mut bots {
-        b.begin_disconnect(t);
-    }
-    let drain_deadline = now() + 1.5;
-    while now() < drain_deadline && bots.iter().any(|b| !b.is_terminal()) {
-        poll_all(&mut bots, now());
-        std::thread::sleep(Duration::from_millis(1));
-    }
-    for b in &mut bots {
-        b.force_close();
-    }
-
-    let elapsed = now() - run_started;
     let effective_duration = if duration > 0 && !stop.load(Ordering::SeqCst) {
         duration as f64
     } else {
-        elapsed
+        run_elapsed
     };
-    let all_metrics: Vec<&metrics::BotMetrics> = bots
-        .iter()
-        .map(|b| &b.metrics)
-        .chain(stillborn.iter())
-        .collect();
+    let all_metrics: Vec<&metrics::BotMetrics> = all_owned.iter().collect();
     let agg = metrics::aggregate(all_metrics.iter().copied(), effective_duration);
 
     let assertion_results = if args.assertions == AssertionMode::Off {
@@ -654,6 +589,267 @@ fn main() {
     std::process::exit(if all_passed { 0 } else { 1 });
 }
 
+/// Everything a shard thread needs to spawn and drive its bots. Shared read-only across shards.
+struct ShardConfig {
+    server_addr: SocketAddr,
+    behavior: BehaviorKind,
+    difficulty: f64,
+    input_hz: f64,
+    bandwidth_budget: u32,
+    seed: Option<u64>,
+    stagger_s: f64,
+    duration: u64,
+    /// (api url, secret, region) — each shard builds its own `TicketClient` from these.
+    ticket: Option<(String, String, String)>,
+    bot_count: usize,
+    shard_count: usize,
+}
+
+struct ShardOutcome {
+    metrics: Vec<metrics::BotMetrics>,
+    time_series: Vec<Value>,
+    /// Seconds from this shard's Phase-2 start to the end of its drain.
+    run_elapsed: f64,
+}
+
+/// One shard's spawn → run → disconnect lifecycle. Bot ids `shard, shard + shards, …` belong
+/// to this shard; each connects at its global slot `id × stagger` so the server sees a steady
+/// join cadence regardless of how many threads generate it.
+fn run_shard(
+    shard: usize,
+    cfg: &ShardConfig,
+    start: Instant,
+    stop: Arc<AtomicBool>,
+    spawned_total: Arc<std::sync::atomic::AtomicUsize>,
+    connected_total: Arc<std::sync::atomic::AtomicUsize>,
+    mut recorder: Option<measurement::Recorder>,
+) -> ShardOutcome {
+    // World geometry is thread-local in sim_core: every shard thread sets it before any bot
+    // steps movement (the Arena geometry — the load test exercises the Arena instance).
+    sim_core::set_world_geometry(
+        sim_core::ARENA_GEOMETRY.min,
+        sim_core::ARENA_GEOMETRY.max,
+        sim_core::ARENA_GEOMETRY.obstacles_enabled,
+    );
+    let now = || start.elapsed().as_secs_f64();
+    let ticket_client = cfg
+        .ticket
+        .as_ref()
+        .map(|(url, secret, region)| TicketClient::new(url, secret.clone(), region.clone()));
+    let my_ids: Vec<usize> = (shard..cfg.bot_count).step_by(cfg.shard_count).collect();
+
+    // ── Phase 1: spawn (slot-scheduled) ─────────────────────────────────────────────────
+    let mut bots: Vec<Bot> = Vec::with_capacity(my_ids.len());
+    let mut stillborn: Vec<metrics::BotMetrics> = Vec::new();
+    for &i in &my_ids {
+        // Wait for this bot's global join slot, polling the bots already up meanwhile.
+        let slot_at = i as f64 * cfg.stagger_s;
+        while now() < slot_at && !stop.load(Ordering::SeqCst) {
+            poll_all(&mut bots, now());
+            if let Some(recorder) = &mut recorder {
+                recorder.sample_ramp(&bots);
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        if stop.load(Ordering::SeqCst) {
+            break;
+        }
+        // Authenticated runs mint one ticket per bot just before connect (well within the
+        // API's short TTL). A fetch failure makes that bot stillborn; the swarm continues.
+        let bot_ticket = if let Some(tc) = &ticket_client {
+            let character_id = SYNTHETIC_ID_BASE + i as u32 + 1;
+            match tc.fetch(character_id) {
+                Ok(t) => Some(t),
+                Err(e) => {
+                    warn!("Bot {} ticket fetch failed: {e}", i + 1);
+                    stillborn.push(metrics::BotMetrics {
+                        bot_id: i as u32 + 1,
+                        behavior: cfg.behavior.name(),
+                        error_count: 1,
+                        last_error: format!("ticket fetch failed: {e}"),
+                        ..Default::default()
+                    });
+                    spawned_total.fetch_add(1, Ordering::SeqCst);
+                    continue;
+                }
+            }
+        } else {
+            None
+        };
+        match Bot::connect(
+            i as u32 + 1,
+            cfg.server_addr,
+            cfg.behavior,
+            cfg.difficulty,
+            cfg.input_hz,
+            cfg.bandwidth_budget,
+            cfg.seed,
+            bot_ticket,
+            now(),
+        ) {
+            Ok(b) => bots.push(b),
+            Err(e) => {
+                warn!("Bot {} failed to start: {e}", i + 1);
+                stillborn.push(metrics::BotMetrics {
+                    bot_id: i as u32 + 1,
+                    behavior: cfg.behavior.name(),
+                    error_count: 1,
+                    last_error: e.to_string(),
+                    ..Default::default()
+                });
+                spawned_total.fetch_add(1, Ordering::SeqCst);
+                continue;
+            }
+        }
+        // Settle this bot (poll everyone on this shard meanwhile) before taking the next slot.
+        let idx = bots.len() - 1;
+        while !bots[idx].is_settled() && !stop.load(Ordering::SeqCst) {
+            poll_all(&mut bots, now());
+            if let Some(recorder) = &mut recorder {
+                recorder.sample_ramp(&bots);
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        if bots[idx].phase == Phase::Failed {
+            warn!(
+                "Bot {} failed to connect: {}",
+                i + 1,
+                bots[idx].metrics.last_error
+            );
+        } else if bots[idx].phase == Phase::Running {
+            connected_total.fetch_add(1, Ordering::SeqCst);
+        }
+        let spawned = spawned_total.fetch_add(1, Ordering::SeqCst) + 1;
+        if spawned.is_multiple_of(10) {
+            info!(
+                "Connected {}/{spawned} bots...",
+                connected_total.load(Ordering::SeqCst)
+            );
+        }
+    }
+    let connected = bots.iter().filter(|b| b.phase == Phase::Running).count();
+    if shard == 0 || connected == 0 {
+        info!(
+            "Shard {shard}: spawned {} bots, {connected} connected successfully",
+            bots.len() + stillborn.len()
+        );
+    }
+
+    // ── Phase 2: run ────────────────────────────────────────────────────────────────────────
+    let mut time_series: Vec<Value> = Vec::new();
+    let run_started = now();
+    if let Some(recorder) = &recorder {
+        recorder.phase2();
+    }
+    if connected > 0 {
+        if shard == 0 {
+            info!(
+                "Phase 2: Running test for {} with {} bots...",
+                if cfg.duration == 0 {
+                    "until interrupted".into()
+                } else {
+                    format!("{} seconds", cfg.duration)
+                },
+                connected_total.load(Ordering::SeqCst)
+            );
+        }
+        let mut next_sample_at = run_started + 5.0;
+        let mut next_observation_at = run_started;
+        let mut measured_started = false;
+        while !stop.load(Ordering::SeqCst)
+            && (cfg.duration == 0 || now() - run_started < cfg.duration as f64)
+        {
+            poll_all(&mut bots, now());
+            if let Some(recorder) = &mut recorder {
+                let elapsed = now() - run_started;
+                if elapsed >= 60.0 && !measured_started {
+                    recorder.sample(&bots, elapsed, "start");
+                    measured_started = true;
+                } else if now() >= next_observation_at {
+                    recorder.sample(&bots, elapsed, "");
+                    next_observation_at = now() + 1.0;
+                }
+            }
+            if now() >= next_sample_at {
+                next_sample_at += 5.0;
+                time_series.push(sample_time_series(&bots, now() - run_started, shard == 0));
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        if stop.load(Ordering::SeqCst) && shard == 0 {
+            info!("Interrupted; disconnecting bots...");
+        }
+    }
+
+    // ── Phase 3: disconnect + collect ───────────────────────────────────────────────────────
+    if let Some(recorder) = &mut recorder {
+        recorder.sample(&bots, now() - run_started, "end");
+    }
+    if shard == 0 {
+        info!("Phase 3: Collecting metrics...");
+    }
+    let t = now();
+    for b in &mut bots {
+        b.begin_disconnect(t);
+    }
+    let drain_deadline = now() + 1.5;
+    while now() < drain_deadline && bots.iter().any(|b| !b.is_terminal()) {
+        poll_all(&mut bots, now());
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    for b in &mut bots {
+        b.force_close();
+    }
+    let run_elapsed = now() - run_started;
+    let mut metrics: Vec<metrics::BotMetrics> =
+        bots.into_iter().map(|b| b.into_metrics()).collect();
+    metrics.extend(stillborn);
+    ShardOutcome {
+        metrics,
+        time_series,
+        run_elapsed,
+    }
+}
+
+/// Fold per-shard 5 s samples into one swarm-wide series (same index = same 5 s bucket;
+/// shards start Phase 2 within one stagger of each other). Counts/bytes sum, latencies
+/// average, server-reported fields take the latest.
+fn merge_time_series(shards: Vec<Vec<Value>>) -> Vec<Value> {
+    if shards.len() == 1 {
+        return shards.into_iter().next().unwrap_or_default();
+    }
+    let len = shards.iter().map(|s| s.len()).max().unwrap_or(0);
+    (0..len)
+        .map(|i| {
+            let rows: Vec<&Value> = shards.iter().filter_map(|s| s.get(i)).collect();
+            let sum = |k: &str| -> u64 { rows.iter().map(|r| r[k].as_u64().unwrap_or(0)).sum() };
+            let avg = |k: &str| -> Option<f64> {
+                let v: Vec<f64> = rows.iter().filter_map(|r| r[k].as_f64()).collect();
+                (!v.is_empty()).then(|| ((v.iter().sum::<f64>() / v.len() as f64) * 10.0).round() / 10.0)
+            };
+            let mut out = json!({
+                "elapsed_seconds": rows.first().and_then(|r| r["elapsed_seconds"].as_f64()).unwrap_or(0.0),
+                "connected_bots": sum("connected_bots"),
+                "total_bytes_sent": sum("total_bytes_sent"),
+                "total_bytes_received": sum("total_bytes_received"),
+                "total_state_updates": sum("total_state_updates"),
+            });
+            if let Some(v) = avg("latency_avg_ms") {
+                out["latency_avg_ms"] = json!(v);
+            }
+            if let Some(v) = avg("latency_p95_ms") {
+                out["latency_p95_ms"] = json!(v);
+            }
+            for k in ["server_avg_tick_time_ms", "server_entity_count"] {
+                if let Some(v) = rows.iter().rev().find_map(|r| r.get(k).filter(|v| !v.is_null())) {
+                    out[k] = v.clone();
+                }
+            }
+            out
+        })
+        .collect()
+}
+
 fn poll_all(bots: &mut [Bot], now: f64) {
     for b in bots.iter_mut() {
         // Per-bot panic boundary: a panic inside one bot's poll (a decode/sim/ENet edge case)
@@ -680,7 +876,7 @@ fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
     }
 }
 
-fn sample_time_series(bots: &[Bot], elapsed: f64) -> Value {
+fn sample_time_series(bots: &[Bot], elapsed: f64, log: bool) -> Value {
     let connected = bots.iter().filter(|b| b.phase == Phase::Running).count();
     let bytes_sent: u64 = bots.iter().map(|b| b.metrics.bytes_sent).sum();
     let bytes_received: u64 = bots.iter().map(|b| b.metrics.bytes_received).sum();
@@ -710,10 +906,12 @@ fn sample_time_series(bots: &[Bot], elapsed: f64) -> Value {
         snap["server_avg_tick_time_ms"] = json!(sm.avg_tick_time_ms_x100 as f64 / 100.0);
         snap["server_entity_count"] = json!(sm.entity_count);
     }
-    info!(
-        "[{:.0}s] bots={connected} bytes_recv={bytes_received} state_updates={state_updates}",
-        elapsed
-    );
+    if log {
+        info!(
+            "[{:.0}s] bots={connected} bytes_recv={bytes_received} state_updates={state_updates}",
+            elapsed
+        );
+    }
     snap
 }
 
@@ -734,7 +932,8 @@ mod tests {
                 "movement",
                 "combat",
                 "clustered",
-                "strategy"
+                "strategy",
+                "quick"
             ]
         );
         let baseline = &SCENARIOS[0];

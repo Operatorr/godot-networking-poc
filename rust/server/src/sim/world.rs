@@ -63,6 +63,9 @@ pub struct World {
     /// PvP collisions (player projectiles vs players) — off in a Sanctuary instance.
     pub pvp_enabled: bool,
     pub tick_count: u64,
+    /// Wall time the last tick spent in step 6 (entity collection + per-peer Snapshot
+    /// scheduling). Zero on ticks with no Snapshot due. Read by the main loop's phase timers.
+    pub last_snapshot_build: std::time::Duration,
     snapshot_accumulator: f64,
     snapshot_interval: f64,
     leaderboard_timer: f64,
@@ -102,6 +105,7 @@ impl World {
             progression,
             pvp_enabled,
             tick_count: 0,
+            last_snapshot_build: std::time::Duration::ZERO,
             snapshot_accumulator: 0.0,
             snapshot_interval,
             leaderboard_timer: 0.0,
@@ -580,7 +584,9 @@ impl World {
         }
 
         // 6. Snapshot broadcast.
+        self.last_snapshot_build = std::time::Duration::ZERO;
         if snapshot_due {
+            let snapshot_started = std::time::Instant::now();
             let entities = self.collect_entities();
             self.broadcast.broadcast_state_updates(
                 &entities,
@@ -592,6 +598,7 @@ impl World {
             // REMOVED records for disconnected players are now built into every peer's delta
             // cache; their entity ids are safe to recycle.
             self.players.release_quarantined_ids();
+            self.last_snapshot_build = snapshot_started.elapsed();
         }
 
         // 7. Cleanup — dead monsters got exactly one death snapshot.

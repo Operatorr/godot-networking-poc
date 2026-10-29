@@ -95,6 +95,24 @@ inputs on ch2 at 30 Hz (`--input-hz` to change; the old Python bots sent 10 Hz),
 `sim_core::step_movement` — the same integration the server applies — so the positions bots
 report in `PlayerInput` survive server validation exactly like a real client's.
 
+## The one-minute loop (`scripts/quick_stress.sh`)
+
+For iterating on server performance, don't drive the swarm by hand. `./scripts/quick_stress.sh`
+builds, starts a local Arena with telemetry on, runs the swarm, stops everything and renders a
+report — one command, about 90 s, no human in the loop. See
+[`docs/netcode/perf-notes/hill-climb/README.md`](../../docs/netcode/perf-notes/hill-climb/README.md).
+
+### Threads (`--threads N`, default 1)
+
+The swarm can shard its bots over N OS threads (round-robin by bot id). Each shard owns its
+bots end to end — socket, ENet host, sim state are created and dropped on the shard thread;
+only the plain-data per-bot metrics come back — so nothing is shared between threads during the
+run. The global join cadence is unchanged: bot *i* connects at *i × --stagger* from swarm start
+whichever shard owns it. Use this on any multi-core bot host so the generator never saturates one
+core (the old single-threaded swarm peaked at ~85 % of a core around 190 strategy bots, which
+confounded every capacity reading). `OMEGA_MEASURE_DIR` per-bot observations are only recorded
+on single-threaded swarms.
+
 ## Scenarios (same table as the Python harness)
 
 | Scenario    | Bots | Duration     | Behavior  | Purpose                                       |
@@ -107,6 +125,7 @@ report in `PlayerInput` survive server validation exactly like a real client's.
 | `combat`    | 100  | 120 s        | combat    | Constant shooting / projectile load           |
 | `clustered` | 100  | 120 s        | clustered | AoI worst case (everyone converges on origin) |
 | `strategy`  | 10   | until Ctrl-C | strategy  | Gameplay-like bots                            |
+| `quick`     | 100  | 60 s         | strategy  | The fast hill-climb loop (`scripts/quick_stress.sh`) |
 
 Behaviors `default/idle/movement/combat/clustered` keep the Python constants (re-pick
 probabilities, shoot chances, converge-on-origin). `strategy` is a **simplified** port:
