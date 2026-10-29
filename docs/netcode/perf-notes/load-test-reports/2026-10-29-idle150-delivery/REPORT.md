@@ -68,7 +68,7 @@ shedding in the [pinned Peer API](https://docs.rs/rusty_enet/0.4.0/rusty_enet/st
 
 ## Local parity and accounting
 
-The isolated [observer and harness](../../../../../diagnostics/idle150/README.md)
+The archived [observer and harness](https://github.com/Operatorr/godot-networking-poc/blob/69ebe38de2fc67fe7d5bb5dfc7e588e68486fabe/diagnostics/idle150/README.md)
 retain upstream 0.4.0 and compare it to the diagnostic fork with counters off
 and on. Every tested wire byte, native send result, received event and virtual
 timestamp matched exactly across the three variants. Every supported input
@@ -122,7 +122,11 @@ its counters must not be labelled total causal overhead.
 ## Evidence identities and boundary of the result
 
 [experiment-source-sha256.json](experiment-source-sha256.json) freezes all 37
-pre-execution package files, including dependency lock and observer source. Every
+pre-execution package files in the
+[preserved diagnostic commit](https://github.com/Operatorr/godot-networking-poc/tree/69ebe38de2fc67fe7d5bb5dfc7e588e68486fabe/diagnostics/idle150),
+including dependency lock and observer source. These manifest paths are relative
+to that archived repository tree; the experiment code is not part of this
+documentation change. Every
 listed file was verified unchanged after the timing failure. Later README/report
 files are additive documentation, outside that frozen experiment manifest.
 [outcome.json](outcome.json) records the unchanged limit, failed gate, zero remote
