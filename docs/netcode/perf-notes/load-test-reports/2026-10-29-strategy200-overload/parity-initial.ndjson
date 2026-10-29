@@ -1,0 +1,8 @@
+{"disabled_parity":true,"events_ordered":true,"generated_burst_events":0,"observer_parity":true,"off_max_batch":1,"offered_inputs":990,"on_max_batch":1,"scenario":"Stable"}
+{"disabled_parity":true,"events_ordered":true,"generated_burst_events":512,"observer_parity":true,"off_max_batch":512,"offered_inputs":990,"on_max_batch":32,"scenario":"Burst"}
+{"disabled_parity":true,"events_ordered":true,"generated_burst_events":3200,"observer_parity":true,"off_max_batch":65,"offered_inputs":990,"on_max_batch":32,"scenario":"Sustained"}
+{"disabled_parity":true,"events_ordered":true,"generated_burst_events":512,"observer_parity":true,"off_max_batch":512,"offered_inputs":990,"on_max_batch":32,"scenario":"LateBurst"}
+{"disabled_parity":true,"events_ordered":true,"generated_burst_events":0,"observer_parity":true,"off_max_batch":1,"offered_inputs":681,"on_max_batch":1,"scenario":"ReceiveError"}
+{"disabled_parity":true,"events_ordered":true,"generated_burst_events":0,"observer_parity":true,"off_max_batch":0,"offered_inputs":0,"on_max_batch":0,"scenario":"Timeout"}
+{"disabled_parity":true,"events_ordered":true,"generated_burst_events":0,"observer_parity":true,"off_max_batch":1,"offered_inputs":990,"on_max_batch":1,"scenario":"Malformed"}
+{"disabled_parity":true,"events_ordered":true,"generated_burst_events":0,"observer_parity":true,"off_max_batch":1,"offered_inputs":678,"on_max_batch":1,"scenario":"Teardown"}
