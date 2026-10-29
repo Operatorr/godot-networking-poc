@@ -1,0 +1,2959 @@
+--- a/rust/Cargo.toml
++++ b/rust/Cargo.toml
+@@ -3 +3 @@
+-members = ["protocol", "sim_core", "server", "client_ext", "load_test"]
++members = ["protocol", "sim_core", "load_test"]
+--- a/rust/Cargo.lock
++++ b/rust/Cargo.lock
+@@ -21,28 +20,0 @@
+-name = "atomic-waker"
+-version = "1.1.2"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
+-
+-[[package]]
+-name = "aws-lc-rs"
+-version = "1.17.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "5ec2f1fc3ec205783a5da9a7e6c1509cc69dedf09a1949e412c1e18469326d00"
+-dependencies = [
+- "aws-lc-sys",
+- "zeroize",
+-]
+-
+-[[package]]
+-name = "aws-lc-sys"
+-version = "0.41.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "1a2f9779ce85b93ab6170dd940ad0169b5766ff848247aff13bb788b832fe3f4"
+-dependencies = [
+- "cc",
+- "cmake",
+- "dunce",
+- "fs_extra",
+-]
+-
+-[[package]]
+@@ -55,6 +26,0 @@
+-name = "base64ct"
+-version = "1.8.3"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
+-
+-[[package]]
+@@ -67,9 +32,0 @@
+-name = "block-buffer"
+-version = "0.10.4"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71"
+-dependencies = [
+- "generic-array",
+-]
+-
+-[[package]]
+@@ -103,2 +59,0 @@
+- "jobserver",
+- "libc",
+@@ -119,24 +73,0 @@
+-
+-[[package]]
+-name = "client_ext"
+-version = "0.1.0"
+-dependencies = [
+- "godot",
+- "protocol",
+- "sim_core",
+-]
+-
+-[[package]]
+-name = "cmake"
+-version = "0.1.58"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "c0f78a02292a74a88ac736019ab962ece0bc380e3f977bf72e376c5d78ff0678"
+-dependencies = [
+- "cc",
+-]
+-
+-[[package]]
+-name = "const-oid"
+-version = "0.9.6"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
+@@ -174,25 +104,0 @@
+-name = "core-foundation"
+-version = "0.10.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "b2a6cd9ae233e7f62ba4e9353e81a88df7fc8a5987b8d445b4d90c879bd156f6"
+-dependencies = [
+- "core-foundation-sys",
+- "libc",
+-]
+-
+-[[package]]
+-name = "core-foundation-sys"
+-version = "0.8.7"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
+-
+-[[package]]
+-name = "cpufeatures"
+-version = "0.2.17"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280"
+-dependencies = [
+- "libc",
+-]
+-
+-[[package]]
+@@ -205,25 +110,0 @@
+-]
+-
+-[[package]]
+-name = "crossbeam-epoch"
+-version = "0.9.18"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "5b82ac4a3c2ca9c3460964f020e1402edd5753411d7737aa39c3714ad1b5420e"
+-dependencies = [
+- "crossbeam-utils",
+-]
+-
+-[[package]]
+-name = "crossbeam-utils"
+-version = "0.8.21"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
+-
+-[[package]]
+-name = "crypto-common"
+-version = "0.1.7"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "78c8292055d1c1df0cce5d180393dc8cce0abec0a7102adb6c7b1eef6016d60a"
+-dependencies = [
+- "generic-array",
+- "typenum",
+@@ -244,37 +124,0 @@
+-name = "curve25519-dalek"
+-version = "4.1.3"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "97fb8b7c4503de7d6ae7b42ab72a5a59857b4c937ec27a3d4539dba95b5ab2be"
+-dependencies = [
+- "cfg-if",
+- "cpufeatures",
+- "curve25519-dalek-derive",
+- "digest",
+- "fiat-crypto",
+- "rustc_version",
+- "subtle",
+- "zeroize",
+-]
+-
+-[[package]]
+-name = "curve25519-dalek-derive"
+-version = "0.1.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "f46882e17999c6cc590af592290432be3bce0428cb0d5f8b6715e4dc7b383eb3"
+-dependencies = [
+- "proc-macro2",
+- "quote",
+- "syn",
+-]
+-
+-[[package]]
+-name = "der"
+-version = "0.7.10"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "e7c1832837b905bbfb5101e07cc24c8deddf52f93225eee6ead5f4d63d53ddcb"
+-dependencies = [
+- "const-oid",
+- "zeroize",
+-]
+-
+-[[package]]
+@@ -287,10 +130,0 @@
+-]
+-
+-[[package]]
+-name = "digest"
+-version = "0.10.7"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
+-dependencies = [
+- "block-buffer",
+- "crypto-common",
+@@ -332,30 +165,0 @@
+-name = "dunce"
+-version = "1.0.5"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
+-
+-[[package]]
+-name = "ed25519"
+-version = "2.2.3"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "115531babc129696a58c64a4fef0a8bf9e9698629fb97e9e40767d235cfbcd53"
+-dependencies = [
+- "pkcs8",
+- "signature",
+-]
+-
+-[[package]]
+-name = "ed25519-dalek"
+-version = "2.2.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "70e796c081cee67dc755e1a36a0a172b897fab85fc3f6bc48307991f64e4eca9"
+-dependencies = [
+- "curve25519-dalek",
+- "ed25519",
+- "serde",
+- "sha2",
+- "subtle",
+- "zeroize",
+-]
+-
+-[[package]]
+@@ -368,17 +171,0 @@
+-name = "evmap"
+-version = "11.0.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "1b8874945f036109c72242964c1174cf99434e30cfa45bf45fedc983f50046f8"
+-dependencies = [
+- "hashbag",
+- "left-right",
+- "smallvec",
+-]
+-
+-[[package]]
+-name = "fiat-crypto"
+-version = "0.2.9"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "28dea519a9695b9977216879a3ebfddf92f1c08c05d984f8996aecd6ecdc811d"
+-
+-[[package]]
+@@ -401,12 +187,0 @@
+-name = "fnv"
+-version = "1.0.7"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
+-
+-[[package]]
+-name = "foldhash"
+-version = "0.2.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
+-
+-[[package]]
+@@ -422,15 +196,0 @@
+-name = "fs_extra"
+-version = "1.3.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "42703706b716c37f96a77aea830392ad231f44c9e9a67872fa5548707e11b11c"
+-
+-[[package]]
+-name = "futures-channel"
+-version = "0.3.32"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "07bbe89c50d7a535e539b8c17bc0b49bdb77747034daa8087407d655f3f7cc1d"
+-dependencies = [
+- "futures-core",
+-]
+-
+-[[package]]
+@@ -441,6 +200,0 @@
+-
+-[[package]]
+-name = "futures-sink"
+-version = "0.3.32"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "c39754e157331b013978ec91992bde1ac089843443c49cbc7f46150b0fad0893"
+@@ -467,31 +220,0 @@
+-name = "gdextension-api"
+-version = "0.5.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "58ad9a3d877c77834a2d1d92842ebd56928f61bd52e0fac4f04fc8b3731b0437"
+-
+-[[package]]
+-name = "generator"
+-version = "0.8.9"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "b3b854b0e584ead1a33f18b2fcad7cf7be18b3875c78816b753639aa501513ae"
+-dependencies = [
+- "cc",
+- "cfg-if",
+- "libc",
+- "log",
+- "rustversion",
+- "windows-link",
+- "windows-result",
+-]
+-
+-[[package]]
+-name = "generic-array"
+-version = "0.14.7"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a"
+-dependencies = [
+- "typenum",
+- "version_check",
+-]
+-
+-[[package]]
+@@ -509,126 +231,0 @@
+-name = "getrandom"
+-version = "0.3.4"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "899def5c37c4fd7b2664648c28120ecec138e4d395b459e5ca34f9cce2dd77fd"
+-dependencies = [
+- "cfg-if",
+- "libc",
+- "r-efi",
+- "wasip2",
+-]
+-
+-[[package]]
+-name = "glam"
+-version = "0.32.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "f70749695b063ecbf6b62949ccccde2e733ec3ecbbd71d467dca4e5c6c97cca0"
+-
+-[[package]]
+-name = "godot"
+-version = "0.5.3"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "71af3920bb1d3e14eb2e71644b140d26035fe3edc6b662db4575c439778b7ee7"
+-dependencies = [
+- "godot-core",
+- "godot-macros",
+-]
+-
+-[[package]]
+-name = "godot-bindings"
+-version = "0.5.3"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "d9347553a03444bbdc1e802f35ea58b7b52c01ece19b081d327c87991db5fd46"
+-dependencies = [
+- "gdextension-api",
+-]
+-
+-[[package]]
+-name = "godot-cell"
+-version = "0.5.3"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "bdee833f1fe0bc3208062ede0626f552559dfdcc824ff5e6208aa922a0f509d1"
+-
+-[[package]]
+-name = "godot-codegen"
+-version = "0.5.3"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "4fac542f1dd9bdaeb7d537fa5ba499fb6d89b29e484061959930c45b509818af"
+-dependencies = [
+- "godot-bindings",
+- "heck",
+- "nanoserde",
+- "proc-macro2",
+- "quote",
+-]
+-
+-[[package]]
+-name = "godot-core"
+-version = "0.5.3"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "d92e2c8b7f1fe46b59c8ecec5ed1156e7ad973e30c9133444b009462f8b09e06"
+-dependencies = [
+- "glam",
+- "godot-bindings",
+- "godot-cell",
+- "godot-codegen",
+- "godot-ffi",
+-]
+-
+-[[package]]
+-name = "godot-ffi"
+-version = "0.5.3"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "b0b34c2008795f645977bec2ebbc30a73b4f53ca2de54a0a93ff2cc2dffd10c9"
+-dependencies = [
+- "godot-bindings",
+- "godot-codegen",
+- "libc",
+-]
+-
+-[[package]]
+-name = "godot-macros"
+-version = "0.5.3"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "1799cc35d0db5760a74f8f97de7d620e74542b76d5d41f38ea301fa2cb69882f"
+-dependencies = [
+- "godot-bindings",
+- "proc-macro2",
+- "quote",
+- "venial",
+-]
+-
+-[[package]]
+-name = "h2"
+-version = "0.4.14"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "171fefbc92fe4a4de27e0698d6a5b392d6a0e333506bc49133760b3bcf948733"
+-dependencies = [
+- "atomic-waker",
+- "bytes",
+- "fnv",
+- "futures-core",
+- "futures-sink",
+- "http",
+- "indexmap",
+- "slab",
+- "tokio",
+- "tokio-util",
+- "tracing",
+-]
+-
+-[[package]]
+-name = "hashbag"
+-version = "0.1.13"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "7040a10f52cba493ddb09926e15d10a9d8a28043708a405931fe4c6f19fac064"
+-
+-[[package]]
+-name = "hashbrown"
+-version = "0.16.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
+-dependencies = [
+- "foldhash",
+-]
+-
+-[[package]]
+@@ -641,6 +237,0 @@
+-name = "heck"
+-version = "0.5.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
+-
+-[[package]]
+@@ -657,23 +247,0 @@
+-name = "http-body"
+-version = "1.0.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "1efedce1fb8e6913f23e0c92de8e62cd5b772a67e7b3946df930a62566c93184"
+-dependencies = [
+- "bytes",
+- "http",
+-]
+-
+-[[package]]
+-name = "http-body-util"
+-version = "0.1.3"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "b021d93e26becf5dc7e1b75b1bed1fd93124b374ceb73f43d4d4eafec896a64a"
+-dependencies = [
+- "bytes",
+- "futures-core",
+- "http",
+- "http-body",
+- "pin-project-lite",
+-]
+-
+-[[package]]
+@@ -684,64 +251,0 @@
+-
+-[[package]]
+-name = "httpdate"
+-version = "1.0.3"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
+-
+-[[package]]
+-name = "hyper"
+-version = "1.10.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "55281c53a1894c864990125767da440a4e630446785086f52523b20033b74498"
+-dependencies = [
+- "atomic-waker",
+- "bytes",
+- "futures-channel",
+- "futures-core",
+- "h2",
+- "http",
+- "http-body",
+- "httparse",
+- "httpdate",
+- "itoa",
+- "pin-project-lite",
+- "smallvec",
+- "tokio",
+- "want",
+-]
+-
+-[[package]]
+-name = "hyper-rustls"
+-version = "0.27.9"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "33ca68d021ef39cf6463ab54c1d0f5daf03377b70561305bb89a8f83aab66e0f"
+-dependencies = [
+- "http",
+- "hyper",
+- "hyper-util",
+- "rustls",
+- "rustls-native-certs",
+- "tokio",
+- "tokio-rustls",
+- "tower-service",
+-]
+-
+-[[package]]
+-name = "hyper-util"
+-version = "0.1.20"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "96547c2556ec9d12fb1578c4eaf448b04993e7fb79cbaad930a656880a6bdfa0"
+-dependencies = [
+- "bytes",
+- "futures-channel",
+- "futures-util",
+- "http",
+- "http-body",
+- "hyper",
+- "libc",
+- "pin-project-lite",
+- "socket2",
+- "tokio",
+- "tower-service",
+- "tracing",
+-]
+@@ -859,8 +363,2 @@
+- "hashbrown 0.17.1",
+-]
+-
+-[[package]]
+-name = "ipnet"
+-version = "2.12.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "d98f6fed1fde3f8c21bc40a1abb88dd75e67924f9cffc3ef95607bad8017f8e2"
++ "hashbrown",
++]
+@@ -873,10 +370,0 @@
+-
+-[[package]]
+-name = "jobserver"
+-version = "0.1.34"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "9afb3de4395d6b3e67a780b6de64b51c978ecf11cb9a462c66be7d4ca9039d33"
+-dependencies = [
+- "getrandom 0.3.4",
+- "libc",
+-]
+@@ -902,11 +389,0 @@
+-name = "left-right"
+-version = "0.11.7"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "0f0c21e4c8ff95f487fb34e6f9182875f42c84cef966d29216bf115d9bba835a"
+-dependencies = [
+- "crossbeam-utils",
+- "loom",
+- "slab",
+-]
+-
+-[[package]]
+@@ -937,13 +413,0 @@
+-name = "loom"
+-version = "0.7.2"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "419e0dc8046cb947daa77eb95ae174acfbddb7673b4151f56d1eed8e93fbfaca"
+-dependencies = [
+- "cfg-if",
+- "generator",
+- "scoped-tls",
+- "tracing",
+- "tracing-subscriber",
+-]
+-
+-[[package]]
+@@ -965,50 +428,0 @@
+-name = "metrics"
+-version = "0.24.6"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "89550ee9f79e88fef3119de263694973a8adb26c21d75322164fb8c493039fe2"
+-dependencies = [
+- "portable-atomic",
+- "rapidhash",
+-]
+-
+-[[package]]
+-name = "metrics-exporter-prometheus"
+-version = "0.18.3"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "1db0d8f1fc9e62caebd0319e11eaec5822b0186c171568f0480b46a0137f9108"
+-dependencies = [
+- "base64",
+- "evmap",
+- "http-body-util",
+- "hyper",
+- "hyper-rustls",
+- "hyper-util",
+- "indexmap",
+- "ipnet",
+- "metrics",
+- "metrics-util",
+- "quanta",
+- "rustls",
+- "thiserror",
+- "tokio",
+- "tracing",
+-]
+-
+-[[package]]
+-name = "metrics-util"
+-version = "0.20.4"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "96f8722f8562635f92f8ed992f26df0532266eb03d5202607c20c0d7e9745e13"
+-dependencies = [
+- "crossbeam-epoch",
+- "crossbeam-utils",
+- "hashbrown 0.16.1",
+- "metrics",
+- "quanta",
+- "rand",
+- "rand_xoshiro",
+- "rapidhash",
+- "sketches-ddsketch",
+-]
+-
+-[[package]]
+@@ -1023,26 +436,0 @@
+-
+-[[package]]
+-name = "mio"
+-version = "1.2.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "02bd0af71c67b473010cbbc60715ee815645a4dc942899111f494b4b737d6fda"
+-dependencies = [
+- "libc",
+- "wasi",
+- "windows-sys 0.61.2",
+-]
+-
+-[[package]]
+-name = "nanoserde"
+-version = "0.2.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "a36fb3a748a4c9736ed7aeb5f2dfc99665247f1ce306abbddb2bf0ba2ac530a4"
+-dependencies = [
+- "nanoserde-derive",
+-]
+-
+-[[package]]
+-name = "nanoserde-derive"
+-version = "0.2.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "a846cbc04412cf509efcd8f3694b114fc700a035fb5a37f21517f9fb019f1ebc"
+@@ -1108,19 +495,0 @@
+-name = "omega-server"
+-version = "0.1.0"
+-dependencies = [
+- "ctrlc",
+- "ed25519-dalek",
+- "metrics",
+- "metrics-exporter-prometheus",
+- "protocol",
+- "rusty_enet",
+- "serde",
+- "serde_json",
+- "sim_core",
+- "socket2",
+- "tracing",
+- "tracing-subscriber",
+- "ureq",
+-]
+-
+-[[package]]
+@@ -1133,6 +501,0 @@
+-name = "openssl-probe"
+-version = "0.2.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
+-
+-[[package]]
+@@ -1151,16 +513,0 @@
+-name = "pkcs8"
+-version = "0.10.2"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "f950b2377845cebe5cf8b5165cb3cc1a5e0fa5cfa3e1f7f55707d8fd82e0a7b7"
+-dependencies = [
+- "der",
+- "spki",
+-]
+-
+-[[package]]
+-name = "portable-atomic"
+-version = "1.13.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "c33a9471896f1c69cecef8d20cbe2f7accd12527ce60845ff44c153bb2a21b49"
+-
+-[[package]]
+@@ -1182,9 +528,0 @@
+-name = "ppv-lite86"
+-version = "0.2.21"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "85eae3c4ed2f50dcfe72643da4befc30deadb458a9b590d720cde2f2b1e97da9"
+-dependencies = [
+- "zerocopy",
+-]
+-
+-[[package]]
+@@ -1204,15 +541,0 @@
+-name = "quanta"
+-version = "0.12.6"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "f3ab5a9d756f0d97bdc89019bd2e4ea098cf9cde50ee7564dde6b81ccc8f06c7"
+-dependencies = [
+- "crossbeam-utils",
+- "libc",
+- "once_cell",
+- "raw-cpuid",
+- "wasi",
+- "web-sys",
+- "winapi",
+-]
+-
+-[[package]]
+@@ -1225,71 +547,0 @@
+-]
+-
+-[[package]]
+-name = "r-efi"
+-version = "5.3.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
+-
+-[[package]]
+-name = "rand"
+-version = "0.9.4"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "44c5af06bb1b7d3216d91932aed5265164bf384dc89cd6ba05cf59a35f5f76ea"
+-dependencies = [
+- "rand_chacha",
+- "rand_core 0.9.5",
+-]
+-
+-[[package]]
+-name = "rand_chacha"
+-version = "0.9.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "d3022b5f1df60f26e1ffddd6c66e8aa15de382ae63b3a0c1bfc0e4d3e3f325cb"
+-dependencies = [
+- "ppv-lite86",
+- "rand_core 0.9.5",
+-]
+-
+-[[package]]
+-name = "rand_core"
+-version = "0.6.4"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
+-dependencies = [
+- "getrandom 0.2.17",
+-]
+-
+-[[package]]
+-name = "rand_core"
+-version = "0.9.5"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "76afc826de14238e6e8c374ddcc1fa19e374fd8dd986b0d2af0d02377261d83c"
+-dependencies = [
+- "getrandom 0.3.4",
+-]
+-
+-[[package]]
+-name = "rand_xoshiro"
+-version = "0.7.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "f703f4665700daf5512dcca5f43afa6af89f09db47fb56be587f80636bda2d41"
+-dependencies = [
+- "rand_core 0.9.5",
+-]
+-
+-[[package]]
+-name = "rapidhash"
+-version = "4.4.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "b5e48930979c155e2f33aa36ab3119b5ee81332beb6482199a8ecd6029b80b59"
+-dependencies = [
+- "rustversion",
+-]
+-
+-[[package]]
+-name = "raw-cpuid"
+-version = "11.6.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "498cd0dc59d73224351ee52a95fee0f1a617a2eae0e7d9d720cc622c73a54186"
+-dependencies = [
+- "bitflags",
+@@ -1323 +575 @@
+- "getrandom 0.2.17",
++ "getrandom",
+@@ -1330,9 +581,0 @@
+-name = "rustc_version"
+-version = "0.4.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "cfcb3a22ef46e85b45de6ee7e79d063319ebb6594faafcf1c225ea92ab6e9b92"
+-dependencies = [
+- "semver",
+-]
+-
+-[[package]]
+@@ -1344 +586,0 @@
+- "aws-lc-rs",
+@@ -1355,12 +596,0 @@
+-name = "rustls-native-certs"
+-version = "0.8.4"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "dab5152771c58876a2146916e53e35057e1a4dfa2b9df0f0305b07f611fdea4d"
+-dependencies = [
+- "openssl-probe",
+- "rustls-pki-types",
+- "schannel",
+- "security-framework",
+-]
+-
+-[[package]]
+@@ -1381 +610,0 @@
+- "aws-lc-rs",
+@@ -1403,44 +631,0 @@
+-name = "schannel"
+-version = "0.1.29"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "91c1b7e4904c873ef0710c1f407dde2e6287de2bebc1bbbf7d430bb7cbffd939"
+-dependencies = [
+- "windows-sys 0.61.2",
+-]
+-
+-[[package]]
+-name = "scoped-tls"
+-version = "1.0.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "e1cf6437eb19a8f4a6cc0f7dca544973b0b78843adbfeb3683d1a94a0024a294"
+-
+-[[package]]
+-name = "security-framework"
+-version = "3.7.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "b7f4bc775c73d9a02cde8bf7b2ec4c9d12743edf609006c7facc23998404cd1d"
+-dependencies = [
+- "bitflags",
+- "core-foundation",
+- "core-foundation-sys",
+- "libc",
+- "security-framework-sys",
+-]
+-
+-[[package]]
+-name = "security-framework-sys"
+-version = "2.17.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "6ce2691df843ecc5d231c0b14ece2acc3efb62c0a398c7e1d875f3983ce020e3"
+-dependencies = [
+- "core-foundation-sys",
+- "libc",
+-]
+-
+-[[package]]
+-name = "semver"
+-version = "1.0.28"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
+-
+-[[package]]
+@@ -1453 +637,0 @@
+- "serde_derive",
+@@ -1490,11 +673,0 @@
+-name = "sha2"
+-version = "0.10.9"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "a7507d819769d01a365ab707794a4084392c824f54a7a6a7862f8c3d0892b283"
+-dependencies = [
+- "cfg-if",
+- "cpufeatures",
+- "digest",
+-]
+-
+-[[package]]
+@@ -1516,9 +688,0 @@
+-name = "signature"
+-version = "2.2.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "77549399552de45a898a580c1b41d445bf730df867cc44e6c0233bbc4b8329de"
+-dependencies = [
+- "rand_core 0.6.4",
+-]
+-
+-[[package]]
+@@ -1535,6 +698,0 @@
+-name = "sketches-ddsketch"
+-version = "0.3.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "0c6f73aeb92d671e0cc4dca167e59b2deb6387c375391bc99ee743f326994a2b"
+-
+-[[package]]
+@@ -1551,20 +708,0 @@
+-
+-[[package]]
+-name = "socket2"
+-version = "0.6.4"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "52d1cfed4120b4d927bf7c0f86d2087a4a7d6027c906d9f9d525a80573b9be51"
+-dependencies = [
+- "libc",
+- "windows-sys 0.61.2",
+-]
+-
+-[[package]]
+-name = "spki"
+-version = "0.7.3"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "d91ed6c858b01f942cd56b37a94b3e0a1798290327d1236e4d9cf4eaca44d29d"
+-dependencies = [
+- "base64ct",
+- "der",
+-]
+@@ -1600,20 +737,0 @@
+-dependencies = [
+- "proc-macro2",
+- "quote",
+- "syn",
+-]
+-
+-[[package]]
+-name = "thiserror"
+-version = "2.0.18"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "4288b5bcbc7920c07a1149a35cf9590a2aa808e0bc1eafaade0b80947865fbc4"
+-dependencies = [
+- "thiserror-impl",
+-]
+-
+-[[package]]
+-name = "thiserror-impl"
+-version = "2.0.18"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "ebc4ee7f67670e9b64d05fa4253e753e016c6c95ff35b89b7941d6b856dec1d5"
+@@ -1675,43 +792,0 @@
+-
+-[[package]]
+-name = "tokio"
+-version = "1.52.3"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "8fc7f01b389ac15039e4dc9531aa973a135d7a4135281b12d7c1bc79fd57fffe"
+-dependencies = [
+- "bytes",
+- "libc",
+- "mio",
+- "pin-project-lite",
+- "socket2",
+- "windows-sys 0.61.2",
+-]
+-
+-[[package]]
+-name = "tokio-rustls"
+-version = "0.26.4"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "1729aa945f29d91ba541258c8df89027d5792d85a8841fb65e8bf0f4ede4ef61"
+-dependencies = [
+- "rustls",
+- "tokio",
+-]
+-
+-[[package]]
+-name = "tokio-util"
+-version = "0.7.18"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "9ae9cec805b01e8fc3fd2fe289f89149a9b66dd16786abd8b19cfa7b48cb0098"
+-dependencies = [
+- "bytes",
+- "futures-core",
+- "futures-sink",
+- "pin-project-lite",
+- "tokio",
+-]
+-
+-[[package]]
+-name = "tower-service"
+-version = "0.3.3"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "8df9b6e13f2d32c91b9bd719c00d1958837bc7dec474d94952798cc8e69eeec3"
+@@ -1779,12 +853,0 @@
+-
+-[[package]]
+-name = "try-lock"
+-version = "0.2.5"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
+-
+-[[package]]
+-name = "typenum"
+-version = "1.20.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
+@@ -1867,10 +929,0 @@
+-name = "venial"
+-version = "0.6.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "9a42528baceab6c7784446df2a10f4185078c39bf73dc614f154353f1a6b1229"
+-dependencies = [
+- "proc-macro2",
+- "quote",
+-]
+-
+-[[package]]
+@@ -1883,9 +935,0 @@
+-name = "want"
+-version = "0.3.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "bfa7760aed19e106de2c7c0b581b509f2f25d3dacaf737cb82ac61bc6d760b0e"
+-dependencies = [
+- "try-lock",
+-]
+-
+-[[package]]
+@@ -1896,9 +939,0 @@
+-
+-[[package]]
+-name = "wasip2"
+-version = "1.0.3+wasi-0.2.9"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "20064672db26d7cdc89c7798c48a0fdfac8213434a1186e5ef29fd560ae223d6"
+-dependencies = [
+- "wit-bindgen",
+-]
+@@ -1952,10 +986,0 @@
+-name = "web-sys"
+-version = "0.3.100"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "6e0871acf327f283dc6da28a1696cdc64fb355ba9f935d052021fa77f35cce69"
+-dependencies = [
+- "js-sys",
+- "wasm-bindgen",
+-]
+-
+-[[package]]
+@@ -1971,22 +995,0 @@
+-name = "winapi"
+-version = "0.3.9"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "5c839a674fcd7a98952e593242ea400abe93992746761e38641405d28b00f419"
+-dependencies = [
+- "winapi-i686-pc-windows-gnu",
+- "winapi-x86_64-pc-windows-gnu",
+-]
+-
+-[[package]]
+-name = "winapi-i686-pc-windows-gnu"
+-version = "0.4.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "ac3b87c63620426dd9b991e5ce0329eff545bccbbb34f3be09ff6fb6ab51b7b6"
+-
+-[[package]]
+-name = "winapi-x86_64-pc-windows-gnu"
+-version = "0.4.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
+-
+-[[package]]
+@@ -1997,9 +999,0 @@
+-
+-[[package]]
+-name = "windows-result"
+-version = "0.4.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "7781fa89eaf60850ac3d2da7af8e5242a5ea78d1a11c49bf2910bb5a73853eb5"
+-dependencies = [
+- "windows-link",
+-]
+@@ -2090,6 +1083,0 @@
+-name = "wit-bindgen"
+-version = "0.57.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
+-
+-[[package]]
+@@ -2125,20 +1112,0 @@
+-name = "zerocopy"
+-version = "0.8.52"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "ce1022995ff5ff5d841ad7d994facc23098cd40152f2c1d11cd607c6f530653f"
+-dependencies = [
+- "zerocopy-derive",
+-]
+-
+-[[package]]
+-name = "zerocopy-derive"
+-version = "0.8.52"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "1ae7f38b72ec2a254e2b87ef277cf2cd4fb97cbebf944faa6f33354da0867930"
+-dependencies = [
+- "proc-macro2",
+- "quote",
+- "syn",
+-]
+-
+-[[package]]
+--- a/rust/load_test/Cargo.toml
++++ b/rust/load_test/Cargo.toml
+@@ -20,0 +21,8 @@
++
++[features]
++synthetic-replay = []
++
++[[bin]]
++name = "poll-replay"
++path = "src/bin/poll-replay.rs"
++required-features = ["synthetic-replay"]
+--- a/rust/load_test/src/bot.rs
++++ b/rust/load_test/src/bot.rs
+@@ -49 +49 @@
+-pub struct Bot {
++pub struct Bot<S: enet::Socket<Address = SocketAddr> = UdpSocket> {
+@@ -50,0 +51,3 @@
++    #[cfg(feature = "synthetic-replay")]
++    pub replay_trace: Option<Vec<(u64, u8, Vec<u8>)>>,
++    pub event_budget: usize,
+@@ -55 +58 @@
+-    host: enet::Host<crate::native_diagnostic::ObservedSocket>,
++    host: enet::Host<crate::native_diagnostic::ObservedSocket<S>>,
+@@ -117 +120 @@
+-        let mut host = enet::Host::new(
++        let host = enet::Host::new(
+@@ -128,0 +132,29 @@
++        Self::from_host(
++            host,
++            id,
++            server,
++            behavior,
++            difficulty,
++            input_hz,
++            bandwidth_budget_bps,
++            seed,
++            ticket,
++            now,
++        )
++    }
++}
++
++impl<S: enet::Socket<Address = SocketAddr>> Bot<S> {
++    #[allow(clippy::too_many_arguments)]
++    pub fn from_host(
++        mut host: enet::Host<crate::native_diagnostic::ObservedSocket<S>>,
++        id: u32,
++        server: SocketAddr,
++        behavior: BehaviorKind,
++        difficulty: f64,
++        input_hz: f64,
++        bandwidth_budget_bps: u32,
++        seed: Option<u64>,
++        ticket: Option<Ticket>,
++        now: f64,
++    ) -> std::io::Result<Self> {
+@@ -157,0 +190,3 @@
++            #[cfg(feature = "synthetic-replay")]
++            replay_trace: None,
++            event_budget: crate::sweep::event_budget(),
+@@ -269,0 +305 @@
++        let mut delivered = 0;
+@@ -270,0 +307,3 @@
++            if self.event_budget != 0 && delivered == self.event_budget {
++                return;
++            }
+@@ -296,0 +336,12 @@
++            #[cfg(feature = "synthetic-replay")]
++            if let Some(trace) = &mut self.replay_trace {
++                let (kind, bytes) = match &event {
++                    enet::EventNoRef::Receive {
++                        packet, channel_id, ..
++                    } => (*channel_id, packet.data().to_vec()),
++                    enet::EventNoRef::Connect { .. } => (250, vec![]),
++                    enet::EventNoRef::Disconnect { data, .. } => (251, data.to_le_bytes().to_vec()),
++                };
++                trace.push(((now * 1000.0).round() as u64, kind, bytes));
++            }
++            delivered += 1;
+@@ -743,0 +795,4 @@
++        #[cfg(feature = "synthetic-replay")]
++        if let Some(trace) = &mut self.replay_trace {
++            trace.push((self.host.now().as_millis() as u64, 252, bytes.clone()));
++        }
+--- a/rust/load_test/src/main.rs
++++ b/rust/load_test/src/main.rs
+@@ -18,0 +19 @@
++mod sweep;
+@@ -320,0 +322 @@
++    sweep::validate();
+@@ -663,0 +666 @@
++    let sweep_started = sweep::global_start();
+@@ -675,0 +679 @@
++    sweep::global_finish(sweep_started, bots.len());
+--- a/rust/load_test/src/measurement.rs
++++ b/rust/load_test/src/measurement.rs
+@@ -110 +110,6 @@
+-    pub fn sample(&mut self, bots: &[crate::bot::Bot], phase_s: f64, boundary: &str) {
++    pub fn sample<S: rusty_enet::Socket<Address = std::net::SocketAddr>>(
++        &mut self,
++        bots: &[crate::bot::Bot<S>],
++        phase_s: f64,
++        boundary: &str,
++    ) {
+@@ -115 +120,4 @@
+-    pub fn sample_ramp(&mut self, bots: &[crate::bot::Bot]) {
++    pub fn sample_ramp<S: rusty_enet::Socket<Address = std::net::SocketAddr>>(
++        &mut self,
++        bots: &[crate::bot::Bot<S>],
++    ) {
+@@ -124 +132 @@
+-    fn sample_phase(
++    fn sample_phase<S: rusty_enet::Socket<Address = std::net::SocketAddr>>(
+@@ -126 +134 @@
+-        bots: &[crate::bot::Bot],
++        bots: &[crate::bot::Bot<S>],
+@@ -137 +145 @@
+-            "gap_bounds_ms": GAP_BOUNDS_MS, "bots": observations})).unwrap();
++            "gap_bounds_ms": GAP_BOUNDS_MS, "bots": observations, "sweep": crate::sweep::global_snapshot()})).unwrap();
+--- /dev/null
++++ b/rust/load_test/src/bot_reference.rs
+@@ -0,0 +1,1075 @@
++//! One simulated player: its own ENet host/socket (so the server exercises the same per-peer
++//! paths as for a real client), the auth handshake, snapshot/event tracking, and an input loop
++//! whose movement prediction runs the real `sim_core::step_movement` — the same code the server
++//! integrates against, so the positions the bot reports in `PlayerInput` are exactly what a real
++//! client would predict.
++//!
++//! Lifecycle: ENet connect (`data` low byte = PROTOCOL_VERSION) → `ConnectAuth` with no ticket
++//! (dev mode; requires the server's `allow_unsigned_tickets`, the default) → `AuthResult` →
++//! 30 Hz inputs on ch2, `BaselineAck` per baseline on ch1, `LocalHitReport` for monster shots
++//! (rate-limited like the real client), `RespawnRequest` 3.2 s after death.
++
++use crate::behavior::{BehaviorKind, BehaviorState, KnownEntity, View};
++use crate::metrics::BotMetrics;
++use crate::rng::Pcg32;
++use protocol::types::{delta_mask, disconnect_reason, entity_flags, MONSTER_ID_START};
++use protocol::{ClientPacket, ConnectAuth, PlayerInput, ServerPacket, Snapshot, Ticket};
++use rusty_enet as enet;
++use sim_core::{input_flags, movement_direction, step_movement, MovementSm, Vec2};
++use std::collections::{HashMap, HashSet, VecDeque};
++use std::net::{SocketAddr, UdpSocket};
++use tracing::debug;
++
++const CONNECT_TIMEOUT_S: f64 = 15.0;
++/// D11 true-overlap radius: projectile 8 u + player hitbox 16 u.
++const HIT_RADIUS: f32 = 24.0;
++/// Mirror of the server's LOCAL_HIT_REPORT_MAX_PER_SECOND quota.
++const HIT_REPORTS_MAX_PER_SECOND: usize = 20;
++const RESPAWN_DELAY_S: f64 = 3.2;
++const RESPAWN_REQUEST_MIN_INTERVAL_S: f64 = 1.0;
++/// ENet seeds RTT at 500 ms; skip samples until real measurements settle.
++const RTT_WARMUP_S: f64 = 2.0;
++
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub enum Phase {
++    /// ENet connect in flight.
++    Connecting,
++    /// Connected; ConnectAuth sent, awaiting AuthResult.
++    Authing,
++    /// Authenticated and playing.
++    Running,
++    /// We asked to disconnect; awaiting the ENet disconnect event.
++    Closing,
++    /// Clean shutdown complete.
++    Closed,
++    /// Connect/auth failure or unexpected drop; terminal.
++    Failed,
++}
++
++pub struct Bot<S: enet::Socket<Address = SocketAddr> = UdpSocket> {
++    observation: Option<crate::measurement::BotObservation>,
++    #[cfg(feature = "synthetic-replay")]
++    pub replay_trace: Option<Vec<(u64, u8, Vec<u8>)>>,
++    pub id: u32,
++    pub phase: Phase,
++    pub metrics: BotMetrics,
++    pub entity_id: u16,
++    host: enet::Host<crate::native_diagnostic::ObservedSocket<S>>,
++    peer_key: usize,
++    behavior: BehaviorState,
++    rng: Pcg32,
++    /// Player class — one of Warrior(4)/Rogue(5)/Mage(6), assigned round-robin by bot id so a
++    /// swarm is split evenly across the three playable classes. Sent in ConnectAuth.
++    player_class: u8,
++    /// Signed session ticket for authenticated joins (`Some` only on an authenticated run);
++    /// `None` = the ticket-less dev path. Sent in ConnectAuth on the ENet Connect event.
++    ticket: Option<Ticket>,
++    sm: MovementSm,
++    pos: Vec2,
++    vel: Vec2,
++    seq: u8,
++    last_confirm_tick: Option<u16>,
++    last_baseline_tick: Option<u32>,
++    position_source: &'static str,
++    last_aim: f32,
++    input_interval: f64,
++    next_input_at: f64,
++    next_stats_at: f64,
++    connect_started_at: f64,
++    running_since: f64,
++    last_rtt_ms: f64,
++    server_tick_rate: u8,
++    bandwidth_budget_bps: u32,
++    entities: HashMap<u16, KnownEntity>,
++    /// projectile id → owner entity id (from PROJECTILE_FIRED).
++    projectile_owners: HashMap<u16, u16>,
++    reported_projectiles: HashSet<u16>,
++    hit_report_times: VecDeque<f64>,
++    dead_since: Option<f64>,
++    last_respawn_request_at: f64,
++    /// True once we hold a server-authoritative own position (first baseline/confirm).
++    pos_synced: bool,
++    /// AoI observations pause until this time after a teleport (respawn): the server's AoI set
++    /// needs a snapshot to re-evaluate around the new position, and stale far entities would
++    /// otherwise log as false cull violations.
++    aoi_grace_until: f64,
++    /// Own authoritative HP, learned from `ActionConfirm.health` (the only HP source on the wire —
++    /// snapshots carry no HP). `max_health` is the running max ever seen (full on spawn, so it
++    /// converges to the true class/level max); together they give the HP fraction the strategy AI
++    /// uses to decide whether to break off and grab a Healthorb.
++    health: u16,
++    max_health: u16,
++}
++
++impl Bot {
++    #[allow(clippy::too_many_arguments)]
++    pub fn connect(
++        id: u32,
++        server: SocketAddr,
++        behavior: BehaviorKind,
++        difficulty: f64,
++        input_hz: f64,
++        bandwidth_budget_bps: u32,
++        seed: Option<u64>,
++        ticket: Option<Ticket>,
++        now: f64,
++    ) -> std::io::Result<Self> {
++        let socket = UdpSocket::bind(("0.0.0.0", 0))?;
++        let diagnostic = crate::native_diagnostic::Diagnostic::from_env(id)?;
++        let host = enet::Host::new(
++            crate::native_diagnostic::ObservedSocket {
++                inner: socket,
++                diagnostic,
++            },
++            enet::HostSettings {
++                peer_limit: 1,
++                channel_limit: protocol::CHANNEL_COUNT,
++                ..Default::default()
++            },
++        )
++        .map_err(|e| std::io::Error::other(format!("enet host: {e:?}")))?;
++        Self::from_host(
++            host,
++            id,
++            server,
++            behavior,
++            difficulty,
++            input_hz,
++            bandwidth_budget_bps,
++            seed,
++            ticket,
++            now,
++        )
++    }
++}
++
++impl<S: enet::Socket<Address = SocketAddr>> Bot<S> {
++    #[allow(clippy::too_many_arguments)]
++    pub fn from_host(
++        mut host: enet::Host<crate::native_diagnostic::ObservedSocket<S>>,
++        id: u32,
++        server: SocketAddr,
++        behavior: BehaviorKind,
++        difficulty: f64,
++        input_hz: f64,
++        bandwidth_budget_bps: u32,
++        seed: Option<u64>,
++        ticket: Option<Ticket>,
++        now: f64,
++    ) -> std::io::Result<Self> {
++        let peer_key = host
++            .connect(
++                server,
++                protocol::CHANNEL_COUNT,
++                protocol::PROTOCOL_VERSION as u32,
++            )
++            .map_err(|_| std::io::Error::other("no available peer slot"))?
++            .id()
++            .0;
++        let metrics = BotMetrics {
++            bot_id: id,
++            behavior: behavior.name(),
++            ..Default::default()
++        };
++        // Reproducible per-bot stream when `--seed` is given (`seed ^ bot_id`, matching the rng
++        // module contract); otherwise fall back to entropy for an unseeded run.
++        let rng = match seed {
++            Some(s) => Pcg32::new(s ^ id as u64),
++            None => Pcg32::from_entropy(id as u64),
++        };
++        // Only the three playable classes are spawned, round-robin by bot id so a swarm is split
++        // evenly (3 bots → 1 Warrior, 1 Rogue, 1 Mage). The other classes are disabled, and an even
++        // split makes test runs reproducible and easy to read. ids: Warrior=4, Rogue=5, Mage=6.
++        const SPAWN_CLASSES: [u8; 3] = [4, 5, 6];
++        let player_class = SPAWN_CLASSES[(id as usize).wrapping_sub(1) % SPAWN_CLASSES.len()];
++        debug!("bot {id} assigned class {player_class}");
++        Ok(Self {
++            observation: std::env::var_os("OMEGA_MEASURE_DIR")
++                .map(|_| crate::measurement::BotObservation::default()),
++            #[cfg(feature = "synthetic-replay")]
++            replay_trace: None,
++            id,
++            phase: Phase::Connecting,
++            metrics,
++            entity_id: 0,
++            host,
++            peer_key,
++            behavior: BehaviorState::new(behavior, difficulty, player_class),
++            rng,
++            player_class,
++            ticket,
++            sm: MovementSm::new(),
++            pos: Vec2::ZERO,
++            vel: Vec2::ZERO,
++            seq: 0,
++            last_confirm_tick: None,
++            last_baseline_tick: None,
++            position_source: "unsynced",
++            last_aim: 0.0,
++            input_interval: 1.0 / input_hz.max(1.0),
++            next_input_at: 0.0,
++            next_stats_at: 0.0,
++            connect_started_at: now,
++            running_since: 0.0,
++            last_rtt_ms: 0.0,
++            server_tick_rate: 30,
++            bandwidth_budget_bps,
++            entities: HashMap::new(),
++            projectile_owners: HashMap::new(),
++            reported_projectiles: HashSet::new(),
++            hit_report_times: VecDeque::new(),
++            dead_since: None,
++            last_respawn_request_at: f64::NEG_INFINITY,
++            pos_synced: false,
++            health: 0,
++            max_health: 0,
++            aoi_grace_until: 0.0,
++        })
++    }
++
++    pub fn is_settled(&self) -> bool {
++        !matches!(self.phase, Phase::Connecting | Phase::Authing)
++    }
++
++    pub fn is_terminal(&self) -> bool {
++        matches!(self.phase, Phase::Closed | Phase::Failed)
++    }
++
++    /// Drive the bot: drain ENet events, then run the input/stat clocks.
++    pub fn poll(&mut self, now: f64) {
++        if self.is_terminal() {
++            return;
++        }
++        self.drain_events(now);
++        match self.phase {
++            Phase::Running => {
++                if now >= self.next_input_at {
++                    self.input_step(now);
++                }
++                if now >= self.next_stats_at {
++                    self.sample_stats(now);
++                }
++            }
++            Phase::Connecting | Phase::Authing
++                if now - self.connect_started_at > CONNECT_TIMEOUT_S =>
++            {
++                self.fail("connect timeout".into());
++                self.host.peer_mut(enet::PeerID(self.peer_key)).reset();
++            }
++            _ => {}
++        }
++    }
++
++    /// Start a graceful disconnect; `poll` until `is_terminal` (or give up after a grace window).
++    pub fn begin_disconnect(&mut self, now: f64) {
++        match self.phase {
++            Phase::Running | Phase::Authing | Phase::Connecting => {
++                self.sample_stats(now);
++                self.host
++                    .peer_mut(enet::PeerID(self.peer_key))
++                    .disconnect(disconnect_reason::USER_QUIT);
++                self.phase = Phase::Closing;
++            }
++            _ => {}
++        }
++    }
++
++    pub fn force_close(&mut self) {
++        if !self.is_terminal() {
++            self.host.peer_mut(enet::PeerID(self.peer_key)).reset();
++            self.phase = Phase::Closed;
++        }
++    }
++
++    /// Mark this bot crashed after a caught panic in `poll` (see `poll_all`). A single bad bot
++    /// (e.g. a decode/sim edge case) must not take down the whole swarm, so the caller catches the
++    /// unwind and routes it here: the bot goes terminal-Failed and is counted in the crash metric,
++    /// while every other bot keeps running.
++    pub fn mark_crashed(&mut self, error: String) {
++        self.metrics.panic_count += 1;
++        self.fail(error);
++    }
++
++    fn fail(&mut self, error: String) {
++        debug!("bot {}: {error}", self.id);
++        self.metrics.error_count += 1;
++        self.metrics.last_error = error;
++        self.phase = Phase::Failed;
++    }
++
++    // ── ENet event pump ─────────────────────────────────────────────────────
++
++    fn drain_events(&mut self, now: f64) {
++        loop {
++            let diagnostic = self.host.socket().diagnostic.clone();
++            let started = diagnostic.as_ref().map(|d| {
++                d.begin_service(
++                    d.has_pending()
++                        .then(|| d.observe_peer(self.host.peer(enet::PeerID(self.peer_key))))
++                        .flatten(),
++                )
++            });
++            let result = self.host.service().map(|event| event.map(|e| e.no_ref()));
++            if let (Some(d), Some(started)) = (&diagnostic, started) {
++                d.end_service(
++                    d.needs_post()
++                        .then(|| d.observe_peer(self.host.peer(enet::PeerID(self.peer_key))))
++                        .flatten(),
++                    started,
++                    result.is_err(),
++                );
++            }
++            let event = match result {
++                Ok(Some(event)) => event,
++                Ok(None) => return,
++                Err(e) => {
++                    self.fail(format!("enet service error: {e:?}"));
++                    return;
++                }
++            };
++            #[cfg(feature = "synthetic-replay")]
++            if let Some(trace) = &mut self.replay_trace {
++                let (kind, bytes) = match &event {
++                    enet::EventNoRef::Receive {
++                        packet, channel_id, ..
++                    } => (*channel_id, packet.data().to_vec()),
++                    enet::EventNoRef::Connect { .. } => (250, vec![]),
++                    enet::EventNoRef::Disconnect { data, .. } => (251, data.to_le_bytes().to_vec()),
++                };
++                trace.push(((now * 1000.0).round() as u64, kind, bytes));
++            }
++            match event {
++                enet::EventNoRef::Connect { .. } => {
++                    if self.phase == Phase::Connecting {
++                        // Authenticated run: present the signed ticket (its character_id is
++                        // authoritative server-side). Ticket-less run: None + id 0 (dev path).
++                        let character_id =
++                            self.ticket.as_ref().map(|t| t.character_id).unwrap_or(0);
++                        self.send(&ClientPacket::ConnectAuth(ConnectAuth {
++                            protocol_version: protocol::PROTOCOL_VERSION,
++                            ticket: self.ticket.clone(),
++                            character_id,
++                            character_name: format!("LoadBot{:03}", self.id),
++                            color: color_for(self.id),
++                            class: self.player_class,
++                            bandwidth_budget_bps: self.bandwidth_budget_bps,
++                        }));
++                        self.phase = Phase::Authing;
++                    }
++                }
++                enet::EventNoRef::Disconnect { data, .. } => {
++                    if self.phase == Phase::Closing {
++                        self.phase = Phase::Closed;
++                    } else {
++                        self.metrics.unexpected_disconnect = true;
++                        self.fail(format!("server disconnected (reason {data})"));
++                    }
++                    return;
++                }
++                enet::EventNoRef::Receive { packet, .. } => {
++                    if let Some(observation) = &mut self.observation {
++                        if let Some(kind) = packet.data().first() {
++                            observation.received[*kind as usize] += packet.data().len() as u64;
++                        }
++                    }
++                    self.metrics.packets_received += 1;
++                    self.metrics.bytes_received += packet.data().len() as u64;
++                    match ServerPacket::decode(packet.data()) {
++                        Ok(pkt) => self.handle_server_packet(pkt, now),
++                        Err(e) => {
++                            self.metrics.decode_failures += 1;
++                            debug!("bot {}: bad server packet: {e}", self.id);
++                        }
++                    }
++                }
++            }
++        }
++    }
++
++    fn handle_server_packet(&mut self, packet: ServerPacket, now: f64) {
++        match packet {
++            ServerPacket::AuthResult(a) => match a.ok {
++                Some(ok) if a.result == protocol::types::auth_result_code::OK => {
++                    self.entity_id = ok.entity_id;
++                    self.server_tick_rate = ok.tick_rate.max(1);
++                    self.metrics.connected_ok = true;
++                    self.metrics.connection_time_ms = (now - self.connect_started_at) * 1000.0;
++                    self.phase = Phase::Running;
++                    self.running_since = now;
++                    self.next_input_at = now;
++                    self.next_stats_at = now + 1.0;
++                    debug!("bot {} authenticated as entity {}", self.id, ok.entity_id);
++                }
++                _ => self.fail(format!("auth rejected (code {})", a.result)),
++            },
++            ServerPacket::Snapshot(s) => self.apply_snapshot(&s, now),
++            ServerPacket::ActionConfirm(c) => {
++                self.last_confirm_tick = Some(c.server_tick);
++                if let Some(observation) = &mut self.observation {
++                    observation.last_confirm = Some(std::time::Instant::now());
++                }
++                self.metrics.action_confirms_received += 1;
++                // The confirm is the authoritative answer to our input: adopt position and
++                // resources (poor man's reconciliation — bots don't replay).
++                self.pos = Vec2::new(c.position.0, c.position.1);
++                self.position_source = "ActionConfirm";
++                self.pos_synced = true;
++                self.sm.set_resources(c.stamina as f64, c.mana as f64);
++                // Track HP for the strategy AI's orb-seek decision. max_health is the running max
++                // (HP is full on spawn/respawn, so this latches the true class/level max).
++                self.health = c.health;
++                self.max_health = self.max_health.max(c.health);
++            }
++            ServerPacket::GameEvent(e) => {
++                self.metrics.game_events_received += 1;
++                use protocol::types::game_event_type as t;
++                match e.event_type {
++                    t::PROJECTILE_FIRED => {
++                        // target_id = projectile id, source_id = its owner. Record EVERY shot —
++                        // monster, player, AND other bots — so the strategy AI can dodge incoming
++                        // PvP fire, not just monster bullets. (`scan_for_monster_hits` re-filters to
++                        // monster owners for client-authoritative PvE hit reports; PvP hits are
++                        // server-authoritative and must never be self-reported.)
++                        if e.target_id != 0 {
++                            self.projectile_owners.insert(e.target_id, e.source_id);
++                        }
++                    }
++                    t::KILL | t::KILL_PVP => {
++                        if e.target_id == self.entity_id && self.dead_since.is_none() {
++                            self.dead_since = Some(now);
++                        }
++                    }
++                    t::RESPAWN if e.target_id == self.entity_id => {
++                        if let protocol::GameEventData::Respawn { x, y } = e.data {
++                            self.pos = Vec2::new(x, y);
++                            self.position_source = "RespawnEvent";
++                        }
++                        self.dead_since = None;
++                        self.sm.reset();
++                        self.vel = Vec2::ZERO;
++                        self.health = self.max_health; // respawn restores full HP
++                        self.aoi_grace_until = now + 1.0;
++                    }
++                    _ => {}
++                }
++            }
++            ServerPacket::ServerMetrics(m) => {
++                self.metrics.latest_server_metrics = Some((now, m));
++            }
++        }
++    }
++
++    fn apply_snapshot(&mut self, s: &Snapshot, now: f64) {
++        // Validate only positions explicitly carried by this Snapshot. A cached own
++        // position, ActionConfirm, or prediction belongs to another simulation time.
++        // Missing same-Snapshot observer state is unknown, never evidence of a pass.
++        let aoi_center = s
++            .entities
++            .iter()
++            .find(|r| {
++                r.entity_id == self.entity_id
++                    && (r.delta_mask & delta_mask::FULL != 0
++                        || r.delta_mask & delta_mask::REMOVED == 0)
++            })
++            .and_then(|r| r.position);
++        for rec in &s.entities {
++            if rec.entity_id == self.entity_id
++                || (rec.delta_mask & delta_mask::FULL == 0
++                    && rec.delta_mask & delta_mask::REMOVED != 0)
++            {
++                continue;
++            }
++            if let Some(p) = rec.position {
++                if let Some(center) = aoi_center {
++                    let distance = Vec2::new(p.0 - center.0, p.1 - center.1).length();
++                    self.metrics.aoi_matched_positions += 1;
++                    self.metrics.max_observed_entity_distance =
++                        self.metrics.max_observed_entity_distance.max(distance);
++                } else {
++                    self.metrics.aoi_unknown_positions += 1;
++                }
++            }
++        }
++
++        // Channels 0 and 1 have independent delivery order. A newer reliable
++        // Baseline retires old deltas; applying them could resurrect entities.
++        if self.last_baseline_tick.is_some_and(|tick| {
++            (s.is_baseline && s.server_tick < tick)
++                || s.baseline_tick
++                    .is_some_and(|reference| reference < tick || s.server_tick <= tick)
++        }) {
++            self.metrics.stale_snapshots_ignored += 1;
++            return;
++        }
++        if let Some(observation) = &mut self.observation {
++            crate::measurement::observe_gap(
++                &mut observation.last_snapshot,
++                &mut observation.snapshot_gaps,
++                &mut observation.snapshot_gap_max_ms,
++            );
++            observation.last_snapshot_server_ms = s.server_ms;
++            observation.last_snapshot_tick = s.server_tick;
++            if s.is_baseline {
++                observation.last_baseline = Some(s.server_tick);
++            } else {
++                observation.last_delta = Some(std::time::Instant::now());
++                if s.baseline_tick != observation.last_baseline {
++                    observation.baseline_reference_misses += 1;
++                }
++                observation.unknown_delta_entities += s
++                    .entities
++                    .iter()
++                    .filter(|record| {
++                        record.delta_mask & (delta_mask::FULL | delta_mask::REMOVED) == 0
++                            && !self.entities.contains_key(&record.entity_id)
++                    })
++                    .count() as u64;
++            }
++        }
++        self.metrics.state_updates_received += 1;
++        self.metrics.first_server_tick.get_or_insert(s.server_tick);
++        self.metrics.first_server_ms.get_or_insert(s.server_ms);
++        if s.server_tick >= self.metrics.last_server_tick {
++            self.metrics.last_server_tick = s.server_tick;
++            self.metrics.last_server_ms = s.server_ms;
++        }
++
++        if s.is_baseline {
++            self.last_baseline_tick = Some(s.server_tick);
++            self.metrics.baselines_received += 1;
++            // A baseline is the full AoI state: replace the world model and ack it.
++            self.entities.clear();
++            self.send(&ClientPacket::BaselineAck {
++                baseline_tick: s.server_tick,
++            });
++        }
++
++        // Adopt our own authoritative position before measuring anyone else: records arrive in
++        // arbitrary order, and AoI distances taken against a stale (or never-synced) own
++        // position would log false cull violations.
++        if let Some(p) = s
++            .entities
++            .iter()
++            .find(|r| r.entity_id == self.entity_id)
++            .and_then(|r| r.position)
++        {
++            if s.is_baseline || !self.pos_synced {
++                self.pos = Vec2::new(p.0, p.1);
++                self.position_source = "SnapshotPrepass";
++                self.pos_synced = true;
++            }
++        }
++
++        let tick_rate = self.server_tick_rate as f32;
++        for rec in &s.entities {
++            if rec.delta_mask & delta_mask::FULL == 0 && rec.delta_mask & delta_mask::REMOVED != 0 {
++                self.entities.remove(&rec.entity_id);
++                self.projectile_owners.remove(&rec.entity_id);
++                self.reported_projectiles.remove(&rec.entity_id);
++                continue;
++            }
++            let e = self.entities.entry(rec.entity_id).or_insert(KnownEntity {
++                pos: rec.position.unwrap_or((0.0, 0.0)),
++                vel: (0.0, 0.0),
++                anim: 0,
++                flags: entity_flags::ALIVE,
++                last_tick: s.server_tick,
++            });
++            if let Some(p) = rec.position {
++                let dt_ticks = s.server_tick.saturating_sub(e.last_tick);
++                if dt_ticks > 0 {
++                    let dt = dt_ticks as f32 / tick_rate;
++                    e.vel = ((p.0 - e.pos.0) / dt, (p.1 - e.pos.1) / dt);
++                }
++                e.pos = p;
++            }
++            if let Some(a) = rec.animation {
++                e.anim = a;
++            }
++            if let Some(f) = rec.flags {
++                e.flags = f;
++            }
++            e.last_tick = s.server_tick;
++
++            if rec.entity_id == self.entity_id {
++                // Death/revival from the replicated ALIVE bit (the events cover the rest).
++                if let Some(f) = rec.flags {
++                    if f & entity_flags::ALIVE == 0 {
++                        self.dead_since.get_or_insert(now);
++                    } else if self.dead_since.is_some() {
++                        self.dead_since = None;
++                        self.sm.reset();
++                        if let Some(p) = rec.position {
++                            self.pos = Vec2::new(p.0, p.1);
++                            self.position_source = "SnapshotRevival";
++                        }
++                        self.aoi_grace_until = now + 1.0;
++                    }
++                    // Daze slaved to the replicated DAZED flag (flags arrive on change, so
++                    // this is edge-driven): apply the full duration on set, clear on drop —
++                    // keeps the bot's predicted sprint in step with the authoritative walk.
++                    if f & entity_flags::DAZED != 0 {
++                        self.sm
++                            .apply_daze(sim_core::constants::PLAYER_DAZE_DURATION);
++                    } else {
++                        self.sm.clear_daze();
++                    }
++                }
++            } else if self.pos_synced && now >= self.aoi_grace_until {
++                // AoI cull assertion input: how far away do we ever see entities?
++                if let Some(p) = rec.position {
++                    let (dx, dy) = (p.0 - self.pos.x, p.1 - self.pos.y);
++                    let d = (dx * dx + dy * dy).sqrt();
++                    let new_max = d > self.metrics.legacy_max_observed_entity_distance;
++                    self.metrics.legacy_max_observed_entity_distance =
++                        self.metrics.legacy_max_observed_entity_distance.max(d);
++                    if d > 1150.0 && (self.metrics.aoi_anomalies.len() < 16 || new_max) {
++                        let row = serde_json::json!({
++                            "snapshot_tick": s.server_tick, "server_ms": s.server_ms,
++                            "baseline": s.is_baseline, "baseline_tick": s.baseline_tick,
++                            "channel": if s.is_baseline { 1 } else { 0 },
++                            "application_order": self.metrics.state_updates_received,
++                            "receive_time_s": now, "observer_id": self.entity_id,
++                            "entity_id": rec.entity_id, "entity_position": p,
++                            "legacy_observer_position": [self.pos.x, self.pos.y],
++                            "observer_position_source": self.position_source,
++                            "received_packets": self.metrics.packets_received,
++                            "game_events_received": self.metrics.game_events_received,
++                            "legacy_distance": d, "snapshot_observer_position": aoi_center,
++                            "dead_since": self.dead_since, "grace_until": self.aoi_grace_until,
++                            "last_confirm_tick16": self.last_confirm_tick,
++                            "input_sequence": self.seq,
++                        });
++                        if self.metrics.aoi_anomalies.len() <= 16 {
++                            self.metrics.aoi_anomalies.push(row);
++                        } else {
++                            self.metrics.aoi_anomalies[16] = row;
++                        }
++                    }
++                }
++            }
++        }
++    }
++
++    // ── Input loop ──────────────────────────────────────────────────────────
++
++    fn input_step(&mut self, now: f64) {
++        if let Some(observation) = &mut self.observation {
++            observation.missed_schedules += ((now - self.next_input_at) / self.input_interval)
++                .max(0.0)
++                .floor() as u64;
++        }
++        self.next_input_at += self.input_interval;
++        if self.next_input_at < now {
++            // Fell behind (host stall); don't burst-send to catch up.
++            self.next_input_at = now + self.input_interval;
++        }
++
++        let mut flags: u16 = 0;
++        // Cursor world position for cursor-targeted ability casts; `None` ⇒ the bot's own position.
++        let mut cursor: Option<(f32, f32)> = None;
++        if self.dead_since.is_some() {
++            self.maybe_request_respawn(now);
++            // Keep sending zero-input frames while dead, like an idle client.
++        } else {
++            let decision = {
++                // HP fraction for the orb-seek decision; treat "unknown HP" (no confirm yet) as
++                // full so a fresh bot never thinks it is hurt before its first ActionConfirm.
++                let hp_fraction = if self.max_health > 0 {
++                    self.health as f64 / self.max_health as f64
++                } else {
++                    1.0
++                };
++                let view = View {
++                    my_id: self.entity_id,
++                    pos: (self.pos.x, self.pos.y),
++                    stamina: self.sm.stamina(),
++                    hp_fraction,
++                    entities: &self.entities,
++                    projectile_owners: &self.projectile_owners,
++                };
++                self.behavior.decide(&view, &mut self.rng, now)
++            };
++            flags = decision.flags;
++            self.last_aim = decision.aim_angle;
++            cursor = decision.cursor;
++            let aim = self.last_aim as f64;
++            let aim_dir = Vec2::new(aim.cos() as f32, aim.sin() as f32);
++            let result = step_movement(
++                &mut self.sm,
++                self.pos,
++                self.input_interval,
++                movement_direction(flags),
++                flags & input_flags::SPRINT != 0,
++                flags & input_flags::DASH != 0,
++                flags & input_flags::ABILITY != 0,
++                flags & input_flags::SHOOT != 0,
++                aim_dir,
++            );
++            self.pos = result.position;
++            self.position_source = "Prediction";
++            self.vel = result.velocity;
++            self.scan_for_monster_hits(now);
++        }
++
++        let input = ClientPacket::PlayerInput(PlayerInput {
++            sequence: self.seq,
++            input_flags: flags,
++            aim_angle: self.last_aim,
++            position: (self.pos.x, self.pos.y),
++            velocity: (self.vel.x, self.vel.y),
++            // Target world position for cursor-aimed casts (Rogue/Mage); own position otherwise.
++            cursor: cursor.unwrap_or((self.pos.x, self.pos.y)),
++            client_render_tick: (self.metrics.last_server_tick & 0xFFFF) as u16,
++            client_rtt_ms: self.last_rtt_ms.clamp(0.0, u16::MAX as f64) as u16,
++        });
++        self.seq = self.seq.wrapping_add(1);
++        self.send(&input);
++    }
++
++    /// Monster→player hits are client-authoritative (RotMG model): a bot that never reports
++    /// takes no monster damage, so report true overlaps like a real client would. Once per
++    /// projectile, ≤ 20/s (mirrors the server's quota — exceeding it just wastes packets).
++    fn scan_for_monster_hits(&mut self, now: f64) {
++        while self.hit_report_times.front().is_some_and(|t| now - t > 1.0) {
++            self.hit_report_times.pop_front();
++        }
++        let mut hits: Vec<u16> = Vec::new();
++        for (&pid, &owner) in &self.projectile_owners {
++            if owner < MONSTER_ID_START || self.reported_projectiles.contains(&pid) {
++                continue;
++            }
++            let Some(e) = self.entities.get(&pid) else {
++                continue;
++            };
++            let (dx, dy) = (e.pos.0 - self.pos.x, e.pos.1 - self.pos.y);
++            if dx * dx + dy * dy < HIT_RADIUS * HIT_RADIUS {
++                hits.push(pid);
++            }
++        }
++        for pid in hits {
++            if self.hit_report_times.len() >= HIT_REPORTS_MAX_PER_SECOND {
++                break;
++            }
++            self.reported_projectiles.insert(pid);
++            self.hit_report_times.push_back(now);
++            self.metrics.hit_reports_sent += 1;
++            self.send(&ClientPacket::LocalHitReport { projectile_id: pid });
++        }
++    }
++
++    fn maybe_request_respawn(&mut self, now: f64) {
++        let Some(since) = self.dead_since else { return };
++        if now - since >= RESPAWN_DELAY_S
++            && now - self.last_respawn_request_at >= RESPAWN_REQUEST_MIN_INTERVAL_S
++        {
++            self.last_respawn_request_at = now;
++            self.metrics.respawn_requests_sent += 1;
++            self.send(&ClientPacket::RespawnRequest);
++        }
++    }
++
++    fn sample_stats(&mut self, now: f64) {
++        self.next_stats_at = now + 1.0;
++        let peer = self.host.peer_mut(enet::PeerID(self.peer_key));
++        if peer.connected() {
++            let rtt = peer.round_trip_time().as_secs_f64() * 1000.0;
++            self.last_rtt_ms = rtt;
++            if now - self.running_since >= RTT_WARMUP_S {
++                self.metrics.latencies_ms.push(rtt);
++            }
++            // ENET_PEER_PACKET_LOSS_SCALE = 1 << 16.
++            self.metrics.enet_packet_loss = peer.packet_loss() as f64 / 65536.0;
++        }
++    }
++
++    fn send(&mut self, packet: &ClientPacket) {
++        let bytes = packet.encode();
++        #[cfg(feature = "synthetic-replay")]
++        if let Some(trace) = &mut self.replay_trace {
++            trace.push((self.host.now().as_millis() as u64, 252, bytes.clone()));
++        }
++        let diagnostic = self
++            .host
++            .socket()
++            .diagnostic
++            .clone()
++            .filter(|_| matches!(packet, ClientPacket::PlayerInput(_)));
++        let enet_packet = if let Some(d) = &diagnostic {
++            d.packet(&bytes)
++        } else if packet.reliable() {
++            enet::Packet::reliable(bytes.as_slice())
++        } else {
++            enet::Packet::unreliable(bytes.as_slice())
++        };
++        let peer = self.host.peer_mut(enet::PeerID(self.peer_key));
++        match peer.send(packet.channel(), &enet_packet) {
++            Ok(()) => {
++                if let Some(d) = &diagnostic {
++                    d.admitted();
++                }
++                if let Some(observation) = &mut self.observation {
++                    observation.sent[bytes[0] as usize] += bytes.len() as u64;
++                    if let ClientPacket::PlayerInput(input) = packet {
++                        observation.inputs += 1;
++                        observation.shoot_inputs +=
++                            u64::from(input.input_flags & input_flags::SHOOT != 0);
++                        observation.ability_inputs +=
++                            u64::from(input.input_flags & input_flags::ABILITY != 0);
++                        crate::measurement::observe_gap(
++                            &mut observation.last_input,
++                            &mut observation.input_gaps,
++                            &mut observation.input_gap_max_ms,
++                        );
++                    }
++                }
++                self.metrics.packets_sent += 1;
++                self.metrics.bytes_sent += bytes.len() as u64;
++            }
++            Err(e) => {
++                // A swallowed send failure hides lost handshakes (ConnectAuth/BaselineAck) and
++                // inputs. Count and log it so the failure is observable in the report rather than
++                // vanishing.
++                self.metrics.send_failures += 1;
++                debug!(
++                    "bot {}: send failed on channel {}: {e}",
++                    self.id,
++                    packet.channel()
++                );
++            }
++        }
++    }
++
++    pub fn observation(&self) -> serde_json::Value {
++        let Some(observation) = &self.observation else {
++            return serde_json::Value::Null;
++        };
++        let sparse = |values: &[u64; 256]| {
++            values
++                .iter()
++                .enumerate()
++                .filter(|(_, value)| **value > 0)
++                .map(|(kind, value)| (kind.to_string(), serde_json::json!(value)))
++                .collect::<serde_json::Map<_, _>>()
++        };
++        let age =
++            |stamp: Option<std::time::Instant>| stamp.map(|value| value.elapsed().as_secs_f64());
++        let native = self.host.socket().diagnostic.as_ref().map(|d| d.snapshot());
++        let mut row = serde_json::json!({
++            "id": self.id, "phase": format!("{:?}", self.phase), "alive": self.dead_since.is_none(),
++            "inputs": observation.inputs, "missed_schedules": observation.missed_schedules,
++            "shoot_inputs": observation.shoot_inputs, "ability_inputs": observation.ability_inputs,
++            "input_gaps": observation.input_gaps, "input_gap_max_ms": observation.input_gap_max_ms,
++            "snapshot_gaps": observation.snapshot_gaps, "snapshot_gap_max_ms": observation.snapshot_gap_max_ms,
++            "baseline_reference_misses": observation.baseline_reference_misses,
++            "unknown_delta_entities": observation.unknown_delta_entities,
++            "snapshot_age_s": age(observation.last_snapshot), "delta_age_s": age(observation.last_delta),
++            "confirm_age_s": age(observation.last_confirm), "snapshot_tick": observation.last_snapshot_tick,
++            "snapshot_server_ms": observation.last_snapshot_server_ms, "visible_entities": self.entities.len(),
++            "rtt_ms": self.last_rtt_ms, "enet_loss_estimate": self.metrics.enet_packet_loss,
++            "received_bytes_by_type": sparse(&observation.received), "sent_bytes_by_type": sparse(&observation.sent),
++            "decode_failures": self.metrics.decode_failures, "send_failures": self.metrics.send_failures,
++            "panics": self.metrics.panic_count, "baselines": self.metrics.baselines_received,
++            "snapshots": self.metrics.state_updates_received, "confirms": self.metrics.action_confirms_received,
++            "stale_snapshots_ignored": self.metrics.stale_snapshots_ignored,
++        });
++        if let Some(native) = native {
++            row["native_diagnostic"] = native;
++        }
++        row
++    }
++}
++
++/// Deterministic per-bot color so swarms look distinguishable in a spectating client.
++fn color_for(id: u32) -> (u8, u8, u8) {
++    let h = id.wrapping_mul(2654435761);
++    (
++        64 + (h & 0x7F) as u8 + 64,
++        64 + ((h >> 8) & 0x7F) as u8 + 64,
++        64 + ((h >> 16) & 0x7F) as u8 + 64,
++    )
++}
++
++#[cfg(test)]
++mod aoi_tests {
++    use super::*;
++    use protocol::EntityRecord;
++
++    #[test]
++    fn retired_snapshot_is_still_checked_as_received_aoi_evidence() {
++        let mut b = bot();
++        b.last_baseline_tick = Some(200);
++        let s = Snapshot {
++            server_tick: 199,
++            server_ms: 6567,
++            is_baseline: false,
++            baseline_tick: Some(100),
++            entities: vec![
++                EntityRecord::full(1, (0.0, 0.0), 0, 1),
++                EntityRecord::full(30001, (1200.0, 0.0), 0, 1),
++            ],
++        };
++        b.apply_snapshot(&s, 7.0);
++        assert_eq!(b.metrics.aoi_matched_positions, 1);
++        assert_eq!(b.metrics.max_observed_entity_distance, 1200.0);
++        assert_eq!(b.metrics.stale_snapshots_ignored, 1);
++        assert!(!b.entities.contains_key(&30001));
++    }
++
++    #[test]
++    fn late_previous_channel_delta_cannot_recreate_entities_after_baseline() {
++        let mut b = bot();
++        for (tick, entities) in [
++            (100, vec![EntityRecord::full(30001, (10.0, 0.0), 0, 1)]),
++            (200, vec![]),
++        ] {
++            let packet = ServerPacket::Snapshot(Snapshot {
++                server_tick: tick,
++                server_ms: tick * 33,
++                is_baseline: true,
++                baseline_tick: None,
++                entities,
++            });
++            let ServerPacket::Snapshot(s) = ServerPacket::decode(&packet.encode()).unwrap() else {
++                panic!()
++            };
++            b.apply_snapshot(&s, f64::from(tick) / 30.0);
++        }
++        let packet = ServerPacket::Snapshot(Snapshot {
++            server_tick: 199,
++            server_ms: 6567,
++            is_baseline: false,
++            baseline_tick: Some(100),
++            entities: vec![EntityRecord::full(30001, (11.0, 0.0), 0, 1)],
++        });
++        let ServerPacket::Snapshot(s) = ServerPacket::decode(&packet.encode()).unwrap() else {
++            panic!()
++        };
++        b.apply_snapshot(&s, 7.0);
++        assert!(
++            !b.entities.contains_key(&30001),
++            "late ch0 state resurrected a retired entity"
++        );
++    }
++
++    fn bot() -> Bot {
++        let mut b = Bot::connect(
++            1,
++            "127.0.0.1:9".parse().unwrap(),
++            BehaviorKind::Idle,
++            1.0,
++            30.0,
++            0,
++            Some(1),
++            None,
++            0.0,
++        )
++        .unwrap();
++        b.entity_id = 1;
++        b.pos_synced = true;
++        b.pos = Vec2::new(-200.0, 0.0);
++        b
++    }
++
++    fn snapshot(baseline: bool, reverse: bool) -> Snapshot {
++        let mut entities = vec![
++            EntityRecord::full(2, (1000.0, 0.0), 0, entity_flags::ALIVE),
++            EntityRecord::full(1, (0.0, 0.0), 0, entity_flags::ALIVE),
++        ];
++        if reverse {
++            entities.reverse();
++        }
++        Snapshot {
++            server_tick: 10,
++            server_ms: 333,
++            is_baseline: baseline,
++            baseline_tick: (!baseline).then_some(5),
++            entities,
++        }
++    }
++
++    #[test]
++    fn aoi_delta_uses_same_snapshot_center_not_current_prediction() {
++        for reverse in [false, true] {
++            let mut b = bot();
++            let s = snapshot(false, reverse);
++            // Exercise the actual codec -> handler -> Snapshot application -> assertion seam.
++            b.handle_server_packet(
++                ServerPacket::decode(&ServerPacket::Snapshot(s).encode()).unwrap(),
++                2.0,
++            );
++            assert_eq!(b.metrics.max_observed_entity_distance, 1000.0);
++            assert!(
++                crate::assertions::run_all(
++                    &[&b.metrics],
++                    1.0,
++                    &crate::assertions::AssertionConfig::default()
++                )[0]
++                .passed
++            );
++            assert_eq!(b.pos.x, -200.0, "measurement must not alter prediction");
++        }
++    }
++    #[test]
++    fn aoi_missing_observer_is_unknown_even_with_cached_or_confirmed_position() {
++        let mut b = bot();
++        b.handle_server_packet(ServerPacket::Snapshot(snapshot(true, false)), 1.0);
++        let mut delta = snapshot(false, false);
++        delta.server_tick = 11;
++        delta.baseline_tick = Some(10);
++        delta.entities.retain(|r| r.entity_id != 1);
++        b.handle_server_packet(ServerPacket::Snapshot(delta), 2.0);
++        assert_eq!(b.metrics.aoi_unknown_positions, 1);
++        let result = crate::assertions::run_all(
++            &[&b.metrics],
++            1.0,
++            &crate::assertions::AssertionConfig::default(),
++        );
++        assert!(!result[0].passed);
++        assert!(!result[0].skipped);
++    }
++
++    #[test]
++    fn aoi_respawn_record_order_and_grace_cannot_hide_true_violations() {
++        for baseline in [false, true] {
++            for reverse in [false, true] {
++                let mut b = bot();
++                b.dead_since = Some(0.0);
++                b.aoi_grace_until = 100.0;
++                let mut s = snapshot(baseline, reverse);
++                s.entities
++                    .iter_mut()
++                    .find(|r| r.entity_id == 2)
++                    .unwrap()
++                    .position = Some((1200.0, 0.0));
++                b.handle_server_packet(
++                    ServerPacket::decode(&ServerPacket::Snapshot(s).encode()).unwrap(),
++                    2.0,
++                );
++                assert_eq!(b.metrics.max_observed_entity_distance, 1200.0);
++                assert!(
++                    !crate::assertions::run_all(
++                        &[&b.metrics],
++                        1.0,
++                        &crate::assertions::AssertionConfig::default()
++                    )[0]
++                    .passed
++                );
++            }
++        }
++    }
++
++    #[test]
++    fn aoi_older_baseline_after_delta_uses_its_own_center() {
++        let mut b = bot();
++        let mut newer = snapshot(false, false);
++        newer.server_tick = 11;
++        for r in &mut newer.entities {
++            r.position.as_mut().unwrap().0 += 200.0;
++        }
++        b.handle_server_packet(ServerPacket::Snapshot(newer), 1.0);
++        b.handle_server_packet(ServerPacket::Snapshot(snapshot(true, true)), 2.0);
++        assert_eq!(b.metrics.max_observed_entity_distance, 1000.0);
++        assert_eq!(b.metrics.aoi_matched_positions, 2);
++    }
++}
+--- /dev/null
++++ b/rust/load_test/src/sweep.rs
+@@ -0,0 +1,110 @@
++//! Fixed-size whole-sweep observations; no per-event instrumentation.
++use serde_json::{json, Value};
++use std::{cell::RefCell, sync::OnceLock, time::Instant};
++
++const BOUNDS_NS: [u64; 7] = [
++    100_000,
++    500_000,
++    1_000_000,
++    5_000_000,
++    10_000_000,
++    33_333_333,
++    100_000_000,
++];
++
++pub fn event_budget() -> usize {
++    static BUDGET: OnceLock<usize> = OnceLock::new();
++    *BUDGET.get_or_init(
++        || match std::env::var("OMEGA_BOT_EVENT_BUDGET").as_deref() {
++            Err(std::env::VarError::NotPresent) | Ok("0") => 0,
++            Ok("32") => 32,
++            _ => panic!("OMEGA_BOT_EVENT_BUDGET must be absent, 0 or 32"),
++        },
++    )
++}
++
++fn enabled() -> bool {
++    #[cfg(feature = "synthetic-replay")]
++    if let Some(enabled) = REPLAY_ENABLED.with(|e| e.get()) {
++        return enabled;
++    }
++    static ENABLED: OnceLock<bool> = OnceLock::new();
++    *ENABLED.get_or_init(|| match std::env::var("OMEGA_SWEEP_OBSERVER").as_deref() {
++        Err(std::env::VarError::NotPresent) | Ok("0") => false,
++        Ok("1") => true,
++        _ => panic!("OMEGA_SWEEP_OBSERVER must be absent, 0 or 1"),
++    })
++}
++
++pub fn validate() {
++    event_budget();
++    enabled();
++    assert!(
++        std::env::var_os("OMEGA_NATIVE_DIAG").is_none(),
++        "native observer forbidden in this diagnostic condition"
++    );
++}
++
++#[derive(Default)]
++pub struct Observer {
++    sweeps: u64,
++    bot_visits: u64,
++    total_ns: u128,
++    max_ns: u64,
++    buckets: [u64; 8],
++}
++
++impl Observer {
++    pub fn start(enabled: bool) -> Option<Instant> {
++        enabled.then(Instant::now)
++    }
++    pub fn finish(&mut self, started: Option<Instant>, bots: usize) {
++        if let Some(started) = started {
++            let elapsed = started.elapsed().as_nanos().min(u64::MAX as u128) as u64;
++            self.sweeps = self.sweeps.checked_add(1).expect("sweep count overflow");
++            self.bot_visits = self
++                .bot_visits
++                .checked_add(bots as u64)
++                .expect("visit count overflow");
++            self.total_ns = self
++                .total_ns
++                .checked_add(u128::from(elapsed))
++                .expect("duration overflow");
++            self.max_ns = self.max_ns.max(elapsed);
++            let bucket = BOUNDS_NS.iter().position(|b| elapsed <= *b).unwrap_or(7);
++            self.buckets[bucket] = self.buckets[bucket]
++                .checked_add(1)
++                .expect("histogram overflow");
++        }
++    }
++    pub fn snapshot(&self) -> Value {
++        json!({"completed_sweeps": self.sweeps, "bot_visits": self.bot_visits,
++            "total_ns": self.total_ns, "max_ns": self.max_ns, "buckets": self.buckets,
++            "bounds_ns": BOUNDS_NS, "scope": "Whole poll_all only; excludes sleep, recorder, exporter and observer finish bookkeeping"})
++    }
++}
++
++thread_local! { static OBSERVER: RefCell<Observer> = RefCell::new(Observer::default()); }
++#[cfg(feature = "synthetic-replay")]
++thread_local! { static REPLAY_ENABLED: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) }; }
++#[cfg(feature = "synthetic-replay")]
++pub fn configure_replay(enabled: bool) {
++    REPLAY_ENABLED.with(|e| e.set(Some(enabled)));
++    OBSERVER.with(|o| *o.borrow_mut() = Observer::default());
++}
++
++pub fn global_start() -> Option<Instant> {
++    Observer::start(enabled())
++}
++pub fn global_finish(started: Option<Instant>, bots: usize) {
++    if started.is_some() {
++        OBSERVER.with(|o| o.borrow_mut().finish(started, bots));
++    }
++}
++pub fn global_snapshot() -> Value {
++    if enabled() {
++        OBSERVER.with(|o| o.borrow().snapshot())
++    } else {
++        Value::Null
++    }
++}
+--- /dev/null
++++ b/rust/load_test/src/bin/poll-replay.rs
+@@ -0,0 +1,548 @@
++//! Actual pinned Bot + ENet, virtual clock and in-memory sockets. No network I/O.
++#![allow(dead_code)]
++#[path = "../assertions.rs"]
++mod assertions;
++#[path = "../behavior.rs"]
++mod behavior;
++#[path = "../bot.rs"]
++mod bot;
++#[path = "../measurement.rs"]
++mod measurement;
++#[path = "../metrics.rs"]
++mod metrics;
++#[path = "../native_diagnostic.rs"]
++mod native_diagnostic;
++#[path = "../bot_reference.rs"]
++mod reference;
++#[path = "../rng.rs"]
++mod rng;
++#[path = "../sweep.rs"]
++mod sweep;
++
++use protocol::{
++    AuthOk, AuthResult, ClientPacket, EntityRecord, GameEvent, GameEventData, ServerPacket,
++    Snapshot,
++};
++use rusty_enet::{EventNoRef, Host, HostSettings, Packet, PacketReceived, PeerID, Socket, MTU_MAX};
++use serde_json::{json, Value};
++use std::{
++    cell::{Cell, RefCell},
++    collections::{BTreeMap, VecDeque},
++    io::Write,
++    net::SocketAddr,
++    rc::Rc,
++    time::{Duration, Instant},
++};
++
++type Trace = Vec<(u64, u8, Vec<u8>)>;
++#[derive(Debug, PartialEq)]
++struct Wire {
++    at: u64,
++    from: u16,
++    to: u16,
++    bytes: Vec<u8>,
++}
++struct Frame {
++    from: SocketAddr,
++    due: u64,
++    bytes: Vec<u8>,
++}
++struct Link {
++    clock: Rc<Cell<u64>>,
++    queues: BTreeMap<u16, VecDeque<Frame>>,
++    wire: Vec<Wire>,
++    record: bool,
++    fail_port: Option<u16>,
++}
++struct Endpoint {
++    address: SocketAddr,
++    link: Rc<RefCell<Link>>,
++}
++impl Socket for Endpoint {
++    type Address = SocketAddr;
++    type Error = std::io::Error;
++    fn send(&mut self, to: SocketAddr, bytes: &[u8]) -> Result<usize, Self::Error> {
++        let mut l = self.link.borrow_mut();
++        let now = l.clock.get();
++        if l.record {
++            l.wire.push(Wire {
++                at: now,
++                from: self.address.port(),
++                to: to.port(),
++                bytes: bytes.to_vec(),
++            });
++        }
++        l.queues.entry(to.port()).or_default().push_back(Frame {
++            from: self.address,
++            due: now + 1,
++            bytes: bytes.to_vec(),
++        });
++        Ok(bytes.len())
++    }
++    fn receive(
++        &mut self,
++        buffer: &mut [u8; MTU_MAX],
++    ) -> Result<Option<(SocketAddr, PacketReceived)>, Self::Error> {
++        let mut l = self.link.borrow_mut();
++        if l.fail_port == Some(self.address.port()) {
++            l.fail_port = None;
++            return Err(std::io::Error::other("synthetic receive failure"));
++        }
++        let now = l.clock.get();
++        let q = l.queues.entry(self.address.port()).or_default();
++        if q.front().is_some_and(|f| f.due <= now) {
++            let f = q.pop_front().unwrap();
++            buffer[..f.bytes.len()].copy_from_slice(&f.bytes);
++            Ok(Some((f.from, PacketReceived::Complete(f.bytes.len()))))
++        } else {
++            Ok(None)
++        }
++    }
++}
++trait Driver: Sized {
++    fn create(
++        host: Host<native_diagnostic::ObservedSocket<Endpoint>>,
++        id: u32,
++        budget: usize,
++        record: bool,
++    ) -> Self;
++    fn poll(&mut self, now: f64);
++    fn begin_disconnect(&mut self, now: f64);
++    fn force_close(&mut self);
++    fn trace(&self) -> Trace;
++    fn metrics(&self) -> &metrics::BotMetrics;
++    fn terminal(&self) -> bool;
++}
++macro_rules! driver {
++    ($m:ident, $set:expr) => {
++        impl Driver for $m::Bot<Endpoint> {
++            fn create(
++                host: Host<native_diagnostic::ObservedSocket<Endpoint>>,
++                id: u32,
++                budget: usize,
++                record: bool,
++            ) -> Self {
++                let mut b = Self::from_host(
++                    host,
++                    id,
++                    addr(9000),
++                    behavior::BehaviorKind::Strategy,
++                    1.0,
++                    30.0,
++                    120000,
++                    Some(30),
++                    None,
++                    0.0,
++                )
++                .unwrap();
++                ($set)(&mut b, budget);
++                b.replay_trace = record.then(Vec::new);
++                b
++            }
++            fn poll(&mut self, now: f64) {
++                self.poll(now)
++            }
++            fn begin_disconnect(&mut self, now: f64) {
++                self.begin_disconnect(now)
++            }
++            fn force_close(&mut self) {
++                self.force_close()
++            }
++            fn trace(&self) -> Trace {
++                self.replay_trace.clone().unwrap_or_default()
++            }
++            fn metrics(&self) -> &metrics::BotMetrics {
++                &self.metrics
++            }
++            fn terminal(&self) -> bool {
++                self.is_terminal()
++            }
++        }
++    };
++}
++driver!(reference, |_: &mut reference::Bot<Endpoint>, _: usize| {});
++driver!(bot, |b: &mut bot::Bot<Endpoint>, budget| b.event_budget =
++    budget);
++
++#[derive(Clone, Copy, Debug)]
++enum Scenario {
++    Stable,
++    Burst,
++    Sustained,
++    LateBurst,
++    ReceiveError,
++    Timeout,
++    Malformed,
++    Teardown,
++}
++#[derive(Debug, PartialEq)]
++struct Outcome {
++    wire: Vec<Wire>,
++    traces: Vec<Trace>,
++    states: Vec<Value>,
++    max_receive_batch: u64,
++    offered: u64,
++    generated: u64,
++}
++fn addr(port: u16) -> SocketAddr {
++    ([127, 0, 0, 1], port).into()
++}
++fn settings(clock: Rc<Cell<u64>>, peers: usize, seed: u32) -> HostSettings {
++    HostSettings {
++        peer_limit: peers,
++        channel_limit: 3,
++        seed: Some(seed),
++        time: Box::new(move || Duration::from_millis(clock.get())),
++        ..Default::default()
++    }
++}
++fn send(server: &mut Host<Endpoint>, peer: PeerID, packet: &ServerPacket, reliable: bool) {
++    let bytes = packet.encode();
++    let p = if reliable {
++        Packet::reliable(bytes)
++    } else {
++        Packet::unreliable(bytes)
++    };
++    server
++        .peer_mut(peer)
++        .send(if reliable { 1 } else { 0 }, &p)
++        .unwrap();
++}
++
++fn run<B: Driver>(
++    scenario: Scenario,
++    budget: usize,
++    record: bool,
++    observed: bool,
++    count: usize,
++    mut recorder: Option<&mut measurement::Recorder>,
++) -> Outcome {
++    assert!(
++        recorder.is_none(),
++        "generic reference path does not export ordinary rows"
++    );
++    recorder.take();
++    run_core::<B>(scenario, budget, record, observed, count, None)
++}
++
++// Recorder callback permits actual ordinary BotObservation serialization in the
++// timing arm without altering the reference Bot or its application behavior.
++type Export<B> = Box<dyn FnMut(&[B], f64, &str)>;
++fn run_core<B: Driver>(
++    scenario: Scenario,
++    budget: usize,
++    record: bool,
++    observed: bool,
++    count: usize,
++    mut export: Option<Export<B>>,
++) -> Outcome {
++    sweep::configure_replay(observed);
++    let clock = Rc::new(Cell::new(10000));
++    let link = Rc::new(RefCell::new(Link {
++        clock: clock.clone(),
++        queues: BTreeMap::new(),
++        wire: vec![],
++        record,
++        fail_port: None,
++    }));
++    let mut server = Host::new(
++        Endpoint {
++            address: addr(9000),
++            link: link.clone(),
++        },
++        settings(clock.clone(), count, 77),
++    )
++    .unwrap();
++    let mut bots: Vec<B> = (1..=count)
++        .map(|id| {
++            let host = Host::new(
++                native_diagnostic::ObservedSocket {
++                    inner: Endpoint {
++                        address: addr(10000 + id as u16),
++                        link: link.clone(),
++                    },
++                    diagnostic: None,
++                },
++                settings(clock.clone(), 1, id as u32),
++            )
++            .unwrap();
++            B::create(host, id as u32, budget, record)
++        })
++        .collect();
++    let duration = if matches!(scenario, Scenario::Timeout) {
++        16000
++    } else {
++        11000
++    };
++    let mut offered = 0;
++    let mut generated = 0;
++    let mut max_receive_batch = 0;
++    let mut closing = false;
++    for elapsed in 0..duration + 2000 {
++        let ms = 10000 + elapsed;
++        clock.set(ms);
++        if elapsed == 700 && matches!(scenario, Scenario::ReceiveError) {
++            link.borrow_mut().fail_port = Some(10001);
++        }
++        while let Some(event) = server.service().unwrap().map(|e| e.no_ref()) {
++            if let EventNoRef::Receive { peer, packet, .. } = event {
++                match ClientPacket::decode(packet.data()) {
++                    Ok(ClientPacket::ConnectAuth(_)) if !matches!(scenario, Scenario::Timeout) => {
++                        send(
++                            &mut server,
++                            peer,
++                            &ServerPacket::AuthResult(AuthResult {
++                                result: 0,
++                                ok: Some(AuthOk {
++                                    entity_id: peer.0 as u16 + 1,
++                                    server_tick: 0,
++                                    tick_rate: 30,
++                                }),
++                            }),
++                            true,
++                        )
++                    }
++                    Ok(ClientPacket::PlayerInput(_)) => offered += 1,
++                    _ => {}
++                }
++            }
++        }
++        if elapsed < duration {
++            if elapsed % 34 == 0 && !matches!(scenario, Scenario::Timeout) {
++                for i in 0..count {
++                    if server.peer(PeerID(i)).connected() {
++                        send(
++                            &mut server,
++                            PeerID(i),
++                            &ServerPacket::Snapshot(Snapshot {
++                                server_tick: elapsed as u32 / 34,
++                                server_ms: elapsed as u32,
++                                is_baseline: true,
++                                baseline_tick: None,
++                                entities: vec![
++                                    EntityRecord::full(i as u16 + 1, (0.0, 0.0), 0, 0),
++                                    EntityRecord::full(30001, (200.0, 0.0), 0, 0),
++                                ],
++                            }),
++                            true,
++                        );
++                    }
++                }
++            }
++            let amount = match scenario {
++                Scenario::Burst if elapsed == 500 => 512,
++                Scenario::Sustained if (500..550).contains(&elapsed) => 64,
++                Scenario::LateBurst if elapsed == duration - 2 => 512,
++                _ => 0,
++            };
++            for _ in 0..amount {
++                generated += 1;
++                send(
++                    &mut server,
++                    PeerID(0),
++                    &ServerPacket::GameEvent(GameEvent {
++                        event_type: protocol::game_event_type::CHAT_MESSAGE,
++                        source_id: 999,
++                        target_id: generated as u16,
++                        data: GameEventData::None,
++                    }),
++                    true,
++                );
++            }
++            if elapsed == 600 && matches!(scenario, Scenario::Malformed) {
++                server
++                    .peer_mut(PeerID(0))
++                    .send(1, &Packet::reliable(vec![255]))
++                    .unwrap();
++            }
++            if elapsed == 600 && matches!(scenario, Scenario::Teardown) {
++                server
++                    .peer_mut(PeerID(0))
++                    .disconnect(protocol::disconnect_reason::SERVER_SHUTDOWN);
++            }
++        } else if !closing {
++            if let Some(export) = &mut export {
++                export(&bots, elapsed as f64 / 1000.0, "end");
++            }
++            for b in &mut bots {
++                b.begin_disconnect(elapsed as f64 / 1000.0);
++            }
++            closing = true;
++        }
++        let started = sweep::global_start();
++        for b in &mut bots {
++            let before = b.metrics().packets_received;
++            b.poll(elapsed as f64 / 1000.0);
++            let n = b.metrics().packets_received - before;
++            max_receive_batch = max_receive_batch.max(n);
++            if budget != 0 {
++                assert!(n <= budget as u64, "event budget exceeded");
++            }
++        }
++        sweep::global_finish(started, count);
++        if elapsed < duration && elapsed % 1000 == 0 {
++            if let Some(export) = &mut export {
++                export(
++                    &bots,
++                    elapsed as f64 / 1000.0,
++                    if elapsed == 0 { "start" } else { "" },
++                );
++            }
++        }
++        server.flush();
++    }
++    for b in &mut bots {
++        b.force_close();
++    }
++    if let Some(export) = &mut export {
++        export(&bots, (duration + 2000) as f64 / 1000.0, "drained");
++    }
++    let result = Outcome {
++        wire: std::mem::take(&mut link.borrow_mut().wire),
++        traces: bots.iter().map(Driver::trace).collect(),
++        states: bots
++            .iter()
++            .map(|b| json!({"terminal":b.terminal(), "metrics":b.metrics().summary()}))
++            .collect(),
++        max_receive_batch,
++        offered,
++        generated,
++    };
++    std::hint::black_box(&result);
++    result
++}
++
++fn parity() {
++    std::env::remove_var("OMEGA_MEASURE_DIR");
++    std::env::remove_var("OMEGA_NATIVE_DIAG");
++    for scenario in [
++        Scenario::Stable,
++        Scenario::Burst,
++        Scenario::Sustained,
++        Scenario::LateBurst,
++        Scenario::ReceiveError,
++        Scenario::Timeout,
++        Scenario::Malformed,
++        Scenario::Teardown,
++    ] {
++        let reference = run::<reference::Bot<Endpoint>>(scenario, 0, true, false, 3, None);
++        let off = run::<bot::Bot<Endpoint>>(scenario, 0, true, false, 3, None);
++        assert_eq!(reference, off, "disabled parity failed: {scenario:?}");
++        let on = run::<bot::Bot<Endpoint>>(scenario, 32, true, false, 3, None);
++        let observed = run::<bot::Bot<Endpoint>>(scenario, 32, true, true, 3, None);
++        if matches!(scenario, Scenario::LateBurst) {
++            println!(
++                "{}",
++                json!({"scenario":"LateBurst-boundary-witness", "off_max_batch":off.max_receive_batch,"on_max_batch":on.max_receive_batch,"generated_events":on.generated,"off_game_events":off.states[0]["metrics"]["game_events_received"],"on_game_events":on.states[0]["metrics"]["game_events_received"],"off_first_peer_trace":off.traces[0],"on_first_peer_trace":on.traces[0]})
++            );
++        }
++        assert_eq!(
++            on, observed,
++            "observer changed virtual replay: {scenario:?}"
++        );
++        if matches!(
++            scenario,
++            Scenario::Stable
++                | Scenario::ReceiveError
++                | Scenario::Timeout
++                | Scenario::Malformed
++                | Scenario::Teardown
++        ) {
++            assert_eq!(off, on, "unbacklogged behavior differs: {scenario:?}");
++        } else {
++            for (a, b) in off.traces.iter().zip(&on.traces) {
++                let received = |trace: &Trace| {
++                    trace
++                        .iter()
++                        .filter(|(_, k, _)| *k < 250)
++                        .map(|(_, k, b)| (*k, b.clone()))
++                        .collect::<Vec<_>>()
++                };
++                assert_eq!(
++                    received(a),
++                    received(b),
++                    "received event order/loss: {scenario:?}"
++                );
++            }
++            assert!(off.max_receive_batch > 32);
++            assert_eq!(on.max_receive_batch, 32);
++            assert_eq!(
++                on.states[0]["metrics"]["game_events_received"],
++                on.generated
++            );
++        }
++        if matches!(scenario, Scenario::Stable) {
++            assert!(on.offered > 3 * 256, "input sequence wrap not exercised");
++        }
++        println!(
++            "{}",
++            json!({"scenario":format!("{scenario:?}"), "disabled_parity":true, "observer_parity":true, "events_ordered":true, "off_max_batch":off.max_receive_batch, "on_max_batch":on.max_receive_batch, "offered_inputs":on.offered, "generated_burst_events":on.generated})
++        );
++    }
++}
++
++fn timing(out: &std::path::Path) {
++    std::fs::create_dir(out).expect("fresh timing directory required");
++    std::env::remove_var("OMEGA_NATIVE_DIAG");
++    let mut values = vec![];
++    // Fixed five pairs; no warmup results, discarded pair or retry.
++    for pair in 0..5 {
++        for observed in if pair % 2 == 0 {
++            [false, true]
++        } else {
++            [true, false]
++        } {
++            let directory = out.join(format!(
++                "pair{pair}-{}",
++                if observed { "enabled" } else { "disabled" }
++            ));
++            std::env::set_var("OMEGA_MEASURE_DIR", &directory);
++            let start = Instant::now();
++            let mut recorder = measurement::Recorder::from_env().unwrap();
++            let export: Export<bot::Bot<Endpoint>> =
++                Box::new(move |bots, seconds, boundary| recorder.sample(bots, seconds, boundary));
++            let outcome = run_core::<bot::Bot<Endpoint>>(
++                Scenario::Stable,
++                32,
++                false,
++                observed,
++                200,
++                Some(export),
++            );
++            let ns = start.elapsed().as_nanos();
++            let row = json!({"pair":pair,"enabled":observed,"elapsed_ns":ns,"offered_inputs":outcome.offered,"observer":sweep::global_snapshot()});
++            println!("{row}");
++            std::io::stdout().flush().unwrap();
++            values.push(row);
++        }
++    }
++    let total = |enabled| {
++        values
++            .iter()
++            .filter(|r| r["enabled"] == enabled)
++            .map(|r| r["elapsed_ns"].as_u64().unwrap() as u128)
++            .sum::<u128>()
++    };
++    let off = total(false);
++    let on = total(true);
++    let passed = on * 100 <= off * 102;
++    let result = json!({"pairs":values,"disabled_total_ns":off,"enabled_total_ns":on,"overhead_percent":100.0*(on as f64/off as f64-1.0),"limit_percent":2,"passed":passed,"network_sockets_opened":0,"remote_commands":0,"remote_attempt_slots_consumed":0});
++    std::fs::write(
++        out.join("assessment.json"),
++        serde_json::to_vec_pretty(&result).unwrap(),
++    )
++    .unwrap();
++    println!("{result}");
++    if !passed {
++        std::process::exit(1);
++    }
++}
++fn main() {
++    match std::env::args().nth(1).as_deref() {
++        Some("parity") => parity(),
++        Some("timing") => timing(&std::path::PathBuf::from(
++            std::env::args().nth(2).expect("output directory"),
++        )),
++        _ => panic!("usage: poll-replay parity | timing FRESH_DIRECTORY"),
++    }
++}

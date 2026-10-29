@@ -1,0 +1,3 @@
+{"disabled_parity":true,"events_ordered":true,"generated_burst_events":0,"observer_parity":true,"off_max_batch":1,"offered_inputs":990,"on_max_batch":1,"scenario":"Stable"}
+{"disabled_parity":true,"events_ordered":true,"generated_burst_events":512,"observer_parity":true,"off_max_batch":512,"offered_inputs":990,"on_max_batch":32,"scenario":"Burst"}
+{"disabled_parity":true,"events_ordered":true,"generated_burst_events":3200,"observer_parity":true,"off_max_batch":65,"offered_inputs":990,"on_max_batch":32,"scenario":"Sustained"}
