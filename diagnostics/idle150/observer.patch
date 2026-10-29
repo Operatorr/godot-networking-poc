@@ -1,0 +1,130 @@
+--- upstream/src/host.rs
++++ diagnostic/src/host.rs
+@@ -72,6 +72,23 @@
+ unsafe impl<S: Socket> Sync for Host<S> {}
+ 
+ impl<S: Socket> Host<S> {
++    /// Enable the diagnostic-only input counters before using a single-peer host.
++    pub fn enable_input_diagnostic(&mut self) -> Result<(), &'static str> {
++        if self.peers.len() != 1 {
++            return Err("input diagnostic requires a single-peer host");
++        }
++        if self.peers[0].state() != PeerState::Disconnected {
++            return Err("input diagnostic must be enabled before connecting");
++        }
++        unsafe { (*self.host).input_diagnostic.enabled = true; }
++        Ok(())
++    }
++
++    /// Cumulative counters persist across peer reset and disconnect.
++    pub fn input_counters(&self) -> crate::InputCounters {
++        unsafe { (*self.host).input_diagnostic.counters }
++    }
++
+     /// Creates a host for communicating to peers, using the socket provided as a transport layer.
+     ///
+     /// Supports [`std::net::UdpSocket`] out of the box, but other transport protocols can be
+--- upstream/src/lib.rs
++++ diagnostic/src/lib.rs
+@@ -146,6 +146,7 @@
+ mod crc32;
+ mod event;
+ mod host;
++mod input_diagnostic;
+ mod packet;
+ mod peer;
+ mod read_write;
+@@ -159,6 +160,7 @@
+ pub use crc32::*;
+ pub use event::*;
+ pub use host::*;
++pub use input_diagnostic::InputCounters;
+ pub use packet::*;
+ pub use peer::*;
+ pub use read_write::*;
+--- upstream/src/c/host.rs
++++ diagnostic/src/c/host.rs
+@@ -12,6 +12,7 @@
+ 
+ #[allow(clippy::type_complexity)]
+ pub(crate) struct ENetHost<S: Socket> {
++    pub(crate) input_diagnostic: crate::input_diagnostic::InputDiagnostic,
+     pub(crate) socket: MaybeUninit<S>,
+     pub(crate) incoming_bandwidth: u32,
+     pub(crate) outgoing_bandwidth: u32,
+--- upstream/src/c/protocol.rs
++++ diagnostic/src/c/protocol.rs
+@@ -333,6 +333,7 @@
+ unsafe fn enet_protocol_remove_sent_unreliable_commands<S: Socket>(
+     peer: *mut ENetPeer<S>,
+     sent_unreliable_commands: *mut ENetList,
++    disposition: crate::input_diagnostic::Disposition,
+ ) {
+     let mut outgoing_command: *mut ENetOutgoingCommand;
+     if (*sent_unreliable_commands).sentinel.next
+@@ -346,6 +347,7 @@
+             .next
+             .cast::<u8>()
+             .cast::<ENetOutgoingCommand>();
++        crate::input_diagnostic::remove(peer, outgoing_command, disposition);
+         enet_list_remove(&mut (*outgoing_command).outgoing_command_list);
+         if !((*outgoing_command).packet).is_null() {
+             (*(*outgoing_command).packet).reference_count =
+@@ -2007,6 +2009,9 @@
+                         let unreliable_sequence_number: u16 =
+                             (*outgoing_command).unreliable_sequence_number;
+                         loop {
++                            crate::input_diagnostic::remove(
++                                peer, outgoing_command, crate::input_diagnostic::Disposition::Throttle,
++                            );
+                             (*(*outgoing_command).packet).reference_count =
+                                 ((*(*outgoing_command).packet).reference_count).wrapping_sub(1);
+                             if (*(*outgoing_command).packet).reference_count == 0_i32 as usize {
+@@ -2319,6 +2324,12 @@
+                         enet_protocol_remove_sent_unreliable_commands(
+                             current_peer,
+                             &mut sent_unreliable_commands,
++                            match &sent_length {
++                                Ok(n) if *n == conglomerate_buffer.len() => crate::input_diagnostic::Disposition::Full,
++                                Ok(0) => crate::input_diagnostic::Disposition::Zero,
++                                Ok(_) => crate::input_diagnostic::Disposition::Partial,
++                                Err(_) => crate::input_diagnostic::Disposition::Error,
++                            },
+                         );
+                         match sent_length {
+                             Err(err) => return Err(err),
+--- upstream/src/c/peer.rs
++++ diagnostic/src/c/peer.rs
+@@ -248,6 +248,7 @@
+             fragment = enet_list_remove(fragments.sentinel.next).cast();
+             enet_peer_setup_outgoing_command(peer, fragment);
+         }
++        crate::input_diagnostic::admit(peer, channel_id, packet, command_number);
+         return Ok(());
+     }
+     command.header.channel_id = channel_id;
+@@ -279,6 +280,7 @@
+     {
+         return Err(PeerSendError::FailedToQueue);
+     }
++    crate::input_diagnostic::admit(peer, channel_id, packet, command.header.command);
+     Ok(())
+ }
+ pub(crate) unsafe fn enet_peer_receive<S: Socket>(
+@@ -380,6 +382,16 @@
+     );
+ }
+ pub(crate) unsafe fn enet_peer_reset_queues<S: Socket>(peer: *mut ENetPeer<S>) {
++    // Observe existing queued inputs before the unchanged reset destroys them.
++    if (*(*peer).host).input_diagnostic.enabled {
++        let mut item = (*peer).outgoing_commands.sentinel.next;
++        while item != core::ptr::addr_of_mut!((*peer).outgoing_commands.sentinel) {
++            crate::input_diagnostic::remove(
++                peer, item.cast(), crate::input_diagnostic::Disposition::Reset,
++            );
++            item = (*item).next;
++        }
++    }
+     let mut channel: *mut ENetChannel;
+     if (*peer).flags as i32 & ENET_PEER_FLAG_NEEDS_DISPATCH as i32 != 0 {
+         enet_list_remove(&mut (*peer).dispatch_list);
