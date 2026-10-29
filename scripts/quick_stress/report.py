@@ -561,7 +561,7 @@ def summary_line(run, status, agg, steady, srv, host, ticks):
     ev = sum((srv or {}).get("event_sends_per_s", {}).values()) if srv else None
     n = max(1.0, steady.get("players_avg", 1.0)) if steady else 1.0
     return {
-        "date": time.strftime("%Y-%m-%d %H:%M", time.gmtime()),
+        "date": time.strftime("%Y-%m-%d %H:%M", time.gmtime(float(run.get("t_server_start") or time.time()))),
         "label": run.get("label"), "sha": run.get("git_sha"), "status": status,
         "bots": run.get("bots"), "behavior": run.get("behavior"),
         "connected": agg.get("connected_bots"),

@@ -115,12 +115,12 @@ confirmed / refuted**. Each one names the measurement that decides it.
 
 | # | Hypothesis | Decides it | Status |
 |---|---|---|---|
-| H1 | **Reliable broadcast storm.** Every `PROJECTILE_FIRED` (player *and* monster), `DAMAGE`, `EXP_GAIN`, `ABILITY_EFFECT`, … is a reliable ch1 packet **broadcast to every connected peer with no AoI filter** (`rust/server/src/sim/world.rs`, `outbox.broadcast`). Packets/s = players × events/s, events/s ∝ players ⇒ **N²**. Each one is an ENet reliable command (allocation, ack bookkeeping, retransmit timer) on the server and an ack datagram from every client back to the server. | `event_sends_per_s` total vs players in the report; `outbox_flush` + `enet_flush` phase share; datagrams in/s. | see Findings |
-| H2 | **Snapshot build is O(peers × visible entities)** per tick (`broadcast_state_updates`: per peer a grid query, a HashSet of previously-visible ids, a delta-mask check per visible entity, a sort, encoding). With everyone in one 2000-unit arena and AoI 1000 u, most peers see most entities. | `snapshot_build` % of core vs players (expect ~N² in a clustered arena). | see Findings |
-| H3 | **Kernel receive-buffer overflow is a symptom of (H1/H2) stalls**, not a cause: a 20–30 ms tick leaves the 512 KB socket buffer to absorb a full tick of inbound inputs + acks from N clients; past ~150 clients at ~100 B × 30 Hz + acks that is > 512 KB per stall. | `RcvbufErrors` appearing only when `tick p95` or `read-gap max` crosses ~20 ms. If drops appear with low tick times, buffer size/drain cadence is the cause instead. | untested |
-| H4 | **Generator saturation** on the Hetzner bot host (single-threaded swarm at 81–87 % of a core) distorted the 190 reading. | Bots CPU per thread in the report; the sharded swarm removes it. | fixed in harness; re-measure on Hetzner |
-| H5 | **Host class**: CAX11 is 2 shared Ampere vCPUs; a dedicated x86 core (CCX13) moves the wall but does not change the N² shape. | Same rung on both hosts; compare `ms per tick` per phase. | untested |
-| H6 | **Bandwidth gate**: 5 KB/s per player is unreachable with the current snapshot size (~15 KB/s per player of ch0 deltas at 50 bots) — either the gate or the wire format has to change. | Snapshot bytes per peer per tick vs the 1200 B/snap budget; what the peer budget scheduler defers. | see Findings |
+| H1 | **Reliable broadcast storm.** Every `PROJECTILE_FIRED` (player *and* monster), `DAMAGE`, `EXP_GAIN`, `ABILITY_EFFECT`, … is a reliable ch1 packet **broadcast to every connected peer with no AoI filter** (`rust/server/src/sim/world.rs`, `outbox.broadcast`). Packets/s = players × events/s, events/s ∝ players ⇒ **N²**. Each one is an ENet reliable command (allocation, ack bookkeeping, retransmit timer) on the server and an ack datagram from every client back to the server. | `event_sends_per_s` total vs players in the report; `outbox_flush` + `enet_flush` phase share; datagrams in/s. | **confirmed** — removing events (movement run) makes 200 trivial; with events + big buffers ENet service eats 69 % of a core |
+| H2 | **Snapshot build is O(peers × visible entities)** per tick (`broadcast_state_updates`: per peer a grid query, a HashSet of previously-visible ids, a delta-mask check per visible entity, a sort, encoding). With everyone in one 2000-unit arena and AoI 1000 u, most peers see most entities. | `snapshot_build` % of core vs players (expect ~N² in a clustered arena). | **confirmed** (~N^1.6: 1.7 / 5.2 / 10.3 ms at 50/100/150; 7.8 ms at 200 movement) — the next wall after H1, around ~450 players |
+| H3 | **Kernel receive-buffer overflow is a symptom of (H1/H2) stalls**, not a cause: a 20–30 ms tick leaves the 512 KB socket buffer to absorb a full tick of inbound inputs + acks from N clients; past ~150 clients at ~100 B × 30 Hz + acks that is > 512 KB per stall. | `RcvbufErrors` appearing only when `tick p95` or `read-gap max` crosses ~20 ms. If drops appear with low tick times, buffer size/drain cadence is the cause instead. | **confirmed as trigger, refuted as cause**: drops start at 150 with p95 22 ms; 16 MB buffers keep peers alive but the storm (H1) then pins the CPU |
+| H4 | **Generator saturation** on the Hetzner bot host (single-threaded swarm at 81–87 % of a core) distorted the 190 reading. | Bots CPU per thread in the report; the sharded swarm removes it. | **fixed in harness** (3 threads ≤ 56 % total at 200); re-measure on Hetzner |
+| H5 | **Host class**: CAX11 is 2 shared Ampere vCPUs; a dedicated x86 core (CCX13) moves the wall but does not change the N² shape. | Same rung on both hosts; compare `ms per tick` per phase. | **not the explanation**: the local VM reproduces the CAX11 collapse at the same population with the same signature |
+| H6 | **Bandwidth gate**: 5 KB/s per player is unreachable with the current snapshot size (~15 KB/s per player of ch0 deltas at 50 bots) — either the gate or the wire format has to change. | Snapshot bytes per peer per tick vs the 1200 B/snap budget; what the peer budget scheduler defers. | **confirmed**: 16–42 KB/s per player at every rung, all Snapshot bytes — needs a decision |
 
 ## Open questions (decisions the user owns)
 
@@ -175,13 +175,36 @@ _Newest at the bottom. Numbers are from `loadtest-runs/<label>/REPORT.md` (ledge
    inbound at 150 players, 15 ms at 200**. Any tick longer than that drops the acks that arrived
    during it. At 150 the p95 tick is 22 ms → 1,117 drops; at 200 the tick is ~17 ms *before* the
    storm starts, and every drop makes the next tick longer. → H3 is the **trigger**, H1 + H2 are
-   the **fuel**. (A 32 MB buffer request was rejected by config validation — max is 16 MB; the
-   16 MB run is the next experiment.)
+   the **fuel** — see the two isolation runs below: a 16 MB buffer keeps the peers alive but
+   the storm then pins the CPU; removing the events removes the wall entirely.
 5. **The bandwidth gate (5 KB/s per player) is failed at every rung** (19 / 32 / 42 KB/s). It is
    Snapshot bytes (15–24 KB/s per player at 50–100, 1200 B/snap budget × 30 Hz = 36 KB/s cap),
    not events. The gate needs a decision (open question 1).
 6. **The generator was never the limit here**: 3 swarm threads at 19–54 % of a core total. The
    Hetzner bot host (single thread, 81–87 %) *was* at its limit — H4 fixed in the harness.
+
+### 2026-10-29 — two isolation runs at 200 that settle it
+
+| run | change | peers kept | RTT avg / p95 | tick avg / p95 ms | server CPU | `service_and_route` | `snapshot_build` | reliable events/s (per peer) | socket drops | send-queue max |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `n200-buf16mb` | 16 MB recv + send buffers (config max; kernel doubles to 32 MB) | **200/200** | **765 / 1855 ms** | 10.2 / 30.8 (max 115) | **98 %** | **69 % of a core**, 23 ms/tick, one call of **3.7 s** | 18 % (5.9 ms) | 92 k (476) offered, ENet peer loss peaked 23 % (worst 57 %) | 109 k | **28.8 MB** |
+| `n200-movement` | same 200 bots, `movement` behavior (no shooting ⇒ no events) | **200/200** | **2.1 / 5 ms** | **10.9 / 14.5** (max 57) | 37 % | 4 % (1.4 ms) | 23 % (7.8 ms) | **405 (2)** | 45 | 123 KB |
+
+- **Bigger socket buffers remove the trigger but not the fuel.** Nobody times out any more, yet
+  the server is now a one-core ENet retransmit machine: 69 % of the CPU is `host.service()`
+  (ack/retransmit bookkeeping over the reliable queues, not our packet handlers), 29 MB of
+  datagrams queued on the send side, and players see 1–2 s RTT — unplayable, just differently.
+- **Take the reliable events away and 200 players is an easy rung.** Same box, same snapshot
+  traffic (3.1 MB/s, 16 KB/s per player), 11 ms ticks, 2 ms RTT, 37 % CPU. The Snapshot build
+  (7.8 ms) is now the only term that grows, and it is ~N^1.6: it reaches the 33 ms budget
+  around **~450 players** on this box with no further change.
+
+**Conclusion — why we could not get past ~190:** the per-projectile / per-damage / per-XP
+**reliable broadcasts** (N² packets, ~100 k/s at 150, ~190 k/s offered at 200) saturate ENet's
+reliable machinery; the first long tick drops acks from the 512 KB receive buffer, ENet
+retransmits, queues grow, `host.service()` stalls for seconds, and peers time out. It is not
+the host class (the local 4-vCPU VM reproduces Hetzner CAX11 exactly), not projectile *count*
+(≈100–250 live projectiles are cheap to simulate), not packet size, and not the generator.
 
 **What to change, in order of leverage (each one is a quick_stress run away from being measured):**
 
