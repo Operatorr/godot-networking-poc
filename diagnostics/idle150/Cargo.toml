@@ -1,0 +1,16 @@
+[package]
+name = "idle150-diagnostic"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+enet_reference = { package = "rusty_enet", version = "=0.4.0" }
+enet_observed = { package = "rusty_enet", path = "vendor/rusty_enet" }
+serde_json = "1"
+
+[profile.release]
+lto = "thin"
+
