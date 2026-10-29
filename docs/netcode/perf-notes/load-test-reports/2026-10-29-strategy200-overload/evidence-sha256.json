@@ -1,0 +1,14 @@
+{
+  "REPORT.md": "2d6171bdb8531223a976699e0406d9c90996bc818af08f16ea5e1857e39a129e",
+  "experiment.patch": "bbd7338d4fa4b2d003a3925cee8c7ab82cac08cd9e9a15d37670eebe5f8c5920",
+  "independent-assessment.json": "36a66bc40ef5faa4800811ffc49c9b02d5495f23f6262b82c03e8f81ab79e284",
+  "local-prerequisite-freeze.json": "a1eb6f415f8d092b922a8051997b24f5b31a53441aee522a1b72609d5bade0ce",
+  "parity-final.ndjson": "f2620de350f72ca611f6cfce0726a24f29f2cc9006a33e9d0e725a1f792feb99",
+  "parity-final.stderr": "cbceeca80450dca217bb0ec661695d2b35439e7a1b49b45ff90db8a6c8d9aa3b",
+  "parity-initial.ndjson": "b6777aa885c75750608b95714dbbf202e61b49413832c482028de661bd094af9",
+  "parity-initial.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "parity-teardown.ndjson": "c4c162f008a1bd985a31b3a1e1c97d4cb23ad44d36e15f53c79b65b6193738dc",
+  "parity-teardown.stderr": "fbe424cf1d475b6ff791624775196977c8d059a97de1a57b0cf63ebca81a2144",
+  "post-stop-immutability.json": "9f22e15e31fefdded80be3abb9f88704c0030c73928709cac8b8521840dd518f",
+  "source-provenance.json": "6db11b83f9e7a2099ab78e43ed72b6377339de8b29f116d11d8c44dd01aa3957"
+}

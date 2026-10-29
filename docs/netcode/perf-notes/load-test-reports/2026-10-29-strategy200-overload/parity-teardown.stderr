@@ -1,0 +1,4 @@
+
+thread 'main' (1923031) panicked at load_test/src/bin/poll-replay.rs:461:13:
+assertion failed: off.max_receive_batch > 32
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
