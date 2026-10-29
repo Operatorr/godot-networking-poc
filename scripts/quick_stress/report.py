@@ -209,6 +209,18 @@ def analyze_server_samples(path, steady_first_mono_ns):
     out["deltas_per_s"] = (b.get("deltas", 0) - a.get("deltas", 0)) / dt
     out["send_errors"] = b.get("send_errors", 0)
     out["decode_errors"] = b.get("decode_errors", 0)
+    enet_rows = [r.get("enet") for r in rows[start_idx:] if r.get("enet")]
+    if enet_rows:
+        last = enet_rows[-1]
+        out["enet"] = {
+            "peers_last": last.get("peers", 0),
+            "rtt_mean_ms_last": last.get("rtt_mean_ms", 0.0),
+            "rtt_mean_ms_max": max(r.get("rtt_mean_ms", 0.0) for r in enet_rows),
+            "rtt_max_ms_max": max(r.get("rtt_max_ms", 0.0) for r in enet_rows),
+            "loss_mean_pct_last": last.get("loss_mean_pct", 0.0),
+            "loss_mean_pct_max": max(r.get("loss_mean_pct", 0.0) for r in enet_rows),
+            "loss_max_pct_max": max(r.get("loss_max_pct", 0.0) for r in enet_rows),
+        }
     ta, tb = a.get("transport"), b.get("transport")
     if ta and tb:
         gaps = tb["read_gaps"]
@@ -350,6 +362,11 @@ def verdict(run, bots, ticks, srv, host):
     if udp.get("RcvbufErrors", 0) > 0:
         findings.append("UDP RECEIVE OVERFLOW: the kernel dropped datagrams for lack of socket buffer — "
                         "the server loop is not draining fast enough (or bursts exceed the buffer)")
+    en = (srv or {}).get("enet")
+    if en and (en["loss_mean_pct_max"] > 5.0 or en["rtt_mean_ms_max"] > 100.0):
+        findings.append(f"ENET RETRANSMIT STORM (server view): peer loss mean peaked {en['loss_mean_pct_max']:.1f}% "
+                        f"(worst peer {en['loss_max_pct_max']:.0f}%), RTT mean peaked {en['rtt_mean_ms_max']:.0f} ms — "
+                        f"acks are being dropped on the server socket and reliable packets are being resent")
     if steady and steady.get("work_ms_p95", 0) > TICK_MS:
         findings.append(f"TICK OVERRUN: p95 tick work {steady['work_ms_p95']:.1f} ms > {TICK_MS:.1f} ms budget")
     if agg and (agg.get("packet_loss_pct", 0) > 2 or agg.get("latency_p95_ms", 0) > 150):
@@ -431,6 +448,11 @@ def render(run_dir, run, bots, ticks, srv, host, logs):
                  f"in {human_bytes(srv['received_bytes_per_s'])}/s total = {human_bytes(srv['received_bytes_per_s'] / n)}/s per player")
         L.append(f"- snapshots: {srv['deltas_per_s']:.0f} deltas/s + {srv['baselines_per_s']:.1f} reliable baselines/s · "
                  f"send errors {srv['send_errors']}, decode errors {srv['decode_errors']}")
+        en = srv.get("enet")
+        if en:
+            L.append(f"- ENet peers (server view): {en['peers_last']} connected at end · RTT mean {en['rtt_mean_ms_last']:.1f} ms "
+                     f"(window peak of mean {en['rtt_mean_ms_max']:.0f} ms, worst peer {en['rtt_max_ms_max']:.0f} ms) · "
+                     f"smoothed loss mean {en['loss_mean_pct_last']:.2f}% (peak of mean {en['loss_mean_pct_max']:.1f}%, worst peer {en['loss_max_pct_max']:.0f}%)")
         tr = srv.get("transport")
         if tr:
             L.append(f"- socket: {tr['received_datagrams_per_s']:.0f} datagrams in/s, {tr['send_calls_per_s']:.0f} sends/s, "
@@ -552,6 +574,8 @@ def summary_line(run, status, agg, steady, srv, host, ticks):
         "kbps_per_bot": agg.get("bandwidth_per_player_kbps"),
         "events_per_peer_s": (ev / n) if ev is not None else None,
         "out_bytes_per_s": (srv or {}).get("sent_bytes_per_s"),
+        "enet_loss_peak_pct": ((srv or {}).get("enet") or {}).get("loss_mean_pct_max"),
+        "enet_rtt_peak_ms": ((srv or {}).get("enet") or {}).get("rtt_mean_ms_max"),
     }
 
 
@@ -561,12 +585,12 @@ def ledger_row(s):
     return (f"| {s['date']} | {s['label']} | `{s['sha']}` | {s['bots']} {s['behavior']} | {s['status']} | {s['connected']}/{s['bots']} | "
             f"{f(s['tick_p95_ms'], 2)} / {f(s['tick_max_ms'], 1)} | {f(s['over_33_pct'], 1, '%')} | {f(s['server_cpu_pct'], 0, '%')} | "
             f"{f(s['bots_cpu_pct'], 0, '%')} | {f(s['rcvbuf_errors'], 0)} | {f(s['rtt_p95_ms'], 0)} | {f(s['loss_pct'], 2, '%')} | "
-            f"{f(s['kbps_per_bot'], 1)} | {f(s['events_per_peer_s'], 0)} | |")
+            f"{f(s['kbps_per_bot'], 1)} | {f(s['events_per_peer_s'], 0)} | {f(s['enet_loss_peak_pct'], 1, '%')} / {f(s['enet_rtt_peak_ms'], 0)} | |")
 
 
 LEDGER_HEADER = ("| date (UTC) | label | commit | bots | result | connected | tick p95 / max ms | ticks >33 ms | server CPU | "
-                 "bots CPU | RcvbufErr | RTT p95 ms | loss | KB/s per bot | reliable events per peer/s | notes |\n"
-                 "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
+                 "bots CPU | RcvbufErr | RTT p95 ms | loss | KB/s per bot | reliable events per peer/s | ENet loss peak / RTT peak (server view) | notes |\n"
+                 "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
 
 
 def main():
@@ -627,7 +651,8 @@ def main():
                f"tick p95 {fmt(summ['tick_p95_ms'], ' ms', 2)} max {fmt(summ['tick_max_ms'], ' ms', 1)} · "
                f">33 ms {fmt(summ['over_33_pct'], '%', 1)} · RcvbufErrors {fmt(summ['rcvbuf_errors'])}",
                f"RTT p95 {fmt(summ['rtt_p95_ms'], ' ms', 0)} · loss {fmt(summ['loss_pct'], '%', 2)} · {fmt(summ['kbps_per_bot'], ' KB/s', 1)} per bot · "
-               f"reliable events {fmt(summ['events_per_peer_s'], '/s per peer', 0)} · server out {human_bytes(summ['out_bytes_per_s'] or 0)}/s"]
+               f"reliable events {fmt(summ['events_per_peer_s'], '/s per peer', 0)} · server out {human_bytes(summ['out_bytes_per_s'] or 0)}/s · "
+               f"ENet loss peak {fmt(summ['enet_loss_peak_pct'], '%', 1)} RTT peak {fmt(summ['enet_rtt_peak_ms'], ' ms', 0)}"]
         print("\n".join(key))
         if srv and srv.get("phases"):
             print("phases (% core): " + ", ".join(f"{k.split(' ')[0]} {v['core_pct']:.0f}" for k, v in srv["phases"].items()))

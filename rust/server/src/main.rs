@@ -366,8 +366,29 @@ fn main() {
         let t_ms = now_ms(start);
         if t_ms.saturating_sub(last_metrics_ms) >= 1000 {
             last_metrics_ms = t_ms;
-            if let Some(measure) = &mut collector.measurement {
-                measure.sample(&world, host.socket().observation());
+            if collector.measurement.is_some() {
+                let mut stats = measurement::EnetPeerStats::default();
+                let mut rtt_sum = 0.0;
+                let mut loss_sum = 0.0;
+                for peer in host.connected_peers() {
+                    let rtt = peer.round_trip_time().as_secs_f64() * 1000.0;
+                    let loss = 100.0 * peer.packet_loss() as f64
+                        / enet::consts::PEER_PACKET_LOSS_SCALE as f64;
+                    stats.peers += 1;
+                    rtt_sum += rtt;
+                    loss_sum += loss;
+                    stats.rtt_max_ms = stats.rtt_max_ms.max(rtt);
+                    stats.loss_max_pct = stats.loss_max_pct.max(loss);
+                    stats.packets_sent_sum += peer.packets_sent() as u64;
+                    stats.packets_lost_sum += peer.packets_lost() as u64;
+                }
+                if stats.peers > 0 {
+                    stats.rtt_mean_ms = rtt_sum / stats.peers as f64;
+                    stats.loss_mean_pct = loss_sum / stats.peers as f64;
+                }
+                if let Some(measure) = &mut collector.measurement {
+                    measure.sample(&world, host.socket().observation(), &stats);
+                }
             }
             let entity_count =
                 world.projectiles.count() + world.monsters.count() + world.world_entities.count();

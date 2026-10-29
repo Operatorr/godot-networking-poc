@@ -133,4 +133,67 @@ confirmed / refuted**. Each one names the measurement that decides it.
 
 ## Findings
 
-_Filled in per ladder run; newest at the bottom. Each entry links its ledger row and run label._
+_Newest at the bottom. Numbers are from `loadtest-runs/<label>/REPORT.md` (ledger rows in
+[`ledger.md`](ledger.md)); the box is a 4-vCPU shared x86 VM, swarm on the same box over 3 threads._
+
+### 2026-10-29 — first local ladder, strategy bots, 60 s: the wall is at 200 and it is not CPU
+
+| bots | tick avg / p95 / max ms | snapshot build ms/tick | sim ms/tick | service+route ms/tick | outbox+ENet flush ms/tick | server CPU | reliable events/s total (per peer) | server out | bytes in/s · datagrams in/s | server-socket drops | result |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 50 | 2.9 / 3.9 / 91 | 1.7 | 0.3 | 1.0 | 0.9 | 13 % | 7.9 k (158) | 0.9 MB/s | 32 KB/s · 3.3 k | 0 | all criteria but bandwidth (19 KB/s per bot) |
+| 100 | 8.2 / 11.5 / 19.5 | 5.2 | 0.5 | 1.5 | 2.5 | 30 % | 39 k (390) | 2.9 MB/s | 65 KB/s · 7.2 k | 0 | all criteria but bandwidth (32 KB/s per bot) |
+| 150 | 16.4 / 22.5 / 44.7 | 10.3 | 1.1 | 2.3 | 5.0 | 56 % | 100 k (671) | 5.6 MB/s | 97 KB/s · 12.3 k | **1,117** | criteria pass except bandwidth; **first kernel drops**, 48 % of ticks > 16 ms |
+| 200 | collapses within 5 s of the 200th join | — | — | **one `host.service()` call of 1.45–1.67 s** | — | 35 % avg, 100 % peaks | 190 k/s offered | — | — | **191–193 k** | 188/200 peers time out (ENet reason 0) inside 20 s; server RSS 12 → 134 MB |
+
+**What the numbers say (the "why" the Hetzner campaign could not give):**
+
+1. **The per-tick cost is super-linear and the Snapshot build is two thirds of it.**
+   `snapshot_build` goes 1.7 → 5.2 → 10.3 ms for 50 → 100 → 150 players (≈ N^1.6: every peer
+   evaluates every entity inside its 1000 u AoI, and in a 2000 u arena that is nearly everyone).
+   Pure simulation (movement, projectiles, AI, collisions) is 0.3 → 1.1 ms: **not** the problem.
+   Extrapolated, the Snapshot build alone passes the 33 ms tick budget around **220–250 players**
+   on this box, regardless of anything else. → H2 **confirmed**.
+2. **Reliable GameEvents are the N² term on the wire.** 158 → 390 → 671 reliable packets *per
+   peer per second* at 50/100/150 (7.9 k → 39 k → 100 k packets/s on the server), 42–55 % of them
+   `PROJECTILE_FIRED`, then `EXP_GAIN` and `DAMAGE`. Each is one ENet reliable command per peer
+   (allocation, sequence/ack bookkeeping, retransmit timer) and one ack back from each client.
+   At 200 the server was *offering* ~190 k reliable packets/s and 18–22 k UDP sends/s. → H1
+   **confirmed** as the dominant traffic/packet-rate term (bytes are still dominated by Snapshots:
+   24 KB/s vs 4.7 KB/s per player at 100).
+3. **The collapse at 200 is a feedback loop, not a CPU ceiling.** Timeline from the 1 Hz samples
+   (`n200-default-buf`): at t≈20 s (199 peers) UDP sends jump 9.9 k → 18.5 k/s while datagrams
+   *received* stay flat at ~12 k/s — i.e. the server socket is already dropping inbound (acks +
+   inputs); ENet's mean peer RTT goes 2 → 51 ms. Five seconds later: received 3.2 k/s, sends
+   22 k/s (retransmits), RSS 21 → 103 MB (queued reliable commands), one `host.service()` call of
+   0.8 s, then 1.67 s (ENet walking its sent-reliable lists / freeing queues), peer loss 2 → 9 →
+   16 %, and peers time out one after another. Server CPU averaged 35 % during this; only the
+   1 s peaks hit 100 %. **Dropped acks → retransmits → bigger queues → longer service stalls →
+   more drops.** This is exactly the Hetzner sequence ("receive-buffer errors → later near-core
+   CPU and lost players → join timeout"), reproduced on a laptop-class VM in 90 s.
+4. **Why the drops start at 150–200**: the server socket's 512 KB receive buffer is measured in
+   kernel skb *truesize* (≈ 2 KB per small datagram), so it holds only ~250 datagrams ≈ **20 ms of
+   inbound at 150 players, 15 ms at 200**. Any tick longer than that drops the acks that arrived
+   during it. At 150 the p95 tick is 22 ms → 1,117 drops; at 200 the tick is ~17 ms *before* the
+   storm starts, and every drop makes the next tick longer. → H3 is the **trigger**, H1 + H2 are
+   the **fuel**. (A 32 MB buffer request was rejected by config validation — max is 16 MB; the
+   16 MB run is the next experiment.)
+5. **The bandwidth gate (5 KB/s per player) is failed at every rung** (19 / 32 / 42 KB/s). It is
+   Snapshot bytes (15–24 KB/s per player at 50–100, 1200 B/snap budget × 30 Hz = 36 KB/s cap),
+   not events. The gate needs a decision (open question 1).
+6. **The generator was never the limit here**: 3 swarm threads at 19–54 % of a core total. The
+   Hetzner bot host (single thread, 81–87 %) *was* at its limit — H4 fixed in the harness.
+
+**What to change, in order of leverage (each one is a quick_stress run away from being measured):**
+
+- **A. Stop broadcasting `PROJECTILE_FIRED` reliably to everyone.** Scope it to peers whose AoI
+  contains the shooter (the Snapshot already carries the projectile entity for everyone else) and
+  consider making it unreliable-sequenced (a lost fire event is healed by the next Snapshot).
+  Same AoI scoping for `DAMAGE`, `EXP_GAIN`, `ABILITY_EFFECT`. Expected: reliable packets/s from
+  ~N² to ~N × AoI-density; ack traffic and ENet bookkeeping shrink with it. Removes the fuel.
+- **B. Make a long tick unable to drop acks**: raise the receive buffer to the 16 MB config max
+  (and `net.core.rmem_max` on the host), and/or move socket reads off the tick thread. Removes
+  the trigger; does not fix the growth.
+- **C. Cut the Snapshot build**: cache the per-peer visible set and only re-evaluate entities
+  whose grid cell changed; skip the per-peer `HashSet` rebuild; encode each entity's record once
+  per tick and share bytes across peers. Expected: `snapshot_build` from N^1.6 toward N·k.
+- **D. Then** re-run the ladder and climb.

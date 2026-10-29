@@ -52,6 +52,23 @@ pub struct ProcessSample {
     pub threads: u64,
 }
 
+/// ENet's own view of the connected peers at sample time: smoothed loss ratio and RTT per
+/// peer (`enet_peer` throttle statistics), aggregated. A rising `loss_mean_pct` with flat
+/// kernel counters on the client side means the SERVER is not receiving acks (receive-buffer
+/// drops) and is retransmitting — the reliable-storm feedback loop.
+#[derive(Debug, Default, serde::Serialize)]
+pub struct EnetPeerStats {
+    pub peers: u64,
+    pub rtt_mean_ms: f64,
+    pub rtt_max_ms: f64,
+    pub loss_mean_pct: f64,
+    pub loss_max_pct: f64,
+    /// Instantaneous sums of ENet's per-peer interval counters (reset by ENet every
+    /// `PEER_PACKET_LOSS_INTERVAL`); only the ratio of the two is meaningful.
+    pub packets_sent_sum: u64,
+    pub packets_lost_sum: u64,
+}
+
 pub fn process_sample() -> Option<ProcessSample> {
     #[cfg(target_os = "linux")]
     {
@@ -273,6 +290,7 @@ impl Measurement {
         &mut self,
         world: &World,
         transport: Option<&crate::net::transport::TransportObservation>,
+        enet: &EnetPeerStats,
     ) {
         if !self.window_loaded {
             if let Ok(text) = std::fs::read_to_string(self.directory.join("window.json")) {
@@ -282,7 +300,7 @@ impl Measurement {
                 self.window_loaded = true;
             }
         }
-        self.write_sample(world, "", transport);
+        self.write_sample(world, "", transport, Some(enet));
     }
 
     pub fn check_boundaries(&mut self, world: &World) {
@@ -295,7 +313,7 @@ impl Measurement {
             .collect();
         self.boundaries.retain(|(_, stamp)| *stamp > now);
         for name in due {
-            self.write_sample(world, &name, None);
+            self.write_sample(world, &name, None, None);
         }
     }
 
@@ -304,6 +322,7 @@ impl Measurement {
         world: &World,
         boundary: &str,
         transport: Option<&crate::net::transport::TransportObservation>,
+        enet: Option<&EnetPeerStats>,
     ) {
         let mono = self.origin.elapsed().as_nanos();
         let bytes = |counts: &[[u64; 3]; 256]| {
@@ -326,6 +345,7 @@ impl Measurement {
             "boundary": boundary,
             "timing_bounds_us": TIMING_BOUNDS_US, "loop_phases": self.loop_phases,
             "transport": transport,
+            "enet": enet,
             "process": process_sample(),
             "tick": world.tick_count,
             "sent_bytes_by_type_channel": bytes(&self.sent), "received_bytes_by_type_channel": bytes(&self.received),
