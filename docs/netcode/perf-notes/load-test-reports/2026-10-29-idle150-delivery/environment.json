@@ -1,0 +1,12 @@
+{
+  "platform": "macOS-27.0.1-arm64-arm-64bit",
+  "machine": "arm64",
+  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+  "binary_sha256": "3c47fb0ac03f1d8ec9249b00d1bf249312db6ab0fb82acb3040f1be8381bf37e",
+  "source_manifest_sha256": "741ac46301b54431f9eace742d33b438dfbacc113e4bec8d20e5cba387d8e6be",
+  "preparation_start_utc": "2026-10-29 08:11:14 UTC",
+  "preparation_deadline_utc": "2026-10-29 12:11:14 UTC",
+  "remote_commands": 0,
+  "remote_attempt_slots_consumed": 0,
+  "remote_workloads": 0
+}
