@@ -28,7 +28,7 @@ login_screen ──login ok──▶ has character? ──no──▶ character_
 | --- | --- | --- |
 | Login | `login_screen.gd` | Username/password → `AuthManager.login` (JWT); auto-login on saved token (`:201`); always routes to the **main menu** (the menu handles the no-character case). Themed art/font, button audio. A **"Use local server (dev)"** checkbox switches the auth/account API between production (`ClientConfig.production_api_base_url`) and the local Go API (`local_api_base_url`) via `AuthManager.set_use_local_api`, persisting the choice to `UserPreferences.use_local_api` (logs out any active session so the next login re-auths against the new server). |
 | Character creation | `character_creation.gd` | Validates name (3–16 chars, `^[a-zA-Z0-9_]+$`, `:9-11`); a **class picker** (looping south-facing run-cycle preview from `SheetLibrary.class_frames` + 7 class buttons) sets the class sent in `POST /api/character/create`; stores name+class in `GameManager`, → main menu. **Back to Main Menu** returns without logging out (non-destructive cancel). |
-| Main menu | `main_menu.gd` | Shows the account's **Glory** (sulfur-yellow `GloryLabel`) at the top, under the title. **With a character** — character card: a looping **run-cycle preview** (south-facing `run_0` from `SheetLibrary.class_frames`, tinted to match) sits left of the player-colour picker; the colour picker (tints the class sprite — see [`players-movement.md`](players-movement.md)) live-updates the preview tint; **username above class** (name white, class grey beneath), and a **Delete** button on the right (`DELETE /api/character` after a confirm → swaps the card for the Create Character button, stays on the menu). **Without a character** — the card is replaced by a **Create Character** button (`→ goto_character_creation`) and **Enter World / Enter Arena are disabled**. Region dropdown (`GET /api/regions`, width-matched to the buttons); **Enter World** dials the region's Sanctuary (8082) and `goto_sanctuary()`; **Enter Arena** dials the region's Arena (8081) directly and `goto_arena()`, skipping the town. **Settings** (above Logout) → `goto_settings()`. On entry it calls `AuthManager.refresh_character()` to re-confirm the character + Glory from the API (keeps the menu honest after an async permadeath). |
+| Main menu | `main_menu.gd` | Shows the account's **Glory** (muted antique-gold `GloryLabel`) at the top, under the title. **With a character** — character card: a looping **run-cycle preview** (south-facing `run_0` from `SheetLibrary.class_frames`, tinted to match) sits left of the player-colour picker; the colour picker (tints the class sprite — see [`players-movement.md`](players-movement.md)) live-updates the preview tint; **username above class** (name white, class grey beneath), and a **Delete** button on the right (`DELETE /api/character` after a confirm → swaps the card for the Create Character button, stays on the menu). **Without a character** — the card is replaced by a **Create Character** button (`→ goto_character_creation`) and **Enter World / Enter Arena are disabled**. Region dropdown (`GET /api/regions`, width-matched to the buttons); **Enter World** dials the region's Sanctuary (8082) and `goto_sanctuary()`; **Enter Arena** dials the region's Arena (8081) directly and `goto_arena()`, skipping the town. **Settings** (above Logout) → `goto_settings()`. On entry it calls `AuthManager.refresh_character()` to re-confirm the character + Glory from the API (keeps the menu honest after an async permadeath). |
 | Settings | `settings_screen.gd` (`settings_screen.tscn`) | Standalone tabbed Settings reached from the **Settings** button on both the login screen and the post-login main menu. **Audio** tab: Master/Music/SFX sliders (→ `GameManager.update_setting` → `AudioManager`). **Video** tab: a **Windowed Fullscreen** toggle (on = `window_mode` `windowed_fullscreen`, off = a small centred window) + **VSync**. **Controls** tab: read-only listing of every action (WASD, Shoot LMB, Ability RMB, Dash Space, Sprint, Interact, Map, Pause, Return to Sanctuary, Exit) and its live binding. **Back** → `SceneManager.return_from_settings()`, which returns to whoever opened it (`goto_settings(return_to)` records LOGIN vs. MAIN_MENU) — so opening Settings from the unauthenticated login screen returns to login, never the post-login menu. |
 | Loading | `loading_screen.gd` | Full-screen dark overlay with pulsing glow + animated dots; shown/hidden by `SceneManager._show_loading_screen` during transitions. The headline is **per-transition** (`set_loading_text`, threaded through `change_scene(…, loading_title)`): "ENTERING THE ARENA" (`goto_arena`), "ENTERING THE SANCTUARY" / "RETURNING TO SANCTUARY" (`goto_sanctuary`, from the menu vs. the Arena's "return to Sanctuary"), "RETURNING TO MENU" (Sanctuary "Exit to Menu"). **Every networked-world transition (enter/leave Arena & Sanctuary) now routes through the loading screen** so the disconnect+reconnect and the town's code-generated build are covered — no flash of the old scene and no false "connection lost". Pure menu-to-menu navigation still uses a direct fade. |
 
@@ -39,10 +39,66 @@ login_screen ──login ok──▶ has character? ──no──▶ character_
 | File | Role |
 | --- | --- |
 | `ui/error_dialog.gd` | Reusable `PopupPanel` with title/message + optional Retry; used by login, character creation, main menu. `popup_window = false` so it survives click-outside/focus loss; it closes only via its buttons. |
-| `ui/menu_button_helper.gd` | Applies the shared `StyleBoxTexture` button art + sizing to a button list. |
-| `ui/menu_font_helper.gd` | Recursively applies `CormorantUnicase-Bold` to every `Control` in a tree (`:7-25`). |
+| `ui/helpers/menu_button_helper.gd` | Applies consistent full-size or compact button sizing; all visual states inherit the shared project Theme. |
+| `ui/helpers/menu_font_helper.gd` | Applies `CormorantUnicase-Bold` to headings and action buttons; body copy and numeric values retain the readable body font. |
 | `region_info.gd` | Region DTO (`from_dict`, `is_available`, `get_display_text`) backing the dropdown. |
 | `user_preferences.gd` | `RefCounted`, persists selected region + player colour + keybinds + the **local-API toggle** (`use_local_api`) to `user://preferences.json` (`:6`). The **only** client-side persistence here. |
+
+### Shared visual skin
+
+`client/themes/grimdark.tres` is the project-wide Theme. Buttons (including dynamic rebind
+buttons), panels, dropdowns, tabs, sliders, checkboxes, scrollbars, inputs and popups share
+dark iron PNG surfaces, silver/iron SVG hardware and bone text, with small bronze accents
+in sigils and keyboard focus. HUD rails, slots, minimap and kill-feed frames retain the
+muted aged-bronze palette. `DeathButton` preserves that bronze palette in every action state. `PrimaryButton` provides the red
+primary action; `DisplayLabel` provides the heading face. Focus is a separate transparent
+outline, so it does not obscure hover/pressed states. Input borders use two logical units
+so fractional menu downscaling cannot drop the top edge. Popup error/confirm dialogs use the
+same panel resource.
+
+`scripts/art/build_ui_theme.py` regenerates the Theme and editable pixel-aligned SVG hardware.
+`LayeredUIStyle` draws a quiet PNG material under a transparent, nine-sliced SVG rim.
+Native Controls retain text, focus, hit testing and content margins. Wide button surfaces
+sample a strip of the PNG rather than flattening its grain. Shared `CanvasTexture` resources
+filter only the material linearly, preserving the world's existing pixel filtering. Ordinary
+menus use `iron_surface.png`; crimson primary/selected controls use tinted iron. Softcore
+and Hardcore death content has no panel frame or textured background: a MarginContainer
+preserves its padding, skull crest, text and action above the existing screen dimming.
+The earlier `blood_surface.png` source is retained but no longer loaded by the shared theme.
+Everyday account/pause menus use a small centered SVG realm sigil. Pause/settings
+variations preserve their existing padding. Both original generated PNGs and prompt/source
+records live in `client/assets/ui/grimdark/manifest.json`; the generator never edits the bitmaps.
+The material regression checks transparent frame apertures across inherited button states
+and verifies that death content has no visual panel. Death content bounds, focused action and
+scaled pointer input are checked at desktop and narrow widths. No gameplay state is changed.
+The display font's MSDF import settings are versioned so menu text stays sharp when scaled.
+Test-scene launches and explicit `--windowed` / `-w` launches stay windowed from autoload
+startup, regardless of the saved game preference. This override is not persisted. Visual
+capture fixtures neither force always-on-top nor repeatedly grab desktop focus.
+`ResponsiveMenu` fits menu content to the window independently of the world/camera stretch
+policy. The main menu's Practice/Offline Sandbox row belongs to the screen's bottom-left
+corner, outside the card. `ResponsiveMenu.footer` reserves a footer lane when horizontal
+space is insufficient, preventing overlap at narrow widths. Login and character creation use the same framed, responsive shell; character
+class/mode choices participate in Tab navigation and validation text wraps within the form.
+Region labels truncate with a full-text tooltip; the dropdown reserves 40 logical
+pixels on the right and positions its single caret with a 14-pixel margin.
+
+Resource fills use `TextureProgressBar.nine_patch_stretch = true`. Their complete Control
+rectangles match the transparent openings in the frame assets; native texture width must
+never determine the trough size. Health and mana use mirrored 520×52 rails around the action slots, with openings
+`(20,16,490,20)` and `(10,16,490,20)` respectively. Stamina uses `(10,6,380,8)` inside a
+400×20 rail. HP and mana share the 60-pixel action slots' vertical centerline; the
+left, right and energy-to-action gaps all match the 8-pixel inter-slot spacing. The minimap's `MapContent` clips terrain in a 248-pixel opening, with a
+280-pixel frame and north label drawn above it. Kill notifications share its width and
+ornamentation, with a red skull, red killer name and blue victim name. Whole notification
+rows fade and expire together; names wrap as literal text. The leaderboard uses a quiet
+translucent background without the decorative outer frame.
+
+Pause → Settings → Controls preserves keyboard focus and unwinds one page on Back/Esc.
+The SceneTree continues running. The action indicators use 60-pixel framed icons and separate key badges for current input
+bindings, plus cooldown wedges and remaining seconds. The icon atlas contains dash, Charge,
+Shadowstep and Mageblast artwork; the class slot selects the local player's actual class.
+The four unused slots remain empty, without invented bindings or actions.
 
 ## In-Arena HUD
 
@@ -58,7 +114,7 @@ root and `@onready` node refs — no procedural `_build_ui()`.
 
 | Widget | Script | Shows / does | Anchor |
 | --- | --- | --- | --- |
-| HP bar | `hud/health_bar.gd` (`health_bar.tscn`) | current/max HP, colour-graded green→yellow→red via `tint_progress`, damage flash 0.3 s. | bottom-centre, **left slot** |
+| HP bar | `hud/health_bar.gd` (`health_bar.tscn`) | current/max HP, blood-red fill with low-health tint via `tint_progress`, damage flash 0.3 s. | bottom-centre, **left slot** |
 | Mana bar | `hud/resource_bar.gd` (`mana_bar.tscn`) | current/max mana, driven by `movement_sm.mana_changed`. | bottom-centre, **right slot** |
 | Stamina bar | `hud/resource_bar.gd` (`stamina_bar.tscn`) | sprint stamina (thin, spans the ability-bar width), driven by `movement_sm.stamina_changed`; frame flashes red when exhausted. | bottom-centre, **above the ability bar** |
 | Ability bar | `hud/ability_bar.gd` (`ability_bar.tscn`) | six slot frames + key labels; the SPACE slot draws a radial dash-cooldown wedge and the RMB slot a class-ability-cooldown wedge from `movement_sm` (both timers are owned by the Rust sim online and mirrored into the SM via `set_predicted_cooldowns`; offline the SM ticks them itself). | bottom-centre, **between HP & Mana** |
@@ -115,7 +171,7 @@ cosmetic, auto-freeing.
 - **Persisted:** `user://preferences.json` (region, player colour, **keyboard rebinds**, **local-API toggle**) and `user://settings.json` (`GameManager.settings`: volumes, vsync, `window_mode` — debounced save, force-flushed on quit via `GameManager._notification` (window close / `EXIT_TREE`) and the EXITING game state, **not** on entering the loading screen; `_load_settings` reloads + applies it at startup and migrates the legacy boolean `fullscreen` key away); accounts/characters (incl. class, **level + experience**) and **account Glory** persist via the Go API. The project **boots windowed** (`project.godot` `window/size/mode=0`) and applies the saved/default `window_mode` at startup — the game still **defaults to windowed-fullscreen**, but on macOS leaving a native fullscreen Space on the first frame is unreliable, so we only ever transition *into* fullscreen at runtime.
 - **Validated:** client-side input only — name regex/length (`character_creation.gd:72-94`); the server re-decides all gameplay.
 - **Can fail:** `[ext_resource]`-referencing `game_hud.tscn` from a level scene would pull the client-only HUD scripts into the headless parse graph (so it's always `load()`ed at runtime); stale `EntityNameCache` shows blank killer/feed names; region fetch failure falls back to defaults (`main_menu.gd._populate_default_regions`). **Character creation** can return HTTP 409 `{"error":"User already has a character","code":"character_exists"}` while a hardcore permadeath delete is still in flight — `character_creation.gd` self-heals by re-syncing `/api/character/me` (`AuthManager.refresh_character`) and either routing to the surviving character or retrying the create once.
-- **Tested:** `scenes/test/hud_bar_regression.tscn` exercises the health bar (instantiates `health_bar.tscn`, asserts the fill ratio); `scenes/test/settings_save_regression.tscn` exercises the settings debounced-save force-flush on shutdown (`GameManager._notification`) + idempotency and the `SceneManager.goto_settings()`/`return_from_settings()` return-target routing (LOGIN vs. MAIN_MENU), backing up/restoring `user://settings.json`. Both quit 0 on PASS. Otherwise manual/visual. The offline Sandbox now reuses the shared `GameHud` (kill feed / leaderboard / minimap / death screen) instead of bespoke overlays.
+- **Tested:** `scenes/test/hud_bar_regression.tscn` checks all three resource bars at negative, empty, partial, full and overfull values, complete trough rectangles, stretch mode and transparent frame openings. `scenes/test/ui_theme_regression.tscn` checks native menu/HUD composition, dropdown spacing, focus restoration, transformed button hit areas and narrow-window bounds; run with `-- --capture=/tmp/omega-ui` under a graphical renderer to capture the scenes. `scenes/test/settings_save_regression.tscn` exercises the settings debounced-save force-flush on shutdown (`GameManager._notification`) + idempotency and the `SceneManager.goto_settings()`/`return_from_settings()` return-target routing (LOGIN vs. MAIN_MENU), backing up/restoring `user://settings.json`. Both quit 0 on PASS. Otherwise manual/visual. The offline Sandbox now reuses the shared `GameHud` (kill feed / leaderboard / minimap / death screen) instead of bespoke overlays.
 
 ## See also
 

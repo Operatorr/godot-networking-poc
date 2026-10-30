@@ -60,6 +60,13 @@ func _ready() -> void:
 
 	_build_rebind_rows()
 	_load_settings()
+	get_viewport().size_changed.connect(_fit_panels)
+	_fit_panels.call_deferred()
+
+
+func _fit_panels() -> void:
+	ResponsiveMenu.fit_panel(_panel)
+	ResponsiveMenu.fit_panel(_controls_panel)
 
 
 func _load_settings() -> void:
@@ -138,8 +145,18 @@ func _update_setting(key: String, value: Variant) -> void:
 
 
 func _on_back_pressed() -> void:
+	_cancel_listening()
+	_hide_controls()
 	visible = false
 	back_pressed.emit()
+
+
+## Back unwinds one page without leaving focus on a hidden control.
+func go_back() -> void:
+	if _controls_panel.visible:
+		_hide_controls()
+	else:
+		_on_back_pressed()
 
 
 func _get_game_manager() -> Node:
@@ -183,6 +200,7 @@ func _show_controls() -> void:
 	if _controls_panel:
 		_controls_panel.visible = true
 	_refresh_keybind_labels()
+	$ControlsPanel/VBox/ButtonRow/BackButton.grab_focus()
 
 
 func _hide_controls() -> void:
@@ -191,6 +209,7 @@ func _hide_controls() -> void:
 		_controls_panel.visible = false
 	if _panel:
 		_panel.visible = true
+	$Panel/VBox/ControlsButton.grab_focus()
 
 
 ## Update every rebind button to show the key currently bound to its action.

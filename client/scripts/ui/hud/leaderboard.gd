@@ -19,7 +19,7 @@ const ICON_SIZE := 18
 ## Row-background tints (the row's StyleBoxFlat bg_color). Default is fully transparent so only the
 ## class-colored text shows; local/flash get a translucent wash that leaves the text legible.
 const BG_TRANSPARENT := Color(0, 0, 0, 0)
-const BG_LOCAL := Color(0.30, 0.90, 0.30, 0.14)
+const BG_LOCAL := Color(0.58, 0.42, 0.20, 0.22)
 const BG_FLASH := Color(1.0, 0.85, 0.2, 0.30)
 ## Kill-count column color (gold), constant across rows.
 const KILLS_COLOR := Color(1.0, 0.86, 0.45)
@@ -50,12 +50,8 @@ func _build_rows() -> void:
 		style.bg_color = BG_TRANSPARENT
 		style.content_margin_left = 4.0
 		style.content_margin_right = 4.0
-		style.content_margin_top = 1.0
-		style.content_margin_bottom = 1.0
-		style.corner_radius_top_left = 3
-		style.corner_radius_top_right = 3
-		style.corner_radius_bottom_left = 3
-		style.corner_radius_bottom_right = 3
+		style.content_margin_top = 4.0
+		style.content_margin_bottom = 4.0
 
 		var panel := PanelContainer.new()
 		panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -65,6 +61,13 @@ func _build_rows() -> void:
 		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		row.add_theme_constant_override("separation", 6)
 		panel.add_child(row)
+
+		var rank := Label.new()
+		rank.text = "%02d" % (_i + 1)
+		rank.custom_minimum_size.x = 24
+		rank.add_theme_font_size_override("font_size", 12)
+		rank.add_theme_color_override("font_color", Color(0.72, 0.61, 0.41))
+		row.add_child(rank)
 
 		var icon := TextureRect.new()
 		icon.custom_minimum_size = Vector2(ICON_SIZE, ICON_SIZE)
@@ -169,7 +172,8 @@ func _make_signature(entries: Array[Dictionary]) -> String:
 
 func _refresh_display() -> void:
 	var show_count := EXPANDED_COUNT if _is_expanded else COMPACT_COUNT
-	_title_label.text = "LEADERBOARD" + (" (Tab)" if not _is_expanded else "")
+	_title_label.text = "LEADERBOARD" + ("  ·  TAB" if not _is_expanded else "  ·  TOP 10")
+	$Panel/VBox/Empty.visible = _entries.is_empty()
 
 	for i in _rows.size():
 		var row: Dictionary = _rows[i]
@@ -199,7 +203,7 @@ func _refresh_display() -> void:
 			elif entity_id == GameManager.get_local_player_entity_id():
 				style.bg_color = BG_LOCAL
 			else:
-				style.bg_color = BG_TRANSPARENT
+				style.bg_color = Color(1, 1, 1, 0.025) if i % 2 == 0 else BG_TRANSPARENT
 
 			row["panel"].visible = true
 		else:

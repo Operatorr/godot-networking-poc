@@ -12,6 +12,7 @@ extends Control
 @export var fill_color: Color = Color.WHITE
 ## Whether to draw the centered numeric label (the $Label node, if present).
 @export var show_label: bool = false
+@export var value_suffix: String = "MP"
 
 var _current: float = 0.0
 var _maximum: float = 100.0
@@ -63,4 +64,4 @@ func _update_display() -> void:
 		return
 	_fill.value = clampf(_current / _maximum, 0.0, 1.0)
 	if _label != null and show_label:
-		_label.text = "%d / %d" % [roundi(_current), roundi(_maximum)]
+		_label.text = "%d / %d %s" % [roundi(_current), roundi(_maximum), value_suffix]

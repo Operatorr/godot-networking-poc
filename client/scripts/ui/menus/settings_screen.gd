@@ -49,21 +49,25 @@ func _ready() -> void:
 
 func _build_ui() -> void:
 	var bg := ColorRect.new()
-	bg.color = Color(0.04, 0.03, 0.05, 1.0)
+	bg.color = Color(0.025, 0.032, 0.039, 1.0)
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bg)
 
-	var center := CenterContainer.new()
+	var center := ResponsiveMenu.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(center)
 
+	var panel := PanelContainer.new()
+	center.add_child(panel)
+
 	var col := VBoxContainer.new()
-	col.custom_minimum_size = Vector2(640, 0)
+	col.custom_minimum_size = Vector2(560, 0)
 	col.add_theme_constant_override("separation", 16)
-	center.add_child(col)
+	panel.add_child(col)
 
 	var title := Label.new()
+	title.name = "Title"
 	title.text = "SETTINGS"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 40)
@@ -71,7 +75,7 @@ func _build_ui() -> void:
 	col.add_child(title)
 
 	var tabs := TabContainer.new()
-	tabs.custom_minimum_size = Vector2(640, 460)
+	tabs.custom_minimum_size = Vector2(560, 460)
 	tabs.add_child(_build_audio_tab())
 	tabs.add_child(_build_video_tab())
 	tabs.add_child(_build_controls_tab())

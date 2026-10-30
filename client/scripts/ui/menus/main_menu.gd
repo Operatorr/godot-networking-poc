@@ -7,9 +7,9 @@ const MenuButtonHelper := preload("res://scripts/ui/helpers/menu_button_helper.g
 const ConfirmDialogScene := preload("res://scenes/ui/dialogs/confirm_dialog.tscn")
 const MENU_BACKGROUND_PATH := "res://assets/ui/backgrounds/menu_background_004.jpg"
 const TITLE_FONT_PATH := "res://assets/fonts/CormorantUnicase-Bold.ttf"
-const TITLE_COLOR := Color(0.12, 0.12, 0.11)
+const TITLE_COLOR := Color(0.85, 0.82, 0.74)
 const TITLE_OUTLINE_COLOR := Color.BLACK
-const TITLE_GLOW_COLOR := Color(0.62, 0.62, 0.58, 0.58)
+const TITLE_GLOW_COLOR := Color(0.22, 0.13, 0.07, 0.4)
 const REGION_REFRESH_INTERVAL := 5.0
 ## Upper bound on awaiting the Sanctuary link (NetworkManager's own connect timeout is shorter).
 const CONNECT_TIMEOUT_SEC := 10.0
@@ -23,21 +23,21 @@ const CHARACTER_PREVIEW_SPRITE_PX := 128.0
 
 ## UI Node references
 @onready var menu_background: Control = $MenuBackground
-@onready var character_panel: Control = $CenterContainer/VBoxContainer/CharacterPanel
-@onready var player_color_picker: ColorPickerButton = $CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer/PlayerColorPicker
-@onready var character_name_label: Label = $CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer/CharacterInfo/CharacterNameLabel
-@onready var character_class_label: Label = $CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer/CharacterInfo/CharacterLabel
-@onready var delete_button: Button = $CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer/DeleteButton
-@onready var region_dropdown: OptionButton = $CenterContainer/VBoxContainer/RegionDropdown
-@onready var enter_world_button: Button = $CenterContainer/VBoxContainer/EnterWorldButton
-@onready var enter_arena_button: Button = $CenterContainer/VBoxContainer/EnterArenaButton
-@onready var practice_button: Button = $BottomLeftActions/PracticeButton
-@onready var offline_sandbox_button: Button = $BottomLeftActions/OfflineSandboxButton
-@onready var settings_button: Button = $CenterContainer/VBoxContainer/SettingsButton
-@onready var logout_button: Button = $CenterContainer/VBoxContainer/LogoutButton
-@onready var exit_button: Button = $CenterContainer/VBoxContainer/ExitButton
-@onready var status_label: Label = $CenterContainer/VBoxContainer/StatusLabel
-@onready var glory_label: Label = $CenterContainer/VBoxContainer/GloryLabel
+@onready var character_panel: Control = $CenterContainer/Panel/VBoxContainer/CharacterPanel
+@onready var player_color_picker: ColorPickerButton = $CenterContainer/Panel/VBoxContainer/CharacterPanel/HBoxContainer/PlayerColorPicker
+@onready var character_name_label: Label = $CenterContainer/Panel/VBoxContainer/CharacterPanel/HBoxContainer/CharacterInfo/CharacterNameLabel
+@onready var character_class_label: Label = $CenterContainer/Panel/VBoxContainer/CharacterPanel/HBoxContainer/CharacterInfo/CharacterLabel
+@onready var delete_button: Button = $CenterContainer/Panel/VBoxContainer/CharacterPanel/HBoxContainer/DeleteButton
+@onready var region_dropdown: OptionButton = $CenterContainer/Panel/VBoxContainer/RegionDropdown
+@onready var enter_world_button: Button = $CenterContainer/Panel/VBoxContainer/EnterWorldButton
+@onready var enter_arena_button: Button = $CenterContainer/Panel/VBoxContainer/EnterArenaButton
+@onready var practice_button: Button = $TrainingActions/PracticeButton
+@onready var offline_sandbox_button: Button = $TrainingActions/OfflineSandboxButton
+@onready var settings_button: Button = $CenterContainer/Panel/VBoxContainer/SettingsButton
+@onready var logout_button: Button = $CenterContainer/Panel/VBoxContainer/LogoutButton
+@onready var exit_button: Button = $CenterContainer/Panel/VBoxContainer/ExitButton
+@onready var status_label: Label = $CenterContainer/Panel/VBoxContainer/StatusLabel
+@onready var glory_label: Label = $CenterContainer/Panel/VBoxContainer/GloryLabel
 @onready var error_dialog: PopupPanel = $ErrorDialog
 
 ## Looping run-cycle preview of the player's character, shown left of the color picker.
@@ -172,7 +172,7 @@ func _apply_dark_theme() -> void:
 			push_warning("[MainMenu] Unsupported MenuBackground node type: %s" % menu_background.get_class())
 
 	# Style title
-	var title_label: Label = $CenterContainer/VBoxContainer/TitleLabel
+	var title_label: Label = $CenterContainer/Panel/VBoxContainer/TitleLabel
 	if title_label:
 		var title_font := load(TITLE_FONT_PATH) as FontFile
 		if title_font:
@@ -184,10 +184,10 @@ func _apply_dark_theme() -> void:
 		title_label.add_theme_color_override("font_color", TITLE_COLOR)
 		title_label.add_theme_color_override("font_outline_color", TITLE_OUTLINE_COLOR)
 		title_label.add_theme_color_override("font_shadow_color", TITLE_GLOW_COLOR)
-		title_label.add_theme_constant_override("outline_size", 8)
+		title_label.add_theme_constant_override("outline_size", 2)
 		title_label.add_theme_constant_override("shadow_offset_x", 0)
 		title_label.add_theme_constant_override("shadow_offset_y", 0)
-		title_label.add_theme_constant_override("shadow_outline_size", 12)
+		title_label.add_theme_constant_override("shadow_outline_size", 2)
 		title_label.add_theme_font_size_override("font_size", 56)
 
 	# Style status label
@@ -195,10 +195,11 @@ func _apply_dark_theme() -> void:
 		status_label.add_theme_color_override("font_color", Color.WHITE)
 
 	MenuButtonHelper.apply_to_buttons([
-		enter_world_button, enter_arena_button, practice_button,
-		offline_sandbox_button, settings_button, logout_button, exit_button
+		enter_world_button, enter_arena_button, settings_button, logout_button, exit_button
 	])
 
+	MenuButtonHelper.apply_to_button(practice_button, false)
+	MenuButtonHelper.apply_to_button(offline_sandbox_button, false)
 
 ## Update character display panel
 func _update_character_display() -> void:
@@ -232,7 +233,7 @@ func _update_character_display() -> void:
 ## artwork, faces south (run_0 = downwards), and is tinted by the player color the same way
 ## Player.set_player_color does.
 func _build_character_preview() -> void:
-	var hbox: HBoxContainer = $CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer
+	var hbox: HBoxContainer = $CenterContainer/Panel/VBoxContainer/CharacterPanel/HBoxContainer
 
 	_character_preview_holder = Control.new()
 	_character_preview_holder.name = "CharacterPreview"
@@ -291,7 +292,7 @@ func _apply_character_preview_tint() -> void:
 ## Build the "Create Character" button, slotted where the character card sits in the VBox.
 ## Visible only when no character exists (toggled in _update_character_display).
 func _build_create_character_button() -> void:
-	var vbox: VBoxContainer = $CenterContainer/VBoxContainer
+	var vbox: VBoxContainer = $CenterContainer/Panel/VBoxContainer
 	_create_character_button = Button.new()
 	_create_character_button.name = "CreateCharacterButton"
 	_create_character_button.text = "Create Character"
@@ -444,6 +445,7 @@ func _populate_region_dropdown() -> void:
 
 	if region_dropdown.get_item_count() > 0:
 		region_dropdown.select(selected_index)
+		region_dropdown.tooltip_text = region_dropdown.get_item_text(selected_index)
 		var selected_region_index := region_dropdown.get_item_id(selected_index)
 		GameManager.player_data["selected_region"] = regions[selected_region_index].id
 
@@ -472,6 +474,7 @@ func _populate_default_regions() -> void:
 func _on_region_selected(index: int) -> void:
 	if index < 0 or index >= region_dropdown.get_item_count():
 		return
+	region_dropdown.tooltip_text = region_dropdown.get_item_text(index)
 
 	var region_index := region_dropdown.get_item_id(index)
 	if region_index < 0 or region_index >= regions.size():

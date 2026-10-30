@@ -1,10 +1,14 @@
-[gd_scene load_steps=6 format=3 uid="uid://c2main_menu_new"]
+[gd_scene load_steps=8 format=3 uid="uid://c2main_menu_new"]
 
 [ext_resource type="Script" path="res://scripts/ui/menus/main_menu.gd" id="1_script"]
 [ext_resource type="PackedScene" uid="uid://c2error_dialog" path="res://scenes/ui/dialogs/error_dialog.tscn" id="2_error_dialog"]
 [ext_resource type="FontFile" path="res://assets/fonts/CormorantUnicase-Bold.ttf" id="3_title_font"]
 [ext_resource type="VideoStream" path="res://assets/ui/backgrounds/menu_background_loop.ogv" id="4_bg_video"]
 [ext_resource type="Script" path="res://scripts/ui/helpers/themed_button.gd" id="5_themed_button"]
+
+[ext_resource type="Texture2D" path="res://assets/ui/grimdark/realm_sigil.svg" id="6_crest"]
+
+[ext_resource type="Script" path="res://scripts/ui/helpers/responsive_menu.gd" id="97_responsive"]
 
 [node name="MainMenu" type="Control"]
 layout_mode = 3
@@ -29,7 +33,9 @@ autoplay = true
 expand = true
 loop = true
 
-[node name="CenterContainer" type="CenterContainer" parent="."]
+[node name="CenterContainer" type="CenterContainer" parent="." node_paths=PackedStringArray("footer")]
+script = ExtResource("97_responsive")
+footer = NodePath("../TrainingActions")
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -37,42 +43,54 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="VBoxContainer" type="VBoxContainer" parent="CenterContainer"]
-custom_minimum_size = Vector2(520, 0)
+[node name="Panel" type="PanelContainer" parent="CenterContainer"]
 layout_mode = 2
-theme_override_constants/separation = 15
 
-[node name="TitleLabel" type="Label" parent="CenterContainer/VBoxContainer"]
-custom_minimum_size = Vector2(520, 86)
+[node name="VBoxContainer" type="VBoxContainer" parent="CenterContainer/Panel"]
+custom_minimum_size = Vector2(480, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.12, 0.12, 0.11, 1)
+theme_override_constants/separation = 10
+
+[node name="Crest" type="TextureRect" parent="CenterContainer/Panel/VBoxContainer"]
+custom_minimum_size = Vector2(0, 72)
+layout_mode = 2
+mouse_filter = 2
+texture_filter = 1
+texture = ExtResource("6_crest")
+expand_mode = 1
+stretch_mode = 3
+
+[node name="TitleLabel" type="Label" parent="CenterContainer/Panel/VBoxContainer"]
+custom_minimum_size = Vector2(480, 64)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.82, 0.74, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_colors/font_shadow_color = Color(0.62, 0.62, 0.58, 0.58)
-theme_override_constants/outline_size = 8
+theme_override_constants/outline_size = 2
 theme_override_constants/shadow_offset_x = 0
 theme_override_constants/shadow_offset_y = 0
-theme_override_constants/shadow_outline_size = 12
+theme_override_constants/shadow_outline_size = 2
 theme_override_fonts/font = ExtResource("3_title_font")
 theme_override_font_sizes/font_size = 56
 text = "OMEGA REALM"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="GloryLabel" type="Label" parent="CenterContainer/VBoxContainer"]
+[node name="GloryLabel" type="Label" parent="CenterContainer/Panel/VBoxContainer"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.906, 0.835, 0.137, 1)
+theme_override_colors/font_color = Color(0.71, 0.60, 0.38, 1)
 theme_override_font_sizes/font_size = 22
 text = "Glory: 0"
 horizontal_alignment = 1
 
-[node name="HSeparator" type="HSeparator" parent="CenterContainer/VBoxContainer"]
+[node name="HSeparator" type="HSeparator" parent="CenterContainer/Panel/VBoxContainer"]
 layout_mode = 2
 
-[node name="CharacterPanel" type="Control" parent="CenterContainer/VBoxContainer"]
+[node name="CharacterPanel" type="Control" parent="CenterContainer/Panel/VBoxContainer"]
 custom_minimum_size = Vector2(400, 80)
 layout_mode = 2
 
-[node name="HBoxContainer" type="HBoxContainer" parent="CenterContainer/VBoxContainer/CharacterPanel"]
+[node name="HBoxContainer" type="HBoxContainer" parent="CenterContainer/Panel/VBoxContainer/CharacterPanel"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -81,28 +99,28 @@ grow_horizontal = 2
 grow_vertical = 2
 theme_override_constants/separation = 20
 
-[node name="PlayerColorPicker" type="ColorPickerButton" parent="CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer"]
+[node name="PlayerColorPicker" type="ColorPickerButton" parent="CenterContainer/Panel/VBoxContainer/CharacterPanel/HBoxContainer"]
 custom_minimum_size = Vector2(64, 64)
 layout_mode = 2
 size_flags_vertical = 4
 tooltip_text = "Player color"
 
-[node name="CharacterInfo" type="VBoxContainer" parent="CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer"]
+[node name="CharacterInfo" type="VBoxContainer" parent="CenterContainer/Panel/VBoxContainer/CharacterPanel/HBoxContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 alignment = 1
 
-[node name="CharacterNameLabel" type="Label" parent="CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer/CharacterInfo"]
+[node name="CharacterNameLabel" type="Label" parent="CenterContainer/Panel/VBoxContainer/CharacterPanel/HBoxContainer/CharacterInfo"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "Player Name"
 
-[node name="CharacterLabel" type="Label" parent="CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer/CharacterInfo"]
+[node name="CharacterLabel" type="Label" parent="CenterContainer/Panel/VBoxContainer/CharacterPanel/HBoxContainer/CharacterInfo"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
 text = "Character"
 
-[node name="DeleteButton" type="Button" parent="CenterContainer/VBoxContainer/CharacterPanel/HBoxContainer"]
+[node name="DeleteButton" type="Button" parent="CenterContainer/Panel/VBoxContainer/CharacterPanel/HBoxContainer"]
 custom_minimum_size = Vector2(120, 56)
 layout_mode = 2
 size_flags_horizontal = 8
@@ -111,84 +129,84 @@ tooltip_text = "Delete this character"
 text = "Delete"
 script = ExtResource("5_themed_button")
 
-[node name="HSeparator2" type="HSeparator" parent="CenterContainer/VBoxContainer"]
+[node name="HSeparator2" type="HSeparator" parent="CenterContainer/Panel/VBoxContainer"]
 layout_mode = 2
 
-[node name="RegionLabel" type="Label" parent="CenterContainer/VBoxContainer"]
+[node name="RegionLabel" type="Label" parent="CenterContainer/Panel/VBoxContainer"]
 layout_mode = 2
-text = "Select Region"
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(0.65, 0.61, 0.52, 1)
+text = "REALM"
 
-[node name="RegionDropdown" type="OptionButton" parent="CenterContainer/VBoxContainer"]
-custom_minimum_size = Vector2(320, 40)
+[node name="RegionDropdown" type="OptionButton" parent="CenterContainer/Panel/VBoxContainer"]
+custom_minimum_size = Vector2(320, 48)
 layout_mode = 2
-size_flags_horizontal = 4
+size_flags_horizontal = 3
+fit_to_longest_item = false
+text_overrun_behavior = 3
 
-[node name="HSeparator3" type="HSeparator" parent="CenterContainer/VBoxContainer"]
+[node name="HSeparator3" type="HSeparator" parent="CenterContainer/Panel/VBoxContainer"]
 layout_mode = 2
 
-[node name="EnterWorldButton" type="Button" parent="CenterContainer/VBoxContainer"]
-custom_minimum_size = Vector2(320, 72)
-layout_mode = 2
-size_flags_horizontal = 4
-theme_override_font_sizes/font_size = 20
-text = "Enter World"
-
-[node name="EnterArenaButton" type="Button" parent="CenterContainer/VBoxContainer"]
-custom_minimum_size = Vector2(320, 72)
+[node name="EnterWorldButton" type="Button" parent="CenterContainer/Panel/VBoxContainer"]
+custom_minimum_size = Vector2(320, 52)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 20
-text = "Enter Arena"
+theme_type_variation = &"PrimaryButton"
+text = "ENTER WORLD"
 
-[node name="StatusLabel" type="Label" parent="CenterContainer/VBoxContainer"]
+[node name="EnterArenaButton" type="Button" parent="CenterContainer/Panel/VBoxContainer"]
+custom_minimum_size = Vector2(320, 52)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 20
+text = "ENTER ARENA"
+
+[node name="StatusLabel" type="Label" parent="CenterContainer/Panel/VBoxContainer"]
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 text = ""
 horizontal_alignment = 1
 
-[node name="HSeparator4" type="HSeparator" parent="CenterContainer/VBoxContainer"]
+[node name="HSeparator4" type="HSeparator" parent="CenterContainer/Panel/VBoxContainer"]
 layout_mode = 2
 
-[node name="SettingsButton" type="Button" parent="CenterContainer/VBoxContainer"]
-custom_minimum_size = Vector2(320, 72)
-layout_mode = 2
-size_flags_horizontal = 4
-text = "Settings"
-
-[node name="LogoutButton" type="Button" parent="CenterContainer/VBoxContainer"]
-custom_minimum_size = Vector2(320, 72)
+[node name="SettingsButton" type="Button" parent="CenterContainer/Panel/VBoxContainer"]
+custom_minimum_size = Vector2(320, 52)
 layout_mode = 2
 size_flags_horizontal = 4
-text = "Logout"
+text = "SETTINGS"
 
-[node name="ExitButton" type="Button" parent="CenterContainer/VBoxContainer"]
-custom_minimum_size = Vector2(320, 72)
+[node name="LogoutButton" type="Button" parent="CenterContainer/Panel/VBoxContainer"]
+custom_minimum_size = Vector2(320, 52)
 layout_mode = 2
 size_flags_horizontal = 4
-text = "Exit Game"
+text = "LOGOUT"
 
-[node name="BottomLeftActions" type="VBoxContainer" parent="."]
-custom_minimum_size = Vector2(320, 156)
-layout_mode = 1
-anchor_top = 1.0
-anchor_bottom = 1.0
-offset_left = 40.0
-offset_top = -196.0
-offset_right = 360.0
-offset_bottom = -40.0
-grow_vertical = 0
-theme_override_constants/separation = 12
-
-[node name="PracticeButton" type="Button" parent="BottomLeftActions"]
-custom_minimum_size = Vector2(320, 72)
+[node name="ExitButton" type="Button" parent="CenterContainer/Panel/VBoxContainer"]
+custom_minimum_size = Vector2(320, 52)
 layout_mode = 2
-theme_override_font_sizes/font_size = 20
+size_flags_horizontal = 4
+text = "EXIT GAME"
+
+[node name="TrainingActions" type="HBoxContainer" parent="."]
+layout_mode = 0
+custom_minimum_size = Vector2(344, 44)
+theme_override_constants/separation = 10
+
+[node name="PracticeButton" type="Button" parent="TrainingActions"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 16
 text = "Practice"
 
-[node name="OfflineSandboxButton" type="Button" parent="BottomLeftActions"]
-custom_minimum_size = Vector2(320, 72)
+[node name="OfflineSandboxButton" type="Button" parent="TrainingActions"]
+custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
-theme_override_font_sizes/font_size = 20
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 16
 text = "Offline Sandbox"
 
 [node name="ErrorDialog" parent="." instance=ExtResource("2_error_dialog")]

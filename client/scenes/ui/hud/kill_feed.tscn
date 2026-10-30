@@ -5,10 +5,10 @@
 [node name="KillFeed" type="Control"]
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -320.0
-offset_top = 210.0
+offset_left = -300.0
+offset_top = 308.0
 offset_right = -20.0
-offset_bottom = 310.0
+offset_bottom = 512.0
 mouse_filter = 2
 script = ExtResource("1_killfeed")
 
@@ -20,4 +20,4 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-theme_override_constants/separation = 4
+theme_override_constants/separation = 6

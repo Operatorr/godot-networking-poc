@@ -75,8 +75,8 @@ func _update_display() -> void:
 
 
 ## --- Regression-test accessors (hud_bar_regression.tscn) -------------------------
-## The TextureProgressBar IS the trough now, so the fill can never exceed it by
-## construction; these expose the values the regression scene asserts on.
+## The regression checks the full trough rect AND nine-patch stretching: an
+## intrinsic texture width can otherwise force a small Control beyond its frame.
 func get_fill_ratio() -> float:
 	return _fill.value if _fill != null else 0.0
 

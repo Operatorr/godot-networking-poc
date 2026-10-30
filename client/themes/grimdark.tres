@@ -1,0 +1,640 @@
+[gd_resource type="Theme" load_steps=67 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/helpers/layered_ui_style.gd" id="layered_style"]
+[ext_resource type="Texture2D" path="res://assets/ui/grimdark/iron_surface.png" id="surface_iron"]
+[ext_resource type="Texture2D" path="res://assets/ui/grimdark/button.svg" id="tex_button"]
+[ext_resource type="Texture2D" path="res://assets/ui/grimdark/button_hover.svg" id="tex_button_hover"]
+[ext_resource type="Texture2D" path="res://assets/ui/grimdark/button_pressed.svg" id="tex_button_pressed"]
+[ext_resource type="Texture2D" path="res://assets/ui/grimdark/button_disabled.svg" id="tex_button_disabled"]
+[ext_resource type="Texture2D" path="res://assets/ui/grimdark/button_primary.svg" id="tex_button_primary"]
+[ext_resource type="Texture2D" path="res://assets/ui/grimdark/button_primary_hover.svg" id="tex_button_primary_hover"]
+[ext_resource type="Texture2D" path="res://assets/ui/grimdark/panel.svg" id="tex_panel"]
+[ext_resource type="Texture2D" path="res://assets/ui/grimdark/death_button_primary.svg" id="tex_death_button_primary"]
+[ext_resource type="Texture2D" path="res://assets/ui/grimdark/death_button_primary_hover.svg" id="tex_death_button_primary_hover"]
+[ext_resource type="Texture2D" path="res://assets/ui/grimdark/death_button_pressed.svg" id="tex_death_button_pressed"]
+[ext_resource type="Texture2D" path="res://assets/ui/grimdark/death_button_disabled.svg" id="tex_death_button_disabled"]
+[ext_resource type="FontFile" path="res://assets/fonts/CormorantUnicase-Bold.ttf" id="display_font"]
+[ext_resource type="Texture2D" path="res://assets/ui/grimdark/caret.svg" id="tex_caret"]
+[ext_resource type="Texture2D" path="res://assets/ui/grimdark/grabber.svg" id="tex_grabber"]
+[ext_resource type="Texture2D" path="res://assets/ui/grimdark/check_on.svg" id="tex_check_on"]
+[ext_resource type="Texture2D" path="res://assets/ui/grimdark/check_off.svg" id="tex_check_off"]
+
+[sub_resource type="CanvasTexture" id="material_iron"]
+diffuse_texture = ExtResource("surface_iron")
+texture_filter = 2
+
+[sub_resource type="StyleBoxTexture" id="button_frame"]
+texture = ExtResource("tex_button")
+texture_margin_left = 16.0
+texture_margin_top = 16.0
+texture_margin_right = 16.0
+texture_margin_bottom = 16.0
+
+[sub_resource type="StyleBox" id="button"]
+script = ExtResource("layered_style")
+frame = SubResource("button_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.045,0.06,0.06,1)
+surface_modulate = Color(1,1,1,0.3)
+crop_surface = true
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 16.0
+content_margin_bottom = 12.0
+
+[sub_resource type="StyleBoxTexture" id="button_hover_frame"]
+texture = ExtResource("tex_button_hover")
+texture_margin_left = 16.0
+texture_margin_top = 16.0
+texture_margin_right = 16.0
+texture_margin_bottom = 16.0
+
+[sub_resource type="StyleBox" id="button_hover"]
+script = ExtResource("layered_style")
+frame = SubResource("button_hover_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.11,0.13,0.12,1)
+surface_modulate = Color(1,1,1,0.3)
+crop_surface = true
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 16.0
+content_margin_bottom = 12.0
+
+[sub_resource type="StyleBoxTexture" id="button_pressed_frame"]
+texture = ExtResource("tex_button_pressed")
+texture_margin_left = 16.0
+texture_margin_top = 16.0
+texture_margin_right = 16.0
+texture_margin_bottom = 16.0
+
+[sub_resource type="StyleBox" id="button_pressed"]
+script = ExtResource("layered_style")
+frame = SubResource("button_pressed_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.17,0.045,0.037,1)
+surface_modulate = Color(1,1,1,0.2)
+crop_surface = true
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 16.0
+content_margin_bottom = 12.0
+
+[sub_resource type="StyleBoxTexture" id="button_disabled_frame"]
+texture = ExtResource("tex_button_disabled")
+texture_margin_left = 16.0
+texture_margin_top = 16.0
+texture_margin_right = 16.0
+texture_margin_bottom = 16.0
+
+[sub_resource type="StyleBox" id="button_disabled"]
+script = ExtResource("layered_style")
+frame = SubResource("button_disabled_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.035,0.04,0.038,1)
+surface_modulate = Color(1,1,1,0.18)
+crop_surface = true
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 16.0
+content_margin_bottom = 12.0
+
+[sub_resource type="StyleBoxTexture" id="button_primary_frame"]
+texture = ExtResource("tex_button_primary")
+texture_margin_left = 16.0
+texture_margin_top = 16.0
+texture_margin_right = 16.0
+texture_margin_bottom = 16.0
+
+[sub_resource type="StyleBox" id="button_primary"]
+script = ExtResource("layered_style")
+frame = SubResource("button_primary_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.32,0.065,0.055,1)
+surface_modulate = Color(1,1,1,0.3)
+crop_surface = true
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 16.0
+content_margin_bottom = 12.0
+
+[sub_resource type="StyleBoxTexture" id="button_primary_hover_frame"]
+texture = ExtResource("tex_button_primary_hover")
+texture_margin_left = 16.0
+texture_margin_top = 16.0
+texture_margin_right = 16.0
+texture_margin_bottom = 16.0
+
+[sub_resource type="StyleBox" id="button_primary_hover"]
+script = ExtResource("layered_style")
+frame = SubResource("button_primary_hover_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.43,0.095,0.075,1)
+surface_modulate = Color(1,1,1,0.3)
+crop_surface = true
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 16.0
+content_margin_bottom = 12.0
+
+[sub_resource type="StyleBoxTexture" id="panel_frame"]
+texture = ExtResource("tex_panel")
+texture_margin_left = 24.0
+texture_margin_top = 24.0
+texture_margin_right = 24.0
+texture_margin_bottom = 24.0
+
+[sub_resource type="StyleBox" id="panel"]
+script = ExtResource("layered_style")
+frame = SubResource("panel_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.045,0.06,0.06,1)
+surface_modulate = Color(1,1,1,0.4)
+crop_surface = false
+content_margin_left = 24.0
+content_margin_top = 24.0
+content_margin_right = 24.0
+content_margin_bottom = 24.0
+
+[sub_resource type="StyleBoxTexture" id="pause_panel_frame"]
+texture = ExtResource("tex_panel")
+texture_margin_left = 24.0
+texture_margin_top = 24.0
+texture_margin_right = 24.0
+texture_margin_bottom = 24.0
+
+[sub_resource type="StyleBox" id="pause_panel"]
+script = ExtResource("layered_style")
+frame = SubResource("pause_panel_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.045,0.06,0.06,1)
+surface_modulate = Color(1,1,1,0.4)
+crop_surface = false
+content_margin_left = 40.0
+content_margin_top = 40.0
+content_margin_right = 40.0
+content_margin_bottom = 40.0
+
+[sub_resource type="StyleBoxTexture" id="settings_panel_frame"]
+texture = ExtResource("tex_panel")
+texture_margin_left = 24.0
+texture_margin_top = 24.0
+texture_margin_right = 24.0
+texture_margin_bottom = 24.0
+
+[sub_resource type="StyleBox" id="settings_panel"]
+script = ExtResource("layered_style")
+frame = SubResource("settings_panel_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.045,0.06,0.06,1)
+surface_modulate = Color(1,1,1,0.4)
+crop_surface = false
+content_margin_left = 30.0
+content_margin_top = 20.0
+content_margin_right = 30.0
+content_margin_bottom = 20.0
+
+[sub_resource type="StyleBoxTexture" id="controls_panel_frame"]
+texture = ExtResource("tex_panel")
+texture_margin_left = 24.0
+texture_margin_top = 24.0
+texture_margin_right = 24.0
+texture_margin_bottom = 24.0
+
+[sub_resource type="StyleBox" id="controls_panel"]
+script = ExtResource("layered_style")
+frame = SubResource("controls_panel_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.045,0.06,0.06,1)
+surface_modulate = Color(1,1,1,0.4)
+crop_surface = false
+content_margin_left = 28.0
+content_margin_top = 20.0
+content_margin_right = 28.0
+content_margin_bottom = 20.0
+
+[sub_resource type="StyleBoxFlat" id="focus"]
+bg_color = Color(0,0,0,0)
+border_color = Color(0.9,0.76,0.48,1)
+border_width_left = 1
+content_margin_left = 0.0
+border_width_top = 1
+content_margin_top = 0.0
+border_width_right = 1
+content_margin_right = 0.0
+border_width_bottom = 1
+content_margin_bottom = 0.0
+
+[sub_resource type="StyleBoxFlat" id="input_focus"]
+bg_color = Color(0,0,0,0)
+border_color = Color(0.9,0.76,0.48,1)
+border_width_left = 2
+content_margin_left = 0.0
+border_width_top = 2
+content_margin_top = 0.0
+border_width_right = 2
+content_margin_right = 0.0
+border_width_bottom = 2
+content_margin_bottom = 0.0
+
+[sub_resource type="StyleBoxFlat" id="death_focus"]
+bg_color = Color(0,0,0,0)
+border_color = Color(0.78,0.65,0.44,1)
+border_width_left = 1
+content_margin_left = 0.0
+border_width_top = 1
+content_margin_top = 0.0
+border_width_right = 1
+content_margin_right = 0.0
+border_width_bottom = 1
+content_margin_bottom = 0.0
+
+[sub_resource type="StyleBoxFlat" id="input"]
+bg_color = Color(0.035,0.045,0.052,1)
+border_color = Color(0.33,0.38,0.35,1)
+border_width_left = 2
+content_margin_left = 12.0
+border_width_top = 2
+content_margin_top = 10.0
+border_width_right = 2
+content_margin_right = 12.0
+border_width_bottom = 2
+content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxFlat" id="separator"]
+bg_color = Color(0.25,0.29,0.27,1)
+border_color = Color(0, 0, 0, 0)
+border_width_left = 0
+content_margin_left = 0.0
+border_width_top = 0
+content_margin_top = 1.0
+border_width_right = 0
+content_margin_right = 0.0
+border_width_bottom = 0
+content_margin_bottom = 1.0
+
+[sub_resource type="StyleBoxFlat" id="slider"]
+bg_color = Color(0.025,0.035,0.04,1)
+border_color = Color(0.25,0.27,0.26,1)
+border_width_left = 1
+content_margin_left = 0.0
+border_width_top = 1
+content_margin_top = 3.0
+border_width_right = 1
+content_margin_right = 0.0
+border_width_bottom = 1
+content_margin_bottom = 3.0
+
+[sub_resource type="StyleBoxFlat" id="slider_fill"]
+bg_color = Color(0.47,0.18,0.15,1)
+border_color = Color(0, 0, 0, 0)
+border_width_left = 0
+content_margin_left = 0.0
+border_width_top = 0
+content_margin_top = 3.0
+border_width_right = 0
+content_margin_right = 0.0
+border_width_bottom = 0
+content_margin_bottom = 3.0
+
+[sub_resource type="StyleBoxFlat" id="empty"]
+bg_color = Color(0,0,0,0)
+border_color = Color(0, 0, 0, 0)
+border_width_left = 0
+content_margin_left = 8.0
+border_width_top = 0
+content_margin_top = 6.0
+border_width_right = 0
+content_margin_right = 8.0
+border_width_bottom = 0
+content_margin_bottom = 6.0
+
+[sub_resource type="StyleBoxTexture" id="death_button_primary_frame"]
+texture = ExtResource("tex_death_button_primary")
+texture_margin_left = 16.0
+texture_margin_top = 16.0
+texture_margin_right = 16.0
+texture_margin_bottom = 16.0
+
+[sub_resource type="StyleBox" id="death_button_primary"]
+script = ExtResource("layered_style")
+frame = SubResource("death_button_primary_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.32,0.065,0.055,1)
+surface_modulate = Color(1,1,1,0.3)
+crop_surface = true
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 16.0
+content_margin_bottom = 12.0
+
+[sub_resource type="StyleBoxTexture" id="death_button_primary_hover_frame"]
+texture = ExtResource("tex_death_button_primary_hover")
+texture_margin_left = 16.0
+texture_margin_top = 16.0
+texture_margin_right = 16.0
+texture_margin_bottom = 16.0
+
+[sub_resource type="StyleBox" id="death_button_primary_hover"]
+script = ExtResource("layered_style")
+frame = SubResource("death_button_primary_hover_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.43,0.095,0.075,1)
+surface_modulate = Color(1,1,1,0.3)
+crop_surface = true
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 16.0
+content_margin_bottom = 12.0
+
+[sub_resource type="StyleBoxTexture" id="death_button_pressed_frame"]
+texture = ExtResource("tex_death_button_pressed")
+texture_margin_left = 16.0
+texture_margin_top = 16.0
+texture_margin_right = 16.0
+texture_margin_bottom = 16.0
+
+[sub_resource type="StyleBox" id="death_button_pressed"]
+script = ExtResource("layered_style")
+frame = SubResource("death_button_pressed_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.17,0.045,0.037,1)
+surface_modulate = Color(1,1,1,0.2)
+crop_surface = true
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 16.0
+content_margin_bottom = 12.0
+
+[sub_resource type="StyleBoxTexture" id="death_button_disabled_frame"]
+texture = ExtResource("tex_death_button_disabled")
+texture_margin_left = 16.0
+texture_margin_top = 16.0
+texture_margin_right = 16.0
+texture_margin_bottom = 16.0
+
+[sub_resource type="StyleBox" id="death_button_disabled"]
+script = ExtResource("layered_style")
+frame = SubResource("death_button_disabled_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.035,0.04,0.038,1)
+surface_modulate = Color(1,1,1,0.18)
+crop_surface = true
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 16.0
+content_margin_bottom = 12.0
+
+[sub_resource type="StyleBoxTexture" id="option_normal_frame"]
+texture = ExtResource("tex_button")
+texture_margin_left = 16.0
+texture_margin_top = 16.0
+texture_margin_right = 16.0
+texture_margin_bottom = 16.0
+
+[sub_resource type="StyleBox" id="option_normal"]
+script = ExtResource("layered_style")
+frame = SubResource("option_normal_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.045,0.06,0.06,1)
+surface_modulate = Color(1,1,1,0.3)
+crop_surface = true
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 40.0
+content_margin_bottom = 12.0
+
+[sub_resource type="StyleBoxTexture" id="option_hover_frame"]
+texture = ExtResource("tex_button_hover")
+texture_margin_left = 16.0
+texture_margin_top = 16.0
+texture_margin_right = 16.0
+texture_margin_bottom = 16.0
+
+[sub_resource type="StyleBox" id="option_hover"]
+script = ExtResource("layered_style")
+frame = SubResource("option_hover_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.11,0.13,0.12,1)
+surface_modulate = Color(1,1,1,0.3)
+crop_surface = true
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 40.0
+content_margin_bottom = 12.0
+
+[sub_resource type="StyleBoxTexture" id="option_pressed_frame"]
+texture = ExtResource("tex_button_pressed")
+texture_margin_left = 16.0
+texture_margin_top = 16.0
+texture_margin_right = 16.0
+texture_margin_bottom = 16.0
+
+[sub_resource type="StyleBox" id="option_pressed"]
+script = ExtResource("layered_style")
+frame = SubResource("option_pressed_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.17,0.045,0.037,1)
+surface_modulate = Color(1,1,1,0.2)
+crop_surface = true
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 40.0
+content_margin_bottom = 12.0
+
+[sub_resource type="StyleBoxTexture" id="option_disabled_frame"]
+texture = ExtResource("tex_button_disabled")
+texture_margin_left = 16.0
+texture_margin_top = 16.0
+texture_margin_right = 16.0
+texture_margin_bottom = 16.0
+
+[sub_resource type="StyleBox" id="option_disabled"]
+script = ExtResource("layered_style")
+frame = SubResource("option_disabled_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.035,0.04,0.038,1)
+surface_modulate = Color(1,1,1,0.18)
+crop_surface = true
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 40.0
+content_margin_bottom = 12.0
+
+[sub_resource type="StyleBoxFlat" id="hud_separator"]
+bg_color = Color(0.32,0.27,0.20,1)
+border_color = Color(0, 0, 0, 0)
+border_width_left = 0
+content_margin_left = 0.0
+border_width_top = 0
+content_margin_top = 1.0
+border_width_right = 0
+content_margin_right = 0.0
+border_width_bottom = 0
+content_margin_bottom = 1.0
+
+[sub_resource type="SystemFont" id="body_font"]
+font_names = PackedStringArray("Noto Sans", "Arial")
+multichannel_signed_distance_field = true
+
+[sub_resource type="StyleBoxFlat" id="hud_track"]
+bg_color = Color(0.025,0.035,0.04,1)
+border_color = Color(0.29,0.25,0.20,1)
+border_width_left = 1
+content_margin_left = 0.0
+border_width_top = 1
+content_margin_top = 3.0
+border_width_right = 1
+content_margin_right = 0.0
+border_width_bottom = 1
+content_margin_bottom = 3.0
+
+[resource]
+default_font = SubResource("body_font")
+default_font_size = 16
+Button/styles/normal = SubResource("button")
+Button/styles/hover = SubResource("button_hover")
+Button/styles/pressed = SubResource("button_pressed")
+Button/styles/disabled = SubResource("button_disabled")
+Button/styles/focus = SubResource("focus")
+Button/colors/font_color = Color(0.85, 0.82, 0.74, 1)
+Button/colors/font_hover_color = Color(1,0.93,0.78,1)
+Button/colors/font_pressed_color = Color(0.85, 0.82, 0.74, 1)
+Button/colors/font_disabled_color = Color(0.57, 0.58, 0.55, 1)
+Button/colors/font_focus_color = Color(1,0.93,0.78,1)
+Button/font_sizes/font_size = 18
+OptionButton/styles/focus = SubResource("focus")
+OptionButton/colors/font_color = Color(0.85, 0.82, 0.74, 1)
+OptionButton/colors/font_hover_color = Color(1,0.93,0.78,1)
+OptionButton/colors/font_pressed_color = Color(0.85, 0.82, 0.74, 1)
+OptionButton/colors/font_disabled_color = Color(0.57, 0.58, 0.55, 1)
+OptionButton/colors/font_focus_color = Color(1,0.93,0.78,1)
+OptionButton/font_sizes/font_size = 18
+PrimaryButton/base_type = &"Button"
+DisplayLabel/base_type = &"Label"
+PrimaryButton/styles/normal = SubResource("button_primary")
+PrimaryButton/styles/hover = SubResource("button_primary_hover")
+DeathButton/base_type = &"PrimaryButton"
+DeathButton/styles/normal = SubResource("death_button_primary")
+DeathButton/styles/hover = SubResource("death_button_primary_hover")
+DeathButton/styles/pressed = SubResource("death_button_pressed")
+DeathButton/styles/disabled = SubResource("death_button_disabled")
+DeathButton/styles/focus = SubResource("death_focus")
+Button/fonts/font = ExtResource("display_font")
+OptionButton/fonts/font = ExtResource("display_font")
+DisplayLabel/fonts/font = ExtResource("display_font")
+TabBar/fonts/font = ExtResource("display_font")
+TabContainer/fonts/font = ExtResource("display_font")
+DisplayLabel/colors/font_color = Color(0.85, 0.82, 0.74, 1)
+DisplayLabel/font_sizes/font_size = 32
+Label/colors/font_color = Color(0.85, 0.82, 0.74, 1)
+RichTextLabel/colors/font_color = Color(0.85, 0.82, 0.74, 1)
+CheckButton/colors/font_color = Color(0.85, 0.82, 0.74, 1)
+CheckBox/colors/font_color = Color(0.85, 0.82, 0.74, 1)
+LineEdit/colors/font_color = Color(0.85, 0.82, 0.74, 1)
+PopupMenu/colors/font_color = Color(0.85, 0.82, 0.74, 1)
+TabBar/colors/font_color = Color(0.85, 0.82, 0.74, 1)
+Label/colors/font_shadow_color = Color(0,0,0,0.8)
+Label/constants/shadow_offset_y = 1
+OptionButton/constants/arrow_margin = 14
+OptionButton/constants/h_separation = 12
+OptionButton/icons/arrow = ExtResource("tex_caret")
+OptionButton/styles/normal = SubResource("option_normal")
+OptionButton/styles/hover = SubResource("option_hover")
+OptionButton/styles/pressed = SubResource("option_pressed")
+OptionButton/styles/disabled = SubResource("option_disabled")
+Panel/styles/panel = SubResource("panel")
+PanelContainer/styles/panel = SubResource("panel")
+PopupPanel/styles/panel = SubResource("panel")
+PopupMenu/styles/panel = SubResource("panel")
+TabContainer/styles/panel = SubResource("panel")
+PausePanel/base_type = &"PanelContainer"
+PausePanel/styles/panel = SubResource("pause_panel")
+SettingsPanel/base_type = &"PanelContainer"
+SettingsPanel/styles/panel = SubResource("settings_panel")
+ControlsPanel/base_type = &"PanelContainer"
+ControlsPanel/styles/panel = SubResource("controls_panel")
+PopupMenu/styles/hover = SubResource("button_hover")
+PopupMenu/constants/v_separation = 12
+LineEdit/styles/normal = SubResource("input")
+LineEdit/styles/focus = SubResource("input_focus")
+LineEdit/colors/caret_color = Color(0.78, 0.65, 0.42, 1)
+LineEdit/colors/selection_color = Color(0.35,0.13,0.11,1)
+TextEdit/styles/normal = SubResource("input")
+TextEdit/styles/focus = SubResource("input_focus")
+TextEdit/colors/caret_color = Color(0.78, 0.65, 0.42, 1)
+TextEdit/colors/selection_color = Color(0.35,0.13,0.11,1)
+HSeparator/styles/separator = SubResource("separator")
+VSeparator/styles/separator = SubResource("separator")
+HudSeparator/base_type = &"HSeparator"
+HudSeparator/styles/separator = SubResource("hud_separator")
+HSlider/styles/slider = SubResource("slider")
+HSlider/styles/grabber_area = SubResource("slider_fill")
+HSlider/styles/grabber_area_highlight = SubResource("slider_fill")
+HSlider/icons/grabber = ExtResource("tex_grabber")
+HSlider/icons/grabber_highlight = ExtResource("tex_grabber")
+HSlider/icons/grabber_disabled = ExtResource("tex_grabber")
+VSlider/styles/slider = SubResource("slider")
+VSlider/styles/grabber_area = SubResource("slider_fill")
+VSlider/styles/grabber_area_highlight = SubResource("slider_fill")
+VSlider/icons/grabber = ExtResource("tex_grabber")
+VSlider/icons/grabber_highlight = ExtResource("tex_grabber")
+VSlider/icons/grabber_disabled = ExtResource("tex_grabber")
+CheckButton/styles/normal = SubResource("empty")
+CheckButton/styles/hover = SubResource("empty")
+CheckButton/styles/pressed = SubResource("empty")
+CheckButton/styles/disabled = SubResource("empty")
+CheckButton/styles/focus = SubResource("focus")
+CheckButton/icons/checked = ExtResource("tex_check_on")
+CheckButton/icons/checked_disabled = ExtResource("tex_check_on")
+CheckButton/icons/on = ExtResource("tex_check_on")
+CheckButton/icons/on_disabled = ExtResource("tex_check_on")
+CheckButton/icons/on_mirrored = ExtResource("tex_check_on")
+CheckButton/icons/unchecked = ExtResource("tex_check_off")
+CheckButton/icons/unchecked_disabled = ExtResource("tex_check_off")
+CheckButton/icons/off = ExtResource("tex_check_off")
+CheckButton/icons/off_disabled = ExtResource("tex_check_off")
+CheckButton/icons/off_mirrored = ExtResource("tex_check_off")
+CheckBox/styles/normal = SubResource("empty")
+CheckBox/styles/hover = SubResource("empty")
+CheckBox/styles/pressed = SubResource("empty")
+CheckBox/styles/disabled = SubResource("empty")
+CheckBox/styles/focus = SubResource("focus")
+CheckBox/icons/checked = ExtResource("tex_check_on")
+CheckBox/icons/checked_disabled = ExtResource("tex_check_on")
+CheckBox/icons/on = ExtResource("tex_check_on")
+CheckBox/icons/on_disabled = ExtResource("tex_check_on")
+CheckBox/icons/on_mirrored = ExtResource("tex_check_on")
+CheckBox/icons/unchecked = ExtResource("tex_check_off")
+CheckBox/icons/unchecked_disabled = ExtResource("tex_check_off")
+CheckBox/icons/off = ExtResource("tex_check_off")
+CheckBox/icons/off_disabled = ExtResource("tex_check_off")
+CheckBox/icons/off_mirrored = ExtResource("tex_check_off")
+TabBar/styles/tab_selected = SubResource("button_primary")
+TabBar/styles/tab_unselected = SubResource("button")
+TabBar/styles/tab_hovered = SubResource("button_hover")
+TabBar/styles/tab_focus = SubResource("focus")
+TabBar/styles/tab_disabled = SubResource("button_disabled")
+TabBar/colors/font_selected_color = Color(0.85, 0.82, 0.74, 1)
+TabBar/colors/font_unselected_color = Color(0.57, 0.58, 0.55, 1)
+TabBar/font_sizes/font_size = 18
+TabContainer/styles/tab_selected = SubResource("button_primary")
+TabContainer/styles/tab_unselected = SubResource("button")
+TabContainer/styles/tab_hovered = SubResource("button_hover")
+TabContainer/styles/tab_focus = SubResource("focus")
+TabContainer/styles/tab_disabled = SubResource("button_disabled")
+TabContainer/colors/font_selected_color = Color(0.85, 0.82, 0.74, 1)
+TabContainer/colors/font_unselected_color = Color(0.57, 0.58, 0.55, 1)
+TabContainer/font_sizes/font_size = 18
+CheckButton/fonts/font = SubResource("body_font")
+CheckBox/fonts/font = SubResource("body_font")
+HScrollBar/styles/scroll = SubResource("slider")
+HScrollBar/styles/grabber = SubResource("slider_fill")
+HScrollBar/styles/grabber_highlight = SubResource("slider_fill")
+HScrollBar/styles/grabber_pressed = SubResource("slider_fill")
+VScrollBar/styles/scroll = SubResource("slider")
+VScrollBar/styles/grabber = SubResource("slider_fill")
+VScrollBar/styles/grabber_highlight = SubResource("slider_fill")
+VScrollBar/styles/grabber_pressed = SubResource("slider_fill")
+ProgressBar/styles/background = SubResource("hud_track")
+ProgressBar/styles/fill = SubResource("slider_fill")

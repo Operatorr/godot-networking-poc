@@ -1,0 +1,66 @@
+{
+  "family": "Omega Realm grimdark UI",
+  "reference": "User-provided grimdark sprite sheet and HUD close-up references (2026-10-30), inspiration only",
+  "palette": [
+    "#050706",
+    "#252928",
+    "#606b68",
+    "#a0a69a",
+    "#786347",
+    "#b39a72",
+    "#d8d0bc",
+    "#8a261f"
+  ],
+  "hardware": {
+    "files": "*.svg",
+    "source": "scripts/art/build_ui_theme.py",
+    "method": "Original editable vector geometry with pixel-aligned edges, authored for this project",
+    "license": "Project source; no third-party art copied"
+  },
+  "crest": {
+    "file": "skull_crest.png",
+    "tool": "Built-in image_gen",
+    "dimensions": [
+      1536,
+      1024
+    ],
+    "alpha": "RGBA, transparent exterior; rendered with nearest filtering",
+    "prompt": "Create one production game UI ornament asset on a genuinely transparent background, no text. Grimdark fantasy pixel art for Omega Realm, inspired by old Diablo inventory UI: a small front-facing weathered bone skull embedded in a narrow symmetrical dark iron and tarnished gold gothic crest, with a pointed top finial, tiny worn rivets, short thorn-like metal wings. Single compact horizontal ornament centered, tight composition, roughly 3:2 aspect ratio. Pixel art with deliberate hard pixel clusters, no smooth painterly shading, no blur, no soft shadow outside silhouette, no glow. Muted black iron #252928, antique gold #9B7428, bone #D8D0BC, dried blood #4A1512, bright highlights very restrained. Design to read when rendered at 120x80 pixels over a black menu panel and also as a compact health emblem. Transparent everywhere outside the crest. Only the crest, no UI panels, no background, no checkerboard, no lettering. Save the generated asset to disk and return its path.",
+    "license": "Generated for this project using the built-in image tool; no third-party asset pack incorporated"
+  },
+  "verification": [
+    "Godot 4.7.2 import and runtime",
+    "HUD trough geometry and alpha regression",
+    "Native scene captures at 1920x1080, 1280x720, 390x844",
+    "Long region labels, focus restoration and scaled mouse hit areas"
+  ],
+  "ability_icons": {
+    "file": "ability_icons.png",
+    "tool": "Built-in image_gen",
+    "dimensions": [
+      1254,
+      1254
+    ],
+    "atlas": "2\u00d72 equal cells: dash (cyan), warrior charge (red), rogue shadowstep (violet), mageblast (gold). Godot AtlasTexture regions; source bitmap preserved.",
+    "prompt": "Square 2\u00d72 grimdark pixel-art ability icon atlas; exact equal cells without gutters, labels or UI frames. Cyan spectral running figure and motion streaks; blood-red charge slash with ivory impact; violet hooded rogue dissolving into shadows with silver dagger; golden-white magical star explosion. Near-black textured backgrounds, hard pixel clusters, clear silhouettes designed for small inventory skill icons.",
+    "license": "Generated for this project using the built-in image tool; no third-party asset pack incorporated"
+  },
+  "surfaces": {
+    "files": [
+      "iron_surface.png",
+      "blood_surface.png"
+    ],
+    "tool": "Built-in image_gen",
+    "dimensions": [
+      1254,
+      1254
+    ],
+    "source": "Approved hybrid samples, 2026-10-30. Original generated PNGs copied without raster editing.",
+    "usage": "Iron on everyday panels and buttons, with silver/iron SVG rims and small bronze sigil/focus accents. HUD hardware and the frameless death action retain muted aged bronze. Crimson primary buttons use tinted iron. Blood source retained as unused artwork; it is not loaded by the shared theme.",
+    "prompts": {
+      "iron": "Square full-bleed blackened forged iron, charcoal slate, fine hammered grain, faint scratches and smoky patina with subtle violet undertones. Dark quiet center for overlaid text; no frames, lettering, objects or UI.",
+      "blood": "Square full-bleed ancient blackened iron stained with dry oxblood and abraded crimson lacquer. Dried blood and scratches concentrated at edges, center 60 percent dark and quiet; no frames, lettering, objects or UI."
+    },
+    "license": "Generated for this project using the built-in image tool; no third-party asset pack incorporated"
+  }
+}
