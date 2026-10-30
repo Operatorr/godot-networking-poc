@@ -16,6 +16,7 @@ const SLOT_GAP := 8.0
 const SLOT_COUNT := 6
 const FRAME_TEXTURE := preload("res://assets/ui/grimdark/slot.svg")
 const BADGE_TEXTURE := preload("res://assets/ui/grimdark/key_badge.svg")
+const IRON_SURFACE := preload("res://assets/ui/grimdark/iron_surface.png")
 const ICON_ATLAS := preload("res://assets/ui/grimdark/ability_icons.png")
 
 var _icons: Array[AtlasTexture] = []
@@ -64,6 +65,7 @@ func _process(delta: float) -> void:
 func _draw() -> void:
 	for index in range(SLOT_COUNT):
 		draw_texture_rect(FRAME_TEXTURE, _slot_rect(index), false, Color.WHITE if index < 2 else Color(0.52, 0.53, 0.50))
+		draw_texture_rect(IRON_SURFACE, _slot_rect(index).grow(-8), false, Color(1, 1, 1, 0.3))
 		if index < 2:
 			draw_texture_rect(BADGE_TEXTURE, Rect2(_slot_rect(index).position + Vector2(6, 58), Vector2(48, 26)), false)
 

@@ -6,7 +6,7 @@
 [ext_resource type="VideoStream" path="res://assets/ui/backgrounds/menu_background_loop.ogv" id="4_bg_video"]
 
 [ext_resource type="Script" path="res://scripts/ui/helpers/responsive_menu.gd" id="5_responsive"]
-[ext_resource type="Texture2D" path="res://assets/ui/grimdark/skull_crest.png" id="6_crest"]
+[ext_resource type="Texture2D" path="res://assets/ui/grimdark/realm_sigil.svg" id="6_crest"]
 
 [node name="LoginScreen" type="Control"]
 layout_mode = 3
@@ -57,7 +57,7 @@ mouse_filter = 2
 texture_filter = 1
 texture = ExtResource("6_crest")
 expand_mode = 1
-stretch_mode = 5
+stretch_mode = 3
 
 [node name="TitleLabel" type="Label" parent="CenterContainer/Panel/VBoxContainer"]
 custom_minimum_size = Vector2(480, 60)

@@ -33,10 +33,10 @@ var _retry_count: int = 0
 ## beneath it when an amount is supplied.
 const GLORY_BASE_TEXT := "Your Glory will be remembered"
 
-@onready var _killer_label: Label = $Center/VBox/KillerLabel
-@onready var _countdown_label: Label = $Center/VBox/CountdownLabel
-@onready var _glory_label: Label = $Center/VBox/GloryLabel
-@onready var _menu_button: Button = $Center/VBox/ButtonHolder/MenuButton
+@onready var _killer_label: Label = $Center/Panel/VBox/KillerLabel
+@onready var _countdown_label: Label = $Center/Panel/VBox/CountdownLabel
+@onready var _glory_label: Label = $Center/Panel/VBox/GloryLabel
+@onready var _menu_button: Button = $Center/Panel/VBox/ButtonHolder/MenuButton
 
 
 func _ready() -> void:
@@ -135,8 +135,8 @@ func show_death_hardcore(killer_entity_id: int, glory: int = -1) -> void:
 		_glory_label.text = GLORY_BASE_TEXT
 	_glory_label.visible = true
 	_menu_button.visible = true
-	_menu_button.grab_focus()
 	visible = true
+	_menu_button.grab_focus()
 
 
 ## Resolve the "Killed by ..." line from the killer entity id.

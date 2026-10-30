@@ -1,30 +1,7 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=2 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/hud/settings_menu.gd" id="1_settings"]
 
-[ext_resource type="Texture2D" path="res://assets/ui/grimdark/panel.svg" id="99_panel"]
-
-[sub_resource type="StyleBoxTexture" id="StyleBoxFlat_panel"]
-texture = ExtResource("99_panel")
-texture_margin_left = 24.0
-texture_margin_top = 24.0
-texture_margin_right = 24.0
-texture_margin_bottom = 24.0
-content_margin_left = 30.0
-content_margin_top = 20.0
-content_margin_right = 30.0
-content_margin_bottom = 20.0
-
-[sub_resource type="StyleBoxTexture" id="StyleBoxFlat_controls"]
-texture = ExtResource("99_panel")
-texture_margin_left = 24.0
-texture_margin_top = 24.0
-texture_margin_right = 24.0
-texture_margin_bottom = 24.0
-content_margin_left = 28.0
-content_margin_top = 20.0
-content_margin_right = 28.0
-content_margin_bottom = 20.0
 
 [node name="SettingsMenu" type="Control"]
 visible = false
@@ -57,7 +34,7 @@ offset_right = 240.0
 offset_bottom = 220.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+theme_type_variation = &"SettingsPanel"
 
 [node name="VBox" type="VBoxContainer" parent="Panel"]
 layout_mode = 2
@@ -187,7 +164,7 @@ offset_right = 230.0
 offset_bottom = 260.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_controls")
+theme_type_variation = &"ControlsPanel"
 
 [node name="VBox" type="VBoxContainer" parent="ControlsPanel"]
 layout_mode = 2

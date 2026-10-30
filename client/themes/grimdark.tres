@@ -1,5 +1,8 @@
-[gd_resource type="Theme" load_steps=31 format=3]
+[gd_resource type="Theme" load_steps=55 format=3]
 
+[ext_resource type="Script" path="res://scripts/ui/helpers/layered_ui_style.gd" id="layered_style"]
+[ext_resource type="Texture2D" path="res://assets/ui/grimdark/iron_surface.png" id="surface_iron"]
+[ext_resource type="Texture2D" path="res://assets/ui/grimdark/blood_surface.png" id="surface_blood"]
 [ext_resource type="Texture2D" path="res://assets/ui/grimdark/button.svg" id="tex_button"]
 [ext_resource type="Texture2D" path="res://assets/ui/grimdark/button_hover.svg" id="tex_button_hover"]
 [ext_resource type="Texture2D" path="res://assets/ui/grimdark/button_pressed.svg" id="tex_button_pressed"]
@@ -13,82 +16,222 @@
 [ext_resource type="Texture2D" path="res://assets/ui/grimdark/check_on.svg" id="tex_check_on"]
 [ext_resource type="Texture2D" path="res://assets/ui/grimdark/check_off.svg" id="tex_check_off"]
 
-[sub_resource type="StyleBoxTexture" id="button"]
+[sub_resource type="CanvasTexture" id="material_iron"]
+diffuse_texture = ExtResource("surface_iron")
+texture_filter = 2
+
+[sub_resource type="CanvasTexture" id="material_blood"]
+diffuse_texture = ExtResource("surface_blood")
+texture_filter = 2
+
+[sub_resource type="StyleBoxTexture" id="button_frame"]
 texture = ExtResource("tex_button")
 texture_margin_left = 16.0
-content_margin_left = 16.0
 texture_margin_top = 16.0
-content_margin_top = 12.0
 texture_margin_right = 16.0
-content_margin_right = 16.0
 texture_margin_bottom = 16.0
+
+[sub_resource type="StyleBox" id="button"]
+script = ExtResource("layered_style")
+frame = SubResource("button_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.045,0.06,0.06,1)
+surface_modulate = Color(1,1,1,0.3)
+crop_surface = true
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 16.0
 content_margin_bottom = 12.0
 
-[sub_resource type="StyleBoxTexture" id="button_hover"]
+[sub_resource type="StyleBoxTexture" id="button_hover_frame"]
 texture = ExtResource("tex_button_hover")
 texture_margin_left = 16.0
-content_margin_left = 16.0
 texture_margin_top = 16.0
-content_margin_top = 12.0
 texture_margin_right = 16.0
-content_margin_right = 16.0
 texture_margin_bottom = 16.0
+
+[sub_resource type="StyleBox" id="button_hover"]
+script = ExtResource("layered_style")
+frame = SubResource("button_hover_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.11,0.13,0.12,1)
+surface_modulate = Color(1,1,1,0.3)
+crop_surface = true
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 16.0
 content_margin_bottom = 12.0
 
-[sub_resource type="StyleBoxTexture" id="button_pressed"]
+[sub_resource type="StyleBoxTexture" id="button_pressed_frame"]
 texture = ExtResource("tex_button_pressed")
 texture_margin_left = 16.0
-content_margin_left = 16.0
 texture_margin_top = 16.0
-content_margin_top = 12.0
 texture_margin_right = 16.0
-content_margin_right = 16.0
 texture_margin_bottom = 16.0
+
+[sub_resource type="StyleBox" id="button_pressed"]
+script = ExtResource("layered_style")
+frame = SubResource("button_pressed_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.17,0.045,0.037,1)
+surface_modulate = Color(1,1,1,0.2)
+crop_surface = true
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 16.0
 content_margin_bottom = 12.0
 
-[sub_resource type="StyleBoxTexture" id="button_disabled"]
+[sub_resource type="StyleBoxTexture" id="button_disabled_frame"]
 texture = ExtResource("tex_button_disabled")
 texture_margin_left = 16.0
-content_margin_left = 16.0
 texture_margin_top = 16.0
-content_margin_top = 12.0
 texture_margin_right = 16.0
-content_margin_right = 16.0
 texture_margin_bottom = 16.0
+
+[sub_resource type="StyleBox" id="button_disabled"]
+script = ExtResource("layered_style")
+frame = SubResource("button_disabled_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.035,0.04,0.038,1)
+surface_modulate = Color(1,1,1,0.18)
+crop_surface = true
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 16.0
 content_margin_bottom = 12.0
 
-[sub_resource type="StyleBoxTexture" id="button_primary"]
+[sub_resource type="StyleBoxTexture" id="button_primary_frame"]
 texture = ExtResource("tex_button_primary")
 texture_margin_left = 16.0
-content_margin_left = 16.0
 texture_margin_top = 16.0
-content_margin_top = 12.0
 texture_margin_right = 16.0
-content_margin_right = 16.0
 texture_margin_bottom = 16.0
+
+[sub_resource type="StyleBox" id="button_primary"]
+script = ExtResource("layered_style")
+frame = SubResource("button_primary_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.32,0.065,0.055,1)
+surface_modulate = Color(1,1,1,0.3)
+crop_surface = true
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 16.0
 content_margin_bottom = 12.0
 
-[sub_resource type="StyleBoxTexture" id="button_primary_hover"]
+[sub_resource type="StyleBoxTexture" id="button_primary_hover_frame"]
 texture = ExtResource("tex_button_primary_hover")
 texture_margin_left = 16.0
-content_margin_left = 16.0
 texture_margin_top = 16.0
-content_margin_top = 12.0
 texture_margin_right = 16.0
-content_margin_right = 16.0
 texture_margin_bottom = 16.0
+
+[sub_resource type="StyleBox" id="button_primary_hover"]
+script = ExtResource("layered_style")
+frame = SubResource("button_primary_hover_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.43,0.095,0.075,1)
+surface_modulate = Color(1,1,1,0.3)
+crop_surface = true
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 16.0
 content_margin_bottom = 12.0
 
-[sub_resource type="StyleBoxTexture" id="panel"]
+[sub_resource type="StyleBoxTexture" id="panel_frame"]
 texture = ExtResource("tex_panel")
 texture_margin_left = 24.0
-content_margin_left = 24.0
 texture_margin_top = 24.0
-content_margin_top = 24.0
 texture_margin_right = 24.0
-content_margin_right = 24.0
 texture_margin_bottom = 24.0
+
+[sub_resource type="StyleBox" id="panel"]
+script = ExtResource("layered_style")
+frame = SubResource("panel_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.045,0.06,0.06,1)
+surface_modulate = Color(1,1,1,0.4)
+crop_surface = false
+content_margin_left = 24.0
+content_margin_top = 24.0
+content_margin_right = 24.0
 content_margin_bottom = 24.0
+
+[sub_resource type="StyleBoxTexture" id="danger_panel_frame"]
+texture = ExtResource("tex_panel")
+texture_margin_left = 24.0
+texture_margin_top = 24.0
+texture_margin_right = 24.0
+texture_margin_bottom = 24.0
+
+[sub_resource type="StyleBox" id="danger_panel"]
+script = ExtResource("layered_style")
+frame = SubResource("danger_panel_frame")
+surface = SubResource("material_blood")
+base_color = Color(0.045,0.06,0.06,1)
+surface_modulate = Color(1,1,1,0.65)
+crop_surface = false
+content_margin_left = 40.0
+content_margin_top = 40.0
+content_margin_right = 40.0
+content_margin_bottom = 40.0
+
+[sub_resource type="StyleBoxTexture" id="pause_panel_frame"]
+texture = ExtResource("tex_panel")
+texture_margin_left = 24.0
+texture_margin_top = 24.0
+texture_margin_right = 24.0
+texture_margin_bottom = 24.0
+
+[sub_resource type="StyleBox" id="pause_panel"]
+script = ExtResource("layered_style")
+frame = SubResource("pause_panel_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.045,0.06,0.06,1)
+surface_modulate = Color(1,1,1,0.4)
+crop_surface = false
+content_margin_left = 40.0
+content_margin_top = 40.0
+content_margin_right = 40.0
+content_margin_bottom = 40.0
+
+[sub_resource type="StyleBoxTexture" id="settings_panel_frame"]
+texture = ExtResource("tex_panel")
+texture_margin_left = 24.0
+texture_margin_top = 24.0
+texture_margin_right = 24.0
+texture_margin_bottom = 24.0
+
+[sub_resource type="StyleBox" id="settings_panel"]
+script = ExtResource("layered_style")
+frame = SubResource("settings_panel_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.045,0.06,0.06,1)
+surface_modulate = Color(1,1,1,0.4)
+crop_surface = false
+content_margin_left = 30.0
+content_margin_top = 20.0
+content_margin_right = 30.0
+content_margin_bottom = 20.0
+
+[sub_resource type="StyleBoxTexture" id="controls_panel_frame"]
+texture = ExtResource("tex_panel")
+texture_margin_left = 24.0
+texture_margin_top = 24.0
+texture_margin_right = 24.0
+texture_margin_bottom = 24.0
+
+[sub_resource type="StyleBox" id="controls_panel"]
+script = ExtResource("layered_style")
+frame = SubResource("controls_panel_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.045,0.06,0.06,1)
+surface_modulate = Color(1,1,1,0.4)
+crop_surface = false
+content_margin_left = 28.0
+content_margin_top = 20.0
+content_margin_right = 28.0
+content_margin_bottom = 20.0
 
 [sub_resource type="StyleBoxFlat" id="focus"]
 bg_color = Color(0,0,0,0)
@@ -104,7 +247,7 @@ content_margin_bottom = 0.0
 
 [sub_resource type="StyleBoxFlat" id="input"]
 bg_color = Color(0.035,0.045,0.052,1)
-border_color = Color(0.30,0.29,0.24,1)
+border_color = Color(0.33,0.38,0.35,1)
 border_width_left = 1
 content_margin_left = 12.0
 border_width_top = 1
@@ -115,7 +258,7 @@ border_width_bottom = 1
 content_margin_bottom = 10.0
 
 [sub_resource type="StyleBoxFlat" id="separator"]
-bg_color = Color(0.29,0.25,0.18,1)
+bg_color = Color(0.25,0.29,0.27,1)
 border_color = Color(0, 0, 0, 0)
 border_width_left = 0
 content_margin_left = 0.0
@@ -139,7 +282,7 @@ border_width_bottom = 1
 content_margin_bottom = 3.0
 
 [sub_resource type="StyleBoxFlat" id="slider_fill"]
-bg_color = Color(0.55,0.40,0.20,1)
+bg_color = Color(0.47,0.18,0.15,1)
 border_color = Color(0, 0, 0, 0)
 border_width_left = 0
 content_margin_left = 0.0
@@ -162,45 +305,77 @@ content_margin_right = 8.0
 border_width_bottom = 0
 content_margin_bottom = 6.0
 
-[sub_resource type="StyleBoxTexture" id="option_normal"]
+[sub_resource type="StyleBoxTexture" id="option_normal_frame"]
 texture = ExtResource("tex_button")
 texture_margin_left = 16.0
 texture_margin_top = 16.0
 texture_margin_right = 16.0
 texture_margin_bottom = 16.0
+
+[sub_resource type="StyleBox" id="option_normal"]
+script = ExtResource("layered_style")
+frame = SubResource("option_normal_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.045,0.06,0.06,1)
+surface_modulate = Color(1,1,1,0.3)
+crop_surface = true
 content_margin_left = 16.0
 content_margin_top = 12.0
 content_margin_right = 40.0
 content_margin_bottom = 12.0
 
-[sub_resource type="StyleBoxTexture" id="option_hover"]
+[sub_resource type="StyleBoxTexture" id="option_hover_frame"]
 texture = ExtResource("tex_button_hover")
 texture_margin_left = 16.0
 texture_margin_top = 16.0
 texture_margin_right = 16.0
 texture_margin_bottom = 16.0
+
+[sub_resource type="StyleBox" id="option_hover"]
+script = ExtResource("layered_style")
+frame = SubResource("option_hover_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.11,0.13,0.12,1)
+surface_modulate = Color(1,1,1,0.3)
+crop_surface = true
 content_margin_left = 16.0
 content_margin_top = 12.0
 content_margin_right = 40.0
 content_margin_bottom = 12.0
 
-[sub_resource type="StyleBoxTexture" id="option_pressed"]
+[sub_resource type="StyleBoxTexture" id="option_pressed_frame"]
 texture = ExtResource("tex_button_pressed")
 texture_margin_left = 16.0
 texture_margin_top = 16.0
 texture_margin_right = 16.0
 texture_margin_bottom = 16.0
+
+[sub_resource type="StyleBox" id="option_pressed"]
+script = ExtResource("layered_style")
+frame = SubResource("option_pressed_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.17,0.045,0.037,1)
+surface_modulate = Color(1,1,1,0.2)
+crop_surface = true
 content_margin_left = 16.0
 content_margin_top = 12.0
 content_margin_right = 40.0
 content_margin_bottom = 12.0
 
-[sub_resource type="StyleBoxTexture" id="option_disabled"]
+[sub_resource type="StyleBoxTexture" id="option_disabled_frame"]
 texture = ExtResource("tex_button_disabled")
 texture_margin_left = 16.0
 texture_margin_top = 16.0
 texture_margin_right = 16.0
 texture_margin_bottom = 16.0
+
+[sub_resource type="StyleBox" id="option_disabled"]
+script = ExtResource("layered_style")
+frame = SubResource("option_disabled_frame")
+surface = SubResource("material_iron")
+base_color = Color(0.035,0.04,0.038,1)
+surface_modulate = Color(1,1,1,0.18)
+crop_surface = true
 content_margin_left = 16.0
 content_margin_top = 12.0
 content_margin_right = 40.0
@@ -220,14 +395,14 @@ Button/styles/disabled = SubResource("button_disabled")
 Button/styles/focus = SubResource("focus")
 Button/colors/font_color = Color(0.85, 0.82, 0.74, 1)
 Button/colors/font_hover_color = Color(1,0.93,0.78,1)
-Button/colors/font_pressed_color = Color(0.78, 0.65, 0.42, 1)
+Button/colors/font_pressed_color = Color(0.85, 0.82, 0.74, 1)
 Button/colors/font_disabled_color = Color(0.57, 0.58, 0.55, 1)
 Button/colors/font_focus_color = Color(1,0.93,0.78,1)
 Button/font_sizes/font_size = 18
 OptionButton/styles/focus = SubResource("focus")
 OptionButton/colors/font_color = Color(0.85, 0.82, 0.74, 1)
 OptionButton/colors/font_hover_color = Color(1,0.93,0.78,1)
-OptionButton/colors/font_pressed_color = Color(0.78, 0.65, 0.42, 1)
+OptionButton/colors/font_pressed_color = Color(0.85, 0.82, 0.74, 1)
 OptionButton/colors/font_disabled_color = Color(0.57, 0.58, 0.55, 1)
 OptionButton/colors/font_focus_color = Color(1,0.93,0.78,1)
 OptionButton/font_sizes/font_size = 18
@@ -263,16 +438,24 @@ PanelContainer/styles/panel = SubResource("panel")
 PopupPanel/styles/panel = SubResource("panel")
 PopupMenu/styles/panel = SubResource("panel")
 TabContainer/styles/panel = SubResource("panel")
+DangerPanel/base_type = &"PanelContainer"
+DangerPanel/styles/panel = SubResource("danger_panel")
+PausePanel/base_type = &"PanelContainer"
+PausePanel/styles/panel = SubResource("pause_panel")
+SettingsPanel/base_type = &"PanelContainer"
+SettingsPanel/styles/panel = SubResource("settings_panel")
+ControlsPanel/base_type = &"PanelContainer"
+ControlsPanel/styles/panel = SubResource("controls_panel")
 PopupMenu/styles/hover = SubResource("button_hover")
 PopupMenu/constants/v_separation = 12
 LineEdit/styles/normal = SubResource("input")
 LineEdit/styles/focus = SubResource("focus")
 LineEdit/colors/caret_color = Color(0.78, 0.65, 0.42, 1)
-LineEdit/colors/selection_color = Color(0.35,0.24,0.14,1)
+LineEdit/colors/selection_color = Color(0.35,0.13,0.11,1)
 TextEdit/styles/normal = SubResource("input")
 TextEdit/styles/focus = SubResource("focus")
 TextEdit/colors/caret_color = Color(0.78, 0.65, 0.42, 1)
-TextEdit/colors/selection_color = Color(0.35,0.24,0.14,1)
+TextEdit/colors/selection_color = Color(0.35,0.13,0.11,1)
 HSeparator/styles/separator = SubResource("separator")
 VSeparator/styles/separator = SubResource("separator")
 HSlider/styles/slider = SubResource("slider")

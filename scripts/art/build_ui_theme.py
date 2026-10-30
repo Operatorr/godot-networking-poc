@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Build the shared Godot UI theme and its editable, pixel-aligned SVG hardware.
 
-No raster processing. Run from any directory; generated resources are checked in.
+PNG material sources remain separate from SVG rims. No raster processing.
+Run from any directory; generated resources are checked in.
 """
 from pathlib import Path
 
@@ -10,10 +11,34 @@ ART = ROOT / "assets/ui/grimdark"
 ART.mkdir(parents=True, exist_ok=True)
 
 
+# One palette for ordinary iron hardware. Antique gold is reserved for tiny sigils/focus.
+HARDWARE_PALETTE = {
+    "#776544": "#606b68", "#95815b": "#68726d", "#c1b18a": "#a0a69a",
+    "#b28b42": "#858d80", "#c0a066": "#b2b6a8", "#ad7940": "#8c9690",
+    "#ab7944": "#9a5b48", "#d4ae6e": "#c68d6d", "#5f533d": "#5c6661",
+    "#666052": "#59635e", "#8e7954": "#6e7a72", "#45443b": "#353e3a",
+    "#b09a6c": "#88938a", "#c2b391": "#a2aaa0", "#a59a7b": "#768478",
+    "#ab9163": "#889486", "#e5d5ad": "#bec5b8", "#67604c": "#59635e",
+    "#b39b64": "#8b958a", "#392e1d": "#29312c", "#e2d0a0": "#bec5b8",
+    "#96805b": "#6d7770", "#d0ba86": "#a1aa9c", "#4c4432": "#3a453e",
+    "#615339": "#59665b", "#4e402c": "#38443c", "#c4a36b": "#8c9889",
+    "#f1dab0": "#c4ccbd", "#e0c597": "#a4b19e", "#514735": "#444f46",
+    "#ac9462": "#8c9889", "#deca95": "#bec8b5", "#b38337": "#67776a",
+    "#eac787": "#a6b39f", "#5a4025": "#384539", "#c5ae7b": "#d8d0bc",
+    "#ac8c4e": "#838c7c", "#e2d2a6": "#d8d0bc", "#766647": "#636d63",
+    "#261d13": "#3d1917", "#c1a168": "#a07861", "#e4ce96": "#d8d0bc",
+}
+
 def svg(name, width, height, body):
     # HUD overlays have a genuinely transparent trough. Clip outside it so fills
     # cannot be occluded by the metal plate's otherwise opaque interior.
     aperture = {"health_frame": (20, 16, 490, 20), "mana_frame": (10, 16, 490, 20), "stamina_frame": (10, 6, 380, 8)}.get(name)
+    if name.startswith("button") or name == "panel":
+        aperture = (9, 9, width - 18, height - 18)
+    # Only hardware is neutralized; health/mana/energy and ability colors retain meaning.
+    if name not in {"health_fill", "mana_fill", "stamina_fill", "kill_skull", "track"}:
+        for old, new in HARDWARE_PALETTE.items():
+            body = body.replace(old, new)
     if aperture:
         x, y, w, h = aperture
         body = f'<defs><clipPath id="rim"><path clip-rule="evenodd" d="M0 0H{width}V{height}H0ZM{x} {y}V{y+h}H{x+w}V{y}Z"/></clipPath></defs><g clip-path="url(#rim)">{body}</g>'
@@ -29,7 +54,7 @@ def hardware(w, h, inside, edge="#776544"):
         s += f'<rect x="{inset}" y="{inset}" width="{w-inset*2}" height="{h-inset*2}" fill="{color}"/>'
     s += f'<path d="M12 10H{w-12}M10 12V{h-12}" stroke="#ffffff" stroke-opacity=".07"/>'
     for x, y, sx, sy in [(4,4,1,1),(w-4,4,-1,1),(4,h-4,1,-1),(w-4,h-4,-1,-1)]:
-        s += f'<g transform="translate({x} {y}) scale({sx} {sy})"><path d="M0 0H16L10 4H5V10L0 16Z" fill="#95815b"/><path d="M2 2H10L4 4V10L2 12Z" fill="#c1b18a"/><rect x="5" y="5" width="3" height="3" fill="#050706"/><rect x="5" y="5" width="2" height="2" fill="#b28b42"/></g>'
+        s += f'<g transform="translate({x} {y}) scale({sx} {sy})"><path d="M0 16V0H16M3 12V3H12" fill="none" stroke="#95815b"/><path d="M1 12V1H12" fill="none" stroke="#c1b18a"/><rect x="3" y="3" width="2" height="2" fill="#b28b42"/></g>'
     return s
 
 
@@ -48,7 +73,7 @@ for kind, colors in {"health": ["#5d0f16", "#a2232c", "#e15055", "#c1313d", "#8b
     svg(f"{kind}_fill", 256, 20, body)
 svg("track", 256, 20, '<rect width="256" height="20" fill="#080b0e"/><path d="M0 1H256" stroke="#3c2926"/><path d="M0 18H256" stroke="#252b2d"/>')
 
-# HUD hardware: slender layered iron rails with worn gold highlights, distinct
+# HUD hardware: slender layered iron rails with restrained bone highlights, distinct
 # from the broader menu corners. Resource frames have mirrored pointed outer ends.
 for kind in ["health", "mana"]:
     s = '<path d="M20 2H520V50H20L2 26Z" fill="#050708" stroke="#252828" stroke-width="2"/>'
@@ -77,7 +102,7 @@ def hud_box(w, h, transparent=False):
 svg("slot", 60, 60, hud_box(60,60))
 svg("key_badge", 48, 26, '<path d="M5 1H43L47 5V21L43 25H5L1 21V5Z" fill="#080b0c" stroke="#514735"/><path d="M6 3H42L45 6V20L42 23H6L3 20V6Z" fill="none" stroke="#ac9462"/><path d="M7 2H41" stroke="#deca95"/>')
 
-# Map and feed share gilt corner brackets and a diamond compass ornament.
+# Map and feed share iron corner brackets and a diamond compass ornament.
 def map_frame(w,h):
     s = hud_box(w,h,True)
     for x,y,sx,sy in [(5,5,1,1),(w-5,5,-1,1),(5,h-5,1,-1),(w-5,h-5,-1,-1)]:
@@ -89,8 +114,17 @@ svg("minimap_frame",280,280,map_frame(280,280))
 svg("kill_feed_frame",280,64,'<rect x="4" y="4" width="272" height="56" fill="#080b0e" fill-opacity=".94"/>'+map_frame(280,64))
 svg("kill_skull",24,28,'<path d="M6 2H18V4H21V8H23V17H19V21H17V26H14V22H11V26H8V21H5V17H2V8H4V4H6Z" fill="#871723"/><path d="M7 3H17V5H20V9H21V15H18V18H16V24H14V20H10V24H9V18H6V15H4V9H5V5H7Z" fill="#ef3b45"/><path d="M6 10H10V14H6ZM15 10H19V14H15ZM11 15H14V18H11Z" fill="#21090e"/><path d="M7 4H16V6H7Z" fill="#ff8271"/>')
 
+svg("realm_sigil", 100, 42, '<path d="M0 21H33M67 21H100M50 0V9M50 33V42" stroke="#887448"/><path d="M50 5L66 21 50 37 34 21Z" fill="#141716" stroke="#91836a"/><circle cx="50" cy="21" r="10" fill="none" stroke="#5d6664"/><path d="M48 12L43 23H50L48 30 58 18H51L54 12Z" fill="#a2372b"/>')
+
 # Theme resource: one shared source for native controls, including generated buttons.
-ext, sub, props = [], [], []
+ext, sub, props = [
+    '[ext_resource type="Script" path="res://scripts/ui/helpers/layered_ui_style.gd" id="layered_style"]',
+    '[ext_resource type="Texture2D" path="res://assets/ui/grimdark/iron_surface.png" id="surface_iron"]',
+    '[ext_resource type="Texture2D" path="res://assets/ui/grimdark/blood_surface.png" id="surface_blood"]',
+], [
+    '[sub_resource type="CanvasTexture" id="material_iron"]\ndiffuse_texture = ExtResource("surface_iron")\ntexture_filter = 2',
+    '[sub_resource type="CanvasTexture" id="material_blood"]\ndiffuse_texture = ExtResource("surface_blood")\ntexture_filter = 2',
+], []
 
 
 def texture(name):
@@ -101,8 +135,23 @@ def texture(name):
     return f'ExtResource("{key}")'
 
 
-def textured(name, margins=(16, 12, 16, 12), patch=16):
-    sub.append(f'[sub_resource type="StyleBoxTexture" id="{name}"]\ntexture = {texture(name)}\n' + '\n'.join(f'texture_margin_{side} = {patch}.0\ncontent_margin_{side} = {val}.0' for side,val in zip(['left','top','right','bottom'],margins)))
+def textured(name, margins=(16, 12, 16, 12), patch=16, source=None, blood=False):
+    source = source or name
+    frame_id = name + "_frame"
+    sub.append(f'[sub_resource type="StyleBoxTexture" id="{frame_id}"]\ntexture = {texture(source)}\n' + '\n'.join(f'texture_margin_{side} = {patch}.0' for side in ['left','top','right','bottom']))
+    is_panel = source == "panel"
+    # A red primary surface is a quiet color treatment; blood wear is exclusive to DangerPanel.
+    base = "Color(0.32,0.065,0.055,1)" if "primary" in source else "Color(0.045,0.06,0.06,1)"
+    opacity = 0.4 if is_panel else 0.3
+    if "hover" in source:
+        base = "Color(0.43,0.095,0.075,1)" if "primary" in source else "Color(0.11,0.13,0.12,1)"
+    elif "pressed" in source:
+        base, opacity = "Color(0.17,0.045,0.037,1)", 0.2
+    elif "disabled" in source:
+        base, opacity = "Color(0.035,0.04,0.038,1)", 0.18
+    if blood:
+        opacity = 0.65
+    sub.append(f'[sub_resource type="StyleBox" id="{name}"]\nscript = ExtResource("layered_style")\nframe = SubResource("{frame_id}")\nsurface = SubResource("material_{"blood" if blood else "iron"}")\nbase_color = {base}\nsurface_modulate = Color(1,1,1,{opacity})\ncrop_surface = {"false" if is_panel else "true"}\n' + '\n'.join(f'content_margin_{side} = {val}.0' for side,val in zip(['left','top','right','bottom'],margins)))
     return f'SubResource("{name}")'
 
 
@@ -125,16 +174,20 @@ disabled = textured("button_disabled")
 primary = textured("button_primary")
 primary_hover = textured("button_primary_hover")
 panel = textured("panel", (24, 24, 24, 24), 24)
+danger_panel = textured("danger_panel", (40, 40, 40, 40), 24, source="panel", blood=True)
+pause_panel = textured("pause_panel", (40, 40, 40, 40), 24, source="panel")
+settings_panel = textured("settings_panel", (30, 20, 30, 20), 24, source="panel")
+controls_panel = textured("controls_panel", (28, 20, 28, 20), 24, source="panel")
 focus = flat("focus", 'Color(0,0,0,0)', 'Color(0.9,0.76,0.48,1)', 1, (0,0,0,0))
-input_box = flat("input", 'Color(0.035,0.045,0.052,1)', 'Color(0.30,0.29,0.24,1)', 1, (12,10,12,10))
-separator = flat("separator", 'Color(0.29,0.25,0.18,1)', margins=(0,1,0,1))
+input_box = flat("input", 'Color(0.035,0.045,0.052,1)', 'Color(0.33,0.38,0.35,1)', 1, (12,10,12,10))
+separator = flat("separator", 'Color(0.25,0.29,0.27,1)', margins=(0,1,0,1))
 track = flat("slider", 'Color(0.025,0.035,0.04,1)', 'Color(0.25,0.27,0.26,1)', 1, (0,3,0,3))
-fill = flat("slider_fill", 'Color(0.55,0.40,0.20,1)', margins=(0,3,0,3))
+fill = flat("slider_fill", 'Color(0.47,0.18,0.15,1)', margins=(0,3,0,3))
 empty = flat("empty", 'Color(0,0,0,0)', margins=(8,6,8,6))
 for t in ["Button", "OptionButton"]:
     for state, box in dict(normal=normal, hover=hover, pressed=pressed, disabled=disabled, focus=focus).items():
         prop(t,"styles",state,box)
-    for state, col in dict(font_color=bone,font_hover_color='Color(1,0.93,0.78,1)',font_pressed_color=gold,font_disabled_color=muted,font_focus_color='Color(1,0.93,0.78,1)').items():
+    for state, col in dict(font_color=bone,font_hover_color='Color(1,0.93,0.78,1)',font_pressed_color=bone,font_disabled_color=muted,font_focus_color='Color(1,0.93,0.78,1)').items():
         prop(t,"colors",state,col)
     prop(t,"font_sizes","font_size",18)
 props += ['PrimaryButton/base_type = &"Button"', 'DisplayLabel/base_type = &"Label"']
@@ -155,19 +208,22 @@ prop("OptionButton","icons","arrow",texture("caret"))
 # Right content margin reserves the value/arrow separation even with long labels.
 for state, source in [("normal","button"),("hover","button_hover"),("pressed","button_pressed"),("disabled","button_disabled")]:
     name = "option_" + state
-    sub.append(f'[sub_resource type="StyleBoxTexture" id="{name}"]\ntexture = {texture(source)}\ntexture_margin_left = 16.0\ntexture_margin_top = 16.0\ntexture_margin_right = 16.0\ntexture_margin_bottom = 16.0\ncontent_margin_left = 16.0\ncontent_margin_top = 12.0\ncontent_margin_right = 40.0\ncontent_margin_bottom = 12.0')
+    textured(name, (16,12,40,12), source=source)
     # Replace previous property, avoiding duplicate keys in .tres.
     props = [p for p in props if not p.startswith(f'OptionButton/styles/{state} =')]
     prop("OptionButton","styles",state,f'SubResource("{name}")')
 for t in ["Panel","PanelContainer","PopupPanel","PopupMenu","TabContainer"]:
     prop(t,"styles","panel",panel)
+for variation, style in [("DangerPanel",danger_panel), ("PausePanel",pause_panel), ("SettingsPanel",settings_panel), ("ControlsPanel",controls_panel)]:
+    props.append(f'{variation}/base_type = &"PanelContainer"')
+    prop(variation,"styles","panel",style)
 prop("PopupMenu","styles","hover",hover)
 prop("PopupMenu","constants","v_separation",12)
 for t in ["LineEdit","TextEdit"]:
     prop(t,"styles","normal",input_box)
     prop(t,"styles","focus",focus)
     prop(t,"colors","caret_color",gold)
-    prop(t,"colors","selection_color",'Color(0.35,0.24,0.14,1)')
+    prop(t,"colors","selection_color",'Color(0.35,0.13,0.11,1)')
 for t in ["HSeparator","VSeparator"]:
     prop(t,"styles","separator",separator)
 for t in ["HSlider","VSlider"]:

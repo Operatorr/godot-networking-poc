@@ -18,6 +18,7 @@ func _ready() -> void:
 	await get_tree().process_frame
 	get_window().mode = Window.MODE_WINDOWED
 	get_window().size = Vector2i(1280, 720)
+	_check_material_apertures()
 	var background := ColorRect.new()
 	background.color = Color("171c20")
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -110,8 +111,51 @@ func _ready() -> void:
 	standalone.queue_free()
 	await get_tree().process_frame
 	await _check_account_menus()
+	await _check_death_panel()
 	print("[UIThemeRegression] %s" % ("FAIL" if _failed else "PASS"))
 	get_tree().quit(1 if _failed else 0)
+
+
+func _check_material_apertures() -> void:
+	var skin: Theme = load("res://themes/grimdark.tres")
+	for control_type in ["Button", "OptionButton", "PrimaryButton"]:
+		var button: Button = OptionButton.new() if control_type == "OptionButton" else Button.new()
+		button.theme = skin
+		button.theme_type_variation = control_type
+		add_child(button)
+		for state in ["normal", "hover", "pressed", "disabled"]:
+			# Resolve inherited states through a real Control, as the game does.
+			var style := button.get_theme_stylebox(state) as LayeredUIStyle
+			_check(style != null, "%s/%s must retain its material layer" % [control_type, state])
+			if style == null:
+				continue
+			var pixels := style.frame.texture.get_image()
+			_check(pixels.get_pixelv(pixels.get_size() / 2).a < 0.01, "Vector center must not obscure the material")
+			_check(style.surface != null, "Every button state needs a material")
+		button.free()
+	var ordinary := skin.get_stylebox("panel", "PanelContainer") as LayeredUIStyle
+	var danger := skin.get_stylebox("panel", "DangerPanel") as LayeredUIStyle
+	_check(ordinary.surface != danger.surface, "Death wear must stay distinct from everyday panels")
+
+
+func _check_death_panel() -> void:
+	var death: Control = load("res://scenes/ui/hud/death_screen.tscn").instantiate()
+	add_child(death)
+	var requests: Array[int] = [0]
+	death.main_menu_requested.connect(func() -> void: requests[0] += 1)
+	for width in [1280, 390]:
+		get_window().size = Vector2i(width, 720 if width == 1280 else 844)
+		death.show_death_hardcore(0, 1250)
+		await _settle()
+		_check_in_view(death.get_node("Center/Panel"))
+		var button: Button = death.get_node("Center/Panel/VBox/ButtonHolder/MenuButton")
+		_check(button.has_focus(), "Hardcore death must focus its menu action")
+		await _click(button)
+		_check(button.disabled, "Death action must accept transformed pointer input once")
+		death.hide_death()
+	_check(requests[0] == 2, "Each death action must emit one menu request")
+	death.queue_free()
+	await get_tree().process_frame
 
 
 func _check_hud_spacing(hud: GameHud) -> void:

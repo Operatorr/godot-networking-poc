@@ -1,5 +1,5 @@
 ## DialogStyle - shared visual style for modal popups (error + confirm prompts) so every
-## dialog in the game follows the shared iron/bone/gold theme. Used via preload, not a
+## dialog in the game follows the shared iron/bone/crimson theme. Used via preload, not a
 ## global class_name, so it resolves in headless startup (matches MenuButtonHelper).
 extends RefCounted
 

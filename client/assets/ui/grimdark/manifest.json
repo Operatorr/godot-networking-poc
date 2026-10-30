@@ -4,9 +4,10 @@
   "palette": [
     "#050706",
     "#252928",
-    "#9B7428",
-    "#D8D0BC",
-    "#4A1512"
+    "#606b68",
+    "#d8d0bc",
+    "#8a261f",
+    "#9b7428"
   ],
   "hardware": {
     "files": "*.svg",
@@ -40,6 +41,24 @@
     ],
     "atlas": "2\u00d72 equal cells: dash (cyan), warrior charge (red), rogue shadowstep (violet), mageblast (gold). Godot AtlasTexture regions; source bitmap preserved.",
     "prompt": "Square 2\u00d72 grimdark pixel-art ability icon atlas; exact equal cells without gutters, labels or UI frames. Cyan spectral running figure and motion streaks; blood-red charge slash with ivory impact; violet hooded rogue dissolving into shadows with silver dagger; golden-white magical star explosion. Near-black textured backgrounds, hard pixel clusters, clear silhouettes designed for small inventory skill icons.",
+    "license": "Generated for this project using the built-in image tool; no third-party asset pack incorporated"
+  },
+  "surfaces": {
+    "files": [
+      "iron_surface.png",
+      "blood_surface.png"
+    ],
+    "tool": "Built-in image_gen",
+    "dimensions": [
+      1254,
+      1254
+    ],
+    "source": "Approved hybrid samples, 2026-10-30. Original generated PNGs copied without raster editing.",
+    "usage": "Iron on everyday panels and buttons; blood only on DangerPanel (death screens). Crimson primary buttons use tinted iron, without blood wear. SVG rims and native text remain separate.",
+    "prompts": {
+      "iron": "Square full-bleed blackened forged iron, charcoal slate, fine hammered grain, faint scratches and smoky patina with subtle violet undertones. Dark quiet center for overlaid text; no frames, lettering, objects or UI.",
+      "blood": "Square full-bleed ancient blackened iron stained with dry oxblood and abraded crimson lacquer. Dried blood and scratches concentrated at edges, center 60 percent dark and quiet; no frames, lettering, objects or UI."
+    },
     "license": "Generated for this project using the built-in image tool; no third-party asset pack incorporated"
   }
 }

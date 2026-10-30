@@ -1,23 +1,11 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/hud/pause_menu.gd" id="1_pause"]
 [ext_resource type="PackedScene" path="res://scenes/ui/hud/settings_menu.tscn" id="2_settings"]
 
-[ext_resource type="Texture2D" path="res://assets/ui/grimdark/skull_crest.png" id="98_crest"]
-[ext_resource type="Texture2D" path="res://assets/ui/grimdark/panel.svg" id="99_panel"]
+[ext_resource type="Texture2D" path="res://assets/ui/grimdark/realm_sigil.svg" id="98_crest"]
 
 [ext_resource type="Script" path="res://scripts/ui/helpers/responsive_menu.gd" id="97_responsive"]
-
-[sub_resource type="StyleBoxTexture" id="StyleBoxFlat_panel"]
-texture = ExtResource("99_panel")
-texture_margin_left = 24.0
-texture_margin_top = 24.0
-texture_margin_right = 24.0
-texture_margin_bottom = 24.0
-content_margin_left = 40.0
-content_margin_top = 40.0
-content_margin_right = 40.0
-content_margin_bottom = 40.0
 
 [node name="PauseMenu" type="Control"]
 visible = false
@@ -49,7 +37,7 @@ grow_vertical = 2
 
 [node name="Panel" type="PanelContainer" parent="Center"]
 layout_mode = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+theme_type_variation = &"PausePanel"
 
 [node name="VBox" type="VBoxContainer" parent="Center/Panel"]
 layout_mode = 2
@@ -63,7 +51,7 @@ mouse_filter = 2
 texture_filter = 1
 texture = ExtResource("98_crest")
 expand_mode = 1
-stretch_mode = 5
+stretch_mode = 3
 
 [node name="Title" type="Label" parent="Center/Panel/VBox"]
 layout_mode = 2
