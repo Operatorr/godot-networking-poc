@@ -7,10 +7,10 @@ The first four pairs are unscaled crops of the 1280×720 captures. All other ima
 ## Reproduce
 
 ```sh
-godot --path client res://scenes/test/ui_review_capture.tscn -- --capture=/absolute/output/path
+godot --windowed --path client res://scenes/test/ui_review_capture.tscn -- --capture=/absolute/output/path
 ```
 
-For the before version, extract `git archive bb583d4 client` into a temporary directory, copy the current capture script and its scene into the extracted client, provide the built `client/bin` GDExtension, and run an editor import before capturing. The fixture is compatible with both versions. It redirects region reads to localhost and does not save preferences. Use `--auth-only` to capture only login and character creation, including narrow layouts and valid-name/Hardcore states. Captures require a graphical display. Native window and rendered texture dimensions are checked before saving.
+For the before version, extract `git archive bb583d4 client` into a temporary directory, copy the current capture script and its scene into the extracted client, provide the built `client/bin` GDExtension, and run an editor import before capturing. The fixture is compatible with both versions. For a baseline older than the launch override, also copy the current `client/autoload/game_manager.gd` into the temporary extraction so it honors `--windowed` before loading settings; this changes no captured UI. It redirects region reads to localhost and does not save preferences. Use `--auth-only` to capture only login and character creation, including narrow layouts and valid-name/Hardcore states. Captures require a graphical display. Native window and rendered texture dimensions are checked before saving.
 
 Crops from `hud-1280.png`: bars `(280,630)-(1000,720)`; minimap/kill feed `(1090,0)-(1280,220)`; leaderboard `(0,0)-(280,200)`. The partial bars use the same crop from `hud-partial-1280.png`.
 

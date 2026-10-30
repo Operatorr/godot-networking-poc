@@ -92,6 +92,10 @@ var session_stats: Dictionary = {
 ## Runtime mode detection
 var is_server: bool = false
 
+## Launch-only override: test scenes and explicit --windowed/-w must never enter
+## fullscreen, including before the scene is ready. Do not change saved settings.
+var _force_windowed_for_run: bool = false
+
 ## Local player's network entity ID (set when spawned in arena)
 ## Used by PredictionController for reconciliation
 var local_player_entity_id: int = -1
@@ -123,6 +127,10 @@ func _ready() -> void:
 	if not _physics_tick_rate_applied:
 		_physics_tick_rate_applied = true
 		Engine.physics_ticks_per_second = int(GameConstants.SERVER_TICK_RATE)
+
+	# Resolve before loading settings: autoloads run before the test scene exists.
+	var launch_args := OS.get_cmdline_args()
+	_force_windowed_for_run = _is_test_scene() or "--windowed" in launch_args or "-w" in launch_args
 
 	# Detect if running as dedicated server
 	is_server = (OS.has_feature("dedicated_server") or DisplayServer.get_name() == "headless") and not _is_test_scene()
@@ -296,7 +304,7 @@ func _apply_window_mode(mode: String) -> void:
 	# own server guard even though the only current caller already short-circuits servers.
 	if is_server:
 		return
-	if mode == "windowed_fullscreen":
+	if mode == "windowed_fullscreen" and not _force_windowed_for_run:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 		return
 	# "windowed" (small): un-fullscreen, size, and center on the current screen. Clamp the size
@@ -490,6 +498,13 @@ func persist_progression() -> void:
 
 
 func _is_test_scene() -> bool:
+	# During autoload startup current_scene is still null. F6 and CLI launches
+	# supply the scene path in engine arguments; custom projects can set it as main.
+	if _is_test_scene_path(str(ProjectSettings.get_setting("application/run/main_scene", ""))):
+		return true
+	for argument in OS.get_cmdline_args():
+		if _is_test_scene_path(argument):
+			return true
 	var current_scene: Node = get_tree().current_scene
 	if current_scene == null:
 		var root := get_tree().root
@@ -499,6 +514,12 @@ func _is_test_scene() -> bool:
 	if current_scene == null:
 		return false
 
-	var scene_path := current_scene.scene_file_path
+	return _is_test_scene_path(current_scene.scene_file_path)
+
+
+func _is_test_scene_path(path: String) -> bool:
+	var scene_path := ProjectSettings.localize_path(path)
 	return scene_path.begins_with("res://scenes/test/") \
-		or scene_path == "res://scenes/levels/offline/practice.tscn"
+		or scene_path.begins_with("scenes/test/") \
+		or scene_path == "res://scenes/levels/offline/practice.tscn" \
+		or scene_path == "scenes/levels/offline/practice.tscn"

@@ -1,5 +1,5 @@
 ## Real scene rendering and focus smoke. No server or account required.
-## godot --path client res://scenes/test/ui_theme_regression.tscn -- --capture=/tmp/omega-ui
+## godot --windowed --path client res://scenes/test/ui_theme_regression.tscn -- --capture=/tmp/omega-ui
 extends Node
 
 var _capture_dir: String = ""
@@ -162,8 +162,7 @@ func _settle() -> void:
 
 
 func _capture(name: String) -> void:
-	# macOS can finish the launch fullscreen transition asynchronously. Pin each
-	# capture's physical size rather than trusting a prior window resize request.
+	# Pin the physical size for each capture; GameManager keeps tests windowed.
 	var expected := Vector2i(1280, 720)
 	if name.ends_with("390"):
 		expected = Vector2i(390, 844)
@@ -174,13 +173,11 @@ func _capture(name: String) -> void:
 	await _settle()
 	if _capture_dir.is_empty() or DisplayServer.get_name() == "headless":
 		return
-	# A macOS fullscreen transition can leave the rendered texture one resize
-	# behind the native window. Require both dimensions to agree before saving.
-	get_window().always_on_top = true
+	# Rendering can lag a native resize. Require both dimensions to agree.
+	# Do not pin the window on top or repeatedly steal desktop focus.
 	for attempt in 100:
 		get_window().mode = Window.MODE_WINDOWED
 		get_window().size = expected
-		get_window().grab_focus()
 		await get_tree().create_timer(0.1).timeout
 		await _settle()
 		RenderingServer.force_draw()

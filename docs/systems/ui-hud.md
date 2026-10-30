@@ -56,6 +56,9 @@ same panel resource.
 `scripts/art/build_ui_theme.py` regenerates the Theme and editable pixel-aligned SVG hardware.
 The generated skull crest and its source/prompt record live in `client/assets/ui/grimdark/`.
 The display font's MSDF import settings are versioned so menu text stays sharp when scaled.
+Test-scene launches and explicit `--windowed` / `-w` launches stay windowed from autoload
+startup, regardless of the saved game preference. This override is not persisted. Visual
+capture fixtures neither force always-on-top nor repeatedly grab desktop focus.
 `ResponsiveMenu` fits menu content to the window independently of the world/camera stretch
 policy. Login and character creation use the same framed, responsive shell; character
 class/mode choices participate in Tab navigation and validation text wraps within the form.
