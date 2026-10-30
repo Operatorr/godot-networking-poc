@@ -215,6 +215,21 @@ func _change_scene_with_loading(scene_path: String, loading_title: String = "") 
 	# Show loading screen
 	await _show_loading_screen(loading_title)
 
+	# Cold script initialization on the loader thread leaks RefCounted instances
+	# on Godot 4.7.2. Initialize entry scripts here, then background the scene's
+	# remaining assets. Keep these references until the scene owns its scripts.
+	var script_dependencies: Array[Resource] = []
+	for dependency: String in ResourceLoader.get_dependencies(scene_path):
+		var path := dependency.get_slice("::", 2) if dependency.contains("::") else dependency
+		if path.get_extension() not in ["gd", "gdc"]:
+			continue
+		var script: Resource = ResourceLoader.load(path, "Script")
+		if script == null:
+			push_error("[SceneManager] Failed to load scene script: " + path)
+			await _hide_loading_screen()
+			return
+		script_dependencies.append(script)
+
 	# Start background loading
 	var error = ResourceLoader.load_threaded_request(scene_path)
 
