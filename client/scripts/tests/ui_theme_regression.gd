@@ -44,6 +44,7 @@ func _ready() -> void:
 	terrain.gradient.colors = PackedColorArray([Color("273d3a"), Color("172625")])
 	hud.minimap.set_world_map(terrain, Rect2(-2000, -2000, 4000, 4000))
 	await _capture("hud-1280")
+	_check_hud_spacing(hud)
 	_check(hud.minimap.get_node("MapContent").clip_contents, "Minimap aperture must clip terrain")
 	await _check_kill_feed(hud.get_node("KillFeed"))
 	hud.pause_menu.toggle()
@@ -71,8 +72,10 @@ func _ready() -> void:
 	await _capture("hud-partial-1280")
 	get_window().size = Vector2i(1920, 1080)
 	await _capture("hud-1920")
+	_check_hud_spacing(hud)
 	get_window().size = Vector2i(390, 844)
 	await _capture("hud-390")
+	_check_hud_spacing(hud)
 	hud.queue_free()
 	await get_tree().process_frame
 	get_window().size = Vector2i(1280, 720)
@@ -109,6 +112,21 @@ func _ready() -> void:
 	await _check_account_menus()
 	print("[UIThemeRegression] %s" % ("FAIL" if _failed else "PASS"))
 	get_tree().quit(1 if _failed else 0)
+
+
+func _check_hud_spacing(hud: GameHud) -> void:
+	var slots := hud.ability_bar.get_global_rect()
+	# Exclude the key badges below the square action slots from the centerline.
+	slots.size.y = AbilityBar.SLOT_SIZE
+	var health := hud.health_bar.get_global_rect()
+	var mana := hud.mana_bar.get_global_rect()
+	var energy := hud.stamina_bar.get_global_rect()
+	var gap := AbilityBar.SLOT_GAP
+	_check(is_equal_approx(slots.position.x - health.end.x, gap), "HP/action gap must match slot spacing")
+	_check(is_equal_approx(mana.position.x - slots.end.x, gap), "Mana/action gap must match slot spacing")
+	_check(is_equal_approx(slots.position.y - energy.end.y, gap), "Energy/action gap must match slot spacing")
+	_check(is_equal_approx(health.get_center().y, slots.get_center().y), "HP must share the action-slot centerline")
+	_check(is_equal_approx(mana.get_center().y, slots.get_center().y), "Mana must share the action-slot centerline")
 
 
 func _check_kill_feed(feed: Control) -> void:

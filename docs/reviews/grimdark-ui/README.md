@@ -231,3 +231,12 @@ These four comparisons use the previous PR revision `9c6cba4` as the before imag
 | Previous PR version | Updated |
 | --- | --- |
 | ![Previous: Leaderboard without outer frame](revision-before/leaderboard.png) | ![Updated: Leaderboard without outer frame](after/leaderboard.png) |
+
+## Resource-bar spacing and alignment
+
+Before is PR revision `9933dba`. Both resource bars move up 4 logical pixels to share the action-slot centerline. HP/action, action/mana and energy/action gaps now use the same 8-pixel layout spacing as the slots themselves. Geometry checks cover 1280×720, 1920×1080 and 390×844 layouts.
+
+| Before | After |
+| --- | --- |
+| ![Previous bar spacing](alignment-before/bars-full.png) | ![Aligned bars and equal gaps](after/bars-full.png) |
+| ![Previous partial bars](alignment-before/bars-partial.png) | ![Aligned partial bars](after/bars-partial.png) |

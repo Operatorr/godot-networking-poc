@@ -69,7 +69,8 @@ Resource fills use `TextureProgressBar.nine_patch_stretch = true`. Their complet
 rectangles match the transparent openings in the frame assets; native texture width must
 never determine the trough size. Health and mana use mirrored 520×52 rails around the action slots, with openings
 `(20,16,490,20)` and `(10,16,490,20)` respectively. Stamina uses `(10,6,380,8)` inside a
-400×20 rail. The minimap's `MapContent` clips terrain in a 248-pixel opening, with a
+400×20 rail. HP and mana share the 60-pixel action slots' vertical centerline; the
+left, right and energy-to-action gaps all match the 8-pixel inter-slot spacing. The minimap's `MapContent` clips terrain in a 248-pixel opening, with a
 280-pixel frame and north label drawn above it. Kill notifications share its width and
 ornamentation, with a red skull, red killer name and blue victim name. Whole notification
 rows fade and expire together; names wrap as literal text. The leaderboard uses a quiet

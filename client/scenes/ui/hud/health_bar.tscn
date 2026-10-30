@@ -10,10 +10,10 @@ anchor_left = 0.5
 anchor_right = 0.5
 anchor_top = 1.0
 anchor_bottom = 1.0
-offset_left = -718.0
-offset_top = -104.0
-offset_right = -198.0
-offset_bottom = -52.0
+offset_left = -728.0
+offset_top = -108.0
+offset_right = -208.0
+offset_bottom = -56.0
 mouse_filter = 2
 script = ExtResource("1_health")
 

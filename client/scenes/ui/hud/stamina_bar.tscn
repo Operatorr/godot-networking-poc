@@ -11,9 +11,9 @@ anchor_right = 0.5
 anchor_top = 1.0
 anchor_bottom = 1.0
 offset_left = -200.0
-offset_top = -134.0
+offset_top = -140.0
 offset_right = 200.0
-offset_bottom = -114.0
+offset_bottom = -120.0
 mouse_filter = 2
 script = ExtResource("1_resource")
 
