@@ -1,19 +1,13 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/hud/leaderboard.gd" id="1_lb"]
 
-[ext_resource type="Texture2D" path="res://assets/ui/grimdark/panel.svg" id="99_panel"]
-
-[sub_resource type="StyleBoxTexture" id="StyleBoxFlat_panel"]
-texture = ExtResource("99_panel")
-texture_margin_left = 24.0
-texture_margin_top = 24.0
-texture_margin_right = 24.0
-texture_margin_bottom = 24.0
-content_margin_left = 18.0
-content_margin_top = 16.0
-content_margin_right = 18.0
-content_margin_bottom = 16.0
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
+bg_color = Color(0.035, 0.045, 0.052, 0.68)
+content_margin_left = 8.0
+content_margin_top = 8.0
+content_margin_right = 8.0
+content_margin_bottom = 8.0
 
 [node name="Leaderboard" type="Control"]
 offset_left = 20.0

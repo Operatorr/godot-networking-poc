@@ -1,6 +1,6 @@
 {
   "family": "Omega Realm grimdark UI",
-  "reference": "User-provided Grimdark Fantasy Pixel UI Sprite Sheet.png (2026-10-30), inspiration only",
+  "reference": "User-provided grimdark sprite sheet and HUD close-up references (2026-10-30), inspiration only",
   "palette": [
     "#050706",
     "#252928",
@@ -30,5 +30,16 @@
     "HUD trough geometry and alpha regression",
     "Native scene captures at 1920x1080, 1280x720, 390x844",
     "Long region labels, focus restoration and scaled mouse hit areas"
-  ]
+  ],
+  "ability_icons": {
+    "file": "ability_icons.png",
+    "tool": "Built-in image_gen",
+    "dimensions": [
+      1254,
+      1254
+    ],
+    "atlas": "2\u00d72 equal cells: dash (cyan), warrior charge (red), rogue shadowstep (violet), mageblast (gold). Godot AtlasTexture regions; source bitmap preserved.",
+    "prompt": "Square 2\u00d72 grimdark pixel-art ability icon atlas; exact equal cells without gutters, labels or UI frames. Cyan spectral running figure and motion streaks; blood-red charge slash with ivory impact; violet hooded rogue dissolving into shadows with silver dagger; golden-white magical star explosion. Near-black textured backgrounds, hard pixel clusters, clear silhouettes designed for small inventory skill icons.",
+    "license": "Generated for this project using the built-in image tool; no third-party asset pack incorporated"
+  }
 }

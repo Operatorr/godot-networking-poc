@@ -5,10 +5,13 @@ extends Node
 var _capture_dir: String = ""
 var _failed: bool = false
 var _auth_only: bool = false
+var _hud_only: bool = false
 
 
 func _ready() -> void:
 	for arg in OS.get_cmdline_user_args():
+		if arg == "--hud-only":
+			_hud_only = true
 		if arg == "--auth-only":
 			_auth_only = true
 		if arg.begins_with("--capture="):
@@ -30,6 +33,7 @@ func _ready() -> void:
 		print("[UIReviewCapture] %s" % ("FAIL" if _failed else "PASS"))
 		get_tree().quit(1 if _failed else 0)
 		return
+	GameManager.player_data["player_class"] = PacketTypes.PlayerClass.WARRIOR
 	var hud: GameHud = load("res://scenes/ui/hud/game_hud.tscn").instantiate()
 	add_child(hud)
 	hud.health_bar.update_hp(120, 120)
@@ -46,6 +50,12 @@ func _ready() -> void:
 	add_child(player)
 	player.add_to_group("minimap_player_local")
 	hud.set_minimap_player(player)
+	# Same fixed world positions on both revisions exercise each marker style.
+	for fixture in [["minimap_monster", Vector2(-600,-600)], ["minimap_monster", Vector2(450,650)], ["minimap_npc", Vector2(600,-500)], ["minimap_landmark", Vector2(1050,100)]]:
+		var marker := Node2D.new()
+		marker.position = fixture[1]
+		add_child(marker)
+		marker.add_to_group(fixture[0])
 	# A deliberately oversized terrain texture catches clipping through frame edges.
 	var terrain := GradientTexture2D.new()
 	terrain.gradient = Gradient.new()
@@ -54,6 +64,13 @@ func _ready() -> void:
 	hud.get_node("KillFeed").add_kill("Kurogane", "Drax")
 	hud.get_node("KillFeed").set_process(false)
 	await _capture("hud-1280")
+	hud.health_bar.update_hp(0, 120)
+	hud.mana_bar.update_value(0, 100)
+	hud.stamina_bar.update_value(0, 100)
+	await _capture("hud-empty-1280")
+	hud.health_bar.update_hp(120, 120)
+	hud.mana_bar.update_value(100, 100)
+	hud.stamina_bar.update_value(100, 100)
 	hud.pause_menu.toggle()
 	await _capture("pause-1280")
 	hud.pause_menu._on_settings_pressed()
@@ -93,6 +110,10 @@ func _ready() -> void:
 	await _capture("world-map-1280")
 	hud.queue_free()
 	await get_tree().process_frame
+	if _hud_only:
+		print("[UIReviewCapture] %s" % ("FAIL" if _failed else "PASS"))
+		get_tree().quit(1 if _failed else 0)
+		return
 	get_window().size = Vector2i(1280, 720)
 	var main: Control = load("res://scenes/ui/menus/main_menu.tscn").instantiate()
 	GameManager.player_data["character_name"] = "AshenWarden"

@@ -5,18 +5,18 @@
 ## set_world_map(). Each frame the minimap draws that texture under a world→minimap transform centred
 ## on the local player (so it pans/follows) — clipped to the frame — then overlays coloured dots from
 ## groups. No per-frame world rendering: drawing one (clipped) texture + a few dots is cheap.
-## Dots: monsters=red, NPCs=green, other players=red+purple border, local player=green marker,
+## Markers: monsters=red diamonds, NPCs=blue crosses, other players=red+purple border, local player=green,
 ## landmarks (e.g. the Arena Portal)=yellow.
 class_name Minimap
 extends Control
 
-const MINIMAP_SIZE := 176.0
+const MINIMAP_SIZE := 248.0
 ## Keep dots inside the decorative frame border.
-const EDGE_MARGIN := 8.0
+const EDGE_MARGIN := 12.0
 
 const BG_COLOR := Color(0.05, 0.05, 0.07, 0.85)
 const MONSTER_COLOR := Color(0.9, 0.2, 0.2)
-const NPC_COLOR := Color(0.3, 0.9, 0.4)
+const NPC_COLOR := Color(0.4, 0.7, 1.0)
 ## Intentionally the same red as MONSTER_COLOR — remote players are distinguished by the purple border.
 const REMOTE_PLAYER_COLOR := Color(0.9, 0.2, 0.2)
 const REMOTE_PLAYER_BORDER := Color(0.6, 0.25, 0.95)
@@ -105,6 +105,31 @@ func _draw_dots(group: String, center_world: Vector2, zoom: float, mc: Vector2, 
 				p = mc + off.normalized() * max_r
 			else:
 				continue
+		_draw_marker(group, p.round(), color, radius, border)
+
+
+func _draw_marker(group: String, p: Vector2, color: Color, radius: float, border: Color) -> void:
+	if group == "minimap_landmark":
+		_map_content.draw_circle(p, 8, Color("090c0e"))
+		_map_content.draw_arc(p, 7, 0, TAU, 16, LANDMARK_COLOR, 1.5)
+		for direction in [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]:
+			_map_content.draw_line(p + direction * 9, p + direction * 11, LANDMARK_COLOR, 2)
+		_map_content.draw_colored_polygon(PackedVector2Array([p + Vector2(0, -4), p + Vector2(3, 0), p + Vector2(0, 4), p + Vector2(-3, 0)]), LANDMARK_COLOR)
+		return
+	if group == "minimap_npc":
+		_map_content.draw_rect(Rect2(p - Vector2(3, 7), Vector2(6, 14)), Color("132c48"))
+		_map_content.draw_rect(Rect2(p - Vector2(7, 3), Vector2(14, 6)), Color("132c48"))
+		_map_content.draw_rect(Rect2(p - Vector2(1, 5), Vector2(2, 10)), color)
+		_map_content.draw_rect(Rect2(p - Vector2(5, 1), Vector2(10, 2)), color)
+		_map_content.draw_rect(Rect2(p - Vector2.ONE, Vector2(2, 2)), Color("d8efff"))
+		return
+	if group == "minimap_player_local":
 		if border.a > 0.0:
-			_map_content.draw_circle(p, radius + 1.5, border)
-		_map_content.draw_circle(p, radius, color)
+			_map_content.draw_circle(p, radius + 2, border)
+		_map_content.draw_circle(p, radius + 0.5, color)
+		return
+	# Enemy/player diamonds retain the purple remote-player border and stealth rules.
+	var rim := border if border.a > 0.0 else Color("5c1320")
+	_map_content.draw_colored_polygon(PackedVector2Array([p + Vector2(0,-7), p + Vector2(5,0), p + Vector2(0,7), p + Vector2(-5,0)]), rim)
+	_map_content.draw_colored_polygon(PackedVector2Array([p + Vector2(0,-5), p + Vector2(3,0), p + Vector2(0,5), p + Vector2(-3,0)]), color)
+	_map_content.draw_rect(Rect2(p - Vector2(1,3), Vector2(2,3)), color.lightened(0.55))

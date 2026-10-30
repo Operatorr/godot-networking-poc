@@ -13,7 +13,7 @@ ART.mkdir(parents=True, exist_ok=True)
 def svg(name, width, height, body):
     # HUD overlays have a genuinely transparent trough. Clip outside it so fills
     # cannot be occluded by the metal plate's otherwise opaque interior.
-    aperture = {"health_frame": (46, 13, 233, 19), "mana_frame": (46, 13, 233, 19), "stamina_frame": (10, 6, 298, 6)}.get(name)
+    aperture = {"health_frame": (20, 16, 490, 20), "mana_frame": (10, 16, 490, 20), "stamina_frame": (10, 6, 380, 8)}.get(name)
     if aperture:
         x, y, w, h = aperture
         body = f'<defs><clipPath id="rim"><path clip-rule="evenodd" d="M0 0H{width}V{height}H0ZM{x} {y}V{y+h}H{x+w}V{y}Z"/></clipPath></defs><g clip-path="url(#rim)">{body}</g>'
@@ -48,20 +48,46 @@ for kind, colors in {"health": ["#5d0f16", "#a2232c", "#e15055", "#c1313d", "#8b
     svg(f"{kind}_fill", 256, 20, body)
 svg("track", 256, 20, '<rect width="256" height="20" fill="#080b0e"/><path d="M0 1H256" stroke="#3c2926"/><path d="M0 18H256" stroke="#252b2d"/>')
 
+# HUD hardware: slender layered iron rails with worn gold highlights, distinct
+# from the broader menu corners. Resource frames have mirrored pointed outer ends.
 for kind in ["health", "mana"]:
-    s = '<path d="M39 7H284L299 22L284 37H39L32 22Z" fill="#050706"/><path d="M41 9H283L296 22L283 35H41L35 22Z" fill="#414540"/><path d="M43 11H282L293 22L282 33H43Z" fill="#0a0d0e"/>'
-    s += '<path d="M46 12H279M46 32H279M281 12L291 22L281 32" fill="none" stroke="#a28a53"/><path d="M49 10H276M49 34H276" stroke="#6d5a38"/>'
-    s += '<path d="M22 0L28 5H35V11L42 22L35 33V39H28L22 44L16 39H9V33L2 22L9 11V5H16Z" fill="#080b0d" stroke="#696652"/><path d="M22 4L36 14V30L22 40L8 30V14Z" fill="#1b2020" stroke="#a28a53"/>'
-    if kind == "health":
-        s += '<path d="M16 11H27V13H30V25H27V32H17V27H13V15H16Z" fill="#aca58c"/><path d="M17 12H26V14H28V19H15V15H17Z" fill="#d8d0bc"/><path d="M16 20H20V24H16ZM24 20H28V24H24ZM21 25H24V28H21ZM19 30H20V33H19ZM24 30H25V33H24Z" fill="#101311"/>'
-    else:
-        s += '<path d="M22 9L30 22L22 35L14 22Z" fill="#173959" stroke="#b7ad86"/><path d="M22 13L26 22L22 29L18 22Z" fill="#5799c2"/><path d="M22 14V27L18 22Z" fill="#93c5d8"/>'
-    for x in [47, 277]:
-        s += f'<rect x="{x}" y="9" width="2" height="2" fill="#d5b975"/><rect x="{x}" y="33" width="2" height="2" fill="#9b7428"/>'
-    svg(f"{kind}_frame", 300, 44, s)
-svg("stamina_frame", 318, 18, '<path d="M5 2H313L318 9L313 16H5L0 9Z" fill="#070a0b" stroke="#58594c"/><path d="M8 4H310V14H8Z" fill="#88703b"/><path d="M9 5H309V13H9Z" fill="#080b0d"/><path d="M12 3H306M12 15H306" stroke="#c6aa6c"/>')
-svg("slot", 48, 48, hardware(48, 48, "#111719"))
-svg("minimap_frame", 200, 200, '<path fill-rule="evenodd" d="M0 0H200V200H0ZM12 12V188H188V12Z" fill="#0a0e10"/><path d="M2 2H198V198H2Z" fill="none" stroke="#53574e"/><path d="M6 6H194V194H6Z" fill="none" stroke="#967c47"/><path d="M10 10H190V190H10Z" fill="none" stroke="#333a39"/>' + ''.join(f'<path d="M{x} {y}h{d*19}v{d*4}h{-d*15}v{d*15}h{-d*4}Z" fill="#bd9d5f"/>' for x,y,d in [(1,1,1),(199,199,-1)]) + '<path d="M100 1L106 6L100 11L94 6Z M100 189L106 194L100 199L94 194Z" fill="#c5a05b"/>')
+    s = '<path d="M20 2H520V50H20L2 26Z" fill="#050708" stroke="#252828" stroke-width="2"/>'
+    for inset, color in [(4,"#666052"),(6,"#252927"),(8,"#8e7954"),(10,"#121719"),(12,"#45443b")]:
+        s += f'<path d="M22 {inset}H518V{52-inset}H22L{inset+3} 26Z" fill="none" stroke="{color}"/>'
+    s += '<path d="M24 14H514M24 38H514" stroke="#b09a6c" stroke-opacity=".65"/><path d="M28 3H514" stroke="#c2b391" stroke-opacity=".5"/>'
+    for x in range(30, 510, 29):
+        s += f'<path d="M{x} 5h7M{x+9} 47h4" stroke="#a59a7b" stroke-opacity=".35"/><path d="M{x+14} 7h3M{x+4} 45h6" stroke="#0b0d0d"/>'
+    for x,y in [(21,5),(8,26),(21,47)]:
+        s += f'<path d="M{x} {y-3}l3 3l-3 3l-3-3Z" fill="#282b28" stroke="#ab9163"/><rect x="{x}" y="{y-1}" width="1" height="2" fill="#e5d5ad"/>'
+    if kind == "mana":
+        s = '<g transform="translate(520 0) scale(-1 1)">'+s+'</g>'
+    svg(f"{kind}_frame", 520, 52, s)
+svg("stamina_frame", 400, 20, '<path d="M5 1H395L399 5V15L395 19H5L1 15V5Z" fill="#080b0c" stroke="#67604c"/><path d="M7 3H393V17H7Z" fill="none" stroke="#b39b64"/><path d="M9 5H391V15H9Z" fill="none" stroke="#392e1d"/><path d="M10 2H390" stroke="#e2d0a0"/>')
+
+def hud_box(w, h, transparent=False):
+    s = '' if transparent else f'<rect x="4" y="4" width="{w-8}" height="{h-8}" fill="#080b0e"/>'
+    for inset,col in [(1,"#050708"),(2,"#42423b"),(3,"#96805b"),(4,"#d0ba86"),(5,"#4c4432"),(7,"#171c1c"),(8,"#615339")]:
+        s += f'<path d="M{inset+2} {inset}H{w-inset-2}L{w-inset} {inset+2}V{h-inset-2}L{w-inset-2} {h-inset}H{inset+2}L{inset} {h-inset-2}V{inset+2}Z" fill="none" stroke="{col}"/>'
+    for x,y in [(5,5),(w-6,5),(5,h-6),(w-6,h-6)]:
+        s += f'<rect x="{x-2}" y="{y-2}" width="5" height="5" fill="#4e402c"/><path d="M{x-1} {y-1}h3v2h-3Z" fill="#c4a36b"/><rect x="{x}" y="{y}" width="1" height="1" fill="#f1dab0"/>'
+    for x in range(12,w-10,13):
+        s += f'<path d="M{x} 3h4M{x+2} {h-4}h3" stroke="#151915"/><path d="M{x} 2h2" stroke="#e0c597"/>'
+    return s
+
+svg("slot", 60, 60, hud_box(60,60))
+svg("key_badge", 48, 26, '<path d="M5 1H43L47 5V21L43 25H5L1 21V5Z" fill="#080b0c" stroke="#514735"/><path d="M6 3H42L45 6V20L42 23H6L3 20V6Z" fill="none" stroke="#ac9462"/><path d="M7 2H41" stroke="#deca95"/>')
+
+# Map and feed share gilt corner brackets and a diamond compass ornament.
+def map_frame(w,h):
+    s = hud_box(w,h,True)
+    for x,y,sx,sy in [(5,5,1,1),(w-5,5,-1,1),(5,h-5,1,-1),(w-5,h-5,-1,-1)]:
+        s += f'<g transform="translate({x} {y}) scale({sx} {sy})"><path d="M0 0H18V5H5V18H0Z" fill="#b38337"/><path d="M1 1H17V3H3V17H1Z" fill="#eac787"/><path d="M5 6H8V9H5Z" fill="#5a4025"/></g>'
+    for y in [8,h-8]:
+        s += f'<path d="M{w//2} {y-7}l7 7l-7 7l-7-7Z" fill="#574123" stroke="#d4ab60"/><path d="M{w//2} {y-4}l4 4l-4 4l-4-4Z" fill="#e8c582"/><rect x="{w//2-1}" y="{y-1}" width="2" height="2" fill="#fff0c2"/>'
+    return s
+svg("minimap_frame",280,280,map_frame(280,280))
+svg("kill_feed_frame",280,64,'<rect x="4" y="4" width="272" height="56" fill="#080b0e" fill-opacity=".94"/>'+map_frame(280,64))
+svg("kill_skull",24,28,'<path d="M6 2H18V4H21V8H23V17H19V21H17V26H14V22H11V26H8V21H5V17H2V8H4V4H6Z" fill="#871723"/><path d="M7 3H17V5H20V9H21V15H18V18H16V24H14V20H10V24H9V18H6V15H4V9H5V5H7Z" fill="#ef3b45"/><path d="M6 10H10V14H6ZM15 10H19V14H15ZM11 15H14V18H11Z" fill="#21090e"/><path d="M7 4H16V6H7Z" fill="#ff8271"/>')
 
 # Theme resource: one shared source for native controls, including generated buttons.
 ext, sub, props = [], [], []

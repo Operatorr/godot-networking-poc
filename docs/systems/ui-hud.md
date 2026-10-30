@@ -67,13 +67,19 @@ pixels on the right and positions its single caret with a 14-pixel margin.
 
 Resource fills use `TextureProgressBar.nine_patch_stretch = true`. Their complete Control
 rectangles match the transparent openings in the frame assets; native texture width must
-never determine the trough size. Health/mana openings are `(46,13,233,19)` and stamina is
-`(10,6,298,6)`. The minimap's `MapContent` clips terrain in a 176-pixel opening, with the
-200-pixel frame and compass labels drawn as siblings above it.
+never determine the trough size. Health and mana use mirrored 520×52 rails around the action slots, with openings
+`(20,16,490,20)` and `(10,16,490,20)` respectively. Stamina uses `(10,6,380,8)` inside a
+400×20 rail. The minimap's `MapContent` clips terrain in a 248-pixel opening, with a
+280-pixel frame and north label drawn above it. Kill notifications share its width and
+ornamentation, with a red skull, red killer name and blue victim name. Whole notification
+rows fade and expire together; names wrap as literal text. The leaderboard uses a quiet
+translucent background without the decorative outer frame.
 
 Pause → Settings → Controls preserves keyboard focus and unwinds one page on Back/Esc.
-The SceneTree continues running. The action indicators show current input bindings,
-cooldown wedges and remaining seconds; the four unused slots remain visibly inactive.
+The SceneTree continues running. The action indicators use 60-pixel framed icons and separate key badges for current input
+bindings, plus cooldown wedges and remaining seconds. The icon atlas contains dash, Charge,
+Shadowstep and Mageblast artwork; the class slot selects the local player's actual class.
+The four unused slots remain empty, without invented bindings or actions.
 
 ## In-Arena HUD
 

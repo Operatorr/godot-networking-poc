@@ -1,8 +1,8 @@
 # Grimdark UI review captures
 
-30 before/after pairs captured from real Godot 4.7.2 scenes. Before uses commit `bb583d4`; after uses the implementation committed alongside this gallery. Both use the same offline fixture, names, resource values and window sizes. No account credentials or live server data are used.
+31 before/after pairs captured from real Godot 4.7.2 scenes. Before uses commit `bb583d4`; after uses the implementation committed alongside this gallery. Both use the same offline fixture, names, resource values and window sizes. No account credentials or live server data are used.
 
-The first four pairs are unscaled crops of the 1280×720 captures. All other images are complete viewport captures; click an image for its original resolution. The neutral terrain is a fixture for checking minimap clipping, not replacement world art. HUD, world-map, death and connection screens share that fixture.
+The first four pairs are unscaled crops of the 1280×720 captures. All other images are complete viewport captures; click an image for its original resolution. The neutral terrain and fixed monster/NPC/landmark markers are a fixture for checking minimap clipping and marker styles, not replacement world art. HUD, world-map, death and connection screens share that fixture.
 
 ## Reproduce
 
@@ -12,7 +12,7 @@ godot --windowed --path client res://scenes/test/ui_review_capture.tscn -- --cap
 
 For the before version, extract `git archive bb583d4 client` into a temporary directory, copy the current capture script and its scene into the extracted client, provide the built `client/bin` GDExtension, and run an editor import before capturing. The fixture is compatible with both versions. For a baseline older than the launch override, also copy the current `client/autoload/game_manager.gd` into the temporary extraction so it honors `--windowed` before loading settings; this changes no captured UI. It redirects region reads to localhost and does not save preferences. Use `--auth-only` to capture only login and character creation, including narrow layouts and valid-name/Hardcore states. Captures require a graphical display. Native window and rendered texture dimensions are checked before saving.
 
-Crops from `hud-1280.png`: bars `(280,630)-(1000,720)`; minimap/kill feed `(1090,0)-(1280,220)`; leaderboard `(0,0)-(280,200)`. The partial bars use the same crop from `hud-partial-1280.png`.
+Crops from `hud-1280.png`: bars `(120,610)-(1160,720)`; minimap/kill feed `(1040,0)-(1280,300)`; leaderboard `(0,0)-(280,200)`. The partial bars use the same crop from `hud-partial-1280.png`.
 
 The shared theme also reaches login, character creation, dialogs, loading and connection/death screens; these are included even where layout was unchanged. Inventory/equipment/tooltip scenes are empty, unused scaffolds, not playable menus. Narrow HUD captures document the existing world stretch policy; this change does not introduce touch controls.
 
@@ -197,3 +197,37 @@ The shared theme also reaches login, character creation, dialogs, loading and co
 | Before | After |
 | --- | --- |
 | ![Before: Character creation — valid name and Hardcore, 390×844](before/character-ready-390.png) | ![After: Character creation — valid name and Hardcore, 390×844](after/character-ready-390.png) |
+
+### HUD — empty resource bars
+
+| Before | After |
+| --- | --- |
+| ![Before: empty resources](before/hud-empty-1280.png) | ![After: empty resources](after/hud-empty-1280.png) |
+
+## HUD reference refinement
+
+These four comparisons use the previous PR revision `9c6cba4` as the before image. They isolate the requested removal of the leaderboard frame, illustrated action slots and key badges, mirrored resource rails, and matching minimap/kill notification styling. Both revisions use the same windowed capture fixture. Unassigned action slots stay empty.
+
+### Resource rails and action slots
+
+| Previous PR version | Updated |
+| --- | --- |
+| ![Previous: Resource rails and action slots](revision-before/bars-full.png) | ![Updated: Resource rails and action slots](after/bars-full.png) |
+
+### Partial resources and cooldowns
+
+| Previous PR version | Updated |
+| --- | --- |
+| ![Previous: Partial resources and cooldowns](revision-before/bars-partial.png) | ![Updated: Partial resources and cooldowns](after/bars-partial.png) |
+
+### Minimap and kill notifications
+
+| Previous PR version | Updated |
+| --- | --- |
+| ![Previous: Minimap and kill notifications](revision-before/minimap.png) | ![Updated: Minimap and kill notifications](after/minimap.png) |
+
+### Leaderboard without outer frame
+
+| Previous PR version | Updated |
+| --- | --- |
+| ![Previous: Leaderboard without outer frame](revision-before/leaderboard.png) | ![Updated: Leaderboard without outer frame](after/leaderboard.png) |

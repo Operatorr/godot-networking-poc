@@ -7,7 +7,7 @@ func _ready() -> void:
 		add_child(bar)
 		await get_tree().process_frame
 		var fill: TextureProgressBar = bar.get_node("Fill")
-		var trough := Rect2(10, 6, 298, 6) if kind == "stamina" else Rect2(46, 13, 233, 19)
+		var trough: Rect2 = {"health": Rect2(20, 16, 490, 20), "mana": Rect2(10, 16, 490, 20), "stamina": Rect2(10, 6, 380, 8)}[kind]
 		if not _check(fill.nine_patch_stretch, "%s must stretch its texture to the trough" % kind):
 			return
 		if not _check(fill.get_rect().is_equal_approx(trough), "%s fill %s exceeds its trough %s" % [kind, fill.get_rect(), trough]):

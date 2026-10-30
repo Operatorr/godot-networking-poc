@@ -10,19 +10,19 @@ anchor_left = 0.5
 anchor_right = 0.5
 anchor_top = 1.0
 anchor_bottom = 1.0
-offset_left = -475.0
-offset_top = -84.0
-offset_right = -175.0
-offset_bottom = -40.0
+offset_left = -718.0
+offset_top = -104.0
+offset_right = -198.0
+offset_bottom = -52.0
 mouse_filter = 2
 script = ExtResource("1_health")
 
 [node name="Fill" type="TextureProgressBar" parent="."]
 texture_filter = 1
-offset_left = 46.0
-offset_top = 13.0
-offset_right = 279.0
-offset_bottom = 32.0
+offset_left = 20.0
+offset_top = 16.0
+offset_right = 510.0
+offset_bottom = 36.0
 mouse_filter = 2
 max_value = 1.0
 step = 0.0
@@ -36,17 +36,17 @@ texture_progress = ExtResource("3_fill")
 
 [node name="Frame" type="TextureRect" parent="."]
 texture_filter = 1
-offset_right = 300.0
-offset_bottom = 44.0
+offset_right = 520.0
+offset_bottom = 52.0
 mouse_filter = 2
 texture = ExtResource("4_frame")
 expand_mode = 1
 stretch_mode = 0
 
 [node name="Label" type="Label" parent="."]
-offset_left = 46.0
-offset_right = 279.0
-offset_bottom = 44.0
+offset_left = 20.0
+offset_right = 510.0
+offset_bottom = 52.0
 mouse_filter = 2
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 17

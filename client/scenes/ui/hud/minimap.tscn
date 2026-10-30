@@ -7,48 +7,37 @@
 clip_contents = true
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -220.0
+offset_left = -300.0
 offset_top = 20.0
 offset_right = -20.0
-offset_bottom = 220.0
+offset_bottom = 300.0
 mouse_filter = 2
 script = ExtResource("1_minimap")
 
 [node name="MapContent" type="Control" parent="."]
 clip_contents = true
-offset_left = 12.0
-offset_top = 12.0
-offset_right = 188.0
-offset_bottom = 188.0
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 264.0
+offset_bottom = 264.0
 mouse_filter = 2
 
 [node name="Frame" type="TextureRect" parent="."]
 texture_filter = 1
-offset_right = 200.0
-offset_bottom = 200.0
+offset_right = 280.0
+offset_bottom = 280.0
 mouse_filter = 2
 texture = ExtResource("2_frame")
 expand_mode = 1
 stretch_mode = 0
 
 [node name="North" type="Label" parent="."]
-offset_left = 83.0
-offset_top = 12.0
-offset_right = 117.0
-offset_bottom = 30.0
+offset_left = 123.0
+offset_top = 16.0
+offset_right = 157.0
+offset_bottom = 40.0
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.85, 0.76, 0.56, 1)
-theme_override_font_sizes/font_size = 11
+theme_override_font_sizes/font_size = 18
 text = "N"
-horizontal_alignment = 1
-
-[node name="MapHint" type="Label" parent="."]
-offset_left = 56.0
-offset_top = 169.0
-offset_right = 144.0
-offset_bottom = 188.0
-mouse_filter = 2
-theme_override_colors/font_color = Color(0.77, 0.74, 0.64, 1)
-theme_override_font_sizes/font_size = 10
-text = "MAP"
 horizontal_alignment = 1

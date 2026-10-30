@@ -45,6 +45,7 @@ func _ready() -> void:
 	hud.minimap.set_world_map(terrain, Rect2(-2000, -2000, 4000, 4000))
 	await _capture("hud-1280")
 	_check(hud.minimap.get_node("MapContent").clip_contents, "Minimap aperture must clip terrain")
+	await _check_kill_feed(hud.get_node("KillFeed"))
 	hud.pause_menu.toggle()
 	await _capture("pause-1280")
 	_check(get_viewport().gui_get_focus_owner() == hud.pause_menu.get_node("Center/Panel/VBox/ResumeButton"), "Pause must focus Resume")
@@ -108,6 +109,24 @@ func _ready() -> void:
 	await _check_account_menus()
 	print("[UIThemeRegression] %s" % ("FAIL" if _failed else "PASS"))
 	get_tree().quit(1 if _failed else 0)
+
+
+func _check_kill_feed(feed: Control) -> void:
+	feed.set_process(false)
+	for i in 4:
+		feed.add_kill("LongCombatantName", "[b]LiteralName[/b]")
+	await _settle()
+	_check(feed._messages.size() == 3, "Kill feed must remain bounded to three notifications")
+	_check(feed.get_node("VBox").get_child_count() == 3, "Replaced notification must leave the layout")
+	for message: Dictionary in feed._messages:
+		var row: Control = message.row
+		_check(row.size.x <= feed.size.x, "Long kill names must wrap within the minimap width")
+		var label: RichTextLabel = row.find_children("*", "RichTextLabel", true, false)[0]
+		_check(label.get_parsed_text() == "LongCombatantName eliminated [b]LiteralName[/b]", "Kill names must remain literal text")
+		message.timestamp = -10.0
+	feed._process(0.0)
+	await _settle()
+	_check(feed._messages.is_empty() and feed.get_node("VBox").get_child_count() == 0, "Expired notifications must remove the complete framed row")
 
 
 func _check_account_menus() -> void:
