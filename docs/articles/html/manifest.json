@@ -1,0 +1,37 @@
+[
+  {
+    "key": "A",
+    "file": "omega-load-testing.A.html",
+    "words": 9037,
+    "minutes": 40,
+    "source": "omega-load-testing.A.md"
+  },
+  {
+    "key": "C1",
+    "file": "omega-load-testing.C1.html",
+    "words": 4645,
+    "minutes": 21,
+    "source": "omega-load-testing.C1.md"
+  },
+  {
+    "key": "C2",
+    "file": "omega-load-testing.C2.html",
+    "words": 4177,
+    "minutes": 19,
+    "source": "omega-load-testing.C2.md"
+  },
+  {
+    "key": "appendices",
+    "file": "omega-load-testing.appendices.html",
+    "words": 2087,
+    "minutes": 10,
+    "source": "omega-load-testing.appendices.md"
+  },
+  {
+    "key": "evidence",
+    "file": "evidence.html",
+    "words": 803,
+    "minutes": 4,
+    "source": "README.md"
+  }
+]

@@ -40,10 +40,12 @@ server meshing. Battlefield, after trying 128, went back to 64. Is that a coinci
 This article argues it isn't. The cap falls out of arithmetic, and you can watch the arithmetic
 happen in our own bytes.
 
-One warning before we start: **those five numbers are failed join ramps, not a capacity.** None of
-the five runs produced a scored five-minute window. "Our first build's join ramps broke around
-180–190 authenticated players" is what the data supports. "A $7.59 server holds 190 players" is
-not.
+One warning before we start: **191, 185, 176, 180 and 190 are the peak connected-player counts
+from those five attempts, not sustainable player capacities.** Each test gradually added bots—a
+"join ramp"—toward its requested population. All five failed before reaching the five-minute
+measurement window. The data supports "our first build's attempts to fill the server broke around
+180–190 authenticated players." It doesn't establish that a $7.59 server can reliably sustain 190
+players.
 
 Eight days later, after a round of correctness fixes to the server, the client and our own
 measurement code, a fixed build held **150 players for five clean minutes**. Its 200-player attempt

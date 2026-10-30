@@ -33,8 +33,12 @@ That band sits right next to what the industry ships: Warzone's 150, Star Citize
 before meshing, Battlefield's 64 after trying 128. [Part 1](omega-load-testing.C1.md) explains why
 that range exists. This part shows it happening in our own bytes.
 
-One warning first: **those five numbers are failed join ramps, not a capacity.** None of them
-produced a scored five-minute window. Eight days later, after a round of correctness fixes to the
+One warning first: **191, 185, 176, 180 and 190 are the peak connected-player counts from those
+five attempts, not sustainable player capacities.** Each test gradually added bots—a "join ramp"—
+toward its requested population. All five failed before reaching the five-minute measurement
+window, so they don't establish how many players the server could reliably sustain.
+
+Eight days later, after a round of correctness fixes to the
 server, the client and our own measurement code, a fixed build held **150 players for five clean
 minutes**. Its 200-player attempt couldn't be measured, because the bot host was dropping packets
 too. The fixed build's ceiling is **unknown**.
