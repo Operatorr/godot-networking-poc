@@ -45,3 +45,6 @@ logs/
 # Temporary files
 *.tmp
 tmp/
+
+# Keep scalable display-font settings with the source font.
+!assets/fonts/CormorantUnicase-Bold.ttf.import

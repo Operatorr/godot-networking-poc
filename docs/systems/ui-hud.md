@@ -39,10 +39,36 @@ login_screen ──login ok──▶ has character? ──no──▶ character_
 | File | Role |
 | --- | --- |
 | `ui/error_dialog.gd` | Reusable `PopupPanel` with title/message + optional Retry; used by login, character creation, main menu. `popup_window = false` so it survives click-outside/focus loss; it closes only via its buttons. |
-| `ui/menu_button_helper.gd` | Applies the shared `StyleBoxTexture` button art + sizing to a button list. |
-| `ui/menu_font_helper.gd` | Recursively applies `CormorantUnicase-Bold` to every `Control` in a tree (`:7-25`). |
+| `ui/helpers/menu_button_helper.gd` | Applies consistent full-size or compact button sizing; all visual states inherit the shared project Theme. |
+| `ui/helpers/menu_font_helper.gd` | Applies `CormorantUnicase-Bold` to headings and action buttons; body copy and numeric values retain the readable body font. |
 | `region_info.gd` | Region DTO (`from_dict`, `is_available`, `get_display_text`) backing the dropdown. |
 | `user_preferences.gd` | `RefCounted`, persists selected region + player colour + keybinds + the **local-API toggle** (`use_local_api`) to `user://preferences.json` (`:6`). The **only** client-side persistence here. |
+
+### Shared visual skin
+
+`client/themes/grimdark.tres` is the project-wide Theme. Buttons (including dynamic rebind
+buttons), panels, dropdowns, tabs, sliders, checkboxes, scrollbars, inputs and popups share
+dark iron surfaces, antique gold hardware and bone text. `PrimaryButton` provides the red
+primary action; `DisplayLabel` provides the heading face. Focus is a separate transparent
+outline, so it does not obscure hover/pressed states. Popup error/confirm dialogs use the
+same panel resource.
+
+`scripts/art/build_ui_theme.py` regenerates the Theme and editable pixel-aligned SVG hardware.
+The generated skull crest and its source/prompt record live in `client/assets/ui/grimdark/`.
+The display font's MSDF import settings are versioned so menu text stays sharp when scaled.
+`ResponsiveMenu` fits menu content to the window independently of the world/camera stretch
+policy. Region labels truncate with a full-text tooltip; the dropdown reserves 40 logical
+pixels on the right and positions its single caret with a 14-pixel margin.
+
+Resource fills use `TextureProgressBar.nine_patch_stretch = true`. Their complete Control
+rectangles match the transparent openings in the frame assets; native texture width must
+never determine the trough size. Health/mana openings are `(46,13,233,19)` and stamina is
+`(10,6,298,6)`. The minimap's `MapContent` clips terrain in a 176-pixel opening, with the
+200-pixel frame and compass labels drawn as siblings above it.
+
+Pause → Settings → Controls preserves keyboard focus and unwinds one page on Back/Esc.
+The SceneTree continues running. The action indicators show current input bindings,
+cooldown wedges and remaining seconds; the four unused slots remain visibly inactive.
 
 ## In-Arena HUD
 
@@ -58,7 +84,7 @@ root and `@onready` node refs — no procedural `_build_ui()`.
 
 | Widget | Script | Shows / does | Anchor |
 | --- | --- | --- | --- |
-| HP bar | `hud/health_bar.gd` (`health_bar.tscn`) | current/max HP, colour-graded green→yellow→red via `tint_progress`, damage flash 0.3 s. | bottom-centre, **left slot** |
+| HP bar | `hud/health_bar.gd` (`health_bar.tscn`) | current/max HP, blood-red fill with low-health tint via `tint_progress`, damage flash 0.3 s. | bottom-centre, **left slot** |
 | Mana bar | `hud/resource_bar.gd` (`mana_bar.tscn`) | current/max mana, driven by `movement_sm.mana_changed`. | bottom-centre, **right slot** |
 | Stamina bar | `hud/resource_bar.gd` (`stamina_bar.tscn`) | sprint stamina (thin, spans the ability-bar width), driven by `movement_sm.stamina_changed`; frame flashes red when exhausted. | bottom-centre, **above the ability bar** |
 | Ability bar | `hud/ability_bar.gd` (`ability_bar.tscn`) | six slot frames + key labels; the SPACE slot draws a radial dash-cooldown wedge and the RMB slot a class-ability-cooldown wedge from `movement_sm` (both timers are owned by the Rust sim online and mirrored into the SM via `set_predicted_cooldowns`; offline the SM ticks them itself). | bottom-centre, **between HP & Mana** |
@@ -115,7 +141,7 @@ cosmetic, auto-freeing.
 - **Persisted:** `user://preferences.json` (region, player colour, **keyboard rebinds**, **local-API toggle**) and `user://settings.json` (`GameManager.settings`: volumes, vsync, `window_mode` — debounced save, force-flushed on quit via `GameManager._notification` (window close / `EXIT_TREE`) and the EXITING game state, **not** on entering the loading screen; `_load_settings` reloads + applies it at startup and migrates the legacy boolean `fullscreen` key away); accounts/characters (incl. class, **level + experience**) and **account Glory** persist via the Go API. The project **boots windowed** (`project.godot` `window/size/mode=0`) and applies the saved/default `window_mode` at startup — the game still **defaults to windowed-fullscreen**, but on macOS leaving a native fullscreen Space on the first frame is unreliable, so we only ever transition *into* fullscreen at runtime.
 - **Validated:** client-side input only — name regex/length (`character_creation.gd:72-94`); the server re-decides all gameplay.
 - **Can fail:** `[ext_resource]`-referencing `game_hud.tscn` from a level scene would pull the client-only HUD scripts into the headless parse graph (so it's always `load()`ed at runtime); stale `EntityNameCache` shows blank killer/feed names; region fetch failure falls back to defaults (`main_menu.gd._populate_default_regions`). **Character creation** can return HTTP 409 `{"error":"User already has a character","code":"character_exists"}` while a hardcore permadeath delete is still in flight — `character_creation.gd` self-heals by re-syncing `/api/character/me` (`AuthManager.refresh_character`) and either routing to the surviving character or retrying the create once.
-- **Tested:** `scenes/test/hud_bar_regression.tscn` exercises the health bar (instantiates `health_bar.tscn`, asserts the fill ratio); `scenes/test/settings_save_regression.tscn` exercises the settings debounced-save force-flush on shutdown (`GameManager._notification`) + idempotency and the `SceneManager.goto_settings()`/`return_from_settings()` return-target routing (LOGIN vs. MAIN_MENU), backing up/restoring `user://settings.json`. Both quit 0 on PASS. Otherwise manual/visual. The offline Sandbox now reuses the shared `GameHud` (kill feed / leaderboard / minimap / death screen) instead of bespoke overlays.
+- **Tested:** `scenes/test/hud_bar_regression.tscn` checks all three resource bars at negative, empty, partial, full and overfull values, complete trough rectangles, stretch mode and transparent frame openings. `scenes/test/ui_theme_regression.tscn` checks native menu/HUD composition, dropdown spacing, focus restoration, transformed button hit areas and narrow-window bounds; run with `-- --capture=/tmp/omega-ui` under a graphical renderer to capture the scenes. `scenes/test/settings_save_regression.tscn` exercises the settings debounced-save force-flush on shutdown (`GameManager._notification`) + idempotency and the `SceneManager.goto_settings()`/`return_from_settings()` return-target routing (LOGIN vs. MAIN_MENU), backing up/restoring `user://settings.json`. Both quit 0 on PASS. Otherwise manual/visual. The offline Sandbox now reuses the shared `GameHud` (kill feed / leaderboard / minimap / death screen) instead of bespoke overlays.
 
 ## See also
 

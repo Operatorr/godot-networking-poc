@@ -23,7 +23,10 @@ func _ready() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("pause_menu"):
-		toggle()
+		if visible and _settings_menu.visible:
+			_settings_menu.go_back()
+		else:
+			toggle()
 		get_viewport().set_input_as_handled()
 
 
@@ -36,19 +39,35 @@ func set_leave_button_text(text: String) -> void:
 ## Toggle pause menu visibility.
 func toggle() -> void:
 	visible = not visible
+	_settings_menu.visible = false
+	$Center.visible = true
+	if visible:
+		$Center/Panel/VBox/ResumeButton.grab_focus()
+	else:
+		_release_menu_focus()
 
 
 func _on_resume_pressed() -> void:
 	visible = false
+	_release_menu_focus()
 
 
 func _on_settings_pressed() -> void:
 	if _settings_menu:
+		$Center.visible = false
 		_settings_menu.visible = true
+		_settings_menu.get_node("Panel/VBox/MasterRow/MasterSlider").grab_focus()
 
 
 func _on_settings_back() -> void:
-	pass  # Settings menu hides itself
+	$Center.visible = true
+	$Center/Panel/VBox/SettingsButton.grab_focus()
+
+
+func _release_menu_focus() -> void:
+	var focused := get_viewport().gui_get_focus_owner()
+	if focused != null and is_ancestor_of(focused):
+		focused.release_focus()
 
 
 func _on_leave_pressed() -> void:

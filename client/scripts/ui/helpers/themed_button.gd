@@ -9,7 +9,7 @@ extends Button
 
 const MenuButtonHelper := preload("res://scripts/ui/helpers/menu_button_helper.gd")
 
-## When true, also stretch to the standard 320×72 menu-button size.
+## When true, also stretch to the standard 320×52 menu-button size.
 @export var enforce_min_size: bool = false
 
 

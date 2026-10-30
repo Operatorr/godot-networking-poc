@@ -1,0 +1,34 @@
+{
+  "family": "Omega Realm grimdark UI",
+  "reference": "User-provided Grimdark Fantasy Pixel UI Sprite Sheet.png (2026-10-30), inspiration only",
+  "palette": [
+    "#050706",
+    "#252928",
+    "#9B7428",
+    "#D8D0BC",
+    "#4A1512"
+  ],
+  "hardware": {
+    "files": "*.svg",
+    "source": "scripts/art/build_ui_theme.py",
+    "method": "Original editable vector geometry with pixel-aligned edges, authored for this project",
+    "license": "Project source; no third-party art copied"
+  },
+  "crest": {
+    "file": "skull_crest.png",
+    "tool": "Built-in image_gen",
+    "dimensions": [
+      1536,
+      1024
+    ],
+    "alpha": "RGBA, transparent exterior; rendered with nearest filtering",
+    "prompt": "Create one production game UI ornament asset on a genuinely transparent background, no text. Grimdark fantasy pixel art for Omega Realm, inspired by old Diablo inventory UI: a small front-facing weathered bone skull embedded in a narrow symmetrical dark iron and tarnished gold gothic crest, with a pointed top finial, tiny worn rivets, short thorn-like metal wings. Single compact horizontal ornament centered, tight composition, roughly 3:2 aspect ratio. Pixel art with deliberate hard pixel clusters, no smooth painterly shading, no blur, no soft shadow outside silhouette, no glow. Muted black iron #252928, antique gold #9B7428, bone #D8D0BC, dried blood #4A1512, bright highlights very restrained. Design to read when rendered at 120x80 pixels over a black menu panel and also as a compact health emblem. Transparent everywhere outside the crest. Only the crest, no UI panels, no background, no checkerboard, no lettering. Save the generated asset to disk and return its path.",
+    "license": "Generated for this project using the built-in image tool; no third-party asset pack incorporated"
+  },
+  "verification": [
+    "Godot 4.7.2 import and runtime",
+    "HUD trough geometry and alpha regression",
+    "Native scene captures at 1920x1080, 1280x720, 390x844",
+    "Long region labels, focus restoration and scaled mouse hit areas"
+  ]
+}
