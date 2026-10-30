@@ -91,10 +91,14 @@ Each `[ ]` is a decision or a measured fact; tick it with the ledger row that pr
       swarm CPU reported per run.
 - [x] **Server loop phases measured** (service/route, simulation, snapshot build, outbox flush,
       ENet flush) + process CPU + reliable-event rates by type. No more "hot path not measured".
-- [ ] **Rung 50** strategy: PASS at 60 s. (Bandwidth gate decision pending — see below.)
-- [ ] **Rung 100** strategy: PASS at 60 s.
-- [ ] **Rung 150** strategy: PASS at 60 s.
-- [ ] **Rung 200** strategy: PASS at 60 s. *(The old wall: 176–191 on CAX11.)*
+- [x] **Rung 50** strategy: PASS at 60 s (`harness-check`, 2026-10-29; bandwidth 19 KB/s reported separately).
+- [x] **Rung 100** strategy: PASS at 60 s (`changeA-100`, 2026-10-30: CPU 22 %, tick p95 8.7 ms, 0 drops).
+- [x] **Rung 150** strategy: PASS at 60 s (`changeA-150`: CPU 38 %, tick p95 15.8 ms, 0 drops, RTT p95 3 ms).
+- [ ] **Rung 200** strategy: *near-pass* locally (`changeA-200`: 200/200 connected for the full
+      minute, RTT p95 8 ms, loss 0.08 %, CPU 58 %, tick p95 25.9 ms — but **178** kernel drops and
+      0.7 % of ticks over 33 ms). Blocked on Change C (Snapshot build = 13 ms of the 18 ms tick).
+      *(The old wall: 176–191 on CAX11; 12/200 survived locally before Change A.)*
+- [ ] **Rung 200 on CAX11** with Change A (the user's reference host) — Wayfinder ticket.
 - [ ] **Rung 300**
 - [ ] **Rung 500** — POC target floor.
 - [ ] **Rung 1000** — POC target ceiling.
@@ -115,21 +119,23 @@ confirmed / refuted**. Each one names the measurement that decides it.
 
 | # | Hypothesis | Decides it | Status |
 |---|---|---|---|
-| H1 | **Reliable broadcast storm.** Every `PROJECTILE_FIRED` (player *and* monster), `DAMAGE`, `EXP_GAIN`, `ABILITY_EFFECT`, … is a reliable ch1 packet **broadcast to every connected peer with no AoI filter** (`rust/server/src/sim/world.rs`, `outbox.broadcast`). Packets/s = players × events/s, events/s ∝ players ⇒ **N²**. Each one is an ENet reliable command (allocation, ack bookkeeping, retransmit timer) on the server and an ack datagram from every client back to the server. | `event_sends_per_s` total vs players in the report; `outbox_flush` + `enet_flush` phase share; datagrams in/s. | **confirmed** — removing events (movement run) makes 200 trivial; with events + big buffers ENet service eats 69 % of a core |
+| H1 | **Reliable broadcast storm.** Every `PROJECTILE_FIRED` (player *and* monster), `DAMAGE`, `EXP_GAIN`, `ABILITY_EFFECT`, … is a reliable ch1 packet **broadcast to every connected peer with no AoI filter** (`rust/server/src/sim/world.rs`, `outbox.broadcast`). Packets/s = players × events/s, events/s ∝ players ⇒ **N²**. Each one is an ENet reliable command (allocation, ack bookkeeping, retransmit timer) on the server and an ack datagram from every client back to the server. | `event_sends_per_s` total vs players in the report; `outbox_flush` + `enet_flush` phase share; datagrams in/s. | **confirmed, fixed by Change A** — removing events (movement run) made 200 trivial; AoI-scoped + unreliable events take the 200 rung from 12 survivors to 200/200 at 8 ms RTT |
 | H2 | **Snapshot build is O(peers × visible entities)** per tick (`broadcast_state_updates`: per peer a grid query, a HashSet of previously-visible ids, a delta-mask check per visible entity, a sort, encoding). With everyone in one 2000-unit arena and AoI 1000 u, most peers see most entities. | `snapshot_build` % of core vs players (expect ~N² in a clustered arena). | **confirmed** (~N^1.6: 1.7 / 5.2 / 10.3 ms at 50/100/150; 7.8 ms at 200 movement) — the next wall after H1, around ~450 players |
 | H3 | **Kernel receive-buffer overflow is a symptom of (H1/H2) stalls**, not a cause: a 20–30 ms tick leaves the 512 KB socket buffer to absorb a full tick of inbound inputs + acks from N clients; past ~150 clients at ~100 B × 30 Hz + acks that is > 512 KB per stall. | `RcvbufErrors` appearing only when `tick p95` or `read-gap max` crosses ~20 ms. If drops appear with low tick times, buffer size/drain cadence is the cause instead. | **confirmed as trigger, refuted as cause**: drops start at 150 with p95 22 ms; 16 MB buffers keep peers alive but the storm (H1) then pins the CPU |
 | H4 | **Generator saturation** on the Hetzner bot host (single-threaded swarm at 81–87 % of a core) distorted the 190 reading. | Bots CPU per thread in the report; the sharded swarm removes it. | **fixed in harness** (3 threads ≤ 56 % total at 200); re-measure on Hetzner |
 | H5 | **Host class**: CAX11 is 2 shared Ampere vCPUs; a dedicated x86 core (CCX13) moves the wall but does not change the N² shape. | Same rung on both hosts; compare `ms per tick` per phase. | **not the explanation**: the local VM reproduces the CAX11 collapse at the same population with the same signature |
 | H6 | **Bandwidth gate**: 5 KB/s per player is unreachable with the current snapshot size (~15 KB/s per player of ch0 deltas at 50 bots) — either the gate or the wire format has to change. | Snapshot bytes per peer per tick vs the 1200 B/snap budget; what the peer budget scheduler defers. | **confirmed**: 16–42 KB/s per player at every rung, all Snapshot bytes — needs a decision |
 
-## Open questions (decisions the user owns)
+## Decisions (2026-10-30, on PR #52)
 
-1. **Bandwidth gate**: keep 5 KB/s per player (then snapshot and event volume must drop ~4×) or
-   set the gate to the measured 30 Hz-full-AoI reality and budget egress cost instead?
-2. **AoI for events**: should `PROJECTILE_FIRED` / `DAMAGE` / `EXP_GAIN` be AoI-scoped (only peers
-   that can see the shooter/victim) and should `PROJECTILE_FIRED` be unreliable (the snapshot
-   already carries the projectile entity)? This is the single largest lever H1 points at.
-3. **Target host**: which box is the reference for the ladder rungs above 200?
+1. **Bandwidth**: 5 KB/s per player stays a **long-term target**, reported on its own line in
+   every report and never folded into the scaling PASS/FAIL. (Rungs below are judged on
+   connectivity, errors, tick budget, kernel drops, RTT and loss.)
+2. **Event delivery**: AoI-scope events; use unreliable delivery only where authoritative
+   Snapshot recovery is validated. → Change A, implemented, see Findings.
+3. **Reference host**: the rented Hetzner **CAX11** pair for the 200 rung and above; the user's
+   own machine only through a scheduled Wayfinder ticket. Order of work: A → re-run 200 →
+   reassess B and C (C looks good too).
 
 ## Findings
 
@@ -208,7 +214,7 @@ the host class (the local 4-vCPU VM reproduces Hetzner CAX11 exactly), not proje
 
 **What to change, in order of leverage (each one is a quick_stress run away from being measured):**
 
-- **A. Stop broadcasting `PROJECTILE_FIRED` reliably to everyone.** Scope it to peers whose AoI
+- **A. (DONE 2026-10-30, commit `98a6304`) Stop broadcasting `PROJECTILE_FIRED` reliably to everyone.** Scope it to peers whose AoI
   contains the shooter (the Snapshot already carries the projectile entity for everyone else) and
   consider making it unreliable-sequenced (a lost fire event is healed by the next Snapshot).
   Same AoI scoping for `DAMAGE`, `EXP_GAIN`, `ABILITY_EFFECT`. Expected: reliable packets/s from
@@ -220,3 +226,45 @@ the host class (the local 4-vCPU VM reproduces Hetzner CAX11 exactly), not proje
   whose grid cell changed; skip the per-peer `HashSet` rebuild; encode each entity's record once
   per tick and share bytes across peers. Expected: `snapshot_build` from N^1.6 toward N·k.
 - **D. Then** re-run the ladder and climb.
+
+### 2026-10-30 — Change A measured: the 200 rung goes from 12 survivors to 200, RTT 8 ms
+
+What A does (`rust/server/src/sim/{world,combat,player}.rs`, `net/outbox.rs`): every per-shot /
+per-hit event is sent to `PlayerManager::aoi_recipients(anchor, always)` — authenticated peers
+within the Snapshot AoI *exit* radius of where it happened, plus the parties involved — instead
+of to everyone. Player-owned `PROJECTILE_FIRED` is additionally **unreliable** on the Snapshot
+channel (validated recovery: the projectile entity rides every Snapshot; player-projectile hits
+are resolved server-side; a lost event costs one client a tint and a shoot sound). Monster-owned
+`PROJECTILE_FIRED` stays reliable because the client's PvE hit reports need the owner.
+`EXP_GAIN` and `RESPAWN` became unicasts (the client already dropped every one that was not its
+own). `KILL_PVP`, `PLAYER_INFO`, `LEADERBOARD`, `PROGRESS` are untouched. Covered by
+`projectile_and_damage_events_are_aoi_scoped` in `world.rs`.
+
+| bots | | tick avg / p95 / max ms | snapshot build ms/tick | service+route | server CPU | reliable+unreliable events/s (per peer) | avg recipients (of N) | socket drops | RTT p95 | result |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 100 | before | 8.2 / 11.5 / 19.5 | 5.2 | 1.5 ms | 30 % | 39 k (390) | 100 | 0 | 3 ms | pass |
+| 100 | **after A** | **6.3 / 8.7 / 18.2** | 4.3 | **0.7 ms** | **22 %** | **15 k (154)** | 33.5 | 0 | 3 ms | pass |
+| 150 | before | 16.4 / 22.5 / 44.7 | 10.3 | 2.3 ms | 56 % | 100 k (671) | 150 | **1,117** | 8 ms | drops |
+| 150 | **after A** | **11.5 / 15.8 / 23.4** | 8.1 | **0.9 ms** | **38 %** | **38 k (252)** | 44 | **0** | 3 ms | **pass** |
+| 200 | before | collapse | — | 1.5 s stalls | 35 % avg / 100 % peaks | 190 k offered | 200 | **193 k** | 217 ms, 12/200 alive | fail |
+| 200 | **after A** | **18.2 / 25.9 / 39.9** | 13.1 | 1.1 ms | 58 % | **78 k (393)** | 58 | **178** | **8 ms, 200/200 alive** | near-pass |
+
+Verified per the decision list:
+
+- **Gameplay correctness**: kill rates unchanged at equal population (KILL_PVP 7.9/s at 100 before
+  and after; 14.9/s at 200), respawns and leaderboard flow unchanged, bots still dodge (they learn
+  owners from the same events), 0 decode failures, 0 bot errors, all 91 server unit tests green
+  including the new scoping test. *Not* play-tested in Godot in this session (no engine here):
+  the client paths touched are read-only verified (`arena_base.gd` handlers, `client_entity_manager.gd`
+  projectile sources). A human smoke run is the remaining check.
+- **Average event recipients**: `PROJECTILE_FIRED` reaches 47 of 100, 91 of 200 players (the AoI
+  exit ring is 1100 u in a 2000 u arena, so ~half the arena is "visible"); `EXP_GAIN`/`RESPAWN`
+  exactly 1. Total event packets/s: 39 k → 15 k at 100, 100 k → 38 k at 150.
+- **Retransmissions**: ENet smoothed peer loss 0.00–0.03 % at every rung (was 13–23 % at 200),
+  RTT mean 2–9 ms (was 0.6–5.7 s).
+- **CPU / ticks / RTT / kernel drops**: table above.
+
+Where the remaining cost is, at 200: `snapshot_build` **13.1 ms of the 18.2 ms tick (39 % of a
+core)**, scheduler deferring 6,739 entity records per tick with 61 % of peers at their byte
+budget — Change C is now the lever. `PLAYER_INFO` is the next largest event (73/s per peer at
+200: it is re-broadcast on every level-up) and could be coalesced into the leaderboard cadence.
