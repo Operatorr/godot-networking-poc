@@ -5,28 +5,67 @@ PNG material sources remain separate from SVG rims. No raster processing.
 Run from any directory; generated resources are checked in.
 """
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[2] / "client"
 ART = ROOT / "assets/ui/grimdark"
 ART.mkdir(parents=True, exist_ok=True)
 
 
-# One palette for ordinary iron hardware. Antique gold is reserved for tiny sigils/focus.
+# Muted aged bronze: warm shadows and restrained highlights, rather than silver or gilt.
 HARDWARE_PALETTE = {
-    "#776544": "#606b68", "#95815b": "#68726d", "#c1b18a": "#a0a69a",
-    "#b28b42": "#858d80", "#c0a066": "#b2b6a8", "#ad7940": "#8c9690",
-    "#ab7944": "#9a5b48", "#d4ae6e": "#c68d6d", "#5f533d": "#5c6661",
-    "#666052": "#59635e", "#8e7954": "#6e7a72", "#45443b": "#353e3a",
-    "#b09a6c": "#88938a", "#c2b391": "#a2aaa0", "#a59a7b": "#768478",
-    "#ab9163": "#889486", "#e5d5ad": "#bec5b8", "#67604c": "#59635e",
-    "#b39b64": "#8b958a", "#392e1d": "#29312c", "#e2d0a0": "#bec5b8",
-    "#96805b": "#6d7770", "#d0ba86": "#a1aa9c", "#4c4432": "#3a453e",
-    "#615339": "#59665b", "#4e402c": "#38443c", "#c4a36b": "#8c9889",
-    "#f1dab0": "#c4ccbd", "#e0c597": "#a4b19e", "#514735": "#444f46",
-    "#ac9462": "#8c9889", "#deca95": "#bec8b5", "#b38337": "#67776a",
-    "#eac787": "#a6b39f", "#5a4025": "#384539", "#c5ae7b": "#d8d0bc",
-    "#ac8c4e": "#838c7c", "#e2d2a6": "#d8d0bc", "#766647": "#636d63",
-    "#261d13": "#3d1917", "#c1a168": "#a07861", "#e4ce96": "#d8d0bc",
+    "#776544": "#786347",
+    "#95815b": "#8c7351",
+    "#c1b18a": "#b39a72",
+    "#b28b42": "#9d8158",
+    "#c0a066": "#bca27a",
+    "#ad7940": "#977b54",
+    "#ab7944": "#916e4c",
+    "#d4ae6e": "#bb976b",
+    "#5f533d": "#6b5942",
+    "#666052": "#655746",
+    "#8e7954": "#887253",
+    "#45443b": "#3b352c",
+    "#b09a6c": "#a18a65",
+    "#c2b391": "#b7a17c",
+    "#a59a7b": "#8f7b5d",
+    "#ab9163": "#9d835b",
+    "#e5d5ad": "#c2af8d",
+    "#67604c": "#655746",
+    "#b39b64": "#a18b64",
+    "#392e1d": "#332b22",
+    "#e2d0a0": "#c1ac85",
+    "#96805b": "#877150",
+    "#d0ba86": "#b69d72",
+    "#4c4432": "#453a2b",
+    "#615339": "#65543d",
+    "#4e402c": "#433525",
+    "#c4a36b": "#a78b60",
+    "#f1dab0": "#c7b18a",
+    "#e0c597": "#b59a73",
+    "#514735": "#4b3e2e",
+    "#ac9462": "#9c835e",
+    "#deca95": "#bda47a",
+    "#b38337": "#897049",
+    "#eac787": "#b69b70",
+    "#5a4025": "#483722",
+    "#c5ae7b": "#c9b998",
+    "#ac8c4e": "#9b8057",
+    "#e2d2a6": "#d0bea0",
+    "#766647": "#786448",
+    "#261d13": "#3d1917",
+    "#c1a168": "#a07861",
+    "#e4ce96": "#d8d0bc",
+    "#454640": "#4b4134",
+    "#42423b": "#493f32",
+    "#353b3c": "#3e372e",
+    "#574123": "#55432e",
+    "#d4ab60": "#a78a5d",
+    "#e8c582": "#bca077",
+    "#fff0c2": "#d1bf9b",
+    "#887448": "#87714f",
+    "#91836a": "#9c8765",
+    "#5d6664": "#71614c",
 }
 
 def svg(name, width, height, body):
@@ -35,10 +74,9 @@ def svg(name, width, height, body):
     aperture = {"health_frame": (20, 16, 490, 20), "mana_frame": (10, 16, 490, 20), "stamina_frame": (10, 6, 380, 8)}.get(name)
     if name.startswith("button") or name == "panel":
         aperture = (9, 9, width - 18, height - 18)
-    # Only hardware is neutralized; health/mana/energy and ability colors retain meaning.
+    # Only hardware is recolored; health/mana/energy and ability colors retain meaning.
     if name not in {"health_fill", "mana_fill", "stamina_fill", "kill_skull", "track"}:
-        for old, new in HARDWARE_PALETTE.items():
-            body = body.replace(old, new)
+        body = re.sub(r"#[0-9a-fA-F]{6}", lambda match: HARDWARE_PALETTE.get(match[0], match[0]), body)
     if aperture:
         x, y, w, h = aperture
         body = f'<defs><clipPath id="rim"><path clip-rule="evenodd" d="M0 0H{width}V{height}H0ZM{x} {y}V{y+h}H{x+w}V{y}Z"/></clipPath></defs><g clip-path="url(#rim)">{body}</g>'
@@ -73,7 +111,7 @@ for kind, colors in {"health": ["#5d0f16", "#a2232c", "#e15055", "#c1313d", "#8b
     svg(f"{kind}_fill", 256, 20, body)
 svg("track", 256, 20, '<rect width="256" height="20" fill="#080b0e"/><path d="M0 1H256" stroke="#3c2926"/><path d="M0 18H256" stroke="#252b2d"/>')
 
-# HUD hardware: slender layered iron rails with restrained bone highlights, distinct
+# HUD hardware: slender aged-bronze rails with restrained warm highlights, distinct
 # from the broader menu corners. Resource frames have mirrored pointed outer ends.
 for kind in ["health", "mana"]:
     s = '<path d="M20 2H520V50H20L2 26Z" fill="#050708" stroke="#252828" stroke-width="2"/>'
@@ -102,7 +140,7 @@ def hud_box(w, h, transparent=False):
 svg("slot", 60, 60, hud_box(60,60))
 svg("key_badge", 48, 26, '<path d="M5 1H43L47 5V21L43 25H5L1 21V5Z" fill="#080b0c" stroke="#514735"/><path d="M6 3H42L45 6V20L42 23H6L3 20V6Z" fill="none" stroke="#ac9462"/><path d="M7 2H41" stroke="#deca95"/>')
 
-# Map and feed share iron corner brackets and a diamond compass ornament.
+# Map and feed share aged-bronze corner brackets and a diamond compass ornament.
 def map_frame(w,h):
     s = hud_box(w,h,True)
     for x,y,sx,sy in [(5,5,1,1),(w-5,5,-1,1),(5,h-5,1,-1),(w-5,h-5,-1,-1)]:
@@ -120,10 +158,8 @@ svg("realm_sigil", 100, 42, '<path d="M0 21H33M67 21H100M50 0V9M50 33V42" stroke
 ext, sub, props = [
     '[ext_resource type="Script" path="res://scripts/ui/helpers/layered_ui_style.gd" id="layered_style"]',
     '[ext_resource type="Texture2D" path="res://assets/ui/grimdark/iron_surface.png" id="surface_iron"]',
-    '[ext_resource type="Texture2D" path="res://assets/ui/grimdark/blood_surface.png" id="surface_blood"]',
 ], [
     '[sub_resource type="CanvasTexture" id="material_iron"]\ndiffuse_texture = ExtResource("surface_iron")\ntexture_filter = 2',
-    '[sub_resource type="CanvasTexture" id="material_blood"]\ndiffuse_texture = ExtResource("surface_blood")\ntexture_filter = 2',
 ], []
 
 
@@ -135,12 +171,12 @@ def texture(name):
     return f'ExtResource("{key}")'
 
 
-def textured(name, margins=(16, 12, 16, 12), patch=16, source=None, blood=False):
+def textured(name, margins=(16, 12, 16, 12), patch=16, source=None):
     source = source or name
     frame_id = name + "_frame"
     sub.append(f'[sub_resource type="StyleBoxTexture" id="{frame_id}"]\ntexture = {texture(source)}\n' + '\n'.join(f'texture_margin_{side} = {patch}.0' for side in ['left','top','right','bottom']))
     is_panel = source == "panel"
-    # A red primary surface is a quiet color treatment; blood wear is exclusive to DangerPanel.
+    # Primary actions keep a quiet crimson iron surface beneath the bronze rim.
     base = "Color(0.32,0.065,0.055,1)" if "primary" in source else "Color(0.045,0.06,0.06,1)"
     opacity = 0.4 if is_panel else 0.3
     if "hover" in source:
@@ -149,9 +185,7 @@ def textured(name, margins=(16, 12, 16, 12), patch=16, source=None, blood=False)
         base, opacity = "Color(0.17,0.045,0.037,1)", 0.2
     elif "disabled" in source:
         base, opacity = "Color(0.035,0.04,0.038,1)", 0.18
-    if blood:
-        opacity = 0.65
-    sub.append(f'[sub_resource type="StyleBox" id="{name}"]\nscript = ExtResource("layered_style")\nframe = SubResource("{frame_id}")\nsurface = SubResource("material_{"blood" if blood else "iron"}")\nbase_color = {base}\nsurface_modulate = Color(1,1,1,{opacity})\ncrop_surface = {"false" if is_panel else "true"}\n' + '\n'.join(f'content_margin_{side} = {val}.0' for side,val in zip(['left','top','right','bottom'],margins)))
+    sub.append(f'[sub_resource type="StyleBox" id="{name}"]\nscript = ExtResource("layered_style")\nframe = SubResource("{frame_id}")\nsurface = SubResource("material_iron")\nbase_color = {base}\nsurface_modulate = Color(1,1,1,{opacity})\ncrop_surface = {"false" if is_panel else "true"}\n' + '\n'.join(f'content_margin_{side} = {val}.0' for side,val in zip(['left','top','right','bottom'],margins)))
     return f'SubResource("{name}")'
 
 
@@ -174,14 +208,13 @@ disabled = textured("button_disabled")
 primary = textured("button_primary")
 primary_hover = textured("button_primary_hover")
 panel = textured("panel", (24, 24, 24, 24), 24)
-danger_panel = textured("danger_panel", (40, 40, 40, 40), 24, source="panel", blood=True)
 pause_panel = textured("pause_panel", (40, 40, 40, 40), 24, source="panel")
 settings_panel = textured("settings_panel", (30, 20, 30, 20), 24, source="panel")
 controls_panel = textured("controls_panel", (28, 20, 28, 20), 24, source="panel")
-focus = flat("focus", 'Color(0,0,0,0)', 'Color(0.9,0.76,0.48,1)', 1, (0,0,0,0))
-input_box = flat("input", 'Color(0.035,0.045,0.052,1)', 'Color(0.33,0.38,0.35,1)', 1, (12,10,12,10))
-separator = flat("separator", 'Color(0.25,0.29,0.27,1)', margins=(0,1,0,1))
-track = flat("slider", 'Color(0.025,0.035,0.04,1)', 'Color(0.25,0.27,0.26,1)', 1, (0,3,0,3))
+focus = flat("focus", 'Color(0,0,0,0)', 'Color(0.78,0.65,0.44,1)', 1, (0,0,0,0))
+input_box = flat("input", 'Color(0.035,0.045,0.052,1)', 'Color(0.38,0.32,0.24,1)', 1, (12,10,12,10))
+separator = flat("separator", 'Color(0.32,0.27,0.20,1)', margins=(0,1,0,1))
+track = flat("slider", 'Color(0.025,0.035,0.04,1)', 'Color(0.29,0.25,0.20,1)', 1, (0,3,0,3))
 fill = flat("slider_fill", 'Color(0.47,0.18,0.15,1)', margins=(0,3,0,3))
 empty = flat("empty", 'Color(0,0,0,0)', margins=(8,6,8,6))
 for t in ["Button", "OptionButton"]:
@@ -214,7 +247,7 @@ for state, source in [("normal","button"),("hover","button_hover"),("pressed","b
     prop("OptionButton","styles",state,f'SubResource("{name}")')
 for t in ["Panel","PanelContainer","PopupPanel","PopupMenu","TabContainer"]:
     prop(t,"styles","panel",panel)
-for variation, style in [("DangerPanel",danger_panel), ("PausePanel",pause_panel), ("SettingsPanel",settings_panel), ("ControlsPanel",controls_panel)]:
+for variation, style in [("PausePanel",pause_panel), ("SettingsPanel",settings_panel), ("ControlsPanel",controls_panel)]:
     props.append(f'{variation}/base_type = &"PanelContainer"')
     prop(variation,"styles","panel",style)
 prop("PopupMenu","styles","hover",hover)

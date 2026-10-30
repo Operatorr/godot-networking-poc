@@ -1,8 +1,7 @@
-[gd_resource type="Theme" load_steps=55 format=3]
+[gd_resource type="Theme" load_steps=51 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/helpers/layered_ui_style.gd" id="layered_style"]
 [ext_resource type="Texture2D" path="res://assets/ui/grimdark/iron_surface.png" id="surface_iron"]
-[ext_resource type="Texture2D" path="res://assets/ui/grimdark/blood_surface.png" id="surface_blood"]
 [ext_resource type="Texture2D" path="res://assets/ui/grimdark/button.svg" id="tex_button"]
 [ext_resource type="Texture2D" path="res://assets/ui/grimdark/button_hover.svg" id="tex_button_hover"]
 [ext_resource type="Texture2D" path="res://assets/ui/grimdark/button_pressed.svg" id="tex_button_pressed"]
@@ -18,10 +17,6 @@
 
 [sub_resource type="CanvasTexture" id="material_iron"]
 diffuse_texture = ExtResource("surface_iron")
-texture_filter = 2
-
-[sub_resource type="CanvasTexture" id="material_blood"]
-diffuse_texture = ExtResource("surface_blood")
 texture_filter = 2
 
 [sub_resource type="StyleBoxTexture" id="button_frame"]
@@ -157,25 +152,6 @@ content_margin_top = 24.0
 content_margin_right = 24.0
 content_margin_bottom = 24.0
 
-[sub_resource type="StyleBoxTexture" id="danger_panel_frame"]
-texture = ExtResource("tex_panel")
-texture_margin_left = 24.0
-texture_margin_top = 24.0
-texture_margin_right = 24.0
-texture_margin_bottom = 24.0
-
-[sub_resource type="StyleBox" id="danger_panel"]
-script = ExtResource("layered_style")
-frame = SubResource("danger_panel_frame")
-surface = SubResource("material_blood")
-base_color = Color(0.045,0.06,0.06,1)
-surface_modulate = Color(1,1,1,0.65)
-crop_surface = false
-content_margin_left = 40.0
-content_margin_top = 40.0
-content_margin_right = 40.0
-content_margin_bottom = 40.0
-
 [sub_resource type="StyleBoxTexture" id="pause_panel_frame"]
 texture = ExtResource("tex_panel")
 texture_margin_left = 24.0
@@ -235,7 +211,7 @@ content_margin_bottom = 20.0
 
 [sub_resource type="StyleBoxFlat" id="focus"]
 bg_color = Color(0,0,0,0)
-border_color = Color(0.9,0.76,0.48,1)
+border_color = Color(0.78,0.65,0.44,1)
 border_width_left = 1
 content_margin_left = 0.0
 border_width_top = 1
@@ -247,7 +223,7 @@ content_margin_bottom = 0.0
 
 [sub_resource type="StyleBoxFlat" id="input"]
 bg_color = Color(0.035,0.045,0.052,1)
-border_color = Color(0.33,0.38,0.35,1)
+border_color = Color(0.38,0.32,0.24,1)
 border_width_left = 1
 content_margin_left = 12.0
 border_width_top = 1
@@ -258,7 +234,7 @@ border_width_bottom = 1
 content_margin_bottom = 10.0
 
 [sub_resource type="StyleBoxFlat" id="separator"]
-bg_color = Color(0.25,0.29,0.27,1)
+bg_color = Color(0.32,0.27,0.20,1)
 border_color = Color(0, 0, 0, 0)
 border_width_left = 0
 content_margin_left = 0.0
@@ -271,7 +247,7 @@ content_margin_bottom = 1.0
 
 [sub_resource type="StyleBoxFlat" id="slider"]
 bg_color = Color(0.025,0.035,0.04,1)
-border_color = Color(0.25,0.27,0.26,1)
+border_color = Color(0.29,0.25,0.20,1)
 border_width_left = 1
 content_margin_left = 0.0
 border_width_top = 1
@@ -438,8 +414,6 @@ PanelContainer/styles/panel = SubResource("panel")
 PopupPanel/styles/panel = SubResource("panel")
 PopupMenu/styles/panel = SubResource("panel")
 TabContainer/styles/panel = SubResource("panel")
-DangerPanel/base_type = &"PanelContainer"
-DangerPanel/styles/panel = SubResource("danger_panel")
 PausePanel/base_type = &"PanelContainer"
 PausePanel/styles/panel = SubResource("pause_panel")
 SettingsPanel/base_type = &"PanelContainer"

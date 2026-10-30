@@ -1,6 +1,6 @@
 # Grimdark UI review captures
 
-[Hybrid material revision](HYBRID.md) compares the approved iron/blood material treatment against PR revision `8ba33b5`, with 31 matched pairs plus three additional size checks. The original-baseline gallery below also points to the latest captures.
+[Latest aged-bronze revision](BRONZE.md) compares the current palette and frameless death screen against `db05991`, with 34 matched pairs. [Historical hybrid material revision](HYBRID.md) preserves the earlier silver/blood-panel comparison. The original-baseline gallery below also points to the latest captures.
 
 31 before/after pairs captured from real Godot 4.7.2 scenes. Before uses commit `bb583d4`; after uses the implementation committed alongside this gallery. Both use the same offline fixture, names, resource values and window sizes. No account credentials or live server data are used.
 

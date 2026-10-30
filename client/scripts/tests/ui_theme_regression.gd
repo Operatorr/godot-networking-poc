@@ -133,14 +133,12 @@ func _check_material_apertures() -> void:
 			_check(pixels.get_pixelv(pixels.get_size() / 2).a < 0.01, "Vector center must not obscure the material")
 			_check(style.surface != null, "Every button state needs a material")
 		button.free()
-	var ordinary := skin.get_stylebox("panel", "PanelContainer") as LayeredUIStyle
-	var danger := skin.get_stylebox("panel", "DangerPanel") as LayeredUIStyle
-	_check(ordinary.surface != danger.surface, "Death wear must stay distinct from everyday panels")
 
 
 func _check_death_panel() -> void:
 	var death: Control = load("res://scenes/ui/hud/death_screen.tscn").instantiate()
 	add_child(death)
+	_check(death.get_node("Center/Panel") is MarginContainer, "Death content must have padding without a panel background or frame")
 	var requests: Array[int] = [0]
 	death.main_menu_requested.connect(func() -> void: requests[0] += 1)
 	for width in [1280, 390]:

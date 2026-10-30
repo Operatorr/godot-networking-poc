@@ -48,8 +48,8 @@ login_screen ──login ok──▶ has character? ──no──▶ character_
 
 `client/themes/grimdark.tres` is the project-wide Theme. Buttons (including dynamic rebind
 buttons), panels, dropdowns, tabs, sliders, checkboxes, scrollbars, inputs and popups share
-dark iron PNG surfaces, neutral iron SVG hardware and bone text. Gold is limited to
-progression details, small sigils and keyboard focus. `PrimaryButton` provides the red
+dark iron PNG surfaces, muted aged-bronze SVG hardware and bone text. Warm highlights
+remain restrained across borders, small sigils, progression details and keyboard focus. `PrimaryButton` provides the red
 primary action; `DisplayLabel` provides the heading face. Focus is a separate transparent
 outline, so it does not obscure hover/pressed states. Popup error/confirm dialogs use the
 same panel resource.
@@ -59,13 +59,15 @@ same panel resource.
 Native Controls retain text, focus, hit testing and content margins. Wide button surfaces
 sample a strip of the PNG rather than flattening its grain. Shared `CanvasTexture` resources
 filter only the material linearly, preserving the world's existing pixel filtering. Ordinary
-menus use `iron_surface.png`; crimson primary/selected controls use tinted iron. `DangerPanel`
-uses `blood_surface.png` exclusively on the Softcore/Hardcore death screens, with the skull
-crest. Everyday account/pause menus use a small centered SVG realm sigil. Pause/settings
+menus use `iron_surface.png`; crimson primary/selected controls use tinted iron. Softcore
+and Hardcore death content has no panel frame or textured background: a MarginContainer
+preserves its padding, skull crest, text and action above the existing screen dimming.
+The earlier `blood_surface.png` source is retained but no longer loaded by the shared theme.
+Everyday account/pause menus use a small centered SVG realm sigil. Pause/settings
 variations preserve their existing padding. Both original generated PNGs and prompt/source
 records live in `client/assets/ui/grimdark/manifest.json`; the generator never edits the bitmaps.
 The material regression checks transparent frame apertures across inherited button states
-and keeps the ordinary/danger materials separate. Death panel bounds, focused action and
+and verifies that death content has no visual panel. Death content bounds, focused action and
 scaled pointer input are checked at desktop and narrow widths. No gameplay state is changed.
 The display font's MSDF import settings are versioned so menu text stays sharp when scaled.
 Test-scene launches and explicit `--windowed` / `-w` launches stay windowed from autoload
