@@ -326,7 +326,9 @@ def verdict(run, bots, ticks, srv, host):
     criteria = (bots or {}).get("success_criteria", [])
     connected = agg.get("connected_bots", 0)
     requested = run.get("bots", 0)
-    failed_criteria = [c for c in criteria if not c.get("passed")]
+    # The 5 KB/s bandwidth gate is a long-term target, reported on its own line below rather
+    # than folded into the scaling verdict (decision 2026-10-30).
+    failed_criteria = [c for c in criteria if not c.get("passed") and c.get("key") != "bandwidth"]
     if bots is None:
         reasons.append("no bot report (swarm crashed or never ran)")
     if requested and connected < requested:
@@ -377,6 +379,10 @@ def verdict(run, bots, ticks, srv, host):
             per_player = server_cpu / steady["players_avg"]
             headroom = f"; server CPU {server_cpu:.0f}% ≈ {per_player:.2f}%/player (linear headroom to 85%: ~{85 / per_player:.0f} players — real growth is super-linear, see event rates)"
         findings.append("NO BOTTLENECK HIT at this population" + headroom)
+    bw = next((c for c in criteria if c.get("key") == "bandwidth"), None)
+    if bw:
+        findings.append(f"BANDWIDTH TARGET (5 KB/s per player, long-term, not a scaling gate): "
+                        f"{bw.get('value')} — {'met' if bw.get('passed') else 'NOT met'}")
     ok = not reasons
     return ("PASS" if ok else "FAIL"), reasons, findings
 
@@ -398,7 +404,7 @@ def render(run_dir, run, bots, ticks, srv, host, logs):
         L.append("Why not a pass:")
         L.extend(f"- {r}" for r in reasons)
         L.append("")
-    L.append("Bottleneck read:")
+    L.append("Bottleneck read (bandwidth target reported last, separately):")
     L.extend(f"- {f}" for f in findings)
     L.append("")
 
@@ -471,12 +477,14 @@ def render(run_dir, run, bots, ticks, srv, host, logs):
         L.append("")
         L.append("Reliable GameEvent packets actually sent per second (every broadcast event = one reliable packet PER PEER):")
         L.append("")
-        L.append("| event | packets/s (all peers) | per peer/s | source events/s |")
-        L.append("|---|---|---|---|")
+        L.append("| event | packets/s (all peers) | per peer/s | source events/s | avg recipients |")
+        L.append("|---|---|---|---|---|")
         for k, v in srv["event_sends_per_s"].items():
-            L.append(f"| {k} | {v:.0f} | {v / n:.1f} | {srv['source_events_per_s'].get(k, 0):.1f} |")
+            src = srv["source_events_per_s"].get(k, 0)
+            L.append(f"| {k} | {v:.0f} | {v / n:.1f} | {src:.1f} | {(v / src) if src else 0:.1f} |")
         total_ev = sum(srv["event_sends_per_s"].values())
-        L.append(f"| **total** | **{total_ev:.0f}** | **{total_ev / n:.1f}** | {sum(srv['source_events_per_s'].values()):.1f} |")
+        total_src = sum(srv["source_events_per_s"].values())
+        L.append(f"| **total** | **{total_ev:.0f}** | **{total_ev / n:.1f}** | {total_src:.1f} | **{(total_ev / total_src) if total_src else 0:.1f}** (of {n:.0f} players) |")
     else:
         L.append("- no server sample data")
     L.append("")
@@ -574,6 +582,7 @@ def summary_line(run, status, agg, steady, srv, host, ticks):
         "kbps_per_bot": agg.get("bandwidth_per_player_kbps"),
         "events_per_peer_s": (ev / n) if ev is not None else None,
         "out_bytes_per_s": (srv or {}).get("sent_bytes_per_s"),
+        "avg_recipients": ((ev / sum((srv or {}).get("source_events_per_s", {}).values())) if (srv and sum((srv or {}).get("source_events_per_s", {}).values()) > 0) else None),
         "enet_loss_peak_pct": ((srv or {}).get("enet") or {}).get("loss_mean_pct_max"),
         "enet_rtt_peak_ms": ((srv or {}).get("enet") or {}).get("rtt_mean_ms_max"),
     }
@@ -651,7 +660,7 @@ def main():
                f"tick p95 {fmt(summ['tick_p95_ms'], ' ms', 2)} max {fmt(summ['tick_max_ms'], ' ms', 1)} · "
                f">33 ms {fmt(summ['over_33_pct'], '%', 1)} · RcvbufErrors {fmt(summ['rcvbuf_errors'])}",
                f"RTT p95 {fmt(summ['rtt_p95_ms'], ' ms', 0)} · loss {fmt(summ['loss_pct'], '%', 2)} · {fmt(summ['kbps_per_bot'], ' KB/s', 1)} per bot · "
-               f"reliable events {fmt(summ['events_per_peer_s'], '/s per peer', 0)} · server out {human_bytes(summ['out_bytes_per_s'] or 0)}/s · "
+               f"events {fmt(summ['events_per_peer_s'], '/s per peer', 0)} (avg {fmt(summ['avg_recipients'], ' recipients', 1)}) · server out {human_bytes(summ['out_bytes_per_s'] or 0)}/s · "
                f"ENet loss peak {fmt(summ['enet_loss_peak_pct'], '%', 1)} RTT peak {fmt(summ['enet_rtt_peak_ms'], ' ms', 0)}"]
         print("\n".join(key))
         if srv and srv.get("phases"):

@@ -152,15 +152,22 @@ pub fn apply_player_damage(
             }
         }
     }
-    outbox.broadcast(ServerPacket::GameEvent(GameEvent {
-        event_type: game_event_type::DAMAGE,
-        source_id: owner_id,
-        target_id,
-        data: GameEventData::Damage {
-            amount: applied as u16,
-            damage_type: 0,
-        },
-    }));
+    // Authoritative for the victim (HP, hit feedback), cosmetic for the attacker and anyone
+    // watching: scope to the victim's AoI, always including both parties.
+    let victim_pos = players.get_by_entity_id(target_id).map(|p| p.position);
+    let recipients = players.aoi_recipients(victim_pos, &[owner_id, target_id]);
+    outbox.send_to(
+        recipients,
+        ServerPacket::GameEvent(GameEvent {
+            event_type: game_event_type::DAMAGE,
+            source_id: owner_id,
+            target_id,
+            data: GameEventData::Damage {
+                amount: applied as u16,
+                damage_type: 0,
+            },
+        }),
+    );
     if killed {
         broadcast_player_kill(owner_id, target_id, players, leaderboard, outbox);
     }
@@ -212,12 +219,20 @@ fn broadcast_player_kill(
         let xp = progression::xp_reward_for_level(victim_level);
         grant_shared_kill_experience(victim_pos, xp, players, outbox);
     } else {
-        outbox.broadcast(ServerPacket::GameEvent(GameEvent {
-            event_type: game_event_type::KILL,
-            source_id: killer_id,
-            target_id: victim_id,
-            data: GameEventData::None,
-        }));
+        // Monster killed a player: the victim must hear it (death screen); the kill-feed line
+        // is only shown by peers who can see the victim. KILL_PVP above stays a broadcast —
+        // the PvP kill feed is global by design.
+        let victim_pos = players.get_by_entity_id(victim_id).map(|p| p.position);
+        let recipients = players.aoi_recipients(victim_pos, &[victim_id]);
+        outbox.send_to(
+            recipients,
+            ServerPacket::GameEvent(GameEvent {
+                event_type: game_event_type::KILL,
+                source_id: killer_id,
+                target_id: victim_id,
+                data: GameEventData::None,
+            }),
+        );
     }
 }
 
@@ -299,27 +314,36 @@ pub fn apply_monster_damage(
     if applied <= 0 {
         return None;
     }
-    outbox.broadcast(ServerPacket::GameEvent(GameEvent {
-        event_type: game_event_type::DAMAGE,
-        source_id: owner_id,
-        target_id: monster_id,
-        data: GameEventData::Damage {
-            amount: applied as u16,
-            damage_type: 0,
-        },
-    }));
+    // Monster HP bars are driven by DAMAGE/KILL (monster HP is not on the Snapshot), so these
+    // stay reliable; only peers who can see the monster (plus the shooter) need them.
+    let recipients = players.aoi_recipients(Some(monster_pos), &[owner_id]);
+    outbox.send_to(
+        recipients.clone(),
+        ServerPacket::GameEvent(GameEvent {
+            event_type: game_event_type::DAMAGE,
+            source_id: owner_id,
+            target_id: monster_id,
+            data: GameEventData::Damage {
+                amount: applied as u16,
+                damage_type: 0,
+            },
+        }),
+    );
     if killed {
         if let Some(killer) = players.get_by_entity_id_mut(owner_id) {
             if killer.authenticated {
                 killer.monster_kills += 1;
             }
         }
-        outbox.broadcast(ServerPacket::GameEvent(GameEvent {
-            event_type: game_event_type::KILL,
-            source_id: owner_id,
-            target_id: monster_id,
-            data: GameEventData::None,
-        }));
+        outbox.send_to(
+            recipients,
+            ServerPacket::GameEvent(GameEvent {
+                event_type: game_event_type::KILL,
+                source_id: owner_id,
+                target_id: monster_id,
+                data: GameEventData::None,
+            }),
+        );
         grant_shared_kill_experience(monster_pos, xp_reward, players, outbox);
         return Some(monster_pos);
     }
@@ -354,13 +378,17 @@ fn grant_shared_kill_experience(
         if player.position.distance_squared_to(death_pos) > radius_sq {
             continue;
         }
-        // Cosmetic "+N" floater.
-        outbox.broadcast(ServerPacket::GameEvent(GameEvent {
-            event_type: game_event_type::EXP_GAIN,
-            source_id: player.entity_id,
-            target_id: 0,
-            data: GameEventData::ExpGain { amount },
-        }));
+        // Cosmetic "+N" floater — the client only renders its OWN (arena_base.gd drops every
+        // other source_id), so this is a unicast, not a broadcast.
+        outbox.send(
+            player.peer,
+            ServerPacket::GameEvent(GameEvent {
+                event_type: game_event_type::EXP_GAIN,
+                source_id: player.entity_id,
+                target_id: 0,
+                data: GameEventData::ExpGain { amount },
+            }),
+        );
         let (new_level, new_xp) =
             progression::apply_experience(player.level, player.experience, xp_reward);
         let leveled_up = new_level != player.level;

@@ -454,8 +454,13 @@ fn flush_outbox<S: enet::Socket>(
         {
             measure.source_events[event.event_type as usize] += 1;
         }
-        let channel = packet.channel();
-        let reliable = packet.reliable();
+        let (channel, reliable) = match &target {
+            Target::Peers {
+                delivery: outbox::Delivery::Unreliable,
+                ..
+            } => (protocol::CH_SNAPSHOT, false),
+            _ => (packet.channel(), packet.reliable()),
+        };
         if !reliable && bytes.len() > protocol::MAX_UNRELIABLE_PAYLOAD {
             // An unreliable packet above the MTU silently upgrades to reliable-fragmented and
             // reintroduces head-of-line blocking — the budget should prevent this; log loudly.
@@ -467,6 +472,27 @@ fn flush_outbox<S: enet::Socket>(
         match target {
             Target::Peer(key) => {
                 if connected.contains(&key) {
+                    let peer = host.peer_mut(enet::PeerID(key));
+                    if peer.connected() {
+                        let pkt = if reliable {
+                            enet::Packet::reliable(bytes.as_slice())
+                        } else {
+                            enet::Packet::unreliable(bytes.as_slice())
+                        };
+                        if peer.send(channel, &pkt).is_ok() {
+                            collector.record_sent(key, bytes.len());
+                            record_message(collector, &packet, &bytes, channel);
+                        } else if let Some(measure) = &mut collector.measurement {
+                            measure.send_errors += 1;
+                        }
+                    }
+                }
+            }
+            Target::Peers { peers, .. } => {
+                for key in peers {
+                    if !connected.contains(&key) {
+                        continue;
+                    }
                     let peer = host.peer_mut(enet::PeerID(key));
                     if peer.connected() {
                         let pkt = if reliable {
