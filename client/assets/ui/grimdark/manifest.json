@@ -4,6 +4,8 @@
   "palette": [
     "#050706",
     "#252928",
+    "#606b68",
+    "#a0a69a",
     "#786347",
     "#b39a72",
     "#d8d0bc",
@@ -54,7 +56,7 @@
       1254
     ],
     "source": "Approved hybrid samples, 2026-10-30. Original generated PNGs copied without raster editing.",
-    "usage": "Iron on everyday panels and buttons, with muted aged-bronze SVG rims and native text. Crimson primary buttons use tinted iron. Blood source retained as unused artwork after the death-panel frame/background was removed; it is not loaded by the shared theme.",
+    "usage": "Iron on everyday panels and buttons, with silver/iron SVG rims and small bronze sigil/focus accents. HUD hardware and the frameless death action retain muted aged bronze. Crimson primary buttons use tinted iron. Blood source retained as unused artwork; it is not loaded by the shared theme.",
     "prompts": {
       "iron": "Square full-bleed blackened forged iron, charcoal slate, fine hammered grain, faint scratches and smoky patina with subtle violet undertones. Dark quiet center for overlaid text; no frames, lettering, objects or UI.",
       "blood": "Square full-bleed ancient blackened iron stained with dry oxblood and abraded crimson lacquer. Dried blood and scratches concentrated at edges, center 60 percent dark and quiet; no frames, lettering, objects or UI."

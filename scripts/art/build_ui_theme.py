@@ -68,15 +68,36 @@ HARDWARE_PALETTE = {
     "#5d6664": "#71614c",
 }
 
+# Menus retain the approved iron/silver hardware and small bronze accents.
+MENU_PALETTE = {
+    "#776544": "#606b68", "#95815b": "#68726d", "#c1b18a": "#a0a69a",
+    "#b28b42": "#858d80", "#c0a066": "#b2b6a8", "#ad7940": "#8c9690",
+    "#ab7944": "#9a5b48", "#d4ae6e": "#c68d6d", "#5f533d": "#5c6661",
+    "#666052": "#59635e", "#8e7954": "#6e7a72", "#45443b": "#353e3a",
+    "#b09a6c": "#88938a", "#c2b391": "#a2aaa0", "#a59a7b": "#768478",
+    "#ab9163": "#889486", "#e5d5ad": "#bec5b8", "#67604c": "#59635e",
+    "#b39b64": "#8b958a", "#392e1d": "#29312c", "#e2d0a0": "#bec5b8",
+    "#96805b": "#6d7770", "#d0ba86": "#a1aa9c", "#4c4432": "#3a453e",
+    "#615339": "#59665b", "#4e402c": "#38443c", "#c4a36b": "#8c9889",
+    "#f1dab0": "#c4ccbd", "#e0c597": "#a4b19e", "#514735": "#444f46",
+    "#ac9462": "#8c9889", "#deca95": "#bec8b5", "#b38337": "#67776a",
+    "#eac787": "#a6b39f", "#5a4025": "#384539", "#c5ae7b": "#d8d0bc",
+    "#ac8c4e": "#838c7c", "#e2d2a6": "#d8d0bc", "#766647": "#636d63",
+    "#261d13": "#3d1917", "#c1a168": "#a07861", "#e4ce96": "#d8d0bc",
+}
+
+MENU_ASSETS = {"panel", "caret", "grabber", "check_off", "check_on", "realm_sigil"}
+
 def svg(name, width, height, body):
     # HUD overlays have a genuinely transparent trough. Clip outside it so fills
     # cannot be occluded by the metal plate's otherwise opaque interior.
     aperture = {"health_frame": (20, 16, 490, 20), "mana_frame": (10, 16, 490, 20), "stamina_frame": (10, 6, 380, 8)}.get(name)
-    if name.startswith("button") or name == "panel":
+    if name.startswith(("button", "death_button")) or name == "panel":
         aperture = (9, 9, width - 18, height - 18)
     # Only hardware is recolored; health/mana/energy and ability colors retain meaning.
     if name not in {"health_fill", "mana_fill", "stamina_fill", "kill_skull", "track"}:
-        body = re.sub(r"#[0-9a-fA-F]{6}", lambda match: HARDWARE_PALETTE.get(match[0], match[0]), body)
+        palette = MENU_PALETTE if name.startswith("button") or name in MENU_ASSETS else HARDWARE_PALETTE
+        body = re.sub(r"#[0-9a-fA-F]{6}", lambda match: palette.get(match[0], match[0]), body)
     if aperture:
         x, y, w, h = aperture
         body = f'<defs><clipPath id="rim"><path clip-rule="evenodd" d="M0 0H{width}V{height}H0ZM{x} {y}V{y+h}H{x+w}V{y}Z"/></clipPath></defs><g clip-path="url(#rim)">{body}</g>'
@@ -98,6 +119,8 @@ def hardware(w, h, inside, edge="#776544"):
 
 for name, fill, edge in [("button", "#161a1b", "#776544"), ("button_hover", "#282521", "#c0a066"), ("button_pressed", "#080b0d", "#ad7940"), ("button_disabled", "#101314", "#393d39"), ("button_primary", "#501818", "#ab7944"), ("button_primary_hover", "#782321", "#d4ae6e")]:
     svg(name, 160, 48, hardware(160, 48, fill, edge))
+    if name in {"button_primary", "button_primary_hover", "button_pressed", "button_disabled"}:
+        svg("death_" + name, 160, 48, hardware(160, 48, fill, edge))
 svg("panel", 128, 128, hardware(128, 128, "#0c1012", "#5f533d"))
 svg("caret", 12, 8, '<path d="M0 0H3V2H5V4H7V2H9V0H12V3H10V5H8V7H4V5H2V3H0Z" fill="#c5ae7b"/>')
 svg("grabber", 16, 22, '<path d="M8 0L15 7V15L8 22L1 15V7Z" fill="#060809"/><path d="M8 2L13 8V14L8 20L3 14V8Z" fill="#ac8c4e"/><path d="M8 4L11 9V13L8 17L5 13V9Z" fill="#e2d2a6"/>')
@@ -211,10 +234,14 @@ panel = textured("panel", (24, 24, 24, 24), 24)
 pause_panel = textured("pause_panel", (40, 40, 40, 40), 24, source="panel")
 settings_panel = textured("settings_panel", (30, 20, 30, 20), 24, source="panel")
 controls_panel = textured("controls_panel", (28, 20, 28, 20), 24, source="panel")
-focus = flat("focus", 'Color(0,0,0,0)', 'Color(0.78,0.65,0.44,1)', 1, (0,0,0,0))
-input_box = flat("input", 'Color(0.035,0.045,0.052,1)', 'Color(0.38,0.32,0.24,1)', 1, (12,10,12,10))
-separator = flat("separator", 'Color(0.32,0.27,0.20,1)', margins=(0,1,0,1))
-track = flat("slider", 'Color(0.025,0.035,0.04,1)', 'Color(0.29,0.25,0.20,1)', 1, (0,3,0,3))
+focus = flat("focus", 'Color(0,0,0,0)', 'Color(0.9,0.76,0.48,1)', 1, (0,0,0,0))
+# A one-unit edge can disappear under fractional menu downscaling. Inputs need
+# two-unit normal/focus outlines so all four sides survive the rendered resize.
+input_focus = flat("input_focus", 'Color(0,0,0,0)', 'Color(0.9,0.76,0.48,1)', 2, (0,0,0,0))
+death_focus = flat("death_focus", 'Color(0,0,0,0)', 'Color(0.78,0.65,0.44,1)', 1, (0,0,0,0))
+input_box = flat("input", 'Color(0.035,0.045,0.052,1)', 'Color(0.33,0.38,0.35,1)', 2, (12,10,12,10))
+separator = flat("separator", 'Color(0.25,0.29,0.27,1)', margins=(0,1,0,1))
+track = flat("slider", 'Color(0.025,0.035,0.04,1)', 'Color(0.25,0.27,0.26,1)', 1, (0,3,0,3))
 fill = flat("slider_fill", 'Color(0.47,0.18,0.15,1)', margins=(0,3,0,3))
 empty = flat("empty", 'Color(0,0,0,0)', margins=(8,6,8,6))
 for t in ["Button", "OptionButton"]:
@@ -226,6 +253,11 @@ for t in ["Button", "OptionButton"]:
 props += ['PrimaryButton/base_type = &"Button"', 'DisplayLabel/base_type = &"Label"']
 prop("PrimaryButton","styles","normal",primary)
 prop("PrimaryButton","styles","hover",primary_hover)
+# Death keeps its approved bronze action in every state independently of menus.
+props.append('DeathButton/base_type = &"PrimaryButton"')
+for state, source in [("normal","death_button_primary"),("hover","death_button_primary_hover"),("pressed","death_button_pressed"),("disabled","death_button_disabled")]:
+    prop("DeathButton", "styles", state, textured(source))
+prop("DeathButton", "styles", "focus", death_focus)
 ext.append('[ext_resource type="FontFile" path="res://assets/fonts/CormorantUnicase-Bold.ttf" id="display_font"]')
 for t in ["Button","OptionButton","DisplayLabel","TabBar","TabContainer"]:
     prop(t,"fonts","font",'ExtResource("display_font")')
@@ -254,11 +286,13 @@ prop("PopupMenu","styles","hover",hover)
 prop("PopupMenu","constants","v_separation",12)
 for t in ["LineEdit","TextEdit"]:
     prop(t,"styles","normal",input_box)
-    prop(t,"styles","focus",focus)
+    prop(t,"styles","focus",input_focus)
     prop(t,"colors","caret_color",gold)
     prop(t,"colors","selection_color",'Color(0.35,0.13,0.11,1)')
 for t in ["HSeparator","VSeparator"]:
     prop(t,"styles","separator",separator)
+props.append('HudSeparator/base_type = &"HSeparator"')
+prop("HudSeparator", "styles", "separator", flat("hud_separator", 'Color(0.32,0.27,0.20,1)', margins=(0,1,0,1)))
 for t in ["HSlider","VSlider"]:
     prop(t,"styles","slider",track)
     prop(t,"styles","grabber_area",fill)
@@ -287,6 +321,7 @@ for t in ["HScrollBar","VScrollBar"]:
     prop(t,"styles","scroll",track)
     for state in ["grabber","grabber_highlight","grabber_pressed"]:
         prop(t,"styles",state,fill)
-prop("ProgressBar","styles","background",track)
+hud_track = flat("hud_track", 'Color(0.025,0.035,0.04,1)', 'Color(0.29,0.25,0.20,1)', 1, (0,3,0,3))
+prop("ProgressBar","styles","background",hud_track)
 prop("ProgressBar","styles","fill",fill)
 (ROOT / "themes/grimdark.tres").write_text(f'[gd_resource type="Theme" load_steps={len(ext)+len(sub)+1} format=3]\n\n'+'\n'.join(ext)+'\n\n'+'\n\n'.join(sub)+'\n\n[resource]\ndefault_font = SubResource("body_font")\ndefault_font_size = 16\n'+'\n'.join(props)+'\n')

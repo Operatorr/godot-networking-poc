@@ -38,6 +38,7 @@ text = "LEADERBOARD"
 horizontal_alignment = 1
 
 [node name="Sep" type="HSeparator" parent="Panel/VBox"]
+theme_type_variation = &"HudSeparator"
 layout_mode = 2
 
 [node name="Columns" type="Label" parent="Panel/VBox"]

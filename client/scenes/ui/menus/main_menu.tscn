@@ -33,8 +33,9 @@ autoplay = true
 expand = true
 loop = true
 
-[node name="CenterContainer" type="CenterContainer" parent="."]
+[node name="CenterContainer" type="CenterContainer" parent="." node_paths=PackedStringArray("footer")]
 script = ExtResource("97_responsive")
+footer = NodePath("../TrainingActions")
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -189,18 +190,19 @@ layout_mode = 2
 size_flags_horizontal = 4
 text = "EXIT GAME"
 
-[node name="TrainingActions" type="HBoxContainer" parent="CenterContainer/Panel/VBoxContainer"]
-layout_mode = 2
+[node name="TrainingActions" type="HBoxContainer" parent="."]
+layout_mode = 0
+custom_minimum_size = Vector2(344, 44)
 theme_override_constants/separation = 10
 
-[node name="PracticeButton" type="Button" parent="CenterContainer/Panel/VBoxContainer/TrainingActions"]
+[node name="PracticeButton" type="Button" parent="TrainingActions"]
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 16
 text = "Practice"
 
-[node name="OfflineSandboxButton" type="Button" parent="CenterContainer/Panel/VBoxContainer/TrainingActions"]
+[node name="OfflineSandboxButton" type="Button" parent="TrainingActions"]
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 size_flags_horizontal = 3

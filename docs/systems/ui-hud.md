@@ -48,10 +48,12 @@ login_screen ──login ok──▶ has character? ──no──▶ character_
 
 `client/themes/grimdark.tres` is the project-wide Theme. Buttons (including dynamic rebind
 buttons), panels, dropdowns, tabs, sliders, checkboxes, scrollbars, inputs and popups share
-dark iron PNG surfaces, muted aged-bronze SVG hardware and bone text. Warm highlights
-remain restrained across borders, small sigils, progression details and keyboard focus. `PrimaryButton` provides the red
+dark iron PNG surfaces, silver/iron SVG hardware and bone text, with small bronze accents
+in sigils and keyboard focus. HUD rails, slots, minimap and kill-feed frames retain the
+muted aged-bronze palette. `DeathButton` preserves that bronze palette in every action state. `PrimaryButton` provides the red
 primary action; `DisplayLabel` provides the heading face. Focus is a separate transparent
-outline, so it does not obscure hover/pressed states. Popup error/confirm dialogs use the
+outline, so it does not obscure hover/pressed states. Input borders use two logical units
+so fractional menu downscaling cannot drop the top edge. Popup error/confirm dialogs use the
 same panel resource.
 
 `scripts/art/build_ui_theme.py` regenerates the Theme and editable pixel-aligned SVG hardware.
@@ -74,7 +76,9 @@ Test-scene launches and explicit `--windowed` / `-w` launches stay windowed from
 startup, regardless of the saved game preference. This override is not persisted. Visual
 capture fixtures neither force always-on-top nor repeatedly grab desktop focus.
 `ResponsiveMenu` fits menu content to the window independently of the world/camera stretch
-policy. Login and character creation use the same framed, responsive shell; character
+policy. The main menu's Practice/Offline Sandbox row belongs to the screen's bottom-left
+corner, outside the card. `ResponsiveMenu.footer` reserves a footer lane when horizontal
+space is insufficient, preventing overlap at narrow widths. Login and character creation use the same framed, responsive shell; character
 class/mode choices participate in Tab navigation and validation text wraps within the form.
 Region labels truncate with a full-text tooltip; the dropdown reserves 40 logical
 pixels on the right and positions its single caret with a 14-pixel margin.

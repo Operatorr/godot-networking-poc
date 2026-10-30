@@ -92,9 +92,20 @@ func _ready() -> void:
 	_check(dropdown.get_theme_stylebox("normal").content_margin_right >= 36, "Dropdown value must reserve space")
 	_check(not dropdown.fit_to_longest_item, "Long region labels must not widen the menu")
 	await _capture("main-1280")
+	_check_training_layout(main)
 	get_window().size = Vector2i(390, 844)
 	await _capture("main-390")
 	_check_in_view(main.get_node("CenterContainer/Panel"))
+	_check_training_layout(main)
+	# Keep this fixture offline while exercising the moved buttons' real hit areas.
+	var training_requests: Array[int] = [0, 0]
+	main.practice_button.pressed.disconnect(main._on_practice_pressed)
+	main.offline_sandbox_button.pressed.disconnect(main._on_offline_sandbox_pressed)
+	main.practice_button.pressed.connect(func() -> void: training_requests[0] += 1)
+	main.offline_sandbox_button.pressed.connect(func() -> void: training_requests[1] += 1)
+	await _click(main.practice_button)
+	await _click(main.offline_sandbox_button)
+	_check(training_requests == [1, 1], "Both detached training actions must receive clicks: %s" % [training_requests])
 	main.queue_free()
 	await get_tree().process_frame
 	get_window().size = Vector2i(1280, 720)
@@ -118,7 +129,7 @@ func _ready() -> void:
 
 func _check_material_apertures() -> void:
 	var skin: Theme = load("res://themes/grimdark.tres")
-	for control_type in ["Button", "OptionButton", "PrimaryButton"]:
+	for control_type in ["Button", "OptionButton", "PrimaryButton", "DeathButton"]:
 		var button: Button = OptionButton.new() if control_type == "OptionButton" else Button.new()
 		button.theme = skin
 		button.theme_type_variation = control_type
@@ -205,6 +216,7 @@ func _check_account_menus() -> void:
 			_check(menu.password_input.has_focus(), "Tab must move username to password")
 		else:
 			_check(menu.name_input.has_focus(), "Character creation must initially focus name")
+			_check_input_border(menu.name_input)
 			_check(menu.create_button.disabled, "An empty character name must disable creation")
 			await _press_tab()
 			_check(menu._class_buttons[menu._selected_class].has_focus(), "Tab must reach class choices before Create")
@@ -217,13 +229,59 @@ func _check_account_menus() -> void:
 			_check(menu._selected_class == PacketTypes.PlayerClass.ROGUE, "Scaled class choices must receive clicks")
 			await _click(menu._mode_buttons[1])
 			_check(menu._selected_mode == "hardcore", "Scaled mode choices must receive clicks")
+		if scene_name == "character_creation":
+			menu.name_input.grab_focus()
 		await _capture(scene_name + "-390")
+		if scene_name == "character_creation":
+			_check_input_border(menu.name_input)
 		_check_in_view(panel)
 		if scene_name == "character_creation":
 			await _click(menu._mode_buttons[0])
 			_check(menu._selected_mode == "softcore", "Narrow mode choices must receive clicks")
 		menu.queue_free()
 		await get_tree().process_frame
+
+
+func _check_training_layout(menu: Control) -> void:
+	var footer: Control = menu.get_node("TrainingActions")
+	var panel: Control = menu.get_node("CenterContainer/Panel")
+	_check(footer.get_parent() == menu, "Training actions belong to the screen, outside the card")
+	_check_in_view(footer)
+	var footer_rect := footer.get_global_transform_with_canvas() * Rect2(Vector2.ZERO, footer.size)
+	var panel_rect := panel.get_global_transform_with_canvas() * Rect2(Vector2.ZERO, panel.size)
+	_check(not footer_rect.intersects(panel_rect), "Training actions must not overlap the main card")
+	var left_gap := footer_rect.position.x
+	var bottom_gap := get_viewport().get_visible_rect().size.y - footer_rect.end.y
+	_check(is_equal_approx(left_gap, bottom_gap), "Training actions must share equal bottom-left insets")
+
+
+func _check_input_border(field: LineEdit) -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	# Check rendered pixels, not just style widths: a fractional transform used to
+	# drop the entire one-unit top edge even though its StyleBox width was correct.
+	RenderingServer.force_draw()
+	var pixels := get_viewport().get_texture().get_image()
+	var ratio := Vector2(pixels.get_size()) / get_viewport().get_visible_rect().size
+	var bounds := field.get_global_transform_with_canvas() * Rect2(Vector2.ZERO, field.size)
+	bounds = Rect2(bounds.position * ratio, bounds.size * ratio)
+	for side in [SIDE_LEFT, SIDE_TOP, SIDE_RIGHT, SIDE_BOTTOM]:
+		var found := false
+		var point := bounds.get_center()
+		if side == SIDE_LEFT:
+			point.x = bounds.position.x
+		elif side == SIDE_RIGHT:
+			point.x = bounds.end.x - 1.0
+		elif side == SIDE_TOP:
+			point.y = bounds.position.y
+		else:
+			point.y = bounds.end.y - 1.0
+		for offset in range(-3, 4):
+			var sample := Vector2i(point) + (Vector2i(offset, 0) if side in [SIDE_LEFT, SIDE_RIGHT] else Vector2i(0, offset))
+			if Rect2i(Vector2i.ZERO, pixels.get_size()).has_point(sample):
+				var color := pixels.get_pixelv(sample)
+				found = found or (color.r > 0.65 and color.g > 0.5 and color.b < 0.6)
+		_check(found, "Focused character-name border must render on side %d at %s" % [side, pixels.get_size()])
 
 
 func _press_tab() -> void:
@@ -273,13 +331,17 @@ func _click(button: Button) -> void:
 	# Validation text can queue container layout; click its settled hit area.
 	await _settle()
 	var point := button.get_global_transform_with_canvas() * (button.size * 0.5)
+	var motion := InputEventMouseMotion.new()
+	motion.position = point
+	get_viewport().push_input(motion, true)
 	for pressed in [true, false]:
 		var event := InputEventMouseButton.new()
 		event.position = point
 		event.button_index = MOUSE_BUTTON_LEFT
 		event.pressed = pressed
 		get_viewport().push_input(event, true)
-		await get_tree().process_frame
+	# Dispatch a complete click before native pointer motion can interrupt it.
+	await _settle()
 
 
 func _check_in_view(control: Control) -> void:

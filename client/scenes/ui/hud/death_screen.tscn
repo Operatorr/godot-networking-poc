@@ -90,7 +90,7 @@ layout_mode = 2
 layout_mode = 2
 
 [node name="MenuButton" type="Button" parent="Center/Panel/VBox/ButtonHolder"]
-theme_type_variation = &"PrimaryButton"
+theme_type_variation = &"DeathButton"
 visible = false
 custom_minimum_size = Vector2(260, 48)
 layout_mode = 2
