@@ -27,11 +27,26 @@ pub struct Outbox {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Delivery {
+    /// Whatever `ServerPacket::reliable()` / `channel()` say for the packet type.
+    Default,
+    /// Force unreliable-sequenced on the Snapshot channel. Only for events whose effect the
+    /// next Snapshot reproduces (an authoritative-recovery guarantee the caller has validated).
+    Unreliable,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Target {
     Peer(PeerKey),
     /// All connected peers (matches NetworkManager.broadcast_to_clients, which did not filter
     /// on authentication).
     Broadcast,
+    /// An explicit recipient set — the AoI-scoped alternative to `Broadcast` for events that
+    /// only matter to peers who can see where they happened (see `PlayerManager::aoi_recipients`).
+    Peers {
+        peers: Vec<PeerKey>,
+        delivery: Delivery,
+    },
 }
 
 impl Outbox {
@@ -46,6 +61,27 @@ impl Outbox {
 
     pub fn broadcast(&mut self, packet: ServerPacket) {
         self.messages.push((Target::Broadcast, packet));
+        self.check_message_cap();
+    }
+
+    /// Reliable delivery to an explicit recipient set (AoI-scoped event). An empty set stages
+    /// nothing.
+    pub fn send_to(&mut self, peers: Vec<PeerKey>, packet: ServerPacket) {
+        self.send_to_with(peers, packet, Delivery::Default);
+    }
+
+    /// Unreliable-sequenced delivery (Snapshot channel) to an explicit recipient set. The next
+    /// Snapshot must carry everything a receiver needs if this packet is lost.
+    pub fn send_to_unreliable(&mut self, peers: Vec<PeerKey>, packet: ServerPacket) {
+        self.send_to_with(peers, packet, Delivery::Unreliable);
+    }
+
+    fn send_to_with(&mut self, peers: Vec<PeerKey>, packet: ServerPacket, delivery: Delivery) {
+        if peers.is_empty() {
+            return;
+        }
+        self.messages
+            .push((Target::Peers { peers, delivery }, packet));
         self.check_message_cap();
     }
 

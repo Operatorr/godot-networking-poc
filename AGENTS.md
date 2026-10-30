@@ -121,7 +121,12 @@ cd rust && cargo test --workspace && cargo clippy --workspace --all-targets && c
 # End-to-end smoke (needs a running server on 127.0.0.1:8081)
 cd client && godot --path . res://scenes/test/net_smoke.tscn   # exits 0 on PASS
 
-# Load test (needs a running server; scenarios + flags in rust/load_test/README.md)
+# Stress loop — ONE command, ~90 s: build + local server (telemetry on) + 100 gameplay bots × 60 s
+# + host sampler + report. Start here for any performance work; read loadtest-runs/latest/REPORT.md.
+./scripts/quick_stress.sh                       # 100 strategy bots, 60 s
+./scripts/quick_stress.sh --bots 200 --label n2 # the hill-climb ladder (docs/netcode/perf-notes/hill-climb/)
+
+# Load test by hand (needs a running server; scenarios + flags in rust/load_test/README.md)
 ./scripts/run_load_test.sh --scenario baseline                       # local Arena
 OMEGA_SERVER=<droplet-ip>:8081 ./scripts/run_load_test.sh --scenario baseline   # live Arena
 ```

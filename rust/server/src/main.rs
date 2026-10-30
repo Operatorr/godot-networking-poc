@@ -340,6 +340,10 @@ fn main() {
             world.tick(now_ms(start), &mut outbox);
             if let Some(measure) = &mut collector.measurement {
                 measure.loop_phases.world_tick.record(tick_start.elapsed());
+                measure
+                    .loop_phases
+                    .snapshot_build
+                    .record(world.last_snapshot_build);
             }
             let flush_start = collector.measurement.as_ref().map(|_| Instant::now());
             flush_outbox(&mut outbox, &mut host, &connected, &mut collector);
@@ -362,8 +366,29 @@ fn main() {
         let t_ms = now_ms(start);
         if t_ms.saturating_sub(last_metrics_ms) >= 1000 {
             last_metrics_ms = t_ms;
-            if let Some(measure) = &mut collector.measurement {
-                measure.sample(&world, host.socket().observation());
+            if collector.measurement.is_some() {
+                let mut stats = measurement::EnetPeerStats::default();
+                let mut rtt_sum = 0.0;
+                let mut loss_sum = 0.0;
+                for peer in host.connected_peers() {
+                    let rtt = peer.round_trip_time().as_secs_f64() * 1000.0;
+                    let loss = 100.0 * peer.packet_loss() as f64
+                        / enet::consts::PEER_PACKET_LOSS_SCALE as f64;
+                    stats.peers += 1;
+                    rtt_sum += rtt;
+                    loss_sum += loss;
+                    stats.rtt_max_ms = stats.rtt_max_ms.max(rtt);
+                    stats.loss_max_pct = stats.loss_max_pct.max(loss);
+                    stats.packets_sent_sum += peer.packets_sent() as u64;
+                    stats.packets_lost_sum += peer.packets_lost() as u64;
+                }
+                if stats.peers > 0 {
+                    stats.rtt_mean_ms = rtt_sum / stats.peers as f64;
+                    stats.loss_mean_pct = loss_sum / stats.peers as f64;
+                }
+                if let Some(measure) = &mut collector.measurement {
+                    measure.sample(&world, host.socket().observation(), &stats);
+                }
             }
             let entity_count =
                 world.projectiles.count() + world.monsters.count() + world.world_entities.count();
@@ -429,8 +454,13 @@ fn flush_outbox<S: enet::Socket>(
         {
             measure.source_events[event.event_type as usize] += 1;
         }
-        let channel = packet.channel();
-        let reliable = packet.reliable();
+        let (channel, reliable) = match &target {
+            Target::Peers {
+                delivery: outbox::Delivery::Unreliable,
+                ..
+            } => (protocol::CH_SNAPSHOT, false),
+            _ => (packet.channel(), packet.reliable()),
+        };
         if !reliable && bytes.len() > protocol::MAX_UNRELIABLE_PAYLOAD {
             // An unreliable packet above the MTU silently upgrades to reliable-fragmented and
             // reintroduces head-of-line blocking — the budget should prevent this; log loudly.
@@ -442,6 +472,27 @@ fn flush_outbox<S: enet::Socket>(
         match target {
             Target::Peer(key) => {
                 if connected.contains(&key) {
+                    let peer = host.peer_mut(enet::PeerID(key));
+                    if peer.connected() {
+                        let pkt = if reliable {
+                            enet::Packet::reliable(bytes.as_slice())
+                        } else {
+                            enet::Packet::unreliable(bytes.as_slice())
+                        };
+                        if peer.send(channel, &pkt).is_ok() {
+                            collector.record_sent(key, bytes.len());
+                            record_message(collector, &packet, &bytes, channel);
+                        } else if let Some(measure) = &mut collector.measurement {
+                            measure.send_errors += 1;
+                        }
+                    }
+                }
+            }
+            Target::Peers { peers, .. } => {
+                for key in peers {
+                    if !connected.contains(&key) {
+                        continue;
+                    }
                     let peer = host.peer_mut(enet::PeerID(key));
                     if peer.connected() {
                         let pkt = if reliable {
