@@ -72,6 +72,10 @@ deployment/deploy.env
 # Load test reports (omega-load-test writes report_<timestamp>.json to the CWD)
 report_*.json
 
+# Local investigation workspaces and unpublished audit outputs
+/diagnostics/strategy200/
+/docs/netcode/perf-notes/load-test-reports/2026-10-24-evidence-audit/
+
 # Rust GDExtension build artifacts (rebuilt by scripts/build_client_ext.sh)
 client/bin/macos/*.dylib
 client/bin/linux/*.so
