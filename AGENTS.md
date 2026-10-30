@@ -54,7 +54,9 @@ Don't re-derive what's already written there; read it, then go deep where needed
   systemd units (`systemd/`), per-instance configs (`server_config.{arena,sanctuary}.json`), env
   templates (`env/`), `provision_server.sh` (one-time bootstrap) + `server_update.sh` (git-pull deploy),
   `harden_vps.sh` (firewall/fail2ban/SSH).
-- `scripts/` — build/deploy/run automation.
+- `scripts/` — build/deploy/run automation. `scripts/do_session/` is the offline DigitalOcean
+  test-session planner (immutable manifest, legal search branches, time/spend admission; no
+  provider calls) — see its README and issue #61 slice 1.
 - `docs/` — **system of record** (map below).
 
 ## Documentation map

@@ -1,0 +1,2 @@
+{"registry": {"healthy": true, "acknowledged_manifest_sha256": "REPLACED-BY-TESTS"},
+ "watchdog": {"healthy": true, "identity": "omega-watchdog@mgmt-1", "acknowledged_manifest_sha256": "REPLACED-BY-TESTS"}}
