@@ -57,7 +57,9 @@ same panel resource.
 The generated skull crest and its source/prompt record live in `client/assets/ui/grimdark/`.
 The display font's MSDF import settings are versioned so menu text stays sharp when scaled.
 `ResponsiveMenu` fits menu content to the window independently of the world/camera stretch
-policy. Region labels truncate with a full-text tooltip; the dropdown reserves 40 logical
+policy. Login and character creation use the same framed, responsive shell; character
+class/mode choices participate in Tab navigation and validation text wraps within the form.
+Region labels truncate with a full-text tooltip; the dropdown reserves 40 logical
 pixels on the right and positions its single caret with a 14-pixel margin.
 
 Resource fills use `TextureProgressBar.nine_patch_stretch = true`. Their complete Control

@@ -103,8 +103,57 @@ func _ready() -> void:
 	await _capture("settings-controls-1280")
 	get_window().size = Vector2i(390, 844)
 	await _capture("settings-controls-390")
+	standalone.queue_free()
+	await get_tree().process_frame
+	await _check_account_menus()
 	print("[UIThemeRegression] %s" % ("FAIL" if _failed else "PASS"))
 	get_tree().quit(1 if _failed else 0)
+
+
+func _check_account_menus() -> void:
+	for scene_name in ["login_screen", "character_creation"]:
+		var menu: Control = load("res://scenes/ui/menus/" + scene_name + ".tscn").instantiate()
+		if scene_name == "login_screen":
+			menu.prefill_test_credentials_from_env = false
+		add_child(menu)
+		await _capture(scene_name + "-1280")
+		var panel: Control = menu.get_node("CenterContainer/Panel")
+		_check_in_view(panel)
+		if scene_name == "login_screen":
+			_check(menu.username_input.has_focus(), "Login must initially focus username")
+			_check(menu.password_input.secret, "Login must mask the password")
+			await _press_tab()
+			_check(menu.password_input.has_focus(), "Tab must move username to password")
+		else:
+			_check(menu.name_input.has_focus(), "Character creation must initially focus name")
+			_check(menu.create_button.disabled, "An empty character name must disable creation")
+			await _press_tab()
+			_check(menu._class_buttons[menu._selected_class].has_focus(), "Tab must reach class choices before Create")
+			menu.name_input.text = "AshenWarden"
+			menu._on_name_text_changed("AshenWarden")
+			_check(not menu.create_button.disabled, "A valid name must enable creation")
+			menu._on_name_text_changed("invalid name!")
+			_check(menu.create_button.disabled, "Invalid characters must disable creation")
+			await _click(menu._class_buttons[PacketTypes.PlayerClass.ROGUE])
+			_check(menu._selected_class == PacketTypes.PlayerClass.ROGUE, "Scaled class choices must receive clicks")
+			await _click(menu._mode_buttons[1])
+			_check(menu._selected_mode == "hardcore", "Scaled mode choices must receive clicks")
+		await _capture(scene_name + "-390")
+		_check_in_view(panel)
+		if scene_name == "character_creation":
+			await _click(menu._mode_buttons[0])
+			_check(menu._selected_mode == "softcore", "Narrow mode choices must receive clicks")
+		menu.queue_free()
+		await get_tree().process_frame
+
+
+func _press_tab() -> void:
+	for pressed in [true, false]:
+		var event := InputEventKey.new()
+		event.keycode = KEY_TAB
+		event.pressed = pressed
+		get_viewport().push_input(event, true)
+		await get_tree().process_frame
 
 
 func _settle() -> void:
@@ -120,30 +169,33 @@ func _capture(name: String) -> void:
 		expected = Vector2i(390, 844)
 	elif name.ends_with("1920"):
 		expected = Vector2i(1920, 1080)
-	# Require several stable frames after the OS completes the mode transition.
-	# A fullscreen completion event can arrive after our first resize request.
-	var stable := 0
-	for attempt in 40:
-		if get_window().mode != Window.MODE_WINDOWED or get_window().size != expected:
-			get_window().mode = Window.MODE_WINDOWED
-			get_window().size = expected
-			stable = 0
-		await get_tree().create_timer(0.1).timeout
-		if get_window().mode == Window.MODE_WINDOWED and get_window().size == expected:
-			stable += 1
-			if stable >= 4:
-				break
+	get_window().mode = Window.MODE_WINDOWED
+	get_window().size = expected
 	await _settle()
 	if _capture_dir.is_empty() or DisplayServer.get_name() == "headless":
 		return
-	await RenderingServer.frame_post_draw
-	var pixels := get_viewport().get_texture().get_image()
-	_check(pixels.get_size() == expected, "%s capture has unexpected physical size: %s" % [name, pixels.get_size()])
-	var result := pixels.save_png(_capture_dir.path_join(name + ".png"))
-	_check(result == OK, "Failed to capture " + name)
+	# A macOS fullscreen transition can leave the rendered texture one resize
+	# behind the native window. Require both dimensions to agree before saving.
+	get_window().always_on_top = true
+	for attempt in 100:
+		get_window().mode = Window.MODE_WINDOWED
+		get_window().size = expected
+		get_window().grab_focus()
+		await get_tree().create_timer(0.1).timeout
+		await _settle()
+		RenderingServer.force_draw()
+		var pixels := get_viewport().get_texture().get_image()
+		if get_window().size != expected or pixels.get_size() != expected:
+			continue
+		var result := pixels.save_png(_capture_dir.path_join(name + ".png"))
+		_check(result == OK, "Failed capture: " + name)
+		return
+	_check(false, "Could not stabilize capture dimensions: " + name)
 
 
 func _click(button: Button) -> void:
+	# Validation text can queue container layout; click its settled hit area.
+	await _settle()
 	var point := button.get_global_transform_with_canvas() * (button.size * 0.5)
 	for pressed in [true, false]:
 		var event := InputEventMouseButton.new()

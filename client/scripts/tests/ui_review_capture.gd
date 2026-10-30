@@ -4,10 +4,13 @@ extends Node
 
 var _capture_dir: String = ""
 var _failed: bool = false
+var _auth_only: bool = false
 
 
 func _ready() -> void:
 	for arg in OS.get_cmdline_user_args():
+		if arg == "--auth-only":
+			_auth_only = true
 		if arg.begins_with("--capture="):
 			_capture_dir = arg.trim_prefix("--capture=")
 	if not _capture_dir.is_empty():
@@ -22,6 +25,11 @@ func _ready() -> void:
 	background.color = Color("171c20")
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(background)
+	if _auth_only:
+		await _capture_account_menus()
+		print("[UIReviewCapture] %s" % ("FAIL" if _failed else "PASS"))
+		get_tree().quit(1 if _failed else 0)
+		return
 	var hud: GameHud = load("res://scenes/ui/hud/game_hud.tscn").instantiate()
 	add_child(hud)
 	hud.health_bar.update_hp(120, 120)
@@ -112,14 +120,12 @@ func _ready() -> void:
 	await _capture("settings-controls-390")
 	standalone.queue_free()
 	await get_tree().process_frame
-	for scene_name in ["login_screen", "character_creation", "loading_screen"]:
-		var menu: Control = load("res://scenes/ui/menus/" + scene_name + ".tscn").instantiate()
-		if scene_name == "login_screen":
-			menu.prefill_test_credentials_from_env = false
-		add_child(menu)
-		await _capture(scene_name + "-1280")
-		menu.queue_free()
-		await get_tree().process_frame
+	await _capture_account_menus()
+	var loading: Control = load("res://scenes/ui/menus/loading_screen.tscn").instantiate()
+	add_child(loading)
+	await _capture("loading_screen-1280")
+	loading.queue_free()
+	await get_tree().process_frame
 	for scene_name in ["error_dialog", "confirm_dialog"]:
 		var dialog: Node = load("res://scenes/ui/dialogs/" + scene_name + ".tscn").instantiate()
 		add_child(dialog)
@@ -132,6 +138,26 @@ func _ready() -> void:
 		await get_tree().process_frame
 	print("[UIReviewCapture] %s" % ("FAIL" if _failed else "PASS"))
 	get_tree().quit(1 if _failed else 0)
+
+
+func _capture_account_menus() -> void:
+	for scene_name in ["login_screen", "character_creation"]:
+		var menu: Control = load("res://scenes/ui/menus/" + scene_name + ".tscn").instantiate()
+		if scene_name == "login_screen":
+			menu.prefill_test_credentials_from_env = false
+		add_child(menu)
+		await _capture(scene_name + "-1280")
+		await _capture(scene_name + "-390")
+		if scene_name == "character_creation":
+			menu.name_input.text = "AshenWarden"
+			menu._on_name_text_changed("AshenWarden")
+			for button: Button in menu._mode_buttons:
+				if "Hardcore" in button.text:
+					button.button_pressed = true
+			await _capture("character-ready-1280")
+			await _capture("character-ready-390")
+		menu.queue_free()
+		await get_tree().process_frame
 
 
 func _settle() -> void:

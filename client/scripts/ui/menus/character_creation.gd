@@ -11,10 +11,10 @@ const MAX_NAME_LENGTH: int = 16
 const NAME_PATTERN: String = "^[a-zA-Z0-9_]+$"
 
 ## UI node references
-@onready var name_input: LineEdit = $CenterContainer/VBoxContainer/NameInput
-@onready var validation_label: Label = $CenterContainer/VBoxContainer/ValidationLabel
-@onready var create_button: Button = $CenterContainer/VBoxContainer/CreateButton
-@onready var back_button: Button = $CenterContainer/VBoxContainer/BackButton
+@onready var name_input: LineEdit = $CenterContainer/Panel/VBoxContainer/NameInput
+@onready var validation_label: Label = $CenterContainer/Panel/VBoxContainer/ValidationLabel
+@onready var create_button: Button = $CenterContainer/Panel/VBoxContainer/CreateButton
+@onready var back_button: Button = $CenterContainer/Panel/VBoxContainer/BackButton
 @onready var error_dialog: PopupPanel = $ErrorDialog
 
 ## Track creation state to prevent duplicate requests
@@ -37,9 +37,9 @@ var _class_preview_holder: Control = null
 var _class_preview_sprite: AnimatedSprite2D = null
 
 ## Class preview: holder footprint and the on-screen height each class canvas is scaled to.
-## ~2x the old 96px idle thumbnail so the (partial-canvas) figure reads clearly.
-const CLASS_PREVIEW_HOLDER := 180.0
-const CLASS_PREVIEW_SPRITE_PX := 192.0
+## Leave room for the form and mode choices inside the shared framed menu.
+const CLASS_PREVIEW_HOLDER := 140.0
+const CLASS_PREVIEW_SPRITE_PX := 160.0
 
 ## Selected permadeath mode ("softcore" or "hardcore"), sent in the create body. Default
 ## Softcore. Hardcore is the permadeath ruleset (ADR 0005).
@@ -64,9 +64,6 @@ func _ready() -> void:
 	error_dialog.retry_pressed.connect(_on_error_retry)
 	error_dialog.closed.connect(_on_error_closed)
 
-	# Setup focus navigation
-	_setup_focus_navigation()
-
 	# Setup button audio
 	_setup_button_audio()
 
@@ -75,6 +72,7 @@ func _ready() -> void:
 
 	# Build the Softcore/Hardcore mode picker (defaults to Softcore)
 	_build_mode_picker()
+	_setup_focus_navigation()
 
 	# Set max length
 	name_input.max_length = MAX_NAME_LENGTH
@@ -90,11 +88,17 @@ func _ready() -> void:
 
 ## Setup Tab navigation
 func _setup_focus_navigation() -> void:
-	name_input.focus_neighbor_bottom = create_button.get_path()
-	name_input.focus_next = create_button.get_path()
-
-	create_button.focus_neighbor_top = name_input.get_path()
-	create_button.focus_previous = name_input.get_path()
+	var controls: Array[Control] = [name_input]
+	for button in _class_buttons:
+		if button.visible and not button.disabled:
+			controls.append(button)
+	for button in _mode_buttons:
+		controls.append(button)
+	controls.append(create_button)
+	controls.append(back_button)
+	for i in controls.size():
+		controls[i].focus_next = controls[(i + 1) % controls.size()].get_path()
+		controls[i].focus_previous = controls[(i - 1 + controls.size()) % controls.size()].get_path()
 
 
 ## Validate character name
@@ -126,14 +130,14 @@ func _validate_name(character_name: String) -> bool:
 ## Show validation error message
 func _show_validation_error(message: String) -> void:
 	validation_label.text = message
-	validation_label.add_theme_color_override("font_color", Color.RED)
+	validation_label.add_theme_color_override("font_color", Color("ed897c"))
 	create_button.disabled = true
 
 
 ## Show validation success message
 func _show_validation_success(message: String) -> void:
 	validation_label.text = message
-	validation_label.add_theme_color_override("font_color", Color.GREEN)
+	validation_label.add_theme_color_override("font_color", Color("a4c590"))
 	create_button.disabled = false
 
 
@@ -170,7 +174,7 @@ func _on_create_pressed(user_initiated: bool = true) -> void:
 ## Build the class picker: a large sprite preview plus one toggle button per class.
 ## The preview loops the south-facing (downwards) run cycle from each class's spritesheet.
 func _build_class_picker() -> void:
-	var vbox: VBoxContainer = $CenterContainer/VBoxContainer
+	var vbox: VBoxContainer = $CenterContainer/Panel/VBoxContainer
 
 	var section := VBoxContainer.new()
 	section.name = "ClassSection"
@@ -195,7 +199,7 @@ func _build_class_picker() -> void:
 	_recenter_class_preview()
 
 	var grid := GridContainer.new()
-	grid.columns = 4
+	grid.columns = 3
 	grid.add_theme_constant_override("h_separation", 6)
 	grid.add_theme_constant_override("v_separation", 6)
 	grid.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -207,8 +211,8 @@ func _build_class_picker() -> void:
 		btn.toggle_mode = true
 		btn.button_group = group
 		btn.text = String(PacketTypes.CLASS_DISPLAY_NAMES[class_id])
-		btn.custom_minimum_size = Vector2(122, 40)
-		btn.add_theme_font_size_override("font_size", 13)
+		btn.custom_minimum_size = Vector2(148, 44)
+		btn.add_theme_font_size_override("font_size", 18)
 		btn.toggled.connect(_on_class_toggled.bind(class_id))
 		btn.mouse_entered.connect(func(): AudioManager.play_button_hover())
 		# Pre-alpha scope: hide classes that are not yet playable (kept in the enum so
@@ -266,7 +270,7 @@ func _update_class_preview() -> void:
 ## Build the permadeath-mode picker: a Softcore/Hardcore toggle group (mirrors the class
 ## picker's ButtonGroup pattern). Defaults to Softcore.
 func _build_mode_picker() -> void:
-	var vbox: VBoxContainer = $CenterContainer/VBoxContainer
+	var vbox: VBoxContainer = $CenterContainer/Panel/VBoxContainer
 
 	var section := VBoxContainer.new()
 	section.name = "ModeSection"
@@ -291,8 +295,8 @@ func _build_mode_picker() -> void:
 		btn.toggle_mode = true
 		btn.button_group = group
 		btn.text = String(entry[1])
-		btn.custom_minimum_size = Vector2(186, 40)
-		btn.add_theme_font_size_override("font_size", 13)
+		btn.custom_minimum_size = Vector2(224, 44)
+		btn.add_theme_font_size_override("font_size", 18)
 		btn.toggled.connect(_on_mode_toggled.bind(mode_key))
 		btn.mouse_entered.connect(func(): AudioManager.play_button_hover())
 		row.add_child(btn)

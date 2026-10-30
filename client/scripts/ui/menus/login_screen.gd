@@ -6,10 +6,6 @@ const TestConfigScript := preload("res://scripts/utils/test_config.gd")
 const MenuFontHelper := preload("res://scripts/ui/helpers/menu_font_helper.gd")
 const MenuButtonHelper := preload("res://scripts/ui/helpers/menu_button_helper.gd")
 const MENU_BACKGROUND_PATH := "res://assets/ui/backgrounds/menu_background_004.jpg"
-const TITLE_FONT_PATH := "res://assets/fonts/CormorantUnicase-Bold.ttf"
-const TITLE_COLOR := Color(0.85, 0.82, 0.74)
-const TITLE_OUTLINE_COLOR := Color.BLACK
-const TITLE_GLOW_COLOR := Color(0.22, 0.13, 0.07, 0.4)
 
 ## External URLs for registration and password recovery
 @export var registration_url: String = "https://example.com/register"
@@ -18,14 +14,14 @@ const TITLE_GLOW_COLOR := Color(0.22, 0.13, 0.07, 0.4)
 
 ## UI node references
 @onready var menu_background: Control = $MenuBackground
-@onready var username_input: LineEdit = $CenterContainer/VBoxContainer/UsernameInput
-@onready var password_input: LineEdit = $CenterContainer/VBoxContainer/PasswordInput
-@onready var login_button: Button = $CenterContainer/VBoxContainer/LoginButton
-@onready var create_account_button: Button = $CenterContainer/VBoxContainer/CreateAccountButton
-@onready var forgot_password_button: Button = $CenterContainer/VBoxContainer/ForgotPasswordButton
-@onready var settings_button: Button = $CenterContainer/VBoxContainer/SettingsButton
-@onready var local_server_check: CheckButton = $CenterContainer/VBoxContainer/LocalServerCheck
-@onready var exit_button: Button = $CenterContainer/VBoxContainer/ExitButton
+@onready var username_input: LineEdit = $CenterContainer/Panel/VBoxContainer/UsernameInput
+@onready var password_input: LineEdit = $CenterContainer/Panel/VBoxContainer/PasswordInput
+@onready var login_button: Button = $CenterContainer/Panel/VBoxContainer/LoginButton
+@onready var create_account_button: Button = $CenterContainer/Panel/VBoxContainer/CreateAccountButton
+@onready var forgot_password_button: Button = $CenterContainer/Panel/VBoxContainer/ForgotPasswordButton
+@onready var settings_button: Button = $CenterContainer/Panel/VBoxContainer/SettingsButton
+@onready var local_server_check: CheckButton = $CenterContainer/Panel/VBoxContainer/LocalServerCheck
+@onready var exit_button: Button = $CenterContainer/Panel/VBoxContainer/ExitButton
 @onready var error_dialog: PopupPanel = $ErrorDialog
 
 ## Track login state to prevent duplicate requests
@@ -103,30 +99,6 @@ func _apply_dark_theme() -> void:
 				video_background.play()
 		else:
 			push_warning("[LoginScreen] Unsupported MenuBackground node type: %s" % menu_background.get_class())
-
-	# Style title
-	var title_label: Label = $CenterContainer/VBoxContainer/TitleLabel
-	if title_label:
-		var title_font := load(TITLE_FONT_PATH) as FontFile
-		if title_font:
-			title_label.add_theme_font_override("font", title_font)
-		else:
-			push_warning("[LoginScreen] Failed to load title font: %s" % TITLE_FONT_PATH)
-
-		title_label.text = "OMEGA REALM"
-		title_label.add_theme_color_override("font_color", TITLE_COLOR)
-		title_label.add_theme_color_override("font_outline_color", TITLE_OUTLINE_COLOR)
-		title_label.add_theme_color_override("font_shadow_color", TITLE_GLOW_COLOR)
-		title_label.add_theme_constant_override("outline_size", 2)
-		title_label.add_theme_constant_override("shadow_offset_x", 0)
-		title_label.add_theme_constant_override("shadow_offset_y", 0)
-		title_label.add_theme_constant_override("shadow_outline_size", 2)
-		title_label.add_theme_font_size_override("font_size", 56)
-
-	# Style subtitle
-	var subtitle_label: Label = $CenterContainer/VBoxContainer/SubtitleLabel
-	if subtitle_label:
-		subtitle_label.add_theme_color_override("font_color", Color.WHITE)
 
 	_apply_pixel_button_theme()
 
