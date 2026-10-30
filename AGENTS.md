@@ -28,7 +28,7 @@ Don't re-derive what's already written there; read it, then go deep where needed
   - `client_ext/` — GDExtension exposing `ProtocolCodec`, `PredictionSim`, `SimHit` to GDScript.
   - `load_test/` — the `omega-load-test` bot swarm (replaced the Python `load_testing/`
     harness): ENet bots that link `protocol` + `sim_core` directly. See its README.
-- `client/` — Godot 4.6 project; exports the **client only** now. The legacy GDScript server
+- `client/` — Godot 4.7 project; exports the **client only** now. The legacy GDScript server
   has been **removed** (it was retired by the Rust port); its file-by-file parity map to the Rust
   modules lives in [`docs/server/legacy-parity.md`](docs/server/legacy-parity.md), and the source is
   in git history. `NetworkManager` still refuses to run in headless/server mode. The client uses
@@ -84,7 +84,7 @@ checkable and nothing important is skipped:
 
 ## Working rules
 
-- **Context7** for Godot 4.6, Rust-crate, and Go docs before writing code. Languages:
+- **Context7** for Godot 4.7, Rust-crate, and Go docs before writing code. Languages:
   **Rust** (server, protocol, sim) and **GDScript** (client glue/UI).
 - **godot-mcp** to drive the engine when needed.
 - Sim semantics in `rust/sim_core` mirror Godot exactly (Vector2 f32 ops, f64 scalars,

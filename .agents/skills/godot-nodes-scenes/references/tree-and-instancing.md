@@ -1,0 +1,83 @@
+# Scene tree & instancing reference (Godot 4.7)
+
+> Modified for Omega Realm: client scope, lifetime/authority clarifications, and example corrections. Derived from the pinned upstream source listed in [SKILL.md](../SKILL.md); see the bundled LICENSE and NOTICE.
+
+Depth companion to `godot-nodes-scenes`.
+
+## Node paths
+
+- `$Child`, `$Child/Grandchild` — relative path sugar for `get_node(...)`.
+- `$"Node With Spaces"` — quote paths containing spaces or starting with a number.
+- `%UniqueName` — a scene-unique node. Mark a node "Access as Unique Name" in the editor;
+  references resolve within the scene's ownership scope even after reparenting.
+  Renaming the unique node still requires updating its `%Name` references.
+- `get_node("../Sibling")` — `..` walks up to the parent.
+- `get_tree().root` — the `Window` at the very top; the current scene is
+  `get_tree().current_scene`.
+
+## Loading and instancing
+
+```gdscript
+const SCENE := preload("res://enemy.tscn")   # constant path, loaded with the script
+var dynamic := load(path_variable)            # runtime path, may be a variable
+
+var e := SCENE.instantiate()                  # PackedScene -> Node
+add_child(e)                                  # enters tree, _ready() fires
+# To instance with the editor state of exported sub-resources, instantiate() is enough.
+```
+
+`instantiate()` flags: `PackedScene.GEN_EDIT_STATE_DISABLED` (default, runtime) vs
+`GEN_EDIT_STATE_INSTANCE`/`GEN_EDIT_STATE_MAIN` (editor tooling only).
+
+## Ownership when saving scenes from code
+
+To build a scene in code and save it, every node you want serialized must have its
+`owner` set to the scene root:
+
+```gdscript
+func save_built_scene() -> void:
+    var root := Node2D.new()
+    var child := Sprite2D.new()
+    root.add_child(child)
+    child.owner = root                 # without this, child is NOT saved
+    var packed := PackedScene.new()
+    packed.pack(root)
+    ResourceSaver.save(packed, "res://generated.tscn")  # editor generation; check returned Error
+    root.free()                       # dispose the temporary tree after packing/saving
+```
+
+## Scene inheritance
+
+In the editor, "New Inherited Scene" from a base `.tscn` creates a child scene that
+inherits the base's nodes and can override properties or add nodes. Useful for variant
+enemies sharing a common base. Changes to the base propagate to inherited scenes.
+
+## Groups vs unique names vs autoloads
+
+- **Unique name (`%`)** — reference a specific node *within the same scene*.
+- **Group** — tag many nodes and act on all of them; see `godot-signals-groups`.
+- **Autoload** — one global instance accessible by name across all scenes; use for
+  services and cross-scene state, not for per-level nodes.
+
+## Freeing and validity
+
+```gdscript
+node.queue_free()                 # safe: deletes at end of current frame
+if is_instance_valid(node) and not node.is_queued_for_deletion():
+    node.do_something()           # valid and not pending deletion
+node.free()                       # immediate; only when you control the timing
+```
+
+`get_child_count()`, `get_children()`, `move_child(node, idx)`, and
+`reparent(new_parent)` (4.x) manage tree structure at runtime. `reparent` keeps global
+transform by default.
+
+## Deferred calls
+
+When adding/removing nodes during physics callbacks or signal handlers, defer to avoid
+"flushing queries" errors:
+
+```gdscript
+add_child.call_deferred(instance)
+node.queue_free()                 # already deferred
+```
