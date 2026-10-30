@@ -82,6 +82,7 @@ def executable(name: str, override: str | None = None) -> Path:
 def prepare(godot: Path) -> None:
     BUILD.mkdir(parents=True, exist_ok=True)
     (BUILD / "prepared.json").unlink(missing_ok=True)
+    sources = source_fingerprint()
     build_env = {**os.environ, "CARGO_TARGET_DIR": str(ROOT / "rust/target")}
     commands = [
         (["cargo", "build", "--release", "-p", "omega-server"], ROOT / "rust"),
@@ -102,7 +103,9 @@ def prepare(godot: Path) -> None:
             subprocess.run(args, cwd=cwd, env=build_env, check=True)
     shutil.copy2(ROOT / "rust/target/release/omega-server", BUILD / "omega-server")
     version = subprocess.check_output([str(godot), "--version"]).decode().strip()
-    write_json(BUILD / "prepared.json", {"sources": source_fingerprint(), "godot_version": version})
+    if source_fingerprint() != sources:
+        raise SmokeFailure("Sources changed during preparation; run --prepare again after edits finish")
+    write_json(BUILD / "prepared.json", {"sources": sources, "godot_version": version})
     print("[prepare] Ready. Run ./scripts/smoke_local.py (20-second maximum).", flush=True)
 
 
@@ -169,11 +172,19 @@ class SmokeRun:
         self.results["notices"] = sorted(set(notices))
         return errors
 
+    def check_processes(self, clients_finished: bool = False) -> None:
+        for name, process in self.processes.items():
+            if clients_finished and name in ROLES:
+                continue
+            returncode = process.poll()
+            if name == "initdb" and returncode == 0:
+                continue  # Retain its group for cleanup even after setup completes.
+            if returncode is not None:
+                raise SmokeFailure(f"{name} exited unexpectedly ({process.returncode}); see {name}.log")
+
     def check(self) -> None:
         self.remaining()
-        for name, process in self.processes.items():
-            if process.poll() is not None:
-                raise SmokeFailure(f"{name} exited unexpectedly ({process.returncode}); see {name}.log")
+        self.check_processes()
         errors = self.errors()
         if errors:
             raise SmokeFailure("\n".join(errors[:8]))
@@ -302,6 +313,8 @@ class SmokeRun:
             errors = self.errors()
             if errors:
                 raise SmokeFailure("\n".join(errors[:8]))
+            self.remaining()
+            self.check_processes(clients_finished=True)
             self.results["result"] = "PASS"
         finally:
             for sock in reservations:
@@ -316,7 +329,6 @@ class SmokeRun:
                                "--auth=trust", "--no-locale", "--encoding=UTF8", "--no-sync"])
         if self.processes["initdb"].wait(timeout=self.remaining()) != 0:
             raise SmokeFailure("initdb failed; see initdb.log")
-        del self.processes["initdb"]
         self.launch("postgres", [str(self.postgres), "-D", str(data), "-h", "127.0.0.1",
                                  "-p", str(pg_port), "-k", "",
                                  "-c", "fsync=off", "-c", "log_min_messages=warning"])
@@ -382,38 +394,84 @@ class SmokeRun:
         return accounts
 
     def cleanup(self) -> None:
-        # All children own their own process group. Only processes launched by this run are signalled.
-        self.command.write_text("quit")
-        # Close consumers first so PostgreSQL needn't forcibly abort active API connections.
+        # A filesystem/reporting failure must not prevent independent releases.
+        errors: list[str] = []
+
+        def attempt(label, release):
+            try:
+                release()
+            except Exception as exc:
+                errors.append(f"{label}: {exc}")
+
+        def signal_groups(group, signum):
+            for name, process in group:
+                try:
+                    os.killpg(process.pid, signum)
+                except ProcessLookupError:
+                    pass
+                except OSError as exc:
+                    errors.append(f"signal {name}: {exc}")
+
+        def alive_groups(group):
+            alive = []
+            for name, process in group:
+                try:
+                    process.poll()  # Reap leaders so their zombies don't keep a group alive.
+                    os.killpg(process.pid, 0)
+                    alive.append(name)
+                except ProcessLookupError:
+                    pass
+                except OSError:
+                    # macOS can transiently deny inspection during group teardown.
+                    # Keep waiting; a group still present at the final check fails cleanup.
+                    alive.append(name)
+            return alive
+
+        def wait_groups(group, limit):
+            while alive_groups(group) and time.monotonic() < limit:
+                time.sleep(0.01)
+
+        def remove_directory(path):
+            try:
+                shutil.rmtree(path)
+            except FileNotFoundError:
+                pass
+
+        attempt("quit command", lambda: self.command.write_text("quit"))
+        # All children own their own group. Descendants remain owned after a leader exits.
+        # Close consumers first so PostgreSQL can shut down without active API connections.
         for database_group in (False, True):
             group = [(name, process) for name, process in self.processes.items()
                      if (name in {"postgres", "redis"}) == database_group]
-            for name, process in group:
-                try:
-                    os.killpg(process.pid, signal.SIGINT if name == "postgres" else signal.SIGTERM)
-                except ProcessLookupError:
-                    pass
-            limit = time.monotonic() + 0.4
-            while any(p.poll() is None for _, p in group) and time.monotonic() < limit:
-                time.sleep(0.02)
-        for process in self.processes.values():
-            if process.poll() is None:
-                try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                process.wait(timeout=0.2)
+            for item in group:
+                signal_groups([item], signal.SIGINT if item[0] == "postgres" else signal.SIGTERM)
+            wait_groups(group, time.monotonic() + 0.25)
+        all_groups = list(self.processes.items())
+        signal_groups(all_groups, signal.SIGKILL)
+        wait_groups(all_groups, time.monotonic() + 0.25)
+        alive = alive_groups(all_groups)
+        self.results["processes_stopped"] = not alive
+        if alive:
+            errors.append("process groups still present: " + ", ".join(alive))
         for handle in self.log_handles:
-            handle.close()
+            attempt("close log", handle.close)
         for path in self.user_dirs + [self.directory / "pgdata"]:
-            if path.exists():
-                shutil.rmtree(path)
-        for path in self.directory.glob("*-credentials.json"):
-            path.unlink()
+            attempt(f"remove {path.name}", lambda path=path: remove_directory(path))
+        # Include an interrupted atomic credential write's .tmp file too.
+        for role in ROLES:
+            for suffix in ("json", "tmp"):
+                path = self.directory / f"{role}-credentials.{suffix}"
+                attempt(f"remove {path.name}", lambda path=path: path.unlink(missing_ok=True))
         self.results["elapsed_seconds"] = round(time.monotonic() - self.started, 3)
-        self.results["processes_stopped"] = all(p.poll() is not None for p in self.processes.values())
         self.results["logs"] = str(self.directory)
-        write_json(self.directory / "result.json", self.results)
+        self.results["cleanup_errors"] = errors
+        if errors:
+            self.results["result"] = "FAIL"
+        attempt("write result", lambda: write_json(self.directory / "result.json", self.results))
+        if errors:
+            self.results["result"] = "FAIL"
+            for error in errors:
+                print("[cleanup] " + error, file=sys.stderr, flush=True)
 
 
 def main() -> int:
@@ -458,9 +516,15 @@ def main() -> int:
         return 1
     finally:
         if run:
-            run.cleanup()
+            # A second interrupt must not abort cleanup halfway through owned services.
+            handlers = {sig: signal.signal(sig, signal.SIG_IGN) for sig in (signal.SIGINT, signal.SIGTERM)}
+            try:
+                run.cleanup()
+            finally:
+                for sig, handler in handlers.items():
+                    signal.signal(sig, handler)
             run.say(f"{run.results['result']} — logs: {run.directory}")
-    return 0
+    return 0 if run and run.results["result"] == "PASS" else 1
 
 
 if __name__ == "__main__":
