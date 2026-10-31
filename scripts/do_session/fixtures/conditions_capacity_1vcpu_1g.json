@@ -1,0 +1,66 @@
+{
+  "session": {
+    "id": "do-cap-1v1g-20261030a",
+    "kind": "capacity",
+    "owner": "operator",
+    "project_id": "eb8ab36b-8d7a-4af4-b28b-a66d1b9fe940",
+    "ownership_tags": {
+      "session": "omega-session:do-cap-1v1g-20261030a",
+      "game": "omega-role:game:do-cap-1v1g-20261030a",
+      "bot": "omega-role:bot:do-cap-1v1g-20261030a"
+    },
+    "retained_resources": ["project:eb8ab36b-8d7a-4af4-b28b-a66d1b9fe940", "ssh_key:60491093", "management-host"]
+  },
+  "roles": {
+    "game": {"size_slug": "s-1vcpu-1gb-amd", "cpu_class": "premium-amd", "vcpus": 1, "memory_mib": 1024, "disk_gib": 25,
+             "architecture": "x64", "region": "sgp1", "image_id": 247516813, "public_route": "public-ipv4", "private_networking": false},
+    "bot":  {"size_slug": "s-4vcpu-8gb-amd", "cpu_class": "premium-amd", "vcpus": 4, "memory_mib": 8192, "disk_gib": 100,
+             "architecture": "x64", "region": "sgp1", "image_id": 247516813, "public_route": "public-ipv4", "private_networking": false}
+  },
+  "ssh_key": {"id": 60491093, "fingerprint_sha256": "SHA256:UtC5Y6VWbIrptSdUyOFCyoWWhMPgwO8BeJVVC3nVkMg",
+              "private_key_ref": "file:deployment/hetzner/ssh/omega_loadtest_ed25519"},
+  "credentials": {"controller_token_ref": "file:~/.config/omega-realm/digitalocean/controller.token",
+                  "watchdog_token_ref": "ref:management-host:/etc/omega-watchdog/token"},
+  "source": {
+    "benchmark_sha": "0b0d18e0000000000000000000000000000000aa",
+    "controller_sha": "0b0d18e0000000000000000000000000000000bb",
+    "adapter_sha": "0b0d18e0000000000000000000000000000000cc",
+    "clean": true, "reviewed": true, "locked": true,
+    "rust_toolchain": "1.91.0", "target_triple": "x86_64-unknown-linux-gnu", "profile": "release",
+    "build_flags": [],
+    "cargo_lock_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+    "server_config_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+    "content_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+    "binary_sha256": {"game": "4444444444444444444444444444444444444444444444444444444444444444",
+                      "bot": "5555555555555555555555555555555555555555555555555555555555555555"}
+  },
+  "workload": {"behavior": "strategy", "difficulty": 1.0, "input_hz": 30, "seed": 1, "generator_threads": 4,
+               "bot_id_assignment": "round-robin", "join_stagger_ms": 100, "exploration_hold_s": 60,
+               "confirmation_hold_s": 300, "readiness_rule": "max(60s, nominal_ramp + 30s)", "min_configured_players": 500},
+  "telemetry_schema": {"id": "omega.measurement/2", "sha256": "6666666666666666666666666666666666666666666666666666666666666666"},
+  "evidence": {"local_root": "loadtest-runs/digitalocean/do-cap-1v1g-20261030a",
+               "durable_destination": "ref:evidence-bucket:omega-do-capacity",
+               "required_artifacts": ["game/provenance.json", "game/ticks.ndjson", "game/sockets.json", "bot/provenance.json",
+                                      "bot/shards/*.ndjson", "window.json", "gates.json", "summary.json", "REPORT.md"]},
+  "limits": {"max_session_duration_s": 14400, "max_estimated_session_usd": 2.00, "max_estimated_transfer_gib": 40,
+             "evidence_recovery_grace_s": 300, "teardown_reserve_s": 120},
+  "timing_basis": {
+    "create_bootstrap_s": {"seconds": 900, "basis": "calibrated", "provenance": "fixture calibration record (fake)", "evidence_sha256": "7777777777777777777777777777777777777777777777777777777777777777"},
+    "readiness_access_s": {"seconds": 180, "basis": "calibrated", "provenance": "fixture calibration record (fake)", "evidence_sha256": "7777777777777777777777777777777777777777777777777777777777777777"},
+    "process_reset_s": {"seconds": 30, "basis": "declared_conservative", "provenance": "fresh systemd units + socket verification; declared bound"},
+    "recorder_finalization_s": {"seconds": 20, "basis": "declared_conservative", "provenance": "shard flush + sha256 inventory; declared bound"},
+    "per_trial_export_s": {"seconds": 40, "basis": "declared_conservative", "provenance": "per-run .partial download + verify; declared bound"},
+    "collection_export_s": {"seconds": 300, "basis": "calibrated", "provenance": "fixture calibration record (fake)", "evidence_sha256": "7777777777777777777777777777777777777777777777777777777777777777"},
+    "post_auth_warmup_s": {"seconds": 2, "basis": "contract", "provenance": "issue #60 §4 two-second RTT warmup"}
+  },
+  "pricing": {
+    "billing_increment_s": 3600, "billing_minimum_s": 3600,
+    "transfer_overage_usd_per_gib": 0.01, "allowance_hours_per_month": 730, "prorate_transfer_allowance": true,
+    "provenance": "DigitalOcean Droplet billing: hourly, rounded up, overage $0.01/GiB (verify at execution)",
+    "estimated_outbound_gib": {"game": {"gib": 20, "basis": "500 players x 5 KB/s x 39 min holds + ramps, x2 margin"},
+                               "bot": {"gib": 4, "basis": "30 Hz inputs x 500 bots x 39 min, x2 margin"}},
+    "management_host_monthly_usd": 6.0
+  },
+  "watchdog": {"registry_id": "omega-registry-mgmt-1", "identity": "omega-watchdog@mgmt-1"},
+  "access_allowlists": {"ssh_sources": ["203.0.113.10/32"], "operator_udp_sources": ["203.0.113.10/32"], "metrics_public": false}
+}

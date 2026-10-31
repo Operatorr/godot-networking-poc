@@ -1,0 +1,24 @@
+{
+  "provider": "digitalocean",
+  "observed_at": "2026-10-30T11:30:33+00:00",
+  "source": "fake provider fixture shaped like the redacted 2026-10-30 issue #62 preflight; prices are the API-listed sgp1 values at that observation and must be re-read live before any remote admission",
+  "project": {"id": "eb8ab36b-8d7a-4af4-b28b-a66d1b9fe940", "name": "omega.realm"},
+  "account": {"droplet_limit": 25, "droplet_count": 0},
+  "regions": [{"slug": "sgp1", "available": true}],
+  "sizes": [
+    {"slug": "s-1vcpu-1gb-amd", "vcpus": 1, "memory_mib": 1024, "disk_gib": 25, "cpu_class": "premium-amd", "price_hourly_usd": 0.01042, "price_monthly_usd": 7.0, "transfer_tib_month": 1.0, "regions": ["sgp1"], "available": true},
+    {"slug": "s-2vcpu-2gb-amd", "vcpus": 2, "memory_mib": 2048, "disk_gib": 60, "cpu_class": "premium-amd", "price_hourly_usd": 0.03125, "price_monthly_usd": 21.0, "transfer_tib_month": 3.0, "regions": ["sgp1"], "available": true},
+    {"slug": "s-1vcpu-2gb-amd", "vcpus": 1, "memory_mib": 2048, "disk_gib": 50, "cpu_class": "premium-amd", "price_hourly_usd": 0.02083, "price_monthly_usd": 14.0, "transfer_tib_month": 2.0, "regions": ["sgp1"], "available": true},
+    {"slug": "s-2vcpu-4gb-amd", "vcpus": 2, "memory_mib": 4096, "disk_gib": 80, "cpu_class": "premium-amd", "price_hourly_usd": 0.04167, "price_monthly_usd": 28.0, "transfer_tib_month": 4.0, "regions": ["sgp1"], "available": true},
+    {"slug": "s-4vcpu-8gb", "vcpus": 4, "memory_mib": 8192, "disk_gib": 160, "cpu_class": "regular", "price_hourly_usd": 0.07143, "price_monthly_usd": 48.0, "transfer_tib_month": 5.0, "regions": ["sgp1"], "available": true},
+    {"slug": "s-4vcpu-8gb-amd", "vcpus": 4, "memory_mib": 8192, "disk_gib": 100, "cpu_class": "premium-amd", "price_hourly_usd": 0.08333, "price_monthly_usd": 56.0, "transfer_tib_month": 5.0, "regions": ["sgp1"], "available": true}
+  ],
+  "images": [
+    {"id": 247429979, "distribution": "Ubuntu", "name": "22.04 (LTS) x64", "architecture": "x64", "official": true, "min_disk_gib": 7, "regions": ["sgp1"]},
+    {"id": 247516813, "distribution": "Ubuntu", "name": "24.04 (LTS) x64", "architecture": "x64", "official": true, "min_disk_gib": 7, "regions": ["sgp1"]},
+    {"id": 247430098, "distribution": "Ubuntu", "name": "26.04 x64", "architecture": "x64", "official": true, "min_disk_gib": 7, "regions": ["sgp1"]}
+  ],
+  "ssh_keys": [
+    {"id": 60491093, "name": "omega-loadtest-2026-10", "fingerprint_sha256": "SHA256:UtC5Y6VWbIrptSdUyOFCyoWWhMPgwO8BeJVVC3nVkMg"}
+  ]
+}
