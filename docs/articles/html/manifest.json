@@ -2,8 +2,8 @@
   {
     "key": "A",
     "file": "omega-load-testing.A.html",
-    "words": 9037,
-    "minutes": 40,
+    "words": 9258,
+    "minutes": 41,
     "source": "omega-load-testing.A.md"
   },
   {
@@ -16,21 +16,21 @@
   {
     "key": "C2",
     "file": "omega-load-testing.C2.html",
-    "words": 4177,
-    "minutes": 19,
+    "words": 4403,
+    "minutes": 20,
     "source": "omega-load-testing.C2.md"
   },
   {
     "key": "appendices",
     "file": "omega-load-testing.appendices.html",
-    "words": 2087,
+    "words": 2224,
     "minutes": 10,
     "source": "omega-load-testing.appendices.md"
   },
   {
     "key": "evidence",
     "file": "evidence.html",
-    "words": 803,
+    "words": 838,
     "minutes": 4,
     "source": "README.md"
   }

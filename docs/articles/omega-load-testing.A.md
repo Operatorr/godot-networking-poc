@@ -719,14 +719,35 @@ too much effort went into repeated harness and storage failures without an early
 > span. On the clean Strategy 150 cell it reports **29.99998120034632 Hz**, and so *fails* the
 > unchanged `>= 30` criterion because of the 1 ms clock resolution, while the Tick log shows exactly
 > 9,000 Ticks in 300 s. We kept both numbers and didn't round the failure into a pass.
-> The 32.9 Hz report itself comes from a historical run whose raw data hasn't been retrieved yet
-> ([historical reports][issue28]); the arithmetic is reproduced from code.
+> The original `report_20260619_170620.json` is now recovered ([recovery record](../netcode/perf-notes/load-test-reports/2026-06-recovered/SUMMARY.md)).
+> It confirms the recorded 32.9 Hz; 131.6 s above is an explanatory reconstruction, not a
+> recovered timing trace. The JSON lacks the raw Tick-span endpoints.
 
 ---
 
 ## 7. Results
 
-Two builds produced results, and they don't mix:
+### Recovered June history — separate from the capacity results
+
+The original reports have now been recovered from this computer. The remote runs used bots
+on the author's computer against the then-current DigitalOcean server in Singapore; fourteen
+other reports target localhost. The [recovery record](../netcode/perf-notes/load-test-reports/2026-06-recovered/SUMMARY.md) inventories all nineteen files,
+preserves their hashes and reconciles the original summaries.
+
+| Remote report (19 June) | Requested / connected bots | Server players | Recorded duration | Last reported Tick avg / max | RTT avg / p95 |
+|---|---|---|---|---|---|
+| 17:06:20 baseline | 50 / 50 | 51 | 120 s | 3.00 / 4.11 ms | 44.1 / 47 ms |
+| 17:24:02 stress attempt | 200 / 99 | 100 | 300 s | 11.70 / 17.41 ms | 46.8 / 49 ms |
+
+These are historical observations, not clean capacity results or a controlled comparison with
+CAX11. The Tick numbers are the latest rolling server metrics, not full-run averages/maxima.
+The stress report records 101 reason-2 disconnects; the old note attributes them to the
+100-player admission cap. Its “50.5% crash rate” counted rejected/disconnected bots, not observed
+server crashes. Neither report pins the binaries, configuration or generator utilization.
+The recovered note's extrapolated player ceilings remain unsupported; we do not import them
+into the capacity figures or use cumulative server counters as measured run egress.
+
+The October campaign results use two builds, and they don't mix:
 
 - **Original build** (game `b1266c1`, 14 Oct 2026): the first ladder and the five overload ramps,
   512 KiB effective socket buffers.

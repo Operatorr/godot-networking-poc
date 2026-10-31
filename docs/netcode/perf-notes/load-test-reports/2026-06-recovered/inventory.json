@@ -1,0 +1,131 @@
+{
+  "recovered_on": "2026-10-31",
+  "files": [
+    {
+      "source": "rust/report_20260613_060119.json",
+      "archive": "raw/report_20260613_060119.json",
+      "sha256": "cc739c63dee6dd366e784617754de43e6b680e1ba7a4f1cdf1833a7851dccf93",
+      "bytes": 160016
+    },
+    {
+      "source": "rust/report_20260615_150818.json",
+      "archive": "raw/report_20260615_150818.json",
+      "sha256": "50e34515ffc96863a0ef220e4e039ed791281f5c15fd85c5dfa8e49e344d2ad4",
+      "bytes": 13899
+    },
+    {
+      "source": "rust/report_20260615_171826.json",
+      "archive": "raw/report_20260615_171826.json",
+      "sha256": "072efe6b49cb7b6417b29a0f2a861ee9ecda766404b88b0d3391d5d9f6b754f1",
+      "bytes": 119584
+    },
+    {
+      "source": "rust/report_20260615_192559.json",
+      "archive": "raw/report_20260615_192559.json",
+      "sha256": "b49e020d8e3f2a6eacd2e96b5d1d866136b07cabb204f919cdeccd24839b95da",
+      "bytes": 8365
+    },
+    {
+      "source": "rust/report_20260616_200534.json",
+      "archive": "raw/report_20260616_200534.json",
+      "sha256": "14522fd5192b77dc1c0878afb434bffa6a9c1523f69ce09c59fa6b0ced6a3004",
+      "bytes": 337444
+    },
+    {
+      "source": "rust/report_20260617_080740.json",
+      "archive": "raw/report_20260617_080740.json",
+      "sha256": "453e7302f95e1c9080c8a85c7e63081b9ab4b3b24bcc882511bf62411a38bf3b",
+      "bytes": 22109
+    },
+    {
+      "source": "rust/report_20260617_082028.json",
+      "archive": "raw/report_20260617_082028.json",
+      "sha256": "659ab1aea3bbd88c5ffc959b08078a548e555c73f47b3610ecb2a949087fa689",
+      "bytes": 46309
+    },
+    {
+      "source": "rust/report_20260617_084032.json",
+      "archive": "raw/report_20260617_084032.json",
+      "sha256": "1362a2187b2c67e466428668a467cb48d1638a9e4ac44de664db14e08abaa8cd",
+      "bytes": 77736
+    },
+    {
+      "source": "rust/report_20260617_085630.json",
+      "archive": "raw/report_20260617_085630.json",
+      "sha256": "f0b5d78be2e1cdc1e4b8775dc6a38e9a1236645f1ac7790a6bf69c6608a26c4f",
+      "bytes": 19642
+    },
+    {
+      "source": "rust/report_20260617_155400.json",
+      "archive": "raw/report_20260617_155400.json",
+      "sha256": "ac575c6ed892e7255a012b9a04072fffccece0542e4bc8368d4e99848eb1e795",
+      "bytes": 19653
+    },
+    {
+      "source": "rust/report_20260617_162418.json",
+      "archive": "raw/report_20260617_162418.json",
+      "sha256": "904715f1bf8e3cf7592affd0172d103549e076c9358ef6597bc2e3f44ed40f78",
+      "bytes": 37944
+    },
+    {
+      "source": "rust/report_20260617_171835.json",
+      "archive": "raw/report_20260617_171835.json",
+      "sha256": "a8408c9d0adc72b0dda83bd58918488ba366b8fd424ac5270b275d6ff690036e",
+      "bytes": 28349
+    },
+    {
+      "source": "rust/report_20260619_154829.json",
+      "archive": "raw/report_20260619_154829.json",
+      "sha256": "8d805abaccf13572f6b6c41ee846ca4f5b08af540421c03abf697dedb7fd71e5",
+      "bytes": 4104
+    },
+    {
+      "source": "rust/report_20260619_155434.json",
+      "archive": "raw/report_20260619_155434.json",
+      "sha256": "fa5322fb2947a7f48c6d06adcdb7d70dad69ae40125edcea76a8408d931facde",
+      "bytes": 4138
+    },
+    {
+      "source": "rust/report_20260619_164045.json",
+      "archive": "raw/report_20260619_164045.json",
+      "sha256": "e2780e99212bc643798d5ab2f8d2e1dcb31f19e53fb2bd327e3ca1e4f0884534",
+      "bytes": 4250
+    },
+    {
+      "source": "rust/report_20260619_165458.json",
+      "archive": "raw/report_20260619_165458.json",
+      "sha256": "bafab909de4625e05cf332ebd0c114ee71cde493e1a05e4b0fd70b496b5d238f",
+      "bytes": 6408
+    },
+    {
+      "source": "rust/report_20260619_170352.json",
+      "archive": "raw/report_20260619_170352.json",
+      "sha256": "2bc6d9707c3e49a1ddb4be31c1ea14764730c4a307dc04e064ba51d1914900da",
+      "bytes": 3337
+    },
+    {
+      "source": "rust/report_20260619_170620.json",
+      "archive": "raw/report_20260619_170620.json",
+      "sha256": "42b9b3f490b3033db92869c837aaea49503fac326103bab742c9c9f5d812bb8a",
+      "bytes": 47372
+    },
+    {
+      "source": "rust/report_20260619_172402.json",
+      "archive": "raw/report_20260619_172402.json",
+      "sha256": "8b6f1644ab8f7c7bfbd8119c5099699cfa293b272088a50afef2d1afc1399d12",
+      "bytes": 172801
+    },
+    {
+      "source": "git:13cbf61f9619681209f042da226af3d77afe6c0d:docs/netcode/perf-notes/live-load-capacity-2026-06.md",
+      "archive": "raw/live-load-capacity-2026-06.md",
+      "sha256": "e2519b24d78bac3f8fcab5f6f3fdade3153ae431ec1f73ac7cebeac1d1271ac6",
+      "bytes": 16211
+    },
+    {
+      "source": "git:13cbf61f9619681209f042da226af3d77afe6c0d:docs/netcode/perf-notes/live-load-capacity-2026-06.html",
+      "archive": "raw/live-load-capacity-2026-06.html",
+      "sha256": "0f6eb7c8b406da9ce17e79de523cdb42511e62b53eeab95d77a78c88e9d1e19d",
+      "bytes": 33173
+    }
+  ]
+}

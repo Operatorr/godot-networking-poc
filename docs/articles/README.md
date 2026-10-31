@@ -64,8 +64,10 @@ C1's sections are A's sections nearly verbatim; C2 trims A. Numbers are identica
 
 ## Follow-ups this draft does not do
 
-- [Retrieve historical load-test reports and incorporate them after the first draft](https://github.com/Operatorr/godot-networking-poc/issues/28):
-  the historical raw reports (including the 32.9 Hz run) are still missing; the drafts say so where it matters.
 - [Complete deferred load-test evidence and economics — Stage 4](https://github.com/Operatorr/godot-networking-poc/issues/47):
   fills the `[MEASURE]` slots, under its own reviewed plan.
 - Choosing A or C1+C2, the headline, figure rendering and venue: editorial work after the author's read.
+
+## Historical recovery (2026-10-31)
+
+[Retrieve historical load-test reports and incorporate them after the first draft](https://github.com/Operatorr/godot-networking-poc/issues/28): nineteen original JSON reports recovered, including the 32.9 Hz run. See the [complete recovery record](../netcode/perf-notes/load-test-reports/2026-06-recovered/SUMMARY.md) and SHA256 inventory. A, C2 and the appendices incorporate qualified historical evidence; HTML editions are regenerated. Raw files remain local and ignored. No new capacity claim or controlled DO/CAX11 comparison follows from recovery.

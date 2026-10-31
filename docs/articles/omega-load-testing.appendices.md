@@ -291,3 +291,9 @@ Full note: [`mmo-scaling-tab-target.md`](../research/mmo-scaling-tab-target.md).
 - **ArenaNet** [P]: Loew, *World vs. World: The End of Culling* (2013)
 - **Sandbox Interactive** [P, via search index]: *How Albion Online Tackles ZvZ Performance*; Korn, *Cluster Queue* (2021)
 - **Academic**: Claypool & Claypool, *Latency and Player Actions in Online Games*, CACM 49(11), 2006; Molnár & Szabó, *On the scaling characteristics of MMORPG traffic*, Híradástechnika 2008
+
+## Recovered June evidence (2026-10-31)
+
+The [complete historical inventory and reconciliation](../netcode/perf-notes/load-test-reports/2026-06-recovered/SUMMARY.md) contains all nineteen reports' requested/connected populations, duration, endpoint category, last rolling Tick statistics, bandwidth, RTT, loss and original gate outcomes. Its [SHA256 inventory](../netcode/perf-notes/load-test-reports/2026-06-recovered/inventory.json) also identifies the historical Markdown/HTML interpretation from `feature/performance-minmaxxing`. Original bytes stay in the ignored `raw/` directory beside the summary.
+
+Both previously pasted summaries match recovered files. A and C2 now cite recovered evidence for the 32.9 Hz estimator example and retain the 99-connected-of-200-requested stress attempt as historical context only. Fourteen reports target loopback; five target the remote host, which the author identifies as DigitalOcean Singapore with this computer generating the load. Missing build/config pins, generator utilization and full-window server counters prevent controlled performance or economics comparisons. Existing `[MEASURE]` slots remain unfilled.
