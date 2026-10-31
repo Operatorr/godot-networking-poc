@@ -12,7 +12,7 @@ def play(outcomes, condition='c'):
     for outcome in outcomes:
         trial = next_trial(state)
         assert trial is not None, 'no legal next trial before outcome ' + outcome
-        state = record_outcome(dispatch(state, trial), trial.run_id, outcome)
+        state = record_outcome(dispatch(state, trial), trial.run_id, outcome, 'fixture:' + trial.run_id)
     return state
 
 
@@ -102,9 +102,9 @@ class ConfirmationTests(unittest.TestCase):
         state = record_outcome(dispatch(state, first), first.run_id, INCOMPLETE)
         second = next_trial(state)
         self.assertEqual((second.phase, second.repetition), ('confirm', 2))
-        state = record_outcome(dispatch(state, second), second.run_id, PASS)
+        state = record_outcome(dispatch(state, second), second.run_id, PASS, 'fixture:' + second.run_id)
         third = next_trial(state)
-        state = record_outcome(dispatch(state, third), third.run_id, PASS)
+        state = record_outcome(dispatch(state, third), third.run_id, PASS, 'fixture:' + third.run_id)
         derived = derive(state)
         self.assertEqual(derived['status'], 'unconfirmed_partial')
         self.assertEqual(derived['result'], dict(kind='unconfirmed_partial', candidate=25, passes=2))

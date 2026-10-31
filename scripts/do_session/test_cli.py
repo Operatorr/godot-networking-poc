@@ -128,6 +128,9 @@ class AdmitAndSelectTests(CliFixture):
         self.assertEqual(code, 0)
         code, _, _ = self.run_cli('mark-t0', '--session-dir', str(self.session_dir), '--now', '2026-10-30T12:30:00Z')
         self.assertEqual(code, 2, 't0 is immutable')
+        code, _, err = self.run_cli('mark-ready', '--session-dir', str(self.session_dir), '--now',
+                                     '2026-10-30T12:18:00Z', '--evidence-ref', 'ref:pair-readiness')
+        self.assertEqual(code, 0, err)
         code, out, _ = self.run_cli('admit', '--session-dir', str(self.session_dir), '--now',
                                     '2026-10-30T12:20:00Z', '--infra-health', str(self.health), '--resume')
         self.assertEqual(code, 0)

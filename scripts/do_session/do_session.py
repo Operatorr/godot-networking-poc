@@ -6,6 +6,7 @@
     do_session.py next-run --session-dir DIR --now ISO --infra-health h.json [--resume]
     do_session.py record   --session-dir DIR --run-id ID --outcome PASS|FAIL|... [--evidence-ref REF] --now ISO
     do_session.py mark-t0  --session-dir DIR --now ISO
+    do_session.py mark-ready --session-dir DIR --now ISO --evidence-ref REF
     do_session.py stop     --session-dir DIR --reason time_exhausted --now ISO
     do_session.py paths    --session-dir DIR
 
@@ -50,7 +51,7 @@ def load_session(session_dir):
     manifest_mod.verify_manifest(manifest, sha)
     condition_id = manifest['session']['id']
     state = search.SearchState(condition_id)
-    meta = dict(t0=None, phase='pre_create', manifest_sha256=sha)
+    meta = dict(t0=None, ready_at=None, phase='pre_create', manifest_sha256=sha)
     journal = session_dir / JOURNAL
     if journal.exists():
         for line in journal.read_text().splitlines():
@@ -69,7 +70,14 @@ def load_session(session_dir):
             elif kind == 'outcome':
                 state = search.record_outcome(state, entry['run_id'], entry['outcome'], entry.get('evidence_ref'))
             elif kind == 't0':
+                if meta['t0'] is not None:
+                    raise ValueError('duplicate t0 event; the original deadline is immutable')
                 meta['t0'] = entry['t0_utc']
+                admission.parse_utc(meta['t0'])
+                meta['phase'] = 'provisioning'
+            elif kind == 'pair_ready':
+                validate_ready(meta, entry['ready_at'], entry.get('evidence_ref'))
+                meta['ready_at'] = entry['ready_at']
                 meta['phase'] = 'pair_ready'
             elif kind == 'stop':
                 state.stop_reason = entry['reason']
@@ -94,6 +102,8 @@ def cmd_freeze(args):
 
 def evaluate(args, resume):
     manifest, sha, state, meta = load_session(args.session_dir)
+    if meta['ready_at'] is not None and admission.parse_utc(args.now) < admission.parse_utc(meta['ready_at']):
+        raise ValueError('admission time cannot precede recorded pair readiness')
     health = load_json(args.infra_health) if args.infra_health else None
     return manifest, sha, state, meta, admission.admit(
         manifest, sha, state, args.now, health, phase=meta['phase'], t0=meta['t0'],
@@ -134,9 +144,21 @@ def cmd_next_run(args):
                       dict(run_id=r.trial.run_id, outcome=r.outcome, evidence_ref=r.evidence_ref)
                       for r in state.records if r.trial.run_id in trial.predecessors],
                   admission_decision=result.decision, resume=args.resume)
-    # Materialize the concrete run durably BEFORE any dispatch could happen (create-only).
-    write_new(pathlib.Path(args.session_dir) / 'runs' / trial.run_id / 'selected.json',
-              json.dumps(record, indent=2, sort_keys=True) + '\n')
+    # A previous publication may have completed before its journal append failed. Re-admit
+    # first, then reuse only an exact matching selection; never overwrite immutable evidence.
+    path = pathlib.Path(args.session_dir) / 'runs' / trial.run_id / 'selected.json'
+    if path.exists():
+        original = load_json(path)
+        identity = ('kind', 'manifest_sha256', 'trial', 'predecessor_evidence', 'admission_decision')
+        if (not isinstance(original, dict) or set(original) != set(record) or
+                any(original.get(key) != record[key] for key in identity)):
+            raise ValueError('existing selection does not match the admitted manifest, trial and predecessor evidence')
+        if (not isinstance(original.get('resume'), bool) or
+                admission.parse_utc(original.get('selected_at')) > admission.parse_utc(result.evaluated_at)):
+            raise ValueError('existing selection has invalid provenance or a future selection time')
+        record = original
+    else:
+        write_new(path, json.dumps(record, indent=2, sort_keys=True) + '\n')
     append_journal(args.session_dir, record)
     print(json.dumps(dict(result.to_dict(), selected=record), indent=2, sort_keys=True))
     return 0
@@ -165,6 +187,29 @@ def cmd_mark_t0(args):
     return 0
 
 
+def validate_ready(meta, ready_at, evidence_ref):
+    if meta['t0'] is None:
+        raise ValueError('pair readiness requires the original recorded t0')
+    if meta['ready_at'] is not None:
+        raise ValueError('pair readiness is already recorded')
+    if not isinstance(evidence_ref, str) or not evidence_ref.strip():
+        raise ValueError('pair readiness requires a nonempty evidence reference')
+    if admission.parse_utc(ready_at) < admission.parse_utc(meta['t0']):
+        raise ValueError('pair readiness cannot precede t0')
+
+
+def cmd_mark_ready(args):
+    _, sha, state, meta = load_session(args.session_dir)
+    if state.stop_reason:
+        raise ValueError('cannot mark a stopped session ready')
+    ready_at = admission.parse_utc(args.now).isoformat()
+    validate_ready(meta, ready_at, args.evidence_ref)
+    append_journal(args.session_dir, dict(kind='pair_ready', manifest_sha256=sha,
+                                          ready_at=ready_at, evidence_ref=args.evidence_ref))
+    print(json.dumps(dict(ready_at=ready_at, t0_utc=meta['t0'])))
+    return 0
+
+
 def cmd_stop(args):
     _, sha, _, _ = load_session(args.session_dir)
     append_journal(args.session_dir, dict(kind='stop', manifest_sha256=sha, reason=args.reason,
@@ -175,6 +220,8 @@ def cmd_stop(args):
 
 def cmd_paths(args):
     manifest, _, state, _ = load_session(args.session_dir)
+    if manifest['session']['kind'] != 'capacity':
+        raise ValueError('capacity paths are unavailable for calibration or lifecycle smoke sessions')
     paths = search.legal_paths(state)
     summaries = [search.path_summary(p) for p in paths]
     longest = max(summaries, key=lambda s: s['scored_hold_s'])
@@ -213,13 +260,15 @@ def build_parser():
     record.add_argument('--now', required=True)
     record.set_defaults(func=cmd_record)
 
-    for name, func in (('mark-t0', cmd_mark_t0), ('stop', cmd_stop)):
+    for name, func in (('mark-t0', cmd_mark_t0), ('mark-ready', cmd_mark_ready), ('stop', cmd_stop)):
         command = sub.add_parser(name)
         command.add_argument('--session-dir', required=True)
         command.add_argument('--now', required=True)
         if name == 'stop':
             command.add_argument('--reason', required=True,
                                  choices=('time_exhausted', 'spend_exhausted', 'operator_stop'))
+        if name == 'mark-ready':
+            command.add_argument('--evidence-ref', required=True, help='verified pair readiness evidence')
         command.set_defaults(func=func)
 
     paths = sub.add_parser('paths')
@@ -232,7 +281,7 @@ def main(argv=None):
     args = build_parser().parse_args(argv)
     try:
         return args.func(args)
-    except (manifest_mod.ManifestError, search.SearchError, FileExistsError, ValueError) as error:
+    except (manifest_mod.ManifestError, search.SearchError, OSError, ValueError) as error:
         print(json.dumps(dict(error=str(error))), file=sys.stderr)
         return 2
 

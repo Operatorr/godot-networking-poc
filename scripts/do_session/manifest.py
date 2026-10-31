@@ -61,6 +61,12 @@ TIMING_BASES = ('calibrated', 'declared_conservative')
 SHA1_RE = re.compile(r'^[0-9a-f]{40}$')
 SHA256_RE = re.compile(r'^[0-9a-f]{64}$')
 CREDENTIAL_REF_RE = re.compile(r'^(file|env|ref):\S+$')
+TOOLCHAIN_RE = re.compile(r'^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9_]+-[a-z0-9_]+-[a-z0-9_]+(?:-[a-z0-9_]+)*)?$')
+CREDENTIAL_FIELDS = ('controller_token_ref', 'watchdog_token_ref')
+OBJECT_SECTIONS = ('session', 'session.ownership_tags', 'roles', 'roles.game', 'roles.bot',
+                   'ssh_key', 'credentials', 'source', 'source.binary_sha256', 'workload',
+                   'telemetry_schema', 'evidence', 'limits', 'timing_basis', 'pricing',
+                   'watchdog', 'access_allowlists')
 SECRET_PATTERNS = (
     re.compile(r'dop_v1_[0-9a-f]{64}'),          # DigitalOcean personal access token
     re.compile(r'-----BEGIN [A-Z ]*PRIVATE KEY-----'),
@@ -125,6 +131,12 @@ def _parse_utc(text, label, reasons):
         reasons.append(label + ' must carry a UTC offset')
         return None
     return stamp.astimezone(datetime.timezone.utc)
+
+
+def _validate_object_sections(value, paths, reasons):
+    for path in paths:
+        if not isinstance(_get(value, path, reasons), dict):
+            reasons.append(path + ' must be a JSON object')
 
 
 def _preflight_size(preflight, slug):
@@ -200,17 +212,32 @@ def _validate_source(source, reasons):
     for key in ('cargo_lock_sha256', 'server_config_sha256', 'content_sha256'):
         if not SHA256_RE.match(str(source.get(key, ''))):
             reasons.append('source.' + key + ' must be a sha256 hex digest')
-    for key in ('rust_toolchain', 'target_triple', 'profile'):
-        if not source.get(key):
-            reasons.append('missing source.' + key)
+    toolchain = source.get('rust_toolchain')
+    if not isinstance(toolchain, str) or not TOOLCHAIN_RE.fullmatch(toolchain):
+        reasons.append('source.rust_toolchain must pin an explicit major.minor.patch version '
+                       '(optionally followed by a host triple), not a moving alias')
+    if source.get('profile') != 'release':
+        reasons.append('source.profile must be release under the accepted build policy')
+    if not source.get('target_triple'):
+        reasons.append('missing source.target_triple')
     if source.get('locked') is not True:
         reasons.append('source.locked must be true (build with locked dependencies)')
-    if not isinstance(source.get('build_flags'), list):
-        reasons.append('source.build_flags must be an explicit list (may be empty)')
+    flags = source.get('build_flags')
+    if not isinstance(flags, list) or any(not isinstance(flag, str) for flag in flags):
+        reasons.append('source.build_flags must be an explicit list of arguments, including features (may be empty)')
     binaries = source.get('binary_sha256') or {}
     for role in ('game', 'bot'):
         if not SHA256_RE.match(str(binaries.get(role, ''))):
             reasons.append('source.binary_sha256.' + role + ' must be a sha256 hex digest')
+
+
+def _validate_credentials(credentials, reasons):
+    for name in set(credentials) - set(CREDENTIAL_FIELDS):
+        reasons.append('unsupported credentials field ' + str(name) + ': store supported references only')
+    for name in CREDENTIAL_FIELDS:
+        value = credentials.get(name)
+        if not isinstance(value, str) or not CREDENTIAL_REF_RE.fullmatch(value):
+            reasons.append('credentials.' + name + ' must be a file:/env:/ref: reference, never a value')
 
 
 def _validate_workload(workload, reasons):
@@ -333,7 +360,13 @@ def freeze_manifest(conditions, preflight, frozen_at):
         raise ManifestError(['conditions and preflight must be JSON objects'])
     secrets = scan_for_secrets(conditions) + scan_for_secrets(preflight, '$preflight')
     for hit in secrets:
-        reasons.append('credential value detected at ' + hit + ': store references only')
+        reasons.append('credential value detected at ' + hit + ': store references only, never a value')
+
+    # Reject malformed containers before any field validator dereferences them. A present
+    # null/list must not silently skip the rules enforced for a normal JSON object.
+    _validate_object_sections(conditions, OBJECT_SECTIONS, reasons)
+    if reasons:
+        raise ManifestError(reasons)
 
     frozen_at = _parse_utc(frozen_at, 'frozen_at', reasons)
     observed_at = _parse_utc(preflight.get('observed_at'), 'preflight.observed_at', reasons)
@@ -385,17 +418,10 @@ def freeze_manifest(conditions, preflight, frozen_at):
         reasons.append('ssh_key.private_key_ref must be a file:/env:/ref: reference')
 
     credentials = _get(conditions, 'credentials', reasons) or {}
-    for name in ('controller_token_ref', 'watchdog_token_ref'):
-        value = credentials.get(name)
-        if not value or not CREDENTIAL_REF_RE.match(str(value)):
-            reasons.append('credentials.' + name + ' must be a file:/env:/ref: reference, never a value')
+    _validate_credentials(credentials, reasons)
 
-    source = _get(conditions, 'source', reasons)
-    if isinstance(source, dict):
-        _validate_source(source, reasons)
-    workload = _get(conditions, 'workload', reasons)
-    if isinstance(workload, dict):
-        _validate_workload(workload, reasons)
+    _validate_source(conditions['source'], reasons)
+    _validate_workload(conditions['workload'], reasons)
     telemetry = _get(conditions, 'telemetry_schema', reasons) or {}
     if not telemetry.get('id') or not SHA256_RE.match(str(telemetry.get('sha256', ''))):
         reasons.append('telemetry_schema needs id and sha256 of the frozen measurement schema')
@@ -408,15 +434,9 @@ def freeze_manifest(conditions, preflight, frozen_at):
     if not isinstance(evidence.get('required_artifacts'), list) or not evidence.get('required_artifacts'):
         reasons.append('evidence.required_artifacts must list the per-role artifacts the exporter checks')
 
-    limits = _get(conditions, 'limits', reasons)
-    if isinstance(limits, dict):
-        _validate_limits(limits, reasons)
-    timing = _get(conditions, 'timing_basis', reasons)
-    if isinstance(timing, dict):
-        _validate_timing(timing, kind, reasons)
-    pricing = _get(conditions, 'pricing', reasons)
-    if isinstance(pricing, dict):
-        _validate_pricing(pricing, reasons)
+    _validate_limits(conditions['limits'], reasons)
+    _validate_timing(conditions['timing_basis'], kind, reasons)
+    _validate_pricing(conditions['pricing'], reasons)
     watchdog = _get(conditions, 'watchdog', reasons) or {}
     for name in ('registry_id', 'identity'):
         if not watchdog.get(name):
@@ -469,9 +489,25 @@ def freeze_manifest(conditions, preflight, frozen_at):
 
 def verify_manifest(manifest, expected_sha256):
     """Recompute the hash of a loaded manifest; a changed manifest is a changed contract."""
+    if not isinstance(manifest, dict):
+        raise ManifestError(['manifest must be a JSON object'])
     actual = manifest_sha256(manifest)
     if actual != expected_sha256:
         raise ManifestError(['manifest sha256 ' + actual + ' does not match recorded ' + str(expected_sha256)])
     if manifest.get('schema') != MANIFEST_SCHEMA:
         raise ManifestError(['manifest schema ' + repr(manifest.get('schema')) + ' is not ' + MANIFEST_SCHEMA])
+    # Schema /1 files produced by older versions may have bypassed field validation.
+    # An intact hash proves integrity, not that the original conditions were supported.
+    reasons = []
+    _validate_object_sections(manifest, OBJECT_SECTIONS, reasons)
+    if reasons:
+        raise ManifestError(reasons)
+    _validate_source(manifest['source'], reasons)
+    _validate_workload(manifest['workload'], reasons)
+    _validate_credentials(manifest['credentials'], reasons)
+    _validate_limits(manifest['limits'], reasons)
+    _validate_timing(manifest['timing_basis'], manifest['session'].get('kind'), reasons)
+    _validate_pricing(manifest['pricing'], reasons)
+    if reasons:
+        raise ManifestError(reasons)
     return actual

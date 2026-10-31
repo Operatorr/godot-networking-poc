@@ -22,7 +22,7 @@ def play(outcomes, condition='do-cap-1v1g-20261030a'):
     state = SearchState(condition)
     for outcome in outcomes:
         trial = next_trial(state)
-        state = record_outcome(dispatch(state, trial), trial.run_id, outcome)
+        state = record_outcome(dispatch(state, trial), trial.run_id, outcome, 'fixture:' + trial.run_id)
     return state
 
 

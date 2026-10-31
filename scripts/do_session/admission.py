@@ -6,7 +6,7 @@ resume. It never calls a provider. A rejection therefore creates nothing.
 
 Time model (seconds), all terms from the manifest or the accepted contract:
 
-  pre-workload  = create_bootstrap + readiness_access             (only until t0 pair-ready)
+  pre-workload  = create_bootstrap + readiness_access             (until verified pair-ready)
   per trial     = readiness_bound(N) + 2 s warmup + hold + process_reset
                   + recorder_finalization + per_trial_export
   tail          = collection_export + evidence_recovery_grace
@@ -152,8 +152,10 @@ def admit(manifest, recorded_sha256, state, now, infra_health, phase='pre_create
           resume_requested=False, current_limits=None):
     """Evaluate admission for the legal remaining work.
 
-    ``phase`` is 'pre_create' (nothing created yet) or 'pair_ready' (bootstrap/readiness
-    already spent; ``t0`` is the UTC instant immediately before the first create request).
+    ``phase`` is 'pre_create', 'provisioning' (t0 recorded but readiness not proven), or
+    'pair_ready' (bootstrap/readiness already spent). ``t0`` is the UTC instant immediately
+    before the first create request. Provisioning conservatively retains the full setup
+    bound until explicit readiness evidence establishes that setup is complete.
     ``current_limits`` lets a caller prove the limits in force are the manifest's; any
     difference is a changed contract and rejects.
     """
@@ -162,8 +164,11 @@ def admit(manifest, recorded_sha256, state, now, infra_health, phase='pre_create
     try:
         sha = manifest_mod.verify_manifest(manifest, recorded_sha256)
     except manifest_mod.ManifestError as error:
-        reasons.extend(error.reasons)
-        sha = recorded_sha256
+        return Admission(REJECTED, error.reasons, evaluated_at.isoformat(), recorded_sha256,
+                         {}, {}, {}, None)
+    if manifest['session']['kind'] != 'capacity':
+        reasons.append('capacity search is unavailable for ' + str(manifest['session']['kind']) +
+                       ': calibration and lifecycle smoke require separate bounded workload plans')
     if current_limits is not None and current_limits != manifest.get('limits'):
         reasons.append('limits in force differ from the frozen manifest: no deadline or budget change is admitted')
     _check_health(infra_health, sha, reasons)
@@ -199,20 +204,23 @@ def admit(manifest, recorded_sha256, state, now, infra_health, phase='pre_create
     reserve_s = limits['teardown_reserve_s']
     grace_s = limits['evidence_recovery_grace_s']
     workload_deadline_c_s = cap_s - reserve_s
-    if phase == 'pre_create':
-        elapsed_s = 0.0
-        pre_workload = dict(create_bootstrap_s=timing['create_bootstrap_s']['seconds'],
-                            readiness_access_s=timing['readiness_access_s']['seconds'])
-    elif phase == 'pair_ready':
+    if phase not in ('pre_create', 'provisioning', 'pair_ready'):
+        raise ValueError('unknown phase ' + repr(phase))
+    if phase == 'pre_create' and t0 is not None:
+        reasons.append('pre_create admission cannot ignore a recorded t0')
+        return Admission(REJECTED, reasons, evaluated_at.isoformat(), sha, {}, cost, search_view, None)
+    elapsed_s = 0.0
+    if phase != 'pre_create':
         if t0 is None:
-            reasons.append('pair_ready admission requires the recorded t0')
+            reasons.append(phase + ' admission requires the recorded t0')
             return Admission(REJECTED, reasons, evaluated_at.isoformat(), sha, {}, cost, search_view, None)
         elapsed_s = (evaluated_at - parse_utc(t0)).total_seconds()
         if elapsed_s < 0:
             reasons.append('clock reports now before t0; refusing to admit on an inconsistent clock')
-        pre_workload = {}
-    else:
-        raise ValueError('unknown phase ' + repr(phase))
+    pre_workload = {}
+    if phase != 'pair_ready':
+        pre_workload = dict(create_bootstrap_s=timing['create_bootstrap_s']['seconds'],
+                            readiness_access_s=timing['readiness_access_s']['seconds'])
 
     paths = search.legal_paths(state)
     costed = [path_cost(manifest, p) for p in paths]

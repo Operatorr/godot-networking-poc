@@ -93,6 +93,11 @@ def run_id(condition_id, ordinal, phase, target, repetition):
     return '%s-t%02d-%s-n%03d-r%d' % (condition_id, ordinal, phase, target, repetition)
 
 
+def _require_evidence(outcome, evidence_ref):
+    if outcome in ADVANCING and (not isinstance(evidence_ref, str) or not evidence_ref.strip()):
+        raise SearchError(outcome + ' requires a nonempty evidence reference')
+
+
 def _validate(state):
     seen = set()
     for index, record in enumerate(state.records):
@@ -103,6 +108,7 @@ def _validate(state):
         seen.add(record.trial.run_id)
         if record.outcome is not None and record.outcome not in OUTCOMES:
             raise SearchError('unknown outcome ' + repr(record.outcome))
+        _require_evidence(record.outcome, record.evidence_ref)
         if record.trial.ordinal > MAX_TRIALS_PER_CONDITION:
             raise SearchError('trial ceiling exceeded')
 
@@ -189,8 +195,13 @@ def derive(state):
                         'unconfirmed/variable. Bracket and every confirmation result are retained; no '
                         'replacement trial. Further attempts need a separately bounded batch.' % candidate,
                         result=dict(kind='unconfirmed_variable', candidate=candidate))
+    pending = next((r for r in confirm if r.outcome is None), None)
+    if pending is not None:
+        return terminal('awaiting_confirmation_outcome',
+                        pending.trial.run_id + ' has no recorded outcome; do not select another '
+                        'confirmation until it is finalized. A pending run is not a recorded INCOMPLETE run.')
     passes = sum(1 for r in confirm if r.outcome == PASS)
-    incomplete = [r for r in confirm if r.outcome in (None, INCOMPLETE)]
+    incomplete = [r for r in confirm if r.outcome == INCOMPLETE]
     if len(confirm) < CONFIRMATIONS:
         ordinal = len(state.records) + 1
         repetition = len(confirm) + 1
@@ -232,6 +243,7 @@ def record_outcome(state, trial_id, outcome, evidence_ref=None):
     """Return a new state with the outcome recorded; outcomes are append-only and final."""
     if outcome not in OUTCOMES:
         raise SearchError('unknown outcome ' + repr(outcome))
+    _require_evidence(outcome, evidence_ref)
     records = []
     found = False
     for record in state.records:
@@ -269,7 +281,9 @@ def legal_paths(state):
             return
         dispatched = current.with_record(TrialRecord(trial))
         for outcome in ADVANCING:
-            walk(record_outcome(dispatched, trial.run_id, outcome), prefix + [trial])
+            # Forecast branches are hypothetical, never journaled as observed evidence.
+            walk(record_outcome(dispatched, trial.run_id, outcome,
+                                evidence_ref='forecast:' + trial.run_id), prefix + [trial])
 
     walk(state, [])
     return paths
