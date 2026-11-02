@@ -331,6 +331,18 @@ pub mod hit {
 intra-tick order (timers → stamina(previous state) → mana → edges → actions → dispatch), and
 **no depenetration** (a center inside an expanded obstacle freezes — port verbatim).
 
+### Sanctuary island geometry
+
+The exact `SANCTUARY_MAP_MIN/MAX` bounds with `obstacles_enabled=false` select the
+baked water/wall/gate collision set in `sim_core::sanctuary`. This flag disables Arena obstacles;
+it does not disable Sanctuary water, individual wall tiles, or sealed-gate solids.
+Building interiors and doorways are open; roofs have no collision. Other custom bounds
+with this flag false remain obstacle-free. Server and native prediction share this selection.
+Generate the rectangles with `scripts/bake_sanctuary.py` from the reference-plan layout;
+`--check` verifies the bake, player-clearance routes to services, and four sealed exits.
+Rebuild the server and GDExtension together. Spawn anchors now occupy T inside the Temple. The bake also emits the spawn coordinates
+and validates access to every building interior; roof visibility stays client-local.
+
 ## client_ext GDScript surface
 
 - `ProtocolCodec` (RefCounted, `#[class(init)]`): `encode_connect_auth(...)`, `encode_input(...)`,

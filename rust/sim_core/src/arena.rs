@@ -9,7 +9,7 @@
 //! each such thread MUST call [`set_world_geometry`] exactly once before running any bounds /
 //! obstacle / movement query. A thread that never sets it would silently fall back to the Arena
 //! default — which on a Sanctuary instance would corrupt collision (Arena obstacles + ±1000
-//! bounds instead of the wider walk-through town). To catch that, debug builds track whether the
+//! bounds instead of the island town). To catch that, debug builds track whether the
 //! geometry was set and `debug_assert!` it on every read; release builds keep the Arena default
 //! (unchanged behavior) so a misconfigured deploy degrades rather than panics.
 
@@ -19,14 +19,14 @@ use crate::vec2::Vec2;
 use std::cell::Cell;
 
 /// Per-instance world geometry (D13: one process = one Instance). The Arena uses the ±1000 bounds
-/// with the 16 static obstacles; a Sanctuary instance uses the larger town bounds and NO obstacles
-/// (walk-through). Both the authoritative server and the client predictor must agree, so it is set
+/// with the 16 static obstacles; Sanctuary uses the larger bounds and baked island obstacles. Both the authoritative server and the client predictor must agree, so it is set
 /// ONCE (at server start / at client scene entry) and read by every bounds/obstacle function.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct WorldGeometry {
     pub min: Vec2,
     pub max: Vec2,
-    /// When false, the obstacle passes are skipped entirely (bounds-clamp only).
+    /// Select Arena obstacles when true. False selects baked Sanctuary solids at its
+    /// exact bounds, otherwise an empty custom world.
     pub obstacles_enabled: bool,
 }
 
@@ -82,9 +82,19 @@ pub fn world_geometry() -> WorldGeometry {
     WORLD.with(|w| w.get())
 }
 
-fn obstacles_active() -> bool {
-    debug_assert_world_initialized();
-    WORLD.with(|w| w.get().obstacles_enabled)
+/// The existing wire/API geometry tuple identifies the Sanctuary by its exact bounds.
+/// Both server and PredictionSim select the same baked island geometry here.
+fn active_obstacles() -> &'static [Rect] {
+    let g = world_geometry();
+    if g.obstacles_enabled {
+        &OBSTACLES
+    } else if g.min == crate::constants::SANCTUARY_MAP_MIN
+        && g.max == crate::constants::SANCTUARY_MAP_MAX
+    {
+        crate::sanctuary::SOLIDS
+    } else {
+        &[]
+    }
 }
 
 /// Obstacle definitions, world coordinates, exact values from `game_constants.gd:480-502`.
@@ -129,18 +139,17 @@ pub fn is_circle_within_bounds(pos: Vec2, radius: f32) -> bool {
         && pos.y + radius <= g.max.y
 }
 
-/// Point-in-any-obstacle (unexpanded). No obstacles in a Sanctuary instance.
+/// Point-in-any-obstacle (unexpanded). Sanctuary uses its baked island solids.
 pub fn is_point_in_obstacle(point: Vec2) -> bool {
-    obstacles_active() && OBSTACLES.iter().any(|o| o.has_point(point))
+    active_obstacles().iter().any(|o| o.has_point(point))
 }
 
 /// Chebyshev (radius-expanded rect) circle test — NOT true circle-vs-AABB; corners are square.
-/// Parity requires this exact shape (extraction §4.2). No obstacles in a Sanctuary instance.
+/// Parity requires this exact shape (extraction §4.2). Sanctuary uses its baked island solids.
 pub fn circle_intersects_obstacle(center: Vec2, radius: f32) -> bool {
-    obstacles_active()
-        && OBSTACLES
-            .iter()
-            .any(|o| o.expanded(radius).has_point(center))
+    active_obstacles()
+        .iter()
+        .any(|o| o.expanded(radius).has_point(center))
 }
 
 /// Slab-method segment-vs-rect intersection. Returns the first intersection point, or `None`.
@@ -200,13 +209,13 @@ fn line_rect_intersection(from: Vec2, to: Vec2, rect: &Rect) -> Option<Vec2> {
 
 /// Does a swept circle move cross or end inside an obstacle?
 fn movement_hits_obstacle(from: Vec2, to: Vec2, radius: f32) -> bool {
-    if !obstacles_active() {
+    if active_obstacles().is_empty() {
         return false;
     }
     if from.is_equal_approx(to) {
         return circle_intersects_obstacle(to, radius);
     }
-    for obs in &OBSTACLES {
+    for obs in active_obstacles() {
         let expanded = obs.expanded(radius);
         if expanded.has_point(to) {
             return true;
@@ -262,14 +271,14 @@ pub fn closest_point_on_segment(point: Vec2, seg_start: Vec2, seg_end: Vec2) -> 
 }
 
 /// First obstacle intersection of a (projectile) segment, or `None` — unexpanded rects.
-/// No obstacles in a Sanctuary instance ⇒ projectiles only stop on bounds.
+/// Sanctuary projectiles also stop at the island masonry.
 pub fn line_intersects_obstacle(from: Vec2, to: Vec2) -> Option<Vec2> {
-    if !obstacles_active() {
+    if active_obstacles().is_empty() {
         return None;
     }
     let mut closest: Option<Vec2> = None;
     let mut closest_dist = f32::INFINITY;
-    for obs in &OBSTACLES {
+    for obs in active_obstacles() {
         if let Some(p) = line_rect_intersection(from, to, obs) {
             let d = from.distance_squared_to(p);
             if d < closest_dist {
@@ -430,14 +439,43 @@ mod tests {
     }
 
     #[test]
-    fn sanctuary_geometry_widens_bounds_and_drops_obstacles() {
+    fn sanctuary_island_blocks_water_and_keeps_arrival_clear() {
+        use crate::constants::{SANCTUARY_MAP_MAX, SANCTUARY_MAP_MIN, SANCTUARY_PLAYER_SPAWNS};
+        set_world_geometry(SANCTUARY_MAP_MIN, SANCTUARY_MAP_MAX, false);
+        for p in SANCTUARY_PLAYER_SPAWNS {
+            assert!(is_valid_player_spawn_position(p), "spawn {p:?}");
+        }
+        assert!(circle_intersects_obstacle(
+            Vec2::new(-3200.0, -2800.0),
+            16.0
+        ));
+        for gate in crate::sanctuary::GATES {
+            assert!(circle_intersects_obstacle(gate, 16.0));
+        }
+        for p in crate::sanctuary::SERVICES
+            .into_iter()
+            .chain(crate::sanctuary::ROOM_ANCHORS)
+        {
+            assert!(
+                is_valid_player_spawn_position(p),
+                "interior/service {p:?} is blocked"
+            );
+        }
+        // Temple west wall blocks a swept move; the hall itself is walkable.
+        let from = Vec2::new(48.0, 144.0);
+        let to = Vec2::new(176.0, 144.0);
+        assert_ne!(move_with_obstacle_collision(from, to, 16.0), to);
+    }
+
+    #[test]
+    fn custom_geometry_widens_bounds_and_drops_obstacles() {
         // Honor the set-once contract on this thread; the value equals the Arena default.
         init_arena();
         assert_eq!(world_geometry(), ARENA_GEOMETRY);
-        // Sanctuary: x ∈ ±3328, y ∈ ±3072 town bounds, no obstacles.
+        // Custom non-Sanctuary bounds with obstacles disabled.
         set_world_geometry(
-            Vec2::new(-3328.0, -3072.0),
-            Vec2::new(3328.0, 3072.0),
+            Vec2::new(-3329.0, -3073.0),
+            Vec2::new(3329.0, 3073.0),
             false,
         );
         // Bounds clamp at the wider extent (a position the Arena would have clamped to ±1000).
@@ -447,11 +485,11 @@ mod tests {
         );
         assert_eq!(
             clamp_to_bounds(Vec2::new(-4000.0, 0.0)),
-            Vec2::new(-3328.0, 0.0)
+            Vec2::new(-3329.0, 0.0)
         );
         assert_eq!(
             clamp_to_bounds(Vec2::new(0.0, 4000.0)),
-            Vec2::new(0.0, 3072.0)
+            Vec2::new(0.0, 3073.0)
         );
         // The center north pillar no longer blocks: a move straight through it succeeds.
         assert!(!circle_intersects_obstacle(Vec2::new(0.0, -100.0), 16.0));

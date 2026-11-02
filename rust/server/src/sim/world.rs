@@ -1767,14 +1767,11 @@ mod tests {
         let mut world = sanctuary_world();
         assert!(!world.pvp_enabled, "PvP off in the sanctuary");
         assert!(!world.spawner.enabled, "spawner off in the sanctuary");
-        // Player spawns in the West Gate Refuge yard (grid x≈-78), deep in the western town and
-        // well outside the ±800 arena ring (redesign spec §9). All anchors sit at x < -2000.
+        // Arrival anchors now belong to T in the reference-plan island.
         let id = join(&mut world, 1, "Townie");
         let pos = world.players.get_by_entity_id(id).unwrap().position;
-        assert!(
-            pos.x < -2000.0,
-            "spawned at the west gate refuge, got {pos:?}"
-        );
+        assert!(sim_core::constants::SANCTUARY_PLAYER_SPAWNS.contains(&pos));
+        assert!(sim_core::arena::is_valid_player_spawn_position(pos));
         // No monsters ever spawn, even over a long run that fills the arena.
         let mut outbox = Outbox::new();
         for t in 0..600 {
