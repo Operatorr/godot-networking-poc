@@ -268,3 +268,16 @@ Where the remaining cost is, at 200: `snapshot_build` **13.1 ms of the 18.2 ms t
 core)**, scheduler deferring 6,739 entity records per tick with 61 % of peers at their byte
 budget — Change C is now the lever. `PLAYER_INFO` is the next largest event (73/s per peer at
 200: it is re-broadcast on every level-up) and could be coalesced into the leaderboard cadence.
+
+
+### 2026-11-02 — CAX11 Change A, Mac mini bots: 200 connected, FAIL
+
+One authorized 200-strategy run at frozen `0c9ecaf`, with bots on the operator's Mac mini
+instead of a second CAX11. The server retained 200 for 70.10 s; the selected full minute
+contains 1800 consecutive Ticks at 200, zero bot errors, Tick p95/max 27.65/59.24 ms and
+0.167% over 33.3 ms. **FAIL:** 5,656 server socket drops across the run and RTT p95 221 ms.
+Idle path RTT was already about 208 ms; this is not a same-location capacity comparison.
+Server CPU averaged 78.6% of a core; Snapshot build 16.19 ms/Tick. Mac workers averaged
+27.17%/27.10% CPU, with no observed CPU saturation. Bandwidth 46.23 KB/s remains separate.
+The CAX11 rung stays unchecked; no higher rung or Change C was attempted.
+See [compact evidence, commands, hashes and limitations](cax11-changeA-200-20261102.md).

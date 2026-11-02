@@ -15,3 +15,4 @@ One row per `scripts/quick_stress.sh` run (appended automatically). Newest at th
 | 2026-10-30 04:56 | changeA-100 | `80146b0` | 100 strategy | PASS | 100/100 | 8.66 / 18.2 | 0.0% | 22% | 23% | 0 | 3 | 0.02% | 29.4 | 154 | 0.0% / 4 | |
 | 2026-10-30 04:57 | changeA-150 | `98a6304` | 150 strategy | PASS | 150/150 | 15.83 / 23.4 | 0.0% | 38% | 33% | 0 | 3 | 0.03% | 37.4 | 252 | 0.0% / 2 | |
 | 2026-10-30 04:58 | changeA-200 | `3af68df` | 200 strategy | FAIL | 200/200 | 25.91 / 39.9 | 0.7% | 58% | 46% | 178 | 8 | 0.08% | 45.0 | 393 | 0.0% / 9 | |
+| 2026-11-02 06:05 | cax11-changeA-200-mac | `0c9ecaf` | 200 strategy | FAIL | 200/200 full 60 s | 27.65 / 59.24 | 0.167% | 78.6% | 54.4% | 5656 whole run | 221 | 0.05% | 46.23 | unavailable (mixed delivery counters) | 0.553% mean / 234 worst-peer ms | CAX11 server + Mac M4 bots; socket drops 5656; [evidence](cax11-changeA-200-20261102.md); RTT/loss aggregates include ramp; inner minute sampled drops 2606 |
