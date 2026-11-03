@@ -354,21 +354,34 @@ fn change_bonus(mask: u8) -> i64 {
     bonus
 }
 
+const PRIORITY_RANK_BIAS: i64 = 1 << 46;
+
+/// Ascending rank for (pinned first, priority desc, entity_id asc). A candidate is 40 bytes and
+/// every peer sorts hundreds of them per Tick, so the sort moves this word instead.
+fn schedule_rank(c: &Candidate) -> u64 {
+    let priority = c
+        .priority
+        .clamp(1 - PRIORITY_RANK_BIAS, PRIORITY_RANK_BIAS - 1);
+    (u64::from(!c.pinned) << 63)
+        | (((PRIORITY_RANK_BIAS - priority) as u64) << 16)
+        | u64::from(c.entity_id)
+}
+
 /// Admit pinned entries first, then (priority desc, entity_id asc). Pinned entries bypass
 /// the soft budget and consume space; every entry obeys the hard packet limit.
-fn schedule(candidates: &mut [Candidate], max_bytes: usize) -> (Vec<usize>, ScheduleStats, usize) {
-    candidates.sort_by(|a, b| {
-        b.pinned.cmp(&a.pinned).then(
-            b.priority
-                .cmp(&a.priority)
-                .then(a.entity_id.cmp(&b.entity_id)),
-        )
-    });
+fn schedule(candidates: &[Candidate], max_bytes: usize) -> (Vec<usize>, ScheduleStats, usize) {
+    let mut order: Vec<(u64, u32)> = candidates
+        .iter()
+        .enumerate()
+        .map(|(position, c)| (schedule_rank(c), position as u32))
+        .collect();
+    order.sort_unstable();
     let max_bits = max_bytes * 8;
     let mut bits = 0usize;
     let mut selected = Vec::with_capacity(candidates.len());
     let mut stats = ScheduleStats::default();
-    for c in candidates.iter() {
+    for &(_, position) in &order {
+        let c = &candidates[position as usize];
         stats.max_queue_age_ticks = stats.max_queue_age_ticks.max(c.ticks_since_last_sent);
         let fits = max_bits == 0 || bits + c.encoded_bits <= max_bits;
         let hard_fits = bits + c.encoded_bits <= MAX_DELTA_RECORD_BITS;
@@ -889,7 +902,7 @@ fn create_delta_packet(
         .min(protocol::MAX_UNRELIABLE_PAYLOAD - 1)
         .saturating_sub(DELTA_HEADER_BYTES)
         .max(1);
-    let (selected, stats, _bits) = schedule(&mut candidates, record_budget);
+    let (selected, stats, _bits) = schedule(&candidates, record_budget);
     let mut records = Vec::with_capacity(selected.len());
     for idx in selected {
         let s = &staged[idx];
@@ -1396,11 +1409,57 @@ mod tests {
             old_svc.broadcast_state_updates(&old_entities, &players, 101, 0, &mut outbox)
         });
         outbox.drain();
-        // The old pipeline built two HashSets per peer; the new one allocates two id sets per Tick.
+        // The old pipeline built two HashSets per peer. The new one allocates two id sets per Tick
+        // and one sort-key buffer per peer, so it must still come out a full peer's worth ahead.
         assert!(
-            new_allocations + 2 * peers <= old_allocations + 2,
+            new_allocations + peers <= old_allocations + 2,
             "new {new_allocations} vs old {old_allocations} allocations for {peers} peers"
         );
+    }
+
+    /// The rank must reproduce the old stable sort exactly, across pinned entries, negative
+    /// priorities, very old entities and equal priorities, without reordering the input.
+    #[test]
+    fn schedule_rank_matches_the_stable_sort_order() {
+        let mut rng = Xorshift(0xDEAD_BEEF_CAFE_F00D);
+        for _ in 0..300 {
+            let count = 1 + rng.below(300) as usize;
+            let candidates: Vec<Candidate> = (0..count)
+                .map(|index| Candidate {
+                    index,
+                    entity_id: rng.below(40_000) as u16,
+                    priority: match rng.below(4) {
+                        0 => -7 + rng.below(30) as i64,
+                        1 => rng.below(8) as i64,
+                        2 => 1_000_000_000 + rng.below(3) as i64,
+                        _ => rng.below(400) as i64,
+                    },
+                    encoded_bits: 49 + rng.below(30) as usize,
+                    ticks_since_last_sent: rng.below(100),
+                    pinned: rng.below(50) == 0,
+                })
+                .collect();
+            let mut expected: Vec<&Candidate> = candidates.iter().collect();
+            expected.sort_by(|a, b| {
+                b.pinned.cmp(&a.pinned).then(
+                    b.priority
+                        .cmp(&a.priority)
+                        .then(a.entity_id.cmp(&b.entity_id)),
+                )
+            });
+            let mut ranked: Vec<(u64, u32)> = candidates
+                .iter()
+                .enumerate()
+                .map(|(position, c)| (schedule_rank(c), position as u32))
+                .collect();
+            ranked.sort_unstable();
+            let actual: Vec<usize> = ranked
+                .iter()
+                .map(|&(_, p)| candidates[p as usize].index)
+                .collect();
+            let expected: Vec<usize> = expected.iter().map(|c| c.index).collect();
+            assert_eq!(actual, expected);
+        }
     }
 
     /// Local mechanism timing only; never a server capacity result.
@@ -1564,7 +1623,7 @@ mod tests {
 
     #[test]
     fn scheduler_pinned_bypasses_budget() {
-        let mut candidates = vec![
+        let candidates = vec![
             Candidate {
                 index: 0,
                 entity_id: 1,
@@ -1582,7 +1641,7 @@ mod tests {
                 pinned: true,
             },
         ];
-        let (selected, stats, _) = schedule(&mut candidates, 100); // 800 bits budget
+        let (selected, stats, _) = schedule(&candidates, 100); // 800 bits budget
         assert_eq!(
             selected,
             vec![1],
@@ -1595,7 +1654,7 @@ mod tests {
 
     #[test]
     fn scheduler_no_early_break() {
-        let mut candidates = vec![
+        let candidates = vec![
             Candidate {
                 index: 0,
                 entity_id: 1,
@@ -1613,7 +1672,7 @@ mod tests {
                 pinned: false,
             },
         ];
-        let (selected, stats, _) = schedule(&mut candidates, 100); // 800 bits
+        let (selected, stats, _) = schedule(&candidates, 100); // 800 bits
         assert_eq!(
             selected,
             vec![1],
