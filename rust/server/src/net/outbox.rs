@@ -33,6 +33,20 @@ pub enum Delivery {
     /// Force unreliable-sequenced on the Snapshot channel. Only for events whose effect the
     /// next Snapshot reproduces (an authoritative-recovery guarantee the caller has validated).
     Unreliable,
+    /// Reliable, like `Default`, but re-delivers an event that already happened to a peer that
+    /// missed it; telemetry does not count it as a new source event.
+    Replay,
+}
+
+/// The (channel, reliable) pair a staged packet actually goes out on.
+pub fn wire_delivery(target: &Target, packet: &ServerPacket) -> (u8, bool) {
+    match target {
+        Target::Peers {
+            delivery: Delivery::Unreliable,
+            ..
+        } => (protocol::CH_SNAPSHOT, false),
+        _ => (packet.channel(), packet.reliable()),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,6 +90,11 @@ impl Outbox {
         self.send_to_with(peers, packet, Delivery::Unreliable);
     }
 
+    /// Reliable re-delivery of an earlier event to one peer that missed it.
+    pub fn send_replay(&mut self, peer: PeerKey, packet: ServerPacket) {
+        self.send_to_with(vec![peer], packet, Delivery::Replay);
+    }
+
     fn send_to_with(&mut self, peers: Vec<PeerKey>, packet: ServerPacket, delivery: Delivery) {
         if peers.is_empty() {
             return;
@@ -117,5 +136,43 @@ impl Outbox {
     pub fn drain(&mut self) -> Vec<(Target, ServerPacket)> {
         self.over_message_cap = false;
         std::mem::take(&mut self.messages)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn delivery_decides_the_wire_channel() {
+        let event = || {
+            ServerPacket::GameEvent(protocol::GameEvent {
+                event_type: protocol::types::game_event_type::PROJECTILE_FIRED,
+                source_id: 1,
+                target_id: 10000,
+                data: protocol::GameEventData::ProjectileFired {
+                    x: 0.0,
+                    y: 0.0,
+                    fire_tick: 0,
+                },
+            })
+        };
+        let mut outbox = Outbox::new();
+        outbox.send_to_unreliable(vec![1], event());
+        outbox.send_to(vec![1], event());
+        outbox.send_replay(1, event());
+        let wire: Vec<_> = outbox
+            .drain()
+            .iter()
+            .map(|(target, packet)| wire_delivery(target, packet))
+            .collect();
+        assert_eq!(
+            wire,
+            vec![
+                (protocol::CH_SNAPSHOT, false),
+                (protocol::CH_RELIABLE, true),
+                (protocol::CH_RELIABLE, true),
+            ]
+        );
     }
 }

@@ -452,15 +452,18 @@ fn flush_outbox<S: enet::Socket>(
         if let (Some(measure), ServerPacket::GameEvent(event)) =
             (&mut collector.measurement, &packet)
         {
-            measure.source_events[event.event_type as usize] += 1;
+            let replay = matches!(
+                target,
+                Target::Peers {
+                    delivery: outbox::Delivery::Replay,
+                    ..
+                }
+            );
+            if !replay {
+                measure.source_events[event.event_type as usize] += 1;
+            }
         }
-        let (channel, reliable) = match &target {
-            Target::Peers {
-                delivery: outbox::Delivery::Unreliable,
-                ..
-            } => (protocol::CH_SNAPSHOT, false),
-            _ => (packet.channel(), packet.reliable()),
-        };
+        let (channel, reliable) = outbox::wire_delivery(&target, &packet);
         if !reliable && bytes.len() > protocol::MAX_UNRELIABLE_PAYLOAD {
             // An unreliable packet above the MTU silently upgrades to reliable-fragmented and
             // reintroduces head-of-line blocking — the budget should prevent this; log loudly.
@@ -481,7 +484,7 @@ fn flush_outbox<S: enet::Socket>(
                         };
                         if peer.send(channel, &pkt).is_ok() {
                             collector.record_sent(key, bytes.len());
-                            record_message(collector, &packet, &bytes, channel);
+                            record_message(collector, &packet, &bytes, channel, reliable);
                         } else if let Some(measure) = &mut collector.measurement {
                             measure.send_errors += 1;
                         }
@@ -502,7 +505,7 @@ fn flush_outbox<S: enet::Socket>(
                         };
                         if peer.send(channel, &pkt).is_ok() {
                             collector.record_sent(key, bytes.len());
-                            record_message(collector, &packet, &bytes, channel);
+                            record_message(collector, &packet, &bytes, channel, reliable);
                         } else if let Some(measure) = &mut collector.measurement {
                             measure.send_errors += 1;
                         }
@@ -520,7 +523,7 @@ fn flush_outbox<S: enet::Socket>(
                         };
                         if peer.send(channel, &pkt).is_ok() {
                             collector.record_sent(key, bytes.len());
-                            record_message(collector, &packet, &bytes, channel);
+                            record_message(collector, &packet, &bytes, channel, reliable);
                         } else if let Some(measure) = &mut collector.measurement {
                             measure.send_errors += 1;
                         }
@@ -542,11 +545,17 @@ fn record_message(
     packet: &ServerPacket,
     bytes: &[u8],
     channel: u8,
+    reliable: bool,
 ) {
     if let Some(measure) = &mut collector.measurement {
         measure.sent[bytes[0] as usize][channel as usize] += bytes.len() as u64;
         match packet {
-            ServerPacket::GameEvent(event) => measure.event_sends[event.event_type as usize] += 1,
+            ServerPacket::GameEvent(event) => {
+                measure.event_sends[event.event_type as usize] += 1;
+                if reliable {
+                    measure.reliable_event_sends[event.event_type as usize] += 1;
+                }
+            }
             ServerPacket::Snapshot(snapshot) if snapshot.is_baseline => measure.baselines += 1,
             ServerPacket::Snapshot(_) => measure.deltas += 1,
             _ => {}

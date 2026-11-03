@@ -18,6 +18,11 @@ const MAX_PACKET_SIZE := 65535
 ## out far lower in practice.
 const STATE_MAX_ENTITIES := 65535
 
+## `server_tick` of a monster PROJECTILE_FIRED that re-delivers the owner of a bullet already in
+## flight (protocol::types::PROJECTILE_OWNER_REPLAY_FIRE_TICK): register the owner, but no shot
+## happened now, so no shoot feedback.
+const PROJECTILE_OWNER_REPLAY_FIRE_TICK := 65535
+
 ## Action types echoed back in ACTION_CONFIRM (moved here from the retired
 ## ActionConfirmPacket codec; the live decode is the Rust ProtocolCodec).
 enum ActionType {

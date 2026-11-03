@@ -32,8 +32,9 @@
 #   --                everything after is passed to omega-load-test verbatim
 #
 # Exit code: the load test's (0 criteria met · 1 criteria failed · 2 strict assertions failed),
-# or 3 if the harness itself failed (server didn't start, port busy, ...). The report is always
-# rendered when the swarm ran, even if the run "broke" — that is the point.
+# 3 if the harness itself failed (server didn't start, port busy, ...), or 128+signal if cancelled
+# (no report; swarm, server and sampler are all stopped first). The report is always rendered when
+# the swarm ran to completion, even if the run "broke" — that is the point.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -56,7 +57,7 @@ while [[ $# -gt 0 ]]; do
     --no-build) BUILD=0; shift ;;
     --no-ledger) LEDGER=0; shift ;;
     --server-env) SERVER_ENV+=("$2"); shift 2 ;;
-    -h|--help) sed -n '2,40p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,37p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     --) shift; EXTRA=("$@"); break ;;
     *) echo "quick_stress.sh: unknown option '$1' (see --help)" >&2; exit 3 ;;
   esac
@@ -72,16 +73,35 @@ RUN="$RUN_ROOT/$(date -u +%Y%m%d-%H%M%S)-$LABEL"
 mkdir -p "$RUN/server" "$RUN/bots"
 ln -sfn "$RUN" "$RUN_ROOT/latest"
 PIDS="$RUN/pids.txt"; : > "$PIDS"
-SERVER_PID=""; SAMPLER_PID=""
-cleanup() {
-  if [[ -n "$SERVER_PID" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
-    kill -INT "$SERVER_PID" 2>/dev/null
-    for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$SERVER_PID" 2>/dev/null || break; sleep 0.3; done
-    kill -9 "$SERVER_PID" 2>/dev/null || true
+SERVER_PID=""; SAMPLER_PID=""; SWARM_PID=""
+# stop_child PID SIGNAL: signal, wait up to 3 s, then SIGKILL and reap. A PID that is already
+# gone is not an error, so one child can never prevent the next one's cleanup.
+stop_child() {
+  [[ -n "$1" ]] || return 0
+  if kill -0 "$1" 2>/dev/null; then
+    kill "-$2" "$1" 2>/dev/null
+    for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$1" 2>/dev/null || break; sleep 0.3; done
+    kill -9 "$1" 2>/dev/null
   fi
-  [[ -n "$SAMPLER_PID" ]] && kill "$SAMPLER_PID" 2>/dev/null || true
+  wait "$1" 2>/dev/null
+  return 0
 }
-trap cleanup EXIT INT TERM
+cleanup() {
+  # Swarm first: it stops on SIGINT and disconnects its bots while the server is still up.
+  stop_child "$SWARM_PID" INT; SWARM_PID=""
+  stop_child "$SERVER_PID" INT; SERVER_PID=""
+  stop_child "$SAMPLER_PID" TERM; SAMPLER_PID=""
+}
+# A cancelled run has no report to render: stop everything and exit with the signal's status.
+on_signal() {
+  trap - EXIT INT TERM HUP
+  cleanup
+  exit $(( 128 + $1 ))
+}
+trap cleanup EXIT
+trap 'on_signal 1' HUP
+trap 'on_signal 2' INT
+trap 'on_signal 15' TERM
 
 T0=$(date +%s)
 echo "quick_stress: run dir $RUN"
@@ -132,10 +152,11 @@ echo "quick_stress: swarm running (ramp ≈ $(( BOTS * STAGGER / 1000 )) s + ${D
 SWARM_PID=$!
 echo "bots=$SWARM_PID" >> "$PIDS"
 wait "$SWARM_PID"; SWARM_EXIT=$?
+SWARM_PID=""
 T_SWARM_END=$(date +%s.%N)
 
 # 5. stop + report
-cleanup; SERVER_PID=""; SAMPLER_PID=""
+cleanup
 trap - EXIT
 T1=$(date +%s)
 GIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"

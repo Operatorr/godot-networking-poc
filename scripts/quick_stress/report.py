@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Render one quick_stress run into REPORT.md + summary.json + a stdout summary.
 
-Reads (all optional except run.json; missing inputs degrade to "n/a"):
+Reads (all optional except run.json; missing inputs render as "n/a", and a run whose gates could
+not be measured is INCOMPLETE, never PASS):
   run.json            harness metadata (args, commit, host)
   bots/report.json    omega-load-test report (aggregates, per-bot, criteria, assertions)
   server/ticks.csv    one row per server Tick (work_ns, entity counts, scheduler diagnostics)
@@ -84,9 +85,14 @@ def analyze_ticks(path):
                 rows.append(r)
     except OSError:
         return None
-    if not rows:
+    ticks = []
+    for r in rows:
+        try:
+            ticks.append({k: float(v) for k, v in r.items()})
+        except (TypeError, ValueError):
+            pass  # a row cut short when the server was killed mid-write
+    if not ticks:
         return None
-    ticks = [{k: float(v) for k, v in r.items()} for r in rows]
     max_auth = max(t["authenticated"] for t in ticks)
     # steady window: from the first tick at >= 95 % of peak population to the end
     thresh = max_auth * 0.95
@@ -121,8 +127,11 @@ def analyze_ticks(path):
 
     span_s = (ticks[-1]["mono_ns"] - ticks[0]["mono_ns"]) / 1e9 if len(ticks) > 1 else 0.0
     steady_span_s = (steady[-1]["mono_ns"] - steady[0]["mono_ns"]) / 1e9 if len(steady) > 1 else 0.0
+    at_peak = [t for t in ticks if t["authenticated"] >= max_auth]
     return {
         "players_peak": max_auth,
+        "peak_span_s": (at_peak[-1]["mono_ns"] - at_peak[0]["mono_ns"]) / 1e9,
+        "steady_span_s": steady_span_s,
         "ramp_s": (ticks[first_steady]["mono_ns"] - ticks[0]["mono_ns"]) / 1e9 if ramp else 0.0,
         "span_s": span_s,
         "achieved_tick_hz": (len(ticks) - 1) / span_s if span_s > 0 else 0.0,
@@ -135,6 +144,24 @@ def analyze_ticks(path):
 
 
 # ── server 1 Hz samples ───────────────────────────────────────────────────────────────────
+def disjoint_phases(phases):
+    """The non-overlapping loop phases: `snapshot_build` runs inside `world_tick`, so a total or a
+    ranking counts either world_tick alone or simulation + snapshot_build, never both."""
+    has_split = any(k.startswith("simulation") for k in phases)
+    return {k: v for k, v in phases.items() if k != ("world_tick" if has_split else "snapshot_build")}
+
+
+def counter_rates(a, b, key, dt):
+    """Per-second deltas of a cumulative per-event-type counter; None if the samples predate it."""
+    if key not in a or key not in b:
+        return None
+    rates = {}
+    for i, (ea, eb) in enumerate(zip(a[key], b[key])):
+        if eb - ea > 0:
+            rates[EVENT_TYPE.get(i, str(i))] = (eb - ea) / dt
+    return dict(sorted(rates.items(), key=lambda kv: -kv[1]))
+
+
 def analyze_server_samples(path, steady_first_mono_ns):
     rows = [r for r in load_ndjson(path) if r.get("boundary", "") == ""]
     if len(rows) < 2:
@@ -169,7 +196,7 @@ def analyze_server_samples(path, steady_first_mono_ns):
         sim["max_ms"] = None
         phases["simulation (= world_tick - snapshot_build)"] = sim
     out["phases"] = phases
-    out["phase_core_pct_total"] = sum(p["core_pct"] for k, p in phases.items() if not k.startswith("simulation"))
+    out["phase_core_pct_total"] = sum(p["core_pct"] for p in disjoint_phases(phases).values())
     pa, pb = a.get("process"), b.get("process")
     if pa and pb:
         out["process"] = {
@@ -195,16 +222,9 @@ def analyze_server_samples(path, steady_first_mono_ns):
     out["received_by_type"] = by_type("received_bytes_by_type_channel", CLIENT_PACKET)
     out["sent_bytes_per_s"] = sum(v["bytes_per_s"] for v in out["sent_by_type"].values())
     out["received_bytes_per_s"] = sum(v["bytes_per_s"] for v in out["received_by_type"].values())
-    ev = {}
-    for i, (ea, eb) in enumerate(zip(a.get("event_sends", []), b.get("event_sends", []))):
-        if eb - ea > 0:
-            ev[EVENT_TYPE.get(i, str(i))] = (eb - ea) / dt
-    out["event_sends_per_s"] = dict(sorted(ev.items(), key=lambda kv: -kv[1]))
-    src = {}
-    for i, (ea, eb) in enumerate(zip(a.get("source_events", []), b.get("source_events", []))):
-        if eb - ea > 0:
-            src[EVENT_TYPE.get(i, str(i))] = (eb - ea) / dt
-    out["source_events_per_s"] = dict(sorted(src.items(), key=lambda kv: -kv[1]))
+    out["event_sends_per_s"] = counter_rates(a, b, "event_sends", dt) or {}
+    out["reliable_event_sends_per_s"] = counter_rates(a, b, "reliable_event_sends", dt)
+    out["source_events_per_s"] = counter_rates(a, b, "source_events", dt) or {}
     out["baselines_per_s"] = (b.get("baselines", 0) - a.get("baselines", 0)) / dt
     out["deltas_per_s"] = (b.get("deltas", 0) - a.get("deltas", 0)) / dt
     out["send_errors"] = b.get("send_errors", 0)
@@ -247,7 +267,8 @@ def analyze_host(path, t_steady_wall):
         start_idx = max(0, len(rows) - 2)
     a, b = rows[start_idx], rows[-1]
     dt = b["ts"] - a["ts"]
-    out = {"window_s": dt, "cpus": meta.get("cpus"), "platform": meta.get("platform"), "procs": {}}
+    out = {"window_s": dt, "cpus": meta.get("cpus"), "platform": meta.get("platform"), "procs": {},
+           "first_ts": rows[0]["ts"], "last_ts": rows[-1]["ts"]}
     names = set()
     for r in rows:
         names.update(r.get("procs", {}).keys())
@@ -284,9 +305,10 @@ def analyze_host(path, t_steady_wall):
     ua, ub = a.get("udp", {}).get("snmp", {}), b.get("udp", {}).get("snmp", {})
     if ua and ub:
         out["udp"] = {k: ub.get(k, 0) - ua.get(k, 0) for k in ("InDatagrams", "OutDatagrams", "InErrors", "RcvbufErrors", "SndbufErrors") if k in ub}
-        # whole-run deltas too (errors during the ramp matter)
+        # whole-run deltas too (errors during the ramp matter); a counter absent from either end
+        # stays absent, so "unavailable" can never read as an observed zero.
         u0 = rows[0].get("udp", {}).get("snmp", {})
-        out["udp_whole_run"] = {k: ub.get(k, 0) - u0.get(k, 0) for k in ("InErrors", "RcvbufErrors", "SndbufErrors") if k in ub}
+        out["udp_whole_run"] = {k: ub[k] - u0[k] for k in ("InErrors", "RcvbufErrors", "SndbufErrors") if k in ub and k in u0}
     sock_rows = [r.get("udp", {}).get("socket") for r in rows if r.get("udp", {}).get("socket")]
     if sock_rows:
         out["server_socket"] = {
@@ -319,6 +341,31 @@ def analyze_log(path):
 
 
 # ── verdict ───────────────────────────────────────────────────────────────────────────────
+SAMPLER_SLACK_S = 3.0
+
+
+def missing_evidence(run, ticks, host):
+    """Gates that could not be measured. Unmeasured is not the same as passed."""
+    missing = []
+    steady = (ticks or {}).get("steady") or {}
+    duration = run.get("duration_s") or 0
+    if not steady.get("ticks"):
+        missing.append("no server Tick data: the Tick-budget gate was not measured")
+    elif duration and ticks.get("steady_span_s", duration) < 0.9 * duration:
+        missing.append(f"Tick data covers only {ticks['steady_span_s']:.0f} s of the {duration} s run")
+    if not host:
+        missing.append("no host samples: the kernel UDP drop gate was not measured")
+    else:
+        if "RcvbufErrors" not in host.get("udp_whole_run", {}):
+            missing.append("kernel UDP drop counter unavailable: the drop gate was not measured")
+        start, end = run.get("t_swarm_start"), run.get("t_swarm_end")
+        if end and "last_ts" in host and host["last_ts"] < float(end) - SAMPLER_SLACK_S:
+            missing.append(f"host sampler stopped {float(end) - host['last_ts']:.0f} s before the swarm ended")
+        if start and "first_ts" in host and host["first_ts"] > float(start) + SAMPLER_SLACK_S:
+            missing.append(f"host sampler started {host['first_ts'] - float(start):.0f} s after the swarm")
+    return missing
+
+
 def verdict(run, bots, ticks, srv, host):
     reasons = []
     findings = []
@@ -338,11 +385,18 @@ def verdict(run, bots, ticks, srv, host):
     for c in failed_criteria:
         reasons.append(f"criterion failed: {c.get('criterion')} ({c.get('value')})")
     steady = (ticks or {}).get("steady", {})
+    if ticks and requested and ticks["players_peak"] < requested:
+        reasons.append(f"server saw at most {ticks['players_peak']:.0f}/{requested} players at once")
+    elif ticks and requested and run.get("duration_s") and ticks.get("peak_span_s", run["duration_s"]) < 0.95 * run["duration_s"]:
+        reasons.append(f"full population held for only {ticks['peak_span_s']:.0f} s of the {run['duration_s']} s run")
     if steady and steady.get("over_33ms_pct", 0) > 1.0:
         reasons.append(f"{steady['over_33ms_pct']:.1f}% of ticks over 33 ms")
     udp = (host or {}).get("udp_whole_run", {})
     if udp.get("RcvbufErrors", 0) > 0:
         reasons.append(f"host UDP RcvbufErrors +{udp['RcvbufErrors']}")
+    failed = bool(reasons)
+    missing = missing_evidence(run, ticks, host)
+    reasons.extend(missing)
 
     # bottleneck heuristics — in order of "this invalidates everything after it"
     threads = max(1, run.get("threads", 1))
@@ -358,17 +412,26 @@ def verdict(run, bots, ticks, srv, host):
         top = ""
         phases = (srv or {}).get("phases", {})
         if phases:
-            ranked = sorted(((k, v["core_pct"]) for k, v in phases.items() if not k.startswith("simulation")), key=lambda kv: -kv[1])
+            ranked = sorted(((k.split(" ")[0], v["core_pct"]) for k, v in disjoint_phases(phases).items()), key=lambda kv: -kv[1])
             top = " — biggest phase: " + ", ".join(f"{k} {v:.0f}%" for k, v in ranked[:2])
         findings.append(f"SERVER CPU-BOUND: {server_cpu:.0f}% of one core{top}")
     if udp.get("RcvbufErrors", 0) > 0:
         findings.append("UDP RECEIVE OVERFLOW: the kernel dropped datagrams for lack of socket buffer — "
                         "the server loop is not draining fast enough (or bursts exceed the buffer)")
     en = (srv or {}).get("enet")
-    if en and (en["loss_mean_pct_max"] > 5.0 or en["rtt_mean_ms_max"] > 100.0):
-        findings.append(f"ENET RETRANSMIT STORM (server view): peer loss mean peaked {en['loss_mean_pct_max']:.1f}% "
-                        f"(worst peer {en['loss_max_pct_max']:.0f}%), RTT mean peaked {en['rtt_mean_ms_max']:.0f} ms — "
-                        f"acks are being dropped on the server socket and reliable packets are being resent")
+    if en and en["loss_mean_pct_max"] > 5.0:
+        loss = (f"peer loss mean peaked {en['loss_mean_pct_max']:.1f}% (worst peer {en['loss_max_pct_max']:.0f}%), "
+                f"RTT mean peaked {en['rtt_mean_ms_max']:.0f} ms")
+        socket_drops = udp.get("RcvbufErrors", 0) + (host or {}).get("server_socket", {}).get("drops", 0)
+        if socket_drops > 0:
+            findings.append(f"ENET RETRANSMIT STORM (server view): {loss}, {socket_drops} kernel drops — "
+                            f"acks are being dropped on the server socket and reliable packets are being resent")
+        else:
+            findings.append(f"ENET PACKET LOSS (server view): {loss}; no kernel drops recorded, so the loss "
+                            f"is not attributed to the server socket")
+    elif en and en["rtt_mean_ms_max"] > 100.0:
+        findings.append(f"ELEVATED RTT (server view): mean peaked {en['rtt_mean_ms_max']:.0f} ms with peer loss mean "
+                        f"{en['loss_mean_pct_max']:.1f}% — latency only, no sign of loss (slow path or scheduling delay)")
     if steady and steady.get("work_ms_p95", 0) > TICK_MS:
         findings.append(f"TICK OVERRUN: p95 tick work {steady['work_ms_p95']:.1f} ms > {TICK_MS:.1f} ms budget")
     if agg and (agg.get("packet_loss_pct", 0) > 2 or agg.get("latency_p95_ms", 0) > 150):
@@ -378,13 +441,16 @@ def verdict(run, bots, ticks, srv, host):
         if server_cpu and server_cpu > 0 and steady.get("players_avg"):
             per_player = server_cpu / steady["players_avg"]
             headroom = f"; server CPU {server_cpu:.0f}% ≈ {per_player:.2f}%/player (linear headroom to 85%: ~{85 / per_player:.0f} players — real growth is super-linear, see event rates)"
-        findings.append("NO BOTTLENECK HIT at this population" + headroom)
+        if missing:
+            findings.append("NO BOTTLENECK SEEN in the telemetry that exists (run incomplete)" + headroom)
+        else:
+            findings.append("NO BOTTLENECK HIT at this population" + headroom)
     bw = next((c for c in criteria if c.get("key") == "bandwidth"), None)
     if bw:
         findings.append(f"BANDWIDTH TARGET (5 KB/s per player, long-term, not a scaling gate): "
                         f"{bw.get('value')} — {'met' if bw.get('passed') else 'NOT met'}")
-    ok = not reasons
-    return ("PASS" if ok else "FAIL"), reasons, findings
+    status = "FAIL" if failed else ("INCOMPLETE" if missing else "PASS")
+    return status, reasons, findings
 
 
 # ── render ────────────────────────────────────────────────────────────────────────────────
@@ -475,16 +541,27 @@ def render(run_dir, run, bots, ticks, srv, host, logs):
         for k, v in sorted(srv["received_by_type"].items(), key=lambda kv: -kv[1]["bytes_per_s"]):
             L.append(f"| {k} | {human_bytes(v['bytes_per_s'])} | {human_bytes(v['bytes_per_s'] / n)} |")
         L.append("")
-        L.append("Reliable GameEvent packets actually sent per second (every broadcast event = one reliable packet PER PEER):")
+        rel = srv.get("reliable_event_sends_per_s")
+        if rel is None:
+            L.append("GameEvent packets actually sent per second (one event = one packet PER RECIPIENT; "
+                     "this telemetry predates the reliable counter, so delivery is unknown):")
+        else:
+            L.append("GameEvent packets actually sent per second by delivery (one event = one packet PER RECIPIENT; "
+                     "only reliable ones cost command-queue and ack work):")
         L.append("")
-        L.append("| event | packets/s (all peers) | per peer/s | source events/s | avg recipients |")
-        L.append("|---|---|---|---|---|")
+        L.append("| event | reliable/s (all peers) | unreliable/s (all peers) | reliable per peer/s | source events/s | avg recipients |")
+        L.append("|---|---|---|---|---|---|")
         for k, v in srv["event_sends_per_s"].items():
             src = srv["source_events_per_s"].get(k, 0)
-            L.append(f"| {k} | {v:.0f} | {v / n:.1f} | {src:.1f} | {(v / src) if src else 0:.1f} |")
+            r = None if rel is None else rel.get(k, 0.0)
+            L.append(f"| {k} | {fmt(r, '', 0)} | {fmt(None if r is None else v - r, '', 0)} | {fmt(None if r is None else r / n, '', 1)} | "
+                     f"{src:.1f} | {(v / src) if src else 0:.1f} |")
         total_ev = sum(srv["event_sends_per_s"].values())
         total_src = sum(srv["source_events_per_s"].values())
-        L.append(f"| **total** | **{total_ev:.0f}** | **{total_ev / n:.1f}** | {total_src:.1f} | **{(total_ev / total_src) if total_src else 0:.1f}** (of {n:.0f} players) |")
+        total_rel = None if rel is None else sum(rel.values())
+        L.append(f"| **total** | **{fmt(total_rel, '', 0)}** | **{fmt(None if total_rel is None else total_ev - total_rel, '', 0)}** | "
+                 f"**{fmt(None if total_rel is None else total_rel / n, '', 1)}** | {total_src:.1f} | "
+                 f"**{(total_ev / total_src) if total_src else 0:.1f}** (of {n:.0f} players) |")
     else:
         L.append("- no server sample data")
     L.append("")
@@ -567,6 +644,8 @@ def summary_line(run, status, agg, steady, srv, host, ticks):
     scpu = p.get("cpu_core_pct") if p else ((host or {}).get("procs", {}).get("server") or {}).get("cpu_core_pct")
     udp = (host or {}).get("udp_whole_run", {})
     ev = sum((srv or {}).get("event_sends_per_s", {}).values()) if srv else None
+    rel_rates = (srv or {}).get("reliable_event_sends_per_s")
+    rel = sum(rel_rates.values()) if rel_rates is not None else None
     n = max(1.0, steady.get("players_avg", 1.0)) if steady else 1.0
     return {
         "date": time.strftime("%Y-%m-%d %H:%M", time.gmtime(float(run.get("t_server_start") or time.time()))),
@@ -580,7 +659,8 @@ def summary_line(run, status, agg, steady, srv, host, ticks):
         "rcvbuf_errors": udp.get("RcvbufErrors"),
         "rtt_p95_ms": agg.get("latency_p95_ms"), "loss_pct": agg.get("packet_loss_pct"),
         "kbps_per_bot": agg.get("bandwidth_per_player_kbps"),
-        "events_per_peer_s": (ev / n) if ev is not None else None,
+        "reliable_events_per_peer_s": (rel / n) if rel is not None else None,
+        "all_events_per_peer_s": (ev / n) if ev is not None else None,
         "out_bytes_per_s": (srv or {}).get("sent_bytes_per_s"),
         "avg_recipients": ((ev / sum((srv or {}).get("source_events_per_s", {}).values())) if (srv and sum((srv or {}).get("source_events_per_s", {}).values()) > 0) else None),
         "enet_loss_peak_pct": ((srv or {}).get("enet") or {}).get("loss_mean_pct_max"),
@@ -594,7 +674,7 @@ def ledger_row(s):
     return (f"| {s['date']} | {s['label']} | `{s['sha']}` | {s['bots']} {s['behavior']} | {s['status']} | {s['connected']}/{s['bots']} | "
             f"{f(s['tick_p95_ms'], 2)} / {f(s['tick_max_ms'], 1)} | {f(s['over_33_pct'], 1, '%')} | {f(s['server_cpu_pct'], 0, '%')} | "
             f"{f(s['bots_cpu_pct'], 0, '%')} | {f(s['rcvbuf_errors'], 0)} | {f(s['rtt_p95_ms'], 0)} | {f(s['loss_pct'], 2, '%')} | "
-            f"{f(s['kbps_per_bot'], 1)} | {f(s['events_per_peer_s'], 0)} | {f(s['enet_loss_peak_pct'], 1, '%')} / {f(s['enet_rtt_peak_ms'], 0)} | |")
+            f"{f(s['kbps_per_bot'], 1)} | {f(s['reliable_events_per_peer_s'], 0)} | {f(s['enet_loss_peak_pct'], 1, '%')} / {f(s['enet_rtt_peak_ms'], 0)} | |")
 
 
 LEDGER_HEADER = ("| date (UTC) | label | commit | bots | result | connected | tick p95 / max ms | ticks >33 ms | server CPU | "
@@ -660,13 +740,13 @@ def main():
                f"tick p95 {fmt(summ['tick_p95_ms'], ' ms', 2)} max {fmt(summ['tick_max_ms'], ' ms', 1)} · "
                f">33 ms {fmt(summ['over_33_pct'], '%', 1)} · RcvbufErrors {fmt(summ['rcvbuf_errors'])}",
                f"RTT p95 {fmt(summ['rtt_p95_ms'], ' ms', 0)} · loss {fmt(summ['loss_pct'], '%', 2)} · {fmt(summ['kbps_per_bot'], ' KB/s', 1)} per bot · "
-               f"events {fmt(summ['events_per_peer_s'], '/s per peer', 0)} (avg {fmt(summ['avg_recipients'], ' recipients', 1)}) · server out {human_bytes(summ['out_bytes_per_s'] or 0)}/s · "
+               f"reliable events {fmt(summ['reliable_events_per_peer_s'], '/s per peer', 0)} (all {fmt(summ['all_events_per_peer_s'], '/s per peer', 0)}, avg {fmt(summ['avg_recipients'], ' recipients', 1)}) · server out {human_bytes(summ['out_bytes_per_s'] or 0)}/s · "
                f"ENet loss peak {fmt(summ['enet_loss_peak_pct'], '%', 1)} RTT peak {fmt(summ['enet_rtt_peak_ms'], ' ms', 0)}"]
         print("\n".join(key))
         if srv and srv.get("phases"):
             print("phases (% core): " + ", ".join(f"{k.split(' ')[0]} {v['core_pct']:.0f}" for k, v in srv["phases"].items()))
-        if srv and srv.get("event_sends_per_s"):
-            top = list(srv["event_sends_per_s"].items())[:4]
+        if srv and srv.get("reliable_event_sends_per_s"):
+            top = list(srv["reliable_event_sends_per_s"].items())[:4]
             print("top reliable events/s: " + ", ".join(f"{k} {v:.0f}" for k, v in top))
         print(f"\nfull report: {os.path.join(run_dir, 'REPORT.md')}")
     # The verdict is in the text and summary.json; a non-zero exit here would read as a

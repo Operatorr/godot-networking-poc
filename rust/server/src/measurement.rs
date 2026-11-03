@@ -161,7 +161,10 @@ pub struct Measurement {
     pub received: [[u64; 3]; 256],
     pub send_errors: u64,
     pub decode_errors: u64,
+    /// Every GameEvent packet handed to ENet, whatever its delivery.
     pub event_sends: [u64; 256],
+    /// The reliable subset of `event_sends` (what costs command-queue and ack work).
+    pub reliable_event_sends: [u64; 256],
     pub source_events: [u64; 256],
     pub baselines: u64,
     pub deltas: u64,
@@ -209,6 +212,7 @@ impl Measurement {
             send_errors: 0,
             decode_errors: 0,
             event_sends: [0; 256],
+            reliable_event_sends: [0; 256],
             source_events: [0; 256],
             baselines: 0,
             deltas: 0,
@@ -350,7 +354,8 @@ impl Measurement {
             "tick": world.tick_count,
             "sent_bytes_by_type_channel": bytes(&self.sent), "received_bytes_by_type_channel": bytes(&self.received),
             "send_errors": self.send_errors, "decode_errors": self.decode_errors,
-            "event_sends": self.event_sends.as_slice(), "baselines": self.baselines, "deltas": self.deltas,
+            "event_sends": self.event_sends.as_slice(),
+            "reliable_event_sends": self.reliable_event_sends.as_slice(), "baselines": self.baselines, "deltas": self.deltas,
             "source_events": self.source_events.as_slice(),
             "players": positions,
         })).unwrap();

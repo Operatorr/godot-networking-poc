@@ -138,8 +138,8 @@ OMEGA_SERVER=<droplet-ip>:8081 ./scripts/run_load_test.sh --scenario baseline   
   no obstacles): `(-3328,-3072)..(3328,3072)` — `SANCTUARY_MAP_MIN/MAX` in `rust/sim_core/src/constants.rs`
   must stay in lockstep with the client's `sanctuary.gd` `_world_geometry()` / `SanctuaryTownWorld.TOWN_RECT`.
 - Wire format: `[u8 type][payload]` over ENet (no length field — datagram boundaries);
-  positions quantized to 0.1 unit (truncate toward zero). 3 channels: ch0 snapshots/confirms
-  (unreliable sequenced), ch1 reliable (+ baselines), ch2 input. Unreliable payloads < 1200 B.
+  positions quantized to 0.1 unit (truncate toward zero). 3 channels: ch0 snapshots/confirms/
+  player fire events (unreliable sequenced), ch1 reliable (+ baselines), ch2 input. Unreliable payloads < 1200 B.
 - All gameplay state is server-authoritative and in-memory; the Go API owns only
   account/character/leaderboard persistence.
 - The D11 hit backstop stays **lenient**: true 24 u overlap only, grace ≥ 15 ticks.

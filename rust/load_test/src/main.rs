@@ -474,6 +474,7 @@ fn main() {
     });
     let spawned_total = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let connected_total = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let run_clock = Arc::new(RunClock::new(shard_count));
     if recorder.is_some() && shard_count > 1 {
         warn!("OMEGA_MEASURE_DIR is set but --threads > 1: per-bot observations are only recorded on single-threaded swarms; skipping");
         recorder = None;
@@ -484,6 +485,7 @@ fn main() {
         let stop = stop.clone();
         let spawned_total = spawned_total.clone();
         let connected_total = connected_total.clone();
+        let run_clock = run_clock.clone();
         let recorder = if shard == 0 { recorder.take() } else { None };
         handles.push(
             std::thread::Builder::new()
@@ -496,6 +498,7 @@ fn main() {
                         stop,
                         spawned_total,
                         connected_total,
+                        run_clock,
                         recorder,
                     )
                 })
@@ -503,7 +506,7 @@ fn main() {
         );
     }
     let mut all_owned: Vec<metrics::BotMetrics> = Vec::with_capacity(bot_count);
-    let mut shard_series: Vec<Vec<Value>> = Vec::with_capacity(shard_count);
+    let mut shard_series: Vec<Vec<SeriesSample>> = Vec::with_capacity(shard_count);
     let mut run_elapsed: f64 = 0.0;
     for handle in handles {
         let outcome = handle.join().expect("swarm thread panicked");
@@ -607,14 +610,61 @@ struct ShardConfig {
 
 struct ShardOutcome {
     metrics: Vec<metrics::BotMetrics>,
-    time_series: Vec<Value>,
-    /// Seconds from this shard's Phase-2 start to the end of its drain.
+    time_series: Vec<SeriesSample>,
+    /// Seconds from the swarm's Phase-2 start to the end of this shard's drain.
     run_elapsed: f64,
+}
+
+/// One shard's view of a 5 s bucket, plus the raw RTTs a swarm-wide percentile needs
+/// (percentiles of different shards cannot be combined).
+struct SeriesSample {
+    row: Value,
+    recent_rtts_ms: Vec<f64>,
+}
+
+/// The one Phase-2 clock all shards share: the measured duration starts only when every shard has
+/// finished its ramp, so the whole requested population is up for the whole duration.
+struct RunClock {
+    ramping_shards: std::sync::atomic::AtomicUsize,
+    run_started: std::sync::OnceLock<f64>,
+}
+
+impl RunClock {
+    fn new(shards: usize) -> Self {
+        Self {
+            ramping_shards: std::sync::atomic::AtomicUsize::new(shards),
+            run_started: std::sync::OnceLock::new(),
+        }
+    }
+
+    /// Hold this until the shard's ramp is over; dropping it (a panicking shard included) reports
+    /// that shard ready, so one lost shard can never strand the others.
+    fn ramp_guard(&self, now: impl Fn() -> f64) -> RampGuard<'_, impl Fn() -> f64> {
+        RampGuard { clock: self, now }
+    }
+
+    fn run_started(&self) -> Option<f64> {
+        self.run_started.get().copied()
+    }
+}
+
+struct RampGuard<'a, F: Fn() -> f64> {
+    clock: &'a RunClock,
+    now: F,
+}
+
+impl<F: Fn() -> f64> Drop for RampGuard<'_, F> {
+    fn drop(&mut self) {
+        if self.clock.ramping_shards.fetch_sub(1, Ordering::SeqCst) == 1 {
+            let _ = self.clock.run_started.set((self.now)());
+        }
+    }
 }
 
 /// One shard's spawn → run → disconnect lifecycle. Bot ids `shard, shard + shards, …` belong
 /// to this shard; each connects at its global slot `id × stagger` so the server sees a steady
 /// join cadence regardless of how many threads generate it.
+#[allow(clippy::too_many_arguments)]
 fn run_shard(
     shard: usize,
     cfg: &ShardConfig,
@@ -622,6 +672,7 @@ fn run_shard(
     stop: Arc<AtomicBool>,
     spawned_total: Arc<std::sync::atomic::AtomicUsize>,
     connected_total: Arc<std::sync::atomic::AtomicUsize>,
+    run_clock: Arc<RunClock>,
     mut recorder: Option<measurement::Recorder>,
 ) -> ShardOutcome {
     // World geometry is thread-local in sim_core: every shard thread sets it before any bot
@@ -637,6 +688,7 @@ fn run_shard(
         .as_ref()
         .map(|(url, secret, region)| TicketClient::new(url, secret.clone(), region.clone()));
     let my_ids: Vec<usize> = (shard..cfg.bot_count).step_by(cfg.shard_count).collect();
+    let ramp_guard = run_clock.ramp_guard(now);
 
     // ── Phase 1: spawn (slot-scheduled) ─────────────────────────────────────────────────
     let mut bots: Vec<Bot> = Vec::with_capacity(my_ids.len());
@@ -735,9 +787,23 @@ fn run_shard(
         );
     }
 
+    // Wait for the other shards' ramps, keeping this shard's bots alive meanwhile.
+    drop(ramp_guard);
+    let run_started = loop {
+        if let Some(started) = run_clock.run_started() {
+            break started;
+        }
+        if connected > 0 {
+            poll_all(&mut bots, now());
+            if let Some(recorder) = &mut recorder {
+                recorder.sample_ramp(&bots);
+            }
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    };
+
     // ── Phase 2: run ────────────────────────────────────────────────────────────────────────
-    let mut time_series: Vec<Value> = Vec::new();
-    let run_started = now();
+    let mut time_series: Vec<SeriesSample> = Vec::new();
     if let Some(recorder) = &recorder {
         recorder.phase2();
     }
@@ -771,8 +837,12 @@ fn run_shard(
                 }
             }
             if now() >= next_sample_at {
+                time_series.push(sample_time_series(
+                    &bots,
+                    next_sample_at - run_started,
+                    shard == 0,
+                ));
                 next_sample_at += 5.0;
-                time_series.push(sample_time_series(&bots, now() - run_started, shard == 0));
             }
             std::thread::sleep(Duration::from_millis(1));
         }
@@ -811,22 +881,20 @@ fn run_shard(
     }
 }
 
-/// Fold per-shard 5 s samples into one swarm-wide series (same index = same 5 s bucket;
-/// shards start Phase 2 within one stagger of each other). Counts/bytes sum, latencies
-/// average, server-reported fields take the latest.
-fn merge_time_series(shards: Vec<Vec<Value>>) -> Vec<Value> {
-    if shards.len() == 1 {
-        return shards.into_iter().next().unwrap_or_default();
-    }
+/// Fold per-shard 5 s samples into one swarm-wide series (same index = same 5 s bucket on the
+/// shared Phase-2 clock). Counts/bytes sum, latencies are computed over the pooled RTT samples,
+/// server-reported fields take the latest.
+fn merge_time_series(shards: Vec<Vec<SeriesSample>>) -> Vec<Value> {
     let len = shards.iter().map(|s| s.len()).max().unwrap_or(0);
     (0..len)
         .map(|i| {
-            let rows: Vec<&Value> = shards.iter().filter_map(|s| s.get(i)).collect();
+            let samples: Vec<&SeriesSample> = shards.iter().filter_map(|s| s.get(i)).collect();
+            let rows: Vec<&Value> = samples.iter().map(|s| &s.row).collect();
             let sum = |k: &str| -> u64 { rows.iter().map(|r| r[k].as_u64().unwrap_or(0)).sum() };
-            let avg = |k: &str| -> Option<f64> {
-                let v: Vec<f64> = rows.iter().filter_map(|r| r[k].as_f64()).collect();
-                (!v.is_empty()).then(|| ((v.iter().sum::<f64>() / v.len() as f64) * 10.0).round() / 10.0)
-            };
+            let rtts: Vec<f64> = samples
+                .iter()
+                .flat_map(|s| s.recent_rtts_ms.iter().copied())
+                .collect();
             let mut out = json!({
                 "elapsed_seconds": rows.first().and_then(|r| r["elapsed_seconds"].as_f64()).unwrap_or(0.0),
                 "connected_bots": sum("connected_bots"),
@@ -834,11 +902,11 @@ fn merge_time_series(shards: Vec<Vec<Value>>) -> Vec<Value> {
                 "total_bytes_received": sum("total_bytes_received"),
                 "total_state_updates": sum("total_state_updates"),
             });
-            if let Some(v) = avg("latency_avg_ms") {
-                out["latency_avg_ms"] = json!(v);
-            }
-            if let Some(v) = avg("latency_p95_ms") {
-                out["latency_p95_ms"] = json!(v);
+            if !rtts.is_empty() {
+                let avg = rtts.iter().sum::<f64>() / rtts.len() as f64;
+                out["latency_avg_ms"] = json!((avg * 10.0).round() / 10.0);
+                out["latency_p95_ms"] =
+                    json!((metrics::percentile(&rtts, 0.95) * 10.0).round() / 10.0);
             }
             for k in ["server_avg_tick_time_ms", "server_entity_count"] {
                 if let Some(v) = rows.iter().rev().find_map(|r| r.get(k).filter(|v| !v.is_null())) {
@@ -876,7 +944,7 @@ fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
     }
 }
 
-fn sample_time_series(bots: &[Bot], elapsed: f64, log: bool) -> Value {
+fn sample_time_series(bots: &[Bot], elapsed: f64, log: bool) -> SeriesSample {
     let connected = bots.iter().filter(|b| b.phase == Phase::Running).count();
     let bytes_sent: u64 = bots.iter().map(|b| b.metrics.bytes_sent).sum();
     let bytes_received: u64 = bots.iter().map(|b| b.metrics.bytes_received).sum();
@@ -893,11 +961,6 @@ fn sample_time_series(bots: &[Bot], elapsed: f64, log: bool) -> Value {
         "total_bytes_received": bytes_received,
         "total_state_updates": state_updates,
     });
-    if !recent.is_empty() {
-        let avg = recent.iter().sum::<f64>() / recent.len() as f64;
-        snap["latency_avg_ms"] = json!((avg * 10.0).round() / 10.0);
-        snap["latency_p95_ms"] = json!((metrics::percentile(&recent, 0.95) * 10.0).round() / 10.0);
-    }
     if let Some((_, sm)) = bots
         .iter()
         .filter_map(|b| b.metrics.latest_server_metrics.as_ref())
@@ -912,7 +975,10 @@ fn sample_time_series(bots: &[Bot], elapsed: f64, log: bool) -> Value {
             elapsed
         );
     }
-    snap
+    SeriesSample {
+        row: snap,
+        recent_rtts_ms: recent,
+    }
 }
 
 #[cfg(test)]
@@ -940,6 +1006,60 @@ mod tests {
         assert_eq!((baseline.bots, baseline.duration), (50, 120));
         let stress = &SCENARIOS[2];
         assert_eq!((stress.bots, stress.duration), (200, 300));
+    }
+
+    fn series_sample(rtts: &[f64], connected: u64) -> SeriesSample {
+        SeriesSample {
+            row: json!({"elapsed_seconds": 5.0, "connected_bots": connected}),
+            recent_rtts_ms: rtts.to_vec(),
+        }
+    }
+
+    #[test]
+    fn merged_latency_comes_from_pooled_samples() {
+        let merged = merge_time_series(vec![
+            vec![series_sample(&[10.0; 10], 5)],
+            vec![series_sample(&[200.0; 10], 5)],
+        ]);
+        assert_eq!(merged[0]["connected_bots"], 10);
+        assert_eq!(
+            merged[0]["latency_p95_ms"], 200.0,
+            "not the 105 ms mean of p95s"
+        );
+        assert_eq!(merged[0]["latency_avg_ms"], 105.0);
+        // The mean weights shards by their sample count.
+        let merged = merge_time_series(vec![
+            vec![series_sample(&[10.0; 30], 5)],
+            vec![series_sample(&[50.0; 10], 5)],
+        ]);
+        assert_eq!(merged[0]["latency_avg_ms"], 20.0);
+        // A single shard goes through the same path; no samples means no latency fields.
+        let merged = merge_time_series(vec![vec![series_sample(&[], 1)]]);
+        assert!(merged[0].get("latency_p95_ms").is_none());
+    }
+
+    #[test]
+    fn run_clock_starts_only_after_the_last_shard_ramps() {
+        let clock = RunClock::new(2);
+        let first = clock.ramp_guard(|| 1.0);
+        let second = clock.ramp_guard(|| 7.5);
+        drop(first);
+        assert_eq!(clock.run_started(), None, "one shard is still ramping");
+        drop(second);
+        assert_eq!(clock.run_started(), Some(7.5));
+    }
+
+    #[test]
+    fn a_panicking_shard_cannot_strand_the_others() {
+        let clock = Arc::new(RunClock::new(2));
+        let lost = clock.clone();
+        let handle = std::thread::spawn(move || {
+            let _guard = lost.ramp_guard(|| 3.0);
+            panic!("shard lost mid-ramp");
+        });
+        assert!(handle.join().is_err());
+        drop(clock.ramp_guard(|| 4.0));
+        assert!(clock.run_started().is_some());
     }
 
     #[test]

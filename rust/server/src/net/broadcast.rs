@@ -14,7 +14,7 @@ use crate::player::{PeerKey, PlayerManager};
 use protocol::types::{delta_mask, game_event_type};
 use protocol::{EntityRecord, GameEvent, GameEventData, ServerPacket, Snapshot};
 use sim_core::Vec2;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::{BuildHasherDefault, Hasher};
 
 pub const DELTA_FULL_STATE_INTERVAL: u64 = 100;
@@ -436,6 +436,15 @@ pub struct TickDiagnostics {
     pub snapshot_count_overflow: u64,
 }
 
+/// Who owns a live monster bullet and which peers' clients currently hold that owner. Fire events
+/// reach only peers near the muzzle, and a client forgets a bullet's owner when it despawns the
+/// bullet, so everyone else needs the owner when the bullet enters their AoI (hit-authority flow
+/// step 1: without it the client can never report the hit).
+struct MonsterProjectileOwner {
+    owner_id: u16,
+    informed: HashSet<PeerKey>,
+}
+
 pub struct BroadcastService {
     pub aoi_radius: f32,
     pub aoi_exit_radius: f32,
@@ -445,6 +454,7 @@ pub struct BroadcastService {
     delta_caches: SnapshotMap<PeerKey, DeltaStateCache>,
     visible_entities: SnapshotMap<PeerKey, Vec<u16>>,
     peer_snapshot_bytes: SnapshotMap<PeerKey, usize>,
+    monster_projectile_owners: HashMap<u16, MonsterProjectileOwner>,
     pub diagnostics: TickDiagnostics,
 }
 
@@ -465,6 +475,7 @@ impl BroadcastService {
             delta_caches: SnapshotMap::default(),
             visible_entities: SnapshotMap::default(),
             peer_snapshot_bytes: SnapshotMap::default(),
+            monster_projectile_owners: HashMap::new(),
             diagnostics: TickDiagnostics::default(),
         }
     }
@@ -477,6 +488,58 @@ impl BroadcastService {
         self.delta_caches.remove(&peer);
         self.visible_entities.remove(&peer);
         self.peer_snapshot_bytes.remove(&peer);
+        // ENet reuses peer slots; the next occupant has not heard about bullets in flight.
+        for record in self.monster_projectile_owners.values_mut() {
+            record.informed.remove(&peer);
+        }
+    }
+
+    /// Record a freshly fired monster bullet and the peers its fire event was sent to.
+    pub fn register_monster_projectile(
+        &mut self,
+        projectile_id: u16,
+        owner_id: u16,
+        recipients: &[PeerKey],
+    ) {
+        self.monster_projectile_owners.insert(
+            projectile_id,
+            MonsterProjectileOwner {
+                owner_id,
+                informed: recipients.iter().copied().collect(),
+            },
+        );
+    }
+
+    /// Drop the records of bullets that are no longer alive (ids are recycled eventually).
+    pub fn retain_monster_projectiles(&mut self, alive: impl Iterator<Item = u16>) {
+        if self.monster_projectile_owners.is_empty() {
+            return;
+        }
+        let alive: HashSet<u16> = alive.collect();
+        self.monster_projectile_owners
+            .retain(|id, _| alive.contains(id));
+    }
+
+    /// Reliably tell `peer` who owns a bullet, unless its client already knows.
+    fn replay_projectile_owner(&mut self, peer: PeerKey, projectile_id: u16, outbox: &mut Outbox) {
+        let Some(record) = self.monster_projectile_owners.get_mut(&projectile_id) else {
+            return;
+        };
+        if record.informed.insert(peer) {
+            outbox.send_replay(
+                peer,
+                ServerPacket::GameEvent(GameEvent {
+                    event_type: game_event_type::PROJECTILE_FIRED,
+                    source_id: record.owner_id,
+                    target_id: projectile_id,
+                    data: GameEventData::ProjectileFired {
+                        x: 0.0,
+                        y: 0.0,
+                        fire_tick: protocol::types::PROJECTILE_OWNER_REPLAY_FIRE_TICK,
+                    },
+                }),
+            );
+        }
     }
 
     /// Stored as-is; missing entries fall back to `max_snapshot_bytes` (never 0 — 0 would
@@ -606,6 +669,20 @@ impl BroadcastService {
             } else {
                 Vec::new()
             };
+            if !self.monster_projectile_owners.is_empty() {
+                // The client erases a bullet's owner when the bullet leaves its view.
+                for id in &removed_entity_ids {
+                    if let Some(record) = self.monster_projectile_owners.get_mut(id) {
+                        record.informed.remove(&peer);
+                    }
+                }
+                for &(idx, _) in &visible {
+                    let id = all_entities[idx].id;
+                    if !prev_visible.contains(id) {
+                        self.replay_projectile_owner(peer, id, outbox);
+                    }
+                }
+            }
             prev_visible.clear(&previous_ids);
             current_set.clear(&current_visible);
             self.visible_entities.insert(peer, current_visible);
@@ -698,6 +775,13 @@ impl BroadcastService {
             .take(STATE_MAX_FULL_ENTITIES)
             .map(|e| e.id)
             .collect();
+        // A client asking for recovery may have reset its entity state: re-send every owner.
+        for record in self.monster_projectile_owners.values_mut() {
+            record.informed.remove(&peer);
+        }
+        for &id in &visible {
+            self.replay_projectile_owner(peer, id, outbox);
+        }
         self.visible_entities
             .insert(peer, visible.iter().copied().collect());
         let cache = self.delta_caches.entry(peer).or_default();
@@ -1954,5 +2038,125 @@ mod tests {
             panic!()
         };
         assert!(crate::measurement::aoi_packet_bounds(s, id, center).1 < 1100.0);
+    }
+
+    /// (peer, owner, projectile, fire_tick) of every staged PROJECTILE_FIRED.
+    fn owner_replays(outbox: &mut Outbox) -> Vec<(PeerKey, u16, u16, u16)> {
+        outbox
+            .drain()
+            .into_iter()
+            .filter_map(|(target, packet)| match (target, packet) {
+                (
+                    crate::outbox::Target::Peers {
+                        peers,
+                        delivery: crate::outbox::Delivery::Replay,
+                    },
+                    ServerPacket::GameEvent(GameEvent {
+                        source_id,
+                        target_id,
+                        data: GameEventData::ProjectileFired { fire_tick, .. },
+                        ..
+                    }),
+                ) => Some((peers[0], source_id, target_id, fire_tick)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Two players a long way apart; `near` is informed at fire time, `far` is not.
+    fn ownership_fixture() -> (BroadcastService, PlayerManager) {
+        init_arena_geometry();
+        let svc = BroadcastService::new(1000.0, 1100.0, 400.0, 1000.0, 1200);
+        let mut players = PlayerManager::new();
+        for (peer, x) in [(1, -900.0), (2, 900.0)] {
+            let p = players.add_player(peer).unwrap();
+            p.authenticated = true;
+            p.position = Vec2::new(x, 600.0);
+        }
+        (svc, players)
+    }
+
+    const REPLAY_TICK: u16 = protocol::types::PROJECTILE_OWNER_REPLAY_FIRE_TICK;
+
+    #[test]
+    fn monster_bullet_owner_is_replayed_once_when_it_enters_a_peers_aoi() {
+        let (mut svc, players) = ownership_fixture();
+        let mut outbox = Outbox::new();
+        svc.register_monster_projectile(10000, 30001, &[1]);
+
+        // In flight, beyond the far peer's AoI: nobody needs a replay.
+        let bullet = entity(10000, -500.0, 600.0);
+        svc.broadcast_state_updates(&[bullet], &players, 100, 0, &mut outbox);
+        assert_eq!(owner_replays(&mut outbox), vec![]);
+
+        // Enters the far peer's AoI: only that peer hears the owner, flagged as a replay.
+        let bullet = entity(10000, 0.0, 600.0);
+        svc.mark_baseline_acked(1, 100);
+        svc.mark_baseline_acked(2, 100);
+        svc.broadcast_state_updates(&[bullet], &players, 101, 0, &mut outbox);
+        assert_eq!(
+            owner_replays(&mut outbox),
+            vec![(2, 30001, 10000, REPLAY_TICK)]
+        );
+
+        // Still visible: once is enough.
+        svc.broadcast_state_updates(&[bullet], &players, 102, 0, &mut outbox);
+        assert_eq!(owner_replays(&mut outbox), vec![]);
+    }
+
+    #[test]
+    fn monster_bullet_owner_is_replayed_after_leaving_and_reentering_a_peers_view() {
+        let (mut svc, players) = ownership_fixture();
+        let mut outbox = Outbox::new();
+        svc.register_monster_projectile(10000, 30001, &[1, 2]);
+
+        // Both informed at fire time, so first sight sends nothing.
+        let at = |x| entity(10000, x, 600.0);
+        svc.broadcast_state_updates(&[at(0.0)], &players, 100, 0, &mut outbox);
+        assert_eq!(owner_replays(&mut outbox), vec![]);
+        // Beyond peer 2's exit radius: its client despawns the bullet and forgets the owner.
+        svc.mark_baseline_acked(1, 100);
+        svc.mark_baseline_acked(2, 100);
+        svc.broadcast_state_updates(&[at(-300.0)], &players, 101, 0, &mut outbox);
+        assert_eq!(owner_replays(&mut outbox), vec![]);
+        // Back inside: peer 2 needs the owner again; peer 1 never lost it.
+        svc.broadcast_state_updates(&[at(0.0)], &players, 102, 0, &mut outbox);
+        assert_eq!(
+            owner_replays(&mut outbox),
+            vec![(2, 30001, 10000, REPLAY_TICK)]
+        );
+    }
+
+    #[test]
+    fn player_bullets_and_dead_records_never_replay() {
+        let (mut svc, players) = ownership_fixture();
+        let mut outbox = Outbox::new();
+        svc.register_monster_projectile(10000, 30001, &[]);
+        svc.retain_monster_projectiles(std::iter::empty());
+        // Same id, now a player's bullet: unregistered ids stay silent.
+        let bullet = entity(10000, 0.0, 600.0);
+        svc.broadcast_state_updates(&[bullet], &players, 100, 0, &mut outbox);
+        assert_eq!(owner_replays(&mut outbox), vec![]);
+    }
+
+    #[test]
+    fn full_state_recovery_and_reused_peer_slots_replay_the_owner() {
+        let (mut svc, players) = ownership_fixture();
+        let mut outbox = Outbox::new();
+        svc.register_monster_projectile(10000, 30001, &[1, 2]);
+        let bullet = entity(10000, 0.0, 600.0);
+        svc.handle_full_state_request(2, &[bullet], &players, 100, 0, &mut outbox);
+        assert_eq!(
+            owner_replays(&mut outbox),
+            vec![(2, 30001, 10000, REPLAY_TICK)]
+        );
+
+        // A disconnect forgets the peer, so whoever reuses its slot hears the owner again.
+        svc.remove_peer(1);
+        svc.broadcast_state_updates(&[bullet], &players, 101, 0, &mut outbox);
+        assert_eq!(
+            owner_replays(&mut outbox),
+            vec![(1, 30001, 10000, REPLAY_TICK)]
+        );
     }
 }

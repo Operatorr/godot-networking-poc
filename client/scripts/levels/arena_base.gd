@@ -876,6 +876,9 @@ func _handle_projectile_fired_event(data: Dictionary) -> void:
 	if source_id >= GameConstants.MONSTER_ENTITY_ID_START:
 		if client_entity_manager == null or not client_entity_manager.monster_entities.has(source_id):
 			return
+		# Late ownership delivery for a bullet already in flight: this is not a new shot.
+		if int(data.get("event_data", {}).get("server_tick", 0)) == PacketTypes.PROJECTILE_OWNER_REPLAY_FIRE_TICK:
+			return
 		audio.play_monster_shoot()
 		return
 

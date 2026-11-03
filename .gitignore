@@ -85,3 +85,4 @@ api/bin/
 
 # quick_stress.sh run artifacts (reports, logs, raw telemetry) — never committed
 loadtest-runs/
+__pycache__/

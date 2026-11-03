@@ -150,6 +150,11 @@ pub mod snapshot_flags {
 }
 
 /// Game event types — GDScript `GameEventType`.
+/// `fire_tick` of a monster `PROJECTILE_FIRED` that re-delivers ownership of a bullet already in
+/// flight (it entered this peer's AoI after firing). Monster shots otherwise carry `fire_tick` 0;
+/// the client registers the owner either way and skips the shoot feedback for this value.
+pub const PROJECTILE_OWNER_REPLAY_FIRE_TICK: u16 = u16::MAX;
+
 pub mod game_event_type {
     pub const DAMAGE: u8 = 1;
     pub const KILL: u8 = 2;

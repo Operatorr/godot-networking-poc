@@ -108,7 +108,9 @@ The swarm can shard its bots over N OS threads (round-robin by bot id). Each sha
 bots end to end — socket, ENet host, sim state are created and dropped on the shard thread;
 only the plain-data per-bot metrics come back — so nothing is shared between threads during the
 run. The global join cadence is unchanged: bot *i* connects at *i × --stagger* from swarm start
-whichever shard owns it. Use this on any multi-core bot host so the generator never saturates one
+whichever shard owns it. Shards share one Phase-2 clock: `--duration` starts when the last shard
+finishes its ramp, and every 5 s sample in the report sits on that clock, with RTT percentiles
+computed over the pooled samples. Use this on any multi-core bot host so the generator never saturates one
 core (the old single-threaded swarm peaked at ~85 % of a core around 190 strategy bots, which
 confounded every capacity reading). `OMEGA_MEASURE_DIR` per-bot observations are only recorded
 on single-threaded swarms.

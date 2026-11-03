@@ -112,7 +112,7 @@ def udp_linux(port):
             for line in lines:
                 cols = line.split()
                 if cols[1].endswith(hexport):
-                    rx, tx = cols[4].split(":")
+                    tx, rx = cols[4].split(":")  # procfs column is tx_queue:rx_queue
                     out["socket"] = {
                         "rx_queue": int(rx, 16),
                         "tx_queue": int(tx, 16),

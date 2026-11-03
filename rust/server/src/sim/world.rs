@@ -547,9 +547,12 @@ impl World {
         );
         for e in fire_events {
             // Reliable, AoI-scoped around the monster: the client's PvE hit reports (D11) need
-            // the owner of every monster bullet it can see, so this one must not be lost.
+            // the owner of every monster bullet it can see, so this one must not be lost. A peer
+            // outside this radius gets the owner when the bullet enters its AoI (step 6).
             let anchor = self.monsters.get(e.source_id).map(|m| m.position);
             let recipients = self.players.aoi_recipients(anchor, &[]);
+            self.broadcast
+                .register_monster_projectile(e.projectile_id, e.source_id, &recipients);
             outbox.send_to(
                 recipients,
                 ServerPacket::GameEvent(GameEvent {
@@ -610,6 +613,9 @@ impl World {
         if snapshot_due {
             let snapshot_started = std::time::Instant::now();
             let entities = self.collect_entities();
+            self.broadcast.retain_monster_projectiles(
+                self.projectiles.projectiles.iter().map(|p| p.entity_id),
+            );
             self.broadcast.broadcast_state_updates(
                 &entities,
                 &self.players,
@@ -1643,6 +1649,116 @@ mod tests {
             }
             other => panic!("expected a reliable AoI-scoped ABILITY_EFFECT, got {other:?}"),
         }
+    }
+
+    /// Regression (PR #52 review): a connected player outside the fire-event radius who walks
+    /// toward a monster bullet must still learn its owner, or the client can never report the
+    /// hit. Runs the real tick: real AI fire, real projectile integration, real Snapshots.
+    #[test]
+    fn late_observer_learns_monster_bullet_owner_and_can_report_the_hit() {
+        let mut world = test_world();
+        world.spawner = MonsterSpawner::new(0.0);
+        let target = join(&mut world, 1, "target");
+        let observer = join(&mut world, 2, "observer");
+        let monster_pos = Vec2::new(-500.0, 500.0);
+        let monster_id = world
+            .monsters
+            .spawn_monster(monster_pos, "toxic_slime")
+            .unwrap()
+            .entity_id;
+        for (id, pos) in [
+            (target, monster_pos + Vec2::new(200.0, 0.0)),
+            (observer, Vec2::new(650.0, 500.0)),
+        ] {
+            let p = world.players.get_by_entity_id_mut(id).unwrap();
+            p.position = pos;
+            p.is_alive = true;
+            p.life_state = crate::player::LifeState::Alive;
+        }
+
+        // Tick until the monster fires; the observer is far outside the fire-event radius.
+        let mut owner_seen_by_observer = None;
+        let mut bullet = None;
+        let mut outbox = Outbox::new();
+        for t in 0..600u64 {
+            world.tick(t * 33, &mut outbox);
+            for (target_peers, packet) in outbox.drain() {
+                let ServerPacket::GameEvent(e) = packet else {
+                    continue;
+                };
+                if e.event_type != game_event_type::PROJECTILE_FIRED || e.source_id != monster_id {
+                    continue;
+                }
+                if bullet.is_none() {
+                    let Target::Peers { peers, .. } = &target_peers else {
+                        panic!("monster fire must be AoI-scoped, got {target_peers:?}");
+                    };
+                    assert_eq!(peers, &vec![1], "observer is outside the fire-event radius");
+                    bullet = Some(e.target_id);
+                } else if bullet == Some(e.target_id) {
+                    owner_seen_by_observer = Some(target_peers);
+                }
+            }
+            if bullet.is_some() {
+                break;
+            }
+            // Keep Snapshots flowing past the baseline gate, as a live client would.
+            let tick = world.tick_count;
+            for peer in [1, 2] {
+                world.broadcast.mark_baseline_acked(peer, tick);
+            }
+        }
+        let bullet = bullet.expect("monster never fired at its target");
+        assert!(
+            owner_seen_by_observer.is_none(),
+            "not relevant to the observer yet"
+        );
+
+        // The bullet flies toward the observer, who walks to meet it; the owner must arrive
+        // before the bullet expires.
+        let mut outbox = Outbox::new();
+        let mut t = 700u64;
+        while world.projectiles.get(bullet).is_some() && owner_seen_by_observer.is_none() {
+            let bullet_pos = world.projectiles.get(bullet).unwrap().position;
+            let p = world.players.get_mut(2).unwrap();
+            p.position = bullet_pos + Vec2::new(900.0, 0.0);
+            let tick = world.tick_count;
+            for peer in [1, 2] {
+                world.broadcast.mark_baseline_acked(peer, tick);
+            }
+            world.tick(t * 33, &mut outbox);
+            t += 1;
+            for (target_peers, packet) in outbox.drain() {
+                if let ServerPacket::GameEvent(e) = packet {
+                    if e.event_type == game_event_type::PROJECTILE_FIRED && e.target_id == bullet {
+                        assert_eq!(e.source_id, monster_id);
+                        owner_seen_by_observer = Some(target_peers);
+                    }
+                }
+            }
+        }
+        let Some(Target::Peers { peers, delivery }) = owner_seen_by_observer else {
+            panic!("bullet expired before the observer learned its owner");
+        };
+        assert_eq!(peers, vec![2]);
+        assert_eq!(delivery, crate::outbox::Delivery::Replay);
+
+        // With the owner known, the client's hit report lands like any other.
+        assert!(sim_core::hit::is_client_authoritative(monster_id));
+        let bullet_pos = world.projectiles.get(bullet).unwrap().position;
+        world.players.get_mut(2).unwrap().position = bullet_pos;
+        let health_before = world.players.get(2).unwrap().health;
+        world.on_packet(
+            2,
+            ClientPacket::LocalHitReport {
+                projectile_id: bullet,
+            },
+            t * 33,
+            0,
+            &mut outbox,
+        );
+        assert!(world.players.get(2).unwrap().health < health_before);
+        assert!(world.projectiles.get(bullet).is_none());
     }
 
     #[test]

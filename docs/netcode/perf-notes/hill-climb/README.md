@@ -29,7 +29,7 @@ What one run does (no human in the loop, ~90 s for 100 bots):
 1. `cargo build --release` (incremental: seconds when nothing changed).
 2. Starts a **local Arena** (`deployment/server_config.loadtest.json`: `max_players 999`, no API,
    unsigned tickets) with `OMEGA_MEASURE_DIR` on → per-tick `ticks.csv` + 1 Hz `server.ndjson`
-   (loop-phase timings, bytes by packet type/channel, reliable events by type, procfs CPU/RSS,
+   (loop-phase timings, bytes by packet type/channel, events by type and delivery, procfs CPU/RSS,
    socket read gaps).
 3. Starts a 1 Hz **host sampler** (`scripts/quick_stress/sample_host.py`): server + swarm process
    CPU/RSS, system CPU/steal, host-wide UDP `InErrors/RcvbufErrors/SndbufErrors`, the server
@@ -39,6 +39,11 @@ What one run does (no human in the loop, ~90 s for 100 bots):
    bottleneck on a multi-core box.
 5. Stops everything, renders `REPORT.md` + `summary.json` (`scripts/quick_stress/report.py`),
    prints the verdict block + key numbers, appends a row to [`ledger.md`](ledger.md).
+
+The measured duration starts only when every swarm shard has finished its ramp, so the requested
+population is up for the whole of it. Cancelling the harness stops the swarm, server and sampler,
+exits 128+signal and renders no report. Report fixtures:
+`python3 -m unittest discover scripts/quick_stress`.
 
 Everything lands in `loadtest-runs/<utc-timestamp>-<label>/` (gitignored; `loadtest-runs/latest`
 is a symlink). Typical sizes for 100 bots × 60 s: `ticks.csv` ~300 KB, `server.ndjson` ~400 KB,
@@ -55,13 +60,17 @@ proven by hash and config diff, median and range per arm, and a run budget. Its 
 
 The first screen is the whole answer:
 
-- **PASS/FAIL** and *Why not a pass* — connected/requested, bot errors, failed success criteria,
-  ticks over 33 ms, kernel receive-buffer drops.
+- **PASS/FAIL/INCOMPLETE** and *Why not a pass* — connected/requested, peak server population and
+  how long it held, bot errors, failed success criteria, ticks over 33 ms, kernel receive-buffer
+  drops. **INCOMPLETE** means no gate failed but one could not be measured (no Tick data, a dead
+  sampler, an unavailable drop counter); it never counts as a pass.
 - **Bottleneck read** — in the order each one invalidates the next: *GENERATOR-BOUND* (swarm CPU
   per thread > 85 %: the server numbers are suspect, add threads/hosts), *SERVER CPU-BOUND*
   (> 85 % of a core, with the two biggest loop phases named), *UDP RECEIVE OVERFLOW*,
-  *TICK OVERRUN* (p95 > 33.3 ms), *NETWORK* (loss > 2 % / RTT p95 > 150 ms), or
-  *NO BOTTLENECK HIT* with a naive linear headroom estimate.
+  *ENET RETRANSMIT STORM* (server-view loss > 5 % with kernel drops; without drops it reads
+  *ENET PACKET LOSS*, and high RTT alone reads *ELEVATED RTT*), *TICK OVERRUN* (p95 > 33.3 ms),
+  *NETWORK* (loss > 2 % / RTT p95 > 150 ms), or *NO BOTTLENECK HIT* with a naive linear headroom
+  estimate.
 - One line each: server CPU, bots CPU, tick p95/max, % ticks over 33 ms, RcvbufErrors, RTT p95,
   loss, KB/s per bot, **reliable events per peer per second**, server bytes out.
 
@@ -69,8 +78,9 @@ Then the tables, in the order you need them when the verdict says CPU-bound: tic
 distribution → **CPU by loop phase** (`service_and_route` = ENet receive + packet handlers,
 `simulation` = movement/projectiles/AI/collisions, `snapshot_build` = AoI + delta scheduling +
 encoding, `outbox_flush` = encode + `peer.send` for every queued packet, `enet_flush` = ENet
-command/ack processing + UDP sends) → traffic by packet type and channel → **reliable
-GameEvent packets per second by type** (the N² term) → host → bots → criteria → log hygiene.
+command/ack processing + UDP sends; `snapshot_build` runs inside `world_tick`, and the "phases sum"
+counts it once) → traffic by packet type and channel → **GameEvent packets per second by type and
+delivery** (the reliable column is the N² term) → host → bots → criteria → log hygiene.
 
 ### Success criteria (what "flawless" means)
 

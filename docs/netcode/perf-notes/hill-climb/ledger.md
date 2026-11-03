@@ -2,6 +2,12 @@
 
 One row per `scripts/quick_stress.sh` run (appended automatically). Newest at the bottom.
 
+**Reading older rows:** the *reliable events per peer/s* value in the three `changeA-*` rows and
+`cax11-changeA-200-mac` also counts unreliable player `PROJECTILE_FIRED` events, so it overstates
+reliable load; those runs did not record delivery, so the split cannot be reconstructed. Rows before
+`changeA-100` were all reliable, and the CAX11 climb rows report the column as unavailable. Every row
+dated up to 2026-11-03 predates the INCOMPLETE status and the peak-population gate.
+
 | date (UTC) | label | commit | bots | result | connected | tick p95 / max ms | ticks >33 ms | server CPU | bots CPU | RcvbufErr | RTT p95 ms | loss | KB/s per bot | reliable events per peer/s | ENet loss peak / RTT peak (server view) | notes |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 2026-10-29 13:54 | harness-check | `117d640` | 50 strategy | FAIL | 50/50 | 3.94 / 91.2 | 0.1% | 13% | 19% | 0 | 5 | 0.01% | 19.2 | 158 | n/a / n/a | |
