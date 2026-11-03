@@ -1,0 +1,208 @@
+{
+  "archive_check": {
+    "clean-runs": {
+      "claimed": 976,
+      "match": 0,
+      "mismatch": [],
+      "present": 0
+    },
+    "report-bundles": {
+      "claimed": 134,
+      "match": 0,
+      "mismatch": [],
+      "present": 0
+    }
+  },
+  "assumptions": {
+    "allowance_bytes_month": 20000000000000,
+    "compute_USD_month": 6.99,
+    "excess_increment_USD": 0.00012,
+    "excess_increment_bytes": 100000000,
+    "game_host_USD_month": 7.59,
+    "game_host_USD_year": 91.08,
+    "ipv4_USD_month": 0.6,
+    "price_status": "Retained historical conditional assumptions from the agreed matrix; not an account quote",
+    "test_pair_USD_month": 15.18,
+    "test_pair_USD_year": 182.16,
+    "year": 2027
+  },
+  "inventories": {
+    "2026-10-13": {
+      "attempt_classes": {
+        "collector-invalid": 2,
+        "controlled-profile-valid": 2,
+        "external-accounting-check-valid": 1,
+        "instrumented-build-recording-off-control-unscored": 3,
+        "native-stable-candidate": 15,
+        "not_yet_classified": 1,
+        "original-build-control-unscored": 5,
+        "valid-failure": 2
+      },
+      "attempts": 31,
+      "replacements": 1,
+      "scored": 12,
+      "scored_window_present": 12,
+      "selected": 11
+    },
+    "2026-10-14-one-pass": {
+      "attempt_classes": {
+        "collector-invalid": 1,
+        "controlled-profile-valid": 2,
+        "generator-invalid": 3,
+        "instrumented-build-recording-off-control-unscored": 2,
+        "native-stable-candidate": 15,
+        "operator-aborted-unscored": 1,
+        "valid-failure": 3
+      },
+      "attempts": 27,
+      "replacements": 3,
+      "scored": 18,
+      "scored_window_present": 18,
+      "selected": 17
+    },
+    "2026-10-22-clean-runs": {
+      "candidate_revision": "fea24dd1ec75eb3a5e832e408489943ced88814f",
+      "completed_entries": 18,
+      "diagnostic_attempts": 5,
+      "game_sha256": "de92e120bb863948fc4c55fe525d200ac6ebc0d0d214d453ed3efeab159208db"
+    }
+  },
+  "models": {
+    "HYPOTHETICAL-1000-default-client-budget": {
+      "TB_30d": 311.04,
+      "TiB_30d": 282.8892320394516,
+      "USD_30d": 356.83799999999997,
+      "USD_30d_binary_allowance": 354.44975999999997,
+      "USD_year": 4344.263999999998,
+      "USD_year_binary_allowance": 4315.60512,
+      "bytes_30d": 311040000000000,
+      "bytes_year": 3784320000000000,
+      "ccu": 1000,
+      "mean_Mbit_s": 960.0,
+      "overage_USD_30d": 349.248,
+      "overage_USD_year": 4253.184,
+      "peak_month_TB": 321.408,
+      "r_out": 120000,
+      "status": "[MEASURE] hypothetical; configured default per-client budget treated as bytes/s, not a measured rate"
+    },
+    "HYPOTHETICAL-1000-flat-strategy150-rate": {
+      "TB_30d": 119.84241958314381,
+      "TiB_30d": 108.99604565851752,
+      "USD_30d": 127.40100000000001,
+      "USD_30d_binary_allowance": 125.01264,
+      "USD_year": 1552.78008,
+      "USD_year_binary_allowance": 1524.1205999999997,
+      "bytes_30d": 119842419583143.81,
+      "bytes_year": 1458082771594916.5,
+      "ccu": 1000,
+      "mean_Mbit_s": 369.8840110590858,
+      "overage_USD_30d": 119.811,
+      "overage_USD_year": 1461.70008,
+      "peak_month_TB": 123.83716690258194,
+      "r_out": 46235.50138238573,
+      "status": "[MEASURE] hypothetical; no valid 999 cell; fan-out unmeasured; no host shown to carry it"
+    },
+    "combat100-r3-20261023": {
+      "TB_30d": 9.725362709297656,
+      "TiB_30d": 8.84516585692623,
+      "USD_30d": 7.59,
+      "USD_30d_binary_allowance": 7.59,
+      "USD_year": 91.08000000000003,
+      "USD_year_binary_allowance": 91.08000000000003,
+      "bytes_30d": 9725362709297.656,
+      "bytes_year": 118325246296454.84,
+      "ccu": 100,
+      "mean_Mbit_s": 30.01655157190635,
+      "overage_USD_30d": 0.0,
+      "overage_USD_year": 0.0,
+      "peak_month_TB": 10.049541466274245,
+      "r_out": 37520.68946488294,
+      "status": "conditional forecast at a measured population"
+    },
+    "idle100-r1-20261022": {
+      "TB_30d": 2.318513702207358,
+      "TiB_30d": 2.1086759281455287,
+      "USD_30d": 7.59,
+      "USD_30d_binary_allowance": 7.59,
+      "USD_year": 91.08000000000003,
+      "USD_year_binary_allowance": 91.08000000000003,
+      "bytes_30d": 2318513702207.358,
+      "bytes_year": 28208583376856.19,
+      "ccu": 100,
+      "mean_Mbit_s": 7.155906488294314,
+      "overage_USD_30d": 0.0,
+      "overage_USD_year": 0.0,
+      "peak_month_TB": 2.3957974922809364,
+      "r_out": 8944.883110367893,
+      "status": "conditional forecast at a measured population"
+    },
+    "movement100-r1-20261023": {
+      "TB_30d": 4.109807105819398,
+      "TiB_30d": 3.737847788051474,
+      "USD_30d": 7.59,
+      "USD_30d_binary_allowance": 7.59,
+      "USD_year": 91.08000000000003,
+      "USD_year_binary_allowance": 91.08000000000003,
+      "bytes_30d": 4109807105819.3975,
+      "bytes_year": 50002653120802.67,
+      "ccu": 100,
+      "mean_Mbit_s": 12.684589832775918,
+      "overage_USD_30d": 0.0,
+      "overage_USD_year": 0.0,
+      "peak_month_TB": 4.246800676013377,
+      "r_out": 15855.737290969899,
+      "status": "conditional forecast at a measured population"
+    },
+    "movement150-r1-20261023": {
+      "TB_30d": 6.246867457926421,
+      "TiB_30d": 5.6814928556618005,
+      "USD_30d": 7.59,
+      "USD_30d_binary_allowance": 7.59,
+      "USD_year": 91.08000000000003,
+      "USD_year_binary_allowance": 91.08000000000003,
+      "bytes_30d": 6246867457926.421,
+      "bytes_year": 76003554071438.12,
+      "ccu": 150,
+      "mean_Mbit_s": 19.280455117056853,
+      "overage_USD_30d": 0.0,
+      "overage_USD_year": 0.0,
+      "peak_month_TB": 6.455096373190635,
+      "r_out": 16067.045930880713,
+      "status": "conditional forecast at a measured population"
+    },
+    "strategy100-r3-20261024": {
+      "TB_30d": 9.365340567010035,
+      "TiB_30d": 8.517727625994699,
+      "USD_30d": 7.59,
+      "USD_30d_binary_allowance": 7.59,
+      "USD_year": 91.08000000000003,
+      "USD_year_binary_allowance": 91.08000000000003,
+      "bytes_30d": 9365340567010.035,
+      "bytes_year": 113944976898622.1,
+      "ccu": 100,
+      "mean_Mbit_s": 28.90537212040134,
+      "overage_USD_30d": 0.0,
+      "overage_USD_year": 0.0,
+      "peak_month_TB": 9.677518585910368,
+      "r_out": 36131.71515050167,
+      "status": "conditional forecast at a measured population"
+    },
+    "strategy150-r2-20261022": {
+      "TB_30d": 17.97636293747157,
+      "TiB_30d": 16.349406848777626,
+      "USD_30d": 7.59,
+      "USD_30d_binary_allowance": 7.59,
+      "USD_year": 91.08000000000003,
+      "USD_year_binary_allowance": 91.08000000000003,
+      "bytes_30d": 17976362937471.57,
+      "bytes_year": 218712415739237.38,
+      "ccu": 150,
+      "mean_Mbit_s": 55.482601658862876,
+      "overage_USD_30d": 0.0,
+      "overage_USD_year": 0.0,
+      "peak_month_TB": 18.57557503538729,
+      "r_out": 46235.50138238573,
+      "status": "conditional forecast at a measured population"
+    }
+  }
+}
