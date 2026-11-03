@@ -91,12 +91,17 @@ def host_rows(path):
     return [r for r in rows if r.get("udp", {}).get("snmp")]
 
 
-def split_counter(rows, key, lo_s, hi_s):
-    """Delta of a cumulative SNMP counter per run phase. 1 Hz: boundaries are good to about 1 s."""
+def split_counter(rows, key, lo_s=None, hi_s=None):
+    """Delta of a cumulative SNMP counter per run phase. 1 Hz: boundaries are good to about 1 s.
+
+    With no window (lo_s None) the phases do not exist, but the whole-run delta still does.
+    """
     if len(rows) < 2:
         return None
     value = lambda r: r["udp"]["snmp"].get(key, 0)  # noqa: E731
     first, last = value(rows[0]), value(rows[-1])
+    if lo_s is None:
+        return {"whole": last - first, "ramp": None, "minute": None, "tail": None}
     at_or_before = lambda t: next((value(r) for r in reversed(rows) if r["ts"] <= t), first)  # noqa: E731
     at_lo, at_hi = at_or_before(lo_s), at_or_before(hi_s)
     return {"whole": last - first, "ramp": at_lo - first, "minute": at_hi - at_lo, "tail": last - at_hi}
@@ -157,9 +162,18 @@ def analyze(trial, bots, smoke_rtt_p95=None):
     window, longest = select_window(ticks, bots)
     out = {"bots": bots, "ticks_total": len(ticks), "longest_full_population_ticks": longest,
            "window_ticks": len(window)}
+    lo_s, hi_s = (window[0]["utc_ns"] / 1e9, window[-1]["utc_ns"] / 1e9) if window else (None, None)
+    # Whole-run evidence, so it does not depend on the run ever reaching full population.
+    hrows = host_rows(trial / "host.ndjson")
+    out["drops"] = split_counter(hrows, "RcvbufErrors", lo_s, hi_s)
+    out["sndbuf_errors"] = split_counter(hrows, "SndbufErrors", lo_s, hi_s)
+    sock = [r["udp"]["socket"] for r in qs.load_ndjson(str(trial / "host.ndjson")) if r.get("udp", {}).get("socket")]
+    if sock:
+        out["socket"] = {"drops": sock[-1]["drops"] - sock[0]["drops"],
+                         "rx_queue_max": max(s["rx_queue"] for s in sock),
+                         "tx_queue_max": max(s["tx_queue"] for s in sock)}
     if window:
         work = [r["work_ns"] / 1e6 for r in window]
-        lo_s, hi_s = window[0]["utc_ns"] / 1e9, window[-1]["utc_ns"] / 1e9
         over = sum(w > TICK_BUDGET_MS for w in work)
         out.update({
             "window_first_tick": window[0]["tick"], "window_last_tick": window[-1]["tick"],
@@ -186,9 +200,6 @@ def analyze(trial, bots, smoke_rtt_p95=None):
             "sent_bytes_per_s": sa.get("sent_bytes_per_s"),
             "event_sends_per_s": sum(sa.get("event_sends_per_s", {}).values()),
         }
-        hrows = host_rows(trial / "host.ndjson")
-        out["drops"] = split_counter(hrows, "RcvbufErrors", lo_s, hi_s)
-        out["sndbuf_errors"] = split_counter(hrows, "SndbufErrors", lo_s, hi_s)
         inside = [r for r in hrows if lo_s <= r["ts"] <= hi_s and "total_s" in r.get("system", {})]
         if len(inside) >= 2:
             a_sys, b_sys = inside[0]["system"], inside[-1]["system"]
@@ -196,11 +207,6 @@ def analyze(trial, bots, smoke_rtt_p95=None):
             if total > 0:
                 out["host"] = {"steal_pct": 100.0 * (b_sys["steal_s"] - a_sys["steal_s"]) / total,
                                "busy_pct": 100.0 * (1 - (b_sys["idle_s"] - a_sys["idle_s"]) / total)}
-        sock = [r["udp"]["socket"] for r in qs.load_ndjson(str(trial / "host.ndjson")) if r.get("udp", {}).get("socket")]
-        if sock:
-            out["socket"] = {"drops": sock[-1]["drops"] - sock[0]["drops"],
-                             "rx_queue_max": max(s["rx_queue"] for s in sock),
-                             "tx_queue_max": max(s["tx_queue"] for s in sock)}
         # Offered = what reached the socket in the minute: delivered plus dropped.
         rx = (sa.get("transport") or {}).get("received_datagrams_per_s")
         dur = sa.get("window_s") or 0

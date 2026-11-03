@@ -61,6 +61,9 @@ THREADS, STAGGER_MS, SEED, DURATION_S = 2, 100, 1, 70
 SMOKE_BOTS, SMOKE_DURATION_S = 3, 20
 JOIN_S = 0.5  # measured about 0.42 s per join per shard over the 207 ms path
 DEFAULT_RECEIVE_BYTES = 524288
+# [s] keeps this from matching the remote shell's own command line: procps pkill -f spares only
+# itself, so a literal path would kill the shell running the stop script before its final check.
+SAMPLER_PATTERN = f"{R_HOME}/scripts/[s]ample_host.py"
 
 
 def ssh_cmd():
@@ -137,18 +140,23 @@ def setup_remote():
         raise SystemExit(f"frozen server binary hash mismatch: {got}")
 
 
+def build_script(repo=R_REPO, cargo="~/.cargo/bin/cargo", log=f"{R_HOME}/build.log"):
+    """One release build that exits with cargo's status. Piped straight into tail it would exit with
+    tail's, and a failed build would then hash and register the older binary still in target/."""
+    return (f"cd {repo} || exit; {cargo} build --manifest-path rust/Cargo.toml --locked --release "
+            f"-p omega-server > {log} 2>&1; status=$?; tail -3 {log}; exit $status")
+
+
 def cmd_build(args):
     setup_remote()
     commit = sp.check_output(["git", "rev-parse", args.ref], cwd=ROOT, text=True).strip()
     print(f"build {args.ref} = {commit}", flush=True)
-    archive = sp.Popen(["git", "archive", commit, "rust", "deployment", "scripts"], cwd=ROOT, stdout=sp.PIPE)
+    # Buffered whole: a failed archive stops here, before anything reaches the CAX11.
+    archive = sp.check_output(["git", "archive", commit, "rust", "deployment", "scripts"], cwd=ROOT)
     # -m: fresh mtimes. git archive stamps the commit time, and an older stamp would let cargo
     # keep a stale binary when moving back to an earlier commit.
-    sp.run(ssh_cmd() + [f"tar -xm -C {R_REPO}"], stdin=archive.stdout, check=True)
-    archive.wait()
-    log = remote(f"cd {R_REPO} && ~/.cargo/bin/cargo build --manifest-path rust/Cargo.toml --locked --release "
-                 f"-p omega-server 2>&1 | tail -3", timeout=1500)
-    print(log, flush=True)
+    sp.run(ssh_cmd() + [f"tar -xm -C {R_REPO}"], input=archive, check=True)
+    print(remote(build_script(), timeout=1500), flush=True)
     digest = remote(f"sha256sum {R_REPO}/rust/target/release/omega-server").split()[0]
     remote(f"mkdir -p {R_HOME}/bin/{digest[:8]} && cp {R_REPO}/rust/target/release/omega-server "
            f"{R_HOME}/bin/{digest[:8]}/omega-server")
@@ -218,13 +226,57 @@ def config_diff(blob):
     return {k: {"base": base.get(k), "arm": arm.get(k)} for k in sorted(set(base) | set(arm)) if base.get(k) != arm.get(k)}
 
 
+def refuse_used_trial(trial):
+    if trial.exists():
+        raise SystemExit(f"{trial} holds an earlier attempt with no result; move it aside to retry")
+
+
+def sample_threads(pid):
+    """One `ps -M` sample, or None. Optional evidence: the process can exit between the caller's
+    poll and this call, and ps then exits 1, which is a normal end of the run."""
+    try:
+        r = sp.run(["ps", "-M", "-p", str(pid), "-o", "pid,time,pcpu"], text=True, capture_output=True)
+    except OSError:
+        return None
+    return r.stdout if r.returncode == 0 else None
+
+
+def stop_remote():
+    """Stop the server, then the host sampler. Raises if either cannot be confirmed."""
+    left = remote(f"pkill -INT -x omega-server || true; sleep 2; "
+                  f"for i in $(seq 1 40); do pgrep -x omega-server > /dev/null || break; sleep 0.2; done; "
+                  f"pkill -f {shlex.quote(SAMPLER_PATTERN)} || true; pgrep -x omega-server || true").strip()
+    if left:
+        raise SystemExit(f"omega-server still running after stop: {left}")
+
+
+def collect_remote(trial, rdir):
+    with open(trial / "remote.tar", "wb") as f:
+        sp.run(ssh_cmd() + [f"tar -C {shlex.quote(rdir)} -cf - ."], stdout=f, check=True)
+    sp.run(["tar", "-xf", str(trial / "remote.tar"), "-C", str(trial)], check=True)
+    (trial / "remote.tar").unlink()
+
+
+def run_cleanup(steps):
+    """Run every step even if an earlier one fails, and return the failures: a cleanup problem may
+    neither skip the steps after it nor replace the error that started the cleanup."""
+    errors = []
+    for label, step in steps:
+        try:
+            step()
+        except (Exception, SystemExit) as exc:
+            errors.append(f"{label}: {exc}")
+    return errors
+
+
 def run_trial(trial, name, info, levers, bots, duration, count=True):
-    """One bounded run. Always stops the remote server and collects evidence."""
-    trial.mkdir(parents=True, exist_ok=False)
-    (trial / "bots").mkdir()
+    """One bounded run. Once the first remote launch is attempted, always stops the remote server
+    and collects evidence, and any startup or run error stays the error the caller sees."""
     blob = arm_config(levers)
     cfg_remote, cfg_sha = push_config(blob)
     pre = preflight(info, cfg_remote, cfg_sha)
+    trial.mkdir(parents=True, exist_ok=False)
+    (trial / "bots").mkdir()
     expected = 2 * levers["udp_receive_buffer_bytes"] if "udp_receive_buffer_bytes" in levers else DEFAULT_RECEIVE_BYTES
     (trial / "preflight.json").write_text(json.dumps(pre, indent=2))
     (trial / "config.json").write_bytes(blob)
@@ -233,7 +285,30 @@ def run_trial(trial, name, info, levers, bots, duration, count=True):
     server_guard = bot_guard + 30
     rdir = f"{R_HOME}/runs/{trial.parent.name}/{trial.name}"
     q = shlex.quote
-    print(remote(f"""set -e; mkdir -p {q(rdir)}/server; cd {R_REPO}
+    cmd = [str(BOT), "--scenario", "quick", "--bots", str(bots), "--threads", str(THREADS), "--stagger",
+           str(STAGGER_MS), "--seed", str(SEED), "--duration", str(duration), "--server", SERVER_ADDR,
+           "-o", str(trial / "bots/report.json")]
+    swarm = failure = None
+    start = time.time()
+
+    def stop_swarm():
+        if swarm is not None and swarm.poll() is None:
+            swarm.kill()
+            swarm.wait()
+
+    def write_manifest(errors):
+        manifest = {"name": name, "command": cmd, "start": start, "end": time.time(),
+                    "exit": swarm.returncode if swarm is not None else None,
+                    "server_sha256": info["sha256"], "commit": info["commit"], "levers": levers,
+                    "harness": harness_hashes()}
+        if failure is not None:
+            manifest["error"] = str(failure) or repr(failure)
+        if errors:
+            manifest["cleanup_errors"] = errors
+        (trial / "run.json").write_text(json.dumps(manifest, indent=2))
+
+    try:
+        print(remote(f"""set -e; mkdir -p {q(rdir)}/server; cd {R_REPO}
 nohup timeout -s INT -k 5 {server_guard} env OMEGA_MEASURE_DIR={q(rdir)}/server RUST_LOG=info {r_bin(info)} --config {cfg_remote} --allow-unsigned-tickets > {q(rdir)}/server.log 2>&1 < /dev/null &
 for i in $(seq 1 50); do grep -q 'listening on udp' {q(rdir)}/server.log 2>/dev/null && break; sleep 0.2; done
 pgrep -x omega-server > {q(rdir)}/server.pid; sed 's/^/server=/' {q(rdir)}/server.pid > {q(rdir)}/pids.txt
@@ -241,21 +316,11 @@ nohup timeout {server_guard + 3} python3 {R_HOME}/scripts/sample_host.py --out {
 echo $! > {q(rdir)}/sampler.pid
 sleep 1; grep -a -o 'effective_receive_bytes[^ ]*' {q(rdir)}/server.log | head -1
 """), end="", flush=True)
-
-    def stop_remote():
-        remote(f"pkill -INT -x omega-server || true; sleep 2; pkill -f {R_HOME}/scripts/sample_host.py || true; "
-               f"pgrep -x omega-server || true", check=False)
-
-    swarm = None
-    start = time.time()
-    try:
+        start = time.time()  # the bot guard runs from a live server, not from the launch attempt
         log_text = re.sub(r"\x1b\[[0-9;]*m", "", remote(f"cat {q(rdir)}/server.log"))
         m = re.search(r"effective_receive_bytes=(\d+)", log_text)
         if not m or int(m[1]) != expected:
             raise SystemExit(f"effective receive buffer {m and m[1]} != expected {expected}")
-        cmd = [str(BOT), "--scenario", "quick", "--bots", str(bots), "--threads", str(THREADS), "--stagger",
-               str(STAGGER_MS), "--seed", str(SEED), "--duration", str(duration), "--server", SERVER_ADDR,
-               "-o", str(trial / "bots/report.json")]
         (trial / "udp-before.txt").write_text(sp.check_output(["netstat", "-s", "-p", "udp"], text=True))
         (trial / "interfaces-before.txt").write_text(sp.check_output(["netstat", "-ibn"], text=True))
         fds = max(bots + 512, 4096)
@@ -270,9 +335,10 @@ sleep 1; grep -a -o 'effective_receive_bytes[^ ]*' {q(rdir)}/server.log | head -
         try:
             with open(trial / "mac-threads.ndjson", "w") as f:
                 while swarm.poll() is None:
-                    ps = sp.check_output(["ps", "-M", "-p", str(swarm.pid), "-o", "pid,time,pcpu"], text=True)
-                    f.write(json.dumps({"ts": time.time(), "ps": ps}) + "\n")
-                    f.flush()
+                    ps = sample_threads(swarm.pid)
+                    if ps is not None:
+                        f.write(json.dumps({"ts": time.time(), "ps": ps}) + "\n")
+                        f.flush()
                     if time.time() - start > bot_guard:
                         swarm.send_signal(signal.SIGINT)
                         try:
@@ -286,18 +352,17 @@ sleep 1; grep -a -o 'effective_receive_bytes[^ ]*' {q(rdir)}/server.log | head -
             sampler.wait()
         (trial / "udp-after.txt").write_text(sp.check_output(["netstat", "-s", "-p", "udp"], text=True))
         (trial / "interfaces-after.txt").write_text(sp.check_output(["netstat", "-ibn"], text=True))
+    except BaseException as exc:
+        failure = exc
+        raise
     finally:
-        if swarm is not None and swarm.poll() is None:
-            swarm.kill()
-        stop_remote()
-    with open(trial / "remote.tar", "wb") as f:
-        sp.run(ssh_cmd() + [f"tar -C {q(rdir)} -cf - ."], stdout=f, check=True)
-    sp.run(["tar", "-xf", str(trial / "remote.tar"), "-C", str(trial)], check=True)
-    (trial / "remote.tar").unlink()
-    (trial / "run.json").write_text(json.dumps({
-        "name": name, "command": cmd, "start": start, "end": time.time(), "exit": swarm.returncode,
-        "server_sha256": info["sha256"], "commit": info["commit"], "levers": levers, "harness": harness_hashes(),
-    }, indent=2))
+        errors = run_cleanup([("stop bots", stop_swarm), ("stop server", stop_remote),
+                              ("collect evidence", lambda: collect_remote(trial, rdir))])
+        errors += run_cleanup([("write run.json", lambda: write_manifest(list(errors)))])
+        for error in errors:
+            print(f"trial cleanup failed: {error}", file=sys.stderr, flush=True)
+    if errors:
+        raise SystemExit(f"trial cleanup failed, evidence in {trial} may be incomplete: " + "; ".join(errors))
     if swarm.returncode not in (0, 1, 2):
         raise SystemExit(f"bot process exit {swarm.returncode}; see {trial}")
     return swarm.returncode
@@ -366,6 +431,7 @@ def cmd_session(args):
         for name, short, levers in arms:
             sdir = session / f"smoke-{name}"
             if not (sdir / "bots/report.json").exists():
+                refuse_used_trial(sdir)
                 run_trial(sdir, f"{args.name}-smoke-{name}", infos[name], levers, SMOKE_BOTS, SMOKE_DURATION_S)
             r = json.loads((sdir / "bots/report.json").read_text())["aggregated"]
             ok = r.get("connected_bots") == SMOKE_BOTS and not r.get("total_errors")
@@ -379,6 +445,7 @@ def cmd_session(args):
             trial = session / f"{index:02d}-{name}"
             if (trial / "summary.json").exists():
                 continue
+            refuse_used_trial(trial)  # before the count: a refused retry starts no load run
             if load_runs_used() >= RUN_BUDGET:
                 raise SystemExit(f"run budget of {RUN_BUDGET} exhausted")
             count_load_run(args.name, trial.name, name, args.bots, infos[name])

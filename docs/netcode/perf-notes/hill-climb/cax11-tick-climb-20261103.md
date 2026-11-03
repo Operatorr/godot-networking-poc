@@ -42,8 +42,8 @@ Tuned server, one binary:
 | 200 | 5 | 27.61 median | 0.111% median | 0 | all |
 | **225** | 2 | 31.7, 31.6 | **2.5%, 1.9%** | 0, 0 | **all** |
 | 250 | 2 | 54.3, 40.3 | 15.5%, 11.3% | 213,422, 136,015 | all |
-| 300 | 2 | none, 63.8 (partial window) | n/a | 501,855 in the run with data | 295, 279 |
-| 350 | 2 | no window | n/a | n/a | 245, 170 |
+| 300 | 2 | none, 63.8 (partial window) | n/a | 359,188, 501,855 | 295, 279 |
+| 350 | 2 | no window | n/a | 863,695, 410,070 | 245, 170 |
 
 **Frozen case: 225 players** (ladder step 25), not the roughly 300 the resolution expected. Mac
 workers stayed under 46% with no Mac UDP drops, so the generator's CPU and socket buffers were not
@@ -125,6 +125,13 @@ fail it. The final Rust run: 244 passed, 0 failed, clippy and fmt clean of new w
 - **Host changes.** `linux-perf` and its dependencies were installed for the two profiles and purged
   afterwards. `~/omega-realm` now holds the final source and binary; the frozen binary and raw runs
   are in `~/omega-climb`. `net.core.rmem_max` was already 4 MiB and was not changed.
+- **Harness fixes after the climb.** No recorded run used these: `build` now fails on a failed cargo
+  or `git archive`, a startup or stop failure still stops the server, collects evidence and keeps the
+  original error, a bot exit racing `ps` no longer loses the run, and runs with no window keep their
+  whole-run drops. Re-analyzing the 99 retained trials changes only the 4 with no window, which is
+  where the 300 and 350 drops above come from. `12-a6-5v5/05-a6` (0 drops) now passes its drop gate
+  but still fails on population. Ledger rows stay as recorded. The harness hashes changed, so run
+  `climb.py freeze` before the next session.
 
 ## Next
 
