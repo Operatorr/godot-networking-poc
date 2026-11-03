@@ -1,0 +1,832 @@
+//! Frozen copy of the Snapshot pipeline as it stood before the CAX11 climb (issue #79), kept
+//! only as the oracle for `broadcast::tests::optimized_output_matches_reference`. Do not optimize
+//! or "fix" it: the differential test is only meaningful if this stays the old behaviour.
+#![allow(dead_code, clippy::all)]
+
+use crate::outbox::Outbox;
+use crate::player::{PeerKey, PlayerManager};
+use protocol::types::{delta_mask, game_event_type};
+use protocol::{EntityRecord, GameEvent, GameEventData, ServerPacket, Snapshot};
+use sim_core::Vec2;
+use std::collections::HashMap;
+
+pub const DELTA_FULL_STATE_INTERVAL: u64 = 100;
+/// Position-equality epsilon: half the 0.1-unit wire quantization step, strict `<` per axis.
+pub const POSITION_EPSILON: f32 = 0.05;
+/// Full-state replies must fit the receiver's decoder count limit.
+pub const STATE_MAX_FULL_ENTITIES: usize = protocol::types::MAX_SNAPSHOT_ENTITIES;
+/// Includes packet type, clocks, flags, Baseline reference and entity count.
+const DELTA_HEADER_BYTES: usize = 16;
+const MAX_DELTA_RECORD_BITS: usize =
+    (protocol::MAX_UNRELIABLE_PAYLOAD - 1 - DELTA_HEADER_BYTES) * 8;
+
+// Scheduler constants (extraction server-tick §2.3).
+const PRIORITY_PLAYER: i64 = 10;
+const PRIORITY_PROJECTILE: i64 = 8;
+const PRIORITY_MONSTER: i64 = 4;
+const PRIORITY_DEFAULT: i64 = 1;
+const DISTANCE_PENALTY_BY_LOD: [i64; 3] = [0, 4, 8];
+
+pub const LOD_NEAR: u8 = 0;
+pub const LOD_MID: u8 = 1;
+pub const LOD_FAR: u8 = 2;
+
+/// The per-entity data the snapshot pipeline consumes (`to_entity_data` equivalents).
+#[derive(Debug, Clone, Copy)]
+pub struct EntityData {
+    pub id: u16,
+    pub position: Vec2,
+    pub animation: u8,
+    pub flags: u16,
+}
+
+// ── Delta state cache (one per peer) ────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+struct CachedEntityState {
+    position: Vec2,
+    animation: u8,
+    flags: u16,
+    last_tick_sent: u64,
+    is_new: bool,
+}
+
+#[derive(Default)]
+pub struct DeltaStateCache {
+    cache: HashMap<u16, CachedEntityState>,
+    baseline_tick: u64,
+    acked_baseline_tick: u64,
+    /// 0 = none outstanding (sentinel — a genuine baseline at tick 0 cannot exist).
+    pending_baseline_tick: u64,
+}
+
+impl DeltaStateCache {
+    pub fn calculate_delta_mask(&self, entity_id: u16, current: &EntityData, tick: u64) -> u8 {
+        let Some(cached) = self.cache.get(&entity_id) else {
+            return delta_mask::FULL;
+        };
+        if cached.is_new {
+            return delta_mask::FULL;
+        }
+        if tick - self.baseline_tick >= DELTA_FULL_STATE_INTERVAL {
+            return delta_mask::FULL;
+        }
+        let mut mask = 0u8;
+        let positions_equal = (cached.position.x - current.position.x).abs() < POSITION_EPSILON
+            && (cached.position.y - current.position.y).abs() < POSITION_EPSILON;
+        if !positions_equal {
+            mask |= delta_mask::POSITION;
+        }
+        if cached.animation != current.animation {
+            mask |= delta_mask::ANIMATION;
+        }
+        if cached.flags != current.flags {
+            mask |= delta_mask::FLAGS;
+        }
+        mask
+    }
+
+    fn update_cache(&mut self, entity_id: u16, state: &EntityData, tick: u64) {
+        let e = self.cache.entry(entity_id).or_insert(CachedEntityState {
+            position: Vec2::ZERO,
+            animation: 0,
+            flags: 0,
+            last_tick_sent: 0,
+            is_new: true,
+        });
+        e.position = state.position;
+        e.animation = state.animation;
+        e.flags = state.flags;
+        e.last_tick_sent = tick;
+        e.is_new = false;
+    }
+
+    /// Mask-aware: only fields whose bit is set are committed; withheld fields stay dirty
+    /// (what makes deferral lossless — extraction server-tick gotcha #27).
+    fn update_cache_partial(&mut self, entity_id: u16, state: &EntityData, mask: u8, tick: u64) {
+        let e = self.cache.entry(entity_id).or_insert(CachedEntityState {
+            position: Vec2::ZERO,
+            animation: 0,
+            flags: 0,
+            last_tick_sent: 0,
+            is_new: true,
+        });
+        if mask & delta_mask::FULL != 0 {
+            e.position = state.position;
+            e.animation = state.animation;
+            e.flags = state.flags;
+        } else {
+            if mask & delta_mask::POSITION != 0 {
+                e.position = state.position;
+            }
+            if mask & delta_mask::ANIMATION != 0 {
+                e.animation = state.animation;
+            }
+            if mask & delta_mask::FLAGS != 0 {
+                e.flags = state.flags;
+            }
+        }
+        e.last_tick_sent = tick;
+        // Enqueuing an unreliable FULL record does not establish that the
+        // receiver knows this entity. Keep new entities self-contained until
+        // a reliable Baseline includes them; existing baseline entities still
+        // use field masks normally.
+    }
+
+    fn last_tick_sent(&self, entity_id: u16) -> Option<u64> {
+        self.cache.get(&entity_id).map(|e| e.last_tick_sent)
+    }
+
+    /// Erase cache entries not in the active set; returns the erased ids (pinned despawns).
+    fn cleanup_stale_entities(&mut self, active: &[u16]) -> Vec<u16> {
+        // This runs once per peer per Snapshot. A slice lookup per cached entity
+        // multiplies the visible population by the cache population; build the
+        // membership index once while keeping cache traversal/removal order intact.
+        // Entity ids are u16: an 8 KiB stack bitmap handles every possible id
+        // without allocating or hashing once for each lookup.
+        let mut active_bits = [0_u64; 1024];
+        for &id in active {
+            active_bits[usize::from(id) / 64] |= 1_u64 << (id % 64);
+        }
+        let stale: Vec<u16> = self
+            .cache
+            .keys()
+            .copied()
+            .filter(|&id| active_bits[usize::from(id) / 64] & (1_u64 << (id % 64)) == 0)
+            .collect();
+        for id in &stale {
+            self.cache.remove(id);
+        }
+        stale
+    }
+
+    pub fn needs_full_state_for_interval(&self, tick: u64) -> bool {
+        self.baseline_tick == 0 || tick - self.baseline_tick >= DELTA_FULL_STATE_INTERVAL
+    }
+
+    pub fn is_baseline_pending(&self) -> bool {
+        self.pending_baseline_tick > 0
+    }
+
+    fn reset_baseline(&mut self, tick: u64) {
+        self.baseline_tick = tick;
+        self.pending_baseline_tick = tick;
+    }
+
+    pub fn mark_baseline_acked(&mut self, acked: u64) {
+        if self.pending_baseline_tick > 0 && acked == self.pending_baseline_tick {
+            self.acked_baseline_tick = acked;
+            self.pending_baseline_tick = 0;
+        }
+    }
+
+    pub fn baseline_tick(&self) -> u64 {
+        self.baseline_tick
+    }
+}
+
+// ── Spatial grid (broad phase for AoI) ──────────────────────────────────────
+
+pub struct SpatialGrid {
+    cell_size: f32,
+    buckets: HashMap<(i32, i32), Vec<usize>>,
+}
+
+impl SpatialGrid {
+    pub fn new(cell_size: f32) -> Self {
+        Self {
+            cell_size: cell_size.max(1.0),
+            buckets: HashMap::new(),
+        }
+    }
+
+    fn cell_of(&self, pos: Vec2) -> (i32, i32) {
+        // True floor — correct for negative coordinates (extraction H4).
+        (
+            (pos.x / self.cell_size).floor() as i32,
+            (pos.y / self.cell_size).floor() as i32,
+        )
+    }
+
+    pub fn insert(&mut self, index: usize, pos: Vec2) {
+        self.buckets
+            .entry(self.cell_of(pos))
+            .or_default()
+            .push(index);
+    }
+
+    /// Superset query: all items in the (2r+1)² cell square; the caller distance-filters.
+    pub fn query_radius(&self, center: Vec2, radius: f32) -> Vec<usize> {
+        let r_cells = (radius / self.cell_size).ceil() as i32;
+        let (cx, cy) = self.cell_of(center);
+        let mut out = Vec::new();
+        for y in (cy - r_cells)..=(cy + r_cells) {
+            for x in (cx - r_cells)..=(cx + r_cells) {
+                if let Some(bucket) = self.buckets.get(&(x, y)) {
+                    out.extend_from_slice(bucket);
+                }
+            }
+        }
+        out
+    }
+}
+
+// ── Scheduler ───────────────────────────────────────────────────────────────
+
+struct Candidate {
+    index: usize,
+    entity_id: u16,
+    priority: i64,
+    encoded_bits: usize,
+    ticks_since_last_sent: u64,
+    pinned: bool,
+}
+
+#[derive(Default)]
+pub struct ScheduleStats {
+    pub deferred: usize,
+    pub max_queue_age_ticks: u64,
+    pub hit_budget: bool,
+}
+
+fn importance(entity_id: u16) -> i64 {
+    use protocol::types::EntityType;
+    match protocol::entity_type_for_id(entity_id) {
+        Some(EntityType::Player) => PRIORITY_PLAYER,
+        Some(EntityType::Projectile) => PRIORITY_PROJECTILE,
+        Some(EntityType::Monster) => PRIORITY_MONSTER,
+        // World effects (healthorbs/mines/dot-zones/bibles) matter to the player — replicate them
+        // about as eagerly as monsters.
+        Some(EntityType::WorldEffect) => PRIORITY_MONSTER,
+        None => PRIORITY_DEFAULT,
+    }
+}
+
+fn change_bonus(mask: u8) -> i64 {
+    if mask & delta_mask::FULL != 0 || mask & delta_mask::REMOVED != 0 {
+        return 6;
+    }
+    let mut bonus = 0;
+    for bit in [
+        delta_mask::POSITION,
+        delta_mask::ANIMATION,
+        delta_mask::FLAGS,
+    ] {
+        if mask & bit != 0 {
+            bonus += 2;
+        }
+    }
+    bonus
+}
+
+/// Admit pinned entries first, then (priority desc, entity_id asc). Pinned entries bypass
+/// the soft budget and consume space; every entry obeys the hard packet limit.
+fn schedule(candidates: &mut [Candidate], max_bytes: usize) -> (Vec<usize>, ScheduleStats, usize) {
+    candidates.sort_by(|a, b| {
+        b.pinned.cmp(&a.pinned).then(
+            b.priority
+                .cmp(&a.priority)
+                .then(a.entity_id.cmp(&b.entity_id)),
+        )
+    });
+    let max_bits = max_bytes * 8;
+    let mut bits = 0usize;
+    let mut selected = Vec::with_capacity(candidates.len());
+    let mut stats = ScheduleStats::default();
+    for c in candidates.iter() {
+        stats.max_queue_age_ticks = stats.max_queue_age_ticks.max(c.ticks_since_last_sent);
+        let fits = max_bits == 0 || bits + c.encoded_bits <= max_bits;
+        let hard_fits = bits + c.encoded_bits <= MAX_DELTA_RECORD_BITS;
+        if hard_fits && (c.pinned || fits) {
+            selected.push(c.index);
+            bits += c.encoded_bits;
+        } else {
+            stats.deferred += 1;
+            stats.hit_budget = true;
+        }
+    }
+    (selected, stats, bits)
+}
+
+// ── Broadcast service ───────────────────────────────────────────────────────
+
+#[derive(Default, Debug, Clone)]
+pub struct TickDiagnostics {
+    pub entities_deferred_per_tick: u64,
+    pub max_queue_age_ticks: u64,
+    pub peers_at_budget_pct: u8,
+    pub peers_evaluated: u64,
+    /// Cumulative for the service lifetime (only ever incremented).
+    pub snapshot_count_overflow: u64,
+}
+
+pub struct BroadcastService {
+    pub aoi_radius: f32,
+    pub aoi_exit_radius: f32,
+    pub lod_near_radius_sq: f32,
+    pub lod_mid_radius_sq: f32,
+    pub max_snapshot_bytes: usize,
+    delta_caches: HashMap<PeerKey, DeltaStateCache>,
+    visible_entities: HashMap<PeerKey, Vec<u16>>,
+    peer_snapshot_bytes: HashMap<PeerKey, usize>,
+    pub diagnostics: TickDiagnostics,
+}
+
+impl BroadcastService {
+    pub fn new(
+        aoi_radius: f32,
+        aoi_exit_radius: f32,
+        lod_near_radius: f32,
+        lod_mid_radius: f32,
+        max_snapshot_bytes: usize,
+    ) -> Self {
+        Self {
+            aoi_radius,
+            aoi_exit_radius,
+            lod_near_radius_sq: lod_near_radius * lod_near_radius,
+            lod_mid_radius_sq: lod_mid_radius * lod_mid_radius,
+            max_snapshot_bytes,
+            delta_caches: HashMap::new(),
+            visible_entities: HashMap::new(),
+            peer_snapshot_bytes: HashMap::new(),
+            diagnostics: TickDiagnostics::default(),
+        }
+    }
+
+    pub fn get_or_create_delta_cache(&mut self, peer: PeerKey) -> &mut DeltaStateCache {
+        self.delta_caches.entry(peer).or_default()
+    }
+
+    pub fn remove_peer(&mut self, peer: PeerKey) {
+        self.delta_caches.remove(&peer);
+        self.visible_entities.remove(&peer);
+        self.peer_snapshot_bytes.remove(&peer);
+    }
+
+    /// Stored as-is; missing entries fall back to `max_snapshot_bytes` (never 0 — 0 would
+    /// disable the budget).
+    pub fn set_peer_byte_budget(&mut self, peer: PeerKey, bytes: usize) {
+        self.peer_snapshot_bytes.insert(peer, bytes);
+    }
+
+    fn classify_lod(&self, dist_sq: f32) -> u8 {
+        if self.lod_near_radius_sq > 0.0 && dist_sq <= self.lod_near_radius_sq {
+            LOD_NEAR
+        } else if self.lod_mid_radius_sq > 0.0 && dist_sq <= self.lod_mid_radius_sq {
+            LOD_MID
+        } else {
+            LOD_FAR
+        }
+    }
+
+    fn in_aoi(&self, position: Vec2, observer: Vec2, previously_visible: bool) -> bool {
+        let radius = if previously_visible {
+            self.aoi_exit_radius.max(self.aoi_radius)
+        } else {
+            self.aoi_radius
+        };
+        self.aoi_radius <= 0.0 || observer.distance_squared_to(position) <= radius * radius
+    }
+
+    /// Per-snapshot-tick broadcast: one STATE_UPDATE per authenticated peer.
+    #[allow(clippy::too_many_arguments)]
+    pub fn broadcast_state_updates(
+        &mut self,
+        all_entities: &[EntityData],
+        players: &PlayerManager,
+        tick: u64,
+        server_ms: u32,
+        outbox: &mut Outbox,
+    ) {
+        let peers: Vec<(PeerKey, u16, Vec2)> = players
+            .players
+            .iter()
+            .filter(|p| p.authenticated)
+            .map(|p| (p.peer, p.entity_id, p.position))
+            .collect();
+        if peers.is_empty() {
+            // Zero the per-tick fields so SERVER_METRICS doesn't re-broadcast stale numbers
+            // while only pre-auth peers are connected.
+            self.diagnostics.entities_deferred_per_tick = 0;
+            self.diagnostics.max_queue_age_ticks = 0;
+            self.diagnostics.peers_evaluated = 0;
+            self.diagnostics.peers_at_budget_pct = 0;
+            return;
+        }
+
+        let aoi_enabled = self.aoi_radius > 0.0;
+        let effective_exit = if self.aoi_exit_radius > self.aoi_radius {
+            self.aoi_exit_radius
+        } else {
+            self.aoi_radius
+        };
+        let cell = if effective_exit > 0.0 {
+            effective_exit / 4.0
+        } else {
+            256.0
+        };
+        let mut grid = SpatialGrid::new(cell);
+        for (i, e) in all_entities.iter().enumerate() {
+            grid.insert(i, e.position);
+        }
+
+        let mut tick_total_deferred = 0u64;
+        let mut tick_max_queue_age = 0u64;
+        let mut tick_peers_at_budget = 0u64;
+        let mut tick_peers_evaluated = 0u64;
+
+        for (peer, self_entity_id, self_position) in peers {
+            // ENet retransmits the reliable Baseline. Do not advance its cache or emit
+            // dependent channel-0 deltas until the receiver has applied and ACKed it.
+            if self
+                .delta_caches
+                .get(&peer)
+                .is_some_and(DeltaStateCache::is_baseline_pending)
+            {
+                continue;
+            }
+            // HashSet membership for the per-entity hysteresis check (was Vec::contains → O(n²)).
+            let prev_visible: std::collections::HashSet<u16> = self
+                .visible_entities
+                .get(&peer)
+                .map(|v| v.iter().copied().collect())
+                .unwrap_or_default();
+
+            // AoI filter with hysteresis (strict >: exactly-on-radius stays visible).
+            let mut visible: Vec<(usize, u8)> = Vec::new(); // (entity index, lod)
+            let mut self_seen = false;
+            if aoi_enabled {
+                for idx in grid.query_radius(self_position, effective_exit) {
+                    let e = &all_entities[idx];
+                    if e.id == self_entity_id {
+                        visible.push((idx, LOD_NEAR));
+                        self_seen = true;
+                        continue;
+                    }
+                    let dist_sq = self_position.distance_squared_to(e.position);
+                    if !self.in_aoi(e.position, self_position, prev_visible.contains(&e.id)) {
+                        continue;
+                    }
+                    visible.push((idx, self.classify_lod(dist_sq)));
+                }
+                if !self_seen {
+                    // Cell-edge rounding safety net: self is never culled.
+                    if let Some(idx) = all_entities.iter().position(|e| e.id == self_entity_id) {
+                        visible.push((idx, LOD_NEAR));
+                    }
+                }
+            } else {
+                visible = (0..all_entities.len()).map(|i| (i, LOD_NEAR)).collect();
+            }
+
+            let current_visible: Vec<u16> =
+                visible.iter().map(|(i, _)| all_entities[*i].id).collect();
+            let removed_entity_ids: Vec<u16> = if aoi_enabled {
+                let current_set: std::collections::HashSet<u16> =
+                    current_visible.iter().copied().collect();
+                prev_visible
+                    .iter()
+                    .copied()
+                    .filter(|id| !current_set.contains(id))
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            self.visible_entities.insert(peer, current_visible);
+
+            let cache = self.delta_caches.entry(peer).or_default();
+            let needs_baseline = cache.needs_full_state_for_interval(tick);
+
+            let packet = if needs_baseline {
+                let mut entities: Vec<EntityData> =
+                    visible.iter().map(|(i, _)| all_entities[*i]).collect();
+                entities.sort_by_key(|e| e.id != self_entity_id);
+                let snap = create_full_state_packet(&entities, cache, tick, server_ms);
+                if entities.len() > STATE_MAX_FULL_ENTITIES {
+                    self.diagnostics.snapshot_count_overflow += 1;
+                }
+                snap
+            } else {
+                let peer_max = self
+                    .peer_snapshot_bytes
+                    .get(&peer)
+                    .copied()
+                    .unwrap_or(self.max_snapshot_bytes);
+                let (snap, stats) = create_delta_packet(
+                    all_entities,
+                    &visible,
+                    cache,
+                    tick,
+                    server_ms,
+                    &removed_entity_ids,
+                    peer_max,
+                    self_entity_id,
+                );
+                tick_peers_evaluated += 1;
+                tick_total_deferred += stats.deferred as u64;
+                tick_max_queue_age = tick_max_queue_age.max(stats.max_queue_age_ticks);
+                if stats.hit_budget {
+                    tick_peers_at_budget += 1;
+                }
+                snap
+            };
+            outbox.send(peer, ServerPacket::Snapshot(packet));
+        }
+
+        self.diagnostics.entities_deferred_per_tick = tick_total_deferred;
+        self.diagnostics.max_queue_age_ticks = tick_max_queue_age;
+        self.diagnostics.peers_evaluated = tick_peers_evaluated;
+        self.diagnostics.peers_at_budget_pct = if tick_peers_evaluated > 0 {
+            ((100.0 * tick_peers_at_budget as f64 / tick_peers_evaluated as f64).round() as i64)
+                .clamp(0, 255) as u8
+        } else {
+            0
+        };
+    }
+
+    /// REQUEST_FULL_STATE recovery uses the same AoI and hysteresis as broadcasts.
+    /// Replay identity only for players in that recovery set.
+    pub fn handle_full_state_request(
+        &mut self,
+        peer: PeerKey,
+        all_entities: &[EntityData],
+        players: &PlayerManager,
+        tick: u64,
+        server_ms: u32,
+        outbox: &mut Outbox,
+    ) {
+        let Some(player) = players.get(peer).filter(|p| p.authenticated) else {
+            return;
+        };
+        let previous: std::collections::HashSet<_> = self
+            .visible_entities
+            .get(&peer)
+            .into_iter()
+            .flatten()
+            .copied()
+            .collect();
+        let mut entities: Vec<_> = all_entities
+            .iter()
+            .copied()
+            .filter(|e| {
+                e.id == player.entity_id
+                    || self.in_aoi(e.position, player.position, previous.contains(&e.id))
+            })
+            .collect();
+        entities.sort_by_key(|e| e.id != player.entity_id);
+        let visible: std::collections::HashSet<_> = entities
+            .iter()
+            .take(STATE_MAX_FULL_ENTITIES)
+            .map(|e| e.id)
+            .collect();
+        self.visible_entities
+            .insert(peer, visible.iter().copied().collect());
+        let cache = self.delta_caches.entry(peer).or_default();
+        let snap = create_full_state_packet(&entities, cache, tick, server_ms);
+        if entities.len() > STATE_MAX_FULL_ENTITIES {
+            self.diagnostics.snapshot_count_overflow += 1;
+        }
+        outbox.send(peer, ServerPacket::Snapshot(snap));
+        for p in players
+            .players
+            .iter()
+            .filter(|p| p.authenticated && visible.contains(&p.entity_id))
+        {
+            outbox.send(
+                peer,
+                player_info_event(
+                    p.entity_id,
+                    &p.character_name,
+                    p.position,
+                    p.player_color,
+                    p.player_class,
+                    p.level,
+                ),
+            );
+        }
+    }
+
+    pub fn mark_baseline_acked(&mut self, peer: PeerKey, baseline_tick: u64) {
+        if let Some(cache) = self.delta_caches.get_mut(&peer) {
+            cache.mark_baseline_acked(baseline_tick);
+        }
+    }
+
+    /// Shutdown path.
+    #[allow(dead_code)]
+    pub fn clear_all_caches(&mut self) {
+        self.delta_caches.clear();
+        self.visible_entities.clear();
+        self.peer_snapshot_bytes.clear();
+    }
+}
+
+pub fn player_info_event(
+    entity_id: u16,
+    name: &str,
+    position: Vec2,
+    color: (u8, u8, u8),
+    class: u8,
+    level: u16,
+) -> ServerPacket {
+    ServerPacket::GameEvent(GameEvent {
+        event_type: game_event_type::PLAYER_INFO,
+        source_id: 0,
+        target_id: entity_id,
+        data: GameEventData::PlayerInfo {
+            name: name.to_string(),
+            x: position.x,
+            y: position.y,
+            color,
+            class,
+            level,
+        },
+    })
+}
+
+/// Deviation from GDScript: only the entities that actually make the packet are cached
+/// (GDScript cached all, then truncated on the wire — stranding unsent entities as "sent").
+fn create_full_state_packet(
+    entities: &[EntityData],
+    cache: &mut DeltaStateCache,
+    tick: u64,
+    server_ms: u32,
+) -> Snapshot {
+    // A received baseline replaces the client's entire entity model. Retaining
+    // entries omitted here (including cap truncation) would let re-entry emit a
+    // partial delta for an entity the receiver no longer knows.
+    cache.cache.clear();
+    let mut records = Vec::with_capacity(entities.len().min(STATE_MAX_FULL_ENTITIES));
+    for e in entities.iter().take(STATE_MAX_FULL_ENTITIES) {
+        records.push(EntityRecord::full(
+            e.id,
+            (e.position.x, e.position.y),
+            e.animation,
+            e.flags,
+        ));
+        cache.update_cache(e.id, e, tick);
+    }
+    cache.reset_baseline(tick);
+    Snapshot {
+        server_tick: tick as u32,
+        server_ms,
+        is_baseline: true,
+        baseline_tick: None,
+        entities: records,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn create_delta_packet(
+    all_entities: &[EntityData],
+    visible: &[(usize, u8)],
+    cache: &mut DeltaStateCache,
+    tick: u64,
+    server_ms: u32,
+    removed_entity_ids: &[u16],
+    peer_max_bytes: usize,
+    observer_id: u16,
+) -> (Snapshot, ScheduleStats) {
+    struct Staged {
+        record: EntityRecord,
+        current: Option<EntityData>,
+        mask: u8,
+    }
+    let mut staged: Vec<Staged> = Vec::new();
+    let mut candidates: Vec<Candidate> = Vec::new();
+    let mut removed_set: Vec<u16> = Vec::new();
+    let mut active_entity_ids: Vec<u16> = Vec::new();
+
+    // 1. AoI-exit removals — pinned.
+    for &entity_id in removed_entity_ids {
+        removed_set.push(entity_id);
+        let record = EntityRecord::removed(entity_id);
+        let bits = record.wire_bits(false);
+        staged.push(Staged {
+            record,
+            current: None,
+            mask: delta_mask::REMOVED,
+        });
+        candidates.push(Candidate {
+            index: staged.len() - 1,
+            entity_id,
+            priority: PRIORITY_PLAYER + change_bonus(delta_mask::REMOVED),
+            encoded_bits: bits,
+            ticks_since_last_sent: 0,
+            pinned: true,
+        });
+    }
+
+    // 2. Visible entities with a non-zero delta mask.
+    for &(idx, lod) in visible {
+        let e = &all_entities[idx];
+        active_entity_ids.push(e.id);
+        let mut mask = cache.calculate_delta_mask(e.id, e, tick);
+        // Every received positional record needs its same-Snapshot AoI center,
+        // including while the observer is stationary or budget pressure is high.
+        if e.id == observer_id && mask & delta_mask::FULL == 0 {
+            mask |= delta_mask::POSITION;
+        }
+        if mask == 0 {
+            continue; // unchanged entities cost zero bytes
+        }
+        let ticks_since = match cache.last_tick_sent(e.id) {
+            Some(t) => tick - t,
+            None => tick, // new-entity priority ≈ tick_count — preserved (gotcha #4)
+        };
+        let record = if mask & delta_mask::FULL != 0 {
+            EntityRecord::full(e.id, (e.position.x, e.position.y), e.animation, e.flags)
+        } else {
+            EntityRecord {
+                entity_id: e.id,
+                delta_mask: mask,
+                position: (mask & delta_mask::POSITION != 0)
+                    .then_some((e.position.x, e.position.y)),
+                animation: (mask & delta_mask::ANIMATION != 0).then_some(e.animation),
+                flags: (mask & delta_mask::FLAGS != 0).then_some(e.flags),
+            }
+        };
+        let bits = record.wire_bits(false);
+        staged.push(Staged {
+            record,
+            current: Some(*e),
+            mask,
+        });
+        candidates.push(Candidate {
+            index: staged.len() - 1,
+            entity_id: e.id,
+            priority: importance(e.id) + ticks_since as i64
+                - DISTANCE_PENALTY_BY_LOD
+                    .get(lod as usize)
+                    .copied()
+                    .unwrap_or(0)
+                + change_bonus(mask),
+            encoded_bits: bits,
+            ticks_since_last_sent: ticks_since,
+            pinned: e.id == observer_id,
+        });
+    }
+
+    // 3. Stale cache entries (left AoI tracking entirely) — pinned despawns.
+    for entity_id in cache.cleanup_stale_entities(&active_entity_ids) {
+        if removed_set.contains(&entity_id) {
+            continue;
+        }
+        let record = EntityRecord::removed(entity_id);
+        let bits = record.wire_bits(false);
+        staged.push(Staged {
+            record,
+            current: None,
+            mask: delta_mask::REMOVED,
+        });
+        candidates.push(Candidate {
+            index: staged.len() - 1,
+            entity_id,
+            priority: PRIORITY_PLAYER + change_bonus(delta_mask::REMOVED),
+            encoded_bits: bits,
+            ticks_since_last_sent: 0,
+            pinned: true,
+        });
+    }
+
+    if candidates
+        .iter()
+        .filter(|c| c.pinned)
+        .map(|c| c.encoded_bits)
+        .sum::<usize>()
+        > MAX_DELTA_RECORD_BITS
+    {
+        // An atomic reliable replacement retires every removed entity without
+        // fragmenting an unreliable packet or forgetting deferred removals.
+        let mut entities: Vec<_> = visible.iter().map(|(i, _)| all_entities[*i]).collect();
+        entities.sort_by_key(|e| e.id != observer_id);
+        return (
+            create_full_state_packet(&entities, cache, tick, server_ms),
+            ScheduleStats::default(),
+        );
+    }
+    let record_budget = peer_max_bytes
+        .min(protocol::MAX_UNRELIABLE_PAYLOAD - 1)
+        .saturating_sub(DELTA_HEADER_BYTES)
+        .max(1);
+    let (selected, stats, _bits) = schedule(&mut candidates, record_budget);
+    let mut records = Vec::with_capacity(selected.len());
+    for idx in selected {
+        let s = &staged[idx];
+        if let Some(current) = &s.current {
+            cache.update_cache_partial(s.record.entity_id, current, s.mask, tick);
+        }
+        records.push(s.record.clone());
+    }
+
+    (
+        Snapshot {
+            server_tick: tick as u32,
+            server_ms,
+            is_baseline: false,
+            baseline_tick: Some(cache.baseline_tick() as u32),
+            entities: records,
+        },
+        stats,
+    )
+}

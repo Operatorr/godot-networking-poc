@@ -979,6 +979,246 @@ mod tests {
         }
     }
 
+    // ── Differential test against the frozen pre-climb pipeline (issue #79) ────────────────
+
+    struct Xorshift(u64);
+
+    impl Xorshift {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            self.0
+        }
+        fn below(&mut self, n: u64) -> u64 {
+            self.next() % n
+        }
+        fn coordinate(&mut self) -> f32 {
+            self.below(4001) as f32 / 2.0 - 1000.0
+        }
+    }
+
+    fn encoded(packets: Vec<(crate::outbox::Target, ServerPacket)>) -> Vec<(String, Vec<u8>)> {
+        packets
+            .into_iter()
+            .map(|(target, packet)| (format!("{target:?}"), packet.encode()))
+            .collect()
+    }
+
+    /// Every packet of every Tick must match the old pipeline byte for byte: AoI membership
+    /// (hysteresis, exact-radius boundaries), removals, delta masks, scheduling under tight and
+    /// generous budgets, Baseline cadence and ACK gating, full-state requests, peers leaving and
+    /// rejoining, and the oversized-removal Baseline.
+    #[test]
+    fn optimized_output_matches_reference() {
+        use crate::net::broadcast_reference as old;
+        init_arena_geometry();
+        let mut total_packets = 0usize;
+        let mut baselines = 0usize;
+        let mut deltas_with_removals = 0usize;
+        for seed in 1..=6u64 {
+            let mut rng = Xorshift(0x9E37_79B9_7F4A_7C15 ^ (seed * 0x1000_0001));
+            let mut new_svc = BroadcastService::new(1000.0, 1100.0, 400.0, 1000.0, 1200);
+            let mut old_svc = old::BroadcastService::new(1000.0, 1100.0, 400.0, 1000.0, 1200);
+            let mut players = PlayerManager::new();
+            let peer_count = 24 + (seed as usize) * 4;
+            for peer in 0..peer_count {
+                let (x, y) = (rng.coordinate(), rng.coordinate());
+                let p = players.add_player(peer).unwrap();
+                p.authenticated = true;
+                p.position = Vec2::new(x, y);
+                if peer % 5 == 0 {
+                    new_svc.set_peer_byte_budget(peer, 200);
+                    old_svc.set_peer_byte_budget(peer, 200);
+                } else if peer % 5 == 1 {
+                    new_svc.set_peer_byte_budget(peer, 5000);
+                    old_svc.set_peer_byte_budget(peer, 5000);
+                }
+            }
+            let mut projectiles: Vec<(u16, Vec2, u8)> = Vec::new();
+            let mut next_projectile = 10000u16;
+            let mut pending: Vec<(usize, u64, u64)> = Vec::new();
+            for tick in 1..=260u64 {
+                // Movement: small steps, teleports, and observers parked exactly on a radius.
+                let ids: Vec<usize> = players.players.iter().map(|p| p.peer).collect();
+                for peer in &ids {
+                    let roll = rng.below(100);
+                    let (dx, dy) = (rng.coordinate() / 50.0, rng.coordinate() / 50.0);
+                    let (tx, ty) = (rng.coordinate(), rng.coordinate());
+                    let p = players
+                        .players
+                        .iter_mut()
+                        .find(|p| p.peer == *peer)
+                        .unwrap();
+                    match roll {
+                        0..=1 => p.position = Vec2::new(tx, ty),
+                        2 => p.position = Vec2::new(0.0, 0.0),
+                        3 => p.position = Vec2::new(1000.0, 0.0),
+                        4 => p.position = Vec2::new(1100.0, 0.0),
+                        5..=40 => p.position = Vec2::new(p.position.x + dx, p.position.y + dy),
+                        _ => {}
+                    }
+                    if roll == 41 {
+                        p.animation_state = (tick % 4) as u8;
+                    }
+                    if roll == 42 {
+                        p.entity_flags ^= 0x2;
+                    }
+                }
+                // Peers leaving and rejoining reset their visibility and cache state.
+                if rng.below(40) == 0 {
+                    let peer = rng.below(peer_count as u64) as usize;
+                    let p = players.players.iter_mut().find(|p| p.peer == peer).unwrap();
+                    p.authenticated = !p.authenticated;
+                    new_svc.remove_peer(peer);
+                    old_svc.remove_peer(peer);
+                    pending.retain(|(q, _, _)| *q != peer);
+                }
+                // Projectile churn, plus a mass despawn that forces the oversized-removal path.
+                for _ in 0..rng.below(6) {
+                    let (x, y) = (rng.coordinate(), rng.coordinate());
+                    projectiles.push((next_projectile, Vec2::new(x, y), (tick % 8) as u8));
+                    next_projectile = 10000 + (next_projectile - 10000 + 1) % 20000;
+                }
+                for projectile in &mut projectiles {
+                    projectile.1 = Vec2::new(projectile.1.x + 3.0, projectile.1.y - 2.0);
+                }
+                let before = projectiles.len();
+                projectiles.retain(|p| p.1.x.abs() < 1100.0 && p.1.y.abs() < 1100.0);
+                if before == projectiles.len() && projectiles.len() > 40 && rng.below(10) == 0 {
+                    projectiles.truncate(10);
+                }
+                if tick == 150 {
+                    for i in 0..1400u16 {
+                        projectiles.push((20000 + i, Vec2::new(5.0, 5.0), 0));
+                    }
+                }
+                if tick == 170 {
+                    projectiles.retain(|p| p.0 < 20000 || p.0 >= 21400);
+                }
+
+                let mut new_entities: Vec<EntityData> = players
+                    .players
+                    .iter()
+                    .filter(|p| p.authenticated)
+                    .map(|p| EntityData {
+                        id: p.entity_id,
+                        position: p.position,
+                        animation: p.animation_state,
+                        flags: p.entity_flags,
+                    })
+                    .collect();
+                new_entities.extend(projectiles.iter().map(|&(id, position, animation)| {
+                    EntityData {
+                        id,
+                        position,
+                        animation,
+                        flags: 0x21,
+                    }
+                }));
+                let old_entities: Vec<old::EntityData> = new_entities
+                    .iter()
+                    .map(|e| old::EntityData {
+                        id: e.id,
+                        position: e.position,
+                        animation: e.animation,
+                        flags: e.flags,
+                    })
+                    .collect();
+
+                let (mut new_outbox, mut old_outbox) = (Outbox::new(), Outbox::new());
+                new_svc.broadcast_state_updates(
+                    &new_entities,
+                    &players,
+                    tick,
+                    tick as u32,
+                    &mut new_outbox,
+                );
+                old_svc.broadcast_state_updates(
+                    &old_entities,
+                    &players,
+                    tick,
+                    tick as u32,
+                    &mut old_outbox,
+                );
+                if rng.below(25) == 0 {
+                    let peer = rng.below(peer_count as u64) as usize;
+                    new_svc.handle_full_state_request(
+                        peer,
+                        &new_entities,
+                        &players,
+                        tick,
+                        tick as u32,
+                        &mut new_outbox,
+                    );
+                    old_svc.handle_full_state_request(
+                        peer,
+                        &old_entities,
+                        &players,
+                        tick,
+                        tick as u32,
+                        &mut old_outbox,
+                    );
+                }
+                let new_packets = new_outbox.drain();
+                for (target, packet) in &new_packets {
+                    if let (crate::outbox::Target::Peer(peer), ServerPacket::Snapshot(s)) =
+                        (target, packet)
+                    {
+                        total_packets += 1;
+                        if s.is_baseline {
+                            baselines += 1;
+                            let due = tick + rng.below(4);
+                            pending.retain(|(q, _, _)| q != peer);
+                            pending.push((*peer, u64::from(s.server_tick), due));
+                        } else if s
+                            .entities
+                            .iter()
+                            .any(|r| r.delta_mask & delta_mask::REMOVED != 0)
+                        {
+                            deltas_with_removals += 1;
+                        }
+                    }
+                }
+                assert_eq!(
+                    encoded(new_packets),
+                    encoded(old_outbox.drain()),
+                    "seed {seed} tick {tick}"
+                );
+                assert_eq!(
+                    new_svc.diagnostics.entities_deferred_per_tick,
+                    old_svc.diagnostics.entities_deferred_per_tick,
+                    "deferred, seed {seed} tick {tick}"
+                );
+                assert_eq!(
+                    new_svc.diagnostics.max_queue_age_ticks,
+                    old_svc.diagnostics.max_queue_age_ticks,
+                    "queue age, seed {seed} tick {tick}"
+                );
+                assert_eq!(
+                    new_svc.diagnostics.snapshot_count_overflow,
+                    old_svc.diagnostics.snapshot_count_overflow
+                );
+                pending.retain(|&(peer, baseline, due)| {
+                    if due <= tick {
+                        new_svc.mark_baseline_acked(peer, baseline);
+                        old_svc.mark_baseline_acked(peer, baseline);
+                        false
+                    } else {
+                        true
+                    }
+                });
+            }
+        }
+        // The scenario must actually reach the paths it claims to cover.
+        assert!(total_packets > 20_000, "{total_packets} Snapshots");
+        assert!(baselines > 200, "{baselines} Baselines");
+        assert!(
+            deltas_with_removals > 1000,
+            "{deltas_with_removals} removals"
+        );
+    }
+
     /// Local mechanism timing only; never a server capacity result.
     #[test]
     #[ignore = "bounded release microbenchmark; run manually with --release --ignored --nocapture"]
