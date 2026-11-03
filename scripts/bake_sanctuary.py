@@ -65,7 +65,7 @@ def vectors(name, points):
         f'    crate::Vec2::new({x*32+16:.1f}, {y*32+16:.1f}),\n' for x,y in points) + '];\n'
 text += vectors('SPAWNS', data['spawn_points'])
 text += '#[cfg(test)]\n' + vectors('GATES', data['gates'])
-text += '#[cfg(test)]\n' + vectors('SERVICES', [data[k] for k in ['spawn', 'arena', 'bank', 'vendor']])
+text += '#[cfg(test)]\n' + vectors('SERVICES', [data[k] for k in ['spawn', 'arena', 'bank', 'vendor', 'priest']])
 text += '#[cfg(test)]\n' + vectors('ROOM_ANCHORS', [b['interior_anchor'] for b in data['buildings']])
 # Player-radius clearance and connectivity protect all required service routes.
 def free(p):
@@ -82,7 +82,7 @@ while queue:
         if p not in seen and free(p):
             seen.add(p)
             queue.append(p)
-for key in ['arena', 'bank', 'vendor']:
+for key in ['arena', 'bank', 'vendor', 'priest']:
     assert tuple(data[key]) in seen, f'{key} is unreachable with player clearance'
 for building in data['buildings']:
     assert tuple(building['interior_anchor']) in seen, f"{building['id']} is unreachable"

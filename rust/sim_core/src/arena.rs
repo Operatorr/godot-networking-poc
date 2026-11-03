@@ -467,6 +467,39 @@ mod tests {
         assert_ne!(move_with_obstacle_collision(from, to, 16.0), to);
     }
 
+    /// Bake clearance tests cell centers; this walks the real swept movement a player uses.
+    #[test]
+    fn sanctuary_priest_is_walkable_from_arrival() {
+        use crate::constants::{SANCTUARY_MAP_MAX, SANCTUARY_MAP_MIN};
+        set_world_geometry(SANCTUARY_MAP_MIN, SANCTUARY_MAP_MAX, false);
+        let [arrival, .., priest] = crate::sanctuary::SERVICES;
+        // East along the nave between the column rows, north through the chancel door, east to the priest.
+        let door_x = 448.0;
+        let route = [
+            Vec2::new(door_x, arrival.y),
+            Vec2::new(door_x, priest.y),
+            priest,
+        ];
+        let mut pos = arrival;
+        for waypoint in route {
+            while pos != waypoint {
+                let delta = waypoint - pos;
+                let length = delta.length();
+                let step = if length <= 6.0 {
+                    waypoint
+                } else {
+                    pos + delta * (6.0 / length)
+                };
+                let moved = move_with_obstacle_collision(pos, step, 16.0);
+                assert_eq!(
+                    moved, step,
+                    "blocked walking from {pos:?} toward {waypoint:?}"
+                );
+                pos = moved;
+            }
+        }
+    }
+
     #[test]
     fn custom_geometry_widens_bounds_and_drops_obstacles() {
         // Honor the set-once contract on this thread; the value equals the Arena default.

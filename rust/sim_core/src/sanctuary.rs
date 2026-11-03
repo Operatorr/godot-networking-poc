@@ -1490,11 +1490,12 @@ pub const GATES: [crate::Vec2; 4] = [
     crate::Vec2::new(-2416.0, 1168.0),
 ];
 #[cfg(test)]
-pub const SERVICES: [crate::Vec2; 4] = [
+pub const SERVICES: [crate::Vec2; 5] = [
     crate::Vec2::new(208.0, 272.0),
     crate::Vec2::new(496.0, 432.0),
     crate::Vec2::new(2256.0, -464.0),
     crate::Vec2::new(16.0, -592.0),
+    crate::Vec2::new(528.0, -144.0),
 ];
 #[cfg(test)]
 pub const ROOM_ANCHORS: [crate::Vec2; 57] = [

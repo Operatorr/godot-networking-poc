@@ -42,8 +42,8 @@ Don't re-derive what's already written there; read it, then go deep where needed
   - `scripts/systems/` — combat/, spawning/, visuals/, audio/, progression/, inventory/, loot/.
   - `scripts/ui/` (hud/, menus/, dialogs/, helpers/), `scripts/core/` (game modes),
     `scripts/factories/`, `scripts/levels/` (incl. `town/` — the Sanctuary is a thin networked
-    shell `sanctuary.gd` over `town/sanctuary_town_world.gd`, a code-generated grim placeholder city
-    drawing ~90 prop kinds via `town/sanctuary_props.gd`; layout = `docs/design/sanctuary-layout.md`),
+    shell `sanctuary.gd` over `town/sanctuary_town_world.gd`, an island of enterable tilemap
+    buildings generated from `data/world/sanctuary/layout.json`; layout = `docs/design/sanctuary-layout.md`),
     `scripts/utils/`.
   - `scenes/` — `entities/`, `levels/` (arena/, hub/, offline/, pve/, biomes/), `ui/`, `test/`.
   - `data/` — JSON content (classes/, monsters/, balance/, loot/, items/, spells/, projectiles/,
@@ -131,8 +131,8 @@ OMEGA_SERVER=<droplet-ip>:8081 ./scripts/run_load_test.sh --scenario baseline   
 ## Invariants (hold today; enforce in review)
 
 - Entity id ranges: **players 1–999, projectiles 10000–29999, monsters 30000–39999**.
-- Arena bounds: `(-1000,-1000)..(1000,1000)`; boundary walls at ±1005. Sanctuary bounds (walk-through,
-  no obstacles): `(-3328,-3072)..(3328,3072)` — `SANCTUARY_MAP_MIN/MAX` in `rust/sim_core/src/constants.rs`
+- Arena bounds: `(-1000,-1000)..(1000,1000)`; boundary walls at ±1005. Sanctuary bounds (baked island
+  collision in `sim_core::sanctuary`, no Arena obstacles): `(-3328,-3072)..(3328,3072)` — `SANCTUARY_MAP_MIN/MAX` in `rust/sim_core/src/constants.rs`
   must stay in lockstep with the client's `sanctuary.gd` `_world_geometry()` / `SanctuaryTownWorld.TOWN_RECT`.
 - Wire format: `[u8 type][payload]` over ENet (no length field — datagram boundaries);
   positions quantized to 0.1 unit (truncate toward zero). 3 channels: ch0 snapshots/confirms

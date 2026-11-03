@@ -18,6 +18,7 @@ the island and exits 1–4 remain sealed.
 | C | (496,432) | Arena travel portal inside the same Temple |
 | D | (2256,-464) | Bank interior on the east side; transactions remain a stub |
 | 10 | (16,-592) | Vendor interior; trading remains a stub |
+| — | (528,-144) | Father Aldric, in the Temple chancel; opens the character sacrifice prompt |
 
 There are 57 building records: the Temple, Bank, vendor and 54 housing plots. Every record
 has a stable `id`, `kind`, bounds, floor cells, roof cells, doorway, street point and interior
@@ -88,8 +89,9 @@ Exact Sanctuary bounds with the Arena-obstacle flag false select these shared so
 remain ±3328 × ±3072. Rebuild server and GDExtension together after changing the map.
 
 The server owns movement and spawn selection; client prediction uses the same Rust geometry.
-Positions replicate as before. No map, roof or housing state is saved by this change. Existing
-NPC dialogs and Arena travel behavior are retained. Stale native extensions can disagree with
+Positions replicate as before. No map, roof or housing state is saved by this change. Arena
+travel behavior is retained. The town places the priest, banker and vendor; the priest keeps his
+sacrifice flow, while the earlier class trainers, second vendor and generic townsfolk are not placed yet. Stale native extensions can disagree with
 the map, so deploying only the GDScript/JSON is insufficient.
 
 ## Validation

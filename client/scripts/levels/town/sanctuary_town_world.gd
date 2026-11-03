@@ -325,8 +325,11 @@ func _torch(pos: Vector2) -> void:
 	_prop_sprite(12, pos, Vector2(26, 26))
 
 
-func build_npcs(parent: Node2D, scene: PackedScene, texture_dir: String, _priest_listener: Callable = Callable()) -> void:
+## A valid `priest_listener` receives the priest's `interacted` signal and replaces his default
+## dialog (the Sanctuary's sacrifice flow).
+func build_npcs(parent: Node2D, scene: PackedScene, texture_dir: String, priest_listener: Callable = Callable()) -> void:
 	var entries := [
+		["Father Aldric", "Priest of the Ash", "priest", TownNpc.Role.PRIEST, "priest.png", "Kneel if your knees still bend, pilgrim. The gods went silent before your grandfather drew breath, yet the bells we have left still ring. Offer your Glory at the shrine when the rite is consecrated — what you sacrifice here makes the next soul you raise a little harder to kill."],
 		["Goldwin Ledger", "Bank", "bank", TownNpc.Role.BANKER, "banker.png", "Welcome to the bank. Banking services are not yet available."],
 		["Tilda Brewbloom", "Vendor", "vendor", TownNpc.Role.VENDOR, "potion_vendor.png", "My supplies are being counted. Trading is not yet available."]]
 	for entry: Array in entries:
@@ -337,6 +340,9 @@ func build_npcs(parent: Node2D, scene: PackedScene, texture_dir: String, _priest
 		npc.role = entry[3]
 		npc.texture_path = texture_dir + entry[4]
 		npc.dialog_text = entry[5]
+		if npc.role == TownNpc.Role.PRIEST and priest_listener.is_valid():
+			npc.suppress_default_dialog = true
+			npc.interacted.connect(priest_listener)
 		parent.add_child(npc)
 
 func build_arena_portal(parent: Node2D, scene: PackedScene, texture_dir: String) -> Node:
