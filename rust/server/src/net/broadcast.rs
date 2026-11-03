@@ -14,7 +14,7 @@ use crate::player::{PeerKey, PlayerManager};
 use protocol::types::{delta_mask, game_event_type};
 use protocol::{EntityRecord, GameEvent, GameEventData, ServerPacket, Snapshot};
 use sim_core::Vec2;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::hash::{BuildHasherDefault, Hasher};
 
 pub const DELTA_FULL_STATE_INTERVAL: u64 = 100;
@@ -84,7 +84,36 @@ impl Hasher for SnapshotKeyHasher {
 
 type SnapshotBuildHasher = BuildHasherDefault<SnapshotKeyHasher>;
 type SnapshotMap<K, V> = HashMap<K, V, SnapshotBuildHasher>;
-type SnapshotSet<K> = HashSet<K, SnapshotBuildHasher>;
+
+/// Constant-time membership over the whole u16 entity id space. One instance serves every peer in
+/// a Tick: `clear` walks the ids it was given, so reuse costs O(ids), not 8 KiB per peer.
+struct EntityIdSet {
+    words: Box<[u64; 1024]>,
+}
+
+impl EntityIdSet {
+    fn new() -> Self {
+        Self {
+            words: Box::new([0; 1024]),
+        }
+    }
+
+    fn insert_all(&mut self, ids: &[u16]) {
+        for &id in ids {
+            self.words[usize::from(id) / 64] |= 1_u64 << (id % 64);
+        }
+    }
+
+    fn contains(&self, id: u16) -> bool {
+        self.words[usize::from(id) / 64] & (1_u64 << (id % 64)) != 0
+    }
+
+    fn clear(&mut self, ids: &[u16]) {
+        for &id in ids {
+            self.words[usize::from(id) / 64] = 0;
+        }
+    }
+}
 
 // ── Delta state cache (one per peer) ────────────────────────────────────────
 
@@ -478,6 +507,8 @@ impl BroadcastService {
             grid.insert(i, e.position);
         }
 
+        let mut prev_visible = EntityIdSet::new();
+        let mut current_set = EntityIdSet::new();
         let mut tick_total_deferred = 0u64;
         let mut tick_max_queue_age = 0u64;
         let mut tick_peers_at_budget = 0u64;
@@ -493,12 +524,8 @@ impl BroadcastService {
             {
                 continue;
             }
-            // HashSet membership for the per-entity hysteresis check (was Vec::contains → O(n²)).
-            let prev_visible: SnapshotSet<u16> = self
-                .visible_entities
-                .get(&peer)
-                .map(|v| v.iter().copied().collect())
-                .unwrap_or_default();
+            let previous_ids = self.visible_entities.remove(&peer).unwrap_or_default();
+            prev_visible.insert_all(&previous_ids);
 
             // AoI filter with hysteresis (strict >: exactly-on-radius stays visible).
             let mut visible: Vec<(usize, u8)> = Vec::new(); // (entity index, lod)
@@ -512,7 +539,7 @@ impl BroadcastService {
                         continue;
                     }
                     let dist_sq = self_position.distance_squared_to(e.position);
-                    if !self.in_aoi(e.position, self_position, prev_visible.contains(&e.id)) {
+                    if !self.in_aoi(e.position, self_position, prev_visible.contains(e.id)) {
                         continue;
                     }
                     visible.push((idx, self.classify_lod(dist_sq)));
@@ -529,16 +556,18 @@ impl BroadcastService {
 
             let current_visible: Vec<u16> =
                 visible.iter().map(|(i, _)| all_entities[*i].id).collect();
+            current_set.insert_all(&current_visible);
             let removed_entity_ids: Vec<u16> = if aoi_enabled {
-                let current_set: SnapshotSet<u16> = current_visible.iter().copied().collect();
-                prev_visible
+                previous_ids
                     .iter()
                     .copied()
-                    .filter(|id| !current_set.contains(id))
+                    .filter(|&id| !current_set.contains(id))
                     .collect()
             } else {
                 Vec::new()
             };
+            prev_visible.clear(&previous_ids);
+            current_set.clear(&current_visible);
             self.visible_entities.insert(peer, current_visible);
 
             let cache = self.delta_caches.entry(peer).or_default();
@@ -880,6 +909,40 @@ fn create_delta_packet(
         },
         stats,
     )
+}
+
+/// Per-thread allocation counting for the test binary, so tests running in parallel do not see
+/// each other's allocations.
+#[cfg(test)]
+pub(crate) mod counting_allocator {
+    use std::alloc::{GlobalAlloc, Layout, System};
+    use std::cell::Cell;
+
+    thread_local! {
+        static ALLOCATIONS: Cell<usize> = const { Cell::new(0) };
+    }
+
+    struct Counting;
+
+    // SAFETY: defers every operation to the system allocator; only a thread-local counter is added.
+    unsafe impl GlobalAlloc for Counting {
+        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+            let _ = ALLOCATIONS.try_with(|n| n.set(n.get() + 1));
+            unsafe { System.alloc(layout) }
+        }
+        unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+            unsafe { System.dealloc(ptr, layout) }
+        }
+    }
+
+    #[global_allocator]
+    static COUNTING: Counting = Counting;
+
+    pub fn allocations_during(work: &mut dyn FnMut()) -> usize {
+        let before = ALLOCATIONS.with(Cell::get);
+        work();
+        ALLOCATIONS.with(Cell::get) - before
+    }
 }
 
 #[cfg(test)]
@@ -1279,6 +1342,64 @@ mod tests {
             std::mem::size_of_val(delta_cache.cache.hasher()),
             0,
             "the delta cache must use the stateless Snapshot hasher, not RandomState"
+        );
+    }
+
+    /// Allocation counts are deterministic where wall-clock timing is not: per-peer HashSets
+    /// show up as allocations the old pipeline makes and this one must not.
+    #[test]
+    fn visibility_tracking_builds_no_per_peer_hash_sets() {
+        use crate::net::broadcast_reference as old;
+        init_arena_geometry();
+        let peers = 30usize;
+        let mut players = PlayerManager::new();
+        for peer in 0..peers {
+            let p = players.add_player(peer).unwrap();
+            p.authenticated = true;
+            p.position = Vec2::new(peer as f32 * 4.0, 0.0);
+        }
+        let new_entities: Vec<EntityData> = players
+            .players
+            .iter()
+            .map(|p| EntityData {
+                id: p.entity_id,
+                position: p.position,
+                animation: 0,
+                flags: 0x21,
+            })
+            .collect();
+        let old_entities: Vec<old::EntityData> = new_entities
+            .iter()
+            .map(|e| old::EntityData {
+                id: e.id,
+                position: e.position,
+                animation: e.animation,
+                flags: e.flags,
+            })
+            .collect();
+        let mut new_svc = BroadcastService::new(1000.0, 1100.0, 400.0, 1000.0, 1200);
+        let mut old_svc = old::BroadcastService::new(1000.0, 1100.0, 400.0, 1000.0, 1200);
+        let mut outbox = Outbox::new();
+        new_svc.broadcast_state_updates(&new_entities, &players, 100, 0, &mut outbox);
+        old_svc.broadcast_state_updates(&old_entities, &players, 100, 0, &mut outbox);
+        for peer in 0..peers {
+            new_svc.mark_baseline_acked(peer, 100);
+            old_svc.mark_baseline_acked(peer, 100);
+        }
+        outbox.drain();
+        let count = counting_allocator::allocations_during;
+        let new_allocations = count(&mut || {
+            new_svc.broadcast_state_updates(&new_entities, &players, 101, 0, &mut outbox)
+        });
+        outbox.drain();
+        let old_allocations = count(&mut || {
+            old_svc.broadcast_state_updates(&old_entities, &players, 101, 0, &mut outbox)
+        });
+        outbox.drain();
+        // The old pipeline built two HashSets per peer; the new one allocates two id sets per Tick.
+        assert!(
+            new_allocations + 2 * peers <= old_allocations + 2,
+            "new {new_allocations} vs old {old_allocations} allocations for {peers} peers"
         );
     }
 
