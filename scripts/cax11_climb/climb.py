@@ -425,6 +425,7 @@ def report_session(name, reference):
         ("Outbox flush ms/Tick", ("server", "phase_ms_per_tick", "outbox_flush"), 2),
         ("ENet flush ms/Tick", ("server", "phase_ms_per_tick", "enet_flush"), 2),
         ("Server CPU % core", ("server", "cpu_core_pct"), 1), ("Offered datagrams/s", ("offered_datagrams_per_s",), 0),
+        ("Host steal %", ("host", "steal_pct"), 2), ("Host busy %", ("host", "busy_pct"), 1),
         ("Read gaps >33 ms", ("server", "transport", "read_gaps_over_33ms"), 0),
         ("Read gap max ms", ("server", "transport", "read_gap_max_ms"), 1),
         ("Deferred records p95/Tick", ("deferred", "p95"), 0), ("Deferred records mean/Tick", ("deferred", "mean"), 0),

@@ -189,6 +189,13 @@ def analyze(trial, bots, smoke_rtt_p95=None):
         hrows = host_rows(trial / "host.ndjson")
         out["drops"] = split_counter(hrows, "RcvbufErrors", lo_s, hi_s)
         out["sndbuf_errors"] = split_counter(hrows, "SndbufErrors", lo_s, hi_s)
+        inside = [r for r in hrows if lo_s <= r["ts"] <= hi_s and "total_s" in r.get("system", {})]
+        if len(inside) >= 2:
+            a_sys, b_sys = inside[0]["system"], inside[-1]["system"]
+            total = b_sys["total_s"] - a_sys["total_s"]
+            if total > 0:
+                out["host"] = {"steal_pct": 100.0 * (b_sys["steal_s"] - a_sys["steal_s"]) / total,
+                               "busy_pct": 100.0 * (1 - (b_sys["idle_s"] - a_sys["idle_s"]) / total)}
         sock = [r["udp"]["socket"] for r in qs.load_ndjson(str(trial / "host.ndjson")) if r.get("udp", {}).get("socket")]
         if sock:
             out["socket"] = {"drops": sock[-1]["drops"] - sock[0]["drops"],
