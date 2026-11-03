@@ -1,0 +1,522 @@
+{
+	"buildings": [
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "temple",
+			"rendered": true,
+			"roof_cells": 644,
+			"route_steps": 14
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_001",
+			"rendered": true,
+			"roof_cells": 504,
+			"route_steps": 18
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_002",
+			"rendered": true,
+			"roof_cells": 210,
+			"route_steps": 5
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_003",
+			"rendered": true,
+			"roof_cells": 96,
+			"route_steps": 8
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "vendor_10",
+			"rendered": true,
+			"roof_cells": 84,
+			"route_steps": 5
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_005",
+			"rendered": true,
+			"roof_cells": 152,
+			"route_steps": 13
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_006",
+			"rendered": true,
+			"roof_cells": 100,
+			"route_steps": 7
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_007",
+			"rendered": true,
+			"roof_cells": 153,
+			"route_steps": 12
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_008",
+			"rendered": true,
+			"roof_cells": 96,
+			"route_steps": 3
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_009",
+			"rendered": true,
+			"roof_cells": 77,
+			"route_steps": 6
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_010",
+			"rendered": true,
+			"roof_cells": 35,
+			"route_steps": 2
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_011",
+			"rendered": true,
+			"roof_cells": 85,
+			"route_steps": 8
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_012",
+			"rendered": true,
+			"roof_cells": 30,
+			"route_steps": 3
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_013",
+			"rendered": true,
+			"roof_cells": 132,
+			"route_steps": 12
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_014",
+			"rendered": true,
+			"roof_cells": 52,
+			"route_steps": 7
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_015",
+			"rendered": true,
+			"roof_cells": 72,
+			"route_steps": 4
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_016",
+			"rendered": true,
+			"roof_cells": 56,
+			"route_steps": 4
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_017",
+			"rendered": true,
+			"roof_cells": 70,
+			"route_steps": 4
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_018",
+			"rendered": true,
+			"roof_cells": 55,
+			"route_steps": 4
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_019",
+			"rendered": true,
+			"roof_cells": 60,
+			"route_steps": 3
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_020",
+			"rendered": true,
+			"roof_cells": 80,
+			"route_steps": 3
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_021",
+			"rendered": true,
+			"roof_cells": 56,
+			"route_steps": 5
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_022",
+			"rendered": true,
+			"roof_cells": 224,
+			"route_steps": 11
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_023",
+			"rendered": true,
+			"roof_cells": 154,
+			"route_steps": 9
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_024",
+			"rendered": true,
+			"roof_cells": 104,
+			"route_steps": 6
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_025",
+			"rendered": true,
+			"roof_cells": 36,
+			"route_steps": 4
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_026",
+			"rendered": true,
+			"roof_cells": 35,
+			"route_steps": 3
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_027",
+			"rendered": true,
+			"roof_cells": 180,
+			"route_steps": 4
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_028",
+			"rendered": true,
+			"roof_cells": 42,
+			"route_steps": 3
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_029",
+			"rendered": true,
+			"roof_cells": 98,
+			"route_steps": 3
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_030",
+			"rendered": true,
+			"roof_cells": 84,
+			"route_steps": 5
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_031",
+			"rendered": true,
+			"roof_cells": 117,
+			"route_steps": 6
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_032",
+			"rendered": true,
+			"roof_cells": 170,
+			"route_steps": 12
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_033",
+			"rendered": true,
+			"roof_cells": 105,
+			"route_steps": 5
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_034",
+			"rendered": true,
+			"roof_cells": 96,
+			"route_steps": 3
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_035",
+			"rendered": true,
+			"roof_cells": 80,
+			"route_steps": 3
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_036",
+			"rendered": true,
+			"roof_cells": 56,
+			"route_steps": 5
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_037",
+			"rendered": true,
+			"roof_cells": 66,
+			"route_steps": 4
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_038",
+			"rendered": true,
+			"roof_cells": 77,
+			"route_steps": 4
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_039",
+			"rendered": true,
+			"roof_cells": 126,
+			"route_steps": 3
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_040",
+			"rendered": true,
+			"roof_cells": 80,
+			"route_steps": 7
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_041",
+			"rendered": true,
+			"roof_cells": 144,
+			"route_steps": 9
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_042",
+			"rendered": true,
+			"roof_cells": 84,
+			"route_steps": 3
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_043",
+			"rendered": true,
+			"roof_cells": 25,
+			"route_steps": 3
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_045",
+			"rendered": true,
+			"roof_cells": 42,
+			"route_steps": 5
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_046",
+			"rendered": true,
+			"roof_cells": 60,
+			"route_steps": 4
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_047",
+			"rendered": true,
+			"roof_cells": 48,
+			"route_steps": 5
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_048",
+			"rendered": true,
+			"roof_cells": 25,
+			"route_steps": 3
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_east_annex",
+			"rendered": true,
+			"roof_cells": 30,
+			"route_steps": 3
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_050",
+			"rendered": true,
+			"roof_cells": 49,
+			"route_steps": 5
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_051",
+			"rendered": true,
+			"roof_cells": 48,
+			"route_steps": 3
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_052",
+			"rendered": true,
+			"roof_cells": 60,
+			"route_steps": 5
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_053",
+			"rendered": true,
+			"roof_cells": 30,
+			"route_steps": 3
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_054",
+			"rendered": true,
+			"roof_cells": 40,
+			"route_steps": 2
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_055",
+			"rendered": true,
+			"roof_cells": 42,
+			"route_steps": 4
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "house_056",
+			"rendered": true,
+			"roof_cells": 25,
+			"route_steps": 4
+		},
+		{
+			"alignment": "pass",
+			"entry": "pass",
+			"exit": "pass",
+			"id": "bank_d",
+			"rendered": true,
+			"roof_cells": 91,
+			"route_steps": 5
+		}
+	],
+	"wall_cells_checked": 3603,
+	"wall_top_offset": [
+		-8.0,
+		-24.0
+	]
+}

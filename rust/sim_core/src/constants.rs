@@ -85,26 +85,13 @@ pub const MAP_MIN: Vec2 = Vec2::new(-1000.0, -1000.0);
 pub const MAP_MAX: Vec2 = Vec2::new(1000.0, 1000.0);
 
 // ── Sanctuary instance geometry ─────────────────────────────────────────────
-/// The redesigned town (`sanctuary.gd` / `SanctuaryTownWorld` TOWN_RECT) spans the dense walled
-/// pilgrim city: x ∈ ±3328, y ∈ ±3072 (6656 × 6144 px) — far larger than the Arena's ±1000. A
-/// Sanctuary instance widens the sim bounds to match so the whole city is walkable, and runs with
-/// NO obstacles (walk-through buildings; movement stays server-authoritative). Applied via
-/// `arena::set_world_geometry`. Keep these in lockstep with the client's `_world_geometry()`.
+/// Reference-plan island bounds. False obstacle flag with these exact bounds selects
+/// baked Sanctuary water/building/gate solids in arena.rs on both server and predictor.
 pub const SANCTUARY_MAP_MIN: Vec2 = Vec2::new(-3328.0, -3072.0);
 pub const SANCTUARY_MAP_MAX: Vec2 = Vec2::new(3328.0, 3072.0);
 
-/// Player spawn anchors for a Sanctuary instance — the West Gate Refuge yard (grid x≈-78, y≈-4),
-/// so players arrive through the damaged west gate into the refugee yard, not a clean central
-/// plaza (redesign spec §9 "West Gate Refuge"). These are `SanctuaryTownWorld.SPAWN_POINTS` (grid
-/// cells) * TILE(32), one-for-one — keep both lists at the same length and order in lockstep.
-pub const SANCTUARY_PLAYER_SPAWNS: [Vec2; 6] = [
-    Vec2::new(-2496.0, -128.0),
-    Vec2::new(-2560.0, -224.0),
-    Vec2::new(-2432.0, -32.0),
-    Vec2::new(-2336.0, -160.0),
-    Vec2::new(-2624.0, 64.0),
-    Vec2::new(-2368.0, 128.0),
-];
+/// Arrival square T in the reference plan. Shared by server join/respawn logic.
+pub const SANCTUARY_PLAYER_SPAWNS: [Vec2; 6] = crate::sanctuary::SPAWNS;
 
 // ── Projectiles ─────────────────────────────────────────────────────────────
 pub const PROJECTILE_SPEED: f32 = 400.0;

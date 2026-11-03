@@ -1,29 +1,7 @@
-## Sanctuary — the safe-hub city the player enters when entering the world.
-##
-## NETWORKED shared instance (ArenaBase subclass): the Sanctuary is a real server instance
-## (omega-server --mode sanctuary --port 8082) with no monsters and PvP off (projectiles never hit
-## players). Movement is server-authoritative and predicted exactly like the Arena — abilities run
-## server-side here too. The Arena portal in the Lower Sanctum disconnects and dials the Arena
-## instance (8081) on the same host.
-##
-## ============================================================================
-## REDESIGN — the grim, dense gothic pilgrim city (code-generated placeholders)
-## ============================================================================
-## This level is now a THIN NETWORKED SHELL. The whole town — ground, crooked roads, ramparts,
-## enterable buildings, interiors, ~90 placeholder prop kinds, landmarks, the cursed fountain, the
-## decorative World Gate, plus wind-sway / glow shaders and drifting ash + leaf particles — is built
-## by `SanctuaryTownWorld` (scripts/levels/town/sanctuary_town_world.gd), which is decoupled from
-## the network so it can also render in an offline preview. Props are drawn by `SanctuaryProps`.
-##
-## The town spans ±3328 × ±3072 (redesign spec). The server widens the Sanctuary bounds to match
-## (rust/sim_core/src/constants.rs SANCTUARY_MAP_MIN/MAX) so the whole city is walkable; players
-## spawn through the damaged West Gate into the refugee yard.
-##
-## Layout + tone are documented in docs/design/sanctuary-layout.md and
-## docs/design/sanctuary-redesign-spec.md (system of record).
+## Networked Sanctuary shell. Reference-plan island built by SanctuaryTownWorld.
 extends ArenaBase
 
-const SanctuaryTownWorldScript := preload("res://scripts/levels/town/sanctuary_town_world.gd")
+const SanctuaryTownWorld := preload("res://scripts/levels/town/sanctuary_town_world.gd")
 const NPC_SCENE: PackedScene = preload("res://scenes/entities/npc/npc.tscn")
 const PORTAL_SCENE: PackedScene = preload("res://scenes/entities/portal/portal.tscn")
 ## Reused confirm modal for the priest's church sacrifice prompt.
@@ -40,11 +18,7 @@ var _sacrifice_request: HTTPRequest = null
 var _sacrifice_in_flight := false
 
 
-## ArenaBase calls this on scene entry (before _setup_client). Build the town: the EntityContainer +
-## HUDLayer the networked base needs, then the whole placeholder city via SanctuaryTownWorld. NPCs +
-## the Arena portal are deferred to _after_client_setup (they need the HUD/scene present). Wall
-## colliders are intentionally NOT used for movement — the Sanctuary is server-authoritative
-## walk-through — so the town's tagged colliders never block the networked player.
+## Build the visual island before network entities and HUD are initialized.
 func _build_level_environment() -> void:
 	# Suppress the inherited dark arena floor; the town paints its own ground layer.
 	_draws_arena_floor = false
@@ -55,8 +29,12 @@ func _build_level_environment() -> void:
 		var entities := Node2D.new()
 		entities.name = "EntityContainer"
 		add_child(entities)
+	# Both branches must participate so remote/local actors interleave with
+	# individual town wall cells and props rather than whole container blocks.
+	y_sort_enabled = true
+	get_node("EntityContainer").y_sort_enabled = true
 
-	_town = SanctuaryTownWorldScript.new()
+	_town = SanctuaryTownWorld.new()
 	_town.name = "TownWorld"
 	# The minimap viewport culls a whole subtree if an ANCESTOR's visibility_layer misses its
 	# cull mask, so the town root must carry the minimap bit for its ground/wall layers to show.
@@ -65,17 +43,15 @@ func _build_level_environment() -> void:
 	_town.build()
 
 
-## Sanctuary world geometry: the full town is walkable (±3328 × ±3072), NO obstacles. Pushed into
-## the prediction sim by ArenaBase._setup_client BEFORE the first predicted step so prediction
-## matches the --mode sanctuary server (which uses the same SANCTUARY_MAP_MIN/MAX constants).
+## Exact Sanctuary bounds select baked island solids inside shared sim_core.
 func _world_geometry() -> Array:
-	var r: Rect2 = SanctuaryTownWorldScript.TOWN_RECT
+	var r: Rect2 = SanctuaryTownWorld.TOWN_RECT
 	return [r.position, r.position + r.size, false]
 
 
 ## The minimap/map frame the WHOLE walkable town, not the ±1000 arena default.
 func get_map_bounds() -> Rect2:
-	return SanctuaryTownWorldScript.TOWN_RECT
+	return SanctuaryTownWorld.TOWN_RECT
 
 
 ## Runs at the end of _setup_client (client only): HUD, camera, prediction and entity container now
@@ -83,6 +59,7 @@ func get_map_bounds() -> Rect2:
 ## portal here, and retarget the pause menu's "leave" to the main menu.
 func _after_client_setup() -> void:
 	if _town:
+		_town.set_roof_observer(local_player)
 		_town.build_npcs(_town, NPC_SCENE, NPC_TEXTURE_DIR, _on_npc_interacted)
 		_town.build_arena_portal(_town, PORTAL_SCENE, TOWN_TEXTURE_DIR)
 	# The HUD now exists (instanced in _setup_hud); add the Sanctuary overlay labels onto it.
@@ -218,7 +195,7 @@ func _build_safe_zone_badge() -> void:
 
 	var hint := Label.new()
 	hint.name = "TravelHint"
-	hint.text = "You made it inside the walls. The Arena Portal waits in the Lower Sanctum, south-east."
+	hint.text = "You are inside the Temple. The Arena portal is in the same hall."
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
 	hint.offset_left = -340.0

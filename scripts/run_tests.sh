@@ -29,6 +29,7 @@ fi
 TESTS=(
 	"scripts/test/hit_authority_test.gd"
 	"scripts/test/packet_color_test.gd"
+	"scripts/test/sanctuary_priest_test.gd"
 )
 
 FAILED=0

@@ -15,6 +15,7 @@ pub mod hit;
 mod movement;
 pub mod progression;
 mod rect;
+mod sanctuary;
 mod step;
 mod vec2;
 
