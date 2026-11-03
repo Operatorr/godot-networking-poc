@@ -117,13 +117,21 @@ impl EntityIdSet {
 
 // ── Delta state cache (one per peer) ────────────────────────────────────────
 
+/// Compact on purpose: the delta cache is probed for every visible entity of every peer per Tick,
+/// and across peers it exceeds the L2 cache. `last_tick_sent` truncates like the wire's u32 tick.
 #[derive(Debug, Clone)]
 struct CachedEntityState {
     position: Vec2,
-    animation: u8,
+    last_tick_sent: u32,
     flags: u16,
-    last_tick_sent: u64,
+    animation: u8,
     is_new: bool,
+}
+
+impl CachedEntityState {
+    fn ticks_since_sent(&self, tick: u64) -> u64 {
+        u64::from((tick as u32).wrapping_sub(self.last_tick_sent))
+    }
 }
 
 #[derive(Default)]
@@ -136,8 +144,20 @@ pub struct DeltaStateCache {
 }
 
 impl DeltaStateCache {
+    #[cfg(test)]
     pub fn calculate_delta_mask(&self, entity_id: u16, current: &EntityData, tick: u64) -> u8 {
-        let Some(cached) = self.cache.get(&entity_id) else {
+        self.delta_mask_against(self.cache.get(&entity_id), current, tick)
+    }
+
+    /// The mask for an entry the caller already looked up, so one probe serves both the mask and
+    /// the entity's age.
+    fn delta_mask_against(
+        &self,
+        cached: Option<&CachedEntityState>,
+        current: &EntityData,
+        tick: u64,
+    ) -> u8 {
+        let Some(cached) = cached else {
             return delta_mask::FULL;
         };
         if cached.is_new {
@@ -172,7 +192,7 @@ impl DeltaStateCache {
         e.position = state.position;
         e.animation = state.animation;
         e.flags = state.flags;
-        e.last_tick_sent = tick;
+        e.last_tick_sent = tick as u32;
         e.is_new = false;
     }
 
@@ -201,15 +221,18 @@ impl DeltaStateCache {
                 e.flags = state.flags;
             }
         }
-        e.last_tick_sent = tick;
+        e.last_tick_sent = tick as u32;
         // Enqueuing an unreliable FULL record does not establish that the
         // receiver knows this entity. Keep new entities self-contained until
         // a reliable Baseline includes them; existing baseline entities still
         // use field masks normally.
     }
 
+    #[cfg(test)]
     fn last_tick_sent(&self, entity_id: u16) -> Option<u64> {
-        self.cache.get(&entity_id).map(|e| e.last_tick_sent)
+        self.cache
+            .get(&entity_id)
+            .map(|e| u64::from(e.last_tick_sent))
     }
 
     /// Erase cache entries not in the active set; returns the erased ids (pinned despawns).
@@ -821,7 +844,8 @@ fn create_delta_packet(
     for &(idx, lod) in visible {
         let e = &all_entities[idx];
         active_entity_ids.push(e.id);
-        let mut mask = cache.calculate_delta_mask(e.id, e, tick);
+        let cached = cache.cache.get(&e.id);
+        let mut mask = cache.delta_mask_against(cached, e, tick);
         // Every received positional record needs its same-Snapshot AoI center,
         // including while the observer is stationary or budget pressure is high.
         if e.id == observer_id && mask & delta_mask::FULL == 0 {
@@ -830,8 +854,8 @@ fn create_delta_packet(
         if mask == 0 {
             continue; // unchanged entities cost zero bytes
         }
-        let ticks_since = match cache.last_tick_sent(e.id) {
-            Some(t) => tick - t,
+        let ticks_since = match cached {
+            Some(entry) => entry.ticks_since_sent(tick),
             None => tick, // new-entity priority ≈ tick_count — preserved (gotcha #4)
         };
         let record = if mask & delta_mask::FULL != 0 {
@@ -1530,6 +1554,16 @@ mod tests {
             new_allocations + 10 * peers <= old_allocations,
             "new {new_allocations} vs old {old_allocations} allocations for {peers} peers"
         );
+    }
+
+    #[test]
+    fn delta_cache_entries_stay_compact_and_ages_survive_the_u32_tick() {
+        assert!(std::mem::size_of::<(u16, CachedEntityState)>() <= 20);
+        let mut cache = DeltaStateCache::default();
+        let near_wrap = u64::from(u32::MAX) - 2;
+        cache.update_cache(7, &entity(7, 0.0, 0.0), near_wrap);
+        let entry = cache.cache.get(&7).unwrap();
+        assert_eq!(entry.ticks_since_sent(near_wrap + 5), 5);
     }
 
     /// Local mechanism timing only; never a server capacity result.
