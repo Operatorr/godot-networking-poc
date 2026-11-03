@@ -37,8 +37,8 @@ reliability is the whole point of leaving TCP — three channels, each matched t
 
 | Channel | ENet mode | Carries | Why |
 |---|---|---|---|
-| 0 | unreliable **sequenced** | snapshots, action confirms | newest wins; a dropped snapshot is superseded, never retransmitted or head-of-line-blocking |
-| 1 | **reliable** ordered | auth result, game events, baselines, metrics; client one-shots | discrete messages that must arrive exactly once, in order |
+| 0 | unreliable **sequenced** | snapshots, action confirms, player fire events | newest wins; a dropped snapshot is superseded, never retransmitted or head-of-line-blocking; a lost player fire event costs only its cosmetics, since the bullet replicates through snapshots |
+| 1 | **reliable** ordered | auth result, every other game event (incl. monster fire), baselines, metrics; client one-shots | discrete messages that must arrive exactly once, in order |
 | 2 | unreliable sequenced | player input | the client replays unacked inputs anyway, so loss self-heals |
 
 ENet's native keepalive/RTT/timeout replaces an application heartbeat; the clock-sync payload that
@@ -202,8 +202,8 @@ shutdown sends reasoned disconnects. Deployment, units, and config files:
   `sim_core` + `protocol`; one process = one instance.
 - **Predicted:** the Local player only, via the shared `sim_core`; the client's monster-hit
   decision is authoritative-pending-validation.
-- **Replicated:** entity deltas vs. a periodic baseline over ch0; discrete game events over ch1 —
-  all via the shared `protocol` crate.
+- **Replicated:** entity deltas vs. a periodic baseline over ch0; discrete game events over ch1
+  (player fire events over ch0; see the channel table) — all via the shared `protocol` crate.
 - **Persisted:** nothing in the sim; the Go API owns Account- and Character-scoped durable state.
   Death is a transactional API save.
 - **Validated:** Ed25519 ticket verified locally; movement re-simulated server-side; PvP/player→

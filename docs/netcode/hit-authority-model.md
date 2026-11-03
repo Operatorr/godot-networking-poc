@@ -86,8 +86,9 @@ would reintroduce the phantom/pass-through feel).
 
 **Flow:**
 
-1. **Ownership reaches the client.** Monster fire broadcasts a **non-zero projectile id** in the
-   `PROJECTILE_FIRED` game event (`target_id` = projectile id; see
+1. **Ownership reaches the client.** Monster fire sends a **non-zero projectile id** in a reliable
+   `PROJECTILE_FIRED` game event to peers near the monster; a peer the bullet reaches later gets the
+   same event when the bullet enters its AoI (`target_id` = projectile id; see
    [`../server/contract.md`](../server/contract.md) GameEvent section — *"non-zero for monster shots
    — hit-authority invariant"*). The client records `projectile_id → monster_id` so it can tag the
    bullet monster-owned. If this id were 0 the client would never tag the bullet and the whole PvE

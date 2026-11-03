@@ -61,6 +61,7 @@ for the map; this page is the **catalogue** with verification status. Terms are 
 | [`netcode/latency-budget.md`](netcode/latency-budget.md) | Verified | Why it feels sluggish on localhost — every ms accounted, `file:line`. |
 | [`netcode/smoothness-render.md`](netcode/smoothness-render.md) | Verified · fix Planned | The "30 fps at 100 fps" stutter — root cause + the decisive fix. |
 | [`netcode/perf-notes/tick-rate-30-vs-60.md`](netcode/perf-notes/tick-rate-30-vs-60.md) | Reference · results PENDING | The gated 30-vs-60 Hz tick trial — protocol + empty results table (#8). |
+| [`netcode/perf-notes/hill-climb/README.md`](netcode/perf-notes/hill-climb/README.md) | **Active** · measured 2026-10-29 | The one-minute stress loop (`scripts/quick_stress.sh`), the population ladder checklist, the 190-player-wall hypotheses with measured status, and the per-run [ledger](netcode/perf-notes/hill-climb/ledger.md). **Start here for performance work.** |
 | [`exec-plans/active/netcode-perf-fixes.md`](exec-plans/active/netcode-perf-fixes.md) | Active | The prioritized fix roadmap (P0→P3); #7–#15 done 2026-06-04. |
 
 ## Netcode (the core of the project)

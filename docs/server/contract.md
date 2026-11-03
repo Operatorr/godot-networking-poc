@@ -44,9 +44,16 @@ Extension artifacts are copied into the Godot project: `client/bin/<platform>/` 
 | `CH_RELIABLE` | 1 | reliable ordered | `Packet::reliable` | `FLAG_RELIABLE` |
 | `CH_INPUT` | 2 | unreliable sequenced | `Packet::unreliable` | `0` |
 
-ch0: delta `Snapshot`s, `ActionConfirm`. ch1: `AuthResult`, `GameEvent`, `ServerMetrics`,
-**baseline `Snapshot`s** (incl. full-state replies) (S→C); `ConnectAuth`, `BaselineAck`,
-`RequestFullState`, `RespawnRequest`, `LocalHitReport` (C→S).
+ch0: delta `Snapshot`s, `ActionConfirm`, **player `PROJECTILE_FIRED` `GameEvent`s** (the one
+GameEvent exception). ch1: `AuthResult`, every other `GameEvent` (incl. monster
+`PROJECTILE_FIRED`), `ServerMetrics`, **baseline `Snapshot`s** (incl. full-state replies) (S→C);
+`ConnectAuth`, `BaselineAck`, `RequestFullState`, `RespawnRequest`, `LocalHitReport` (C→S).
+
+Why the exception, and its limits: a player shot's only irreplaceable content is cosmetic, because
+the bullet itself replicates through Snapshots whether or not the event arrives. A lost or
+out-of-sequence player fire event therefore costs that observer the shoot sound and the bullet's
+owner color, nothing authoritative; PvP hits are server-decided. Monster fire stays reliable: the
+client cannot report a hit without the owner.
 ch2: `PlayerInput`. Disconnect uses **native ENet disconnect** with the reason code in the
 `data: u32` (no packet). `PROTOCOL_VERSION` rides the ENet connect `data: u32` (low byte) and is
 re-checked in `ConnectAuth`; mismatch ⇒ server `disconnect(reason=INVALID_AUTH)` before auth.
@@ -212,7 +219,11 @@ leaderboard, and re-sent on hydrate completion + level-up so observers stay fres
 LEADERBOARD_UPDATE `[u8 n]{n × [u16 id][u16 kills][u16 deaths]}` (`deaths` since protocol v7 — the
 HUD shows a Kills:Deaths ratio; ranking is still by kills); PROJECTILE_FIRED
 `[s16 qx][s16 qy][u16 fire_tick]` with target_id = projectile id (**non-zero for monster shots** —
-hit-authority invariant); EXP_GAIN=13 `[u16 amount]` with source_id = the player who earned it (one event
+hit-authority invariant). Recipients are AoI-scoped around the shooter (radius = the AoI exit
+radius; the shooter always hears its own). A peer outside that radius, or one whose client despawned
+the bullet, gets a reliable monster `PROJECTILE_FIRED` when the bullet enters its AoI, with
+`fire_tick = 65535` (`PROJECTILE_OWNER_REPLAY_FIRE_TICK`): register the owner, play no shot feedback.
+Monster shots otherwise carry `fire_tick = 0`. EXP_GAIN=13 `[u16 amount]` with source_id = the player who earned it (one event
 per nearby player when a monster dies — the HUD "+XP" pop only; progression itself is now
 server-authoritative, see [`../systems/PROGRESSION.md`](../systems/PROGRESSION.md)).
 

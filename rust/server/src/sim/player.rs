@@ -574,6 +574,9 @@ pub struct PlayerManager {
     quarantined_ids: Vec<u16>,
     next_entity_id: u16,
     spawn_index: usize,
+    /// Radius for AoI-scoped game events (`aoi_recipients`): the Snapshot AoI *exit* radius, so
+    /// every peer that still sees an entity also hears about it. `0.0` = AoI off = everyone.
+    pub event_radius: f32,
 }
 
 pub const POSITION_HISTORY_TICKS: usize = 8;
@@ -594,7 +597,28 @@ impl PlayerManager {
             quarantined_ids: Vec::new(),
             next_entity_id: 1,
             spawn_index: 0,
+            event_radius: 0.0,
         }
+    }
+
+    /// Peers that should receive a game event anchored at `center`: every authenticated player
+    /// within `event_radius` of it, plus the owners of `always` (shooter, victim, …) wherever
+    /// they stand. `None` (unknown anchor) or a zero radius selects every authenticated peer.
+    /// Replaces unconditional broadcast for per-projectile / per-hit events, whose count grows
+    /// with the square of the population when every peer hears every shot.
+    pub fn aoi_recipients(&self, center: Option<Vec2>, always: &[u16]) -> Vec<PeerKey> {
+        let radius_sq = self.event_radius * self.event_radius;
+        self.players
+            .iter()
+            .filter(|p| p.authenticated)
+            .filter(|p| match center {
+                Some(c) if radius_sq > 0.0 => {
+                    always.contains(&p.entity_id) || p.position.distance_squared_to(c) <= radius_sq
+                }
+                _ => true,
+            })
+            .map(|p| p.peer)
+            .collect()
     }
 
     /// Override the spawn anchors (e.g. the Sanctuary's town spawns). Resets the round-robin cursor.

@@ -63,6 +63,9 @@ pub struct World {
     /// PvP collisions (player projectiles vs players) — off in a Sanctuary instance.
     pub pvp_enabled: bool,
     pub tick_count: u64,
+    /// Wall time the last tick spent in step 6 (entity collection + per-peer Snapshot
+    /// scheduling). Zero on ticks with no Snapshot due. Read by the main loop's phase timers.
+    pub last_snapshot_build: std::time::Duration,
     snapshot_accumulator: f64,
     snapshot_interval: f64,
     leaderboard_timer: f64,
@@ -90,7 +93,17 @@ impl World {
             ),
             spawner: MonsterSpawner::new(config.monster_spawn_rate),
             ai: MonsterAi::new(config.monster_ai_difficulty),
-            players: crate::player::PlayerManager::new(),
+            players: {
+                let mut players = crate::player::PlayerManager::new();
+                // Events are scoped to the Snapshot AoI exit radius (hysteresis ring included),
+                // so anyone who can still see an entity hears what it does. AoI off ⇒ everyone.
+                players.event_radius = if config.aoi_radius > 0.0 {
+                    config.aoi_exit_radius.max(config.aoi_radius)
+                } else {
+                    0.0
+                };
+                players
+            },
             projectiles: ProjectileManager::new(),
             monsters: MonsterManager::new(),
             world_entities: WorldEntityManager::new(),
@@ -102,6 +115,7 @@ impl World {
             progression,
             pvp_enabled,
             tick_count: 0,
+            last_snapshot_build: std::time::Duration::ZERO,
             snapshot_accumulator: 0.0,
             snapshot_interval,
             leaderboard_timer: 0.0,
@@ -405,15 +419,20 @@ impl World {
         };
         state.reset_for_respawn(spawn);
         let entity_id = state.entity_id;
-        outbox.broadcast(ServerPacket::GameEvent(GameEvent {
-            event_type: game_event_type::RESPAWN,
-            source_id: 0,
-            target_id: entity_id,
-            data: GameEventData::Respawn {
-                x: spawn.x,
-                y: spawn.y,
-            },
-        }));
+        // Unicast: the client and the bots only act on their OWN respawn; everyone else learns
+        // the new position + ALIVE flag from the next Snapshot.
+        outbox.send(
+            peer,
+            ServerPacket::GameEvent(GameEvent {
+                event_type: game_event_type::RESPAWN,
+                source_id: 0,
+                target_id: entity_id,
+                data: GameEventData::Respawn {
+                    x: spawn.x,
+                    y: spawn.y,
+                },
+            }),
+        );
     }
 
     // ── The tick ────────────────────────────────────────────────────────────
@@ -527,16 +546,26 @@ impl World {
             &mut self.rng,
         );
         for e in fire_events {
-            outbox.broadcast(ServerPacket::GameEvent(GameEvent {
-                event_type: game_event_type::PROJECTILE_FIRED,
-                source_id: e.source_id,
-                target_id: e.projectile_id,
-                data: GameEventData::ProjectileFired {
-                    x: 0.0,
-                    y: 0.0,
-                    fire_tick: 0,
-                },
-            }));
+            // Reliable, AoI-scoped around the monster: the client's PvE hit reports (D11) need
+            // the owner of every monster bullet it can see, so this one must not be lost. A peer
+            // outside this radius gets the owner when the bullet enters its AoI (step 6).
+            let anchor = self.monsters.get(e.source_id).map(|m| m.position);
+            let recipients = self.players.aoi_recipients(anchor, &[]);
+            self.broadcast
+                .register_monster_projectile(e.projectile_id, e.source_id, &recipients);
+            outbox.send_to(
+                recipients,
+                ServerPacket::GameEvent(GameEvent {
+                    event_type: game_event_type::PROJECTILE_FIRED,
+                    source_id: e.source_id,
+                    target_id: e.projectile_id,
+                    data: GameEventData::ProjectileFired {
+                        x: 0.0,
+                        y: 0.0,
+                        fire_tick: 0,
+                    },
+                }),
+            );
         }
 
         // 4. Lag-comp position history (post-movement, pre-collision).
@@ -580,8 +609,13 @@ impl World {
         }
 
         // 6. Snapshot broadcast.
+        self.last_snapshot_build = std::time::Duration::ZERO;
         if snapshot_due {
+            let snapshot_started = std::time::Instant::now();
             let entities = self.collect_entities();
+            self.broadcast.retain_monster_projectiles(
+                self.projectiles.projectiles.iter().map(|p| p.entity_id),
+            );
             self.broadcast.broadcast_state_updates(
                 &entities,
                 &self.players,
@@ -592,6 +626,7 @@ impl World {
             // REMOVED records for disconnected players are now built into every peer's delta
             // cache; their entity ids are safe to recycle.
             self.players.release_quarantined_ids();
+            self.last_snapshot_build = snapshot_started.elapsed();
         }
 
         // 7. Cleanup — dead monsters got exactly one death snapshot.
@@ -699,16 +734,7 @@ impl World {
         ) {
             let projectile_id = proj.entity_id;
             self.players.players[player_index].start_shoot_cooldown();
-            outbox.broadcast(ServerPacket::GameEvent(GameEvent {
-                event_type: game_event_type::PROJECTILE_FIRED,
-                source_id: owner_id,
-                target_id: projectile_id,
-                data: GameEventData::ProjectileFired {
-                    x: spawn_pos.x,
-                    y: spawn_pos.y,
-                    fire_tick: (self.tick_count & 0xFFFF) as u16,
-                },
-            }));
+            self.send_player_projectile_fired(owner_id, projectile_id, spawn_pos, outbox);
         }
         // Failure: no cooldown, no broadcast — but the pending edge was already consumed.
     }
@@ -852,16 +878,7 @@ impl World {
                 stats.projectile_max_distance,
             ) {
                 let projectile_id = proj.entity_id;
-                outbox.broadcast(ServerPacket::GameEvent(GameEvent {
-                    event_type: game_event_type::PROJECTILE_FIRED,
-                    source_id: owner_id,
-                    target_id: projectile_id,
-                    data: GameEventData::ProjectileFired {
-                        x: spawn_pos.x,
-                        y: spawn_pos.y,
-                        fire_tick: (self.tick_count & 0xFFFF) as u16,
-                    },
-                }));
+                self.send_player_projectile_fired(owner_id, projectile_id, spawn_pos, outbox);
             }
         }
     }
@@ -1134,6 +1151,35 @@ impl World {
         }
     }
 
+    /// PROJECTILE_FIRED for a PLAYER-owned projectile: AoI-scoped around the muzzle (the shooter
+    /// always included) and sent UNRELIABLE on the Snapshot channel. Validated recovery: the
+    /// projectile entity itself rides every Snapshot (position/flags) and player-projectile hits
+    /// are resolved server-side (lag-compensated collisions), so a lost event costs a client at
+    /// most the projectile's owner colour/class tint and one shoot sound. Monster-owned
+    /// projectiles stay reliable (`tick` step 3): the client's PvE hit reports need their owner.
+    fn send_player_projectile_fired(
+        &self,
+        owner_id: u16,
+        projectile_id: u16,
+        spawn_pos: Vec2,
+        outbox: &mut Outbox,
+    ) {
+        let recipients = self.players.aoi_recipients(Some(spawn_pos), &[owner_id]);
+        outbox.send_to_unreliable(
+            recipients,
+            ServerPacket::GameEvent(GameEvent {
+                event_type: game_event_type::PROJECTILE_FIRED,
+                source_id: owner_id,
+                target_id: projectile_id,
+                data: GameEventData::ProjectileFired {
+                    x: spawn_pos.x,
+                    y: spawn_pos.y,
+                    fire_tick: (self.tick_count & 0xFFFF) as u16,
+                },
+            }),
+        );
+    }
+
     fn broadcast_ability_effect(
         &self,
         effect_id: u8,
@@ -1142,17 +1188,22 @@ impl World {
         source_id: u16,
         outbox: &mut Outbox,
     ) {
-        outbox.broadcast(ServerPacket::GameEvent(GameEvent {
-            event_type: game_event_type::ABILITY_EFFECT,
-            source_id,
-            target_id: 0,
-            data: GameEventData::AbilityEffect {
-                effect_id,
-                x: pos.x,
-                y: pos.y,
-                radius,
-            },
-        }));
+        // Transient VFX at a world position: only peers who can see that spot need it.
+        let recipients = self.players.aoi_recipients(Some(pos), &[source_id]);
+        outbox.send_to(
+            recipients,
+            ServerPacket::GameEvent(GameEvent {
+                event_type: game_event_type::ABILITY_EFFECT,
+                source_id,
+                target_id: 0,
+                data: GameEventData::AbilityEffect {
+                    effect_id,
+                    x: pos.x,
+                    y: pos.y,
+                    radius,
+                },
+            }),
+        );
     }
 
     /// Advance ability/loot world entities and apply their effects (monster damage, player heals,
@@ -1189,18 +1240,27 @@ impl World {
         self.roll_healthorbs(&killed);
 
         for h in &outcome.player_heals {
-            if let Some(p) = self.players.get_by_entity_id_mut(h.player_id) {
-                let healed = p.heal(h.amount);
+            let healed = self
+                .players
+                .get_by_entity_id_mut(h.player_id)
+                .map(|p| (p.heal(h.amount), p.position));
+            if let Some((healed, pos)) = healed {
                 if healed > 0 {
-                    outbox.broadcast(ServerPacket::GameEvent(GameEvent {
-                        event_type: game_event_type::PICKUP,
-                        source_id: h.orb_id,
-                        target_id: h.player_id,
-                        data: GameEventData::Pickup {
-                            kind: 0,
-                            amount: healed as u16,
-                        },
-                    }));
+                    // Authoritative HP for the picker (always included), a heal floater for
+                    // whoever can see them.
+                    let recipients = self.players.aoi_recipients(Some(pos), &[h.player_id]);
+                    outbox.send_to(
+                        recipients,
+                        ServerPacket::GameEvent(GameEvent {
+                            event_type: game_event_type::PICKUP,
+                            source_id: h.orb_id,
+                            target_id: h.player_id,
+                            data: GameEventData::Pickup {
+                                kind: 0,
+                                amount: healed as u16,
+                            },
+                        }),
+                    );
                 }
             }
         }
@@ -1515,6 +1575,190 @@ mod tests {
             client_render_tick: 0,
             client_rtt_ms: 0,
         })
+    }
+
+    /// Change A (hill-climb): per-shot / per-hit events are AoI-scoped instead of broadcast.
+    /// Three players: the shooter, a neighbour inside the AoI exit radius, and one far outside.
+    /// A player shot must reach exactly shooter + neighbour, unreliably; an EXP_GAIN floater
+    /// goes only to its own player; PLAYER_INFO / LEADERBOARD stay global.
+    #[test]
+    fn projectile_and_damage_events_are_aoi_scoped() {
+        let mut world = test_world();
+        let shooter = join(&mut world, 1, "shooter");
+        let near = join(&mut world, 2, "near");
+        let far = join(&mut world, 3, "far");
+        assert!(world.players.event_radius >= 1000.0);
+        for (peer, pos) in [
+            (1usize, Vec2::new(-900.0, -900.0)),
+            (2, Vec2::new(-700.0, -900.0)),
+            (3, Vec2::new(900.0, 900.0)),
+        ] {
+            let p = world.players.get_mut(peer).unwrap();
+            p.position = pos;
+            p.is_alive = true;
+        }
+        let recipients = world
+            .players
+            .aoi_recipients(Some(Vec2::new(-900.0, -900.0)), &[shooter]);
+        assert_eq!(recipients, vec![1, 2], "near peer in, far peer out");
+        // The `always` list overrides distance (a far killer still hears its own kill).
+        let with_far = world
+            .players
+            .aoi_recipients(Some(Vec2::new(-900.0, -900.0)), &[far]);
+        assert_eq!(with_far, vec![1, 2, 3]);
+        // No anchor ⇒ everyone (never silently drop an event we cannot place).
+        assert_eq!(world.players.aoi_recipients(None, &[]), vec![1, 2, 3]);
+
+        let mut outbox = Outbox::new();
+        world.send_player_projectile_fired(shooter, 10000, Vec2::new(-900.0, -900.0), &mut outbox);
+        let msgs = outbox.drain();
+        assert_eq!(msgs.len(), 1);
+        match &msgs[0] {
+            (
+                Target::Peers {
+                    peers,
+                    delivery: crate::outbox::Delivery::Unreliable,
+                },
+                ServerPacket::GameEvent(e),
+            ) => {
+                assert_eq!(peers, &vec![1, 2]);
+                assert_eq!(e.event_type, game_event_type::PROJECTILE_FIRED);
+                assert_eq!(e.source_id, shooter);
+            }
+            other => panic!("expected an unreliable AoI-scoped PROJECTILE_FIRED, got {other:?}"),
+        }
+        let _ = near;
+
+        // A monster bullet is reliable and scoped around the monster.
+        let mut outbox = Outbox::new();
+        world.broadcast_ability_effect(0, Vec2::new(900.0, 900.0), 60, 0, &mut outbox);
+        match &outbox.drain()[0] {
+            (
+                Target::Peers {
+                    peers,
+                    delivery: crate::outbox::Delivery::Default,
+                },
+                ServerPacket::GameEvent(e),
+            ) => {
+                assert_eq!(
+                    peers,
+                    &vec![3],
+                    "VFX at the far corner: only the far peer sees it"
+                );
+                assert_eq!(e.event_type, game_event_type::ABILITY_EFFECT);
+            }
+            other => panic!("expected a reliable AoI-scoped ABILITY_EFFECT, got {other:?}"),
+        }
+    }
+
+    /// Regression (PR #52 review): a connected player outside the fire-event radius who walks
+    /// toward a monster bullet must still learn its owner, or the client can never report the
+    /// hit. Runs the real tick: real AI fire, real projectile integration, real Snapshots.
+    #[test]
+    fn late_observer_learns_monster_bullet_owner_and_can_report_the_hit() {
+        let mut world = test_world();
+        world.spawner = MonsterSpawner::new(0.0);
+        let target = join(&mut world, 1, "target");
+        let observer = join(&mut world, 2, "observer");
+        let monster_pos = Vec2::new(-500.0, 500.0);
+        let monster_id = world
+            .monsters
+            .spawn_monster(monster_pos, "toxic_slime")
+            .unwrap()
+            .entity_id;
+        for (id, pos) in [
+            (target, monster_pos + Vec2::new(200.0, 0.0)),
+            (observer, Vec2::new(650.0, 500.0)),
+        ] {
+            let p = world.players.get_by_entity_id_mut(id).unwrap();
+            p.position = pos;
+            p.is_alive = true;
+            p.life_state = crate::player::LifeState::Alive;
+        }
+
+        // Tick until the monster fires; the observer is far outside the fire-event radius.
+        let mut owner_seen_by_observer = None;
+        let mut bullet = None;
+        let mut outbox = Outbox::new();
+        for t in 0..600u64 {
+            world.tick(t * 33, &mut outbox);
+            for (target_peers, packet) in outbox.drain() {
+                let ServerPacket::GameEvent(e) = packet else {
+                    continue;
+                };
+                if e.event_type != game_event_type::PROJECTILE_FIRED || e.source_id != monster_id {
+                    continue;
+                }
+                if bullet.is_none() {
+                    let Target::Peers { peers, .. } = &target_peers else {
+                        panic!("monster fire must be AoI-scoped, got {target_peers:?}");
+                    };
+                    assert_eq!(peers, &vec![1], "observer is outside the fire-event radius");
+                    bullet = Some(e.target_id);
+                } else if bullet == Some(e.target_id) {
+                    owner_seen_by_observer = Some(target_peers);
+                }
+            }
+            if bullet.is_some() {
+                break;
+            }
+            // Keep Snapshots flowing past the baseline gate, as a live client would.
+            let tick = world.tick_count;
+            for peer in [1, 2] {
+                world.broadcast.mark_baseline_acked(peer, tick);
+            }
+        }
+        let bullet = bullet.expect("monster never fired at its target");
+        assert!(
+            owner_seen_by_observer.is_none(),
+            "not relevant to the observer yet"
+        );
+
+        // The bullet flies toward the observer, who walks to meet it; the owner must arrive
+        // before the bullet expires.
+        let mut outbox = Outbox::new();
+        let mut t = 700u64;
+        while world.projectiles.get(bullet).is_some() && owner_seen_by_observer.is_none() {
+            let bullet_pos = world.projectiles.get(bullet).unwrap().position;
+            let p = world.players.get_mut(2).unwrap();
+            p.position = bullet_pos + Vec2::new(900.0, 0.0);
+            let tick = world.tick_count;
+            for peer in [1, 2] {
+                world.broadcast.mark_baseline_acked(peer, tick);
+            }
+            world.tick(t * 33, &mut outbox);
+            t += 1;
+            for (target_peers, packet) in outbox.drain() {
+                if let ServerPacket::GameEvent(e) = packet {
+                    if e.event_type == game_event_type::PROJECTILE_FIRED && e.target_id == bullet {
+                        assert_eq!(e.source_id, monster_id);
+                        owner_seen_by_observer = Some(target_peers);
+                    }
+                }
+            }
+        }
+        let Some(Target::Peers { peers, delivery }) = owner_seen_by_observer else {
+            panic!("bullet expired before the observer learned its owner");
+        };
+        assert_eq!(peers, vec![2]);
+        assert_eq!(delivery, crate::outbox::Delivery::Replay);
+
+        // With the owner known, the client's hit report lands like any other.
+        assert!(sim_core::hit::is_client_authoritative(monster_id));
+        let bullet_pos = world.projectiles.get(bullet).unwrap().position;
+        world.players.get_mut(2).unwrap().position = bullet_pos;
+        let health_before = world.players.get(2).unwrap().health;
+        world.on_packet(
+            2,
+            ClientPacket::LocalHitReport {
+                projectile_id: bullet,
+            },
+            t * 33,
+            0,
+            &mut outbox,
+        );
+        assert!(world.players.get(2).unwrap().health < health_before);
+        assert!(world.projectiles.get(bullet).is_none());
     }
 
     #[test]
