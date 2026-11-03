@@ -5,6 +5,8 @@
 pub mod api_client;
 pub mod auth;
 pub mod broadcast;
+#[cfg(test)]
+pub mod broadcast_reference;
 pub mod metrics;
 pub mod outbox;
 pub mod progression_client;

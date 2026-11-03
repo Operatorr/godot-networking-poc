@@ -47,6 +47,10 @@ the report's *Log hygiene* section flags any file over 20 MB — fix the source,
 
 Wall-clock budget: ramp (bots × stagger) + duration + ~10 s. 100 bots × 60 s ≈ 85 s; 200 bots ≈ 95 s.
 
+For the CAX11 with Mac mini bots, use `scripts/cax11_climb/climb.py`: alternating trials, identity
+proven by hash and config diff, median and range per arm, and a run budget. Its evidence lands in
+`loadtest-runs/cax11-climb/`.
+
 ### Reading a report
 
 The first screen is the whole answer:
@@ -98,7 +102,9 @@ Each `[ ]` is a decision or a measured fact; tick it with the ledger row that pr
       minute, RTT p95 8 ms, loss 0.08 %, CPU 58 %, tick p95 25.9 ms — but **178** kernel drops and
       0.7 % of ticks over 33 ms). Blocked on Change C (Snapshot build = 13 ms of the 18 ms tick).
       *(The old wall: 176–191 on CAX11; 12/200 survived locally before Change A.)*
-- [ ] **Rung 200 on CAX11** with Change A (the user's reference host) — Wayfinder ticket.
+- [ ] **Rung 200 on CAX11** with Change A (the user's reference host) — Wayfinder ticket. Every gate
+      except absolute RTT now passes at 225 ([climb](cax11-tick-climb-20261103.md)); RTT waits for a
+      closer bot server.
 - [ ] **Rung 300**
 - [ ] **Rung 500** — POC target floor.
 - [ ] **Rung 1000** — POC target ceiling.
@@ -281,3 +287,16 @@ Server CPU averaged 78.6% of a core; Snapshot build 16.19 ms/Tick. Mac workers a
 27.17%/27.10% CPU, with no observed CPU saturation. Bandwidth 46.23 KB/s remains separate.
 The CAX11 rung stays unchecked; no higher rung or Change C was attempted.
 See [compact evidence, commands, hashes and limitations](cax11-changeA-200-20261102.md).
+
+### 2026-11-03 — CAX11 Tick work climb: 225 players pass everything but absolute RTT
+
+A bounded climb on one CAX11 with Mac mini bots, under a frozen harness (`scripts/cax11_climb/`).
+A 2 MiB receive buffer ended socket drops at 200 (47,893 median to 0 in 5/5 runs). The frozen case
+then became **225 players**, the lowest ladder step that misses the Tick gate with everyone
+connected. **Tick work p95 went from 35.89 to 23.53 ms (−34.4%)**, overruns from 10.3% to 0.22%, and
+server CPU from 98.5% to 68.3% of a core. All gates except absolute RTT pass in 5/5 runs. Four of nine
+attempts were kept: a cheaper hash for Snapshot keys, a byte-at-a-time bit writer with id bitsets,
+compact sort keys, and presized buffers with one delta-cache probe. Output is byte-identical to the
+old pipeline. Bot RTT p95 is still about 219 ms on a 207 ms path, so the CAX11 rung stays unchecked
+until a closer bot server exists. Rare stalls and a higher deferred records p95 remain open.
+See [the evidence, attempts and limits](cax11-tick-climb-20261103.md).
