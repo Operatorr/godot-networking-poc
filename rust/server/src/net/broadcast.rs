@@ -265,6 +265,7 @@ impl DeltaStateCache {
 pub struct SpatialGrid {
     cell_size: f32,
     buckets: SnapshotMap<(i32, i32), Vec<usize>>,
+    items: usize,
 }
 
 impl SpatialGrid {
@@ -272,6 +273,7 @@ impl SpatialGrid {
         Self {
             cell_size: cell_size.max(1.0),
             buckets: SnapshotMap::default(),
+            items: 0,
         }
     }
 
@@ -284,6 +286,7 @@ impl SpatialGrid {
     }
 
     pub fn insert(&mut self, index: usize, pos: Vec2) {
+        self.items += 1;
         self.buckets
             .entry(self.cell_of(pos))
             .or_default()
@@ -294,7 +297,7 @@ impl SpatialGrid {
     pub fn query_radius(&self, center: Vec2, radius: f32) -> Vec<usize> {
         let r_cells = (radius / self.cell_size).ceil() as i32;
         let (cx, cy) = self.cell_of(center);
-        let mut out = Vec::new();
+        let mut out = Vec::with_capacity(self.items);
         for y in (cy - r_cells)..=(cy + r_cells) {
             for x in (cx - r_cells)..=(cx + r_cells) {
                 if let Some(bucket) = self.buckets.get(&(x, y)) {
@@ -541,7 +544,8 @@ impl BroadcastService {
             prev_visible.insert_all(&previous_ids);
 
             // AoI filter with hysteresis (strict >: exactly-on-radius stays visible).
-            let mut visible: Vec<(usize, u8)> = Vec::new(); // (entity index, lod)
+            // (entity index, lod); last Tick's count is a close estimate of this Tick's.
+            let mut visible: Vec<(usize, u8)> = Vec::with_capacity(previous_ids.len() + 8);
             let mut self_seen = false;
             if aoi_enabled {
                 for idx in grid.query_radius(self_position, effective_exit) {
@@ -785,10 +789,13 @@ fn create_delta_packet(
         current: Option<EntityData>,
         mask: u8,
     }
-    let mut staged: Vec<Staged> = Vec::new();
-    let mut candidates: Vec<Candidate> = Vec::new();
-    let mut removed_set: Vec<u16> = Vec::new();
-    let mut active_entity_ids: Vec<u16> = Vec::new();
+    // Sized up front: growing these one doubling at a time for every peer on every Tick was about
+    // 5% of server CPU in realloc. Stale removals beyond this estimate still grow normally.
+    let candidate_estimate = removed_entity_ids.len() + visible.len();
+    let mut staged: Vec<Staged> = Vec::with_capacity(candidate_estimate);
+    let mut candidates: Vec<Candidate> = Vec::with_capacity(candidate_estimate);
+    let mut removed_set: Vec<u16> = Vec::with_capacity(removed_entity_ids.len());
+    let mut active_entity_ids: Vec<u16> = Vec::with_capacity(visible.len());
 
     // 1. AoI-exit removals — pinned.
     for &entity_id in removed_entity_ids {
@@ -1460,6 +1467,69 @@ mod tests {
             let expected: Vec<usize> = expected.iter().map(|c| c.index).collect();
             assert_eq!(actual, expected);
         }
+    }
+
+    /// Every entity moves, so each peer has a full candidate list: the case where the per-peer
+    /// buffers used to double their way up on every Tick.
+    #[test]
+    fn delta_build_does_not_regrow_per_peer_buffers() {
+        use crate::net::broadcast_reference as old;
+        init_arena_geometry();
+        let peers = 40usize;
+        let mut players = PlayerManager::new();
+        for peer in 0..peers {
+            let p = players.add_player(peer).unwrap();
+            p.authenticated = true;
+            p.position = Vec2::new(peer as f32, 0.0);
+        }
+        let at = |offset: f32| -> Vec<EntityData> {
+            players
+                .players
+                .iter()
+                .map(|p| EntityData {
+                    id: p.entity_id,
+                    position: Vec2::new(p.position.x + offset, p.position.y),
+                    animation: 0,
+                    flags: 0x21,
+                })
+                .collect()
+        };
+        let convert = |entities: &[EntityData]| -> Vec<old::EntityData> {
+            entities
+                .iter()
+                .map(|e| old::EntityData {
+                    id: e.id,
+                    position: e.position,
+                    animation: e.animation,
+                    flags: e.flags,
+                })
+                .collect()
+        };
+        let mut new_svc = BroadcastService::new(1000.0, 1100.0, 400.0, 1000.0, 1200);
+        let mut old_svc = old::BroadcastService::new(1000.0, 1100.0, 400.0, 1000.0, 1200);
+        let mut outbox = Outbox::new();
+        let start = at(0.0);
+        new_svc.broadcast_state_updates(&start, &players, 100, 0, &mut outbox);
+        old_svc.broadcast_state_updates(&convert(&start), &players, 100, 0, &mut outbox);
+        for peer in 0..peers {
+            new_svc.mark_baseline_acked(peer, 100);
+            old_svc.mark_baseline_acked(peer, 100);
+        }
+        outbox.drain();
+        let (moved_new, moved_old) = (at(5.0), convert(&at(5.0)));
+        let count = counting_allocator::allocations_during;
+        let new_allocations = count(&mut || {
+            new_svc.broadcast_state_updates(&moved_new, &players, 101, 0, &mut outbox)
+        });
+        outbox.drain();
+        let old_allocations = count(&mut || {
+            old_svc.broadcast_state_updates(&moved_old, &players, 101, 0, &mut outbox)
+        });
+        outbox.drain();
+        assert!(
+            new_allocations + 10 * peers <= old_allocations,
+            "new {new_allocations} vs old {old_allocations} allocations for {peers} peers"
+        );
     }
 
     /// Local mechanism timing only; never a server capacity result.
