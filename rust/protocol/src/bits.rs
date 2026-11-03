@@ -26,16 +26,15 @@ impl BitWriter {
     /// Write the low `n` bits of `value`, LSB-first. `n` must be 1..=32.
     pub fn write_bits(&mut self, value: u32, n: u8) {
         debug_assert!((1..=32).contains(&n));
-        for i in 0..n {
-            let bit = (value >> i) & 1;
-            self.cur |= (bit as u8) << self.nbits;
-            self.nbits += 1;
-            if self.nbits == 8 {
-                self.out.push(self.cur);
-                self.cur = 0;
-                self.nbits = 0;
-            }
+        let mut pending = u64::from(self.cur) | ((u64::from(value) & ((1 << n) - 1)) << self.nbits);
+        let mut pending_bits = self.nbits + n;
+        while pending_bits >= 8 {
+            self.out.push(pending as u8);
+            pending >>= 8;
+            pending_bits -= 8;
         }
+        self.cur = pending as u8;
+        self.nbits = pending_bits;
     }
 
     pub fn write_bit(&mut self, v: bool) {
@@ -243,6 +242,78 @@ impl<'a> BitReader<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The per-bit loop this writer replaced. It defines the wire format the new one must match.
+    fn write_bits_one_at_a_time(
+        out: &mut Vec<u8>,
+        cur: &mut u8,
+        nbits: &mut u8,
+        value: u32,
+        n: u8,
+    ) {
+        for i in 0..n {
+            *cur |= (((value >> i) & 1) as u8) << *nbits;
+            *nbits += 1;
+            if *nbits == 8 {
+                out.push(*cur);
+                *cur = 0;
+                *nbits = 0;
+            }
+        }
+    }
+
+    #[test]
+    fn write_bits_matches_the_bitwise_writer_for_every_width_and_offset() {
+        let mut state = 0x2545_F491_4F6C_DD1D_u64;
+        let mut next = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        for _ in 0..2000 {
+            let mut w = BitWriter::new();
+            let (mut out, mut cur, mut nbits) = (Vec::new(), 0u8, 0u8);
+            for _ in 0..64 {
+                let (value, n) = (next() as u32, (next() % 32 + 1) as u8);
+                w.write_bits(value, n);
+                write_bits_one_at_a_time(&mut out, &mut cur, &mut nbits, value, n);
+            }
+            if nbits > 0 {
+                out.push(cur);
+            }
+            w.align();
+            assert_eq!(w.out, out);
+        }
+    }
+
+    /// Fails against the per-bit loop, whose cost grows with the bits written rather than the
+    /// bytes. Best of many rounds, comparing two workloads on one thread, so a busy machine
+    /// slows both sides instead of failing the test.
+    #[test]
+    fn write_bits_cost_follows_bytes_not_bits() {
+        use std::hint::black_box;
+        use std::time::Instant;
+        let mut bitwise = f64::MAX;
+        let mut bytewise = f64::MAX;
+        for _ in 0..40 {
+            let mut w = BitWriter::with_capacity(1 << 16);
+            let start = Instant::now();
+            for i in 0..8000u32 {
+                w.write_bits(black_box(i), 16);
+            }
+            bytewise = bytewise.min(start.elapsed().as_secs_f64());
+            black_box(&w.out);
+            let (mut out, mut cur, mut nbits) = (Vec::with_capacity(1 << 16), 0u8, 0u8);
+            let start = Instant::now();
+            for i in 0..8000u32 {
+                write_bits_one_at_a_time(&mut out, &mut cur, &mut nbits, black_box(i), 16);
+            }
+            bitwise = bitwise.min(start.elapsed().as_secs_f64());
+            black_box(&out);
+        }
+        assert!(bytewise * 1.5 < bitwise, "{bytewise} vs bitwise {bitwise}");
+    }
 
     #[test]
     fn bits_round_trip() {
