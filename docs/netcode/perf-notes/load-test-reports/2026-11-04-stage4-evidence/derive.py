@@ -5,9 +5,9 @@ Sources: clean-run summaries from git commit fcf4f62 (not on master), plus the
 committed 2026-10-13 and 2026-10-14-one-pass bundles. Writes only beside itself.
 Run from anywhere inside the repository: python3 derive.py
 
-python3 derive.py --check-archives is read-only: it hashes any original archives
-found under the repo's deployment/hetzner/results/ and prints counts, writing nothing.
-Run it on the machine that holds them.
+python3 derive.py --check-archives is read-only: it hashes every file under the repo's
+deployment/hetzner/results/, looks each recorded hash up by content, and prints the
+result, writing nothing. Run it on the machine that holds the archives.
 """
 import calendar, csv, glob, hashlib, json, math, os, subprocess, sys
 
@@ -148,27 +148,56 @@ def claimed_archives():
                     yield "clean-runs", candidates(base[6:-13], s.get("private_evidence"), key), sha
 
 
+def results_index():
+    """sha256 -> repo-relative paths, for every file under deployment/hetzner/results/."""
+    index = {}
+    base = os.path.join(ROOT, "deployment/hetzner/results")
+    for folder, _, files in os.walk(base):
+        for name in files:
+            path = os.path.join(folder, name)
+            if os.path.isfile(path):
+                index.setdefault(sha256_file(path), []).append(os.path.relpath(path, ROOT))
+    return index
+
+
+def git_history_hashes(basenames):
+    """sha256 of every historical version of the named files, from git objects only."""
+    if not basenames:
+        return set()
+    log = subprocess.check_output(
+        ["git", "log", "--all", "--format=", "--raw", "--no-abbrev", "--no-renames", "--"]
+        + [f"*{n}" for n in sorted(basenames)], cwd=ROOT, text=True)
+    blobs = {line.split()[3] for line in log.splitlines() if line.startswith(":")} - {"0" * 40}
+    return {hashlib.sha256(subprocess.check_output(["git", "cat-file", "blob", b], cwd=ROOT)).hexdigest() for b in blobs}
+
+
 def verify_tree():
-    """Read-only: do the files named by retained evidence resolve and match on this machine?"""
+    """Read-only: find each hash by content, so a moved file is not reported as missing.
+
+    recorded_path: exact bytes at a path the evidence implies. elsewhere: exact bytes
+    under results/ at another path. git_history: exact bytes only in git objects.
+    mismatch: a file sits at the implied path, and those bytes exist nowhere.
+    """
+    index = results_index()
+    entries = list(claimed_archives())
+    unresolved = [e for e in entries if e[2] not in index]
+    names = {os.path.basename(p) for _, paths, _ in unresolved for p in paths}
+    history = git_history_hashes(names)
     out = {}
-    for group, paths, sha in claimed_archives():
-        g = out.setdefault(group, {"claimed": 0, "present": 0, "match": 0, "mismatch": [],
-                                   "not_found": 0, "not_found_archives": [], "not_found_by_extension": {}})
+    for group, paths, sha in entries:
+        g = out.setdefault(group, {"claimed": 0, "recorded_path": 0, "elsewhere": 0, "git_history": 0,
+                                   "mismatch": [], "not_found": []})
         g["claimed"] += 1
-        found = [p for p in paths if os.path.exists(os.path.join(ROOT, p))]
-        if not found:
-            g["not_found"] += 1
-            label = paths[0] if paths else "(no location recorded)"
-            if label.endswith((".gz", ".bundle")):
-                g["not_found_archives"].append(label)
-            ext = label.rsplit(".", 1)[-1]
-            g["not_found_by_extension"][ext] = g["not_found_by_extension"].get(ext, 0) + 1
-            continue
-        g["present"] += 1
-        if any(sha256_file(os.path.join(ROOT, p)) == sha for p in found):
-            g["match"] += 1
+        if set(paths) & set(index.get(sha, [])):
+            g["recorded_path"] += 1
+        elif sha in index:
+            g["elsewhere"] += 1
+        elif sha in history:
+            g["git_history"] += 1
+        elif any(os.path.exists(os.path.join(ROOT, p)) for p in paths):
+            g["mismatch"].append(paths[0])
         else:
-            g["mismatch"].append(found[0])
+            g["not_found"].append(paths[0] if paths else f"(no location recorded) {sha}")
     return out
 
 
