@@ -1,4 +1,4 @@
-# do_session — DigitalOcean test-session planner, registry and watchdog (handoff slices 1–2)
+# do_session — DigitalOcean test-session planner, registry, watchdog and provisioning (handoff slices 1–3)
 
 Control code for the disposable DigitalOcean capacity sessions planned in
 [issue #57](https://github.com/Operatorr/godot-networking-poc/issues/57), following the
@@ -9,7 +9,8 @@ Control code for the disposable DigitalOcean capacity sessions planned in
   network; the session directory is its only side effect and every file is create-only or
   append-only. A rejected freeze or admission therefore creates no provider resource by construction.
 - **Slice 2, the registry and watchdog:** see [below](#session-registry-fencing-and-cleanup-watchdog-slice-2).
-  It runs only against the offline fake provider until slice 3 supplies the real adapter.
+- **Slice 3, provisioning, access and cold bootstrap:** see [below](#provider-adapter-access-and-cold-bootstrap-slice-3).
+  It has only ever run against offline fakes. No live account has exercised this code.
 
 Terminology follows `docs/CONTEXT.md` and issues #59/#60: a *test session* owns one game/bot
 Droplet pair with one fixed hardware condition; its *test batch* is the frozen search; a *test
@@ -209,16 +210,19 @@ Droplets are still deleted at once, reconciliation keeps listing every sweep, an
 open and D still produces `cleanup-overdue`. A late landing is found and deleted because the session is still open.
 
 **The shipped registry trusts no receipt basis** (`DEFAULT_TRUSTED_BASES` is empty) and `CleanupProvider.get_request_settlement`
-returns None, so with no adapter guarantee a lost create response leaves the session open until the resource appears
-or the operator decides. This is deliberate: nothing here assumes a DigitalOcean completion guarantee, and none has
-been researched. `offline_fixture_receipt` is trusted only by fixtures and by the watchdog when it runs against the fake.
+returns None, so a lost create response leaves the session open until the resource appears or the operator decides.
+The DigitalOcean adapter keeps it that way. The published API reference documents no idempotency key and no lookup for
+a create whose response was lost. Its 202 "does not indicate the success or failure of the operation", and action links
+arrive only inside the response that was lost. None of that gives a request-specific terminal record, so no basis is
+named, and no bound is derived from HTTP timeouts or paid experiments. `offline_fixture_receipt` is trusted only by
+fixtures and by the watchdog when it runs against the fake.
 
 The operator's exit is `registry_cli.py dispose-create --session S --intent ID --note WHY`, allowed only during
 cleanup, so it can never permit a retry. The session then closes as `verified_absent_with_operator_disposition`, never
 clean. A landing after that closure is outside reconciliation unless someone reports it; `record_resource` reopens
 cleanup. Check the account by unique tag before disposing.
 
-**What a future adapter (#66) must do:**
+**What an adapter must do.** `do_api.py` does items 1 to 3 and declines 4 and 5, because the required guarantee does not exist:
 
 1. Create callbacks: start only inside the grant's `create_start_window_s`, use `create_request_timeout_s` as a client
    timeout, never retry inside the HTTP client, and return the exact id.
@@ -249,14 +253,12 @@ cleanup. Check the account by unique tag before disposing.
 
 ### Limitations
 
-- **No real provider yet.** `watchdog` refuses to start without an explicit provider, and refuses the
-  fake without `--allow-offline-fake`. The DigitalOcean adapter, its pagination, request timeouts and
-  `Retry-After` mapping belong to slice 3. No live account has exercised this code.
+- **Never run live yet.** `watchdog` refuses to start without an explicit provider, and refuses a fake without
+  `--allow-offline-fake`. `do_api:from_token_file` is the real adapter, but only fakes have exercised it.
 - **Live sessions get deadline checks, not inventory reads.** Before cleanup the watchdog reads only known Droplets,
   and only in the preparation window. A create no controller reported is found once cleanup starts, by unique tag.
-- **Without a provider guarantee, a lost create response needs an operator.** Until an adapter meets the obligations
-  above, such a session stays open and overdue until the resource appears or the operator runs `dispose-create`. That
-  is the accepted cost of never reporting clean over a create that may still land. A landing after a disposition is
+- **A lost create response that never appears needs an operator.** The session stays open and overdue until the
+  resource appears or the operator runs `dispose-create`. That is the accepted cost of never reporting clean over a create that may still land. A landing after a disposition is
   caught only if reported.
 - **The first delete by C has limits.** It holds for ownership reads that succeed within 35 s and for sessions admitted
   under the deadline capacity. A provider outage, a failed read or a `Retry-After` hold can still delay it, because
@@ -287,3 +289,104 @@ cleanup. Check the account by unique tag before disposing.
 - **Monotonic protection needs Linux.** Without `/proc/sys/kernel/random/boot_id` (for example on macOS)
   a reboot cannot be detected and only the persisted floor applies. A wall clock behind that floor fails closed
   there, but a smaller backward step can still delay C.
+
+## Provider adapter, access and cold bootstrap (slice 3)
+
+Turns an admitted manifest into a verified ready game/bot pair, or into ownership-safe cleanup with explicit incident
+state. All of it has been verified only against offline fakes. No provider mutation has ever been sent.
+
+| File | Owns |
+| --- | --- |
+| `do_api.py` | The real adapter over `http.client`. `DigitalOceanProvider` holds the watchdog's reads and exact deletes. `DigitalOceanProvisioningProvider` adds facts, creates, firewall updates and project assignment behind a gate. One route allowlist covers every request, and each call makes one attempt with an absolute bound. |
+| `remote_authorization.py` | The separately bounded packet every mutation needs, and `MutationGate`, which re-checks it and the frozen payload just before sending. |
+| `provider_preflight.py` | Fresh project, account, quota, region, size, price, image, key and collision facts, judged by the manifest's own rules. |
+| `session_access.py` | Exact firewall requests and the exact read-back comparison. Refuses any source that is not one routable host. |
+| `guest_bootstrap.py` | Cloud-init user data: public key, sshd policy, limits, the host-key binding. Validated on every rendering. |
+| `ssh_access.py` | Key-only, strictly host-verified SSH and scp, and the first-contact pinning decision. |
+| `guest_agent.py` | Stdlib-only program uploaded to guests. It reports facts as JSON and decides nothing. |
+| `readiness.py` | Pure rules over retained observations. A missing value always fails. |
+| `provisioner.py` | The whole path, and `refresh_access`. |
+| `provision_cli.py` | Operator CLI: `source-digests`, `preflight`, `provision`, `refresh-access`. |
+| `fake_do_http.py`, `fake_guest.py`, `provision_fixtures.py`, `provision_fault_evidence.py` | Offline only. The fake account sits at the HTTP boundary, so tests run the real adapter. |
+
+### The path
+
+```text
+authorization -> fresh facts -> register -> watchdog ack -> fresh facts -> admission -> arm (t0/D/C frozen)
+  -> 3 tags -> firewall (read back) -> game -> bot
+  -> active + exact plan -> project assignment (read back) -> firewall with the bot's exact address (read back, applied)
+  -> exact inventory -> pin both host keys -> cloud-init done
+  -> clean locked build on the bot host -> release relayed to the game host (hashes compared)
+  -> probes, clock bracket, sampler -> bot's SSH attempt must time out -> cross-host ENet smoke -> ports released
+  -> exact inventory -> mark_ready
+```
+
+Every failure stops the batch and requests cleanup. Nothing is repaired in place and no pair is replaced. The watchdog
+deletes what the session owns, and if the request cannot be delivered, C still arrives on the management host.
+
+### Choices worth knowing
+
+- **Unknown creates.** The controller observes for 120 s, adopting the resource if it appears, and sends nothing while
+  it watches. After that the batch stops with the request unresolved. Observation is a local wait, not a provider
+  bound. Closure then follows [Create settlement](#create-settlement): a late landing is found by tag and deleted, and
+  otherwise only `dispose-create` closes the session, labelled as a disposition rather than clean.
+- **What a create response proves.** A 2xx with an exact id means it landed. 400, 401, 403, 404, 422 or 429 is
+  `CreateRejected`. A failed connection is `CreateNotSent`. Everything else stays unknown, including any 5xx, 408, 409,
+  a redirect, a timeout and a 2xx without an id. A rejection stops the batch and is not retried.
+- **Authorization covers one exact session and manifest, one pair and a time window.** It is re-validated at every
+  mutation. Write scopes and token expiry are operator attestations in the packet, because DigitalOcean has no endpoint
+  that reports a token's scopes, and proving a write scope would itself be a mutation. Read scopes are proven by the
+  preflight reads succeeding. The packet does not gate deletion: cleanup must work when no controller is left. Exact
+  ids and ownership authorize deletes, and the watchdog's adapter cannot create anything.
+- **First contact.** No private key goes into user data. Each Droplet gets a random nonce through the authenticated API,
+  and at first boot it publishes `HMAC(nonce, host key)` and deletes the nonce file. The controller scans the key, reads
+  the proof over a connection pinned to that key, and pins it only if the proof matches. The nonce exists only in
+  controller memory and user data (still readable from the provider's metadata service on the guest). It authorizes
+  nothing, and evidence writes refuse it. Pinning makes a host key change a failure.
+- **A restarted controller cleans up.** Nonces are not persisted, so it cannot verify first contact, and an armed
+  session id is never provisioned again. Cold bootstrap has nothing partial worth saving, and a live lease refuses a
+  second controller outright.
+- **The bot host builds both binaries.** A 1 GiB game host cannot be trusted to link a release build, and compiling
+  there would leave page cache and memory history behind before measurement. The relay goes through the controller,
+  since guests hold no key for each other. Each role's provenance records what it runs, and the build report records
+  where it was made.
+- **Binary hashes.** A calibration session cannot know its build's hash in advance, so it records the observed hash,
+  and the report says `observed_for_calibration`. The relayed copy must still equal the builder's. Lifecycle smoke and
+  capacity sessions enforce the frozen hash, so a build that does not reproduce stops them.
+- **One firewall for both roles,** as the frozen intents define. UDP 8081 therefore also applies to the bot host, where
+  nothing listens. Metrics has no rule, and the server binds it to loopback, which the smoke verifies.
+- **Admission.** Capacity sessions pass the full planner admission. Calibration and lifecycle smoke have no search yet,
+  so they must fit setup, collection, recovery and teardown inside the cap, plus the cost and transfer limits. Their
+  workload plans belong to their own gates.
+- **After `mark_ready`.** This slice leaves a verified pair with no workload process running. It renews its lease only
+  while running, and slice 4 owns fresh process execution and the control it needs from there.
+
+### Running it
+
+```bash
+cd scripts/do_session
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -q      # all offline
+python3 provision_cli.py source-digests --repo ../.. --sha <full-sha>   # local: digests to freeze
+```
+
+`preflight`, `provision` and `refresh-access` contact the provider, and none of them has ever been run. `provision`
+and `refresh-access` need an authorization packet and refuse before reading a token without one. Watchdog deployment is
+issue #72: `OMEGA_DO_PROVIDER=do_api:from_token_file`, `OMEGA_DO_PROVIDER_ARG=<restricted token file>`. The token is
+read once at service start, so rotating it means restarting the service.
+
+Retained timelines: `docs/netcode/perf-notes/digitalocean-capacity/offline-faults/slice3/`. Regenerate with
+`provision_fault_evidence.py`. They are not capacity or live-provider results.
+
+### What only a live run can show
+
+These are stated so Gate A checks them instead of assuming them. Each failure direction is safe: the session stops and
+cleans up, or stays open and visible.
+
+- Real response shapes for everything in `do_api.py`. They come from the public API reference, and a few points it
+  leaves open are handled conservatively: `POST /v2/tags` on an existing name, a tag listing for a deleted tag, and
+  `ports` spelling on read-back. If listing a deleted tag returned 404, sessions would stay open rather than close.
+- `cloud-init status --format json` semantics, sshd policy ordering and `nofile` limits on the pinned image, and the
+  time taken to publish the host binding. The 600 s contact wait is a guess until calibrated.
+- Whether a release build reproduces byte for byte between two cold sessions. If it does not, Gate B stops at the hash.
+- Real ENet smoke behaviour across the public route. `guest_agent.py` was exercised with stub binaries.
+- Linux itself: the agent's `ss`, `timedatectl`, `sshd -T` and `dpkg-query` paths ran only behind mocks on macOS.

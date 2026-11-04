@@ -6,8 +6,9 @@
 #
 # watchdog.env sets OMEGA_DO_PROVIDER (MODULE:FACTORY) and OMEGA_DO_PROVIDER_ARG. With neither set the
 # service refuses to start, because a watchdog without a real provider would protect nothing. The real
-# DigitalOcean adapter and its restricted token file arrive with issue #66; install and enable this
-# unit under issue #72 only.
+# adapter is OMEGA_DO_PROVIDER=do_api:from_token_file with OMEGA_DO_PROVIDER_ARG=<token file, mode 0600>.
+# Its reads and exact deletes are all it can do. The token is read once at start, so rotating it means
+# restarting this unit. Install and enable this unit under issue #72 only.
 #
 # After a reboot the registry trusts the clock only if the kernel reports it synchronized; otherwise armed
 # sessions start cleanup. time-sync.target only waits if a sync service provides it. Do not add an unbounded

@@ -1,0 +1,68 @@
+{
+ "checks": [
+  {
+   "check": "refused",
+   "passed": true
+  },
+  {
+   "check": "not even a provider read happened",
+   "passed": true
+  },
+  {
+   "check": "the session was never registered",
+   "passed": true
+  },
+  {
+   "check": "no credential-shaped value in registry state, evidence or guest bootstrap",
+   "passed": true
+  }
+ ],
+ "clock": "scripted",
+ "guest_steps": [],
+ "guests": "fake",
+ "incidents": [],
+ "provider": "fake account behind the real adapter",
+ "provider_inventory_at_end": {
+  "droplets": [
+   "500000",
+   "500001"
+  ],
+  "firewalls": [
+   "00000001-0000-4000-8000-000000000000"
+  ],
+  "tags": [
+   "omega-management",
+   "prod"
+  ]
+ },
+ "provider_requests": [],
+ "provisioning_journal": [
+  {
+   "armed": false,
+   "at": "2026-10-30T12:00:00+00:00",
+   "code": "authorization_refused",
+   "detail": "one authorization covers exactly one pair; authorization is outside its time window",
+   "kind": "stopping"
+  }
+ ],
+ "registry_journal": [
+  {
+   "at": "2026-10-30T12:00:00+00:00",
+   "kind": "watchdog_started",
+   "seq": 1
+  },
+  {
+   "at": "2026-10-30T12:00:00+00:00",
+   "kind": "watchdog_started",
+   "seq": 2
+  }
+ ],
+ "registry_journal_verification": {
+  "events": 2,
+  "head": "caf0fa8f7534527d2ea05ead249ca35de2b3b7c6babd63d282b8af72aea01494",
+  "valid": true
+ },
+ "scenario": "missing_authorization_sends_nothing",
+ "sessions": {},
+ "user_data_sha256": []
+}
