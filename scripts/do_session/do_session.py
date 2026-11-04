@@ -5,7 +5,7 @@
     do_session.py admit    --session-dir DIR --now ISO --infra-health h.json [--resume]
     do_session.py next-run --session-dir DIR --now ISO --infra-health h.json [--resume]
     do_session.py record   --session-dir DIR --run-id ID --outcome PASS|FAIL|... [--evidence-ref REF] --now ISO
-    do_session.py mark-t0  --session-dir DIR --now ISO
+    do_session.py mark-t0  --session-dir DIR --arm-ack ack.json    (or --now ISO, offline only)
     do_session.py mark-ready --session-dir DIR --now ISO --evidence-ref REF
     do_session.py stop     --session-dir DIR --reason time_exhausted --now ISO
     do_session.py paths    --session-dir DIR
@@ -176,14 +176,25 @@ def cmd_record(args):
     return 0
 
 
+def t0_from_args(args, manifest, sha):
+    """The registry's durable arm acknowledgement is the source of t0 whenever one exists."""
+    if args.arm_ack:
+        ack = load_json(args.arm_ack)
+        admission.validate_arm_ack(ack, manifest, sha)
+        return admission.parse_utc(ack['t0_utc']).isoformat()
+    if not args.now:
+        raise ValueError('mark-t0 needs --arm-ack, or --now for an offline plan')
+    return admission.parse_utc(args.now).isoformat()
+
+
 def cmd_mark_t0(args):
-    _, sha, _, meta = load_session(args.session_dir)
+    manifest, sha, _, meta = load_session(args.session_dir)
     if meta['t0'] is not None:
         print(json.dumps(dict(error='t0 already recorded at ' + meta['t0'] + '; the deadline is immutable')))
         return 2
-    append_journal(args.session_dir, dict(kind='t0', manifest_sha256=sha,
-                                          t0_utc=admission.parse_utc(args.now).isoformat()))
-    print(json.dumps(dict(t0_utc=admission.parse_utc(args.now).isoformat())))
+    t0 = t0_from_args(args, manifest, sha)
+    append_journal(args.session_dir, dict(kind='t0', manifest_sha256=sha, t0_utc=t0))
+    print(json.dumps(dict(t0_utc=t0)))
     return 0
 
 
@@ -263,7 +274,9 @@ def build_parser():
     for name, func in (('mark-t0', cmd_mark_t0), ('mark-ready', cmd_mark_ready), ('stop', cmd_stop)):
         command = sub.add_parser(name)
         command.add_argument('--session-dir', required=True)
-        command.add_argument('--now', required=True)
+        command.add_argument('--now', required=name != 'mark-t0')
+        if name == 'mark-t0':
+            command.add_argument('--arm-ack', help='the registry arm acknowledgement holding the durable t0')
         if name == 'stop':
             command.add_argument('--reason', required=True,
                                  choices=('time_exhausted', 'spend_exhausted', 'operator_stop'))

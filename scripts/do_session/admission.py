@@ -59,6 +59,28 @@ def parse_utc(text):
     return stamp.astimezone(datetime.timezone.utc)
 
 
+def validate_arm_ack(ack, manifest, manifest_sha256):
+    """Refuse an arm acknowledgement that does not prove the frozen deadline was persisted."""
+    limits = manifest['limits']
+    try:
+        t0, deadline, cleanup = (parse_utc(ack[key]) for key in ('t0_utc', 'deadline_d_utc', 'cleanup_c_utc'))
+    except (KeyError, TypeError, ValueError):
+        raise ValueError('arm acknowledgement is missing t0/D/C')
+    problems = []
+    if ack.get('durable') is not True:
+        problems.append('not marked durable')
+    if ack.get('manifest_sha256') != manifest_sha256:
+        problems.append('different manifest hash')
+    if abs((deadline - t0).total_seconds() - limits['max_session_duration_s']) > 1e-3:
+        problems.append('D != t0 + max_session_duration')
+    if abs((deadline - cleanup).total_seconds() - limits['teardown_reserve_s']) > 1e-3:
+        problems.append('C != D - teardown_reserve')
+    if ack.get('watchdog_identity') != manifest['watchdog']['identity']:
+        problems.append('different watchdog identity')
+    if problems:
+        raise ValueError('arm acknowledgement rejected: ' + ', '.join(problems))
+
+
 def trial_duration(manifest, trial):
     """Per-term duration of one trial; every term is named so the explanation is checkable."""
     timing = manifest['timing_basis']

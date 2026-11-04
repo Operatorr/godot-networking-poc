@@ -1,0 +1,662 @@
+"""Pre-create acknowledgement, fencing, durable transitions and independent outcome fields."""
+import contextlib
+import io
+import json
+import os
+import pathlib
+import sqlite3
+import stat
+import tempfile
+import unittest
+
+import admission
+import do_session
+import fixture_support as fx
+import registry
+import registry_client
+import registry_fixtures as rf
+import search
+import session_clock
+
+SESSION = 'do-cap-1v1g-20261030a'
+
+
+class DropResponse:
+    """The write applies, but the acknowledgement is lost on the way back."""
+
+    def __init__(self, inner, method, times=1):
+        self.inner, self.method, self.remaining = inner, method, times
+
+    def __call__(self, request):
+        response = self.inner(request)
+        if request['method'] == self.method and self.remaining > 0:
+            self.remaining -= 1
+            raise registry_client.TransportError('connection lost after the write')
+        return response
+
+
+class Unreachable:
+    def __call__(self, request):
+        raise registry_client.TransportError('no route to management host')
+
+
+def storage_failure(point):
+    def failpoint(name):
+        if name == point:
+            raise sqlite3.OperationalError('disk I/O error')
+    return failpoint
+
+
+class RegistryStateTests(unittest.TestCase):
+    def test_init_is_create_only_and_restricted(self):
+        with tempfile.TemporaryDirectory() as root:
+            state = pathlib.Path(root) / 'state'
+            registry.Registry.init(state, 'r', 'w')
+            self.assertEqual(stat.S_IMODE(os.stat(state).st_mode), 0o700)
+            self.assertEqual(stat.S_IMODE(os.stat(state / registry.DB_NAME).st_mode), 0o600)
+            with self.assertRaises(registry.RegistryUnavailable):
+                registry.Registry.init(state, 'other', 'other')
+
+    def test_missing_state_fails_instead_of_recreating_an_empty_registry(self):
+        with tempfile.TemporaryDirectory() as root:
+            with self.assertRaises(registry.RegistryUnavailable):
+                registry.Registry(pathlib.Path(root) / 'gone')
+            self.assertEqual(list(pathlib.Path(root).iterdir()), [])
+
+    def test_incomplete_initialization_is_unusable(self):
+        with tempfile.TemporaryDirectory() as root:
+            state = pathlib.Path(root)
+            (state / registry.DB_NAME).write_bytes(b'')
+            with self.assertRaises(registry.RegistryUnavailable):
+                registry.Registry(state)
+
+
+class RegistrationTests(unittest.TestCase):
+    def setUp(self):
+        self.stack = rf.Stack(self)
+        self.manifest, self.sha = fx.session_manifest(SESSION)
+
+    def rejected(self, code, method, **params):
+        with self.assertRaises(registry_client.RegistryRejected) as caught:
+            self.stack.client.mutate(method, **params)
+        self.assertEqual(caught.exception.code, code)
+        return caught.exception
+
+    def test_registration_persists_manifest_ownership_and_intents(self):
+        ack = self.stack.client.register(self.manifest, self.sha)
+        self.assertEqual(ack['manifest_sha256'], self.sha)
+        kinds = sorted(i['kind'] for i in ack['intents'])
+        self.assertEqual(kinds, ['droplet', 'droplet', 'firewall', 'tag', 'tag', 'tag'])
+        reopened = self.stack.open_registry()
+        self.assertEqual(reopened.manifest(SESSION), self.manifest)
+        self.assertEqual(reopened.status(SESSION)['state'], registry.REGISTERED)
+
+    def test_changed_or_foreign_manifests_are_refused(self):
+        changed = json.loads(json.dumps(self.manifest))
+        changed['limits']['max_session_duration_s'] += 1
+        self.rejected('manifest_rejected', 'register_session', manifest=changed, manifest_sha256=self.sha)
+        for section, field in (('registry_id', 'wrong_registry'), ('identity', 'wrong_watchdog')):
+            manifest, sha = fx.session_manifest('do-cap-foreign-' + section.replace('_', ''))
+            manifest['watchdog'][section] = 'somewhere-else'
+            import manifest as manifest_mod
+            self.rejected(field, 'register_session', manifest=manifest, manifest_sha256=manifest_mod.manifest_sha256(manifest))
+
+    def test_second_manifest_for_a_session_is_a_conflict_not_a_replacement(self):
+        self.stack.client.register(self.manifest, self.sha)
+        other, other_sha = fx.session_manifest(SESSION, cap_s=7200)
+        self.rejected('manifest_conflict', 'register_session', manifest=other, manifest_sha256=other_sha)
+        self.assertEqual(self.stack.registry.manifest(SESSION), self.manifest)
+
+    def test_credential_values_are_refused_and_never_stored(self):
+        token = 'dop_v1_' + 'a' * 64
+        self.stack.client.register(self.manifest, self.sha)
+        control = self.stack.client.acquire(SESSION)
+        self.rejected('secret_value_rejected', 'record_evidence', session_id=SESSION,
+                      fencing_token=control['fencing_token'], status='partial', ref=token)
+        self.assertNotIn(token.encode(), self.stack.state_bytes())
+
+
+class PreCreateAcknowledgementTests(unittest.TestCase):
+    """Criterion 1: no provider create without a durable, acknowledged deadline."""
+
+    def setUp(self):
+        self.stack = rf.Stack(self)
+        self.creates = []
+
+    def create_fn(self, grant):
+        self.creates.append(grant['intent_id'])
+        return 'id-' + str(len(self.creates))
+
+    def try_create(self, token, client=None, session_id=SESSION):
+        (client or self.stack.client).guarded_create(session_id, session_id + ':droplet:game', token, self.create_fn, lambda g: None)
+
+    def assert_refused(self, code, token, client=None):
+        with self.assertRaises(registry_client.RegistryRejected) as caught:
+            self.try_create(token, client=client)
+        self.assertEqual(caught.exception.code, code)
+        self.assertEqual(self.creates, [])
+
+    def test_create_without_arming_is_refused(self):
+        _, _, token = self.stack.registered(SESSION)
+        self.assert_refused('not_armed', token)
+
+    def test_arming_needs_a_healthy_watchdog_that_acknowledged_the_manifest(self):
+        manifest, sha, token = self.stack.registered(SESSION)
+        # The fixture's start() wrote a fresh heartbeat, but no tick has acknowledged this manifest.
+        with self.assertRaises(registry_client.RegistryRejected) as caught:
+            self.stack.client.arm(SESSION, manifest, sha, token)
+        self.assertEqual(caught.exception.code, 'watchdog_unacknowledged')
+        self.stack.watchdog.tick()
+        self.stack.clock.advance(self.stack.registry.watchdog_stale_s + 1)
+        self.stack.client.call('renew_control', session_id=SESSION, fencing_token=token)
+        with self.assertRaises(registry_client.RegistryRejected) as caught:
+            self.stack.client.arm(SESSION, manifest, sha, token)
+        self.assertEqual(caught.exception.code, 'watchdog_unhealthy')
+        self.assertIsNone(self.stack.registry.status(SESSION)['t0_utc'])
+
+    def test_create_needs_the_watchdog_to_have_seen_the_armed_deadline(self):
+        manifest, sha, token = self.stack.registered(SESSION)
+        self.stack.watchdog.tick()
+        self.stack.client.arm(SESSION, manifest, sha, token)
+        self.assert_refused('watchdog_unacknowledged', token)
+        self.stack.watchdog.tick()
+        self.try_create(token)
+        self.assertEqual(len(self.creates), 1)
+
+    def test_create_is_refused_when_the_watchdog_heartbeat_goes_stale(self):
+        _, _, token, _ = self.stack.armed(SESSION)
+        self.stack.clock.advance(self.stack.registry.watchdog_stale_s + 1)
+        self.assert_refused('watchdog_unhealthy', token)
+
+    def test_registry_write_failure_at_each_step_yields_no_create(self):
+        manifest, sha = fx.session_manifest(SESSION)
+        for point in ('register_session:before_commit', 'acquire_control:before_commit',
+                      'arm_session:before_commit', 'begin_create:before_commit'):
+            with self.subTest(point=point):
+                stack = rf.Stack(self)
+                creates = []
+                client = stack.client
+
+                def flow():
+                    client.register(manifest, sha)
+                    token = client.acquire(SESSION)['fencing_token']
+                    stack.watchdog.tick()
+                    client.arm(SESSION, manifest, sha, token)
+                    stack.watchdog.tick()
+                    client.guarded_create(SESSION, SESSION + ':droplet:game', token,
+                                          lambda g: creates.append(g) or 'x', lambda g: None)
+
+                stack.failpoint = storage_failure(point)
+                with self.assertRaises(registry_client.RegistryUnavailable):
+                    flow()
+                self.assertEqual(creates, [])
+
+    def test_unreachable_registry_yields_no_create(self):
+        _, _, token, _ = self.stack.armed(SESSION)
+        client = self.stack.new_client('controller-a', transport=Unreachable())
+        with self.assertRaises(registry_client.RegistryUnavailable):
+            self.try_create(token, client=client)
+        self.assertEqual(self.creates, [])
+
+    def test_ack_failing_validation_is_treated_as_no_ack(self):
+        manifest, sha, token, ack = self.stack.armed(SESSION)
+        for tamper in (dict(durable=False), dict(manifest_sha256='0' * 64),
+                       dict(deadline_d_utc=session_clock.iso(session_clock.parse(ack['deadline_d_utc']) + 60)),
+                       dict(cleanup_c_utc=session_clock.iso(session_clock.parse(ack['cleanup_c_utc']) + 60))):
+            with self.subTest(tamper=sorted(tamper)):
+                with self.assertRaises(ValueError):
+                    admission.validate_arm_ack(dict(ack, **tamper), manifest, sha)
+
+
+class ImmutableDeadlineTests(unittest.TestCase):
+    def setUp(self):
+        self.stack = rf.Stack(self)
+
+    def test_lost_arm_ack_replays_the_original_t0_even_much_later(self):
+        manifest, sha, token = self.stack.registered(SESSION)
+        self.stack.watchdog.tick()
+        client = self.stack.new_client('controller-a', transport=DropResponse(self.stack.transport, 'arm_session'))
+        first = client.arm(SESSION, manifest, sha, token, request_id='arm-1')
+        self.assertTrue(first['replayed'])
+        self.stack.clock.advance(50)
+        again = client.arm(SESSION, manifest, sha, token, request_id='arm-1')
+        self.assertEqual((first['t0_utc'], first['deadline_d_utc'], first['cleanup_c_utc']),
+                         (again['t0_utc'], again['deadline_d_utc'], again['cleanup_c_utc']))
+        self.assertEqual(self.stack.registry.status(SESSION)['t0_utc'], first['t0_utc'])
+
+    def test_a_second_arm_is_refused_and_reports_the_original_deadline(self):
+        manifest, sha, token, ack = self.stack.armed(SESSION)
+        self.stack.clock.advance(30)
+        with self.assertRaises(registry_client.RegistryRejected) as caught:
+            self.stack.client.arm(SESSION, manifest, sha, token)
+        self.assertEqual(caught.exception.code, 'already_armed')
+        self.assertEqual(caught.exception.details['deadline_d_utc'], ack['deadline_d_utc'])
+
+    def test_d_and_c_follow_the_contract(self):
+        _, _, _, ack = self.stack.armed(SESSION, cap_s=1800, reserve_s=120)
+        self.assertEqual(session_clock.parse(ack['deadline_d_utc']) - session_clock.parse(ack['t0_utc']), 1800)
+        self.assertEqual(session_clock.parse(ack['deadline_d_utc']) - session_clock.parse(ack['cleanup_c_utc']), 120)
+
+    def test_storage_refuses_to_change_a_deadline_or_rewrite_history(self):
+        self.stack.armed(SESSION)
+        db = self.stack.registry.db
+        for statement in ("UPDATE sessions SET deadline_d_utc='2099-01-01T00:00:00+00:00'",
+                          "UPDATE sessions SET cleanup_c_utc='2099-01-01T00:00:00+00:00'",
+                          "UPDATE sessions SET t0_utc='2099-01-01T00:00:00+00:00'",
+                          "UPDATE sessions SET cap_s=999999",
+                          "UPDATE sessions SET manifest_sha256='x'",
+                          "DELETE FROM sessions",
+                          "DELETE FROM resources",
+                          "UPDATE events SET kind='edited'",
+                          "DELETE FROM events"):
+            with self.subTest(statement=statement):
+                with self.assertRaises(sqlite3.IntegrityError):
+                    db.execute(statement)
+
+    def test_journal_chain_detects_tampering(self):
+        self.stack.armed(SESSION)
+        self.assertTrue(self.stack.registry.verify_journal()['valid'])
+        db = self.stack.registry.db
+        db.execute('DROP TRIGGER events_no_update')
+        db.execute("UPDATE events SET data_json='{}' WHERE seq=2")
+        result = self.stack.registry.verify_journal()
+        self.assertFalse(result['valid'])
+        self.assertEqual(result['broken_at_seq'], 2)
+
+    def test_registry_clock_is_used_not_the_callers(self):
+        # No RPC accepts a timestamp, so a skewed laptop has no way to influence t0/D/C.
+        for method in registry.Registry.RPC_METHODS:
+            parameters = getattr(registry.Registry, method).__code__.co_varnames
+            for forbidden in ('now', 't0', 'deadline', 'wall'):
+                self.assertNotIn(forbidden, parameters, method)
+
+    def test_planner_takes_t0_from_the_durable_ack(self):
+        manifest, sha, _, ack = self.stack.armed(SESSION)
+        session_dir = self.stack.root / 'session'
+        session_dir.mkdir()
+        (session_dir / 'manifest.json').write_text(json.dumps(manifest))
+        (session_dir / 'manifest.sha256').write_text(sha + '  manifest.json\n')
+        ack_path = self.stack.root / 'ack.json'
+        ack_path.write_text(json.dumps(ack))
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(do_session.main(['mark-t0', '--session-dir', str(session_dir), '--arm-ack', str(ack_path)]), 0)
+        _, _, _, meta = do_session.load_session(session_dir)
+        self.assertEqual(meta['t0'], ack['t0_utc'])
+
+    def test_planner_refuses_a_forged_ack(self):
+        manifest, sha, _, ack = self.stack.armed(SESSION)
+        session_dir = self.stack.root / 'session'
+        session_dir.mkdir()
+        (session_dir / 'manifest.json').write_text(json.dumps(manifest))
+        (session_dir / 'manifest.sha256').write_text(sha + '  manifest.json\n')
+        ack_path = self.stack.root / 'ack.json'
+        ack_path.write_text(json.dumps(dict(ack, durable=False)))
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(do_session.main(['mark-t0', '--session-dir', str(session_dir), '--arm-ack', str(ack_path)]), 2)
+
+    def test_registry_health_drives_planner_admission(self):
+        manifest, sha, _, _ = self.stack.armed(SESSION, cap_s=14400)
+        state = search.SearchState(SESSION)
+        health = self.stack.registry.health(SESSION)
+        result = admission.admit(manifest, sha, state, session_clock.iso(self.stack.clock.wall()), health)
+        self.assertTrue(result.admitted, result.reasons)
+        self.stack.clock.advance(self.stack.registry.watchdog_stale_s + 1)
+        stale = self.stack.registry.health(SESSION)
+        result = admission.admit(manifest, sha, state, session_clock.iso(self.stack.clock.wall()), stale)
+        self.assertFalse(result.admitted)
+        self.assertTrue(any('watchdog' in r for r in result.reasons))
+
+
+class CreateAmbiguityTests(unittest.TestCase):
+    def setUp(self):
+        self.stack = rf.Stack(self)
+        _, _, self.token, _ = self.stack.armed(SESSION)
+        self.intent = SESSION + ':droplet:game'
+        self.creates = []
+
+    def create(self, grant):
+        self.creates.append(grant['intent_id'])
+        return self.stack.provider.add_droplet(grant['expected_name'], grant['expected_tags'])
+
+    def find(self, grant):
+        for droplet in self.stack.provider.list_droplets_by_tag(rf.fx_tags(SESSION)['session']):
+            if droplet['name'] == grant['expected_name']:
+                return droplet['id']
+        return None
+
+    def test_lost_begin_create_ack_reconciles_before_any_create(self):
+        client = self.stack.new_client('controller-a', transport=DropResponse(self.stack.transport, 'begin_create'))
+        client.guarded_create(SESSION, self.intent, self.token, self.create, self.find)
+        self.assertEqual(self.creates, [self.intent])
+        self.assertEqual(self.stack.registry.status(SESSION)['intents'][0]['kind'], 'droplet')
+
+    def test_create_timeout_then_retry_finds_the_landed_resource(self):
+        def landed_but_timed_out(grant):
+            self.create(grant)
+            raise TimeoutError('response lost')
+
+        with self.assertRaises(TimeoutError):
+            self.stack.client.guarded_create(SESSION, self.intent, self.token, landed_but_timed_out, self.find)
+        key = self.stack.client.guarded_create(SESSION, self.intent, self.token, self.create, self.find)
+        self.assertEqual(len(self.creates), 1, 'no blind duplicate')
+        self.assertTrue(key.startswith('droplet:'))
+
+    def test_create_timeout_that_never_landed_reconciles_absent_then_creates(self):
+        def lost(grant):
+            raise TimeoutError('never reached the provider')
+
+        with self.assertRaises(TimeoutError):
+            self.stack.client.guarded_create(SESSION, self.intent, self.token, lost, self.find)
+        self.stack.client.guarded_create(SESSION, self.intent, self.token, self.create, self.find)
+        self.assertEqual(len(self.creates), 1)
+        intent = [i for i in self.stack.registry.status(SESSION)['intents'] if i['intent_id'] == self.intent][0]
+        self.assertEqual(intent['request_count'], 2)
+        self.assertEqual(intent['state'], 'created')
+
+    def test_a_created_intent_cannot_be_created_again(self):
+        self.stack.client.guarded_create(SESSION, self.intent, self.token, self.create, self.find)
+        with self.assertRaises(registry_client.RegistryRejected) as caught:
+            self.stack.client.guarded_create(SESSION, self.intent, self.token, self.create, self.find)
+        self.assertEqual(caught.exception.code, 'already_created')
+        self.assertEqual(len(self.creates), 1)
+
+
+class FencingTests(unittest.TestCase):
+    """Criterion 2: one live controller; stale tokens and expired work are refused at dispatch."""
+
+    def setUp(self):
+        self.stack = rf.Stack(self)
+        self.manifest, self.sha, self.token, self.ack, self.ids = self.stack.ready(SESSION)
+        self.other = self.stack.new_client('controller-b')
+
+    def dispatch(self, client=None, token=None, run_id='run-1', duration=60, request_id=None):
+        return (client or self.stack.client).mutate(
+            'dispatch_run', request_id, session_id=SESSION, run_id=run_id, fencing_token=self.token if token is None else token,
+            manifest_sha256=self.sha, estimated_duration_s=duration)
+
+    def assert_rejected(self, code, func, *args, **kwargs):
+        with self.assertRaises(registry_client.RegistryRejected) as caught:
+            func(*args, **kwargs)
+        self.assertEqual(caught.exception.code, code)
+        return caught.exception
+
+    def test_second_controller_cannot_take_a_live_session_without_explicit_takeover(self):
+        error = self.assert_rejected('control_held', self.other.acquire, SESSION)
+        self.assertEqual(error.details['controller_id'], 'controller-a')
+        self.assertEqual(self.dispatch()['authorized'], True)
+
+    def test_takeover_makes_every_authority_of_the_old_controller_stale(self):
+        new = self.other.acquire(SESSION, takeover=True)
+        self.assertGreater(new['fencing_token'], self.token)
+        calls = [
+            lambda: self.dispatch(),
+            lambda: self.stack.client.call('renew_control', session_id=SESSION, fencing_token=self.token),
+            lambda: self.stack.client.mutate('request_cleanup', session_id=SESSION, fencing_token=self.token, reason='stale'),
+            lambda: self.stack.client.mutate('begin_collection', session_id=SESSION, fencing_token=self.token),
+            lambda: self.stack.client.mutate('record_evidence', session_id=SESSION, fencing_token=self.token, status='complete'),
+            lambda: self.stack.client.mutate('record_measurement', session_id=SESSION, fencing_token=self.token, outcome='x'),
+        ]
+        for call in calls:
+            self.assert_rejected('stale_fencing_token', call)
+        self.assertEqual(self.stack.registry.runs(SESSION), [])
+        self.assertEqual(self.stack.registry.status(SESSION)['state'], registry.PAUSED)
+
+    def test_stale_replay_of_an_applied_dispatch_cannot_launch(self):
+        self.dispatch(request_id='dispatch-1')
+        self.other.acquire(SESSION, takeover=True)
+        self.assert_rejected('stale_fencing_token', self.dispatch, request_id='dispatch-1')
+
+    def test_lost_dispatch_ack_replays_one_grant_without_a_second_run(self):
+        client = self.stack.new_client('controller-a', transport=DropResponse(self.stack.transport, 'dispatch_run'))
+        grant = self.dispatch(client=client, request_id='dispatch-1')
+        self.assertTrue(grant['authorized'])
+        self.assertEqual(len(self.stack.registry.runs(SESSION)), 1)
+
+    def test_replay_of_a_finished_or_unlaunchable_dispatch_grants_nothing(self):
+        grant = self.dispatch(request_id='dispatch-1')
+        self.stack.step(self.stack.registry.launch_window_s + 1)
+        self.stack.client.call('renew_control', session_id=SESSION, fencing_token=self.token)
+        self.assertFalse(self.dispatch(request_id='dispatch-1')['authorized'], 'launch window closed')
+        self.stack.client.mutate('record_run_outcome', session_id=SESSION, run_id='run-1', outcome=search.PASS,
+                                 fencing_token=self.token, evidence_ref='runs/run-1')
+        self.assertFalse(self.dispatch(request_id='dispatch-1')['authorized'], 'finished run')
+        self.assertTrue(grant['authorized'])
+
+    def test_lease_lapse_refuses_dispatch_and_renewal_and_resume_is_explicit(self):
+        self.stack.clock.advance(self.stack.registry.lease_ttl_s + 1)
+        self.stack.watchdog.tick()
+        self.assert_rejected('lease_expired', self.dispatch)
+        self.assert_rejected('lease_expired', self.stack.client.call, 'renew_control', session_id=SESSION, fencing_token=self.token)
+        new = self.stack.client.acquire(SESSION)
+        self.assertEqual(new['state'], registry.PAUSED)
+        self.assertFalse(new['dispatch_allowed'])
+        self.assert_rejected('bad_state', self.dispatch, token=new['fencing_token'])
+        self.stack.client.mutate('record_resume', session_id=SESSION, fencing_token=new['fencing_token'],
+                                 operator_request_ref='operator: resume 2026-10-30', checks=dict(readiness='passed'))
+        self.assertTrue(self.dispatch(token=new['fencing_token'])['authorized'])
+        journal = [e['kind'] for e in self.stack.registry.journal(SESSION)]
+        self.assertIn('resumed', journal)
+
+    def test_interrupted_run_is_retained_and_blocks_resume_until_classified(self):
+        self.dispatch()
+        new = self.other.acquire(SESSION, takeover=True)
+        token = new['fencing_token']
+        run = self.stack.registry.runs(SESSION)[0]
+        self.assertEqual(run['state'], 'interrupted')
+        self.assertEqual(run['interrupted_reason'], 'controller_replaced')
+        self.assert_rejected('interrupted_run_unclassified', self.other.mutate, 'record_resume', session_id=SESSION,
+                             fencing_token=token, operator_request_ref='op', checks=dict(readiness='passed'))
+        self.other.mutate('record_run_outcome', session_id=SESSION, run_id='run-1', outcome=search.INCOMPLETE, fencing_token=token)
+        self.other.mutate('record_resume', session_id=SESSION, fencing_token=token, operator_request_ref='op',
+                          checks=dict(readiness='passed'))
+        self.assert_rejected('duplicate_run', self.dispatch, client=self.other, token=token)
+        self.assertTrue(self.dispatch(client=self.other, token=token, run_id='run-2')['authorized'])
+
+    def test_terminal_failure_cannot_be_resumed_or_dispatched_past(self):
+        for outcome in search.STOPPING:
+            with self.subTest(outcome=outcome):
+                stack = rf.Stack(self)
+                _, sha, token, _, _ = stack.ready(SESSION)
+                stack.client.mutate('dispatch_run', session_id=SESSION, run_id='r', fencing_token=token, manifest_sha256=sha, estimated_duration_s=10)
+                stack.client.mutate('record_run_outcome', session_id=SESSION, run_id='r', outcome=outcome, fencing_token=token)
+                with self.assertRaises(registry_client.RegistryRejected) as caught:
+                    stack.client.mutate('dispatch_run', session_id=SESSION, run_id='r2', fencing_token=token, manifest_sha256=sha, estimated_duration_s=10)
+                self.assertEqual(caught.exception.code, 'terminal_failure')
+                other = stack.new_client('controller-b')
+                new = other.acquire(SESSION, takeover=True)['fencing_token']
+                with self.assertRaises(registry_client.RegistryRejected) as caught:
+                    other.mutate('record_resume', session_id=SESSION, fencing_token=new, operator_request_ref='op', checks=dict(x=1))
+                self.assertEqual(caught.exception.code, 'terminal_failure')
+
+    def test_dispatch_refuses_overlap_duplicates_and_wrong_manifest(self):
+        self.dispatch()
+        self.assert_rejected('bad_state', self.dispatch, run_id='run-2')
+        self.stack.client.mutate('record_run_outcome', session_id=SESSION, run_id='run-1', outcome=search.PASS,
+                                 fencing_token=self.token, evidence_ref='e')
+        self.assert_rejected('duplicate_run', self.dispatch)
+        with self.assertRaises(registry_client.RegistryRejected) as caught:
+            self.stack.client.mutate('dispatch_run', session_id=SESSION, run_id='run-3', fencing_token=self.token,
+                                     manifest_sha256='0' * 64, estimated_duration_s=10)
+        self.assertEqual(caught.exception.code, 'manifest_conflict')
+
+    def test_dispatch_refused_when_run_cannot_finish_before_c(self):
+        remaining = session_clock.parse(self.ack['cleanup_c_utc']) - registry.CLEANUP_LEAD_S - self.stack.registry.peek_now()
+        self.assert_rejected('does_not_fit', self.dispatch, duration=remaining + 1)
+        self.assertTrue(self.dispatch(duration=remaining)['authorized'], 'an exact fit is admitted')
+
+    def test_dispatch_refused_while_the_watchdog_heartbeat_is_stale(self):
+        self.stack.clock.advance(self.stack.registry.watchdog_stale_s + 1)
+        self.assert_rejected('watchdog_unhealthy', self.dispatch)
+        self.assertEqual(self.stack.registry.runs(SESSION), [])
+
+    def test_dispatch_refused_after_cleanup_or_at_c_even_with_a_current_token(self):
+        self.stack.client.mutate('request_cleanup', session_id=SESSION, fencing_token=self.token, reason='batch finished')
+        self.assert_rejected('cleanup_in_progress', self.dispatch)
+        stack = rf.Stack(self)
+        _, sha, token, ack, _ = stack.ready(SESSION)
+        c = session_clock.parse(ack['cleanup_c_utc'])
+        stack.clock.wall_value = c
+        stack.clock.mono_value += c - fx.T0_WALL
+        with self.assertRaises(registry_client.RegistryRejected) as caught:
+            stack.client.mutate('dispatch_run', session_id=SESSION, run_id='late', fencing_token=token, manifest_sha256=sha, estimated_duration_s=1)
+        self.assertIn(caught.exception.code, ('lease_expired', 'deadline_reached', 'cleanup_in_progress'))
+        self.assertEqual(stack.registry.runs(SESSION), [])
+
+    def test_dispatch_at_c_is_refused_with_a_live_lease_before_the_watchdog_acts(self):
+        stack = rf.Stack(self)
+        stack.registry.lease_ttl_s = 100000.0
+        stack.registry.watchdog_stale_s = 100000.0
+        _, sha, token, ack, _ = stack.ready(SESSION, cap_s=400, reserve_s=120, grace_s=100)
+        c = session_clock.parse(ack['cleanup_c_utc'])
+        stack.clock.advance(c - stack.clock.wall_value)
+        with self.assertRaises(registry_client.RegistryRejected) as caught:
+            stack.client.mutate('dispatch_run', session_id=SESSION, run_id='late', fencing_token=token, manifest_sha256=sha, estimated_duration_s=1)
+        self.assertEqual(caught.exception.code, 'deadline_reached')
+
+    def test_outcome_after_cleanup_is_retained_for_the_current_controller(self):
+        self.dispatch()
+        self.stack.client.mutate('request_cleanup', session_id=SESSION, fencing_token=self.token, reason='abort')
+        run = self.stack.registry.runs(SESSION)[0]
+        self.assertEqual(run['interrupted_reason'], 'cleanup_started')
+        self.stack.client.mutate('record_run_outcome', session_id=SESSION, run_id='run-1', outcome=search.INCOMPLETE, fencing_token=self.token)
+        self.assertEqual(self.stack.registry.runs(SESSION)[0]['outcome'], search.INCOMPLETE)
+        self.assert_rejected('outcome_recorded', self.stack.client.mutate, 'record_run_outcome', session_id=SESSION, run_id='run-1',
+                             outcome=search.PASS, fencing_token=self.token, evidence_ref='forged')
+
+    def test_rejections_are_journaled_with_no_token_echo_in_storage(self):
+        self.other.acquire(SESSION, takeover=True)
+        self.assert_rejected('stale_fencing_token', self.dispatch)
+        kinds = [(e['kind'], e['data'].get('code')) for e in self.stack.registry.journal(SESSION)]
+        self.assertIn(('rejected', 'stale_fencing_token'), kinds)
+
+    def test_request_id_reuse_for_another_request_conflicts(self):
+        self.dispatch(request_id='shared')
+        self.stack.client.mutate('record_run_outcome', session_id=SESSION, run_id='run-1', outcome=search.INCOMPLETE, fencing_token=self.token)
+        self.assert_rejected('request_id_conflict', self.dispatch, run_id='run-2', request_id='shared')
+
+    def test_concurrent_controllers_through_separate_connections_get_one_winner(self):
+        stack = rf.Stack(self)
+        manifest, sha = fx.session_manifest(SESSION)
+        stack.client.register(manifest, sha)
+        second = stack.open_registry()
+        results = []
+        for name, reg in (('a', stack.registry), ('b', second)):
+            response = reg.rpc(dict(method='acquire_control', params=dict(session_id=SESSION, controller_id=name, request_id='req-' + name)))
+            results.append(response)
+        self.assertTrue(results[0]['ok'])
+        self.assertEqual(results[1]['code'], 'control_held')
+
+
+class EvidenceRecoveryTests(unittest.TestCase):
+    def setUp(self):
+        self.stack = rf.Stack(self)
+
+    def recovering(self, **limits):
+        _, _, token, ack, _ = self.stack.ready(SESSION, **limits)
+        self.stack.client.mutate('begin_collection', session_id=SESSION, fencing_token=token)
+        return token, ack
+
+    def test_episode_is_bounded_by_grace_and_never_resets(self):
+        token, _ = self.recovering()
+        first = self.stack.client.mutate('begin_evidence_recovery', session_id=SESSION, fencing_token=token)
+        self.assertEqual(session_clock.parse(first['recovery_deadline_utc']) - self.stack.registry.peek_now(), 300)
+        self.stack.step(60)
+        self.stack.client.call('renew_control', session_id=SESSION, fencing_token=token)
+        self.stack.step(40)
+        again = self.stack.client.mutate('begin_evidence_recovery', session_id=SESSION, fencing_token=token)
+        self.assertEqual(again['recovery_deadline_utc'], first['recovery_deadline_utc'])
+        self.stack.client.mutate('begin_collection', session_id=SESSION, fencing_token=token)
+        third = self.stack.client.mutate('begin_evidence_recovery', session_id=SESSION, fencing_token=token)
+        self.assertEqual(third['recovery_deadline_utc'], first['recovery_deadline_utc'], 'reconnecting does not reopen the window')
+
+    def test_episode_stops_at_c_when_grace_would_outlast_it(self):
+        token, ack = self.recovering(cap_s=1000, reserve_s=120, grace_s=300)
+        c = session_clock.parse(ack['cleanup_c_utc'])
+        self.stack.step(c - self.stack.clock.wall_value - 60)
+        renewed_token = self.stack.client.acquire(SESSION, takeover=True)['fencing_token']
+        first = self.stack.client.mutate('begin_evidence_recovery', session_id=SESSION, fencing_token=renewed_token)
+        self.assertEqual(session_clock.parse(first['recovery_deadline_utc']), c)
+
+    def test_watchdog_ends_an_expired_episode_without_the_controller(self):
+        token, _ = self.recovering()
+        first = self.stack.client.mutate('begin_evidence_recovery', session_id=SESSION, fencing_token=token)
+        deadline = session_clock.parse(first['recovery_deadline_utc'])
+        # The controller is gone from here on; only the watchdog acts.
+        self.stack.run_until(lambda: self.stack.registry.status(SESSION)['state'] != registry.EVIDENCE_RECOVERY)
+        status = self.stack.registry.status(SESSION)
+        self.assertEqual(status['cleanup']['reason'], 'evidence_recovery_expired')
+        self.assertLessEqual(session_clock.parse(status['cleanup']['requested_at']) - deadline, 1.0)
+
+
+class IndependentOutcomeTests(unittest.TestCase):
+    """Criterion 4: measurement, evidence and cleanup never overwrite one another."""
+
+    def test_every_combination_is_representable_and_overall_never_overclaims(self):
+        cases = [
+            ('PASS', 'complete', 'clean'),
+            ('FAIL', 'complete', 'clean'),
+            ('PASS', 'partial', 'resources_verified_evidence_incomplete'),
+            ('PASS', 'missing', 'resources_verified_evidence_incomplete'),
+            ('PASS', 'unknown', 'resources_verified_evidence_incomplete'),
+        ]
+        for measurement, evidence, overall in cases:
+            with self.subTest(measurement=measurement, evidence=evidence):
+                stack = rf.Stack(self)
+                _, _, token, _, _ = stack.ready(SESSION)
+                stack.client.mutate('record_measurement', session_id=SESSION, fencing_token=token, outcome=measurement, ref='m.json')
+                if evidence != 'unknown':
+                    stack.client.mutate('record_evidence', session_id=SESSION, fencing_token=token, status=evidence, ref='e.json')
+                before = stack.registry.status(SESSION)
+                self.assertEqual(before['cleanup']['outcome'], 'not_started')
+                self.assertEqual(before['overall'], 'cleanup_not_verified', 'a passing run is not a clean session')
+                stack.client.mutate('request_cleanup', session_id=SESSION, fencing_token=token, reason='done')
+                stack.run_until(lambda: stack.closed(SESSION))
+                status = stack.registry.status(SESSION)
+                self.assertEqual(status['measurement']['outcome'], measurement)
+                self.assertEqual(status['evidence']['status'], evidence)
+                self.assertEqual(status['cleanup']['outcome'], registry.VERIFIED_ABSENT)
+                self.assertEqual(status['overall'], overall)
+
+    def test_evidence_can_be_recorded_after_closure_without_touching_cleanup(self):
+        stack = rf.Stack(self)
+        _, _, token, _, _ = stack.ready(SESSION)
+        stack.client.mutate('request_cleanup', session_id=SESSION, fencing_token=token, reason='done')
+        stack.run_until(lambda: stack.closed(SESSION))
+        verified = stack.registry.status(SESSION)['cleanup']['verified_at']
+        fresh = stack.client.acquire(SESSION, takeover=True)['fencing_token']
+        stack.client.mutate('record_evidence', session_id=SESSION, fencing_token=fresh, status='complete', ref='inventory.sha256')
+        status = stack.registry.status(SESSION)
+        self.assertEqual(status['overall'], 'clean')
+        self.assertEqual(status['cleanup']['verified_at'], verified)
+
+    def test_cleanup_failure_cannot_change_measurement_or_evidence(self):
+        stack = rf.Stack(self)
+        _, _, token, _, _ = stack.ready(SESSION)
+        stack.client.mutate('record_measurement', session_id=SESSION, fencing_token=token, outcome='PASS')
+        stack.client.mutate('record_evidence', session_id=SESSION, fencing_token=token, status='complete')
+        stack.provider.fail(rf.outage)
+        stack.client.mutate('request_cleanup', session_id=SESSION, fencing_token=token, reason='done')
+        stack.step(120)
+        status = stack.registry.status(SESSION)
+        self.assertEqual(status['measurement']['outcome'], 'PASS')
+        self.assertEqual(status['evidence']['status'], 'complete')
+        self.assertEqual(status['cleanup']['outcome'], 'in_progress')
+        self.assertEqual(status['overall'], 'cleanup_not_verified')
+
+    def test_operator_abort_needs_no_controller_and_closes_an_unarmed_session(self):
+        stack = rf.Stack(self)
+        stack.registered(SESSION)
+        result = stack.registry.operator_abort(SESSION, 'operator stopped before arming')
+        self.assertEqual(result['state'], registry.CLOSED)
+        self.assertEqual(stack.registry.status(SESSION)['overall'], 'closed_never_armed')
+
+    def test_a_resource_report_for_a_never_armed_session_is_refused(self):
+        stack = rf.Stack(self)
+        stack.registered(SESSION)
+        with self.assertRaises(registry.Rejection) as caught:
+            stack.registry.record_resource(SESSION, 'droplet', '1')
+        self.assertEqual(caught.exception.code, 'not_armed')
+
+
+if __name__ == '__main__':
+    unittest.main()
