@@ -1,0 +1,193 @@
+{
+ "checks": [
+  {
+   "check": "refused before t0",
+   "passed": true
+  },
+  {
+   "check": "every reason is listed",
+   "passed": true
+  },
+  {
+   "check": "no provider mutation was attempted",
+   "passed": true
+  },
+  {
+   "check": "no credential-shaped value in registry state, evidence or guest bootstrap",
+   "passed": true
+  }
+ ],
+ "clock": "scripted",
+ "guest_steps": [],
+ "guests": "fake",
+ "incidents": [],
+ "provider": "fake account behind the real adapter",
+ "provider_inventory_at_end": {
+  "droplets": [
+   "500000",
+   "500001"
+  ],
+  "firewalls": [
+   "00000001-0000-4000-8000-000000000000"
+  ],
+  "tags": [
+   "omega-management",
+   "prod"
+  ]
+ },
+ "provider_requests": [
+  {
+   "at": 1793361600.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/projects/eb8ab36b-8d7a-4af4-b28b-a66d1b9fe940",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361600.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/account",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361600.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/droplets",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361600.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/regions",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361600.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/sizes",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361600.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/images/247516813",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361600.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/account/keys/60491093",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361600.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/droplets",
+   "status": 200,
+   "tag": "omega-session:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": 1793361600.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/firewalls",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361600.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/tags/omega-session%3Ado-cap-1v1g-20261030a",
+   "status": 404,
+   "tag": null
+  },
+  {
+   "at": 1793361600.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/tags/omega-role%3Agame%3Ado-cap-1v1g-20261030a",
+   "status": 404,
+   "tag": null
+  },
+  {
+   "at": 1793361600.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/tags/omega-role%3Abot%3Ado-cap-1v1g-20261030a",
+   "status": 404,
+   "tag": null
+  }
+ ],
+ "provisioning_journal": [
+  {
+   "at": "2026-10-30T12:00:00+00:00",
+   "gate": "C",
+   "kind": "remote_authorization",
+   "operator_request_ref": "offline-fixture: not a real authorization"
+  },
+  {
+   "account": {
+    "droplet_count": 2,
+    "droplet_limit": 2,
+    "status": "active"
+   },
+   "at": "2026-10-30T12:00:00+00:00",
+   "collisions": {
+    "droplets": [],
+    "firewalls": [],
+    "tags": []
+   },
+   "kind": "provider_facts",
+   "observed_at": "2026-10-30T12:00:00+00:00",
+   "problems": [
+    "account quota cannot hold both roles",
+    "roles.game.image 247516813 is not an official x64 image",
+    "roles.game price changed since the frozen quote; freeze and admit again",
+    "roles.bot.image 247516813 is not an official x64 image"
+   ]
+  },
+  {
+   "armed": false,
+   "at": "2026-10-30T12:00:00+00:00",
+   "code": "preflight_refused",
+   "detail": "account quota cannot hold both roles; roles.game.image 247516813 is not an official x64 image; roles.game price changed since the frozen quote; freeze and admit again; roles.bot.image 247516813 is not an official x64 image",
+   "kind": "stopping"
+  }
+ ],
+ "registry_journal": [
+  {
+   "at": "2026-10-30T12:00:00+00:00",
+   "kind": "watchdog_started",
+   "seq": 1
+  },
+  {
+   "at": "2026-10-30T12:00:00+00:00",
+   "kind": "watchdog_started",
+   "seq": 2
+  }
+ ],
+ "registry_journal_verification": {
+  "events": 2,
+  "head": "caf0fa8f7534527d2ea05ead249ca35de2b3b7c6babd63d282b8af72aea01494",
+  "valid": true
+ },
+ "retained_package_inventories": {},
+ "scenario": "wrong_facts_create_nothing",
+ "sessions": {},
+ "user_data_sha256": []
+}

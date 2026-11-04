@@ -1,0 +1,807 @@
+{
+ "checks": [
+  {
+   "check": "read-back caught the extra rule",
+   "passed": true
+  },
+  {
+   "check": "no droplet was bought",
+   "passed": true
+  },
+  {
+   "check": "the wrong firewall is removed as owned",
+   "passed": true
+  },
+  {
+   "check": "no credential-shaped value in registry state, evidence or guest bootstrap",
+   "passed": true
+  }
+ ],
+ "clock": "scripted",
+ "guest_steps": [],
+ "guests": "fake",
+ "incidents": [],
+ "provider": "fake account behind the real adapter",
+ "provider_inventory_at_end": {
+  "droplets": [
+   "500000",
+   "500001"
+  ],
+  "firewalls": [
+   "00000001-0000-4000-8000-000000000000"
+  ],
+  "tags": [
+   "omega-management",
+   "prod"
+  ]
+ },
+ "provider_requests": [
+  {
+   "at": 1793361600.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/projects/eb8ab36b-8d7a-4af4-b28b-a66d1b9fe940",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361600.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/account",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361600.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/droplets",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361600.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/regions",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361600.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/sizes",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361600.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/images/247516813",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361600.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/account/keys/60491093",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361600.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/droplets",
+   "status": 200,
+   "tag": "omega-session:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": 1793361600.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/firewalls",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361600.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/tags/omega-session%3Ado-cap-1v1g-20261030a",
+   "status": 404,
+   "tag": null
+  },
+  {
+   "at": 1793361600.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/tags/omega-role%3Agame%3Ado-cap-1v1g-20261030a",
+   "status": 404,
+   "tag": null
+  },
+  {
+   "at": 1793361600.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/tags/omega-role%3Abot%3Ado-cap-1v1g-20261030a",
+   "status": 404,
+   "tag": null
+  },
+  {
+   "at": 1793361601.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/projects/eb8ab36b-8d7a-4af4-b28b-a66d1b9fe940",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361601.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/account",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361601.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/droplets",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361601.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/regions",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361601.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/sizes",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361601.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/images/247516813",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361601.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/account/keys/60491093",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361601.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/droplets",
+   "status": 200,
+   "tag": "omega-session:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": 1793361601.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/firewalls",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361601.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/tags/omega-session%3Ado-cap-1v1g-20261030a",
+   "status": 404,
+   "tag": null
+  },
+  {
+   "at": 1793361601.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/tags/omega-role%3Agame%3Ado-cap-1v1g-20261030a",
+   "status": 404,
+   "tag": null
+  },
+  {
+   "at": 1793361601.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/tags/omega-role%3Abot%3Ado-cap-1v1g-20261030a",
+   "status": 404,
+   "tag": null
+  },
+  {
+   "at": 1793361602.0,
+   "bound": 35.0,
+   "method": "POST",
+   "path": "/v2/tags",
+   "status": 201,
+   "tag": null
+  },
+  {
+   "at": 1793361602.0,
+   "bound": 35.0,
+   "method": "POST",
+   "path": "/v2/tags",
+   "status": 201,
+   "tag": null
+  },
+  {
+   "at": 1793361602.0,
+   "bound": 35.0,
+   "method": "POST",
+   "path": "/v2/tags",
+   "status": 201,
+   "tag": null
+  },
+  {
+   "at": 1793361602.0,
+   "bound": 35.0,
+   "method": "POST",
+   "path": "/v2/firewalls",
+   "status": 202,
+   "tag": null
+  },
+  {
+   "at": 1793361602.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/firewalls/00000002-0000-4000-8000-000000000000",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361603.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/droplets",
+   "status": 200,
+   "tag": "omega-session:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": 1793361603.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/firewalls",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361604.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/firewalls/00000002-0000-4000-8000-000000000000",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361605.0,
+   "bound": 35.0,
+   "method": "DELETE",
+   "path": "/v2/firewalls/00000002-0000-4000-8000-000000000000",
+   "status": 204,
+   "tag": null
+  },
+  {
+   "at": 1793361618.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/droplets",
+   "status": 200,
+   "tag": "omega-session:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": 1793361618.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/firewalls",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361619.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/firewalls/00000002-0000-4000-8000-000000000000",
+   "status": 404,
+   "tag": null
+  },
+  {
+   "at": 1793361620.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/tags/omega-role%3Abot%3Ado-cap-1v1g-20261030a",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361620.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/tags/omega-role%3Agame%3Ado-cap-1v1g-20261030a",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361621.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/tags/omega-session%3Ado-cap-1v1g-20261030a",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361621.0,
+   "bound": 35.0,
+   "method": "DELETE",
+   "path": "/v2/tags/omega-role%3Abot%3Ado-cap-1v1g-20261030a",
+   "status": 204,
+   "tag": null
+  },
+  {
+   "at": 1793361622.0,
+   "bound": 35.0,
+   "method": "DELETE",
+   "path": "/v2/tags/omega-role%3Agame%3Ado-cap-1v1g-20261030a",
+   "status": 204,
+   "tag": null
+  },
+  {
+   "at": 1793361622.0,
+   "bound": 35.0,
+   "method": "DELETE",
+   "path": "/v2/tags/omega-session%3Ado-cap-1v1g-20261030a",
+   "status": 204,
+   "tag": null
+  },
+  {
+   "at": 1793361633.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/droplets",
+   "status": 200,
+   "tag": "omega-session:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": 1793361633.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/firewalls",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361635.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/tags/omega-role%3Abot%3Ado-cap-1v1g-20261030a",
+   "status": 404,
+   "tag": null
+  },
+  {
+   "at": 1793361635.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/tags/omega-role%3Agame%3Ado-cap-1v1g-20261030a",
+   "status": 404,
+   "tag": null
+  },
+  {
+   "at": 1793361636.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/tags/omega-session%3Ado-cap-1v1g-20261030a",
+   "status": 404,
+   "tag": null
+  },
+  {
+   "at": 1793361648.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/droplets",
+   "status": 200,
+   "tag": "omega-session:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": 1793361648.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/firewalls",
+   "status": 200,
+   "tag": null
+  }
+ ],
+ "provisioning_journal": [
+  {
+   "at": "2026-10-30T12:00:00+00:00",
+   "gate": "C",
+   "kind": "remote_authorization",
+   "operator_request_ref": "offline-fixture: not a real authorization"
+  },
+  {
+   "account": {
+    "droplet_count": 2,
+    "droplet_limit": 25,
+    "status": "active"
+   },
+   "at": "2026-10-30T12:00:00+00:00",
+   "collisions": {
+    "droplets": [],
+    "firewalls": [],
+    "tags": []
+   },
+   "kind": "provider_facts",
+   "observed_at": "2026-10-30T12:00:00+00:00",
+   "problems": []
+  },
+  {
+   "account": {
+    "droplet_count": 2,
+    "droplet_limit": 25,
+    "status": "active"
+   },
+   "at": "2026-10-30T12:00:01+00:00",
+   "collisions": {
+    "droplets": [],
+    "firewalls": [],
+    "tags": []
+   },
+   "kind": "provider_facts",
+   "observed_at": "2026-10-30T12:00:01+00:00",
+   "problems": []
+  },
+  {
+   "at": "2026-10-30T12:00:01+00:00",
+   "decision": "admitted",
+   "kind": "admission",
+   "reasons": [
+    "legal remaining paths fit before C with 5122.0 s slack; estimate 0.518890 USD within limit"
+   ]
+  },
+  {
+   "at": "2026-10-30T12:00:01+00:00",
+   "cleanup_c_utc": "2026-10-30T15:58:01+00:00",
+   "deadline_d_utc": "2026-10-30T16:00:01+00:00",
+   "kind": "armed",
+   "t0_utc": "2026-10-30T12:00:01+00:00"
+  },
+  {
+   "at": "2026-10-30T12:00:02+00:00",
+   "intent_id": "do-cap-1v1g-20261030a:tag:session",
+   "kind": "resource_created",
+   "resource_key": "tag:omega-session:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:00:02+00:00",
+   "intent_id": "do-cap-1v1g-20261030a:tag:game",
+   "kind": "resource_created",
+   "resource_key": "tag:omega-role:game:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:00:02+00:00",
+   "intent_id": "do-cap-1v1g-20261030a:tag:bot",
+   "kind": "resource_created",
+   "resource_key": "tag:omega-role:bot:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:00:02+00:00",
+   "intent_id": "do-cap-1v1g-20261030a:firewall",
+   "kind": "resource_created",
+   "resource_key": "firewall:00000002-0000-4000-8000-000000000000"
+  },
+  {
+   "armed": true,
+   "at": "2026-10-30T12:00:02+00:00",
+   "code": "firewall_verification_failed",
+   "detail": "inbound_rules differ from the requested exact rules",
+   "kind": "stopping"
+  },
+  {
+   "at": "2026-10-30T12:00:02+00:00",
+   "code": "firewall_verification_failed",
+   "kind": "cleanup_requested"
+  }
+ ],
+ "registry_journal": [
+  {
+   "at": "2026-10-30T12:00:00+00:00",
+   "kind": "watchdog_started",
+   "seq": 1
+  },
+  {
+   "at": "2026-10-30T12:00:00+00:00",
+   "kind": "watchdog_started",
+   "seq": 2
+  },
+  {
+   "at": "2026-10-30T12:00:00+00:00",
+   "kind": "registered",
+   "seq": 3
+  },
+  {
+   "at": "2026-10-30T12:00:00+00:00",
+   "kind": "control_acquired",
+   "seq": 4
+  },
+  {
+   "at": "2026-10-30T12:00:01+00:00",
+   "kind": "watchdog_acknowledged",
+   "seq": 5
+  },
+  {
+   "at": "2026-10-30T12:00:01+00:00",
+   "kind": "armed",
+   "seq": 6
+  },
+  {
+   "at": "2026-10-30T12:00:01+00:00",
+   "kind": "rejected",
+   "seq": 7
+  },
+  {
+   "at": "2026-10-30T12:00:02+00:00",
+   "kind": "watchdog_armed_acknowledged",
+   "seq": 8
+  },
+  {
+   "at": "2026-10-30T12:00:02+00:00",
+   "kind": "create_intent_requested",
+   "seq": 9
+  },
+  {
+   "at": "2026-10-30T12:00:02+00:00",
+   "kind": "resource_recorded",
+   "seq": 10
+  },
+  {
+   "at": "2026-10-30T12:00:02+00:00",
+   "kind": "create_intent_requested",
+   "seq": 11
+  },
+  {
+   "at": "2026-10-30T12:00:02+00:00",
+   "kind": "resource_recorded",
+   "seq": 12
+  },
+  {
+   "at": "2026-10-30T12:00:02+00:00",
+   "kind": "create_intent_requested",
+   "seq": 13
+  },
+  {
+   "at": "2026-10-30T12:00:02+00:00",
+   "kind": "resource_recorded",
+   "seq": 14
+  },
+  {
+   "at": "2026-10-30T12:00:02+00:00",
+   "kind": "create_intent_requested",
+   "seq": 15
+  },
+  {
+   "at": "2026-10-30T12:00:02+00:00",
+   "kind": "resource_recorded",
+   "seq": 16
+  },
+  {
+   "at": "2026-10-30T12:00:02+00:00",
+   "kind": "cleanup_intent",
+   "seq": 17
+  },
+  {
+   "at": "2026-10-30T12:00:05+00:00",
+   "kind": "delete_accepted",
+   "seq": 18
+  },
+  {
+   "at": "2026-10-30T12:00:19+00:00",
+   "kind": "verified_absent",
+   "seq": 19
+  },
+  {
+   "at": "2026-10-30T12:00:21+00:00",
+   "kind": "delete_accepted",
+   "seq": 20
+  },
+  {
+   "at": "2026-10-30T12:00:22+00:00",
+   "kind": "delete_accepted",
+   "seq": 21
+  },
+  {
+   "at": "2026-10-30T12:00:22+00:00",
+   "kind": "delete_accepted",
+   "seq": 22
+  },
+  {
+   "at": "2026-10-30T12:00:35+00:00",
+   "kind": "verified_absent",
+   "seq": 23
+  },
+  {
+   "at": "2026-10-30T12:00:35+00:00",
+   "kind": "verified_absent",
+   "seq": 24
+  },
+  {
+   "at": "2026-10-30T12:00:36+00:00",
+   "kind": "verified_absent",
+   "seq": 25
+  },
+  {
+   "at": "2026-10-30T12:00:49+00:00",
+   "kind": "closed",
+   "seq": 26
+  }
+ ],
+ "registry_journal_verification": {
+  "events": 26,
+  "head": "e5f270de04d20f41bf92e2cceb50bf45520d45da8b16f454fe0c777356920439",
+  "valid": true
+ },
+ "retained_package_inventories": {},
+ "scenario": "firewall_wrong_stops_before_droplets",
+ "sessions": {
+  "do-cap-1v1g-20261030a": {
+   "cleanup": {
+    "actor": "controller:controller-a",
+    "deadline_uncertain": false,
+    "outcome": "verified_absent",
+    "overdue": false,
+    "overrun_is_lower_bound": false,
+    "overrun_s": 0.0,
+    "reason": "provisioning: firewall_verification_failed",
+    "requested_at": "2026-10-30T12:00:02+00:00",
+    "unresolved_creates": [],
+    "verified_at": "2026-10-30T12:00:49+00:00"
+   },
+   "cleanup_c_utc": "2026-10-30T15:58:01+00:00",
+   "deadline_d_utc": "2026-10-30T16:00:01+00:00",
+   "intents": [
+    {
+     "create_request_ref": null,
+     "expected_name": "do-cap-1v1g-20261030a-bot",
+     "expected_tags": [
+      "omega-session:do-cap-1v1g-20261030a",
+      "omega-role:bot:do-cap-1v1g-20261030a"
+     ],
+     "intent_id": "do-cap-1v1g-20261030a:droplet:bot",
+     "kind": "droplet",
+     "request_count": 0,
+     "resource_key": null,
+     "role": "bot",
+     "state": "declared"
+    },
+    {
+     "create_request_ref": null,
+     "expected_name": "do-cap-1v1g-20261030a-game",
+     "expected_tags": [
+      "omega-session:do-cap-1v1g-20261030a",
+      "omega-role:game:do-cap-1v1g-20261030a"
+     ],
+     "intent_id": "do-cap-1v1g-20261030a:droplet:game",
+     "kind": "droplet",
+     "request_count": 0,
+     "resource_key": null,
+     "role": "game",
+     "state": "declared"
+    },
+    {
+     "create_request_ref": "do-cap-1v1g-20261030a:firewall#1",
+     "expected_name": "do-cap-1v1g-20261030a-fw",
+     "expected_tags": [
+      "omega-role:game:do-cap-1v1g-20261030a",
+      "omega-role:bot:do-cap-1v1g-20261030a"
+     ],
+     "intent_id": "do-cap-1v1g-20261030a:firewall",
+     "kind": "firewall",
+     "request_count": 1,
+     "resource_key": "firewall:00000002-0000-4000-8000-000000000000",
+     "role": "session",
+     "state": "created"
+    },
+    {
+     "create_request_ref": "do-cap-1v1g-20261030a:tag:bot#1",
+     "expected_name": "omega-role:bot:do-cap-1v1g-20261030a",
+     "expected_tags": [],
+     "intent_id": "do-cap-1v1g-20261030a:tag:bot",
+     "kind": "tag",
+     "request_count": 1,
+     "resource_key": "tag:omega-role:bot:do-cap-1v1g-20261030a",
+     "role": "bot",
+     "state": "created"
+    },
+    {
+     "create_request_ref": "do-cap-1v1g-20261030a:tag:game#1",
+     "expected_name": "omega-role:game:do-cap-1v1g-20261030a",
+     "expected_tags": [],
+     "intent_id": "do-cap-1v1g-20261030a:tag:game",
+     "kind": "tag",
+     "request_count": 1,
+     "resource_key": "tag:omega-role:game:do-cap-1v1g-20261030a",
+     "role": "game",
+     "state": "created"
+    },
+    {
+     "create_request_ref": "do-cap-1v1g-20261030a:tag:session#1",
+     "expected_name": "omega-session:do-cap-1v1g-20261030a",
+     "expected_tags": [],
+     "intent_id": "do-cap-1v1g-20261030a:tag:session",
+     "kind": "tag",
+     "request_count": 1,
+     "resource_key": "tag:omega-session:do-cap-1v1g-20261030a",
+     "role": "session",
+     "state": "created"
+    }
+   ],
+   "overall": "resources_verified_evidence_incomplete",
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "last_error": null,
+     "name": "do-cap-1v1g-20261030a-fw",
+     "provider_id": "00000002-0000-4000-8000-000000000000",
+     "resource_key": "firewall:00000002-0000-4000-8000-000000000000",
+     "source": "controller",
+     "status": "absent",
+     "verified_absent_at": "2026-10-30T12:00:19+00:00"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "last_error": null,
+     "name": "omega-role:bot:do-cap-1v1g-20261030a",
+     "provider_id": "omega-role:bot:do-cap-1v1g-20261030a",
+     "resource_key": "tag:omega-role:bot:do-cap-1v1g-20261030a",
+     "source": "manifest",
+     "status": "absent",
+     "verified_absent_at": "2026-10-30T12:00:35+00:00"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "last_error": null,
+     "name": "omega-role:game:do-cap-1v1g-20261030a",
+     "provider_id": "omega-role:game:do-cap-1v1g-20261030a",
+     "resource_key": "tag:omega-role:game:do-cap-1v1g-20261030a",
+     "source": "manifest",
+     "status": "absent",
+     "verified_absent_at": "2026-10-30T12:00:35+00:00"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "last_error": null,
+     "name": "omega-session:do-cap-1v1g-20261030a",
+     "provider_id": "omega-session:do-cap-1v1g-20261030a",
+     "resource_key": "tag:omega-session:do-cap-1v1g-20261030a",
+     "source": "manifest",
+     "status": "absent",
+     "verified_absent_at": "2026-10-30T12:00:36+00:00"
+    }
+   ],
+   "state": "closed",
+   "t0_utc": "2026-10-30T12:00:01+00:00"
+  }
+ },
+ "user_data_sha256": []
+}

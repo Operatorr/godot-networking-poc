@@ -539,6 +539,48 @@ class OwnershipTests(unittest.TestCase):
         self.stack.step(60)
         self.assertIn('424242', self.stack.provider.live_ids()['droplets'])
 
+    def armed_with_droplet(self):
+        manifest, sha = fx.session_manifest(SESSION)
+        tags = rf.fx_tags(SESSION)
+        client = self.stack.client
+        client.register(manifest, sha)
+        token = client.acquire(SESSION)['fencing_token']
+        self.stack.watchdog.tick()
+        client.arm(SESSION, manifest, sha, token)
+        self.stack.watchdog.tick()
+        droplet = self.stack.provider.add_droplet(SESSION + '-game', [tags['session'], tags['game']], droplet_id='424242')
+        client.mutate('record_resource', session_id=SESSION, kind='droplet', provider_id='424242', name=SESSION + '-game')
+        return client, droplet
+
+    def test_a_controller_report_opens_one_incident_and_refuses_until_a_read_clears_it(self):
+        client, _ = self.armed_with_droplet()
+        for _ in range(2):
+            client.mutate('report_ownership_conflict', session_id=SESSION, resource_key='droplet:424242', problems=['droplet carries a protected management tag: omega-management'])
+        open_incidents = [i for i in self.stack.registry.incidents(SESSION) if i['kind'] == 'ownership-mismatch' and i['status'] == 'open']
+        self.assertEqual(len(open_incidents), 1)
+        self.assertIn('protected management tag', open_incidents[0]['last_error'])
+        self.assertEqual(next(r for r in self.stack.registry.status(SESSION)['resources'] if r['resource_key'] == 'droplet:424242')['status'], 'ownership_refused')
+        # The report grants and removes nothing. The Droplet is really owned, so the watchdog's read clears it and deletes.
+        self.stack.registry.operator_abort(SESSION, 'test')
+        self.stack.step(120)
+        self.assertNotIn('424242', self.stack.provider.live_ids()['droplets'])
+        self.assertEqual([i for i in self.stack.registry.incidents(SESSION) if i['kind'] == 'ownership-mismatch' and i['status'] == 'open'], [])
+
+    def test_a_report_must_name_a_recorded_resource_and_its_problems(self):
+        client, _ = self.armed_with_droplet()
+        for resource_key, problems, code in (('droplet:1', ['x'], 'unknown_resource'), ('droplet:424242', [], 'bad_request'), ('droplet:424242', 'x', 'bad_request')):
+            with self.subTest(resource_key=resource_key, problems=problems):
+                with self.assertRaises(registry_client.RegistryRejected) as raised:
+                    client.mutate('report_ownership_conflict', session_id=SESSION, resource_key=resource_key, problems=problems)
+                self.assertEqual(raised.exception.code, code)
+
+    def test_the_controller_and_the_watchdog_read_the_same_policy(self):
+        import cleanup_ledger
+        import provisioner
+        import resource_ownership
+        self.assertIs(registry.PROTECTED_TAGS, resource_ownership.PROTECTED_TAGS)
+        self.assertIs(cleanup_ledger.resource_ownership, provisioner.resource_ownership)
+
     def test_firewall_identity_and_targets_are_checked(self):
         for tamper, expected in ((dict(name='production-fw'), 'expected session name'),
                                  (dict(tags=['production']), 'tags outside this session'),
