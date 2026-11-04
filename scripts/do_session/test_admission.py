@@ -54,10 +54,11 @@ class TimeAccumulationTests(unittest.TestCase):
         fixed_per_trial = 27 * (2 + 30 + 20 + 40)
         self.assertEqual(maximal['total_s'], readiness + fixed_per_trial + 2340)
         self.assertEqual(result.time['pre_workload_terms'], dict(create_bootstrap_s=900, readiness_access_s=180))
-        self.assertEqual(result.time['tail_terms'], dict(collection_export_s=300, evidence_recovery_grace_s=300))
+        self.assertEqual(result.time['tail_terms'], dict(collection_export_s=300, evidence_recovery_grace_s=300,
+                                                         cleanup_start_lead_s=40, dispatch_launch_window_s=30))
         self.assertEqual(result.time['workload_deadline_c_s'], 14400 - 120)
         self.assertEqual(result.time['required_before_c_s'],
-                         900 + 180 + maximal['total_s'] + 600)
+                         900 + 180 + maximal['total_s'] + 600 + 40 + 30)
         self.assertEqual(result.time['legal_remaining_paths'], 401)
         self.assertTrue(result.admitted)
 

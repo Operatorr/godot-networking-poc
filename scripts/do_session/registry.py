@@ -33,8 +33,12 @@ COLLECTING, EVIDENCE_RECOVERY, DELETING, CLOSED = 'collecting', 'evidence-recove
 
 DEFAULT_LEASE_TTL_S = 90.0
 DEFAULT_WATCHDOG_STALE_S = 30.0
-DEFAULT_LAUNCH_WINDOW_S = 30.0
-CLEANUP_LEAD_S = 5.0        # the watchdog starts this early so its first delete is issued by C
+DEFAULT_LAUNCH_WINDOW_S = session_clock.DISPATCH_LAUNCH_WINDOW_S
+CLEANUP_LEAD_S = session_clock.CLEANUP_START_LEAD_S     # room for one bounded ownership read before the first delete
+CREATE_SETTLE_S = session_clock.CREATE_SETTLE_S
+CREATE_START_WINDOW_S = session_clock.CREATE_START_WINDOW_S
+PENDING_CREATE_STATES = ('requested', 'ambiguous')
+CLOCK_UNVERIFIABLE_REASON = 'clock_unverifiable'
 PROTECTED_TAGS = ('omega-management',)
 
 EVIDENCE_STATUSES = ('unknown', 'collecting', 'complete', 'partial', 'missing', 'corrupt')
@@ -51,7 +55,7 @@ GENESIS_HASH = '0' * 64
 SCHEMA = """
 CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE clock_state(id INTEGER PRIMARY KEY CHECK(id = 1), boot_id TEXT NOT NULL, mono REAL NOT NULL,
-    effective REAL NOT NULL, wall REAL NOT NULL, anomaly_incident INTEGER);
+    effective REAL NOT NULL, wall REAL NOT NULL, anomaly_incident INTEGER, uncertain_incident INTEGER);
 CREATE TABLE watchdog_status(id INTEGER PRIMARY KEY CHECK(id = 1), identity TEXT, pid INTEGER, boot_id TEXT,
     started_at TEXT, last_tick_at TEXT, last_sweep_at TEXT, sweep_seq INTEGER NOT NULL DEFAULT 0,
     rate_limit_hold_until TEXT, rate_limit_detail TEXT);
@@ -67,11 +71,13 @@ CREATE TABLE sessions(
     measurement_outcome TEXT, measurement_ref TEXT, measurement_updated_at TEXT,
     evidence_status TEXT NOT NULL DEFAULT 'unknown', evidence_ref TEXT, evidence_updated_at TEXT,
     cleanup_outcome TEXT NOT NULL DEFAULT 'not_started', cleanup_requested_at TEXT, cleanup_reason TEXT,
-    cleanup_actor TEXT, cleanup_verified_at TEXT, overrun_s REAL, closure_count INTEGER NOT NULL DEFAULT 0);
+    cleanup_actor TEXT, cleanup_verified_at TEXT, overrun_s REAL, closure_count INTEGER NOT NULL DEFAULT 0,
+    clock_uncertain_at TEXT);
 CREATE TABLE intents(
     session_id TEXT NOT NULL, intent_id TEXT NOT NULL, kind TEXT NOT NULL, role TEXT NOT NULL,
     expected_name TEXT NOT NULL, expected_tags_json TEXT NOT NULL, state TEXT NOT NULL,
     requested_at TEXT, request_count INTEGER NOT NULL DEFAULT 0, resource_key TEXT, resolved_at TEXT, note TEXT,
+    requested_mono REAL, requested_boot TEXT, reconcile_id TEXT, reconcile_count INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY(session_id, intent_id));
 CREATE TABLE runs(
     session_id TEXT NOT NULL, run_id TEXT NOT NULL, state TEXT NOT NULL, dispatched_at TEXT NOT NULL,
@@ -87,6 +93,7 @@ CREATE TABLE resources(
     burst_state TEXT NOT NULL DEFAULT 'idle', burst_sweep INTEGER, burst_started_at TEXT,
     burst_attempts INTEGER NOT NULL DEFAULT 0, burst_next_at TEXT, burst_next_op TEXT, in_flight_attempt INTEGER,
     listing_started_at TEXT, listing_finished_at TEXT, consecutive_empty INTEGER NOT NULL DEFAULT 0,
+    revalidate_after TEXT,
     PRIMARY KEY(session_id, resource_key));
 CREATE TABLE attempts(
     attempt_id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, resource_key TEXT NOT NULL,
@@ -162,7 +169,8 @@ def session_intents(manifest):
 class Registry:
     def __init__(self, state_dir, clock=None, failpoint=None, lease_ttl_s=DEFAULT_LEASE_TTL_S,
                  watchdog_stale_s=DEFAULT_WATCHDOG_STALE_S, launch_window_s=DEFAULT_LAUNCH_WINDOW_S,
-                 clock_tolerance_s=session_clock.DEFAULT_TOLERANCE_S, protected_tags=PROTECTED_TAGS):
+                 clock_tolerance_s=session_clock.DEFAULT_TOLERANCE_S, protected_tags=PROTECTED_TAGS,
+                 create_settle_s=CREATE_SETTLE_S):
         self.state_dir = pathlib.Path(state_dir)
         self.clock = clock or session_clock.SystemClock()
         self.failpoint = failpoint or (lambda name: None)
@@ -171,6 +179,7 @@ class Registry:
         self.launch_window_s = launch_window_s
         self.clock_tolerance_s = clock_tolerance_s
         self.protected_tags = tuple(protected_tags)
+        self.create_settle_s = create_settle_s
         path = self.state_dir / DB_NAME
         if not path.exists():
             # A vanished state directory must fail loudly: recreating it would forget armed sessions.
@@ -231,36 +240,68 @@ class Registry:
         """Inside a write transaction: ratchet the effective clock and journal any anomaly."""
         wall, mono, boot = self.clock.wall(), self.clock.mono(), self.clock.boot_id()
         anchor, row = self._read_anchor()
-        effective, new_anchor, anomaly = session_clock.advance(anchor, wall, mono, boot, self.clock_tolerance_s)
+        verified = self.clock.utc_verified()
+        effective, new_anchor, anomaly = session_clock.advance(anchor, wall, mono, boot, self.clock_tolerance_s, verified)
         if row is None:
             self.db.execute('INSERT INTO clock_state(id, boot_id, mono, effective, wall) VALUES (1, ?, ?, ?, ?)',
                             (boot, mono, effective, wall))
             return effective
-        open_incident = row['anomaly_incident']
-        if anomaly and open_incident is None:
-            now_text = session_clock.iso(effective)
+        now_text = session_clock.iso(effective)
+        open_incident, uncertain = row['anomaly_incident'], row['uncertain_incident']
+        if anomaly and anomaly['kind'] == session_clock.REBOOT_TIME_UNVERIFIABLE:
+            if uncertain is None:
+                uncertain = self.open_incident(None, 'clock-unverifiable', now_text, anomaly, last_error=anomaly['kind'])
+                self.event(now_text, None, 'clock_unverifiable', anomaly)
+            self._fail_closed_on_unverifiable_time(now_text)
+        elif anomaly and open_incident is None and uncertain is None:
             open_incident = self.open_incident(None, 'clock-anomaly', now_text, anomaly, last_error=anomaly['kind'])
             self.event(now_text, None, 'clock_anomaly', anomaly)
-        elif anomaly is None and open_incident is not None:
-            self.resolve_incident(open_incident, session_clock.iso(effective))
-            open_incident = None
-        self.db.execute('UPDATE clock_state SET boot_id=?, mono=?, effective=?, wall=?, anomaly_incident=? WHERE id=1',
-                        (boot, mono, effective, wall, open_incident))
+        elif anomaly is None:
+            if open_incident is not None:
+                self.resolve_incident(open_incident, now_text)
+                open_incident = None
+            if uncertain is not None and (verified or boot == session_clock.UNKNOWN_BOOT):
+                self.resolve_incident(uncertain, now_text)
+                uncertain = None
+        self.db.execute('UPDATE clock_state SET boot_id=?, mono=?, effective=?, wall=?, anomaly_incident=?, '
+                        'uncertain_incident=? WHERE id=1', (boot, mono, effective, wall, open_incident, uncertain))
         return effective
+
+    def _fail_closed_on_unverifiable_time(self, now_text):
+        """True time is unknown, so any armed deadline may have passed. Stop work and clean up now."""
+        sessions = self.db.execute('SELECT * FROM sessions WHERE t0_utc IS NOT NULL AND state != ?', (CLOSED,)).fetchall()
+        for session in sessions:
+            session_id = session['session_id']
+            self.db.execute('UPDATE sessions SET lease_expires_at=?, clock_uncertain_at=COALESCE(clock_uncertain_at, ?) '
+                            'WHERE session_id=?', (now_text, now_text, session_id))
+            if session['cleanup_requested_at'] is None:
+                self.begin_cleanup_row(session, now_text, CLOCK_UNVERIFIABLE_REASON, 'registry:clock')
+            if self.open_incident_of(session_id, 'cleanup-overdue') is None:
+                self.open_incident(session_id, 'cleanup-overdue', now_text,
+                                   dict(deadline_d_utc=session['deadline_d_utc'], t0_utc=session['t0_utc'],
+                                        cleanup_c_utc=session['cleanup_c_utc'], deadline_uncertain=True),
+                                   last_error='reboot time is unverifiable: D may already have passed')
+
+    def time_uncertain(self):
+        row = self.db.execute('SELECT uncertain_incident FROM clock_state WHERE id=1').fetchone()
+        return row is not None and row['uncertain_incident'] is not None
 
     def peek_now(self):
         """The effective time for read-only callers; nothing is persisted."""
         anchor, _ = self._read_anchor()
         effective, _, _ = session_clock.advance(anchor, self.clock.wall(), self.clock.mono(),
-                                                self.clock.boot_id(), self.clock_tolerance_s)
+                                                self.clock.boot_id(), self.clock_tolerance_s, self.clock.utc_verified())
         return effective
 
     def clock_healthy(self, effective=None):
         effective = self.peek_now() if effective is None else effective
-        row = self.db.execute('SELECT anomaly_incident FROM clock_state WHERE id=1').fetchone()
-        if row is not None and row['anomaly_incident'] is not None:
+        anchor, row = self._read_anchor()
+        if row is not None and (row['anomaly_incident'] is not None or row['uncertain_incident'] is not None):
             return False
-        return abs(self.clock.wall() - effective) <= self.clock_tolerance_s
+        # A read may be the first thing to run after a reboot; nothing has persisted the anomaly yet.
+        _, _, anomaly = session_clock.advance(anchor, self.clock.wall(), self.clock.mono(), self.clock.boot_id(),
+                                              self.clock_tolerance_s, self.clock.utc_verified())
+        return anomaly is None and abs(self.clock.wall() - effective) <= self.clock_tolerance_s
 
     # ---- transactions, journal, incidents ----------------------------------------------------
 
@@ -395,6 +436,16 @@ class Registry:
             raise Rejection('deadline_reached', 'the session reached C; no further work is admitted',
                             cleanup_c_utc=session['cleanup_c_utc'])
 
+    def _require_clock_certain(self):
+        if self.time_uncertain():
+            raise Rejection('clock_unverifiable', 'true time is unknown after a reboot; no work or renewal is admitted')
+
+    @staticmethod
+    def _require_recovery_open(session, effective):
+        deadline = session['recovery_deadline_utc']
+        if deadline is not None and effective >= session_clock.parse(deadline):
+            raise Rejection('recovery_expired', 'the recovery episode is over', recovery_deadline_utc=deadline)
+
     def _require_watchdog_fresh(self, effective):
         row = self.db.execute('SELECT last_tick_at, identity FROM watchdog_status WHERE id=1').fetchone()
         if row['last_tick_at'] is None or row['identity'] != self.watchdog_identity:
@@ -405,6 +456,7 @@ class Registry:
     def _authority_gate(self, token):
         def gate(effective, session):
             self._require_token(session, token)
+            self._require_clock_certain()
             self._require_lease(session, effective)
             self._require_no_cleanup(session)
             self._require_before_c(session, effective)
@@ -516,6 +568,7 @@ class Registry:
         """A lapsed lease cannot be renewed: a lapse is an interruption, and resume is explicit."""
         def body(effective, now_text, session):
             self._require_token(session, fencing_token)
+            self._require_clock_certain()
             self._require_lease(session, effective)
             expires = session_clock.iso(effective + self.lease_ttl_s)
             self.db.execute('UPDATE sessions SET lease_expires_at=? WHERE session_id=?', (expires, session_id))
@@ -575,20 +628,24 @@ class Registry:
                                      (session_id, intent_id)).fetchone()
             if intent is None:
                 raise Rejection('unknown_intent', 'intent is not part of this manifest: ' + str(intent_id))
-            if intent['state'] in ('requested', 'ambiguous'):
+            if intent['state'] in PENDING_CREATE_STATES:
                 raise Rejection('create_outcome_unknown', 'reconcile the earlier request by tag before creating again',
                                 must_reconcile=True, requested_at=intent['requested_at'], **self.intent_view(intent))
             if intent['state'] == 'created':
                 raise Rejection('already_created', 'intent already has an exact resource id',
                                 resource_key=intent['resource_key'])
-            self.db.execute("UPDATE intents SET state='requested', requested_at=?, request_count=request_count+1 "
-                            'WHERE session_id=? AND intent_id=?', (now_text, session_id, intent_id))
+            self.db.execute("UPDATE intents SET state='requested', requested_at=?, request_count=request_count+1, "
+                            'requested_mono=?, requested_boot=?, reconcile_id=NULL WHERE session_id=? AND intent_id=?',
+                            (now_text, self.clock.mono(), self.clock.boot_id(), session_id, intent_id))
             self.event(now_text, session_id, 'create_intent_requested',
                        dict(intent_id=intent_id, request_count=intent['request_count'] + 1, fencing_token=fencing_token))
             return dict(self.intent_view(self.db.execute('SELECT * FROM intents WHERE session_id=? AND intent_id=?',
                                                           (session_id, intent_id)).fetchone()),
                         t0_utc=session['t0_utc'], cleanup_c_utc=session['cleanup_c_utc'],
-                        deadline_d_utc=session['deadline_d_utc'], authorized=True, must_reconcile=False)
+                        deadline_d_utc=session['deadline_d_utc'], authorized=True, must_reconcile=False,
+                        create_start_window_s=CREATE_START_WINDOW_S,
+                        create_request_timeout_s=session_clock.PROVIDER_REQUEST_BOUND_S,
+                        create_settle_s=self.create_settle_s)
         result = self._mutate('begin_create', dict(session_id=session_id, intent_id=intent_id, fencing_token=fencing_token),
                               request_id, session_id, body, gate=gate)
         if result.get('replayed'):
@@ -596,8 +653,47 @@ class Registry:
             result = dict(result, authorized=False, must_reconcile=True)
         return result
 
-    def record_create_result(self, session_id, intent_id, outcome, fencing_token=None, note=None, request_id=None):
-        """``ambiguous``/``rejected`` are facts, accepted from anyone. Re-enabling a create is gated."""
+    def create_settle_elapsed(self, intent, effective):
+        """Seconds this create has had to land. Monotonic when possible, so a wall step cannot shorten it."""
+        same_boot = (intent['requested_boot'] == self.clock.boot_id() and intent['requested_boot'] != session_clock.UNKNOWN_BOOT
+                     and self.clock.mono() >= intent['requested_mono'])
+        if same_boot:
+            return self.clock.mono() - intent['requested_mono']
+        return effective - session_clock.parse(intent['requested_at'])
+
+    def begin_reconcile(self, session_id, intent_id, fencing_token, request_id=None):
+        """Open the only listing that can prove a create absent: one started after the request's bound.
+
+        An empty listing means nothing while the original request can still land, so this refuses
+        until the settle bound has passed. The caller lists after this acknowledgement and reports
+        the result with the returned ``reconcile_id``.
+        """
+        def body(effective, now_text, session):
+            intent = self.db.execute('SELECT * FROM intents WHERE session_id=? AND intent_id=?',
+                                     (session_id, intent_id)).fetchone()
+            if intent is None:
+                raise Rejection('unknown_intent', 'intent is not part of this manifest: ' + str(intent_id))
+            if intent['state'] not in PENDING_CREATE_STATES:
+                return dict(self.intent_view(intent), outstanding=False, reconcile_id=None)
+            remaining = self.create_settle_s - self.create_settle_elapsed(intent, effective)
+            if remaining > 0:
+                raise Rejection('create_settling', 'the earlier create can still land; an empty listing proves nothing yet',
+                                retry_after_s=remaining, requested_at=intent['requested_at'])
+            reconcile_id = intent_id + '#' + str(intent['reconcile_count'] + 1)
+            self.db.execute('UPDATE intents SET reconcile_id=?, reconcile_count=reconcile_count+1 WHERE session_id=? AND intent_id=?',
+                            (reconcile_id, session_id, intent_id))
+            self.event(now_text, session_id, 'create_reconcile_opened', dict(intent_id=intent_id, reconcile_id=reconcile_id))
+            return dict(self.intent_view(intent), outstanding=True, reconcile_id=reconcile_id)
+        return self._mutate('begin_reconcile', dict(session_id=session_id, intent_id=intent_id, fencing_token=fencing_token),
+                            request_id, session_id, body, gate=self._authority_gate(fencing_token))
+
+    def record_create_result(self, session_id, intent_id, outcome, fencing_token=None, note=None, reconcile_id=None,
+                             request_number=None, request_id=None):
+        """``ambiguous`` is a fact, accepted from anyone. Anything that re-enables a create is gated.
+
+        ``rejected`` must name the request it answers: a late 4xx for an earlier request says nothing
+        about a newer one. ``reconciled_absent`` needs the listing opened by ``begin_reconcile``.
+        """
         if outcome not in ('ambiguous', 'rejected', 'reconciled_absent'):
             raise Rejection('bad_request', 'unknown create result: ' + str(outcome))
         gate = None
@@ -613,8 +709,16 @@ class Registry:
                 raise Rejection('unknown_intent', 'intent is not part of this manifest: ' + str(intent_id))
             if intent['state'] == 'created':
                 return self.intent_view(intent)
-            if intent['state'] not in ('requested', 'ambiguous'):
+            if intent['state'] not in PENDING_CREATE_STATES:
                 raise Rejection('bad_state', 'intent has no outstanding create', state=intent['state'])
+            if outcome == 'rejected' and request_number != intent['request_count']:
+                raise Rejection('stale_create_report', 'this rejection does not answer the current request',
+                                request_count=intent['request_count'], presented=request_number)
+            if outcome == 'reconciled_absent':
+                if reconcile_id is None or reconcile_id != intent['reconcile_id']:
+                    raise Rejection('reconcile_not_open', 'absence needs a listing started after begin_reconcile')
+                if self.create_settle_elapsed(intent, effective) < self.create_settle_s:
+                    raise Rejection('create_settling', 'the earlier create can still land')
             state = dict(ambiguous='ambiguous', rejected='rejected', reconciled_absent='declared')[outcome]
             resolved = now_text if state == 'rejected' else None
             self.db.execute('UPDATE intents SET state=?, note=?, resolved_at=? WHERE session_id=? AND intent_id=?',
@@ -623,7 +727,8 @@ class Registry:
             return self.intent_view(self.db.execute('SELECT * FROM intents WHERE session_id=? AND intent_id=?',
                                                      (session_id, intent_id)).fetchone())
         return self._mutate('record_create_result', dict(session_id=session_id, intent_id=intent_id, outcome=outcome,
-                                                         fencing_token=fencing_token, note=note), request_id, session_id, body, gate=gate)
+                                                         fencing_token=fencing_token, note=note, reconcile_id=reconcile_id,
+                                                         request_number=request_number), request_id, session_id, body, gate=gate)
 
     def record_resource(self, session_id, kind, provider_id, intent_id=None, name=None, request_id=None):
         """Persist a returned exact id. Accepted from any controller: knowing an id is always safe.
@@ -654,7 +759,16 @@ class Registry:
 
     def record_resource_row(self, session_id, kind, provider_id, intent_id, name, source, now_text):
         """Shared by controller reports and watchdog discovery, inside the caller's transaction."""
+        known = self.db.execute('SELECT status FROM resources WHERE session_id=? AND resource_key=?',
+                                (session_id, kind + ':' + str(provider_id))).fetchone()
         key = self._insert_resource(session_id, kind, provider_id, name, intent_id, source, now_text)
+        if known is not None and known['status'] == 'absent':
+            # A report of a live id outranks an earlier 404 until an authenticated read says otherwise.
+            self.db.execute("UPDATE resources SET status='unverified', verified_absent_at=NULL WHERE session_id=? AND resource_key=?",
+                            (session_id, key))
+            self.event(now_text, session_id, 'absence_reversed', dict(resource_key=key))
+        if kind != 'tag' and (known is None or known['status'] == 'absent'):
+            self.revalidate_tags(session_id, now_text, key)
         if intent_id is not None:
             prior = self.db.execute('SELECT resource_key, state FROM intents WHERE session_id=? AND intent_id=?',
                                     (session_id, intent_id)).fetchone()
@@ -672,6 +786,18 @@ class Registry:
             self.open_incident(session_id, 'late-resource-after-close', now_text, dict(resource_key=key),
                                last_error='a resource was reported after a clean closure')
         return key
+
+    def revalidate_tags(self, session_id, now_text, cause):
+        """A newly seen resource can recreate its tags, so earlier absence proves nothing about them."""
+        if self.session_row(session_id)['cleanup_requested_at'] is None:
+            return
+        self.db.execute("UPDATE resources SET status='unverified', verified_absent_at=NULL "
+                        "WHERE session_id=? AND kind='tag' AND status='absent'", (session_id,))
+        self.db.execute("UPDATE resources SET revalidate_after=? WHERE session_id=? AND kind='tag'", (now_text, session_id))
+        placeholders = ','.join('?' * len(LISTING_KINDS))
+        self.db.execute('UPDATE resources SET consecutive_empty=0 WHERE session_id=? AND kind IN (' + placeholders + ')',
+                        (session_id,) + LISTING_KINDS)
+        self.event(now_text, session_id, 'tags_revalidating', dict(cause=cause))
 
     def mark_ready(self, session_id, fencing_token, evidence_ref, request_id=None):
         if not isinstance(evidence_ref, str) or not evidence_ref.strip():
@@ -714,13 +840,15 @@ class Registry:
         def body(effective, now_text, session):
             if session['state'] != READY:
                 raise Rejection('bad_state', 'dispatch needs a ready pair and no active run', state=session['state'])
-            if effective + estimated_duration_s > session_clock.parse(session['cleanup_c_utc']) - CLEANUP_LEAD_S:
-                raise Rejection('does_not_fit', 'the run cannot finish before cleanup starts for C',
-                                cleanup_c_utc=session['cleanup_c_utc'], cleanup_lead_s=CLEANUP_LEAD_S)
+            cleanup_start = session_clock.parse(session['cleanup_c_utc']) - CLEANUP_LEAD_S
+            launch_by = min(effective + self.launch_window_s, session_clock.parse(session['lease_expires_at']), cleanup_start)
+            # The grant may be used as late as launch_by, so the run must fit from there.
+            if launch_by + estimated_duration_s > cleanup_start:
+                raise Rejection('does_not_fit', 'a run launched at the end of its window cannot finish before cleanup starts',
+                                cleanup_c_utc=session['cleanup_c_utc'], cleanup_lead_s=CLEANUP_LEAD_S,
+                                launch_window_s=launch_by - effective)
             if self.db.execute('SELECT 1 FROM runs WHERE session_id=? AND run_id=?', (session_id, run_id)).fetchone():
                 raise Rejection('duplicate_run', 'a run id is dispatched at most once: ' + run_id)
-            launch_by = min(effective + self.launch_window_s, session_clock.parse(session['lease_expires_at']),
-                            session_clock.parse(session['cleanup_c_utc']))
             launch_text = session_clock.iso(launch_by)
             self.db.execute('INSERT INTO runs(session_id, run_id, state, dispatched_at, fencing_token, controller_id, '
                             "launch_by, trial_json) VALUES (?, ?, 'dispatched', ?, ?, ?, ?, ?)",
@@ -806,6 +934,7 @@ class Registry:
         def body(effective, now_text, session):
             if session['state'] not in (READY, PAUSED, EVIDENCE_RECOVERY):
                 raise Rejection('bad_state', 'collection follows a finished batch', state=session['state'])
+            self._require_recovery_open(session, effective)     # reconnecting never reopens the episode
             self.db.execute('UPDATE sessions SET state=? WHERE session_id=?', (COLLECTING, session_id))
             self.event(now_text, session_id, 'collecting', {})
             return dict(session_id=session_id, state=COLLECTING)
@@ -813,7 +942,10 @@ class Registry:
                             session_id, body, gate=self._authority_gate(fencing_token))
 
     def begin_evidence_recovery(self, session_id, fencing_token, request_id=None):
-        """One bounded episode: min(first_failure + grace, C). Retries never reset its clock."""
+        """One bounded episode: first_failure + grace, ending no later than cleanup starts for C.
+
+        Retries and reconnection never reset its clock.
+        """
         def body(effective, now_text, session):
             if session['state'] not in (COLLECTING, EVIDENCE_RECOVERY):
                 raise Rejection('bad_state', 'recovery follows a failed collection', state=session['state'])
@@ -821,10 +953,9 @@ class Registry:
             first = session['recovery_first_failure_at']
             if deadline_text is None:
                 first = now_text
-                deadline = min(effective + session['grace_s'], session_clock.parse(session['cleanup_c_utc']))
+                deadline = min(effective + session['grace_s'], session_clock.parse(session['cleanup_c_utc']) - CLEANUP_LEAD_S)
                 deadline_text = session_clock.iso(deadline)
-            elif effective >= session_clock.parse(deadline_text):
-                raise Rejection('recovery_expired', 'the recovery episode is over', recovery_deadline_utc=deadline_text)
+            self._require_recovery_open(session, effective)
             self.db.execute('UPDATE sessions SET state=?, recovery_first_failure_at=?, recovery_deadline_utc=? '
                             'WHERE session_id=?', (EVIDENCE_RECOVERY, first, deadline_text, session_id))
             self.event(now_text, session_id, 'evidence_recovery', dict(first_failure=first, deadline=deadline_text))
@@ -1049,7 +1180,8 @@ class Registry:
             cleanup=dict(outcome=session['cleanup_outcome'], requested_at=session['cleanup_requested_at'],
                          reason=session['cleanup_reason'], actor=session['cleanup_actor'],
                          verified_at=session['cleanup_verified_at'], overrun_s=session['overrun_s'],
-                         overdue=bool(overdue)),
+                         overdue=bool(overdue), deadline_uncertain=session['clock_uncertain_at'] is not None,
+                         overrun_is_lower_bound=session['clock_uncertain_at'] is not None),
             overall=self._overall(session, overdue),
             resources=[dict(resource_key=r['resource_key'], kind=r['kind'], provider_id=r['provider_id'], name=r['name'],
                             status=r['status'], source=r['source'], attempts=r['attempt_total'],
@@ -1080,7 +1212,7 @@ class Registry:
     # ---- transport-neutral entry point -------------------------------------------------------
 
     RPC_METHODS = ('register_session', 'acquire_control', 'renew_control', 'arm_session', 'begin_create',
-                   'record_create_result', 'record_resource', 'mark_ready', 'dispatch_run', 'record_run_outcome',
+                   'begin_reconcile', 'record_create_result', 'record_resource', 'mark_ready', 'dispatch_run', 'record_run_outcome',
                    'record_resume', 'begin_collection', 'begin_evidence_recovery', 'record_measurement',
                    'record_evidence', 'request_cleanup', 'operator_abort', 'disown_resource', 'health', 'status',
                    'incidents', 'incident_report', 'journal', 'list_sessions', 'verify_journal')

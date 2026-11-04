@@ -307,6 +307,10 @@ class ImmutableDeadlineTests(unittest.TestCase):
         self.assertTrue(any('watchdog' in r for r in result.reasons))
 
 
+def cleanup_settle():
+    return session_clock.CREATE_SETTLE_S
+
+
 class CreateAmbiguityTests(unittest.TestCase):
     def setUp(self):
         self.stack = rf.Stack(self)
@@ -326,6 +330,10 @@ class CreateAmbiguityTests(unittest.TestCase):
 
     def test_lost_begin_create_ack_reconciles_before_any_create(self):
         client = self.stack.new_client('controller-a', transport=DropResponse(self.stack.transport, 'begin_create'))
+        with self.assertRaises(registry_client.CreateStillSettling):
+            client.guarded_create(SESSION, self.intent, self.token, self.create, self.find)
+        self.assertEqual(self.creates, [], 'the lost grant may have reached the provider')
+        self.stack.step(cleanup_settle())
         client.guarded_create(SESSION, self.intent, self.token, self.create, self.find)
         self.assertEqual(self.creates, [self.intent])
         self.assertEqual(self.stack.registry.status(SESSION)['intents'][0]['kind'], 'droplet')
@@ -347,11 +355,139 @@ class CreateAmbiguityTests(unittest.TestCase):
 
         with self.assertRaises(TimeoutError):
             self.stack.client.guarded_create(SESSION, self.intent, self.token, lost, self.find)
+        with self.assertRaises(registry_client.CreateStillSettling):
+            self.stack.client.guarded_create(SESSION, self.intent, self.token, self.create, self.find)
+        self.assertEqual(self.creates, [], 'one empty listing grants nothing while the request can land')
+        self.stack.step(cleanup_settle())
         self.stack.client.guarded_create(SESSION, self.intent, self.token, self.create, self.find)
         self.assertEqual(len(self.creates), 1)
-        intent = [i for i in self.stack.registry.status(SESSION)['intents'] if i['intent_id'] == self.intent][0]
+        intent = self.intent_view()
         self.assertEqual(intent['request_count'], 2)
         self.assertEqual(intent['state'], 'created')
+
+    def intent_view(self):
+        return [i for i in self.stack.registry.status(SESSION)['intents'] if i['intent_id'] == self.intent][0]
+
+    def timed_out_request(self):
+        """The provider is still processing it: the caller sees a timeout and the Droplet lands later."""
+        grants = []
+
+        def still_processing(grant):
+            grants.append(grant)
+            raise TimeoutError('still being processed')
+
+        with self.assertRaises(TimeoutError):
+            self.stack.client.guarded_create(SESSION, self.intent, self.token, still_processing, self.find)
+        return grants[0]
+
+    def land(self, grant):
+        return self.stack.provider.add_droplet(grant['expected_name'], grant['expected_tags'])
+
+    def test_retry_never_runs_while_the_original_can_still_land(self):
+        grant = self.timed_out_request()
+        retries = []
+        settle = cleanup_settle()
+        for second in range(int(settle) - 1):
+            with self.subTest(second=second), self.assertRaises(registry_client.CreateStillSettling) as caught:
+                self.stack.client.guarded_create(SESSION, self.intent, self.token, lambda g: retries.append(g), self.find)
+            self.assertGreater(caught.exception.retry_after_s, 0)
+            self.stack.step(1)
+        original = self.land(grant)     # the last moment the bound allows
+        self.stack.step(1)
+        key = self.stack.client.guarded_create(SESSION, self.intent, self.token, lambda g: retries.append(g), self.find)
+        self.assertEqual(retries, [], 'the retry callback never ran')
+        self.assertEqual(key, 'droplet:' + original)
+        self.assertEqual(self.stack.provider.live_ids()['droplets'], [original], 'no duplicate Droplet')
+        self.assertEqual((self.intent_view()['request_count'], self.intent_view()['state']), (1, 'created'))
+
+    def test_original_landing_ten_seconds_after_an_empty_listing_is_not_duplicated(self):
+        grant = self.timed_out_request()
+        with self.assertRaises(registry_client.CreateStillSettling):
+            self.stack.client.guarded_create(SESSION, self.intent, self.token, self.create, self.find)
+        self.stack.step(10)
+        original = self.land(grant)
+        self.stack.step(cleanup_settle())
+        self.stack.client.guarded_create(SESSION, self.intent, self.token, self.create, self.find)
+        self.assertEqual(self.creates, [])
+        self.assertEqual(self.stack.provider.live_ids()['droplets'], [original])
+
+    def test_registry_enforces_eligibility_without_trusting_the_client(self):
+        self.timed_out_request()
+        registry_ = self.stack.registry
+        for call, code in (
+                (lambda: registry_.begin_create(SESSION, self.intent, self.token), 'create_outcome_unknown'),
+                (lambda: registry_.begin_reconcile(SESSION, self.intent, self.token), 'create_settling'),
+                (lambda: registry_.record_create_result(SESSION, self.intent, 'reconciled_absent', self.token, note='empty'),
+                 'reconcile_not_open'),
+                (lambda: registry_.record_create_result(SESSION, self.intent, 'reconciled_absent', self.token, note='empty',
+                                                        reconcile_id=self.intent + '#1'), 'reconcile_not_open')):
+            with self.subTest(code=code), self.assertRaises(registry.Rejection) as caught:
+                call()
+            self.assertEqual(caught.exception.code, code)
+        self.assertEqual(self.intent_view()['state'], 'ambiguous')
+        self.stack.step(cleanup_settle())
+        with self.assertRaises(registry.Rejection) as caught:
+            registry_.begin_create(SESSION, self.intent, self.token)
+        self.assertEqual(caught.exception.code, 'create_outcome_unknown', 'the bound alone proves nothing without a listing')
+        ticket = registry_.begin_reconcile(SESSION, self.intent, self.token)
+        registry_.record_create_result(SESSION, self.intent, 'reconciled_absent', self.token, note='empty',
+                                       reconcile_id=ticket['reconcile_id'])
+        self.assertTrue(registry_.begin_create(SESSION, self.intent, self.token)['authorized'])
+
+    def test_forward_wall_step_cannot_shorten_the_settle_bound(self):
+        self.timed_out_request()
+        self.stack.step(1)
+        self.stack.clock.jump_wall(cleanup_settle() + 10)   # effective time follows it; the lease is still live
+        self.stack.step(1)
+        with self.assertRaises(registry.Rejection) as caught:
+            self.stack.registry.begin_reconcile(SESSION, self.intent, self.token)
+        self.assertEqual(caught.exception.code, 'create_settling')
+        self.assertEqual(self.intent_view()['request_count'], 1)
+
+    def test_takeover_cannot_skip_the_wait(self):
+        self.timed_out_request()
+        other = self.stack.new_client('controller-b')
+        token = other.acquire(SESSION, takeover=True)['fencing_token']
+        with self.assertRaises(registry_client.CreateStillSettling):
+            other.guarded_create(SESSION, self.intent, token, self.create, self.find)
+        self.assertEqual(self.creates, [])
+
+    def test_absence_proof_opened_for_an_earlier_request_cannot_answer_a_newer_one(self):
+        self.timed_out_request()
+        self.stack.step(cleanup_settle())
+        registry_ = self.stack.registry
+        stale = registry_.begin_reconcile(SESSION, self.intent, self.token)['reconcile_id']
+        registry_.record_create_result(SESSION, self.intent, 'reconciled_absent', self.token, note='empty', reconcile_id=stale)
+        registry_.begin_create(SESSION, self.intent, self.token)
+        with self.assertRaises(registry.Rejection) as caught:
+            registry_.record_create_result(SESSION, self.intent, 'reconciled_absent', self.token, note='empty', reconcile_id=stale)
+        self.assertEqual(caught.exception.code, 'reconcile_not_open')
+
+    def test_a_late_rejection_of_an_earlier_request_cannot_clear_a_newer_one(self):
+        registry_ = self.stack.registry
+        registry_.begin_create(SESSION, self.intent, self.token)
+        registry_.record_create_result(SESSION, self.intent, 'rejected', request_number=1)
+        self.assertEqual(self.intent_view()['state'], 'rejected')
+        registry_.begin_create(SESSION, self.intent, self.token)
+        with self.assertRaises(registry.Rejection) as caught:
+            registry_.record_create_result(SESSION, self.intent, 'rejected', request_number=1)
+        self.assertEqual(caught.exception.code, 'stale_create_report')
+        self.assertEqual(self.intent_view()['state'], 'requested')
+
+    def test_grant_left_unused_past_its_start_window_is_not_sent(self):
+        client = self.stack.new_client('controller-a')
+        moments = iter([0.0, session_clock.CREATE_START_WINDOW_S + 0.1])
+        client.monotonic = lambda: next(moments)
+        with self.assertRaises(registry_client.CreateGrantExpired):
+            client.guarded_create(SESSION, self.intent, self.token, self.create, self.find)
+        self.assertEqual(self.creates, [])
+        self.assertEqual(self.intent_view()['state'], 'ambiguous', 'the grant still counts until its bound passes')
+
+    def test_grant_states_the_bounds_the_provider_adapter_must_honor(self):
+        grant = self.stack.registry.begin_create(SESSION, self.intent, self.token)
+        self.assertEqual(grant['create_start_window_s'], session_clock.CREATE_START_WINDOW_S)
+        self.assertEqual(grant['create_request_timeout_s'], session_clock.PROVIDER_REQUEST_BOUND_S)
+        self.assertGreater(grant['create_settle_s'], grant['create_start_window_s'] + grant['create_request_timeout_s'])
 
     def test_a_created_intent_cannot_be_created_again(self):
         self.stack.client.guarded_create(SESSION, self.intent, self.token, self.create, self.find)
@@ -480,9 +616,20 @@ class FencingTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, 'manifest_conflict')
 
     def test_dispatch_refused_when_run_cannot_finish_before_c(self):
-        remaining = session_clock.parse(self.ack['cleanup_c_utc']) - registry.CLEANUP_LEAD_S - self.stack.registry.peek_now()
+        cleanup_start = session_clock.parse(self.ack['cleanup_c_utc']) - registry.CLEANUP_LEAD_S
+        remaining = cleanup_start - self.stack.registry.peek_now() - self.stack.registry.launch_window_s
         self.assert_rejected('does_not_fit', self.dispatch, duration=remaining + 1)
-        self.assertTrue(self.dispatch(duration=remaining)['authorized'], 'an exact fit is admitted')
+        grant = self.dispatch(duration=remaining)
+        self.assertTrue(grant['authorized'], 'an exact fit is admitted')
+        self.assertEqual(session_clock.parse(grant['launch_by']) + remaining, cleanup_start,
+                         'a run launched at the very end of its grant still ends before cleanup starts')
+
+    def test_dispatch_fit_uses_the_real_grant_when_the_lease_ends_first(self):
+        cleanup_start = session_clock.parse(self.ack['cleanup_c_utc']) - registry.CLEANUP_LEAD_S
+        self.stack.step(self.stack.registry.lease_ttl_s - 10)
+        grant = self.dispatch(duration=1)
+        self.assertEqual(session_clock.parse(grant['launch_by']), session_clock.parse(self.stack.registry.status(SESSION)['lease_expires_at']))
+        self.assertLess(session_clock.parse(grant['launch_by']), cleanup_start)
 
     def test_dispatch_refused_while_the_watchdog_heartbeat_is_stale(self):
         self.stack.clock.advance(self.stack.registry.watchdog_stale_s + 1)
@@ -575,7 +722,8 @@ class EvidenceRecoveryTests(unittest.TestCase):
         self.stack.step(c - self.stack.clock.wall_value - 60)
         renewed_token = self.stack.client.acquire(SESSION, takeover=True)['fencing_token']
         first = self.stack.client.mutate('begin_evidence_recovery', session_id=SESSION, fencing_token=renewed_token)
-        self.assertEqual(session_clock.parse(first['recovery_deadline_utc']), c)
+        self.assertEqual(session_clock.parse(first['recovery_deadline_utc']), c - registry.CLEANUP_LEAD_S,
+                         'the episode reports when it really ends: when cleanup starts for C')
 
     def test_watchdog_ends_an_expired_episode_without_the_controller(self):
         token, _ = self.recovering()
@@ -586,6 +734,34 @@ class EvidenceRecoveryTests(unittest.TestCase):
         status = self.stack.registry.status(SESSION)
         self.assertEqual(status['cleanup']['reason'], 'evidence_recovery_expired')
         self.assertLessEqual(session_clock.parse(status['cleanup']['requested_at']) - deadline, 1.0)
+
+
+    def test_reconnecting_cannot_outlive_the_episode(self):
+        token, ack = self.recovering()
+        first = self.stack.client.mutate('begin_evidence_recovery', session_id=SESSION, fencing_token=token)
+        deadline = session_clock.parse(first['recovery_deadline_utc'])
+        self.stack.step(50)
+        self.stack.client.mutate('begin_collection', session_id=SESSION, fencing_token=token)
+        self.assertEqual(self.stack.registry.status(SESSION)['state'], registry.COLLECTING)
+        # The controller reconnected, then vanished. No later call may be needed to end the episode.
+        self.stack.step(deadline - self.stack.clock.wall_value - 1)
+        self.assertEqual(self.stack.registry.status(SESSION)['state'], registry.COLLECTING, 'not early')
+        self.stack.step(1)
+        status = self.stack.registry.status(SESSION)
+        self.assertEqual(status['state'], registry.DELETING)
+        self.assertEqual(status['cleanup']['reason'], 'evidence_recovery_expired')
+        self.assertLessEqual(session_clock.parse(status['cleanup']['requested_at']), deadline)
+        self.assertLess(deadline, session_clock.parse(ack['cleanup_c_utc']), 'this was the recovery bound, not C')
+
+    def test_expired_episode_refuses_collection_before_the_watchdog_notices(self):
+        token, _ = self.recovering()
+        first = self.stack.client.mutate('begin_evidence_recovery', session_id=SESSION, fencing_token=token)
+        self.stack.clock.advance(session_clock.parse(first['recovery_deadline_utc']) - self.stack.clock.wall_value)
+        # No watchdog tick has run, so only the registry's own gate stands here.
+        self.stack.registry.db.execute("UPDATE sessions SET lease_expires_at='2099-01-01T00:00:00+00:00'")
+        with self.assertRaises(registry_client.RegistryRejected) as caught:
+            self.stack.client.mutate('begin_collection', session_id=SESSION, fencing_token=token)
+        self.assertEqual(caught.exception.code, 'recovery_expired')
 
 
 class IndependentOutcomeTests(unittest.TestCase):

@@ -158,6 +158,25 @@ class WatchdogCrashMatrix(ProcessFixture):
                         reg.close()
         self.assertEqual(reached, set(self.POINTS), 'every boundary was actually crashed through')
 
+    def test_crash_while_failing_closed_on_an_unverifiable_reboot_loses_nothing(self):
+        for point in ('wd_recover:before_commit', 'wd_recover:after_commit', 'wd_tick:before_commit', 'wd_tick:after_commit'):
+            with self.subTest(point=point):
+                self.reset()
+                wall, mono, original = self.prepare(abort=False)
+                behind = wall - 86400       # the RTC is a day slow, so downtime is unknowable
+                outcome = run_harness('watchdog', '--state-dir', self.state, '--account', self.account, '--failpoint', point,
+                                      '--wall', behind, '--mono', 5.0, '--boot', 'boot-b', '--steps', 3)
+                self.assertEqual(outcome.returncode, fault_harness.CRASH_EXIT, outcome.stderr.decode())
+                clock, reg, provider, service = self.reopen(behind + 1, 6.0, 'boot-b')
+                status = reg.status(SESSION)
+                self.assertEqual(status['state'], registry.DELETING)
+                self.assertEqual(status['cleanup']['reason'], registry.CLOCK_UNVERIFIABLE_REASON)
+                self.assertTrue(status['cleanup']['deadline_uncertain'])
+                self.assertEqual([i['kind'] for i in status['incidents']], ['cleanup-overdue'])
+                self.drive_until_closed(clock, reg, service)
+                self.assert_cleanup_invariants(reg, provider, original)
+                reg.close()
+
     def test_watchdog_killed_mid_outage_keeps_one_overdue_incident(self):
         wall, mono, original = self.prepare(abort=False)
         d = session_clock.parse(original[2])
@@ -407,7 +426,8 @@ class RealServiceTests(ProcessFixture):
         self.fail('condition not reached in real time')
 
     def test_sigkill_during_cleanup_after_the_controller_vanished(self):
-        manifest, sha = fx.session_manifest(SESSION, cap_s=10, reserve_s=1, grace_s=1)
+        # Cleanup starts about 9 s from now: cap - reserve - the cleanup lead.
+        manifest, sha = fx.session_manifest(SESSION, cap_s=50, reserve_s=1, grace_s=1)
         argv = [sys.executable, str(HERE / 'registry_cli.py'), 'rpc', '--state-dir', str(self.state)]
         client = registry_client.RegistryClient(registry_client.SubprocessTransport(argv), 'controller-a', attempts=2, retry_delay_s=0)
         service = self.start_service()

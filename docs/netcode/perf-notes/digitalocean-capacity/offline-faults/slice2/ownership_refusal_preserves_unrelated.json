@@ -1009,8 +1009,10 @@
   "do-cap-1v1g-20261030a": {
    "cleanup": {
     "actor": "operator",
+    "deadline_uncertain": false,
     "outcome": "verified_absent_with_operator_disposition",
     "overdue": false,
+    "overrun_is_lower_bound": false,
     "overrun_s": 0.0,
     "reason": "ownership fixture",
     "requested_at": "2026-10-30T12:00:00+00:00",

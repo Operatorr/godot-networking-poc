@@ -7,7 +7,8 @@ sweep starts every 15 s and immediately on service start.
 
 Provider requests run off the main thread through an executor seam, and only the main thread
 touches SQLite. Round-robin dispatch with per-session and global in-flight limits means a session
-whose provider calls hang or fail cannot starve another session's checks.
+whose provider calls hang or fail cannot starve another session's checks. Sessions whose first Droplet
+delete is due by an imminent C go first and have reserved capacity, so hung sessions cannot make them late.
 """
 import collections
 import contextlib
@@ -27,7 +28,7 @@ LOG = logging.getLogger('omega.do_watchdog')
 LOCK_NAME = 'watchdog.lock'
 DEFAULT_MAX_IN_FLIGHT = 8
 DEFAULT_MAX_IN_FLIGHT_PER_SESSION = 2
-DEFAULT_REQUEST_DEADLINE_S = 35.0
+DEFAULT_REQUEST_DEADLINE_S = session_clock.PROVIDER_REQUEST_BOUND_S
 DEFAULT_TICK_INTERVAL_S = 1.0
 
 
@@ -88,6 +89,7 @@ class Watchdog:
         self.max_in_flight_per_session = max_in_flight_per_session
         self.request_deadline_s = request_deadline_s
         self.sweep_interval_s = sweep_interval_s
+        self._require_read_fits_cleanup_lead(DEFAULT_TICK_INTERVAL_S)
         self._results = collections.deque()
         self._next_sweep = None
         self._rr_last = None
@@ -96,6 +98,13 @@ class Watchdog:
         self._logged_open = set()
         self._lock_fd = None
         self.storage_healthy = True
+
+    def _require_read_fits_cleanup_lead(self, tick_interval_s):
+        """The first delete follows one ownership read, seen on the next tick, after a start up to one tick late."""
+        needed = self.request_deadline_s + 2 * tick_interval_s
+        if self.ledger.cleanup_lead_s < needed:
+            raise ValueError('cleanup lead %.1f s cannot cover a %.1f s read and the tick delays; first delete would miss C'
+                             % (self.ledger.cleanup_lead_s, self.request_deadline_s))
 
     # ---- lifecycle ---------------------------------------------------------------------------
 
@@ -143,6 +152,7 @@ class Watchdog:
         self._publish_artifacts()
 
     def run_forever(self, stop_event, tick_interval_s=DEFAULT_TICK_INTERVAL_S):
+        self._require_read_fits_cleanup_lead(tick_interval_s)
         self.acquire_lock()
         try:
             self.start()
@@ -166,13 +176,21 @@ class Watchdog:
         if not due:
             return
         counts = self.ledger.in_flight_counts()
-        capacity = self.max_in_flight - sum(counts.values())
-        order = sorted(due)
+        queues = {s: collections.deque(due[s]) for s in due}
+        urgent = self.ledger.awaiting_first_delete(due, effective)
+        self._serve(urgent, queues, counts, self.max_in_flight - sum(counts.values()))
+        # Ordinary work leaves one session's share free, so an imminent C never waits on hung requests.
+        fits_reserve = self.max_in_flight > 2 * self.max_in_flight_per_session
+        reserve = self.max_in_flight_per_session if fits_reserve else 0
+        order = sorted(s for s in due if s not in urgent)
         if self._rr_last is not None:
             later = [s for s in order if s > self._rr_last]
             order = later + [s for s in order if s <= self._rr_last]
-        queues = {s: collections.deque(due[s]) for s in order}
-        while capacity > 0 and any(queues.values()):
+        self._serve(order, queues, counts, self.max_in_flight - reserve - sum(counts.values()))
+
+    def _serve(self, order, queues, counts, capacity):
+        """Give each session one slot per pass, up to its own limit and ``capacity``."""
+        while capacity > 0 and any(queues[s] for s in order):
             progressed = False
             for session_id in order:
                 if capacity <= 0 or not queues[session_id]:

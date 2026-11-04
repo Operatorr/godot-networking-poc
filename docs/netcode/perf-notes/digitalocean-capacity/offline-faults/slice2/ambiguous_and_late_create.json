@@ -11,21 +11,6 @@
    "target": "do-cap-1v1g-20261030a-fw"
   },
   {
-   "at": "2026-10-30T12:00:02+00:00",
-   "op": "get_tag",
-   "target": "omega-role:bot:do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:00:02+00:00",
-   "op": "get_tag",
-   "target": "omega-role:game:do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:00:03+00:00",
-   "op": "get_tag",
-   "target": "omega-session:do-cap-1v1g-20261030a"
-  },
-  {
    "at": "2026-10-30T12:00:16+00:00",
    "op": "list_droplets_by_tag",
    "target": "omega-session:do-cap-1v1g-20261030a"
@@ -89,15 +74,82 @@
    "at": "2026-10-30T12:01:16+00:00",
    "op": "list_firewalls_by_name",
    "target": "do-cap-1v1g-20261030a-fw"
+  },
+  {
+   "at": "2026-10-30T12:01:17+00:00",
+   "op": "get_tag",
+   "target": "omega-role:bot:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:01:17+00:00",
+   "op": "get_tag",
+   "target": "omega-role:game:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:01:18+00:00",
+   "op": "get_tag",
+   "target": "omega-session:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:01:18+00:00",
+   "op": "delete_tag",
+   "target": "omega-role:game:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:01:19+00:00",
+   "op": "delete_tag",
+   "target": "omega-session:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:01:31+00:00",
+   "op": "list_droplets_by_tag",
+   "target": "omega-session:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:01:31+00:00",
+   "op": "list_firewalls_by_name",
+   "target": "do-cap-1v1g-20261030a-fw"
+  },
+  {
+   "at": "2026-10-30T12:01:32+00:00",
+   "op": "get_tag",
+   "target": "omega-role:game:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:01:32+00:00",
+   "op": "get_tag",
+   "target": "omega-session:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:01:46+00:00",
+   "op": "list_droplets_by_tag",
+   "target": "omega-session:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:01:46+00:00",
+   "op": "list_firewalls_by_name",
+   "target": "do-cap-1v1g-20261030a-fw"
   }
  ],
  "checks": [
+  {
+   "check": "protection is untouched while the create can land",
+   "passed": true
+  },
   {
    "check": "the late create was deleted",
    "passed": true
   },
   {
    "check": "its exact id was discovered and retained",
+   "passed": true
+  },
+  {
+   "check": "the tags it recreated did not survive the clean receipt",
+   "passed": true
+  },
+  {
+   "check": "the receipt reads verified absent",
    "passed": true
   }
  ],
@@ -211,30 +263,12 @@
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:00:02+00:00",
+   "at": "2026-10-30T12:00:46+00:00",
    "data": {
-    "resource_key": "tag:omega-role:bot:do-cap-1v1g-20261030a"
+    "cause": "droplet:5000000"
    },
-   "kind": "verified_absent",
+   "kind": "tags_revalidating",
    "seq": 10,
-   "session_id": "do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:00:02+00:00",
-   "data": {
-    "resource_key": "tag:omega-role:game:do-cap-1v1g-20261030a"
-   },
-   "kind": "verified_absent",
-   "seq": 11,
-   "session_id": "do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:00:03+00:00",
-   "data": {
-    "resource_key": "tag:omega-session:do-cap-1v1g-20261030a"
-   },
-   "kind": "verified_absent",
-   "seq": 12,
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
@@ -245,7 +279,7 @@
     "source": "discovered"
    },
    "kind": "resource_recorded",
-   "seq": 13,
+   "seq": 11,
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
@@ -255,7 +289,7 @@
     "resource_key": "droplet:5000000"
    },
    "kind": "delete_accepted",
-   "seq": 14,
+   "seq": 12,
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
@@ -264,46 +298,92 @@
     "resource_key": "droplet:5000000"
    },
    "kind": "verified_absent",
-   "seq": 15,
+   "seq": 13,
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
    "at": "2026-10-30T12:01:17+00:00",
+   "data": {
+    "resource_key": "tag:omega-role:bot:do-cap-1v1g-20261030a"
+   },
+   "kind": "verified_absent",
+   "seq": 14,
+   "session_id": "do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:01:18+00:00",
+   "data": {
+    "note": "accepted is not proof of destruction",
+    "resource_key": "tag:omega-role:game:do-cap-1v1g-20261030a"
+   },
+   "kind": "delete_accepted",
+   "seq": 15,
+   "session_id": "do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:01:19+00:00",
+   "data": {
+    "note": "accepted is not proof of destruction",
+    "resource_key": "tag:omega-session:do-cap-1v1g-20261030a"
+   },
+   "kind": "delete_accepted",
+   "seq": 16,
+   "session_id": "do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:01:32+00:00",
+   "data": {
+    "resource_key": "tag:omega-role:game:do-cap-1v1g-20261030a"
+   },
+   "kind": "verified_absent",
+   "seq": 17,
+   "session_id": "do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:01:32+00:00",
+   "data": {
+    "resource_key": "tag:omega-session:do-cap-1v1g-20261030a"
+   },
+   "kind": "verified_absent",
+   "seq": 18,
+   "session_id": "do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:01:47+00:00",
    "data": {
     "cleanup_outcome": "verified_absent",
     "disowned": [],
     "overrun_s": 0.0
    },
    "kind": "closed",
-   "seq": 16,
+   "seq": 19,
    "session_id": "do-cap-1v1g-20261030a"
   }
  ],
  "journal_verification": {
-  "events": 16,
-  "head": "6d90719db701997e7966e19e1f022edce1f4b68c814189f31966959a508046e1",
+  "events": 19,
+  "head": "23d4644f04657b1ff802b6fb957d3528e90f952db401f93f8cd57859fbd213a0",
   "valid": true
  },
  "provider": "fake",
  "provider_inventory_at_end": {
   "droplets": [],
   "firewalls": [],
-  "tags": [
-   "omega-role:game:do-cap-1v1g-20261030a",
-   "omega-session:do-cap-1v1g-20261030a"
-  ]
+  "tags": []
  },
  "scenario": "ambiguous_and_late_create",
  "sessions": {
   "do-cap-1v1g-20261030a": {
    "cleanup": {
     "actor": "operator",
+    "deadline_uncertain": false,
     "outcome": "verified_absent",
     "overdue": false,
+    "overrun_is_lower_bound": false,
     "overrun_s": 0.0,
     "reason": "ambiguous create fixture",
     "requested_at": "2026-10-30T12:00:00+00:00",
-    "verified_at": "2026-10-30T12:01:17+00:00"
+    "verified_at": "2026-10-30T12:01:47+00:00"
    },
    "cleanup_c_utc": "2026-10-30T12:08:00+00:00",
    "controller_id": "controller-a",
@@ -416,10 +496,10 @@
      "resource_key": "tag:omega-role:bot:do-cap-1v1g-20261030a",
      "source": "manifest",
      "status": "absent",
-     "verified_absent_at": "2026-10-30T12:00:02+00:00"
+     "verified_absent_at": "2026-10-30T12:01:17+00:00"
     },
     {
-     "attempts": 1,
+     "attempts": 3,
      "kind": "tag",
      "last_error": null,
      "name": "omega-role:game:do-cap-1v1g-20261030a",
@@ -427,10 +507,10 @@
      "resource_key": "tag:omega-role:game:do-cap-1v1g-20261030a",
      "source": "manifest",
      "status": "absent",
-     "verified_absent_at": "2026-10-30T12:00:02+00:00"
+     "verified_absent_at": "2026-10-30T12:01:32+00:00"
     },
     {
-     "attempts": 1,
+     "attempts": 3,
      "kind": "tag",
      "last_error": null,
      "name": "omega-session:do-cap-1v1g-20261030a",
@@ -438,7 +518,7 @@
      "resource_key": "tag:omega-session:do-cap-1v1g-20261030a",
      "source": "manifest",
      "status": "absent",
-     "verified_absent_at": "2026-10-30T12:00:03+00:00"
+     "verified_absent_at": "2026-10-30T12:01:32+00:00"
     }
    ],
    "runs": [],

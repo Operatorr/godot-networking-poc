@@ -46,8 +46,8 @@ def session_manifest(session_id='do-cap-1v1g-20261030a', cap_s=3600, reserve_s=1
 class ScriptedClock:
     """Independent wall and boot-scoped monotonic clocks, moved only by the fixture."""
 
-    def __init__(self, wall=T0_WALL, mono=1000.0, boot='boot-a'):
-        self.wall_value, self.mono_value, self.boot = wall, mono, boot
+    def __init__(self, wall=T0_WALL, mono=1000.0, boot='boot-a', synced=True):
+        self.wall_value, self.mono_value, self.boot, self.synced = wall, mono, boot, synced
 
     def wall(self):
         return self.wall_value
@@ -58,6 +58,9 @@ class ScriptedClock:
     def boot_id(self):
         return self.boot
 
+    def utc_verified(self):
+        return self.synced
+
     def advance(self, seconds):
         self.wall_value += seconds
         self.mono_value += seconds
@@ -65,10 +68,17 @@ class ScriptedClock:
     def jump_wall(self, seconds):
         self.wall_value += seconds
 
-    def reboot(self, downtime_s=0.0, boot='boot-b', rtc_error_s=0.0):
+    def reboot(self, downtime_s=0.0, boot='boot-b', rtc_error_s=0.0, synced=None):
+        """A wrong RTC comes up unsynchronized unless the fixture says otherwise."""
         self.wall_value += downtime_s + rtc_error_s
         self.mono_value = 5.0
         self.boot = boot
+        self.synced = rtc_error_s == 0.0 if synced is None else synced
+
+    def time_sync(self, correction_s):
+        """The time daemon steps the wall clock to true time and reports it synchronized."""
+        self.wall_value += correction_s
+        self.synced = True
 
 
 class DeferredExecutor:

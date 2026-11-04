@@ -8,6 +8,10 @@
 # service refuses to start, because a watchdog without a real provider would protect nothing. The real
 # DigitalOcean adapter and its restricted token file arrive with issue #66; install and enable this
 # unit under issue #72 only.
+#
+# After a reboot the registry trusts the clock only if the kernel reports it synchronized; otherwise armed
+# sessions start cleanup. time-sync.target only waits if a sync service provides it. Do not add an unbounded
+# systemd-time-wait-sync dependency: a watchdog that never starts protects nothing.
 [Unit]
 Description=Omega Realm DigitalOcean session cleanup watchdog
 # Never let systemd stop retrying: giving up would strand billable hosts.

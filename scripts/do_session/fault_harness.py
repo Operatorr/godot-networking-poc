@@ -10,6 +10,7 @@ touches a network or an account.
     fault_harness.py controller --state-dir D --account F --failpoint P [--hit N] --wall W --mono M --boot B --session S
 """
 import argparse
+import math
 import os
 import sys
 
@@ -78,7 +79,14 @@ def controller_flow(reg, wd_tick, provider, session_id):
         for suffix in ('tag:session', 'tag:game', 'tag:bot', 'firewall', 'droplet:game', 'droplet:bot'):
             intent = session_id + ':' + suffix
             if intent not in created:
-                client.guarded_create(session_id, intent, token, create, find, request_id='r-create-' + intent)
+                try:
+                    client.guarded_create(session_id, intent, token, create, find, request_id='r-create-' + intent)
+                except registry_client.CreateStillSettling as settling:
+                    # A restart reached an outstanding grant: wait out its bound on the scripted clock.
+                    for _ in range(math.ceil(settling.retry_after_s)):
+                        reg.clock.advance(1)
+                        wd_tick()
+                    client.guarded_create(session_id, intent, token, create, find, request_id='r-create-' + intent)
         client.mutate('mark_ready', 'r-ready', session_id=session_id, fencing_token=token, evidence_ref='readiness/fake.json')
     if not reg.runs(session_id) or reg.status(session_id)['state'] == registry.RUNNING:
         client.mutate('dispatch_run', 'r-dispatch', session_id=session_id, run_id='run-1', fencing_token=token,

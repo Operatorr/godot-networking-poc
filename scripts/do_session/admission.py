@@ -27,6 +27,7 @@ import math
 
 import manifest as manifest_mod
 import search
+import session_clock
 
 ADMITTED = 'admitted'
 REJECTED = 'rejected'
@@ -248,7 +249,10 @@ def admit(manifest, recorded_sha256, state, now, infra_health, phase='pre_create
     costed = [path_cost(manifest, p) for p in paths]
     maximal = max(costed, key=lambda c: c['total_s'])
     next_only = path_cost(manifest, [derived['next']])
-    tail = dict(collection_export_s=timing['collection_export_s']['seconds'], evidence_recovery_grace_s=grace_s)
+    # Cleanup starts this early so its first delete is issued by C, and a dispatch grant may be used this late.
+    tail = dict(collection_export_s=timing['collection_export_s']['seconds'], evidence_recovery_grace_s=grace_s,
+                cleanup_start_lead_s=session_clock.CLEANUP_START_LEAD_S,
+                dispatch_launch_window_s=session_clock.DISPATCH_LAUNCH_WINDOW_S)
     required_s = elapsed_s + sum(pre_workload.values()) + maximal['total_s'] + sum(tail.values())
     next_only_required_s = elapsed_s + sum(pre_workload.values()) + next_only['total_s'] + sum(tail.values())
     slack_s = workload_deadline_c_s - required_s
@@ -264,7 +268,8 @@ def admit(manifest, recorded_sha256, state, now, infra_health, phase='pre_create
         next_trial_only_fits=next_only_required_s <= workload_deadline_c_s,
         timing_basis={k: dict(v) for k, v in timing.items()},
         formula='elapsed + pre_workload + max_over_legal_paths(sum(readiness_bound(N) + warmup + hold + '
-                'reset + finalization + per_trial_export)) + collection_export + recovery_grace <= cap - reserve')
+                'reset + finalization + per_trial_export)) + collection_export + recovery_grace + '
+                'cleanup_start_lead + dispatch_launch_window <= cap - reserve')
     if slack_s < 0:
         reasons.append('maximal legal remaining path needs %.1f s before C=%.1f s; short by %.1f s. '
                        'No deadline extension: freeze a smaller explicitly authorized scope or stop with a '

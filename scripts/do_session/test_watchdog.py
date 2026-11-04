@@ -641,6 +641,169 @@ class AmbiguousAndLateCreateTests(unittest.TestCase):
         self.stack.run_until(lambda: self.stack.closed(SESSION))
         self.assertNotIn(droplet_id, self.stack.provider.live_ids()['droplets'])
 
+    def live_firewall(self):
+        return self.stack.client.guarded_create(SESSION, SESSION + ':firewall', self.token,
+                                                lambda g: self.stack.provider.add_firewall(g['expected_name'], tags=g['expected_tags']),
+                                                lambda g: None)
+
+    def live_tags(self):
+        for role in ('session', 'game', 'bot'):
+            self.stack.client.guarded_create(SESSION, SESSION + ':tag:' + role, self.token,
+                                             lambda g, r=role: (self.stack.provider.add_tag(self.tags[r]), self.tags[r])[1], lambda g: None)
+
+    def protection_requests(self):
+        return self.stack.provider.ops_named('delete_firewall', 'delete_tag', 'get_firewall', 'get_tag')
+
+    def intent_state(self, intent_id):
+        return next(i for i in self.stack.registry.status(SESSION)['intents'] if i['intent_id'] == intent_id)['state']
+
+    def test_outstanding_droplet_create_keeps_firewall_and_tags_until_it_resolves(self):
+        self.live_firewall()
+        self.live_tags()
+        self.begin()
+        self.stack.registry.operator_abort(SESSION, 'droplet request outstanding')
+        self.stack.step(35)
+        self.assertEqual(self.protection_requests(), [], 'nothing protective is even read yet')
+        self.assertEqual(len(self.stack.provider.live_ids()['firewalls']), 1)
+        self.assertEqual(len(self.stack.provider.live_ids()['tags']), 3)
+        late = self.stack.provider.add_droplet(self.name, [self.tags['session'], self.tags['game']])
+        self.stack.step(15)
+        self.assertEqual(len(self.stack.provider.live_ids()['firewalls']), 1, 'the late Droplet landed behind its firewall')
+        self.stack.run_until(lambda: self.stack.closed(SESSION))
+        self.assertEqual(self.stack.provider.live_ids(), dict(droplets=[], firewalls=[], tags=[]), 'clean receipt, clean account')
+        self.assertEqual(self.intent_state(self.intent), 'created')
+        ops = [o['op'] for o in self.stack.provider.ops]
+        self.assertLess(ops.index('delete_droplet'), ops.index('delete_firewall'))
+        self.assertLess(ops.index('delete_firewall'), ops.index('delete_tag'))
+        journal = self.stack.registry.journal(SESSION)
+        verified = next(e['seq'] for e in journal if e['kind'] == 'verified_absent' and e['data']['resource_key'] == 'droplet:' + late)
+        accepted = next(e['seq'] for e in journal if e['kind'] == 'delete_accepted' and e['data']['resource_key'].startswith('firewall:'))
+        self.assertLess(verified, accepted)
+
+    def test_create_that_never_lands_releases_protection_after_its_bound(self):
+        self.live_firewall()
+        self.live_tags()
+        self.begin()
+        start = self.stack.clock.wall_value
+        self.stack.registry.operator_abort(SESSION, 'never lands')
+        self.stack.run_until(lambda: self.stack.provider.ops_named('delete_firewall'), limit_s=200)
+        self.assertGreaterEqual(self.stack.clock.wall_value - start, cleanup_ledger.CREATE_SETTLE_S)
+        self.assertEqual(self.intent_state(self.intent), 'resolved_absent')
+        self.stack.run_until(lambda: self.stack.closed(SESSION), limit_s=200)
+        self.assertEqual(self.stack.provider.live_ids(), dict(droplets=[], firewalls=[], tags=[]))
+
+    def test_settling_needs_fresh_listings_so_an_outage_is_never_a_success(self):
+        self.live_firewall()
+        self.begin()
+        self.stack.registry.operator_abort(SESSION, 'listing outage')
+        rule = self.stack.provider.fail(rf.outage, op='list_droplets_by_tag')
+        self.stack.step(cleanup_ledger.CREATE_SETTLE_S + 120)
+        self.assertEqual(self.intent_state(self.intent), 'requested')
+        self.assertEqual(self.protection_requests(), [])
+        self.assertFalse(self.stack.closed(SESSION))
+        self.stack.provider.faults.remove(rule)
+        self.stack.run_until(lambda: self.stack.closed(SESSION))
+        self.assertEqual(self.intent_state(self.intent), 'resolved_absent')
+
+    def test_settling_counts_only_listings_started_after_the_bound(self):
+        self.begin()
+        self.stack.registry.operator_abort(SESSION, 'race the bound')
+        start = self.stack.clock.wall_value
+        while self.stack.clock.wall_value - start < cleanup_ledger.CREATE_SETTLE_S:
+            self.assertEqual(self.intent_state(self.intent), 'requested', 'early empty listings prove nothing')
+            self.stack.step(1)
+        landing = self.stack.provider.add_droplet(self.name, [self.tags['session'], self.tags['game']])
+        self.stack.run_until(lambda: self.stack.closed(SESSION))
+        self.assertEqual(self.intent_state(self.intent), 'created')
+        self.assertNotIn(landing, self.stack.provider.live_ids()['droplets'])
+
+    def test_outstanding_tag_create_blocks_closure_until_its_bound(self):
+        tag_intent = SESSION + ':tag:session'
+        self.stack.client.mutate('begin_create', session_id=SESSION, intent_id=tag_intent, fencing_token=self.token)
+        self.stack.registry.operator_abort(SESSION, 'tag request outstanding')
+        start = self.stack.clock.wall_value
+        self.stack.step(40)
+        self.assertFalse(self.stack.closed(SESSION))
+        self.stack.provider.add_tag(self.tags['session'])
+        self.stack.run_until(lambda: self.stack.closed(SESSION))
+        self.assertGreaterEqual(self.stack.clock.wall_value - start, cleanup_ledger.CREATE_SETTLE_S)
+        self.assertEqual(self.stack.provider.live_ids()['tags'], [], 'the late tag did not survive closure')
+        self.assertEqual(self.intent_state(tag_intent), 'created')
+
+    def test_outstanding_tag_create_that_never_lands_is_resolved_by_its_read(self):
+        tag_intent = SESSION + ':tag:bot'
+        self.stack.client.mutate('begin_create', session_id=SESSION, intent_id=tag_intent, fencing_token=self.token)
+        self.stack.registry.operator_abort(SESSION, 'tag never lands')
+        self.stack.run_until(lambda: self.stack.closed(SESSION))
+        self.assertEqual(self.intent_state(tag_intent), 'resolved_absent')
+
+    def test_every_pending_kind_at_once_cannot_deadlock(self):
+        for intent in (self.intent, SESSION + ':droplet:bot', SESSION + ':firewall', SESSION + ':tag:session',
+                       SESSION + ':tag:game', SESSION + ':tag:bot'):
+            self.stack.client.mutate('begin_create', session_id=SESSION, intent_id=intent, fencing_token=self.token)
+        self.stack.registry.operator_abort(SESSION, 'everything outstanding')
+        self.stack.run_until(lambda: self.stack.closed(SESSION), limit_s=240)
+        self.assertEqual({i['state'] for i in self.stack.registry.status(SESSION)['intents']}, {'resolved_absent'})
+
+    def test_id_reported_without_its_intent_still_settles_it(self):
+        firewall_intent = SESSION + ':firewall'
+        self.stack.client.mutate('begin_create', session_id=SESSION, intent_id=firewall_intent, fencing_token=self.token)
+        firewall = self.stack.provider.add_firewall(SESSION + '-fw', tags=[self.tags['game'], self.tags['bot']])
+        self.stack.client.mutate('record_resource', session_id=SESSION, kind='firewall', provider_id=firewall, name=SESSION + '-fw')
+        self.stack.registry.operator_abort(SESSION, 'unlinked report')
+        self.stack.run_until(lambda: self.stack.closed(SESSION), limit_s=240)
+        self.assertEqual(self.intent_state(firewall_intent), 'created')
+        self.assertEqual(self.stack.provider.live_ids()['firewalls'], [])
+
+    def test_droplet_found_after_tags_were_verified_makes_them_reverify(self):
+        self.live_tags()
+        self.stack.registry.operator_abort(SESSION, 'late beyond the bound')
+        self.stack.run_until(lambda: all(r['status'] == 'absent' for r in self.stack.registry.resources(SESSION) if r['kind'] == 'tag'))
+        self.assertFalse(self.stack.closed(SESSION), 'closure still needs a listing that started after this read')
+        self.stack.provider.add_droplet(self.name, [self.tags['session'], self.tags['game']])    # recreates its tags
+        self.stack.run_until(lambda: self.stack.closed(SESSION))
+        self.assertEqual(self.stack.provider.live_ids(), dict(droplets=[], firewalls=[], tags=[]))
+        self.assertIn('tags_revalidating', [e['kind'] for e in self.stack.registry.journal(SESSION)])
+
+    def test_tag_read_older_than_the_late_resource_cannot_prove_absence(self):
+        executor = fx.DeferredExecutor()
+        stack = rf.Stack(self, executor=executor)
+        stack.armed(SESSION)
+        stack.registry.operator_abort(SESSION, 'race a tag read')
+        while not any(r['kind'] == 'tag' and r['in_flight_attempt'] for r in stack.registry.resources(SESSION)):
+            stack.step(1)
+            executor.release()
+            stack.watchdog.tick()
+        stack.provider.add_droplet(self.name, [self.tags['session'], self.tags['game']])
+        with stack.registry.txn('fixture') as effective:
+            stack.registry.revalidate_tags(SESSION, session_clock.iso(effective), 'droplet:late')
+        stack.step(1)
+        executor.release()
+        stack.watchdog.tick()
+        statuses = {r['resource_key']: r['status'] for r in stack.registry.resources(SESSION) if r['kind'] == 'tag'}
+        self.assertNotEqual(statuses['tag:' + self.tags['session']], 'absent')
+
+    def test_failed_listing_is_not_the_fresh_inventory_closure_needs(self):
+        self.stack.registry.operator_abort(SESSION, 'listing fails after verification')
+        real_done = lambda: all(r['status'] == 'absent' for r in self.stack.registry.resources(SESSION)
+                                if r['kind'] not in registry.LISTING_KINDS)
+        self.stack.run_until(real_done)
+        self.assertFalse(self.stack.closed(SESSION))
+        self.stack.provider.fail(rf.outage, op='list_droplets_by_tag')
+        self.stack.step(60)
+        self.assertFalse(self.stack.closed(SESSION), 'a failed listing proves nothing')
+        self.stack.provider.clear_faults()
+        self.stack.run_until(lambda: self.stack.closed(SESSION))
+
+    def test_report_after_closure_reverifies_tags_the_late_resource_recreated(self):
+        self.stack.registry.operator_abort(SESSION, 'test')
+        self.stack.run_until(lambda: self.stack.closed(SESSION))
+        late = self.stack.provider.add_droplet(self.name, [self.tags['session'], self.tags['game']])
+        self.assertTrue(self.stack.provider.live_ids()['tags'], 'the provider recreated them')
+        self.stack.client.mutate('record_resource', session_id=SESSION, kind='droplet', provider_id=late, intent_id=self.intent, name=self.name)
+        self.stack.run_until(lambda: self.stack.closed(SESSION))
+        self.assertEqual(self.stack.provider.live_ids(), dict(droplets=[], firewalls=[], tags=[]))
+
     def test_no_new_create_is_authorized_once_cleanup_began(self):
         self.stack.registry.operator_abort(SESSION, 'test')
         with self.assertRaises(registry_client.RegistryRejected) as caught:
@@ -730,7 +893,7 @@ class ClockJumpTests(unittest.TestCase):
         self.stack.restart_watchdog(reboot=True, rtc_error_s=-86400)
         self.assertGreaterEqual(self.stack.registry.peek_now(), high_water)
         self.assertFalse(self.stack.registry.clock_healthy())
-        self.stack.step(self.c - self.stack.registry.peek_now())
+        self.stack.watchdog.tick()
         self.assertEqual(self.stack.registry.status(SESSION)['state'], registry.DELETING)
         self.assertEqual(deadlines(self.stack), self.original)
 
@@ -764,24 +927,156 @@ class ClockJumpTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, 'lease_expired')
 
 
+class UnverifiableRebootTests(unittest.TestCase):
+    """Local timestamps cannot bound downtime: an unverified reboot stops work and starts cleanup."""
+
+    def setUp(self):
+        self.stack = rf.Stack(self)
+        self.manifest, self.sha, self.token, self.ack, _ = self.stack.ready(SESSION, cap_s=600, reserve_s=120, grace_s=100)
+        self.stack.step(50)
+        self.stack.registry.renew_control(SESSION, self.token)
+        self.stack.step(50)
+
+    def assert_failed_closed(self):
+        status = self.stack.registry.status(SESSION)
+        self.assertEqual(status['state'], registry.DELETING)
+        self.assertEqual(status['cleanup']['reason'], registry.CLOCK_UNVERIFIABLE_REASON)
+        self.assertTrue(status['cleanup']['overdue'], 'D may already have passed, so report the possible breach')
+        self.assertTrue(status['cleanup']['deadline_uncertain'])
+        overdue = [i for i in status['incidents'] if i['kind'] == 'cleanup-overdue']
+        self.assertTrue(overdue[0]['detail']['deadline_uncertain'])
+        for name, call in (('renew', lambda: self.stack.registry.renew_control(SESSION, self.token)),
+                           ('dispatch', lambda: self.stack.registry.dispatch_run(SESSION, 'after-reboot', self.token, self.sha, 60))):
+            with self.subTest(call=name), self.assertRaises(registry.Rejection) as caught:
+                call()
+            self.assertEqual(caught.exception.code, 'clock_unverifiable')
+        self.assertEqual(self.stack.registry.runs(SESSION), [])
+
+    def test_rtc_a_day_behind_after_downtime_past_d_stops_work_and_reports_overdue(self):
+        self.stack.restart_watchdog(reboot=True, downtime_s=600, rtc_error_s=-86400)    # really 700 s: past D
+        self.stack.watchdog.tick()
+        self.assert_failed_closed()
+        self.stack.run_until(lambda: self.stack.closed(SESSION))
+        status = self.stack.registry.status(SESSION)
+        self.assertEqual(self.stack.provider.live_ids(), dict(droplets=[], firewalls=[], tags=[]))
+        self.assertEqual(status['overall'], 'resources_verified_evidence_incomplete')
+        self.assertTrue(status['cleanup']['overdue'], 'the possible breach stays visible after cleanup')
+        self.assertTrue(status['cleanup']['overrun_is_lower_bound'], 'measured on a clock that lost the downtime')
+        receipt = json.loads(next((self.stack.state_dir / registry.RECEIPT_DIR).glob('*.json')).read_text())
+        self.assertTrue(receipt['deadline_uncertain'])
+        self.assertTrue(receipt['overrun_is_lower_bound'])
+
+    def test_rtc_partly_behind_is_not_saved_by_timestamps_moving_forward(self):
+        # Downtime 600 s, RTC 300 s slow: the wall looks like a plausible 300 s reboot, before C and D.
+        self.stack.restart_watchdog(reboot=True, downtime_s=600, rtc_error_s=-300)
+        self.assertGreater(self.stack.clock.wall_value, self.stack.registry.db.execute('SELECT effective FROM clock_state').fetchone()['effective'] - 1)
+        self.stack.watchdog.tick()
+        self.assert_failed_closed()
+
+    def test_wall_ahead_of_the_floor_without_a_verified_clock_fails_closed(self):
+        self.stack.restart_watchdog(reboot=True, downtime_s=10, rtc_error_s=0.0, synced=False)
+        self.stack.watchdog.tick()
+        self.assert_failed_closed()
+
+    def test_first_request_after_a_reboot_fails_closed_before_any_watchdog_runs(self):
+        self.stack.clock.reboot(downtime_s=600, rtc_error_s=-86400)
+        registry_ = self.stack.registry
+        self.assertFalse(registry_.health(SESSION)['registry']['healthy'], 'a read alone already reports it')
+        with self.assertRaises(registry.Rejection) as caught:
+            registry_.renew_control(SESSION, self.token)
+        self.assertEqual(caught.exception.code, 'clock_unverifiable')
+        self.assert_failed_closed()
+
+    def test_takeover_after_the_reboot_gets_no_work(self):
+        self.stack.restart_watchdog(reboot=True, downtime_s=600, rtc_error_s=-86400)
+        other = self.stack.new_client('controller-b')
+        token = other.acquire(SESSION, takeover=True)['fencing_token']
+        with self.assertRaises(registry_client.RegistryRejected) as caught:
+            other.mutate('dispatch_run', session_id=SESSION, run_id='r', fencing_token=token,
+                         manifest_sha256=self.sha, estimated_duration_s=1)
+        self.assertEqual(caught.exception.code, 'clock_unverifiable')
+
+    def test_new_sessions_wait_for_verified_time_and_old_ones_stay_in_cleanup(self):
+        manifest, sha, token = self.stack.registered('do-cap-second-session')
+        self.stack.restart_watchdog(reboot=True, downtime_s=600, rtc_error_s=-86400)
+        self.stack.step(1)
+        self.assertNotIn('do-cap-second-session', [i['session_id'] for i in self.stack.registry.incidents(status='open')],
+                         'an unarmed session has no deadline to lose')
+        with self.assertRaises(registry_client.RegistryRejected) as caught:
+            self.stack.client.arm('do-cap-second-session', manifest, sha, token)
+        self.assertEqual(caught.exception.code, 'clock_unhealthy')
+        self.stack.clock.time_sync(86400)
+        self.stack.step(1)
+        kinds = {i['kind']: i['status'] for i in self.stack.registry.incidents()}
+        self.assertEqual(kinds['clock-unverifiable'], 'resolved', 'the record survives the recovery')
+        self.assertEqual(self.stack.registry.status(SESSION)['state'], registry.DELETING, 'verified time cannot revive it')
+        self.stack.client.acquire('do-cap-second-session', takeover=True)
+        token = self.stack.registry.status('do-cap-second-session')['fencing_token']
+        self.stack.client.arm('do-cap-second-session', manifest, sha, token)
+
+    def test_verified_time_after_a_reboot_keeps_the_session_running(self):
+        self.stack.restart_watchdog(reboot=True, downtime_s=30, rtc_error_s=0.0)
+        self.stack.watchdog.tick()
+        status = self.stack.registry.status(SESSION)
+        self.assertEqual(status['state'], registry.READY)
+        self.assertFalse(status['cleanup']['deadline_uncertain'])
+        self.assertEqual(self.stack.registry.incidents(), [])
+
+    def test_repeated_unverified_reboots_stay_one_incident_per_session(self):
+        for boot in ('boot-b', 'boot-c'):
+            self.stack.restart_watchdog(reboot=True, boot=boot, downtime_s=5, rtc_error_s=-1000)
+            self.stack.watchdog.tick()
+        kinds = [i['kind'] for i in self.stack.registry.incidents()]
+        self.assertEqual(sorted(kinds), ['cleanup-overdue', 'clock-unverifiable'])
+        intents = [e for e in self.stack.registry.journal(SESSION) if e['kind'] == 'cleanup_intent']
+        self.assertEqual(len(intents), 1)
+
+
 class ClockUnitTests(unittest.TestCase):
     def test_advance_table(self):
         anchor = session_clock.Anchor('b', 100.0, 5000.0)
+        unverifiable = session_clock.REBOOT_TIME_UNVERIFIABLE
         cases = [
-            ('normal', 5010.0, 110.0, 'b', 5010.0, None),
-            ('wall behind', 4000.0, 110.0, 'b', 5010.0, 'wall_behind_effective'),
-            ('wall ahead', 9000.0, 110.0, 'b', 9000.0, 'wall_jumped_forward'),
-            ('reboot wall ahead is just downtime', 9000.0, 1.0, 'c', 9000.0, None),
-            ('reboot rtc behind', 100.0, 1.0, 'c', 5000.0, 'wall_behind_effective'),
-            ('unknown boot trusts only the floor', 5001.0, 110.0, session_clock.UNKNOWN_BOOT, 5001.0, None),
-            ('mono regressed on same boot id', 5000.0, 50.0, 'b', 5000.0, None),
+            ('normal', 5010.0, 110.0, 'b', False, 5010.0, None),
+            ('wall behind', 4000.0, 110.0, 'b', False, 5010.0, 'wall_behind_effective'),
+            ('wall ahead', 9000.0, 110.0, 'b', False, 9000.0, 'wall_jumped_forward'),
+            ('reboot with verified time is just downtime', 9000.0, 1.0, 'c', True, 9000.0, None),
+            ('reboot without verified time proves nothing', 9000.0, 1.0, 'c', False, 9000.0, unverifiable),
+            ('reboot rtc behind', 100.0, 1.0, 'c', False, 5000.0, unverifiable),
+            ('reboot behind the floor is wrong even if synced', 100.0, 1.0, 'c', True, 5000.0, unverifiable),
+            ('boot id lost', 5001.0, 110.0, session_clock.UNKNOWN_BOOT, False, 5001.0, unverifiable),
+            ('mono regressed on same boot id', 5000.0, 50.0, 'b', False, 5000.0, None),
+            ('mono regressed and wall behind', 100.0, 50.0, 'b', False, 5000.0, unverifiable),
         ]
-        for label, wall, mono, boot, expected, anomaly in cases:
+        for label, wall, mono, boot, verified, expected, anomaly in cases:
             with self.subTest(label):
-                effective, new_anchor, seen = session_clock.advance(anchor, wall, mono, boot)
+                effective, new_anchor, seen = session_clock.advance(anchor, wall, mono, boot, utc_verified=verified)
                 self.assertEqual(effective, expected)
                 self.assertEqual(seen['kind'] if seen else None, anomaly)
                 self.assertEqual(new_anchor.effective, expected)
+
+    def test_a_host_with_no_boot_identity_trusts_only_the_floor(self):
+        unknown = session_clock.UNKNOWN_BOOT
+        anchor = session_clock.Anchor(unknown, 100.0, 5000.0)
+        self.assertIsNone(session_clock.advance(anchor, 5001.0, 110.0, unknown)[2], 'a development fallback, not a reboot')
+        self.assertEqual(session_clock.advance(anchor, 100.0, 110.0, unknown)[2]['kind'], session_clock.REBOOT_TIME_UNVERIFIABLE)
+
+    def test_kernel_time_sync_reading(self):
+        class Libc:
+            def __init__(self, state):
+                self.state = state
+
+            def adjtimex(self, _):
+                return self.state
+
+        for state, expected in ((0, True), (1, True), (4, True), (session_clock.ADJTIMEX_TIME_ERROR, False), (-1, False)):
+            with self.subTest(state=state):
+                self.assertIs(session_clock.kernel_time_synced(Libc(state)), expected)
+        self.assertIs(session_clock.kernel_time_synced(object()), False, 'no such call means nothing is verified')
+
+    def test_timing_constants_keep_their_ordering(self):
+        self.assertGreaterEqual(session_clock.CLEANUP_START_LEAD_S, session_clock.PROVIDER_REQUEST_BOUND_S + 2)
+        self.assertGreater(session_clock.CREATE_SETTLE_S, session_clock.CREATE_START_WINDOW_S + session_clock.PROVIDER_REQUEST_BOUND_S)
 
     def test_effective_time_never_moves_backward_on_any_sequence(self):
         import random
@@ -796,6 +1091,111 @@ class ClockUnitTests(unittest.TestCase):
             effective, anchor, _ = session_clock.advance(anchor, wall, mono, boot)
             self.assertGreaterEqual(effective, previous)
             previous = effective
+
+
+class FirstDeleteByCTests(unittest.TestCase):
+    """An ownership read comes before every delete, so cleanup starts early enough to fit one."""
+
+    def first_delete_at(self, stack, session_id):
+        return next(session_clock.parse(a['started_at']) for a in stack.registry.attempts(session_id) if a['op'] == 'delete_droplet')
+
+    def reach_cleanup(self, stack, ack):
+        run_to(stack, session_clock.parse(ack['cleanup_c_utc']) - registry.CLEANUP_LEAD_S)
+
+    def test_slowest_successful_read_still_issues_the_first_delete_by_c(self):
+        for delay in (1, 10, 20, session_clock.PROVIDER_REQUEST_BOUND_S - 1):
+            with self.subTest(read_delay_s=delay):
+                executor = fx.DeferredExecutor()
+                stack = rf.Stack(self, executor=executor)
+                _, _, _, ack, _ = stack.ready(SESSION, cap_s=600, reserve_s=120, grace_s=100)
+                c = session_clock.parse(ack['cleanup_c_utc'])
+                self.reach_cleanup(stack, ack)
+                self.assertTrue(executor.pending, 'the ownership reads are out')
+                self.assertFalse(stack.provider.ops_named('delete_droplet'))
+                stack.step(delay)
+                executor.release()      # the reads come back only now, and only ownership authorizes a delete
+                stack.step(1)
+                self.assertLessEqual(self.first_delete_at(stack, SESSION), c)
+
+    def test_read_past_its_bound_is_a_failure_not_a_delete_or_a_success(self):
+        executor = fx.DeferredExecutor()
+        stack = rf.Stack(self, executor=executor)
+        _, _, _, ack, _ = stack.ready(SESSION, cap_s=600, reserve_s=120, grace_s=100)
+        self.reach_cleanup(stack, ack)
+        stack.step(session_clock.PROVIDER_REQUEST_BOUND_S + 1)
+        self.assertEqual([a for a in stack.registry.attempts(SESSION) if a['op'] == 'delete_droplet'], [])
+        self.assertTrue(all(a['error_class'] == 'ProviderTransient' or a['finished_at'] is None
+                            for a in stack.registry.attempts(SESSION)))
+        self.assertFalse(stack.closed(SESSION))
+
+    def test_outage_through_c_issues_no_delete_and_never_claims_success(self):
+        stack = rf.Stack(self)
+        _, _, _, ack, _ = stack.ready(SESSION, cap_s=600, reserve_s=120, grace_s=100)
+        stack.provider.fail(rf.outage)
+        run_to(stack, session_clock.parse(ack['deadline_d_utc']) + 1)
+        self.assertEqual(stack.provider.ops_named('delete_droplet'), [], 'no ownership read, no delete')
+        status = stack.registry.status(SESSION)
+        self.assertEqual(status['overall'], 'cleanup_overdue')
+
+    def test_delayed_reads_across_simultaneous_sessions_all_delete_by_c(self):
+        executor = fx.DeferredExecutor()
+        stack = rf.Stack(self, executor=executor)
+        names = ['do-cap-' + c + '-sim' for c in 'abcd']     # 4 x 2 reads fill the eight in-flight slots
+        acks = [stack.ready(name, cap_s=600, reserve_s=120, grace_s=100)[3] for name in names]
+        self.reach_cleanup(stack, acks[0])
+        self.assertEqual(len(executor.pending), 8)
+        stack.step(session_clock.PROVIDER_REQUEST_BOUND_S - 1)
+        executor.release()
+        stack.step(1)
+        for name, ack in zip(names, acks):
+            self.assertLessEqual(self.first_delete_at(stack, name), session_clock.parse(ack['cleanup_c_utc']), name)
+
+    def test_hung_sessions_cannot_make_an_imminent_c_late(self):
+        executor = fx.DeferredExecutor()
+        stack = rf.Stack(self, executor=executor)
+        hung = ['do-cap-' + c + '-hung' for c in 'abc']
+        for name in hung:
+            stack.ready(name)
+        _, _, _, ack, _ = stack.ready('do-cap-z-due', cap_s=600, reserve_s=120, grace_s=100)
+        for name in hung:
+            stack.registry.operator_abort(name, 'provider calls hang')
+        run_to(stack, session_clock.parse(ack['cleanup_c_utc']) - registry.CLEANUP_LEAD_S)
+        stack.step(1)
+        counts = stack.watchdog.ledger.in_flight_counts()
+        self.assertEqual(counts.get('do-cap-z-due'), 2, 'reserved capacity took its reads at once')
+        self.assertLessEqual(sum(counts.values()), 8)
+        stack.step(session_clock.PROVIDER_REQUEST_BOUND_S - 2)
+        executor.release()
+        stack.step(1)
+        self.assertLessEqual(self.first_delete_at(stack, 'do-cap-z-due'), session_clock.parse(ack['cleanup_c_utc']))
+
+    def test_ordinary_sessions_keep_being_served_around_urgent_ones(self):
+        stack = rf.Stack(self, max_in_flight=8, max_in_flight_per_session=2)
+        names = ['do-cap-' + c + '-many' for c in 'abcdef']
+        for name in names:
+            stack.ready(name)
+        for name in names:
+            stack.registry.operator_abort(name, 'test')
+        stack.run_until(lambda: all(stack.closed(name) for name in names))
+
+    def test_urgency_ends_at_c_and_after_the_first_delete(self):
+        executor = fx.DeferredExecutor()
+        stack = rf.Stack(self, executor=executor)
+        _, _, _, ack, _ = stack.ready(SESSION, cap_s=600, reserve_s=120, grace_s=100)
+        c = session_clock.parse(ack['cleanup_c_utc'])
+        self.reach_cleanup(stack, ack)
+        ledger = stack.watchdog.ledger
+        row = [r for r in stack.registry.resources(SESSION) if r['kind'] == 'droplet'][0]
+        due = {SESSION: [row]}
+        self.assertEqual(ledger.awaiting_first_delete(due, c - 1), [SESSION])
+        self.assertEqual(ledger.awaiting_first_delete(due, c + 1), [], 'a late session gets no permanent priority')
+        self.assertEqual(ledger.awaiting_first_delete(due, c - registry.CLEANUP_LEAD_S - 1), [], 'an early abort is not urgent')
+
+    def test_a_cleanup_lead_too_short_for_one_read_refuses_to_start(self):
+        with self.assertRaises(ValueError):
+            rf.Stack(self, ledger_options=dict(cleanup_lead_s=5.0))
+        with self.assertRaises(ValueError):
+            rf.Stack(self).watchdog.run_forever(None, tick_interval_s=5.0)
 
 
 class FairnessTests(unittest.TestCase):

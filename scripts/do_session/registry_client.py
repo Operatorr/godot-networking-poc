@@ -14,6 +14,7 @@ import time
 import uuid
 
 import admission
+import session_clock
 
 STORAGE_ERROR = 'registry_storage_error'
 
@@ -32,6 +33,19 @@ class RegistryRejected(Exception):
         self.code = code
         self.message = message
         self.details = details or {}
+
+
+class CreateStillSettling(Exception):
+    """An earlier create can still land. Nothing was sent; call ``guarded_create`` again later."""
+
+    def __init__(self, intent_id, retry_after_s):
+        super().__init__('%s can still land; retry in %.1f s' % (intent_id, retry_after_s))
+        self.intent_id = intent_id
+        self.retry_after_s = retry_after_s
+
+
+class CreateGrantExpired(Exception):
+    """The grant sat unused past its start window, so the create was not sent."""
 
 
 class LocalTransport:
@@ -72,12 +86,14 @@ def ssh_argv(host, remote_command='omega-do-registry rpc', connect_timeout_s=10)
 
 
 class RegistryClient:
-    def __init__(self, transport, controller_id, attempts=4, retry_delay_s=1.0, sleep=time.sleep, new_request_id=None):
+    def __init__(self, transport, controller_id, attempts=4, retry_delay_s=1.0, sleep=time.sleep, new_request_id=None,
+                 monotonic=session_clock.suspend_aware_monotonic):
         self.transport = transport
         self.controller_id = controller_id
         self.attempts = attempts
         self.retry_delay_s = retry_delay_s
         self.sleep = sleep
+        self.monotonic = monotonic
         self.new_request_id = new_request_id or (lambda: uuid.uuid4().hex)
 
     def call(self, method, request_id=None, **params):
@@ -133,10 +149,13 @@ class RegistryClient:
     def guarded_create(self, session_id, intent_id, fencing_token, create_fn, find_fn, request_id=None):
         """Run one provider create behind the durable intent, reconciling any uncertainty first.
 
-        ``create_fn(grant)`` returns the exact id or raises. ``find_fn(grant)`` looks the intent up
-        by unique tag and name and returns an id or None. It is called whenever an earlier request
-        may have reached the provider, so a lost response can never become a blind duplicate.
+        ``create_fn(grant)`` returns the exact id or raises, and must finish within the grant's
+        ``create_request_timeout_s`` without retrying. ``find_fn(grant)`` looks the intent up by unique
+        tag and name and returns an id or None. It is called whenever an earlier request may have
+        reached the provider, so a lost response can never become a blind duplicate. Raises
+        ``CreateStillSettling`` while that earlier request can still land.
         """
+        started = self.monotonic()
         try:
             grant = self.mutate('begin_create', request_id, session_id=session_id, intent_id=intent_id,
                                 fencing_token=fencing_token)
@@ -145,11 +164,19 @@ class RegistryClient:
                 raise
             grant = dict(rejection.details, must_reconcile=True, authorized=False)
         if grant.get('must_reconcile'):
-            grant = self._reconcile(session_id, intent_id, fencing_token, grant, find_fn)
-            if grant.get('resource_key'):
-                return grant['resource_key']
+            resource_key = self._reconcile(session_id, intent_id, fencing_token, grant, find_fn)
+            if resource_key is not None:
+                return resource_key
+            started = self.monotonic()
+            grant = self.mutate('begin_create', session_id=session_id, intent_id=intent_id, fencing_token=fencing_token)
         if not grant.get('authorized'):
             raise RegistryUnavailable('create was not authorized for ' + intent_id)
+        if self.monotonic() - started > grant['create_start_window_s']:
+            # The bound behind every later absence claim assumes the request started inside this window.
+            with contextlib.suppress(RegistryUnavailable):
+                self.mutate('record_create_result', session_id=session_id, intent_id=intent_id, outcome='ambiguous',
+                            note='grant expired unused')
+            raise CreateGrantExpired(intent_id)
         try:
             provider_id = create_fn(grant)
         except Exception as error:
@@ -164,11 +191,33 @@ class RegistryClient:
         return recorded['resource_key']
 
     def _reconcile(self, session_id, intent_id, fencing_token, grant, find_fn):
-        found = find_fn(grant)
-        if found is not None:
-            recorded = self.mutate('record_resource', session_id=session_id, kind=grant['kind'], provider_id=str(found),
-                                   intent_id=intent_id, name=grant.get('expected_name'))
-            return dict(grant, resource_key=recorded['resource_key'], authorized=False)
+        """Return the resource key if the earlier create landed, or None once it is proven absent.
+
+        A visible resource is proof at any time. Absence counts only from a listing the registry opened
+        after the settle bound, so an empty listing while the request can still land grants nothing.
+        """
+        def record_if_found():
+            found = find_fn(grant)
+            if found is None:
+                return None
+            return self.mutate('record_resource', session_id=session_id, kind=grant['kind'], provider_id=str(found),
+                               intent_id=intent_id, name=grant.get('expected_name'))['resource_key']
+
+        resource_key = record_if_found()
+        if resource_key is not None:
+            return resource_key
+        try:
+            ticket = self.mutate('begin_reconcile', session_id=session_id, intent_id=intent_id, fencing_token=fencing_token)
+        except RegistryRejected as rejection:
+            if rejection.code != 'create_settling':
+                raise
+            raise CreateStillSettling(intent_id, rejection.details['retry_after_s'])
+        if not ticket['outstanding']:
+            return ticket['resource_key']
+        resource_key = record_if_found()
+        if resource_key is not None:
+            return resource_key
         self.mutate('record_create_result', session_id=session_id, intent_id=intent_id, outcome='reconciled_absent',
-                    fencing_token=fencing_token, note='authenticated listing by unique tag and name found nothing')
-        return self.mutate('begin_create', session_id=session_id, intent_id=intent_id, fencing_token=fencing_token)
+                    fencing_token=fencing_token, reconcile_id=ticket['reconcile_id'],
+                    note='authenticated listing by unique tag and name, started after the settle bound, found nothing')
+        return None

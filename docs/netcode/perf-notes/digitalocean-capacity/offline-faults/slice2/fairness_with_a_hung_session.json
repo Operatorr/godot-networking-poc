@@ -748,8 +748,10 @@
   "do-cap-aaa-hung": {
    "cleanup": {
     "actor": "operator",
+    "deadline_uncertain": false,
     "outcome": "in_progress",
     "overdue": false,
+    "overrun_is_lower_bound": false,
     "overrun_s": null,
     "reason": "hung fixture",
     "requested_at": "2026-10-30T12:00:00+00:00",
@@ -922,8 +924,10 @@
   "do-cap-bbb-healthy": {
    "cleanup": {
     "actor": "operator",
+    "deadline_uncertain": false,
     "outcome": "verified_absent",
     "overdue": false,
+    "overrun_is_lower_bound": false,
     "overrun_s": 0.0,
     "reason": "healthy fixture",
     "requested_at": "2026-10-30T12:00:00+00:00",
