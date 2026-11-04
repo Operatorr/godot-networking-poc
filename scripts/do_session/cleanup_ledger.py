@@ -166,7 +166,11 @@ class CleanupLedger:
         cleanup_at = session_clock.parse(session['cleanup_c_utc'])
         if session['cleanup_requested_at'] is None:
             reason = None
-            if effective >= cleanup_at - self.delete_margin_s:
+            delete_at = cleanup_at - self.delete_margin_s
+            if session['recovery_deadline_utc'] is not None:
+                # Scheduling margin must not shorten an accepted recovery episode.
+                delete_at = max(delete_at, session_clock.parse(session['recovery_deadline_utc']))
+            if effective >= delete_at:
                 reason = 'deadline_C'
             elif (session['recovery_deadline_utc'] is not None
                   and effective >= session_clock.parse(session['recovery_deadline_utc'])):

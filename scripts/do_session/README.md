@@ -149,7 +149,7 @@ there, so deletion needs no controller, laptop, SSH key or lease.
 - **Cleanup has two halves.** *Preparation* is read-only: from 40 s before C the watchdog reads known Droplets and
   records their ownership. It changes no session state, so a workload or evidence recovery keeps running, and it
   issues no delete. `start_attempt` refuses a delete without durable cleanup intent, so this holds by construction.
-  *Deletion* starts on the tick 0.5 s before C (the service wakes for it) or at an earlier cleanup request. Cleanup
+  *Deletion* normally starts on the tick 0.5 s before C, but never shortens active recovery. Explicit cleanup requests can start it earlier. Cleanup
   intent is persisted first, then Droplets with fresh ownership go straight to their delete, regardless of the
   controller. Without a successful ownership read no delete is issued. Order is Droplets, firewall, tags. Droplets
   are never held back. Firewalls and tags wait until every create is settled, and each layer waits until the one it
@@ -189,8 +189,8 @@ there, so deletion needs no controller, laptop, SSH key or lease.
   status and receipt carry `deadline_uncertain` and `overrun_is_lower_bound`.
 - **Evidence recovery:** a failed-download episode ends at exactly `min(first_failure + grace, C)`, in any substate.
   Returning to `collecting` does not extend it. Preparation runs alongside it without shortening it. When the
-  episode ends at C, deletion begins on the tick 0.5 s before C, so a controller's local timeouts must stop by then, as
-  the contract's "stop evidence recovery before C" already requires.
+  episode ends at C, prepared deletion is dispatched on the C boundary. The ordinary 0.5 s scheduling margin
+  does not shorten recovery. Host or provider delays can still delay dispatch; this is not a hard-real-time service.
 - **Independent outcomes:** `measurement`, `evidence` and `cleanup` are separate fields. `overall` only
   summarizes them and reads `clean` only with verified absence, complete evidence and no overdue incident.
 
@@ -266,8 +266,8 @@ cleanup. Check the account by unique tag before disposing.
   on 4 slots. With normal provider latency this is invisible. With requests near their 35 s bound, verifying absence
   after the first deletes can outlast the teardown reserve, which shows up as overdue. Lowering the slots of a watchdog
   with armed sessions opens a `deadline-capacity-overcommitted` incident rather than unarming anyone.
-- **The 0.5 s delete margin comes out of the last moment before C.** An episode or workload allowed until C loses at most
-  that much host availability, so a controller's local timeouts must stop before it.
+- **The 0.5 s delete margin applies outside active recovery.** Workload admission reserves this margin.
+  Recovery keeps its accepted deadline, including C; deletion at that boundary has no early scheduling margin.
 - **Time verification is unproven on a real host.** `adjtimex` was exercised with stubs on macOS only. Issue #72
   must confirm on the Linux management host that a synced clock reads as verified and that a boot before
   sync fails closed. A boot whose time daemon has not synced when the watchdog starts cleans up its armed

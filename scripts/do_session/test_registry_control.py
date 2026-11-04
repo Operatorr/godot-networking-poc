@@ -860,13 +860,16 @@ class EvidenceRecoveryTests(unittest.TestCase):
         self.stack.client.call('renew_control', session_id=SESSION, fencing_token=token)
         again = self.stack.client.mutate('begin_evidence_recovery', session_id=SESSION, fencing_token=token)
         self.assertEqual(again['recovery_deadline_utc'], first['recovery_deadline_utc'], 'still open, never reset')
-        self.stack.step(1)
+        self.stack.step(0.75, tick_interval=0.25)
+        self.assertEqual(self.stack.registry.status(SESSION)['state'], registry.EVIDENCE_RECOVERY)
+        self.assertEqual(self.stack.provider.ops_named('delete_droplet', 'delete_firewall', 'delete_tag'), [])
+        self.stack.step(0.25, tick_interval=0.25)
         status = self.stack.registry.status(SESSION)
         self.assertEqual(status['state'], registry.DELETING)
         self.assertEqual(status['cleanup']['reason'], 'deadline_C')
         first_delete = self.stack.provider.ops_named('delete_droplet')[0]
         self.assertLessEqual(first_delete['at'], c, 'and deletion still begins by C')
-        self.assertGreater(first_delete['at'], c - 1, 'but not before recovery was over')
+        self.assertGreaterEqual(first_delete['at'], c, 'but not before recovery was over')
 
     def test_recovery_ending_before_c_deletes_at_once_using_the_prepared_ownership(self):
         _, ack = self.recovering(cap_s=600, reserve_s=120, grace_s=10)
