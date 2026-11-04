@@ -40,6 +40,7 @@ logs/
 # IDE-specific
 .vscode/
 .idea/
+.claude/settings.local.json
 *.swp
 *.swo
 *.swn
@@ -90,3 +91,7 @@ api/bin/
 # quick_stress.sh run artifacts (reports, logs, raw telemetry) — never committed
 loadtest-runs/
 __pycache__/
+
+# Local Sanctuary previews and asset reports; curated evidence lives in subdirectories.
+/output/sanctuary/*.png
+/output/sanctuary/*.json
