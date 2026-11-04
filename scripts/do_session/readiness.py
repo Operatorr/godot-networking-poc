@@ -3,6 +3,8 @@
 Everything here is a pure function of retained observations, so each check has a fixture and a live run is judged by
 the same rules. A missing field is a failure, never a pass: ``check`` is written so that an absent value cannot satisfy it.
 """
+import hashlib
+
 import manifest as manifest_mod
 
 MIN_NOFILE = 65536
@@ -14,6 +16,8 @@ DISK_TOLERANCE = (0.90, 1.05)
 ROOT_LOGIN_REFUSED = ('no',)
 CPU_VENDORS = {'premium-amd': 'AuthenticAMD', 'premium-intel': 'GenuineIntel'}
 MIN_SAMPLES = 2
+# Every guest runs these to exist at all, so a list without them was cut short whatever its own count says.
+REQUIRED_PACKAGES = ('base-files', 'dpkg', 'libc6', 'openssh-server', 'python3')
 GAME_PORT = 8081
 METRICS_PORT = 9100
 LOOPBACK = ('127.0.0.1', '::1')
@@ -67,6 +71,32 @@ def droplet_problems(manifest, role, droplet):
     return findings.problems
 
 
+def package_problems(packages):
+    """Whether a guest's package report really is the whole list it says it is. A digest proves nothing without the list."""
+    if not isinstance(packages, dict):
+        return ['no package report']
+    problems = []
+    if packages.get('rc') != 0:
+        problems.append('the package command exited %s' % packages.get('rc'))
+    if packages.get('complete') is not True:
+        problems.append('the package list is not complete: %s' % packages.get('incomplete'))
+    inventory = packages.get('inventory')
+    if not isinstance(inventory, list) or not inventory:
+        return problems + ['no package inventory']
+    if not all(isinstance(e, dict) and set(e) == {'name', 'version'} and e['name'] and e['version']
+               and isinstance(e['name'], str) and isinstance(e['version'], str) for e in inventory):
+        return problems + ['package inventory has a malformed entry']
+    if packages.get('count') != len(inventory):
+        problems.append('package count %s does not match %d entries' % (packages.get('count'), len(inventory)))
+    text = ''.join('%s %s\n' % (e['name'], e['version']) for e in inventory)
+    if packages.get('sha256') != hashlib.sha256(text.encode('utf-8')).hexdigest():
+        problems.append('package digest does not match the inventory')
+    missing = sorted(set(REQUIRED_PACKAGES) - {e['name'] for e in inventory})
+    if missing:
+        problems.append('package inventory lacks ' + ', '.join(missing))
+    return problems
+
+
 def _secret_free(findings, value, name):
     findings.check(name + '_secret_free', not manifest_mod.scan_for_secrets(value))
 
@@ -88,7 +118,8 @@ def observation_problems(manifest, role, observation, image_name, built_release=
     findings.check('os_image', (obs.get('os') or {}).get('id') == 'ubuntu' and bool((obs.get('os') or {}).get('version_id'))
                    and str(image_name).startswith(str((obs.get('os') or {}).get('version_id'))), str(obs.get('os')))
     findings.check('kernel', bool(obs.get('kernel')))
-    findings.check('packages', bool((obs.get('packages') or {}).get('sha256')) and bool((obs.get('packages') or {}).get('count')))
+    for problem in package_problems(obs.get('packages')):
+        findings.check('packages', False, problem)
 
     cpu, memory = obs.get('cpu') or {}, obs.get('memory') or {}
     findings.check('cpu_count', cpu.get('count') == spec['vcpus'], str(cpu.get('count')))

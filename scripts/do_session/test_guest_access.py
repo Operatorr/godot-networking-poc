@@ -1,6 +1,7 @@
 """Exact firewall rules, secret-free bootstrap, pinned SSH, readiness rules and the guest agent's parsers."""
 import base64
 import copy
+import hashlib
 import json
 import os
 import pathlib
@@ -521,6 +522,47 @@ class GuestAgent(unittest.TestCase):
         problems = readiness.observation_problems(MANIFEST, 'game', observation, '24.04 (LTS) x64')
         for name in ('cloud_init_done', 'sshd_readable', 'listeners_read', 'clock_synchronized', 'authorized_key', 'binary_hash', 'nofile_soft'):
             self.assertTrue(any(name in p for p in problems), name)
+
+    def probe_with_dpkg(self, code, out, error=None):
+        self.agent_dirs()
+
+        def tool(argv, *args, **kwargs):
+            if argv[0] == 'dpkg-query':
+                if error is not None:
+                    raise error
+                return subprocess.CompletedProcess(argv, code, out.encode(), b'')
+            raise FileNotFoundError(argv[0])
+        with unittest.mock.patch.object(guest_agent.subprocess, 'run', side_effect=tool), \
+                unittest.mock.patch.object(guest_agent, 'secret_findings', return_value=[]):
+            return guest_agent.cmd_probe(types.SimpleNamespace(role='game'))['packages']
+
+    GOOD_LIST = 'base-files 13fixture1\ndpkg 1.22.fixture1\nlibc6 2.39-fixture1\nopenssh-server 9.6fixture1\npython3 3.12.fixture1\n'
+
+    def test_the_agent_returns_each_package_and_version_with_its_status_and_hash(self):
+        packages = self.probe_with_dpkg(0, self.GOOD_LIST)
+        self.assertEqual((packages['rc'], packages['complete'], packages['count']), (0, True, 5))
+        self.assertIn(dict(name='libc6', version='2.39-fixture1'), packages['inventory'])
+        self.assertEqual(packages['sha256'], hashlib.sha256(self.GOOD_LIST.encode()).hexdigest())
+        self.assertIn('dpkg-query', packages['command'])
+        self.assertEqual(readiness.package_problems(packages), [])
+        json.dumps(packages)
+
+    def test_two_lists_with_one_changed_version_are_told_apart_by_entry_and_by_hash(self):
+        first = self.probe_with_dpkg(0, self.GOOD_LIST)
+        second = self.probe_with_dpkg(0, self.GOOD_LIST.replace('libc6 2.39-fixture1', 'libc6 2.39-fixture2'))
+        self.assertNotEqual(first['sha256'], second['sha256'])
+        self.assertEqual([e for e in second['inventory'] if e not in first['inventory']], [dict(name='libc6', version='2.39-fixture2')])
+
+    def test_failed_truncated_or_unreadable_package_output_fails_readiness(self):
+        cases = dict(nonzero=(1, self.GOOD_LIST, None), missing_tool=(0, '', FileNotFoundError('dpkg-query')), timeout=(0, '', subprocess.TimeoutExpired('dpkg-query', 60)),
+                     empty=(0, '', None), truncated_mid_line=(0, self.GOOD_LIST[:-8], None), extra_field=(0, self.GOOD_LIST + 'a b c\n', None),
+                     no_version=(0, self.GOOD_LIST + 'orphan\n', None), cut_at_a_line=(0, 'base-files 13fixture1\n', None))
+        for name, (code, out, error) in cases.items():
+            with self.subTest(name):
+                packages = self.probe_with_dpkg(code, out, error)
+                json.dumps(packages)
+                self.assertTrue(readiness.package_problems(packages), packages)
+                self.assertTrue(any('packages' in p for p in readiness.observation_problems(MANIFEST, 'game', dict(packages=packages), '24.04 (LTS) x64')))
 
     def test_the_real_sampler_satisfies_the_readiness_rule(self):
         root = self.agent_dirs()

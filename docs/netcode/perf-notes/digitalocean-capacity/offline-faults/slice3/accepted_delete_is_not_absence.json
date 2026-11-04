@@ -464,6 +464,14 @@
   {
    "at": 1793361632.0,
    "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/droplets/500002",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361632.0,
+   "bound": 35.0,
    "method": "POST",
    "path": "/v2/projects/eb8ab36b-8d7a-4af4-b28b-a66d1b9fe940/resources",
    "status": 200,
@@ -480,6 +488,14 @@
   {
    "at": 1793361632.0,
    "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/droplets/500003",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361632.0,
+   "bound": 35.0,
    "method": "POST",
    "path": "/v2/projects/eb8ab36b-8d7a-4af4-b28b-a66d1b9fe940/resources",
    "status": 200,
@@ -490,6 +506,22 @@
    "bound": 35.0,
    "method": "GET",
    "path": "/v2/projects/eb8ab36b-8d7a-4af4-b28b-a66d1b9fe940/resources",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361632.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/droplets",
+   "status": 200,
+   "tag": "omega-session:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": 1793361632.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/firewalls/00000002-0000-4000-8000-000000000000",
    "status": 200,
    "tag": null
   },
@@ -570,6 +602,14 @@
    "bound": 35.0,
    "method": "GET",
    "path": "/v2/firewalls",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793362058.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/firewalls/00000002-0000-4000-8000-000000000000",
    "status": 200,
    "tag": null
   },
@@ -1438,7 +1478,12 @@
   },
   {
    "at": "2026-10-30T12:07:38+00:00",
-   "evidence_ref": "provisioning/readiness.json#sha256:be0dfa0da8cbae90e9e7fcba2da94b379740e3ead84ad25d1e7beb99c1e39c47",
+   "firewall_id": "00000002-0000-4000-8000-000000000000",
+   "kind": "firewall_unchanged"
+  },
+  {
+   "at": "2026-10-30T12:07:38+00:00",
+   "evidence_ref": "provisioning/readiness.json#sha256:8ee66370f885be2a9170c05283e63ad1483bd5575ea45ad3c6f46834a7cd9850",
    "kind": "pair_ready",
    "ready_at": "2026-10-30T12:07:38+00:00"
   }
@@ -1647,8 +1692,72 @@
  ],
  "registry_journal_verification": {
   "events": 40,
-  "head": "26702dc6cb07341844ed1291fddc24c9b107241624b2d88e32d53b0290539aa5",
+  "head": "7ef08d52316d5b4c637bce81ee7e6cb42d32f2a9baae1725cb7da2ae15942dea",
   "valid": true
+ },
+ "retained_package_inventories": {
+  "packages-bot.json": {
+   "command": "dpkg-query -W -f ${Package} ${Version}\\n",
+   "count": 5,
+   "inventory": [
+    {
+     "name": "base-files",
+     "version": "13fixture1"
+    },
+    {
+     "name": "dpkg",
+     "version": "1.22.fixture1"
+    },
+    {
+     "name": "libc6",
+     "version": "2.39-fixture1"
+    },
+    {
+     "name": "openssh-server",
+     "version": "9.6fixture1"
+    },
+    {
+     "name": "python3",
+     "version": "3.12.fixture1"
+    }
+   ],
+   "rc": 0,
+   "role": "bot",
+   "schema": "omega.do-session.package-inventory/1",
+   "session_id": "do-cap-1v1g-20261030a",
+   "sha256": "c0f0e1236edb4cffdee4002e5b2e67a00b65429fac5d07a21f37f3c0a2acd06a"
+  },
+  "packages-game.json": {
+   "command": "dpkg-query -W -f ${Package} ${Version}\\n",
+   "count": 5,
+   "inventory": [
+    {
+     "name": "base-files",
+     "version": "13fixture1"
+    },
+    {
+     "name": "dpkg",
+     "version": "1.22.fixture1"
+    },
+    {
+     "name": "libc6",
+     "version": "2.39-fixture1"
+    },
+    {
+     "name": "openssh-server",
+     "version": "9.6fixture1"
+    },
+    {
+     "name": "python3",
+     "version": "3.12.fixture1"
+    }
+   ],
+   "rc": 0,
+   "role": "game",
+   "schema": "omega.do-session.package-inventory/1",
+   "session_id": "do-cap-1v1g-20261030a",
+   "sha256": "c0f0e1236edb4cffdee4002e5b2e67a00b65429fac5d07a21f37f3c0a2acd06a"
+  }
  },
  "scenario": "accepted_delete_is_not_absence",
  "sessions": {

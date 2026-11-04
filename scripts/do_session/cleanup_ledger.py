@@ -31,6 +31,7 @@ import cleanup_provider
 import create_evidence
 import deadline_capacity
 import registry as registry_mod
+import resource_ownership
 import session_clock
 
 MAX_ATTEMPTS_PER_BURST = 6
@@ -536,37 +537,15 @@ class CleanupLedger:
 
     def _ownership_problems(self, session_id, row, value):
         manifest = self.registry.manifest(session_id)
-        tags = manifest['session']['ownership_tags']
-        problems = []
-        if row['resource_key'] in (manifest['session'].get('retained_resources') or []):
-            problems.append('resource is listed as retained by the manifest')
+        key = row['resource_key']
         if row['kind'] == 'droplet':
-            names = {i['expected_name']: i for i in self.registry.intents(session_id) if i['kind'] == 'droplet'}
-            actual_tags = set(value.get('tags') or [])
-            if tags['session'] not in actual_tags:
-                problems.append('droplet does not carry the unique session tag')
-            protected = actual_tags.intersection(self.registry.protected_tags)
-            if protected:
-                problems.append('droplet carries a protected management tag: ' + ', '.join(sorted(protected)))
-            intent = names.get(value.get('name'))
-            if intent is None:
-                problems.append('droplet name is not an expected session name')
-            elif tags[intent['role']] not in actual_tags:
-                problems.append('droplet does not carry its role tag')
-        elif row['kind'] == 'firewall':
-            if value.get('name') != session_id + '-fw':
-                problems.append('firewall name is not the expected session name')
-            if not set(value.get('tags') or []).issubset({tags['session'], tags['game'], tags['bot']}):
-                problems.append('firewall targets tags outside this session')
+            return resource_ownership.droplet_problems(manifest, key, value, self.registry.protected_tags)
+        if row['kind'] == 'firewall':
             owned = {r['provider_id'] for r in self._rows(session_id) if r['kind'] == 'droplet'}
-            if not {str(d) for d in (value.get('droplet_ids') or [])}.issubset(owned):
-                problems.append('firewall targets Droplets this session does not own')
-        elif row['kind'] == 'tag':
-            if value.get('name') != row['provider_id'] or row['provider_id'] not in tags.values():
-                problems.append('tag is not an ownership tag of this session')
-            if value.get('resource_count'):
-                problems.append('tag still labels %s resource(s) after owned Droplets are gone' % value.get('resource_count'))
-        return problems
+            return resource_ownership.firewall_problems(manifest, key, value, owned)
+        if row['kind'] == 'tag':
+            return resource_ownership.tag_problems(manifest, key, row['provider_id'], value)
+        return resource_ownership.retained_problems(manifest, key)
 
     def _apply_read(self, attempt, row, value, effective, now_text):
         session_id, key = attempt['session_id'], attempt['resource_key']

@@ -28,6 +28,7 @@ import sys
 import time
 
 import cleanup_provider
+import create_evidence
 import do_api
 import do_session
 import guest_agent
@@ -154,6 +155,9 @@ def cmd_refresh_access(args, environment):
         return 2
     except provisioner.Stop as stop:
         print(json.dumps(dict(applied=False, code=stop.code, detail=stop.detail)))
+        return 2
+    except create_evidence.CreateNotSent as refused:
+        print(json.dumps(dict(applied=False, code='mutation_refused', detail=cleanup_provider.redact(refused))))
         return 2
     except (cleanup_provider.ProviderError, registry_client.RegistryRejected, registry_client.RegistryUnavailable) as error:
         print(json.dumps(dict(applied=False, code='refresh_failed', detail=cleanup_provider.redact(error))))

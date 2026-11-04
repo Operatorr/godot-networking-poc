@@ -826,6 +826,7 @@
   "head": "9eede7219166bff3fe35c166f7a7414eb61f64f63d45b2113de34e7bd4c06c2d",
   "valid": true
  },
+ "retained_package_inventories": {},
  "scenario": "operator_disposition_is_not_clean",
  "sessions": {
   "do-cap-1v1g-20261030a": {

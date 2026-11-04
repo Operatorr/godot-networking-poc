@@ -30,9 +30,9 @@ def authorization(manifest, sha, wall, **changes):
     return packet
 
 
-def session_of_kind(session_id, cap_s, kind):
+def session_of_kind(session_id, cap_s, kind, retained=()):
     if kind == 'capacity':
-        return fx.session_manifest(session_id, cap_s=cap_s)
+        return fx.session_manifest(session_id, cap_s=cap_s, retained=retained)
     conditions = fx.conditions()
     session = conditions['session']
     session.update(id=session_id, kind=kind, ownership_tags=dict(session='omega-session:' + session_id, game='omega-role:game:' + session_id,
@@ -45,7 +45,7 @@ def session_of_kind(session_id, cap_s, kind):
 class Sim:
     TICK_S = 5.0
 
-    def __init__(self, case, session_id=SESSION, cap_s=CAP_S, account_options=None, policy=None, kind='capacity'):
+    def __init__(self, case, session_id=SESSION, cap_s=CAP_S, account_options=None, policy=None, kind='capacity', retained=()):
         self.stack = rf.Stack(case)
         self.clock = self.stack.clock
         self.case = case
@@ -56,7 +56,7 @@ class Sim:
         self.stack.watchdog = self.stack.new_watchdog()
         self.stack.watchdog.start(pid=1)
         self.stack.watchdog.tick()
-        self.manifest, self.sha = session_of_kind(session_id, cap_s, kind)
+        self.manifest, self.sha = session_of_kind(session_id, cap_s, kind, retained)
         self.session_id = session_id
         self.packet = authorization(self.manifest, self.sha, self.clock.wall())
         self.gate = remote_authorization.MutationGate(self.packet, self.manifest, self.sha, self.clock.wall)
@@ -118,6 +118,12 @@ class Sim:
         foreign = {'/v2/droplets/%d' % i for i in self.unrelated['droplets']} | {'/v2/firewalls/' + self.unrelated['firewall']}
         foreign |= {'/v2/tags/' + t for t in self.unrelated['tags']}
         return not [m for m in self.account.mutations() if m['path'] in foreign]
+
+    def puts(self):
+        return self.account.ops('PUT', '^/v2/firewalls/')
+
+    def open_incidents(self, kind='ownership-mismatch'):
+        return [i for i in self.stack.registry.incidents(self.session_id) if i['kind'] == kind and i['status'] == 'open']
 
     def creates(self, path):
         return self.account.ops('POST', '^' + path + '$')

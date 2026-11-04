@@ -7,6 +7,10 @@ creates one, and no such packet exists for this slice. Without it the adapter re
 The packet does not gate cleanup. Deleting owned resources needs only exact ids and ownership, because a
 deadline must work when no controller or authorization is left. See ``MutationGate``.
 
+The window bounds when a request may begin to leave this process. The gate checks it when the request is built, and
+``SendGuard`` checks it again after the connection opens, immediately before the first request byte. Nothing can bound
+when the provider finishes acting on a request already sent, so a request sent just inside the window may land after it.
+
 Scopes are attested rather than discovered: DigitalOcean exposes no endpoint for reading a token's own scopes,
 successful reads say nothing about write scopes, and testing a write scope would itself be a mutation.
 """
@@ -106,11 +110,29 @@ def _attestation_problems(attestation, cap_s, now):
     return problems
 
 
+class SendGuard:
+    """Handed to the transport: how long this request may still wait to be sent, and the last check before it is."""
+
+    def __init__(self, gate, action):
+        self.gate = gate
+        self.action = action
+
+    def seconds_left(self):
+        return _epoch(self.gate.packet['not_after_utc']) - self.gate.wall()
+
+    def confirm(self):
+        reasons = validate(self.gate.packet, self.gate.manifest, self.gate.manifest_sha256, self.gate.wall())
+        if reasons:
+            self.gate._refuse(self.action + ' was not sent: ' + '; '.join(reasons))
+
+
 class MutationGate:
     """Every create, update and assignment passes here, just before the adapter would send it.
 
     The budget is per process and belongs to one packet, and the payload must be exactly what the manifest
     froze. The registry's intents remain the durable limit: a request with an unknown outcome never gets a retry.
+    An update or assignment names an existing resource, so its id must be one the registry has recorded for this session
+    and still names at the controller's latest authority check. See ``bind_owned``.
     """
 
     def __init__(self, packet, manifest, manifest_sha256, wall):
@@ -122,6 +144,16 @@ class MutationGate:
         session = manifest['session']
         self.session_id = session['id']
         self.tags = session['ownership_tags']
+        self.owned = dict(firewall=frozenset(), droplet=frozenset())
+
+    def bind_owned(self, resources):
+        """Replace the authority to change existing resources with the registry's current record of them."""
+        retained = self.manifest['session'].get('retained_resources') or []
+        self.owned = {kind: frozenset(r['provider_id'] for r in resources if r['kind'] == kind and r['resource_key'] not in retained)
+                      for kind in ('firewall', 'droplet')}
+
+    def send_guard(self, action):
+        return SendGuard(self, action)
 
     def _refuse(self, reason):
         raise MutationRefused('mutation refused: ' + reason)
@@ -171,10 +203,14 @@ class MutationGate:
         self._spend('create_droplet', DROPLET_CREATES)
 
     def _check_update_firewall(self, firewall_id, payload):
+        if str(firewall_id) not in self.owned['firewall']:
+            self._refuse('firewall is not one the registry records for this session')
         self._check_firewall_targets(payload)
         self._spend('update_firewall', MAX_FIREWALL_UPDATES)
 
     def _check_assign_droplet(self, project_id, droplet_id):
         if project_id != self.manifest['session']['project_id']:
             self._refuse('project is not the session project')
+        if str(droplet_id) not in self.owned['droplet']:
+            self._refuse('droplet is not one the registry records for this session')
         self._spend('assign_droplet', MAX_ASSIGNMENTS)

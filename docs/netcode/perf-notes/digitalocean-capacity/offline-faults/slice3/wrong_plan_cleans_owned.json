@@ -889,6 +889,7 @@
   "head": "93f2c11394cf024e9beb948cc58610e7c0681151691914cb1d16ed2b06f41d8e",
   "valid": true
  },
+ "retained_package_inventories": {},
  "scenario": "wrong_plan_cleans_owned",
  "sessions": {
   "do-cap-1v1g-20261030a": {

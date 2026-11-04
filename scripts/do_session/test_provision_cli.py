@@ -8,11 +8,13 @@ import pathlib
 import subprocess
 import tempfile
 import unittest
+import unittest.mock
 
 import do_session
 import provision_cli
 import provision_fixtures as pf
 import provisioner
+import remote_authorization
 import session_clock
 
 REPO = pathlib.Path(__file__).parents[2]
@@ -87,6 +89,43 @@ class Cli(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertEqual(json.loads(out)['code'], 'bootstrap_failed')
         self.assertEqual(do_session.load_session(self.session_dir)[3]['phase'], 'provisioning')
+
+    def test_a_refresh_stopped_between_attempts_exits_nonzero_and_says_why(self):
+        _, out = self.run_cli(*self.provision_args())
+        ready = json.loads(out)
+        self.sim.account.fault('PUT', '^/v2/firewalls/', 'status', status=503, times=1)
+        puts = len(self.sim.puts())
+        original = self.environment.sleep
+
+        def abort_then_sleep(seconds):
+            self.sim.stack.registry.operator_abort(self.sim.session_id, 'operator abort during refresh')
+            original(seconds)
+        self.environment.sleep = abort_then_sleep
+        code, out = self.run_cli('refresh-access', '--session-dir', str(self.session_dir), '--token-file', 'x', '--registry-command', 'y', '--authorization', str(self.authorization),
+                                 '--fencing-token', str(ready['fencing_token']), '--ssh-source', '198.51.100.250/32')
+        self.assertEqual(code, 2, out)
+        document = json.loads(out)
+        self.assertEqual(document['applied'], False)
+        self.assertTrue(document['stopped'])
+        self.assertEqual(len(self.sim.puts()), puts + 1)
+
+    def test_authorization_ending_mid_refresh_exits_nonzero_and_says_why(self):
+        _, out = self.run_cli(*self.provision_args())
+        ready = json.loads(out)
+        self.sim.account.fault('PUT', '^/v2/firewalls/', 'status', status=503, times=1)
+        puts = len(self.sim.puts())
+        real_validate = remote_authorization.validate
+        ended = []
+
+        def validate(*arguments):
+            return ['authorization is outside its time window'] if ended else real_validate(*arguments)
+        self.environment.sleep = ended.append
+        with unittest.mock.patch.object(remote_authorization, 'validate', validate):
+            code, out = self.run_cli('refresh-access', '--session-dir', str(self.session_dir), '--token-file', 'x', '--registry-command', 'y', '--authorization', str(self.authorization),
+                                     '--fencing-token', str(ready['fencing_token']), '--ssh-source', '198.51.100.250/32')
+        self.assertEqual(code, 2, out)
+        self.assertEqual(json.loads(out)['code'], 'mutation_refused')
+        self.assertEqual(len(self.sim.puts()), puts + 1)
 
     def test_refresh_access_uses_the_api_alone(self):
         _, out = self.run_cli(*self.provision_args())

@@ -1,4 +1,5 @@
 """The retained provisioning timelines reproduce byte for byte and hold no credential or bootstrap nonce."""
+import json
 import pathlib
 import tempfile
 import unittest
@@ -27,8 +28,19 @@ class ProvisionFaultEvidence(unittest.TestCase):
         names = {s.__name__ for s in evidence.SCENARIOS}
         for family in ('ready_pair', 'partial_pair', 'lost_create', 'unknown_create', 'late_create', 'duplicate_create', 'wrong_plan', 'wrong_facts', 'project_assignment',
                        'firewall_wrong', 'cloud_init', 'ownership', 'changed_operator_address', 'broad_source', 'outage', 'accepted_delete', 'impostor', 'restarted_controller',
-                       'authorization', 'disposition'):
+                       'authorization', 'disposition', 'firewall_retargeted', 'protected_droplet', 'package_versions'):
             self.assertTrue(any(family in name for name in names), family)
+
+    def test_retained_package_inventories_are_only_the_synthetic_fixture(self):
+        import fake_guest
+        allowed = set(fake_guest.FIXTURE_PACKAGES)
+        found = 0
+        for path in COMMITTED.glob('*.json'):
+            for inventory in json.loads(path.read_text(encoding='utf-8'))['retained_package_inventories'].values():
+                found += 1
+                self.assertEqual({e['name'] for e in inventory['inventory']}, allowed, path.name)
+                self.assertTrue(all('fixture' in e['version'] for e in inventory['inventory']), path.name)
+        self.assertGreater(found, 0)
 
     def test_only_documentation_addresses_appear_in_the_retained_rules(self):
         for path in COMMITTED.glob('*.json'):

@@ -114,7 +114,7 @@ there, so deletion needs no controller, laptop, SSH key or lease.
 
 | File | Owns |
 | --- | --- |
-| `registry.py` | SQLite store and control-plane API: manifest, ownership, creation intents, t0/D/C, fencing, run and cleanup transitions, incidents, hash-chained journal. Every write is one durable transaction that also stores its response under the request id. |
+| `registry.py` | SQLite store and control-plane API: manifest, ownership, creation intents, t0/D/C, fencing, run and cleanup transitions, incidents (including `report_ownership_conflict` from a controller), hash-chained journal. Every write is one durable transaction that also stores its response under the request id. |
 | `cleanup_ledger.py` | Durable cleanup state machine: C/D evaluation, per-resource bursts, attempt history, ownership checks, closure rules and receipts. |
 | `watchdog.py` | The service loop: 1 s ticks, 15 s sweeps, fair off-thread provider requests, incident files. |
 | `session_clock.py` | The forward-only effective clock built from the wall clock, the boot-scoped monotonic clock and a persisted anchor. |
@@ -297,10 +297,11 @@ state. All of it has been verified only against offline fakes. No provider mutat
 
 | File | Owns |
 | --- | --- |
-| `do_api.py` | The real adapter over `http.client`. `DigitalOceanProvider` holds the watchdog's reads and exact deletes. `DigitalOceanProvisioningProvider` adds facts, creates, firewall updates and project assignment behind a gate. One route allowlist covers every request, and each call makes one attempt with an absolute bound. |
-| `remote_authorization.py` | The separately bounded packet every mutation needs, and `MutationGate`, which re-checks it and the frozen payload just before sending. |
+| `do_api.py` | The real adapter over `http.client`. `DigitalOceanProvider` holds the watchdog's reads and exact deletes. `DigitalOceanProvisioningProvider` adds facts, creates, firewall updates and project assignment behind a gate. One route allowlist covers every request, and each call makes one attempt with an absolute bound over resolver, connect, TLS and exchange. |
+| `remote_authorization.py` | The separately bounded packet every mutation needs, and `MutationGate`, which re-checks it and the frozen payload just before sending, holds the registry's recorded ids as the only authority to change an existing resource, and re-checks the window after connecting. |
+| `resource_ownership.py` | The one ownership policy: exact tags and names, protected tags, retained ids. The watchdog applies it before a delete and the controller before any operation. |
 | `provider_preflight.py` | Fresh project, account, quota, region, size, price, image, key and collision facts, judged by the manifest's own rules. |
-| `session_access.py` | Exact firewall requests and the exact read-back comparison. Refuses any source that is not one routable host. |
+| `session_access.py` | Exact firewall requests, the exact read-back comparison over every schema selector, and what a replacement may overwrite. Refuses any source that is not one routable host. |
 | `guest_bootstrap.py` | Cloud-init user data: public key, sshd policy, limits, the host-key binding. Validated on every rendering. |
 | `ssh_access.py` | Key-only, strictly host-verified SSH and scp, and the first-contact pinning decision. |
 | `guest_agent.py` | Stdlib-only program uploaded to guests. It reports facts as JSON and decides nothing. |
@@ -314,11 +315,12 @@ state. All of it has been verified only against offline fakes. No provider mutat
 ```text
 authorization -> fresh facts -> register -> watchdog ack -> fresh facts -> admission -> arm (t0/D/C frozen)
   -> 3 tags -> firewall (read back) -> game -> bot
-  -> active + exact plan -> project assignment (read back) -> firewall with the bot's exact address (read back, applied)
+  -> active + ownership + exact plan -> project assignment (ownership first, read back)
+  -> firewall with the bot's exact address (ownership first, read back, applied)
   -> exact inventory -> pin both host keys -> cloud-init done
   -> clean locked build on the bot host -> release relayed to the game host (hashes compared)
-  -> probes, clock bracket, sampler -> bot's SSH attempt must time out -> cross-host ENet smoke -> ports released
-  -> exact inventory -> mark_ready
+  -> probes (package inventories retained), clock bracket, sampler -> bot's SSH attempt must time out -> cross-host ENet smoke -> ports released
+  -> exact inventory -> firewall unchanged -> mark_ready
 ```
 
 Every failure stops the batch and requests cleanup. Nothing is repaired in place and no pair is replaced. The watchdog
@@ -331,13 +333,54 @@ deletes what the session owns, and if the request cannot be delivered, C still a
   bound. Closure then follows [Create settlement](#create-settlement): a late landing is found by tag and deleted, and
   otherwise only `dispose-create` closes the session, labelled as a disposition rather than clean.
 - **What a create response proves.** A 2xx with an exact id means it landed. 400, 401, 403, 404, 422 or 429 is
-  `CreateRejected`. A failed connection is `CreateNotSent`. Everything else stays unknown, including any 5xx, 408, 409,
-  a redirect, a timeout and a 2xx without an id. A rejection stops the batch and is not retried.
+  `CreateRejected`. A connection that failed or did not open within its limits is `CreateNotSent`. Everything else stays
+  unknown, including any 5xx, 408, 409, a redirect, a timeout once the request was being written, and a 2xx without an
+  id. A rejection stops the batch and is not retried.
+- **One absolute request bound.** `request_bound_s` covers the resolver, every address, TLS and the exchange, and the
+  caller returns at the bound. No socket timeout reaches the system resolver, so connecting runs on a worker the caller
+  can abandon. Only the calling thread writes a request, after connecting and after every send limit is checked again,
+  so an abandoned worker can never send one. It closes what it opened. At most `MAX_CONNECT_WORKERS` (32, above the
+  watchdog's 12 slots) can be unfinished. Past that a request fails at once as not sent instead of adding a thread. A
+  resolver stuck for good holds those 32 and every request fails, visibly, until the process restarts.
 - **Authorization covers one exact session and manifest, one pair and a time window.** It is re-validated at every
-  mutation. Write scopes and token expiry are operator attestations in the packet, because DigitalOcean has no endpoint
+  mutation and again after the connection opens, immediately before the first request byte, and connecting cannot wait
+  past the window. So the window bounds when a request may begin to leave the controller. It cannot bound when the
+  provider finishes one sent just inside it. Write scopes and token expiry are operator attestations in the packet, because DigitalOcean has no endpoint
   that reports a token's scopes, and proving a write scope would itself be a mutation. Read scopes are proven by the
   preflight reads succeeding. The packet does not gate deletion: cleanup must work when no controller is left. Exact
   ids and ownership authorize deletes, and the watchdog's adapter cannot create anything.
+- **Ownership before every operation.** Convergence, each project assignment, the firewall replacement, both inventories
+  and refresh use `resource_ownership.py`, the watchdog's own policy, so provisioning cannot certify or operate on a
+  Droplet that cleanup would refuse to delete. A conflict stops the work and is reported through
+  `report_ownership_conflict`, which opens the same `ownership-mismatch` incident the watchdog would, before anything else
+  happens. Owned resources are still cleaned up. The refused one stays with its incident, and protection is never
+  stripped. The watchdog's next read clears the incident if the resource turns out to be owned after all, as with a
+  firewall whose targets are right but whose rules someone edited. During a refresh a conflict refuses the refresh and
+  opens the incident, and does not itself start cleanup: the operator decides, and C still arrives.
+- **Replacing a firewall.** PUT overwrites everything, so before every attempt, retries included, the firewall is read
+  and must still have the recorded id, the exact name, exactly its two role tags, no direct Droplet, and only rules this
+  session could have written: its own outbound set, and SSH and game rules whose sources are exact hosts. Only those
+  addresses may differ. Anything else is refused with nothing sent, and the gate refuses an id the registry does not
+  record. A firewall already as desired, as after a lost response, gets no second PUT. **DigitalOcean documents no
+  conditional update, so a read-then-write race remains:** a change landing between the read and the PUT is overwritten,
+  and the read-back then sees our own replacement. The window is one request, not zero.
+- **Control before each mutation.** `require_control` renews the lease and checks fence, cleanup state and C with no
+  throttling. It runs after every wait, after the ownership read and immediately before each PUT and assignment. It too
+  answers only for the moment it was asked. Cleanup, an abort, an expired lease, a takeover or C stops a refresh with
+  `applied=false` and `stopped` naming the reason, and the rules in force stay as they are.
+- **Exact selectors.** Comparison covers every selector in the
+  [firewall schema](https://raw.githubusercontent.com/digitalocean/openapi/main/specification/resources/firewalls/models/firewall_rule.yml)
+  (`addresses`, `droplet_ids`, `kubernetes_ids`, `load_balancer_uids`, `tags`), ingress and egress alike. An unknown
+  populated field is refused rather than ignored. Empty selectors count as absent. Drift stops before any Droplet is
+  bought, stops readiness, and refuses a refresh.
+- **A success without a record is not absence.** Only an authenticated 404 means gone. A 200 with a null, scalar or array
+  where a record belongs is a failed read, so cleanup stays open and retries it.
+- **Package provenance.** The agent reports every package and version with the command's status and a hash, and the
+  controller keeps the list in `provisioning/packages-<role>.json`, because teardown destroys the only other copy.
+  `readiness.json` keeps each role's status, count, hashes and artifact path, and `required_artifacts` names the files an
+  exporter must carry. Its own hash, in `mark_ready`'s evidence reference, binds them. A failed, incomplete, malformed or
+  self-contradicting list stops readiness, and one that parsed is still retained to explain why. Real inventories stay in
+  the private session directory. Committed timelines hold only the synthetic fixture.
 - **First contact.** No private key goes into user data. Each Droplet gets a random nonce through the authenticated API,
   and at first boot it publishes `HMAC(nonce, host key)` and deletes the nonce file. The controller scans the key, reads
   the proof over a connection pinned to that key, and pins it only if the proof matches. The nonce exists only in
@@ -374,7 +417,7 @@ and `refresh-access` need an authorization packet and refuse before reading a to
 issue #72: `OMEGA_DO_PROVIDER=do_api:from_token_file`, `OMEGA_DO_PROVIDER_ARG=<restricted token file>`. The token is
 read once at service start, so rotating it means restarting the service.
 
-Retained timelines: `docs/netcode/perf-notes/digitalocean-capacity/offline-faults/slice3/`. Regenerate with
+Retained timelines: `docs/netcode/perf-notes/digitalocean-capacity/offline-faults/slice3/` (23 scenarios). Regenerate with
 `provision_fault_evidence.py`. They are not capacity or live-provider results.
 
 ### What only a live run can show
@@ -384,9 +427,15 @@ cleans up, or stays open and visible.
 
 - Real response shapes for everything in `do_api.py`. They come from the public API reference, and a few points it
   leaves open are handled conservatively: `POST /v2/tags` on an existing name, a tag listing for a deleted tag, and
-  `ports` spelling on read-back. If listing a deleted tag returned 404, sessions would stay open rather than close.
+  `ports` spelling on read-back. If listing a deleted tag returned 404, sessions would stay open rather than close. If a
+  real firewall response carried a populated rule field the published schema does not list, readiness would refuse it.
+- That no real read-then-write interleaving ever hits the firewall race above. It is disclosed, not excluded.
 - `cloud-init status --format json` semantics, sshd policy ordering and `nofile` limits on the pinned image, and the
   time taken to publish the host binding. The 600 s contact wait is a guess until calibrated.
 - Whether a release build reproduces byte for byte between two cold sessions. If it does not, Gate B stops at the hash.
 - Real ENet smoke behaviour across the public route. `guest_agent.py` was exercised with stub binaries.
-- Linux itself: the agent's `ss`, `timedatectl`, `sshd -T` and `dpkg-query` paths ran only behind mocks on macOS.
+- Linux itself: the agent's `ss`, `timedatectl`, `sshd -T` and `dpkg-query` paths ran only behind mocks on macOS. A
+  package list cut exactly at a line boundary is caught by required entries (`base-files`, `dpkg`, `libc6`,
+  `openssh-server`, `python3`) only if it lost one of them.
+- Automatic detection of the operator's current address. Allowlists are exact values supplied at freeze and refresh, and
+  this code cannot prove such a value is current. That stays an operational gate.

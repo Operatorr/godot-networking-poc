@@ -3,9 +3,9 @@
     run
       authorization, fresh facts, register, watchdog ack, fresh facts again, admission, arm (t0/D/C frozen here)
       tags -> firewall -> game -> bot, each behind one durable intent
-      converge, assign to the project, final firewall with the bot's exact address, exact inventory
+      converge, assign to the project, final firewall with the bot's exact address, exact inventory (ownership read each time)
       first contact pins host keys -> cloud-init -> clean locked build -> release on both roles
-      observations, sampler, cross-host ENet smoke, reset
+      observations, sampler, cross-host ENet smoke, reset, exact inventory, firewall unchanged
       mark_ready, or request_cleanup with the reason
 
 Failing stops the batch: nothing is repaired in place and no pair is replaced, so every failure path ends in
@@ -37,6 +37,7 @@ import readiness
 import registry
 import registry_client
 import remote_authorization
+import resource_ownership
 import search
 import session_access
 import session_clock
@@ -101,6 +102,50 @@ class Refused(Stop):
 
 class ControlLost(Stop):
     """This controller no longer holds the session: stop touching anything, and leave cleanup to its holder."""
+
+
+class OwnershipConflict(Stop):
+    """A recorded resource is no longer what this session alone could have left it as. Report it and leave it alone."""
+
+    def __init__(self, resource_key, problems, observed_name=None):
+        super().__init__('ownership_conflict', resource_key + ': ' + '; '.join(problems))
+        self.resource_key = resource_key
+        self.problems = list(problems)
+        self.observed_name = observed_name
+
+
+def report_conflict(client, session_id, conflict, record):
+    """Durable before anything else happens to the session. If the registry cannot take it, the watchdog's read still will."""
+    try:
+        client.mutate('report_ownership_conflict', session_id=session_id, resource_key=conflict.resource_key, problems=conflict.problems,
+                      observed_name=conflict.observed_name)
+    except (registry_client.RegistryRejected, registry_client.RegistryUnavailable) as error:
+        record('ownership_conflict_unreported', resource_key=conflict.resource_key, detail=cleanup_provider.redact(error))
+    record('ownership_conflict', resource_key=conflict.resource_key, problems=conflict.problems)
+
+
+def require_control(client, provider, session_id, fencing_token, wall):
+    """Fresh proof that this controller may still change anything: fence, lease, cleanup, C. Never throttled.
+
+    Renewing raises when the token is stale or the lease has lapsed. The registry's current record of owned resources
+    then becomes the adapter's only authority to name an exact id. This answers for the moment it was asked, so callers
+    ask again after any wait or slow read and immediately before each mutation.
+    """
+    client.call('renew_control', session_id=session_id, fencing_token=fencing_token)
+    status = client.call('status', session_id=session_id)
+    if status['state'] in (registry.DELETING, registry.CLOSED) or status['cleanup']['requested_at'] is not None:
+        raise ControlLost('cleanup_in_progress', 'the session entered ' + status['state'])
+    if status['cleanup_c_utc'] is not None and wall() >= session_clock.parse(status['cleanup_c_utc']):
+        raise ControlLost('deadline_reached', 'the session reached C at ' + status['cleanup_c_utc'])
+    provider.bind_owned(status['resources'])
+    return status
+
+
+def droplet_conflict(manifest, droplet_id, droplet):
+    """Exactly the policy that decides whether the watchdog could ever delete this Droplet."""
+    key = resource_ownership.resource_key('droplet', droplet_id)
+    problems = resource_ownership.droplet_problems(manifest, key, droplet)
+    return OwnershipConflict(key, problems, droplet.get('name')) if problems else None
 
 
 class Evidence:
@@ -228,6 +273,8 @@ class Provisioner:
             self._record('control_lost', code=stop.code, detail=stop.detail)
             return self._result(ABORTED, stop)
         self._record('stopping', code=stop.code, detail=stop.detail, armed=self.armed)
+        if isinstance(stop, OwnershipConflict):
+            report_conflict(self.client, self.session_id, stop, self._record)
         if self.token is None or getattr(stop, 'keep_registered', False):
             return self._result(REJECTED, stop)
         try:
@@ -344,6 +391,13 @@ class Provisioner:
         if state in (registry.DELETING, registry.CLOSED):
             raise ControlLost('cleanup_started_elsewhere', 'the session entered ' + state)
 
+    def _authorize_mutation(self):
+        """The unthrottled form of ``_keepalive``, for just before a change and after anything slow."""
+        if self.budget_ends is not None and self.monotonic() >= self.budget_ends:
+            raise Stop('provisioning_budget_exhausted', 'the declared create/bootstrap/readiness bound ran out')
+        require_control(self.client, self.provider, self.session_id, self.token, self.wall)
+        self.next_renew = self.monotonic() + RENEW_EVERY_S
+
     def _wait(self, seconds):
         self.sleep(seconds)
         self._keepalive()
@@ -366,8 +420,9 @@ class Provisioner:
                 return matches[0]['id'] if matches else None
             matches = [d for d in self.provider.list_droplets_by_tag(self.tags['session']) if d['name'] == intent['expected_name']]
             for droplet in matches:
-                if self.tags[intent['role']] not in droplet['tags']:
-                    raise Stop('ownership_ambiguous', 'a droplet has the session tag and name but not its role tag')
+                problems = resource_ownership.droplet_problems(self.manifest, resource_ownership.resource_key('droplet', droplet['id']), droplet)
+                if problems:
+                    raise Stop('ownership_ambiguous', 'a droplet has the session tag and name but: ' + '; '.join(problems))
             return matches[0]['id'] if matches else None
         return find
 
@@ -470,6 +525,7 @@ class Provisioner:
         desired = session_access.firewall_request(self.manifest, allowlists['ssh_sources'], allowlists['operator_udp_sources'])
         actual = self.provider.get_firewall(self.firewall_id)
         problems = ['firewall is not readable'] if actual is None else session_access.firewall_problems(actual, desired)
+        problems += resource_ownership.retained_problems(self.manifest, resource_ownership.resource_key('firewall', self.firewall_id))
         if actual is not None and actual.get('status') == 'failed':
             problems.append('firewall status is failed')
         if problems:
@@ -480,6 +536,10 @@ class Provisioner:
     def _converge_droplets(self):
         for role in ROLES:
             droplet = self._await_active(role)
+            conflict = droplet_conflict(self.manifest, droplet['id'], droplet)
+            if conflict is not None:
+                self.evidence.event('droplet_ownership_refused', role=role, droplet=droplet, problems=conflict.problems)
+                raise conflict
             problems = readiness.droplet_problems(self.manifest, role, droplet)
             self.evidence.event('droplet_verified', role=role, droplet=droplet, problems=problems)
             if problems:
@@ -510,6 +570,14 @@ class Provisioner:
             identifier = self.droplets[role]['id']
             for attempt in range(self.policy.assign_attempts):
                 try:
+                    self._authorize_mutation()
+                    droplet = self.provider.get_droplet(identifier)
+                    if droplet is None:
+                        raise Stop('droplet_vanished', role + ' droplet ' + identifier + ' is gone')
+                    conflict = droplet_conflict(self.manifest, identifier, droplet)
+                    if conflict is not None:
+                        raise conflict
+                    self._authorize_mutation()      # that read may have been slow
                     self.provider.assign_droplet(project, identifier)
                     if 'do:droplet:' + identifier in self.provider.project_resource_urns(project):
                         self.evidence.event('project_assigned', role=role, attempts=attempt + 1)
@@ -529,8 +597,9 @@ class Provisioner:
                                                self.droplets['bot']['public_ipv4'][0])
 
     def _apply_final_firewall(self):
+        self._require_owned_droplets()
         desired = self.desired_firewall()
-        outcome = apply_firewall(self.provider, self.firewall_id, desired, self.sleep, self.monotonic, self.policy, self._keepalive)
+        outcome = apply_firewall(self.provider, self.manifest, self.firewall_id, desired, self.sleep, self.monotonic, self.policy, self._authorize_mutation)
         if outcome['problems']:
             raise Stop('firewall_verification_failed', '; '.join(outcome['problems']))
         for role in ROLES:
@@ -541,10 +610,23 @@ class Provisioner:
                                        tags=outcome['firewall']['tags'], status=outcome['firewall']['status'])
         self.evidence.event('firewall_applied', firewall_id=self.firewall_id, attempts=outcome['attempts'])
 
+    def _require_owned_droplets(self):
+        """Both Droplets, as they are now, by the watchdog's policy. Returns everything the session tag lists."""
+        listed = self.provider.list_droplets_by_tag(self.tags['session'])
+        for role in ROLES:
+            identifier = self.droplets[role]['id']
+            droplet = next((d for d in listed if d['id'] == identifier), None)
+            if droplet is None:
+                raise OwnershipConflict(resource_ownership.resource_key('droplet', identifier), ['droplet no longer carries the unique session tag'])
+            conflict = droplet_conflict(self.manifest, identifier, droplet)
+            if conflict is not None:
+                raise conflict
+        return listed
+
     def _check_inventory(self):
         """Exactly what this session asked for. Anything else is recorded, so it is owned and cleaned, then we stop."""
         expected = {self.droplets[role]['id'] for role in ROLES}
-        extras = [d for d in self.provider.list_droplets_by_tag(self.tags['session']) if d['id'] not in expected]
+        extras = [d for d in self._require_owned_droplets() if d['id'] not in expected]
         for droplet in extras:
             intent = next((i['intent_id'] for i in self._intent_rows() if i['kind'] == 'droplet' and i['expected_name'] == droplet['name']), None)
             self.client.mutate('record_resource', session_id=self.session_id, kind='droplet', provider_id=droplet['id'],
@@ -660,7 +742,8 @@ class Provisioner:
             measured = self._measure_clock(role)
             sampler = self._agent(role, 'sampler')
             entry = self.report['roles'][role]
-            entry.update(observation=observation, clock_offset=measured, sampler=sampler)
+            entry.update(observation=self._retain_packages(role, observation), clock_offset=measured, sampler=sampler)
+            # Judged as the guest reported it, whole list included, not as the report now summarizes it.
             problems += readiness.observation_problems(self.manifest, role, observation, images.get(self.manifest['roles'][role]['image_id']),
                                                        built_release=self.built_release)
             problems += readiness.clock_problems(role, measured)
@@ -677,6 +760,41 @@ class Provisioner:
         if problems:
             raise Stop('readiness_failed', '; '.join(problems))
         self._check_inventory()
+        self._verify_firewall_unchanged()
+
+    def _retain_packages(self, role, observation):
+        """Keep the guest's whole package list in its own file: teardown destroys the only other copy.
+
+        The report keeps the command status, the hashes and where the file is, which binds it to ``mark_ready`` through
+        the report's own hash. A list readiness will refuse is still retained, because it explains the refusal.
+        """
+        packages = observation.get('packages') if isinstance(observation, dict) else None
+        if not isinstance(packages, dict) or not isinstance(packages.get('inventory'), list):
+            return observation
+        name = 'packages-%s.json' % role
+        path = self.evidence.artifact(name, dict(schema='omega.do-session.package-inventory/1', session_id=self.session_id, role=role,
+                                                 command=packages.get('command'), rc=packages.get('rc'), count=packages.get('count'),
+                                                 sha256=packages.get('sha256'), inventory=packages['inventory']))
+        problems = readiness.package_problems(packages)
+        summary = {k: v for k, v in packages.items() if k != 'inventory'}
+        summary.update(artifact='provisioning/' + name, artifact_sha256=hashlib.sha256(path.read_bytes()).hexdigest(), problems=problems)
+        self.report.setdefault('required_artifacts', []).append(dict(kind='package_inventory', role=role, path=summary['artifact'], sha256=summary['artifact_sha256']))
+        return dict(observation, packages=summary)
+
+    def _verify_firewall_unchanged(self):
+        """Readiness is about the firewall as it is now, not as it was before the minutes spent on bootstrap."""
+        desired = self.desired_firewall()
+        actual = self.provider.get_firewall(self.firewall_id)
+        key = resource_ownership.resource_key('firewall', self.firewall_id)
+        if actual is None:
+            raise Stop('firewall_verification_failed', 'firewall is gone')
+        problems = session_access.firewall_problems(actual, desired)
+        if problems:
+            raise OwnershipConflict(key, problems, actual.get('name'))
+        problems = session_access.applied_problems(actual)
+        if problems:
+            raise Stop('firewall_verification_failed', '; '.join(problems))
+        self.evidence.event('firewall_unchanged', firewall_id=self.firewall_id)
 
     def _enet_smoke(self):
         """Over the public route and the session firewall. Its processes and ports are gone again before ready."""
@@ -717,8 +835,23 @@ def bounded_setup_problems(manifest):
     return reasons
 
 
-def apply_firewall(provider, firewall_id, desired, sleep, monotonic, policy, keepalive=None):
-    """Send a full replacement, then trust only the read-back. PUT replaces everything, so repeating it is safe.
+def current_firewall_conflict(manifest, firewall_id, actual, desired):
+    """Exact id, name, targets and only this session's own rules, against a fresh read. See ``replacement_problems``."""
+    key = resource_ownership.resource_key('firewall', firewall_id)
+    problems = resource_ownership.retained_problems(manifest, key) + session_access.replacement_problems(actual, desired, firewall_id)
+    return OwnershipConflict(key, problems, actual.get('name')) if problems else None
+
+
+def apply_firewall(provider, manifest, firewall_id, desired, sleep, monotonic, policy, authority):
+    """Replace a recorded firewall, then trust only the read-back.
+
+    Every attempt reads the firewall and refuses if it has drifted (``OwnershipConflict``), then proves control again, and
+    only then sends. ``authority`` also runs after every wait. It raises to stop, and this function lets it, so nothing
+    that follows it can send. An unreadable firewall is not replaced. A firewall already exactly as desired, as when a
+    previous response was lost, is not replaced again.
+
+    DigitalOcean documents no conditional update: a change landing between the read and the PUT is overwritten, and the
+    read-back then sees our own replacement. The read narrows that race to one request and cannot close it.
 
     A failed attempt is simply repeated within a bound. The rules are exact in every attempt, so no failure path can
     widen ingress, and an unreachable provider leaves the previous exact rules in force.
@@ -726,9 +859,19 @@ def apply_firewall(provider, firewall_id, desired, sleep, monotonic, policy, kee
     problems = ['the firewall could not be updated']
     actual = None
     for attempt in range(1, policy.firewall_update_attempts + 1):
+        authority()
         try:
-            provider.update_firewall(firewall_id, desired)
-            actual = provider.get_firewall(firewall_id)
+            current = provider.get_firewall(firewall_id)
+            if current is None:
+                return dict(problems=['firewall is gone'], attempts=attempt, firewall=None)
+            conflict = current_firewall_conflict(manifest, firewall_id, current, desired)
+            if conflict is not None:
+                raise conflict
+            if session_access.firewall_problems(current, desired):
+                authority()     # that read may have been slow
+                provider.update_firewall(firewall_id, desired)
+                current = provider.get_firewall(firewall_id)
+            actual = current
         except remote_authorization.MutationRefused:
             raise
         except cleanup_provider.ProviderError as error:
@@ -738,8 +881,6 @@ def apply_firewall(provider, firewall_id, desired, sleep, monotonic, policy, kee
             problems = session_access.firewall_problems(actual, desired)
             if not problems:
                 break
-        if keepalive is not None:
-            keepalive()
         sleep(policy.provider_poll_s)
     else:
         return dict(problems=problems, attempts=attempt, firewall=actual)
@@ -755,38 +896,67 @@ def apply_firewall(provider, firewall_id, desired, sleep, monotonic, policy, kee
                                                                     + session_access.applied_problems(actual))
         if not problems or (actual is not None and actual.get('status') == 'failed') or monotonic() >= deadline:
             return dict(problems=problems, attempts=attempt, firewall=actual)
-        if keepalive is not None:
-            keepalive()
         sleep(policy.provider_poll_s)
+        authority()
 
 
 def refresh_access(client, provider, manifest, fencing_token, ssh_sources, operator_udp_sources, sleep, monotonic, policy=None, evidence=None):
     """Replace the exact source allowlists through the API. It needs no SSH and works while SSH is locked out.
 
-    Invalid sources are refused before any request. The target comes from the registry's exact id and its ownership is
-    checked first. Cleanup stops refreshes, because a firewall under cleanup is protection and is left alone.
+    Invalid sources are refused before any request. The target comes from the registry's exact id, and a recorded
+    resource that fails its ownership check raises ``OwnershipConflict`` with an incident on record and nothing sent.
+
+    Cleanup, a lost lease, a takeover and C all stop a refresh, because a firewall under cleanup is protection and a stale
+    controller's rules must not overwrite a newer one's. Control is checked immediately before each PUT and after each
+    wait. A stop found once work began comes back as ``stopped`` with ``applied=False``, and the rules stay as they stand.
     """
     policy = policy or Policy()
     session_id = manifest['session']['id']
-    client.call('renew_control', session_id=session_id, fencing_token=fencing_token)
-    status = client.call('status', session_id=session_id)
-    if status['state'] in (registry.DELETING, registry.CLOSED):
-        raise Stop('cleanup_in_progress', 'a firewall under cleanup is left alone')
+
+    def record(kind, **data):
+        """A failed evidence write must not hide what happened from the caller."""
+        if evidence is not None:
+            try:
+                evidence.event(kind, **data)
+            except (OSError, Stop):
+                pass
+
+    def authority():
+        require_control(client, provider, session_id, fencing_token, provider.wall)
+
+    def refuse(conflict):
+        report_conflict(client, session_id, conflict, record)
+        raise conflict
+
+    status = require_control(client, provider, session_id, fencing_token, provider.wall)
     firewalls = [r for r in status['resources'] if r['kind'] == 'firewall']
-    bots = [r for r in status['resources'] if r['kind'] == 'droplet' and r['name'] == session_id + '-bot']
+    droplets = [r for r in status['resources'] if r['kind'] == 'droplet']
+    bots = [r for r in droplets if r['name'] == session_id + '-bot']
     if len(firewalls) != 1 or len(bots) != 1:
         raise Stop('ownership_ambiguous', 'the registry does not hold exactly one firewall and one bot droplet')
-    bot = provider.get_droplet(bots[0]['provider_id'])
-    tags = manifest['session']['ownership_tags']
-    if bot is None or tags['session'] not in bot['tags'] or tags['bot'] not in bot['tags'] or len(bot['public_ipv4']) != 1:
-        raise Stop('ownership_ambiguous', 'the bot droplet does not match session ownership')
+    bot = None
+    for recorded in droplets:
+        droplet = provider.get_droplet(recorded['provider_id'])
+        if droplet is None:
+            raise Stop('ownership_ambiguous', 'recorded droplet %s is gone' % recorded['provider_id'])
+        conflict = droplet_conflict(manifest, recorded['provider_id'], droplet)
+        if conflict is not None:
+            refuse(conflict)
+        if recorded is bots[0]:
+            bot = droplet
+    if len(bot['public_ipv4']) != 1:
+        raise Stop('ownership_ambiguous', 'the bot droplet does not have exactly one public route')
     desired = session_access.firewall_request(manifest, ssh_sources, operator_udp_sources, bot['public_ipv4'][0])
     firewall_id = firewalls[0]['provider_id']
-    current = provider.get_firewall(firewall_id)
-    if current is None or current['name'] != desired['name'] or sorted(current['tags']) != sorted(desired['tags']) or current['droplet_ids']:
-        raise Stop('ownership_ambiguous', 'the recorded firewall does not match session ownership')
-    outcome = apply_firewall(provider, firewall_id, desired, sleep, monotonic, policy)
-    if evidence is not None:
-        evidence.event('access_refreshed', firewall_id=firewall_id, ssh_sources=desired['inbound_rules'][0]['sources']['addresses'],
-                       problems=outcome['problems'], attempts=outcome['attempts'])
-    return dict(firewall_id=firewall_id, applied=not outcome['problems'], problems=outcome['problems'], attempts=outcome['attempts'])
+    try:
+        outcome = apply_firewall(provider, manifest, firewall_id, desired, sleep, monotonic, policy, authority)
+    except OwnershipConflict as conflict:
+        refuse(conflict)
+    except (ControlLost, registry_client.RegistryRejected, registry_client.RegistryUnavailable) as stop:
+        code = getattr(stop, 'code', 'registry_unavailable')
+        detail = cleanup_provider.redact(stop)
+        record('access_refresh_stopped', firewall_id=firewall_id, code=code, detail=detail)
+        return dict(firewall_id=firewall_id, applied=False, stopped=code, problems=[detail], attempts=None)
+    record('access_refreshed', firewall_id=firewall_id, ssh_sources=desired['inbound_rules'][0]['sources']['addresses'],
+           problems=outcome['problems'], attempts=outcome['attempts'])
+    return dict(firewall_id=firewall_id, applied=not outcome['problems'], stopped=None, problems=outcome['problems'], attempts=outcome['attempts'])

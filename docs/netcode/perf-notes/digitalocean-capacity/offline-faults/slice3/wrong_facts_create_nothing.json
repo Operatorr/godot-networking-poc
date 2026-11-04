@@ -186,6 +186,7 @@
   "head": "caf0fa8f7534527d2ea05ead249ca35de2b3b7c6babd63d282b8af72aea01494",
   "valid": true
  },
+ "retained_package_inventories": {},
  "scenario": "wrong_facts_create_nothing",
  "sessions": {},
  "user_data_sha256": []

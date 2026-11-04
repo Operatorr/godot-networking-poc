@@ -15,6 +15,7 @@ HOST_KEY_BLOBS = dict(game=base64.b64encode(b'fixture-game-host-key').decode(), 
 SAMPLER_SHA256 = 'a' * 64
 AGENT_SECONDS = dict(wait_cloud_init=60, fetch_source=30, build=240, install_release=2, probe=2, sampler=4, smoke_game_start=3, smoke_bot=7,
                      smoke_game_stop=2, tcp_probe=5)
+FIXTURE_PACKAGES = {'base-files': '13fixture1', 'dpkg': '1.22.fixture1', 'libc6': '2.39-fixture1', 'openssh-server': '9.6fixture1', 'python3': '3.12.fixture1'}
 
 
 class FakeGuests(ssh_access.GuestAccess):
@@ -29,6 +30,7 @@ class FakeGuests(ssh_access.GuestAccess):
         self.silent_until = {}
         self.copy_failures = set()
         self.exit_codes = {}
+        self.package_versions = {}
 
     # ---- first contact -----------------------------------------------------------------------
 
@@ -150,8 +152,16 @@ class FakeGuests(ssh_access.GuestAccess):
                     authorized_keys=[self.manifest['ssh_key']['fingerprint_sha256']],
                     listeners=[dict(protocol='tcp', address='0.0.0.0', port=22)],
                     clock=dict(ntp_synchronized=True, service='active', wall_ns=int(self.sim.clock.wall() * 1e9), monotonic_ns=int(self.sim.clock.mono() * 1e9), boot_id='fixture-boot-' + role),
-                    packages=dict(count=512, sha256=hashlib.sha256(role.encode()).hexdigest()),
+                    packages=self.packages(role),
                     network=dict(default_route='[]', addresses='[]'), secrets=dict(findings=[]), release=self._release(role))
+
+    def packages(self, role):
+        """Synthetic names and versions, never read from any real machine. ``package_versions`` changes one for a role."""
+        versions = dict(FIXTURE_PACKAGES, **self.package_versions.get(role, {}))
+        inventory = [dict(name=name, version=version) for name, version in sorted(versions.items())]
+        text = ''.join('%s %s\n' % (e['name'], e['version']) for e in inventory)
+        return dict(command='dpkg-query -W -f ${Package} ${Version}\\n', rc=0, complete=True, incomplete=None, count=len(inventory),
+                    sha256=hashlib.sha256(text.encode()).hexdigest(), inventory=inventory)
 
     def _answer_tcp_probe(self, role):
         return dict(outcome='timeout')

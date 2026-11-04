@@ -351,6 +351,14 @@
   {
    "at": 1793361632.0,
    "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/droplets/500002",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361632.0,
+   "bound": 35.0,
    "method": "POST",
    "path": "/v2/projects/eb8ab36b-8d7a-4af4-b28b-a66d1b9fe940/resources",
    "status": 200,
@@ -367,6 +375,14 @@
   {
    "at": 1793361632.0,
    "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/droplets/500003",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361632.0,
+   "bound": 35.0,
    "method": "POST",
    "path": "/v2/projects/eb8ab36b-8d7a-4af4-b28b-a66d1b9fe940/resources",
    "status": 200,
@@ -377,6 +393,22 @@
    "bound": 35.0,
    "method": "GET",
    "path": "/v2/projects/eb8ab36b-8d7a-4af4-b28b-a66d1b9fe940/resources",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361632.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/droplets",
+   "status": 200,
+   "tag": "omega-session:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": 1793361632.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/firewalls/00000002-0000-4000-8000-000000000000",
    "status": 200,
    "tag": null
   },
@@ -1091,6 +1123,7 @@
   "head": "544d087ec302180cc0ac5da7b208486e7d406796c3f3689fcaf17ade8dd8aae0",
   "valid": true
  },
+ "retained_package_inventories": {},
  "scenario": "duplicate_create_recorded_and_deleted",
  "sessions": {
   "do-cap-1v1g-20261030a": {

@@ -1128,6 +1128,7 @@
   "head": "61830aaf420e6551a96e478c9cd21b4ff5249e13c999bdb5f54aac08767ae4fa",
   "valid": true
  },
+ "retained_package_inventories": {},
  "scenario": "late_create_found_after_stop",
  "sessions": {
   "do-cap-1v1g-20261030a": {

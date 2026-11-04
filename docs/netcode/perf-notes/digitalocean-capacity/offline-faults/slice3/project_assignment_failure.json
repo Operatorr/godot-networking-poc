@@ -347,8 +347,24 @@
   {
    "at": 1793361632.0,
    "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/droplets/500002",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361632.0,
+   "bound": 35.0,
    "method": "POST",
    "path": "/v2/projects/eb8ab36b-8d7a-4af4-b28b-a66d1b9fe940/resources",
+   "status": 200,
+   "tag": null
+  },
+  {
+   "at": 1793361637.0,
+   "bound": 35.0,
+   "method": "GET",
+   "path": "/v2/droplets/500002",
    "status": 200,
    "tag": null
   },
@@ -929,6 +945,7 @@
   "head": "18250f09c9a343a90831f4c61bd3af9371be70c99d18f5a9a43a6a17538aa1f1",
   "valid": true
  },
+ "retained_package_inventories": {},
  "scenario": "project_assignment_failure",
  "sessions": {
   "do-cap-1v1g-20261030a": {

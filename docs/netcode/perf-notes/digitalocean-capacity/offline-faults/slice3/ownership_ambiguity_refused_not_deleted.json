@@ -497,7 +497,7 @@
    "armed": true,
    "at": "2026-10-30T12:00:02+00:00",
    "code": "ownership_ambiguous",
-   "detail": "a droplet has the session tag and name but not its role tag",
+   "detail": "a droplet has the session tag and name but: droplet does not carry its role tag",
    "kind": "stopping"
   },
   {
@@ -638,6 +638,7 @@
   "head": "742cc887c2a16d34e28385368ad08aaf8562e77d075c8afa989575b9fc478ebe",
   "valid": true
  },
+ "retained_package_inventories": {},
  "scenario": "ownership_ambiguity_refused_not_deleted",
  "sessions": {
   "do-cap-1v1g-20261030a": {

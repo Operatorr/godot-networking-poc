@@ -9,6 +9,7 @@ import tempfile
 import threading
 import time
 import unittest
+import unittest.mock
 
 import cleanup_provider
 import create_evidence
@@ -18,6 +19,7 @@ import fixture_support as fx
 import manifest as manifest_mod
 import registry_cli
 import remote_authorization
+import session_access
 import session_clock
 
 UUID = '00000001-0000-4000-8000-000000000000'
@@ -34,8 +36,10 @@ class Script:
         self.responses = list(responses)
         self.calls = []
 
-    def __call__(self, method, target, body=None, request_bound_s=None, send_by=None):
+    def __call__(self, method, target, body=None, request_bound_s=None, send_by=None, send_guard=None):
         self.calls.append(dict(method=method, target=target, body=body, bound=request_bound_s, send_by=send_by))
+        if send_guard is not None:
+            send_guard.confirm()
         response = self.responses.pop(0)
         if isinstance(response, Exception):
             raise response
@@ -54,6 +58,9 @@ def controller(*responses, gate=None):
 class OpenGate:
     def check(self, *_):
         pass
+
+    def send_guard(self, action):
+        return None
 
 
 class Routes(unittest.TestCase):
@@ -137,6 +144,25 @@ class StatusMapping(unittest.TestCase):
             provider(do_api.HttpResponse(200, {}, b'<html>')).get_droplet('1')
         with self.assertRaises(cleanup_provider.ProviderTransient):
             provider(answer(200, dict(tag=dict(name='t')))).get_tag('t')
+
+    def test_a_200_without_a_record_is_never_absence_for_any_getter(self):
+        def adapter(body):
+            return controller(answer(200, body))[0]
+
+        getters = (('droplet', lambda a: a.get_droplet('1')), ('firewall', lambda a: a.get_firewall(UUID)), ('tag', lambda a: a.get_tag('t')),
+                   ('account', lambda a: a.account()), ('image', lambda a: a.image('1')), ('ssh_key', lambda a: a.ssh_key('1')), ('project', lambda a: a.project(UUID)))
+        for key, read in getters:
+            for value in (None, 0, False, '', 'text', 1, [], [dict(id=1)]):
+                with self.subTest(key=key, value=value):
+                    with self.assertRaises(cleanup_provider.ProviderTransient):
+                        read(adapter({key: value}))
+            with self.subTest(key=key, value='404'):
+                self.assertIsNone(read(controller(answer(404))[0]))
+
+    def test_a_listing_that_holds_a_non_record_is_a_failure(self):
+        for item in (None, 1, 'x', []):
+            with self.subTest(item), self.assertRaises(cleanup_provider.ProviderTransient):
+                provider(answer(200, dict(firewalls=[item], links={}, meta=dict(total=1)))).list_firewalls_by_name('fw')
 
     def test_deletes_accept_only_what_the_seam_allows(self):
         for status in (200, 202, 204, 404):
@@ -308,6 +334,46 @@ class Gate(unittest.TestCase):
         now[0] += 7201
         with self.assertRaises(remote_authorization.MutationRefused):
             gate.check('create_tag', tag)
+
+    def test_updates_and_assignments_need_an_id_the_registry_records(self):
+        gate, manifest = self.gate()
+        firewall = session_access.firewall_request(manifest, ['198.51.100.7/32'], [])
+        project = manifest['session']['project_id']
+        for action, details in (('update_firewall', (UUID, firewall)), ('assign_droplet', (project, '5'))):
+            with self.subTest(action), self.assertRaises(remote_authorization.MutationRefused):
+                gate.check(action, *details)
+        recorded = [dict(kind='firewall', provider_id=UUID, resource_key='firewall:' + UUID), dict(kind='droplet', provider_id='5', resource_key='droplet:5')]
+        gate.bind_owned(recorded)
+        gate.check('update_firewall', UUID, firewall)
+        gate.check('assign_droplet', project, '5')
+        with self.assertRaises(remote_authorization.MutationRefused):
+            gate.check('update_firewall', '00000009-0000-4000-8000-000000000000', firewall)
+        with self.assertRaises(remote_authorization.MutationRefused):
+            gate.check('assign_droplet', project, '6')
+        # The latest record is the whole authority: what it no longer names can no longer be changed.
+        gate.bind_owned(recorded[1:])
+        with self.assertRaises(remote_authorization.MutationRefused):
+            gate.check('update_firewall', UUID, firewall)
+
+    def test_a_retained_id_gets_no_authority_even_when_recorded(self):
+        import provision_fixtures as pf
+        manifest, sha = fx.session_manifest(cap_s=14400, retained=['droplet:5'])
+        gate = remote_authorization.MutationGate(pf.authorization(manifest, sha, fx.T0_WALL), manifest, sha, lambda: fx.T0_WALL)
+        gate.bind_owned([dict(kind='droplet', provider_id='5', resource_key='droplet:5')])
+        with self.assertRaises(remote_authorization.MutationRefused):
+            gate.check('assign_droplet', manifest['session']['project_id'], '5')
+
+    def test_the_send_guard_reports_the_window_and_refuses_after_it_without_spending(self):
+        now = [fx.T0_WALL]
+        gate, manifest = self.gate(wall=lambda: now[0], not_after_utc=session_clock.iso(fx.T0_WALL + 10))
+        guard = gate.send_guard('create_tag')
+        self.assertAlmostEqual(guard.seconds_left(), 10.0)
+        guard.confirm()
+        self.assertEqual(gate.counts, {})
+        now[0] += 10
+        self.assertLessEqual(guard.seconds_left(), 0)
+        with self.assertRaises(remote_authorization.MutationRefused):
+            guard.confirm()
 
     def test_a_refusal_counts_as_not_sent(self):
         self.assertTrue(issubclass(remote_authorization.MutationRefused, create_evidence.CreateNotSent))
@@ -488,6 +554,228 @@ class Transport(unittest.TestCase):
         source = pathlib.Path(do_api.__file__).read_text()
         for helper in ('import requests', 'import urllib.request', 'import urllib3', 'HTTPAdapter'):
             self.assertNotIn(helper, source)
+
+
+class StalledConnect:
+    """A connection whose connect blocks until released, as a stuck system resolver would. Offline by construction."""
+
+    def __init__(self, release=None):
+        self.release = release or threading.Event()
+        self.closed = threading.Event()
+        self.sock = None
+
+    def connect(self):
+        self.release.wait(20)
+
+    def close(self):
+        self.closed.set()
+
+
+class CountingGuard:
+    def __init__(self, seconds_left=100.0, confirm_raises=None):
+        self.left = seconds_left
+        self.confirm_raises = confirm_raises
+        self.confirmed = 0
+
+    def seconds_left(self):
+        return self.left
+
+    def confirm(self):
+        self.confirmed += 1
+        if self.confirm_raises is not None:
+            raise self.confirm_raises
+
+
+class TransportBounds(unittest.TestCase):
+    """The whole request, from the resolver on, stays inside one bound. Loopback sockets and stubs only."""
+
+    SLACK_S = 0.5
+
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.token = pathlib.Path(directory.name) / 'token'
+        self.token.write_text('offline-fixture-token')
+        os.chmod(str(self.token), 0o600)
+
+    def serve(self, handler):
+        server = LoopbackServer(handler)
+        self.addCleanup(server.close)
+        return server
+
+    def stall_resolver(self):
+        """Every name lookup blocks until the returned event is set, then answers with loopback."""
+        release = threading.Event()
+        real = socket.getaddrinfo
+
+        def stalled(host, port, *rest, **options):
+            release.wait(20)
+            return real('127.0.0.1', port, *rest, **options)
+        patcher = unittest.mock.patch('socket.getaddrinfo', side_effect=stalled)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(release.set)
+        return release
+
+    def assert_bounded(self, call, bound_s, error=do_api.RequestNotSent):
+        started = time.monotonic()
+        with self.assertRaises(error):
+            call()
+        elapsed = time.monotonic() - started
+        self.assertLess(elapsed, bound_s + self.SLACK_S)
+        return elapsed
+
+    def connect_workers(self):
+        return [t for t in threading.enumerate() if t.name == 'omega-do-connect']
+
+    def await_no_workers(self, baseline=0):
+        deadline = time.monotonic() + 5
+        while len(self.connect_workers()) > baseline and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertLessEqual(len(self.connect_workers()), baseline)
+
+    def test_a_stalled_resolver_cannot_outlast_the_bound_on_the_default_connection(self):
+        self.stall_resolver()
+        transport = do_api.HttpsTransport(self.token)
+        elapsed = self.assert_bounded(lambda: transport('GET', '/v2/account', request_bound_s=0.05), 0.05)
+        self.assertGreaterEqual(elapsed, 0.04)
+
+    def test_a_grant_send_deadline_bounds_connecting_tighter_than_the_request_bound(self):
+        self.stall_resolver()
+        transport = do_api.HttpsTransport(self.token)
+        send_by = session_clock.suspend_aware_monotonic() + 0.05
+        self.assert_bounded(lambda: transport('POST', '/v2/droplets', body=b'{}', request_bound_s=5.0, send_by=send_by), 0.05)
+
+    def test_addresses_that_never_answer_share_one_bound(self):
+        attempts = []
+        real_socket = socket.socket
+
+        class Unanswered(real_socket):
+            def connect(self, address):
+                attempts.append(address)
+                time.sleep(0.2)
+                raise socket.timeout('stub: no answer')
+
+        addresses = [(socket.AF_INET, socket.SOCK_STREAM, 6, '', ('192.0.2.%d' % i, 443)) for i in (1, 2, 3)]
+        with unittest.mock.patch('socket.getaddrinfo', return_value=addresses), unittest.mock.patch('socket.socket', Unanswered):
+            transport = do_api.HttpsTransport(self.token)
+            self.assert_bounded(lambda: transport('GET', '/v2/account', request_bound_s=0.05), 0.05)
+            # Past the caller's return the worker walks the remaining addresses, finds nothing, and frees its slot.
+            self.await_no_workers()
+        self.assertEqual(len(attempts), 3)
+
+    def test_a_tls_handshake_that_stalls_or_trickles_is_bounded_and_sends_no_request(self):
+        def silent(connection):
+            time.sleep(0.5)
+
+        def trickle(connection):
+            connection.sendall(b'\x16\x03\x03\x10\x00')     # a TLS record header promising more than ever comes
+            for _ in range(40):
+                try:
+                    connection.sendall(b'\x00')
+                except OSError:
+                    return
+                time.sleep(0.05)
+
+        for handler in (silent, trickle):
+            with self.subTest(handler.__name__):
+                server = self.serve(handler)
+                transport = do_api.HttpsTransport(
+                    self.token, host='127.0.0.1',
+                    connection_factory=lambda host, timeout: http.client.HTTPSConnection(host, server.port, timeout=timeout, context=ssl.create_default_context()))
+                self.assert_bounded(lambda: transport('POST', '/v2/droplets', body=b'{}', request_bound_s=0.2), 0.2)
+                self.assertEqual(server.accepted, 1)
+                self.assertFalse(any(b'POST' in r or b'offline-fixture-token' in r for r in server.requests))
+
+    def test_a_response_trickling_its_headers_is_bounded_and_stays_unknown(self):
+        def trickle(connection):
+            connection.sendall(b'HTTP/1.1 200 OK\r\n')
+            for index in range(40):
+                try:
+                    connection.sendall(b'X-Slow-%d: y\r\n' % index)
+                except OSError:
+                    return
+                time.sleep(0.05)
+
+        server = self.serve(trickle)
+        transport = do_api.HttpsTransport(self.token, host='127.0.0.1', connection_factory=lambda host, timeout: http.client.HTTPConnection(host, server.port, timeout=timeout))
+        self.assert_bounded(lambda: transport('POST', '/v2/droplets', body=b'{}', request_bound_s=0.2), 0.2, do_api.RequestOutcomeUnknown)
+
+    def test_repeated_stalls_hold_a_bounded_number_of_workers_and_recover_without_a_late_request(self):
+        release = self.stall_resolver()
+        baseline = len(self.connect_workers())
+        server = self.serve(lambda c: c.sendall(b'HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}'))
+        transport = do_api.HttpsTransport(self.token, host='127.0.0.1', max_connect_workers=3,
+                                          connection_factory=lambda host, timeout: http.client.HTTPConnection(host, server.port, timeout=timeout))
+        most = 0
+        for _ in range(12):
+            self.assert_bounded(lambda: transport('POST', '/v2/droplets', body=b'{}', request_bound_s=0.02), 0.02)
+            most = max(most, len(self.connect_workers()) - baseline)
+        self.assertLessEqual(most, 3)
+        self.assertEqual(most, 3)
+        # Full: this one is refused at once, without waiting out its bound.
+        started = time.monotonic()
+        with self.assertRaises(do_api.RequestNotSent):
+            transport('GET', '/v2/account', request_bound_s=5.0)
+        self.assertLess(time.monotonic() - started, 0.5)
+        self.assertEqual(server.accepted, 0)
+        release.set()
+        self.await_no_workers(baseline)
+        # Each abandoned worker did connect once released. Each closed without a request byte.
+        deadline = time.monotonic() + 2
+        while server.accepted < 3 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertEqual(server.accepted, 3)
+        self.assertEqual([r for r in server.requests if r], [])
+        # And the slots came back: the transport works again.
+        self.assertEqual(transport('GET', '/v2/account', request_bound_s=2.0).status, 200)
+        self.assertEqual(len([r for r in server.requests if b'offline-fixture-token' in r]), 1)
+
+    def test_a_worker_that_finishes_after_the_caller_left_closes_what_it_opened(self):
+        stalled = StalledConnect()
+        transport = do_api.HttpsTransport(self.token, connection_factory=lambda host, timeout: stalled)
+        self.assert_bounded(lambda: transport('GET', '/v2/account', request_bound_s=0.02), 0.02)
+        self.assertFalse(stalled.closed.is_set())
+        stalled.release.set()
+        self.assertTrue(stalled.closed.wait(2))
+
+    def test_authorization_expiring_while_connecting_bounds_the_wait_and_sends_nothing(self):
+        stalled = StalledConnect()
+        self.addCleanup(stalled.release.set)
+        transport = do_api.HttpsTransport(self.token, connection_factory=lambda host, timeout: stalled)
+        guard = CountingGuard(seconds_left=0.05)
+        self.assert_bounded(lambda: transport('POST', '/v2/droplets', body=b'{}', request_bound_s=5.0, send_guard=guard), 0.05)
+        self.assertEqual(guard.confirmed, 0)
+
+    def test_an_authorization_already_over_opens_no_connection(self):
+        opened = []
+        transport = do_api.HttpsTransport(self.token, connection_factory=lambda host, timeout: opened.append(host))
+        with self.assertRaises(do_api.RequestNotSent):
+            transport('POST', '/v2/droplets', body=b'{}', send_guard=CountingGuard(seconds_left=0))
+        self.assertEqual(opened, [])
+
+    def test_the_last_check_runs_after_connecting_and_its_refusal_sends_no_byte(self):
+        server = self.serve(lambda c: c.sendall(b'HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n'))
+        transport = do_api.HttpsTransport(self.token, host='127.0.0.1', connection_factory=lambda host, timeout: http.client.HTTPConnection(host, server.port, timeout=timeout))
+        refusal = remote_authorization.MutationRefused('authorization ended while connecting')
+        guard = CountingGuard(confirm_raises=refusal)
+        with self.assertRaises(remote_authorization.MutationRefused):
+            transport('POST', '/v2/droplets', body=b'{}', send_guard=guard)
+        self.assertEqual(guard.confirmed, 1)
+        deadline = time.monotonic() + 2
+        while server.accepted < 1 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertEqual([r for r in server.requests if r], [])
+
+    def test_a_connection_failure_is_closed_reported_and_not_sent(self):
+        unused = socket.socket()
+        unused.bind(('127.0.0.1', 0))
+        port = unused.getsockname()[1]
+        unused.close()
+        transport = do_api.HttpsTransport(self.token, host='127.0.0.1', connection_factory=lambda host, timeout: http.client.HTTPConnection(host, port, timeout=timeout))
+        with self.assertRaises(do_api.RequestNotSent) as raised:
+            transport('POST', '/v2/droplets', body=b'{}')
+        self.assertIn('Refused', str(raised.exception))
 
 
 class NoLiveAccess(unittest.TestCase):

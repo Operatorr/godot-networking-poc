@@ -636,6 +636,7 @@
   "head": "034ee456295db09b1947b25f9e4e44655e974e5f7a1e752275fb5ba218b82edb",
   "valid": true
  },
+ "retained_package_inventories": {},
  "scenario": "unknown_create_keeps_protection_past_d",
  "sessions": {
   "do-cap-1v1g-20261030a": {

@@ -99,7 +99,9 @@ class FakeDoAccount:
 
     # ---- the wire ----------------------------------------------------------------------------
 
-    def __call__(self, method, target, body=None, request_bound_s=None, send_by=None):
+    def __call__(self, method, target, body=None, request_bound_s=None, send_by=None, send_guard=None):
+        if send_guard is not None:
+            send_guard.confirm()        # what the transport does immediately before the first request byte
         self.advance_landings()
         parsed = urllib.parse.urlsplit(target)
         path = parsed.path

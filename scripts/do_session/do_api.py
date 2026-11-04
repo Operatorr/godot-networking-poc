@@ -5,14 +5,15 @@ and deletes of exact resources, nothing else. ``DigitalOceanProvisioningProvider
 needs and refuses every create, update or assignment without a ``remote_authorization.MutationGate``.
 
 Every request passes one route allowlist before a byte can leave, so bulk deletes, key or project changes
-and image operations cannot be expressed. A transport makes exactly one attempt with an absolute bound and
-never follows a redirect. Retrying belongs to the callers that own the retry budget.
+and image operations cannot be expressed. A transport makes exactly one attempt with an absolute bound that covers
+name resolution, connecting, TLS and the exchange, and never follows a redirect. Retrying belongs to the callers that
+own the retry budget.
 
 What a response proves (see README "Create settlement"):
 
   * create answered 2xx with an exact id: it landed;
   * create answered with a listed refusal: ``CreateRejected``;
-  * connecting failed, so no request byte left: ``CreateNotSent``;
+  * connecting failed or missed a limit, or the last check refused, so no request byte left: ``CreateNotSent``;
   * anything else, including a 5xx, a timeout and a 2xx without an id: unknown, and it stays unknown.
 
 DigitalOcean documents no idempotency key and no way to ask about a lost create, and its 202 "does not
@@ -40,6 +41,10 @@ PAGE_SIZE = 200
 MAX_PAGES = 100
 MAX_RESPONSE_BYTES = 16 * 1024 * 1024
 CONNECT_BOUND_S = 10.0
+# Connecting runs on a worker because no socket timeout reaches the system resolver. A worker stuck there can only be
+# abandoned, so this limits how many can pile up. Above the watchdog's 12 request slots: its reserved deadline slots must
+# not be refused because ordinary work is connecting, and a full table means connecting has already stopped working.
+MAX_CONNECT_WORKERS = 32
 # Status codes that can only mean this request was refused. 408, 409, 425 and every 5xx are not here.
 DEFINITIVE_CREATE_REFUSALS = (400, 401, 403, 404, 422, 429)
 ACCEPTED_DELETE = (200, 202, 204, 404)   # the seam's contract: only a later authenticated read proves absence
@@ -109,40 +114,107 @@ def load_token(path):
     return token
 
 
+class _ConnectAttempt:
+    """One ``connection.connect()`` on its own thread. If the caller gives up first, the worker closes what it opened."""
+
+    def __init__(self, connection, slots):
+        self.connection = connection
+        self.slots = slots
+        self.lock = threading.Lock()
+        self.finished = threading.Event()
+        self.abandoned = False
+        self.error = None
+
+    def run(self):
+        try:
+            try:
+                self.connection.connect()
+            except Exception as error:      # reported to the caller, or dropped with the attempt it gave up on
+                self.error = error
+            with self.lock:
+                self.finished.set()
+                abandoned = self.abandoned
+            if abandoned:
+                self.connection.close()
+        finally:
+            self.slots.release()
+
+    def wait(self, window_s):
+        """True when connected or failed in time. False means the worker now owns closing the connection."""
+        if self.finished.wait(window_s):
+            return True
+        with self.lock:
+            if self.finished.is_set():
+                return True
+            self.abandoned = True
+            return False
+
+
 class HttpsTransport:
     """One attempt per call, over ``http.client``: no redirects, no proxy lookup, no hidden retries.
 
-    ``request_bound_s`` is absolute. A timer shuts the socket at the bound, because a per-read timeout
-    alone would let a slowly trickling response outlast it. ``send_by`` is a monotonic instant: a request
-    still unsent by then is not sent at all, which is how a create grant's start window is enforced.
+    ``request_bound_s`` is absolute. Connecting (resolver, each address, TLS) runs on a bounded worker that the caller
+    can abandon, and a timer shuts the socket at the bound during the exchange, because a per-read timeout alone would
+    let a slowly trickling response outlast it. A request byte is only ever written by the calling thread, after the
+    connection is up and every send limit has been checked again, so an abandoned worker can never send one.
+
+    ``send_by`` is a monotonic instant: a request still unsent by then is not sent at all, which is how a create grant's
+    start window is enforced. ``send_guard`` does the same for the remote authorization's window.
+
+    A limit reached before the request is written raises ``RequestNotSent``. Afterwards the outcome is unknown.
     """
 
     offline_fixture = False
 
-    def __init__(self, token_path, host=API_HOST, connection_factory=None, monotonic=session_clock.suspend_aware_monotonic):
+    def __init__(self, token_path, host=API_HOST, connection_factory=None, monotonic=session_clock.suspend_aware_monotonic,
+                 max_connect_workers=MAX_CONNECT_WORKERS):
         self._token = load_token(token_path)
         self.host = host
         self.connection_factory = connection_factory or (
             lambda target, timeout: http.client.HTTPSConnection(target, timeout=timeout, context=ssl.create_default_context()))
         self.monotonic = monotonic
+        self._connect_slots = threading.BoundedSemaphore(max_connect_workers)
 
-    def __call__(self, method, target, body=None, request_bound_s=session_clock.PROVIDER_REQUEST_BOUND_S, send_by=None):
+    def __call__(self, method, target, body=None, request_bound_s=session_clock.PROVIDER_REQUEST_BOUND_S, send_by=None, send_guard=None):
         started = self.monotonic()
-        connect_bound = CONNECT_BOUND_S if send_by is None else min(CONNECT_BOUND_S, send_by - started)
-        if connect_bound <= 0:
+        window = min(CONNECT_BOUND_S, request_bound_s)
+        if send_by is not None:
+            window = min(window, send_by - started)
+        if send_guard is not None:
+            window = min(window, send_guard.seconds_left())
+        if window <= 0:
             raise RequestNotSent('the send window closed before connecting')
-        connection = self.connection_factory(self.host, min(connect_bound, request_bound_s))
+        connection = self.connection_factory(self.host, window)
+        self._connect(connection, window)
         try:
-            try:
-                connection.connect()
-            except (OSError, ssl.SSLError, http.client.HTTPException) as error:
-                raise RequestNotSent(type(error).__name__)
-            remaining = request_bound_s - (self.monotonic() - started)
-            if remaining <= 0 or (send_by is not None and self.monotonic() >= send_by):
+            now = self.monotonic()
+            remaining = request_bound_s - (now - started)
+            if remaining <= 0 or (send_by is not None and now >= send_by):
                 raise RequestNotSent('the send window closed while connecting')
+            if send_guard is not None:
+                send_guard.confirm()
             return self._exchange(connection, method, target, body, remaining)
         finally:
             connection.close()
+
+    def _connect(self, connection, window_s):
+        """Return connected and within the window, or raise. No request byte has been written either way."""
+        if not self._connect_slots.acquire(blocking=False):
+            raise RequestNotSent('too many earlier connection attempts have not finished')
+        attempt = _ConnectAttempt(connection, self._connect_slots)
+        try:
+            threading.Thread(target=attempt.run, daemon=True, name='omega-do-connect').start()
+        except RuntimeError:
+            self._connect_slots.release()
+            raise RequestNotSent('no thread available for connecting')
+        if not attempt.wait(window_s):
+            raise RequestNotSent('the connection did not open within its bound')
+        if attempt.error is None:
+            return
+        connection.close()
+        if isinstance(attempt.error, (OSError, ssl.SSLError, http.client.HTTPException)):
+            raise RequestNotSent(type(attempt.error).__name__)
+        raise attempt.error
 
     def _exchange(self, connection, method, target, body, remaining):
         headers = {'Authorization': 'Bearer ' + self._token, 'Accept': 'application/json', 'User-Agent': 'omega-do-session/1'}
@@ -215,17 +287,18 @@ class DigitalOceanProvider(cleanup_provider.CleanupProvider):
 
     # ---- one request -------------------------------------------------------------------------
 
-    def _send(self, method, path, query=None, payload=None, request_bound_s=None, send_by=None):
+    def _send(self, method, path, query=None, payload=None, request_bound_s=None, send_by=None, send_guard=None):
         if not any(method == allowed and pattern.match(path) for allowed, pattern in self.routes):
             raise RouteRefused(method + ' ' + path + ' is not an adapter route')
         target = path + ('?' + urllib.parse.urlencode(query) if query else '')
         body = None if payload is None else json.dumps(payload, sort_keys=True).encode('utf-8')
-        return self.transport(method, target, body=body, request_bound_s=request_bound_s or self.request_bound_s, send_by=send_by)
+        limits = {} if send_guard is None else dict(send_guard=send_guard)
+        return self.transport(method, target, body=body, request_bound_s=request_bound_s or self.request_bound_s, send_by=send_by, **limits)
 
-    def _exchange(self, method, path, query=None, payload=None):
+    def _exchange(self, method, path, query=None, payload=None, send_guard=None):
         """For anything but a create, an undelivered or unanswered request is simply a failed one."""
         try:
-            return self._send(method, path, query, payload)
+            return self._send(method, path, query, payload, send_guard=send_guard)
         except (RequestNotSent, RequestOutcomeUnknown) as error:
             raise cleanup_provider.ProviderTransient(method + ' failed: ' + cleanup_provider.redact(error))
 
@@ -272,7 +345,11 @@ class DigitalOceanProvider(cleanup_provider.CleanupProvider):
             return None
         if response.status != 200:
             self._raise_for('GET', response)
-        return self._document(response, key)[key]
+        item = self._document(response, key)[key]
+        if not isinstance(item, dict):
+            # Only the 404 above means absent. A 200 that names no record says nothing about the resource.
+            raise cleanup_provider.ProviderTransient('provider answered 200 without a %s record' % key, status=200)
+        return item
 
     def _paged(self, path, key, **query):
         """Follow page numbers we build ourselves, never a provider-supplied URL. A short walk is a failure."""
@@ -284,7 +361,8 @@ class DigitalOceanProvider(cleanup_provider.CleanupProvider):
             document = self._document(response, key)
             batch = document[key]
             meta = document.get('meta')
-            if not isinstance(batch, list) or not isinstance(meta, dict) or not isinstance(meta.get('total'), int):
+            if (not isinstance(batch, list) or not all(isinstance(item, dict) for item in batch)
+                    or not isinstance(meta, dict) or not isinstance(meta.get('total'), int)):
                 raise cleanup_provider.ProviderTransient('listing of ' + key + ' has no list or total')
             items.extend(batch)
             links = document.get('links')
@@ -385,9 +463,16 @@ class DigitalOceanProvisioningProvider(DigitalOceanProvider):
         self.gate = gate
 
     def _require_gate(self, method_name, *details):
+        """Check this mutation now, and return what the transport must check again just before sending it."""
         if self.gate is None:
             raise create_evidence.CreateNotSent(method_name + ' needs a separately bounded remote authorization')
         self.gate.check(method_name, *details)
+        return self.gate.send_guard(method_name)
+
+    def bind_owned(self, resources):
+        """The registry's record of this session's resources is what lets an update or assignment name an exact id."""
+        if self.gate is not None:
+            self.gate.bind_owned(resources)
 
     # ---- facts -------------------------------------------------------------------------------
 
@@ -426,9 +511,9 @@ class DigitalOceanProvisioningProvider(DigitalOceanProvider):
 
     # ---- creates: one attempt, and the status alone decides what is known ---------------------
 
-    def _create(self, path, payload, key, request_bound_s, send_by):
+    def _create(self, path, payload, key, request_bound_s, send_by, send_guard):
         try:
-            response = self._send('POST', path, payload=payload, request_bound_s=request_bound_s, send_by=send_by)
+            response = self._send('POST', path, payload=payload, request_bound_s=request_bound_s, send_by=send_by, send_guard=send_guard)
         except RequestNotSent as error:
             raise create_evidence.CreateNotSent(str(error))
         except RequestOutcomeUnknown as error:
@@ -440,22 +525,22 @@ class DigitalOceanProvisioningProvider(DigitalOceanProvider):
         raise cleanup_provider.ProviderTransient('create outcome unknown: ' + self._describe('POST', response), status=response.status)
 
     def create_tag(self, name, request_bound_s=None, send_by=None):
-        self._require_gate('create_tag', name)
-        item = self._create('/v2/tags', dict(name=name), 'tag', request_bound_s, send_by)
+        guard = self._require_gate('create_tag', name)
+        item = self._create('/v2/tags', dict(name=name), 'tag', request_bound_s, send_by, guard)
         if not isinstance(item, dict) or item.get('name') != name:
             raise cleanup_provider.ProviderTransient('create outcome unknown: tag response does not name the tag')
         return name
 
     def create_firewall(self, payload, request_bound_s=None, send_by=None):
-        self._require_gate('create_firewall', payload)
-        item = self._create('/v2/firewalls', payload, 'firewall', request_bound_s, send_by)
+        guard = self._require_gate('create_firewall', payload)
+        item = self._create('/v2/firewalls', payload, 'firewall', request_bound_s, send_by, guard)
         if not isinstance(item, dict) or not isinstance(item.get('id'), str) or not re.fullmatch(UUID, item['id']):
             raise cleanup_provider.ProviderTransient('create outcome unknown: firewall response has no exact id')
         return item['id']
 
     def create_droplet(self, payload, request_bound_s=None, send_by=None):
-        self._require_gate('create_droplet', payload)
-        item = self._create('/v2/droplets', payload, 'droplet', request_bound_s, send_by)
+        guard = self._require_gate('create_droplet', payload)
+        item = self._create('/v2/droplets', payload, 'droplet', request_bound_s, send_by, guard)
         identifier = item.get('id') if isinstance(item, dict) else None
         if not isinstance(identifier, int) or isinstance(identifier, bool) or identifier <= 0:
             raise cleanup_provider.ProviderTransient('create outcome unknown: droplet response has no exact id')
@@ -464,19 +549,24 @@ class DigitalOceanProvisioningProvider(DigitalOceanProvider):
     # ---- changes to resources this session already owns ---------------------------------------
 
     def update_firewall(self, firewall_id, payload):
-        """A full replacement, so its effect is read back by the caller. A lost response is safe to send again."""
-        self._require_gate('update_firewall', firewall_id, payload)
-        response = self._exchange('PUT', '/v2/firewalls/' + _uuid(firewall_id), payload=payload)
+        """A full replacement of a recorded firewall, with no conditional form to send it under: the API documents none.
+
+        So it overwrites whatever is there. The caller reads current ownership first and reads the effect back after.
+        """
+        guard = self._require_gate('update_firewall', firewall_id, payload)
+        response = self._exchange('PUT', '/v2/firewalls/' + _uuid(firewall_id), payload=payload, send_guard=guard)
         if response.status != 200:
             self._raise_for('PUT', response)
 
     def assign_droplet(self, project_id, droplet_id):
-        self._require_gate('assign_droplet', project_id, droplet_id)
+        guard = self._require_gate('assign_droplet', project_id, droplet_id)
         urn = 'do:droplet:' + _numeric(droplet_id)
-        response = self._exchange('POST', '/v2/projects/' + _uuid(project_id) + '/resources', payload=dict(resources=[urn]))
+        response = self._exchange('POST', '/v2/projects/' + _uuid(project_id) + '/resources', payload=dict(resources=[urn]), send_guard=guard)
         if response.status != 200:
             self._raise_for('POST', response)
         resources = self._document(response, 'resources')['resources']
+        if not isinstance(resources, list):
+            raise cleanup_provider.ProviderTransient('project assignment was not confirmed')
         entry = next((item for item in resources if isinstance(item, dict) and item.get('urn') == urn), None)
         if entry is None or entry.get('status') not in ASSIGNED_STATES:
             raise cleanup_provider.ProviderTransient('project assignment was not confirmed')

@@ -791,6 +791,7 @@
   "head": "056bafc24348dec3834b3037263384669381b2ffbd3949cc069866b01430e6a5",
   "valid": true
  },
+ "retained_package_inventories": {},
  "scenario": "partial_pair_cleans_only_owned",
  "sessions": {
   "do-cap-1v1g-20261030a": {

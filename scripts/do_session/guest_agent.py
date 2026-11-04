@@ -39,6 +39,7 @@ SECRET_PATTERNS = (re.compile(rb'dop_v1_[0-9a-f]{64}'), re.compile(rb'-----BEGIN
 SECRET_SCAN_ROOTS = ('/var/lib/cloud/instance/user-data.txt', '/var/log/cloud-init-output.log', '/var/log/cloud-init.log',
                      '/home/deploy')
 MAX_SCAN_BYTES = 8 * 1024 * 1024
+PACKAGE_FORMAT = '${Package} ${Version}\n'
 
 
 def run(argv, timeout=60, env=None, cwd=None):
@@ -197,11 +198,40 @@ def release_hashes():
     return {path.name: sha256_file(path) for path in sorted(RELEASE_DIR.glob('*')) if path.is_file()}
 
 
+def package_inventory():
+    """Every installed package and version, with the command's status. Failing to read it is a reported fact.
+
+    A line without exactly two fields, or output not ending in a newline, means the list was cut or misread. It is reported
+    as incomplete with whatever did parse, because a digest of a list nobody retained could not identify anything later.
+    """
+    argv = ['dpkg-query', '-W', '-f', PACKAGE_FORMAT]
+    command = ' '.join(argv[:2] + ['-f', PACKAGE_FORMAT.encode('unicode_escape').decode('ascii')])
+    try:
+        code, out, _ = run(argv)
+    except subprocess.TimeoutExpired:
+        return dict(command=command, rc=None, complete=False, incomplete='timed out', count=0, sha256=None, inventory=[])
+    inventory, malformed = [], 0
+    for line in out.splitlines():
+        fields = line.split(' ')
+        if len(fields) == 2 and all(fields):
+            inventory.append(dict(name=fields[0], version=fields[1]))
+        else:
+            malformed += 1
+    incomplete = []
+    if malformed:
+        incomplete.append('%d unreadable lines' % malformed)
+    if out and not out.endswith('\n'):
+        incomplete.append('output does not end its last line')
+    if not inventory:
+        incomplete.append('no packages listed')
+    return dict(command=command, rc=code, complete=code == 0 and not incomplete, incomplete='; '.join(incomplete) or None,
+                count=len(inventory), sha256=hashlib.sha256(out.encode('utf-8')).hexdigest(), inventory=inventory)
+
+
 def cmd_probe(args):
     ss_code, ss_out, _ = run(['ss', '-H', '-lntu'])
     _, kernel, _ = run(['uname', '-r'])
     _, machine, _ = run(['uname', '-m'])
-    _, packages, _ = run(['dpkg-query', '-W', '-f', '${Package} ${Version}\n'])
     _, route, _ = run(['ip', '-j', 'route', 'show', 'default'])
     _, addresses, _ = run(['ip', '-j', '-4', 'address', 'show', 'scope', 'global'])
     os_release = key_values(read_text('/etc/os-release', ''))
@@ -211,7 +241,7 @@ def cmd_probe(args):
         nofile=nofile_facts(), cloud_init=cloud_init_status(), sshd=effective_sshd(),
         authorized_keys=fingerprint_authorized_keys(pathlib.Path.home() / '.ssh' / 'authorized_keys'),
         listeners=parse_listeners(ss_out) if ss_code == 0 else None, clock=clock_facts(),
-        packages=dict(count=len(packages.splitlines()), sha256=hashlib.sha256(packages.encode('utf-8')).hexdigest()),
+        packages=package_inventory(),
         network=dict(default_route=route.strip(), addresses=addresses.strip()), secrets=dict(findings=secret_findings()),
         release=release_hashes())
 

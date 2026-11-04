@@ -226,6 +226,60 @@ def changed_operator_address_refreshed_by_api(sim, checks):
     checks('no SSH was needed', len(sim.guests.commands) == commands)
 
 
+def firewall_retargeted_refused_and_preserved(sim, checks):
+    run = sim.provisioner()
+    original = run._assign_project
+    foreign = sim.unrelated['droplets'][1]
+
+    def retarget():
+        original()
+        sim.account.firewalls[run.firewall_id].update(tags=['prod'], droplet_ids=[foreign])
+    run._assign_project = retarget
+    result = run.run()
+    checks('stopped on the ownership conflict', (result.status, result.code) == (provisioner.ABORTED, 'ownership_conflict'))
+    checks('no replacement touched the retargeted firewall', sim.puts() == [])
+    checks('no guest was contacted', sim.guests.commands == [])
+    checks('the incident was durable before cleanup began', len(sim.open_incidents()) == 1)
+    sim.stack.step(180)
+    firewall = sim.account.firewalls[run.firewall_id]
+    checks('the foreign attachment is intact', (firewall['tags'], firewall['droplet_ids']) == (['prod'], [foreign]))
+    checks('the owned droplets are gone', sim.session_droplets() == [])
+    checks('the firewall is not deleted and the session stays open', sim.account.ops('DELETE', '/v2/firewalls/') == [] and sim.status()['state'] != registry.CLOSED)
+    checks('unrelated resources survive', sim.unrelated_intact())
+
+
+def protected_droplet_stops_before_any_operation(sim, checks):
+    original = sim.account._new_droplet
+
+    def create(payload):
+        return original(dict(payload, tags=list(payload['tags']) + (['omega-management'] if payload['name'].endswith('-game') else [])))
+    sim.account._new_droplet = create
+    result = sim.run()
+    checks('stopped on the ownership conflict', (result.status, result.code) == (provisioner.ABORTED, 'ownership_conflict'))
+    checks('no assignment, firewall change or guest work happened', sim.account.ops('POST', '/resources$') == [] and sim.puts() == [] and sim.guests.commands == [])
+    sim.stack.step(180)
+    protected = next(d for d in sim.account.droplets.values() if d['name'] == sim.session_id + '-game')
+    checks('the protected droplet keeps its tag and is not deleted', 'omega-management' in protected['tags'] and sim.account.ops('DELETE', '/v2/droplets/%d$' % protected['id']) == [])
+    checks('an incident stays open and the session stays open', len(sim.open_incidents()) == 1 and sim.status()['state'] != registry.CLOSED)
+
+
+def package_versions_identifiable_after_teardown(sim, checks):
+    sim.guests.package_versions = dict(bot=dict(libc6='2.39-fixture2'))
+    result = sim.run()
+    finish(sim, result)
+    sim.client.mutate('request_cleanup', session_id=sim.session_id, fencing_token=result.fencing_token, reason='batch finished')
+    final = sim.drive_cleanup()
+    checks('both guests are destroyed', final['overall'] == 'clean' and sim.session_droplets() == [])
+    retained = {role: json.loads((sim.evidence.root / ('packages-%s.json' % role)).read_text()) for role in ('game', 'bot')}
+    versions = {role: {e['name']: e['version'] for e in retained[role]['inventory']} for role in retained}
+    checks('the differing version is named for each role', (versions['game']['libc6'], versions['bot']['libc6']) == ('2.39-fixture1', '2.39-fixture2'))
+    checks('the inventory hashes differ', retained['game']['sha256'] != retained['bot']['sha256'])
+    report = json.loads((sim.evidence.root / 'readiness.json').read_text())
+    checks('the readiness report binds both inventories for later export',
+           sorted(a['role'] for a in report['required_artifacts']) == ['bot', 'game']
+           and all(hashlib.sha256((sim.evidence.root / ('packages-%s.json' % a['role'])).read_bytes()).hexdigest() == a['sha256'] for a in report['required_artifacts']))
+
+
 def broad_source_refused_outage_keeps_rules(sim, checks):
     result = sim.run()
     before = sim.provider.get_firewall(result.firewall_id)['inbound_rules']
@@ -301,7 +355,8 @@ SCENARIOS = (ready_pair_then_clean_close, wrong_facts_create_nothing, missing_au
              lost_create_response_adopted_without_duplicate, unknown_create_keeps_protection_past_d, operator_disposition_is_not_clean, late_create_found_after_stop,
              duplicate_create_recorded_and_deleted, wrong_plan_cleans_owned, project_assignment_failure, firewall_wrong_stops_before_droplets, cloud_init_failure_cleans_owned,
              impostor_host_key_never_pinned, ownership_ambiguity_refused_not_deleted, changed_operator_address_refreshed_by_api, broad_source_refused_outage_keeps_rules,
-             persistent_outage_overdue_then_verified, accepted_delete_is_not_absence, restarted_controller_fails_closed)
+             persistent_outage_overdue_then_verified, accepted_delete_is_not_absence, restarted_controller_fails_closed,
+             firewall_retargeted_refused_and_preserved, protected_droplet_stops_before_any_operation, package_versions_identifiable_after_teardown)
 
 
 def _leak_check(sim):
@@ -324,6 +379,7 @@ def record(sim):
         registry_journal_verification=registry_view.verify_journal(),
         provisioning_journal=[json.loads(line) for line in journal_path.read_text().splitlines()] if journal_path.exists() else [],
         sessions={s: {k: v for k, v in registry_view.status(s).items() if k in ('state', 'overall', 'cleanup', 'resources', 'intents', 't0_utc', 'cleanup_c_utc', 'deadline_d_utc')} for s in sessions},
+        retained_package_inventories={path.name: json.loads(path.read_text()) for path in sorted(sim.evidence.root.glob('packages-*.json'))},
         incidents=[dict(kind=i['kind'], status=i['status'], last_error=i['last_error']) for i in registry_view.incidents()])
 
 
@@ -348,7 +404,7 @@ def generate(out):
     summary = ['# Slice 3 offline provisioning timelines', '',
                'Generated by `scripts/do_session/provision_fault_evidence.py`: the real adapter, registry and watchdog against a fake DigitalOcean account and fake guests on a '
                'scripted clock. No account, network, credential or guest was involved, and none of this is a capacity or live-provider result. '
-               'Addresses are documentation-range fixtures. `test_provision_fault_evidence` regenerates the files and compares them with `SHA256SUMS`.', '',
+               'Addresses and package versions are synthetic fixtures; a real session keeps its package inventories in its private session directory, not here. `test_provision_fault_evidence` regenerates the files and compares them with `SHA256SUMS`.', '',
                '| Timeline | Checks passed | Provider requests | Guest steps | Incidents |', '| --- | ---: | ---: | ---: | ---: |']
     sums = []
     for scenario in SCENARIOS:

@@ -657,6 +657,7 @@
   "head": "e5f270de04d20f41bf92e2cceb50bf45520d45da8b16f454fe0c777356920439",
   "valid": true
  },
+ "retained_package_inventories": {},
  "scenario": "firewall_wrong_stops_before_droplets",
  "sessions": {
   "do-cap-1v1g-20261030a": {
