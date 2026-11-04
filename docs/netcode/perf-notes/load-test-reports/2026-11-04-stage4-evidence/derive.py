@@ -117,37 +117,58 @@ def sha256_file(path):
     return h.hexdigest()
 
 
+def candidates(namespace, location, key):
+    """Repo-relative paths where one evidence hash's file may live.
+
+    Keys are either already repo-relative or bare names beside the run or its
+    preflight directory. Three blocked runs record no location at all.
+    """
+    if "/" in key:
+        return [key]
+    run = f"deployment/hetzner/results/clean-{namespace}"
+    roots = [location] if location else []
+    roots += [run, run + "-preflight"]
+    return [os.path.join(r, key) for r in dict.fromkeys(roots)]
+
+
 def claimed_archives():
-    """Yield (group, relative path, sha256) for every archive the retained evidence names."""
+    """Yield (group, candidate paths, sha256) for every file the retained evidence names."""
     for f in sorted(glob.glob(os.path.join(REPORTS, "*/*/retained-evidence.json"))):
         r = json.load(open(f))
         loc = r.get("original_archives_relative_location")
         for name, sha in (r.get("sha256") or {}).items():
-            yield "report-bundles", os.path.join(loc, name) if loc else None, sha
+            yield "report-bundles", [os.path.join(loc, name)] if loc else [], sha
     names = subprocess.check_output(["git", "ls-tree", "--name-only", PIN, CLEAN + "/"], cwd=ROOT, text=True).split()
     for path in names:
         base = os.path.basename(path)
         if base.startswith("clean-") and base.endswith("-summary.json"):
             s = json.loads(show(path))
-            loc = s.get("private_evidence")
-            for name, sha in (s.get("evidence_sha256") or {}).items():
+            for key, sha in (s.get("evidence_sha256") or {}).items():
                 if isinstance(sha, str):
-                    yield "clean-runs", os.path.join(loc, name) if loc else None, sha
+                    yield "clean-runs", candidates(base[6:-13], s.get("private_evidence"), key), sha
 
 
 def verify_tree():
-    """Read-only: do the archives named by retained evidence resolve and match on this machine?"""
+    """Read-only: do the files named by retained evidence resolve and match on this machine?"""
     out = {}
-    for group, rel, sha in claimed_archives():
-        g = out.setdefault(group, {"claimed": 0, "present": 0, "match": 0, "mismatch": []})
+    for group, paths, sha in claimed_archives():
+        g = out.setdefault(group, {"claimed": 0, "present": 0, "match": 0, "mismatch": [],
+                                   "not_found": 0, "not_found_archives": [], "not_found_by_extension": {}})
         g["claimed"] += 1
-        p = os.path.join(ROOT, rel) if rel else None
-        if p and os.path.exists(p):
-            g["present"] += 1
-            if sha256_file(p) == sha:
-                g["match"] += 1
-            else:
-                g["mismatch"].append(rel)
+        found = [p for p in paths if os.path.exists(os.path.join(ROOT, p))]
+        if not found:
+            g["not_found"] += 1
+            label = paths[0] if paths else "(no location recorded)"
+            if label.endswith((".gz", ".bundle")):
+                g["not_found_archives"].append(label)
+            ext = label.rsplit(".", 1)[-1]
+            g["not_found_by_extension"][ext] = g["not_found_by_extension"].get(ext, 0) + 1
+            continue
+        g["present"] += 1
+        if any(sha256_file(os.path.join(ROOT, p)) == sha for p in found):
+            g["match"] += 1
+        else:
+            g["mismatch"].append(found[0])
     return out
 
 
@@ -184,7 +205,7 @@ def main():
     first = ["namespace", "classification", "population", "wire_seconds", "r_out", "out_ip_bytes_s", "alive_median"]
     keys = first + [k for k in keys if k not in first]
     with open(os.path.join(HERE, "fixed-build-transfer.csv"), "w", newline="") as f:
-        w = csv.DictWriter(f, keys)
+        w = csv.DictWriter(f, keys, lineterminator="\n")
         w.writeheader()
         w.writerows(sorted(rows, key=lambda r: r["namespace"]))
     models = {}

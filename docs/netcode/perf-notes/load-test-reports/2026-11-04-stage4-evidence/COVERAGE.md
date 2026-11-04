@@ -9,7 +9,7 @@ Evidence-only pass for [Complete deferred load-test evidence and economics — S
 | Controlled network groups and native controls | Combat100 native-before and delay25 only, on the old build. No after-control. Combined profile exists only as 3-player preflights. | **Not established.** 1 of 9 impairment profiles at one position |
 | Transfer comparisons | Every clean-run config, climb config diff and retained report variant is at Snapshot 30 Hz, AoI 1000. No Snapshot15 or AoI600 observation exists. | **Not established.** Savings stay `[MEASURE]` |
 | External-client accounting | One valid 3-client run on the old build. Provider display did not change across it. | **Measured; not reconciled** |
-| Case, source and archive verification | Attempt counts reconcile. Committed bundles are intact. Original archives are on the author's MacBook and haven't been hash-checked. | **Partial.** Archive check outstanding |
+| Case, source and archive verification | Attempt counts reconcile. Committed bundles are intact. All 134 report-bundle archives match on the author's MacBook. Clean-run evidence is not yet confirmed. | **Partial.** Clean-run check outstanding |
 | Fixed-build transfer and economics | Ten clean cells have matched 299 s wire bytes and player-seconds. | **Established for build `de92e120`, same-zone volume only** |
 
 ## Fixed-build transfer
@@ -104,7 +104,9 @@ Missing: delay50/100, jitter5/20, loss0.1/1/3%, combined at scored populations, 
 
 - **Committed bundles:** no historical report file has been modified since 2026-10-24, apart from the later 2026-10-29 reports. Hash lists passed: Idle150 8/8, Strategy200 12/12, Change A run 60/60.
 - **Clean-run campaign:** lives at `fcf4f62`, protected by tag `archive/issue39-campaign-20261024`. It is not on master.
-- **Original archives:** 68 retained manifests name 134 archive hashes under `deployment/hetzner/results/…`, and the clean-run summaries name 976 further evidence hashes. None of those files are on the Mac mini where this pass ran. The author reports the originals are on their MacBook, so **they are not hash-verified yet**. To check them, run `python3 derive.py --check-archives` on the MacBook, or on the Mac mini after a transfer. It only reads and prints. Remote retention was not checked.
+- **Original archives (report bundles):** 68 retained manifests name 134 archive hashes under `deployment/hetzner/results/…`. **All 134 are present and match on the author's MacBook**, checked 2026-11-04 with `python3 derive.py --check-archives`. They are not on the Mac mini where the rest of this pass ran.
+- **Clean-run evidence:** the summaries name 976 further evidence hashes, most of them scripts and proof files rather than archives. The first MacBook check found 187 present and matching, with no mismatches, but that check mishandled repo-relative paths, so its 789 not-found count means nothing. **The corrected check still needs to run on the MacBook.** Storage compaction removed some verified duplicate loose files during the campaign, so some entries may legitimately exist only inside archives.
+- **Off-host preservation:** remote retention was not checked.
 - **2026-10-24 audit files:** `RESULTS.md` and `attempt-inventory.csv` were gitignored and are not on the Mac mini. They may be on the MacBook too, which hasn't been confirmed. The audit's tracker comment remains the record.
 - **Retained qualifications:** the known scratch/verifier overwrites, the concurrent-ledger census exception, `original-3-full` left `not_yet_classified`, and the one-pass `matrix-coverage.json` and `source-audit.json` both reading `complete: false`. Nothing was regenerated.
 
