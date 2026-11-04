@@ -12,7 +12,9 @@ import subprocess
 import sys
 import tempfile
 import time
+import types
 import unittest
+from unittest import mock
 
 import fake_run_guest
 import guest_runner
@@ -117,6 +119,29 @@ class Fencing(GuestFixture):
         document = self.do('game', 'fence', '--session', 'other-session', '--token', '9')
         self.assertEqual(document['code'], 'foreign_session')
 
+    def test_a_closed_fence_stays_closed_refuses_starts_and_still_lets_a_run_be_stopped_and_sealed(self):
+        self.fence()
+        plan = self.plan()
+        self.assertTrue(self.start(plan)['ok'])
+        closed = self.do('game', 'fence', '--session', SESSION, '--token', '1', '--close', 'operator abort')
+        self.assertEqual(closed['closed'], 'operator abort')
+        self.stop(plan)
+        self.assertTrue(self.seal(plan)['ok'])
+        late = self.plan(trial=self.trial(2, 50))
+        self.assertEqual(self.start(late)['code'], 'session_closed')
+        self.assertFalse(self.tree(late).exists(), 'a refused start leaves no directory')
+        raised = self.fence(token=2)
+        self.assertEqual(raised['closed'], 'operator abort', 'a newer controller cannot reopen it')
+        self.assertEqual(self.start(self.plan(trial=self.trial(2, 50), token=2))['code'], 'session_closed')
+
+    def test_a_run_directory_with_no_plan_still_answers_only_to_the_current_token(self):
+        self.fence(token=2)
+        tree = self.tree(self.plan())
+        tree.mkdir(parents=True)
+        document = self.do('game', 'stop', '--run-id', self.plan()['run_id'], '--role', 'game', '--token', '1', '--reason', 'late')
+        self.assertEqual(document['code'], 'stale_fence')
+        self.assertEqual(self.seal(self.plan(), 1)['code'], 'stale_fence')
+
     def test_a_stale_controller_cannot_stop_or_seal_a_newer_run(self):
         self.fence()
         plan = self.plan()
@@ -174,6 +199,76 @@ class Launch(GuestFixture):
     def test_a_late_start_request_is_refused_on_the_guest(self):
         self.fence()
         self.assertEqual(self.start(self.plan(launch_slack_s=-5.0))['code'], 'launch_window_closed')
+
+    def test_slow_preparation_past_the_window_starts_nothing(self):
+        self.fence()
+        plan = self.plan(launch_slack_s=0.2, bound_s=2, stop_grace_s=0.1)
+        host = guest_runner.Host(self.guests.runner_root('game'))
+        real = guest_runner.host_facts
+
+        def slow(host_, plan_):
+            facts = real(host_, plan_)
+            time.sleep(1.5)
+            return facts
+        with mock.patch.object(guest_runner, 'host_facts', side_effect=slow), self.assertRaises(guest_runner.Refused) as caught:
+            guest_runner.cmd_start(types.SimpleNamespace(plan_json=json.dumps(plan)), host)
+        self.assertEqual(caught.exception.code, 'launch_window_closed')
+        self.assertFalse(self.tree(plan).exists(), 'no directory and no workload')
+        self.assertEqual(self.do('game', 'inspect')['active'], None)
+
+    def test_a_workload_that_no_longer_fits_after_preparation_starts_nothing(self):
+        self.fence()
+        plan = dict(self.plan(), minimum_bound_s=120.0, stop_by_wall=time.time() + 60.0)
+        self.assertEqual(self.start(plan)['code'], 'launch_window_closed')
+        self.assertFalse(self.tree(plan).exists())
+
+    def supervise_directly(self, plan):
+        host = guest_runner.Host(self.guests.runner_root('game'))
+        tree = self.tree(plan)
+        tree.mkdir(parents=True)
+        (tree / 'plan.json').write_text(json.dumps(plan))
+        with mock.patch.object(guest_runner, '_spawn', side_effect=AssertionError('no workload may be created')):
+            guest_runner.cmd_supervise(types.SimpleNamespace(run_dir=str(tree)), host)
+        return guest_runner.read_json(tree / 'result.json')
+
+    def test_a_supervisor_scheduled_past_the_window_creates_no_workload(self):
+        self.fence()
+        result = self.supervise_directly(self.plan(launch_slack_s=-5.0))
+        self.assertEqual((result['refused'], result['processes']), ('launch_window_closed', {}))
+
+    def test_a_supervisor_finds_a_fence_that_rose_or_closed_while_it_was_scheduled(self):
+        self.fence(token=2)
+        self.assertEqual(self.supervise_directly(self.plan(token=1))['refused'], 'stale_fence')
+        self.do('game', 'fence', '--session', SESSION, '--token', '2', '--close', 'abort')
+        self.assertEqual(self.supervise_directly(self.plan(trial=self.trial(2, 50), token=2))['refused'], 'session_closed')
+
+    def test_a_supervisor_that_finds_a_stop_request_creates_no_workload(self):
+        self.fence()
+        plan = self.plan()
+        tree = self.tree(plan)
+        tree.mkdir(parents=True)
+        (tree / 'stop.request').write_text('{}')
+        (tree / 'plan.json').write_text(json.dumps(plan))
+        with mock.patch.object(guest_runner, '_spawn', side_effect=AssertionError('no workload may be created')):
+            guest_runner.cmd_supervise(types.SimpleNamespace(run_dir=str(tree)), guest_runner.Host(self.guests.runner_root('game')))
+        self.assertEqual(guest_runner.read_json(tree / 'result.json')['refused'], 'stop_requested')
+
+    def test_a_refusal_from_the_supervisor_reaches_the_start_with_its_own_code(self):
+        tree = self.root / 'handshake'
+        tree.mkdir()
+        (tree / 'result.json').write_text(json.dumps(dict(refused='launch_window_closed', stop_reason='launch_refused:late')))
+        with self.assertRaises(guest_runner.Refused) as caught:
+            guest_runner._await_handshake(tree)
+        self.assertEqual(caught.exception.code, 'launch_window_closed')
+
+    def test_the_bound_counts_from_the_actual_launch_not_from_the_plan(self):
+        self.fence()
+        plan = self.plan(bound_s=60.0, stop_grace_s=0.2, stop_slack_s=1.5)
+        self.assertTrue(self.start(plan)['ok'])
+        identity = guest_runner.read_json(self.tree(plan) / 'identity.json')
+        self.assertLessEqual(identity['bound_s'], 1.5, 'what is left of the absolute limit, not the requested 60 s')
+        final = wait_until(lambda: (lambda s: s if s['result'] else None)(self.status(plan)), 10.0)
+        self.assertLessEqual(final['result']['bound_s'], 1.5)
 
     def test_changed_program_or_config_bytes_are_refused_immediately_before_launch(self):
         self.fence()
@@ -284,6 +379,42 @@ class Identity(GuestFixture):
         self.assertFalse(guest_runner.same_process(dict(me, start_id='ticks:1')))
         self.assertFalse(guest_runner.same_process(dict(me, start_id=None)))
 
+    def test_same_process_needs_this_boot(self):
+        me = guest_runner.identity_of(os.getpid())
+        self.assertFalse(guest_runner.same_process(dict(me, boot_id='a-previous-boot')))
+        self.assertFalse(guest_runner.same_process(dict(me, boot_id=None)), 'an identity with no boot proves nothing')
+        with mock.patch.object(guest_runner, 'boot_id', return_value=None):
+            self.assertFalse(guest_runner.same_process(me), 'and neither does a host whose boot cannot be read')
+
+    def test_a_process_with_matching_numbers_from_another_boot_is_never_signalled(self):
+        victim = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'], start_new_session=True)
+        self.addCleanup(lambda: (victim.kill(), victim.wait()))
+        wait_until(lambda: guest_runner.process_start_id(victim.pid))
+        identity = dict(guest_runner.identity_of(victim.pid), boot_id='a-previous-boot')
+        with mock.patch.object(guest_runner.os, 'killpg', side_effect=AssertionError('never signalled')):
+            self.assertFalse(guest_runner._signal_identity(identity, signal.SIGKILL))
+        self.assertIsNone(victim.poll())
+
+    def test_a_run_recorded_before_a_reboot_is_not_alive_and_its_stop_kills_nothing(self):
+        self.fence()
+        plan = self.plan()
+        started = self.start(plan)
+        tree = self.tree(plan)
+        # Everything as a reboot leaves it: the same numbers can come back, but the boot id cannot.
+        os.kill(started['supervisor']['pid'], signal.SIGKILL)
+        wait_until(lambda: not self.status(plan)['supervisor']['alive'])
+        identity = json.loads((tree / 'identity.json').read_text())
+        survivor = identity['processes']['game']
+        identity['supervisor']['boot_id'] = 'a-previous-boot'
+        for item in identity['processes'].values():
+            item['boot_id'] = 'a-previous-boot'
+        (tree / 'identity.json').write_text(json.dumps(identity))
+        summary = self.status(plan)
+        self.assertFalse(summary['processes']['game']['alive'])
+        self.assertTrue(self.stop(plan)['stopped'])
+        self.assertEqual(guest_runner.process_start_id(survivor['pid']), survivor['start_id'], 'it was not ours to signal')
+        os.killpg(survivor['pid'], signal.SIGKILL)
+
     def test_linux_process_identity_reads_the_kernel_start_field(self):
         with tempfile.TemporaryDirectory() as proc:
             directory = pathlib.Path(proc) / '4242'
@@ -331,6 +462,10 @@ class Counters(unittest.TestCase):
         problems = run_checks.socket_problems(self.PLAN, self.summary({}, dict(pid=11)), [], True)
         self.assertIn('a socket counter row belongs to a different process', problems)
 
+    def test_a_row_from_another_boot_is_refused(self):
+        summary = self.summary({}, dict(boot_id='a-previous-boot'))
+        self.assertIn('a socket counter row belongs to a different process', run_checks.socket_problems(self.PLAN, summary, [], True))
+
     def test_a_socket_replaced_during_the_run_cannot_be_compared(self):
         self.assertIn('the game socket changed during the run: counters cannot be compared', run_checks.socket_problems(self.PLAN, self.summary({}, dict(inode='92')), [], True))
 
@@ -340,6 +475,48 @@ class Counters(unittest.TestCase):
 
     def test_a_socket_never_seen_is_a_failure(self):
         self.assertEqual(run_checks.socket_problems(self.PLAN, dict(socket=None), [], False), ['the game socket was never observed'])
+
+
+class SimultaneousExits(unittest.TestCase):
+    """A descheduled supervisor can see both exits in one poll. No real signals, because the point is that single poll."""
+
+    class Child:
+        """``code`` per poll, the last repeating: a sampler that is alive at first ends once the supervisor signals it."""
+
+        def __init__(self, pid, *codes):
+            self.pid, self.codes = pid, list(codes)
+
+        def poll(self):
+            return self.codes.pop(0) if len(self.codes) > 1 else self.codes[0]
+
+    def supervise(self, primary_code, *sampler_codes):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        path = pathlib.Path(directory.name)
+        host, tree = guest_runner.Host(path / 'host'), path / 'run'
+        tree.mkdir()
+        plan = dict(session_id=SESSION, fencing_token=1, launch_not_after_wall=time.time() + 60, stop_by_wall=time.time() + 600, bound_s=60, stop_grace_s=0.01,
+                    processes=[dict(name='bot', primary=True, argv=['standin'])], sampler=dict(argv=['sampler']))
+        guest_runner.atomic_json(host.fence_path, dict(session_id=SESSION, token=1))
+        (tree / 'plan.json').write_text(json.dumps(plan))
+        handler = signal.getsignal(signal.SIGTERM)
+        self.addCleanup(signal.signal, signal.SIGTERM, handler)
+        with mock.patch.object(guest_runner, '_spawn', side_effect=[self.Child(999999, primary_code), self.Child(999998, *sampler_codes)]):
+            guest_runner.cmd_supervise(types.SimpleNamespace(run_dir=str(tree)), host)
+        return guest_runner.read_json(tree / 'result.json')
+
+    def test_a_sampler_failure_in_the_same_poll_as_the_primary_exit_is_not_hidden(self):
+        result = self.supervise(0, 77)
+        self.assertEqual(result['stop_reason'], 'primary_exited')
+        self.assertEqual(result['processes']['sampler']['returncode'], 77)
+        self.assertTrue(result['sampler_exited_early'])
+        problems = run_checks._sampler_problems(dict(role='bot', sampler_interval_s=1), dict(result=result, sampler=dict(rows=100)))
+        self.assertEqual(problems, ['bot sampler died during the run'], 'visible even with plenty of retained samples')
+
+    def test_a_sampler_stopped_by_the_supervisor_is_not_a_failure(self):
+        result = self.supervise(0, None, -15)
+        self.assertEqual(result['processes']['sampler']['signal'], 15)
+        self.assertFalse(result['sampler_exited_early'])
 
 
 class Sealing(GuestFixture):

@@ -7,6 +7,7 @@ import hashlib
 import json
 
 import fake_guest
+import guest_agent
 import guest_runner
 import ssh_access
 
@@ -16,6 +17,8 @@ CONTRACT_KEYS = dict(
     inspect=('active', 'boot_id', 'fence', 'ledger', 'ok', 'runs', 'schema'),
 )
 QDISCS = ['fq_codel', 'mq', 'noqueue']
+AUTHORIZED_STARTS = ('sampler', 'smoke_game_start', 'smoke_bot')    # guest_agent steps that create a process
+FENCED_STEPS = AUTHORIZED_STARTS + ('fetch_source', 'build', 'install_release', 'smoke_game_stop')
 
 
 def option(argv, name, default=None):
@@ -65,6 +68,8 @@ class FakeHost:
         self.runner_sha256 = None
         self.scripted_identity = None   # replays a chosen identity for the next process started
         self.scripted_inode = None
+        self.smoke = None               # the bounded readiness server: dict(smoke_id, ends_at)
+        self.smoke_stopped = None
 
 
 class FakeRunGuests(fake_guest.FakeGuests):
@@ -89,13 +94,66 @@ class FakeRunGuests(fake_guest.FakeGuests):
         self.socket_never_opens = False
         self.fail_start = {}
         self.upload_ok = True
+        self.agent_calls = []           # every fenced guest_agent step that arrived, and what the host said to it
 
     # ---- transport ---------------------------------------------------------------------------
 
     def run(self, role, argv, timeout_s, on_wait=None):
         if len(argv) > 2 and argv[0] == 'python3' and 'guest_runner-' in argv[1]:
             return self._run_runner(role, argv, timeout_s, on_wait)
+        step = argv[2] if len(argv) > 2 and argv[0] == 'python3' else None
+        if step in FENCED_STEPS:
+            return self._run_fenced_step(role, step, argv, timeout_s, on_wait)
         return super().run(role, argv, timeout_s, on_wait)
+
+    def _run_fenced_step(self, role, step, argv, timeout_s, on_wait):
+        """The guest's own rules, as ``guest_agent`` applies them on arrival, on the scripted clock."""
+        if (role, step) in self.unreachable:
+            self._spend(1, on_wait)
+            return ssh_access.CommandResult(255, '', 'connection timed out')
+        if option(argv, '--token') is None or option(argv, '--session') is None:
+            self.agent_calls.append(dict(role=role, step=step, token=None, refused='usage', at=self.sim.clock.wall()))
+            return ssh_access.CommandResult(2, '', 'the arguments --session and --token are required')    # argparse, on the real agent
+        host = self.hosts[role]
+        code = self._fenced_refusal(host, step, argv)
+        self.agent_calls.append(dict(role=role, step=step, token=int(option(argv, '--token')), refused=code, at=self.sim.clock.wall()))
+        if code is not None:
+            self.commands.append(dict(role=role, step=step, argv=[str(a) for a in argv], timeout_s=timeout_s))
+            return ssh_access.CommandResult(0, json.dumps(dict(ok=False, code=code, detail='scripted guest refusal')), '')
+        if step == 'smoke_game_start':
+            host.smoke = dict(smoke_id=option(argv, '--smoke-id'), ends_at=self._now() + float(option(argv, '--lifetime-s', guest_agent.SMOKE_GAME_LIFETIME_S)))
+        elif step == 'smoke_game_stop':
+            host.smoke, host.smoke_stopped = None, option(argv, '--smoke-id')
+        if (role, step) in self.lost_answer:
+            self._spend(1, on_wait)
+            return ssh_access.CommandResult(255, '', 'connection reset')
+        return super().run(role, argv, timeout_s, on_wait)
+
+    def _fenced_refusal(self, host, step, argv):
+        session, token = option(argv, '--session'), int(option(argv, '--token'))
+        if host.fence is not None and host.fence['session_id'] != session:
+            return 'foreign_session'
+        if host.fence is not None and token < host.fence['token']:
+            return 'stale_fence'
+        closed = (host.fence or {}).get('closed')
+        if host.fence is None or token > host.fence['token']:
+            host.fence = dict(session_id=session, token=token, closed=closed)
+        if step == 'smoke_game_stop':
+            return None
+        if closed:
+            return 'session_closed'
+        if step in AUTHORIZED_STARTS and self.sim.clock.wall() > float(option(argv, '--not-after-wall')) + guest_agent.CLOCK_TOLERANCE_S:
+            return 'authorization_expired'
+        if step == 'smoke_game_start':
+            if host.smoke_stopped == option(argv, '--smoke-id'):
+                return 'smoke_stopped'
+            if host.active is not None or self.smoke_alive(host):
+                return 'overlap'
+        return None
+
+    def smoke_alive(self, host):
+        """It ends by itself, exactly when the helper's lifetime says, with or without anyone asking."""
+        return host.smoke is not None and self._now() < host.smoke['ends_at']
 
     def _run_runner(self, role, argv, timeout_s, on_wait):
         if role not in self.pins:
@@ -182,7 +240,7 @@ class FakeRunGuests(fake_guest.FakeGuests):
         socket_view = None
         if plan.get('watch_socket_port') is not None and not self.socket_never_opens:
             pid, start_id = run.identity['processes']['game']['pid'], run.identity['processes']['game']['start_id']
-            first = dict(inode=run.socket_rows, local='00000000:1F91', drops=3, rx_queue=0, counter_source='proc_net_udp', pid=pid, start_id=start_id, mono_ns=1, wall_ns=1)
+            first = dict(inode=run.socket_rows, local='00000000:1F91', drops=3, rx_queue=0, counter_source='proc_net_udp', pid=pid, start_id=start_id, boot_id=run.identity['processes']['game']['boot_id'], mono_ns=1, wall_ns=1)
             last = dict(first, drops=1 if self.drop_counter_rewind else 3 + rows)
             socket_view = dict(first=first, last=last, samples=rows)
         return dict(run_id=plan['run_id'], role=plan['role'], has_plan=True, session_id=plan['session_id'], fencing_token=plan['fencing_token'],
@@ -205,8 +263,9 @@ class FakeRunGuests(fake_guest.FakeGuests):
         if host.fence is not None and token < host.fence['token']:
             raise guest_runner.Refused('stale_fence', 'fence is at %s' % host.fence['token'])
         raised = host.fence is None or token > host.fence['token']
-        host.fence = dict(session_id=session, token=token)
-        return dict(token=token, raised=raised, active=host.active, runs=[self._summary(host, run) for run in host.runs.values()])
+        closed = (host.fence or {}).get('closed') or option(argv, '--close')
+        host.fence = dict(session_id=session, token=token, closed=closed)
+        return dict(token=token, raised=raised, closed=closed, active=host.active, runs=[self._summary(host, run) for run in host.runs.values()])
 
     def _do_inspect(self, host, argv):
         return dict(fence=host.fence, active=host.active, runs=[self._summary(host, run) for run in host.runs.values()], boot_id=host.boot_id, ledger=list(host.ledger))
@@ -215,7 +274,7 @@ class FakeRunGuests(fake_guest.FakeGuests):
         files = []
         for item in plan['verify_files']:
             files.append(dict(path=item['path'], present=True, sha256=host.file_overrides.get(item['path'], item['sha256']), size=1, executable=True))
-        ports = {'%s/%d' % (p['protocol'], p['port']): p['port'] not in host.busy_ports for p in plan['ports']}
+        ports = {'%s/%d' % (p['protocol'], p['port']): p['port'] not in host.busy_ports and not self.smoke_alive(host) for p in plan['ports']}
         impairment = dict(available=True, interface='eth0', qdisc_kinds=sorted(host.qdiscs), filter_count=host.filters)
         return dict(boot_id=host.boot_id, files=files, ports_free=ports, leftovers=list(host.leftovers), impairment=impairment, units=list(host.units), active=host.active,
                     fence=host.fence, ledger=list(host.ledger), run_dir_exists=plan['run_id'] in host.runs, runner_sha256=host.runner_sha256,
@@ -237,8 +296,12 @@ class FakeRunGuests(fake_guest.FakeGuests):
             raise guest_runner.Refused('not_fenced', '')
         if plan['fencing_token'] != host.fence['token']:
             raise guest_runner.Refused('stale_fence', 'fence is at %s' % host.fence['token'])
+        if host.fence.get('closed'):
+            raise guest_runner.Refused('session_closed', host.fence['closed'])
         if self.sim.clock.wall() > plan['launch_not_after_wall'] + guest_runner.LAUNCH_CLOCK_TOLERANCE_S:
             raise guest_runner.Refused('launch_window_closed', '')
+        if min(plan['bound_s'], plan['stop_by_wall'] - self.sim.clock.wall()) < max(plan.get('minimum_bound_s', 0), 1e-9):
+            raise guest_runner.Refused('launch_window_closed', 'too little of the grant is left')
         if host.active is not None:
             raise guest_runner.Refused('overlap', host.active['run_id'])
         if plan['run_id'] in host.runs:

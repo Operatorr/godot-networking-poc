@@ -96,7 +96,7 @@ def expected_files(adapter, manifest, role, sampler_sha256):
     return files
 
 
-def role_plan(adapter, manifest, sha, trial, role, addresses, sampler_sha256, fencing_token, unit_mode, launch_not_after_wall, bound_s, stop_by_wall, stop_grace_s):
+def role_plan(adapter, manifest, sha, trial, role, addresses, sampler_sha256, fencing_token, unit_mode, launch_not_after_wall, bound_s, stop_by_wall, stop_grace_s, minimum_bound_s=0.0):
     session_id = manifest['session']['id']
     process = adapter.game_process(manifest, trial, addresses) if role == 'game' else adapter.bot_process(manifest, trial, addresses)
     ports = [dict(protocol='udp', port=adapter.game_port), dict(protocol='tcp', port=adapter.metrics_port)] if role == 'game' else []
@@ -104,7 +104,7 @@ def role_plan(adapter, manifest, sha, trial, role, addresses, sampler_sha256, fe
                 unit_mode=unit_mode, unit=unit_name(session_id, trial.run_id, role), processes=[process], sampler=adapter.sampler_process(role),
                 verify_files=expected_files(adapter, manifest, role, sampler_sha256), ports=ports, interface=adapter.interface,
                 source_dir=adapter.source_dir if role == 'bot' else None, watch_socket_port=adapter.game_port if role == 'game' else None,
-                launch_not_after_wall=launch_not_after_wall, bound_s=bound_s, stop_by_wall=stop_by_wall, stop_grace_s=stop_grace_s,
+                launch_not_after_wall=launch_not_after_wall, bound_s=bound_s, stop_by_wall=stop_by_wall, stop_grace_s=stop_grace_s, minimum_bound_s=minimum_bound_s,
                 sampler_interval_s=adapter.sampler_interval_s, required_on_clean_exit=list(adapter.required_on_clean_exit(role)),
                 completed_exit_codes=list(adapter.completed_exit_codes(role)))
 

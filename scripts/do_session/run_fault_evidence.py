@@ -14,6 +14,7 @@ import pathlib
 import sys
 
 import fault_evidence
+import guest_agent
 import manifest as manifest_mod
 import registry
 import run_executor
@@ -323,6 +324,154 @@ def _leftover(sim):
     sim.guests.hosts['game'].qdiscs.append('netem')
 
 
+# ---- authority at the guest, demonstrated failures, recovery and cleanup ---------------------------
+
+def _at(point, action):
+    def failpoint(name):
+        if name == point:
+            action()
+    return failpoint
+
+
+def abort_before_authorization_starts_nothing(sim, checks):
+    result = sim.executor(scorer=scorer(), failpoint=_at('after_launching_commit', lambda: _abort(sim))).execute()
+    checks('the registry refused the authorization', result.status == run_executor.CLEANUP_STARTED)
+    checks('no process started on either host', sim.guests.starts() == [])
+    checks('the live controller closed both fences', all(sim.guests.hosts[role].fence['closed'] for role in ('game', 'bot')))
+    checks('the run is incomplete, not replayed', outcomes(sim) == [search.INCOMPLETE])
+
+
+def abort_in_flight_is_bounded_and_stopped_by_the_recheck(sim, checks):
+    result = sim.executor(scorer=scorer(), failpoint=_at('after_game_authorized', lambda: _abort(sim))).execute()
+    checks('a start authorized before the abort can land inside its window', starts(sim, 'game') == 1 and result.status == run_executor.CLEANUP_STARTED)
+    checks('nothing further started', starts(sim, 'bot') == 0)
+    run = next(iter(sim.guests.hosts['game'].runs.values()))
+    checks('the recheck stopped it within the window', run.stop_at - run.started < registry.GUEST_ACTION_TTL_S)
+
+
+def start_delayed_past_its_window_is_refused_by_the_guest(sim, checks):
+    delay = lambda: sim.sleep(registry.GUEST_ACTION_TTL_S + 2)
+    sim.executor(scorer=scorer(), failpoint=_at('after_game_authorized', delay)).execute()
+    checks('no process and no directory', sim.guests.hosts['game'].runs == {})
+    checks('the run is incomplete', outcomes(sim) == [search.INCOMPLETE])
+
+
+def start_delayed_past_a_takeover_is_refused_by_the_fence(sim, checks):
+    def takeover():
+        sim.controller(scorer=scorer())[0].prepare()
+    result = sim.executor(scorer=scorer(), failpoint=_at('after_game_authorized', takeover)).execute()
+    checks('the host refused the old token', (result.status, result.code) == (run_executor.CONTROL_LOST, 'stale_fence'))
+    checks('nothing was launched', sim.guests.hosts['game'].runs == {})
+
+
+def _paused(sim):
+    crash(sim, 'before_dispatch_commit')
+    executor, control = sim.controller(scorer=scorer())
+    executor.prepare()
+    return executor, control
+
+
+def smoke_delayed_past_a_takeover_is_refused_by_the_fence(sim, checks):
+    old, _ = _paused(sim)
+    arguments = old._authorized_arguments()
+    new, _ = sim.controller(name='controller-c', scorer=scorer())
+    new.prepare()
+    try:
+        old._agent('game', 'smoke_game_start', *arguments, '--smoke-id', 'delayed')
+        code = None
+    except run_executor.ControlLost as lost:
+        code = lost.code
+    checks('the guest refused the old token', code == 'stale_fence')
+    checks('no server started', sim.guests.hosts['game'].smoke is None)
+
+
+def smoke_delayed_past_its_window_is_refused_by_the_guest(sim, checks):
+    executor, _ = _paused(sim)
+    arguments = executor._authorized_arguments()
+    sim.sleep(registry.GUEST_ACTION_TTL_S + 2)
+    try:
+        executor._agent('game', 'smoke_game_start', *arguments, '--smoke-id', 'delayed')
+        refused = False
+    except run_executor.GuestLost as lost:
+        refused = 'authorization_expired' in str(lost)
+    checks('the guest refused it', refused)
+    checks('no server started', sim.guests.hosts['game'].smoke is None)
+
+
+def lost_smoke_reply_reaches_the_stop(sim, checks):
+    crash(sim, 'before_dispatch_commit')
+    sim.guests.lost_answer.add(('game', 'smoke_game_start'))
+    _, outcome = resume(sim)
+    checks('resume refused with the original failure', outcome['code'] == 'GuestLost')
+    checks('the stop still ran, by its fenced identity', sim.guests.hosts['game'].smoke is None and sim.guests.hosts['game'].smoke_stopped is not None)
+
+
+def lost_smoke_reply_ends_by_itself_with_no_controller(sim, checks):
+    crash(sim, 'before_dispatch_commit')
+    sim.guests.lost_answer.add(('game', 'smoke_game_start'))
+    sim.guests.unreachable.add(('game', 'smoke_game_stop'))
+    _, outcome = resume(sim)
+    host = sim.guests.hosts['game']
+    checks('nothing could stop it', outcome['resumed'] is False and sim.guests.smoke_alive(host))
+    sim.clock.advance(guest_agent.SMOKE_GAME_LIFETIME_S + 1)
+    checks('its own lifetime released it', not sim.guests.smoke_alive(host))
+
+
+def corrupt_export_then_crash_keeps_siblings_from_running(sim, checks):
+    executor = sim.executor(scorer=scorer())
+    hits = [0]
+
+    def in_confirmation(name):
+        if name == 'after_running_commit':
+            hits[0] += 1
+            if hits[0] == 4:
+                sim.guests.corrupt_export.add('bot.stdout.log')
+        if name == 'after_execution_record' and hits[0] == 4:
+            raise rf.SimulatedCrash(name)
+    executor.failpoint = in_confirmation
+    try:
+        executor.execute()
+    except rf.SimulatedCrash:
+        pass
+    before = starts(sim)
+    sim.guests.corrupt_export.clear()
+    _, outcome = resume(sim)
+    checks('the written-down failure stands', outcomes(sim)[-1] == search.INFRASTRUCTURE_FAILURE and sim.status_now()['terminal_failure'] == search.INFRASTRUCTURE_FAILURE)
+    checks('the eligible sibling is refused', outcome['code'] == 'terminal_failure' and starts(sim) == before)
+
+
+def failed_file_is_recovered_before_the_delete(sim, checks):
+    sim.guests.corrupt_export.add('bot.stdout.log')
+    executor = sim.executor()
+    result = executor.execute()
+    run_id = sim.records()[0]['run_id']
+    checks('the seal arrived but the file did not', (sim.run_dir(run_id) / 'bot' / 'seal.json').exists() and (run_id, 'bot') in executor._collect_missing())
+    sim.guests.corrupt_export.clear()
+    executor.wrap_up(result)
+    kinds = [event['kind'] for event in sim.stack.registry.journal(sim.session_id)]
+    checks('recovery came before the cleanup intent', kinds.index('evidence_recovery') < kinds.index('cleanup_intent'))
+    checks('the file is verified and the failure still stands', (sim.run_dir(run_id) / 'bot' / 'bot.stdout.log').exists() and outcomes(sim) == [search.INFRASTRUCTURE_FAILURE])
+
+
+def local_collection_failure_still_requests_cleanup(sim, checks):
+    executor = sim.executor()
+
+    def full_disk():
+        raise OSError('disk full')
+    executor._collect_missing = full_disk
+    result = executor.run_batch()
+    checks('the original error is kept', 'disk full' in result.wrap_up_error)
+    checks('cleanup intent is durable', sim.status_now()['cleanup']['requested_at'] is not None)
+
+
+def wrong_controller_touches_nothing_on_a_first_run(sim, checks):
+    before = len(sim.guests.commands)
+    result = sim.executor(source_problems=lambda: ['the controller checkout is not the frozen controller revision']).run_batch()
+    checks('refused', result.code == run_executor.SOURCE_CHANGED)
+    checks('no guest was contacted', len(sim.guests.commands) == before and sim.guests.starts() == [])
+    checks('the healthy pair is not deleted', sim.status_now()['cleanup']['requested_at'] is None)
+
+
 SCENARIOS = (
     fresh_runs_reach_a_confirmed_observation, capacity_failure_advances_only_the_search, generator_crash_is_invalid_load, lost_host_is_a_terminal_infrastructure_failure,
     no_scorer_establishes_nothing, hung_workload_is_stopped_by_its_bound, crash_before_dispatch_keeps_the_trial_untouched, crash_after_dispatch_stops_the_dependent_path,
@@ -336,6 +485,10 @@ SCENARIOS = (
     _named('resume_refused_on_changed_source', _refused_when(_changed_source, 'source_changed')),
     _named('resume_refused_on_changed_binary', _refused_when(_changed_binary, 'host_not_reset')),
     _named('resume_refused_on_uncleared_netem', _refused_when(_leftover, 'host_not_reset')),
+    abort_before_authorization_starts_nothing, abort_in_flight_is_bounded_and_stopped_by_the_recheck, start_delayed_past_its_window_is_refused_by_the_guest,
+    start_delayed_past_a_takeover_is_refused_by_the_fence, smoke_delayed_past_a_takeover_is_refused_by_the_fence, smoke_delayed_past_its_window_is_refused_by_the_guest,
+    lost_smoke_reply_reaches_the_stop, lost_smoke_reply_ends_by_itself_with_no_controller, corrupt_export_then_crash_keeps_siblings_from_running, failed_file_is_recovered_before_the_delete,
+    local_collection_failure_still_requests_cleanup, wrong_controller_touches_nothing_on_a_first_run,
 )
 
 

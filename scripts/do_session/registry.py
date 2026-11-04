@@ -40,6 +40,8 @@ DEFAULT_WATCHDOG_STALE_S = 30.0
 DEFAULT_LAUNCH_WINDOW_S = session_clock.DISPATCH_LAUNCH_WINDOW_S
 PREPARE_LEAD_S = session_clock.OWNERSHIP_PREPARE_LEAD_S     # read-only ownership checks begin this long before C
 DELETE_MARGIN_S = session_clock.DELETE_ISSUE_MARGIN_S       # the deadline tick runs this long before C
+GUEST_ACTION_TTL_S = 10.0   # one SSH login and the guest's own slow checks; a revocation can trail by at most this plus clock error
+GUEST_ACTIONS = ('launch_run', 'smoke')
 CREATE_START_WINDOW_S = session_clock.CREATE_START_WINDOW_S
 PENDING_CREATE_STATES = ('requested', 'ambiguous')
 CLOCK_UNVERIFIABLE_REASON = 'clock_unverifiable'
@@ -964,6 +966,46 @@ class Registry:
             result = dict(result, authorized=launchable)
         return result
 
+    def authorize_guest_action(self, session_id, fencing_token, action, run_id=None, role=None):
+        """May this controller start a process on a guest right now? The answer expires within seconds, and the guest enforces that.
+
+        The registry cannot reach a guest, and an atomic check across two hosts does not exist. So a start is authorized by
+        a window short enough to bound the race: an abort, a takeover or a lapsed lease committed just after this answer
+        cannot be outlived by more than ``GUEST_ACTION_TTL_S`` plus the guest's clock tolerance, and the controller checks again
+        as soon as the start returns. Nothing is journaled: it changes no state, and the gate's refusals are journaled as ever.
+        """
+        if action not in GUEST_ACTIONS:
+            raise Rejection('bad_request', 'unknown guest action: ' + str(action))
+        if action == 'launch_run' and role not in ('game', 'bot'):
+            raise Rejection('bad_request', 'a launch names its role')
+
+        def body(effective, now_text, session):
+            limits = [effective + GUEST_ACTION_TTL_S, session_clock.parse(session['lease_expires_at'])]
+            if session['cleanup_c_utc'] is not None:
+                cutoff = session_clock.parse(session['cleanup_c_utc']) - DELETE_MARGIN_S
+                if effective >= cutoff:
+                    raise Rejection('deadline_reached', 'no process may start this close to C', cleanup_c_utc=session['cleanup_c_utc'])
+                limits.append(cutoff)
+            if action == 'smoke':
+                if session['state'] not in (PROVISIONING, PAUSED):
+                    raise Rejection('bad_state', 'a smoke belongs to readiness or an explicit resume', state=session['state'])
+                if session['terminal_failure'] is not None:
+                    raise Rejection('terminal_failure', 'a terminal failure stopped this batch', outcome=session['terminal_failure'])
+            else:
+                run = self.db.execute('SELECT * FROM runs WHERE session_id=? AND run_id=?', (session_id, run_id)).fetchone()
+                if run is None:
+                    raise Rejection('unknown_run', 'no dispatch was journaled for ' + str(run_id))
+                if run['state'] != 'dispatched' or run['phase'] != 'launching' or run['outcome'] is not None:
+                    raise Rejection('bad_state', 'only a run in its launch can start a process', state=run['state'], phase=run['phase'])
+                # The swarm starts after the game, by design, so only the game is held to the launch window.
+                closes = session_clock.parse(run['launch_by'] if role == 'game' else run['must_stop_by'])
+                if effective >= closes:
+                    raise Rejection('launch_window_closed', 'the grant expired unused', launch_by=run['launch_by'])
+                limits.append(closes)
+            return dict(session_id=session_id, action=action, run_id=run_id, role=role, fencing_token=fencing_token, authorized_until=session_clock.iso(min(limits)))
+        return self._mutate('authorize_guest_action', dict(session_id=session_id, fencing_token=fencing_token, action=action, run_id=run_id, role=role),
+                            None, session_id, body, gate=self._authority_gate(fencing_token))
+
     def search_state(self, session):
         """The search as this registry journaled it. A controller's local files never decide what comes next."""
         session_id = session['session_id']
@@ -1429,7 +1471,7 @@ class Registry:
     RPC_METHODS = ('register_session', 'acquire_control', 'renew_control', 'arm_session', 'begin_create',
                    'record_create_result', 'record_create_settlement', 'dispose_create', 'record_resource', 'report_ownership_conflict',
                    'mark_ready',
-                   'dispatch_run', 'record_run_outcome', 'record_run_progress', 'record_batch_stop', 'run_records', 'ready_record',
+                   'dispatch_run', 'authorize_guest_action', 'record_run_outcome', 'record_run_progress', 'record_batch_stop', 'run_records', 'ready_record',
                    'record_resume', 'begin_collection', 'begin_evidence_recovery', 'record_measurement',
                    'record_evidence', 'request_cleanup', 'operator_abort', 'disown_resource', 'health', 'status',
                    'incidents', 'incident_report', 'journal', 'list_sessions', 'verify_journal')

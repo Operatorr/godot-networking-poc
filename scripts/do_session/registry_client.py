@@ -7,6 +7,7 @@ second dispatch. Exhausted retries raise ``RegistryUnavailable``, and the create
 as refusal: no acknowledgement, no provider create.
 """
 import contextlib
+import copy
 import json
 import shlex
 import subprocess
@@ -70,6 +71,9 @@ class SubprocessTransport:
         self.argv = list(argv)
         self.timeout_s = timeout_s
 
+    def within(self, seconds):
+        return SubprocessTransport(self.argv, min(self.timeout_s, seconds))
+
     def __call__(self, request):
         try:
             completed = subprocess.run(self.argv, input=json.dumps(request).encode('utf-8'), stdout=subprocess.PIPE,
@@ -128,6 +132,14 @@ class RegistryClient:
 
     def mutate(self, method, request_id=None, **params):
         return self.call(method, request_id=request_id or self.new_request_id(), **params)
+
+    def within(self, seconds):
+        """A copy that answers or gives up inside ``seconds``: one attempt, no retry delay. For a caller with its own hard deadline."""
+        limited = copy.copy(self)
+        limited.attempts = 1
+        if hasattr(self.transport, 'within'):
+            limited.transport = self.transport.within(seconds)
+        return limited
 
     # ---- the pre-create contract -------------------------------------------------------------
 

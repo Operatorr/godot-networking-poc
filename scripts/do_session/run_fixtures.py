@@ -120,6 +120,9 @@ class LocalGuests(ssh_access.GuestAccess):
         return {'198.51.100.10', '198.51.100.11', 'local-game', 'local-bot'}
 
     def run(self, role, argv, timeout_s, on_wait=None):
+        if argv[0] == 'python3' and argv[1] == provisioner.AGENT_REMOTE:
+            # Not installed here, because its paths and tools are Linux ones, and no smoke is ever started on this path. ``test_guest_access`` runs the real agent.
+            return ssh_access.CommandResult(0, json.dumps(dict(exited_on_signal=True, processes=0, listeners=[])), '')
         if argv[0] == 'python3':
             argv = [sys.executable, str(self.host_path(role, argv[1])), '--root', str(self.runner_root(role))] + [str(a) for a in argv[2:]]
 
@@ -295,12 +298,14 @@ class LocalPairProvider:
         return dict(id=image_id, name='24.04 (LTS) x64')
 
 
-def local_conditions(session_id, hosts, source_sha, cap_s):
+def local_conditions(session_id, hosts, source_sha, cap_s, recovery_grace_s=None):
     conditions = fx_conditions()
     session = conditions['session']
     session.update(id=session_id, ownership_tags=dict(session='omega-session:' + session_id, game='omega-role:game:' + session_id, bot='omega-role:bot:' + session_id))
     conditions['evidence']['local_root'] = 'loadtest-runs/digitalocean/' + session_id
     conditions['limits'].update(max_session_duration_s=cap_s)
+    if recovery_grace_s is not None:
+        conditions['limits'].update(evidence_recovery_grace_s=recovery_grace_s)
     source = conditions['source']
     programs = hosts.adapter.program_paths()
     source.update(benchmark_sha=source_sha, server_config_sha256=run_executor.sha256_path(hosts.adapter.config_path()),
@@ -317,7 +322,7 @@ class LocalSession:
     """A real registry CLI, a real watchdog process, real runner processes and stand-in workloads, on this machine, on real clocks."""
     SESSION = 'do-local-20261105a'
 
-    def __init__(self, case, root, cap_s=14400, release_dir=None, **adapter_options):
+    def __init__(self, case, root, cap_s=14400, release_dir=None, recovery_grace_s=None, **adapter_options):
         import fake_provider
         import fixture_support as fx
         import manifest as manifest_mod
@@ -335,7 +340,7 @@ class LocalSession:
             install_real_release(self.hosts, release_dir, self.metrics_port)
             self.hosts.adapter = RealReleaseAdapter(self.hosts.guests, self.game_port, self.metrics_port, **adapter_options)
         head = subprocess.run(['git', '-C', str(self.hosts.adapter.source_dir), 'rev-parse', 'HEAD'], stdout=subprocess.PIPE, check=True).stdout.decode().strip()
-        conditions = local_conditions(self.SESSION, self.hosts, head, cap_s)
+        conditions = local_conditions(self.SESSION, self.hosts, head, cap_s, recovery_grace_s)
         self.manifest, self.sha = manifest_mod.freeze_manifest(conditions, fx.preflight(), fx.FROZEN_AT)
         (self.session_dir / 'manifest.json').write_text(manifest_mod.canonical_json(self.manifest))
         (self.session_dir / 'manifest.sha256').write_text(self.sha + '  manifest.json\n')

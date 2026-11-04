@@ -124,6 +124,61 @@ class WholeRuns(LocalFixture):
         _, _, state, _ = do_session.load_session(session.session_dir)
         self.assertEqual(search.derive(state)['status'], 'no_passing_target')
 
+    def test_an_abort_before_the_authorization_starts_no_real_process(self):
+        session = self.session(workload_seconds=1.0)
+        result = self.document(self.execute(session, '--score', PASS_ALL, '--no-wrap-up', '--abort-at', 'after_launching_commit'))['batch']
+        self.assertEqual(result['status'], run_executor.CLEANUP_STARTED)
+        run_id = self.records(session)[0]['run_id']
+        self.assertFalse(session.run_tree('game', run_id).exists(), 'no process and no directory')
+        self.assertEqual(self.records(session)[0]['outcome'], search.INCOMPLETE)
+        for role in ('game', 'bot'):
+            fence = json.loads((session.hosts.guests.runner_root(role) / 'control' / 'fence.json').read_text())
+            self.assertTrue(fence['closed'], 'the revocation reached the real fence file')
+        self.assert_nothing_runs(session)
+
+    def test_an_abort_in_flight_is_stopped_by_the_recheck_and_no_bot_starts(self):
+        session = self.session(workload_seconds=30.0)
+        started = time.monotonic()
+        result = self.document(self.execute(session, '--score', PASS_ALL, '--no-wrap-up', '--abort-at', 'after_game_authorized'))['batch']
+        self.assertEqual(result['status'], run_executor.CLEANUP_STARTED)
+        run_id = self.records(session)[0]['run_id']
+        tree = session.run_tree('game', run_id)
+        reason = json.loads((tree / 'result.json').read_text())['stop_reason']
+        self.assertTrue(reason.startswith('stop_requested'), reason)
+        self.assertFalse(session.run_tree('bot', run_id).exists())
+        self.assertLess(time.monotonic() - started, 25.0, 'a real server was stopped long before its workload bound')
+        self.assert_nothing_runs(session)
+
+    def test_a_start_delayed_past_its_real_authorization_is_refused_by_the_real_guest(self):
+        session = self.session(workload_seconds=1.0)
+        self.document(self.execute(session, '--score', PASS_ALL, '--no-wrap-up', '--delay-at', 'after_game_authorized', '--delay-s', str(registry.GUEST_ACTION_TTL_S + guest_runner.LAUNCH_CLOCK_TOLERANCE_S + 1)))
+        row = self.records(session)[0]
+        self.assertFalse(session.run_tree('game', row['run_id']).exists(), 'no process and no directory')
+        self.assertEqual(row['outcome'], search.INCOMPLETE)
+        self.assert_nothing_runs(session)
+
+    def test_a_crash_between_authorization_and_start_leaves_nothing_to_stop(self):
+        session = self.session(workload_seconds=1.0)
+        self.assertEqual(self.execute(session, '--failpoint', 'after_game_authorized').returncode, run_fault_harness.CRASH_EXIT)
+        self.assert_nothing_runs(session)
+        self.assertEqual(self.records(session)[0]['phase'], 'launching')
+        document = self.document(self.harness(session, 'resume', 'controller-b', '--takeover', '--score', PASS_ALL))
+        self.assertEqual(self.records(session)[0]['outcome'], search.INCOMPLETE)
+        self.assertEqual(document['resume']['code'], 'no_eligible_untouched_work')
+
+    def test_a_real_permission_failure_while_collecting_reaches_the_real_cleanup_request(self):
+        session = self.session(workload_seconds=1.0, recovery_grace_s=3)
+        guests, adapter = session.hosts.guests, session.hosts.adapter
+        executor = run_executor.RunExecutor(session.client, guests, rf.LocalPairProvider(session.pair_file), session.manifest, session.sha, session.session_dir, session.token, time.sleep,
+                                            time.monotonic, time.time, adapter=adapter, policy=run_fault_harness.FAST, source_problems=lambda: [], readiness_problems=lambda report: [], require_counters=False)
+        result = executor.execute()
+        role_dir = session.session_dir / 'runs' / self.records(session)[0]['run_id'] / 'game'
+        os.chmod(str(role_dir), 0)
+        self.addCleanup(os.chmod, str(role_dir), 0o755)
+        executor.wrap_up(result)
+        self.assertIsNotNone(self.status(session)['cleanup']['requested_at'], 'not left collecting until C')
+        self.assertEqual(self.status(session)['evidence']['status'], 'corrupt', 'unreadable is never called verified')
+
     def test_wrap_up_requests_deletion_and_the_real_watchdog_closes_the_session(self):
         session = self.session(workload_seconds=1.0)
         self.document(self.execute(session, '--score', FAIL_LOW))

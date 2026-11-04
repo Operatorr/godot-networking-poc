@@ -4,9 +4,11 @@ import io
 import json
 import pathlib
 import unittest
+import unittest.mock
 
 import manifest as manifest_mod
 import run_cli
+import run_executor
 import run_fixtures as rf
 
 
@@ -40,9 +42,29 @@ class Cli(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertEqual(document['resume']['code'], 'control_held')
 
+    def test_a_first_run_checks_the_real_controller_revision_and_touches_nothing(self):
+        before = len(self.sim.guests.commands)
+        code, document = self.run_cli('execute', '--fencing-token', str(self.sim.result.fencing_token))
+        self.assertEqual((code, document['status'], document['code']), (2, 'refused', 'source_changed'))
+        self.assertEqual(len(self.sim.guests.commands), before, 'no guest was contacted')
+        self.assertEqual(self.sim.guests.starts(), [])
+        self.assertEqual(self.sim.records(), [])
+        self.assertIsNone(self.sim.status_now()['cleanup']['requested_at'], 'the wrong checkout does not delete a healthy pair')
+
+    def test_a_failed_wrap_up_never_exits_as_success(self):
+        real = run_executor.RunExecutor.run_batch
+
+        def finished_but_not_collected(executor):
+            return run_executor.BatchResult(run_executor.FINISHED, search_status='confirmed', wrap_up_error='PermissionError: fixture')
+        run_executor.RunExecutor.run_batch = finished_but_not_collected
+        self.addCleanup(setattr, run_executor.RunExecutor, 'run_batch', real)
+        code, document = self.run_cli('execute', '--fencing-token', str(self.sim.result.fencing_token))
+        self.assertEqual((code, document['wrap_up_error']), (2, 'PermissionError: fixture'))
+
     def test_a_stale_token_runs_nothing(self):
         self.sim.controller()
-        code, document = self.run_cli('execute', '--fencing-token', str(self.sim.result.fencing_token))
+        with unittest.mock.patch.object(run_executor, 'source_identity_problems', return_value=[]):
+            code, document = self.run_cli('execute', '--fencing-token', str(self.sim.result.fencing_token))
         self.assertEqual(code, 2)
         self.assertEqual(document['status'], 'control_lost')
         self.assertEqual(self.sim.guests.starts(), [])

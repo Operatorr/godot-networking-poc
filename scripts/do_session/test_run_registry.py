@@ -24,6 +24,105 @@ class TypedRuns(unittest.TestCase):
         self.assertEqual(caught.exception.code, code)
         return caught.exception
 
+    def authorize(self, token=None, **params):
+        return self.client.call('authorize_guest_action', session_id=SESSION, fencing_token=token or self.token, **params)
+
+    def launching(self):
+        trial = self.next()
+        self.client.mutate('dispatch_run', **self.dispatch(trial))
+        self.client.mutate('record_run_progress', session_id=SESSION, run_id=trial.run_id, phase='launching', fencing_token=self.token)
+        return trial
+
+    def now(self):
+        return self.stack.registry.peek_now()
+
+    def test_a_launch_authorization_is_short_and_ends_with_the_grant(self):
+        trial = self.launching()
+        run = self.stack.registry.run_records(SESSION)[0]
+        answer = self.authorize(action='launch_run', run_id=trial.run_id, role='game')
+        until = session_clock.parse(answer['authorized_until'])
+        self.assertLessEqual(until - self.now(), registry.GUEST_ACTION_TTL_S)
+        self.assertGreater(until, self.now())
+        self.assertLessEqual(until, session_clock.parse(run['launch_by']))
+
+    def test_authorization_changes_nothing_and_journals_nothing(self):
+        trial = self.launching()
+        before = self.stack.registry.journal(SESSION)
+        self.authorize(action='launch_run', run_id=trial.run_id, role='game')
+        self.assertEqual(self.stack.registry.journal(SESSION), before)
+
+    def test_only_a_run_in_its_launch_can_be_authorized(self):
+        trial = self.next()
+        self.client.mutate('dispatch_run', **self.dispatch(trial))
+        with self.assertRaises(registry_client.RegistryRejected) as caught:
+            self.authorize(action='launch_run', run_id=trial.run_id, role='game')
+        self.assertEqual(caught.exception.code, 'bad_state')
+        with self.assertRaises(registry_client.RegistryRejected) as caught:
+            self.authorize(action='launch_run', run_id='not-dispatched', role='game')
+        self.assertEqual(caught.exception.code, 'unknown_run')
+
+    def test_every_loss_of_authority_refuses_an_authorization(self):
+        trial = self.launching()
+        arguments = dict(action='launch_run', run_id=trial.run_id, role='game')
+        self.stack.clock.advance(registry.DEFAULT_LAUNCH_WINDOW_S + 1)
+        with self.assertRaises(registry_client.RegistryRejected) as caught:
+            self.authorize(**arguments)
+        self.assertEqual(caught.exception.code, 'launch_window_closed')
+        self.client.call('renew_control', session_id=SESSION, fencing_token=self.token)
+        self.authorize(action='launch_run', run_id=trial.run_id, role='bot')    # the swarm starts after the game, by design
+        self.stack.registry.operator_abort(SESSION, 'operator abort')
+        with self.assertRaises(registry_client.RegistryRejected) as caught:
+            self.authorize(action='launch_run', run_id=trial.run_id, role='bot')
+        self.assertEqual(caught.exception.code, 'cleanup_in_progress')
+
+    def test_a_stale_token_and_an_expired_lease_are_refused(self):
+        trial = self.launching()
+        control = self.client.acquire(SESSION, takeover=True)
+        with self.assertRaises(registry_client.RegistryRejected) as caught:
+            self.authorize(action='launch_run', run_id=trial.run_id, role='game')
+        self.assertEqual(caught.exception.code, 'stale_fencing_token')
+        self.stack.clock.advance(registry.DEFAULT_LEASE_TTL_S + 1)
+        with self.assertRaises(registry_client.RegistryRejected) as caught:
+            self.authorize(token=control['fencing_token'], action='smoke')
+        self.assertEqual(caught.exception.code, 'lease_expired')
+
+    def test_a_smoke_belongs_to_a_paused_session_and_stops_short_of_the_cutoff(self):
+        with self.assertRaises(registry_client.RegistryRejected) as caught:
+            self.authorize(action='smoke')
+        self.assertEqual(caught.exception.code, 'bad_state')
+        token = self.client.acquire(SESSION, takeover=True)['fencing_token']
+        until = session_clock.parse(self.authorize(token=token, action='smoke')['authorized_until'])
+        self.assertLessEqual(until - self.now(), registry.GUEST_ACTION_TTL_S)
+        c = session_clock.parse(self.stack.registry.status(SESSION)['cleanup_c_utc'])
+        target = c - registry.DELETE_MARGIN_S - registry.GUEST_ACTION_TTL_S / 2
+        while self.now() < target:
+            self.stack.clock.advance(min(60.0, target - self.now()))
+            self.client.call('renew_control', session_id=SESSION, fencing_token=token)
+        until = session_clock.parse(self.authorize(token=token, action='smoke')['authorized_until'])
+        self.assertLessEqual(until, c - registry.DELETE_MARGIN_S, 'an authorization never reaches past the delete cutoff')
+        self.stack.clock.advance(registry.GUEST_ACTION_TTL_S)
+        with self.assertRaises(registry_client.RegistryRejected) as caught:
+            self.authorize(token=token, action='smoke')
+        self.assertEqual(caught.exception.code, 'deadline_reached')
+
+    def test_a_terminal_failure_refuses_a_smoke(self):
+        token = self.client.acquire(SESSION, takeover=True)['fencing_token']
+        self.client.mutate('record_batch_stop', session_id=SESSION, outcome=search.INFRASTRUCTURE_FAILURE, fencing_token=token, detail='host failed')
+        with self.assertRaises(registry_client.RegistryRejected) as caught:
+            self.authorize(token=token, action='smoke')
+        self.assertEqual(caught.exception.code, 'terminal_failure')
+
+    def test_an_unknown_action_or_missing_role_is_a_bad_request(self):
+        for params in (dict(action='anything'), dict(action='launch_run', run_id='x')):
+            with self.assertRaises(registry_client.RegistryRejected) as caught:
+                self.authorize(**params)
+            self.assertEqual(caught.exception.code, 'bad_request')
+
+    def test_a_limited_client_gives_up_inside_its_time(self):
+        limited = registry_client.RegistryClient(registry_client.SubprocessTransport(['true'], timeout_s=30.0), 'x').within(4.0)
+        self.assertEqual((limited.attempts, limited.transport.timeout_s), (1, 4.0))
+        self.assertEqual(self.client.within(1.0).attempts, 1, 'an in-process transport has nothing to shorten')
+
     def state(self):
         return self.stack.registry.search_state(self.stack.registry.session_row(SESSION))
 

@@ -7,6 +7,9 @@ calls ``os._exit`` with no cleanup, as ``kill -9`` would. Without one it finishe
     run_fault_harness.py execute DESCRIPTION.json --fencing-token N --controller NAME [--failpoint P] [--score JSON]
     run_fault_harness.py resume  DESCRIPTION.json --controller NAME [--takeover] [--failpoint P] [--score JSON]
     run_fault_harness.py collect DESCRIPTION.json --controller NAME [--takeover]
+
+``--abort-at P`` has the operator abort at that boundary, through the real registry. ``--delay-at P --delay-s N`` holds this
+controller there, as a slow network would hold a request already authorized.
 """
 import argparse
 import dataclasses
@@ -35,6 +38,9 @@ def main(argv=None):
     parser.add_argument('--takeover', action='store_true')
     parser.add_argument('--failpoint')
     parser.add_argument('--failpoint-hit', type=int, default=1)
+    parser.add_argument('--abort-at')
+    parser.add_argument('--delay-at')
+    parser.add_argument('--delay-s', type=float, default=0.0)
     parser.add_argument('--score')
     parser.add_argument('--no-wrap-up', action='store_true')
     args = parser.parse_args(argv)
@@ -53,6 +59,10 @@ def main(argv=None):
     hits = [0]
 
     def failpoint(name):
+        if name == args.abort_at:
+            client.mutate('operator_abort', session_id=description['session'], reason='local fixture: operator abort')
+        if name == args.delay_at:
+            time.sleep(args.delay_s)
         if name == args.failpoint:
             hits[0] += 1
             if hits[0] == args.failpoint_hit:

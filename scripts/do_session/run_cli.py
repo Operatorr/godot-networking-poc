@@ -9,8 +9,11 @@
 ``resume``: returning under a new token pauses it, and only an explicit operator request with every revalidation passed
 un-pauses it. ``collect`` is the other exit, and it stops whatever was left, seals it and requests cleanup.
 
+``execute`` and ``resume`` refuse before touching any guest unless this checkout is the frozen controller and adapter revision.
+
 None of this has ever been run against a live account. The scorer for slices 5 and 6 does not exist yet, so a trial here
-ends INCONCLUSIVE and stops the batch by design. Exit codes: 0 finished or resumed and finished, 2 refused or stopped.
+ends INCONCLUSIVE and stops the batch by design. Exit codes: 0 finished or resumed and finished, 2 refused, stopped, or a
+wrap-up that failed locally (its cleanup request still went out).
 """
 import argparse
 import dataclasses
@@ -60,9 +63,9 @@ def collect_and_stop(client, session_id, build_executor, reason, takeover=False)
     try:
         executor.prepare()
         problems = executor.reconcile('operator_collect')
-    except (run_executor.BatchStop, run_executor.GuestLost, run_executor.ControlLost, run_executor.ResumeRefused,
-            cleanup_provider.ProviderError, registry_client.RegistryRejected, registry_client.RegistryUnavailable) as error:
-        problems = [type(error).__name__ + ': ' + cleanup_provider.redact(error)]
+    except (run_executor.BatchStop, run_executor.GuestLost, run_executor.ControlLost, run_executor.ResumeRefused, run_executor.RunAborted, run_executor.CleanupStarted,
+            ssh_access.HostVerificationFailed, cleanup_provider.ProviderError, registry_client.RegistryRejected, registry_client.RegistryUnavailable) + run_executor.LOCAL_FAILURES as error:
+        problems = [type(error).__name__ + ': ' + cleanup_provider.redact(error)]    # whatever went wrong, the request below must still go out
     result = run_executor.BatchResult(run_executor.STOPPED, code='operator_collect', detail=reason, runs=executor.outcomes)
     executor.wrap_up(result)
     return result, problems
@@ -88,21 +91,21 @@ def cmd_execute(args, environment):
     _, _, build = _executor_factory(args, environment)
     result = build(args.fencing_token).run_batch()
     _print(dataclasses.asdict(result))
-    return 0 if result.status == run_executor.FINISHED else 2
+    return 0 if result.status == run_executor.FINISHED and result.wrap_up_error is None else 2
 
 
 def cmd_resume(args, environment):
     client, session_id, build = _executor_factory(args, environment)
     outcome, result = resume_and_run(client, session_id, build, args.operator_request, takeover=args.takeover)
     _print(dict(resume=outcome, batch=dataclasses.asdict(result) if result is not None else None))
-    return 0 if result is not None and result.status == run_executor.FINISHED else 2
+    return 0 if result is not None and result.status == run_executor.FINISHED and result.wrap_up_error is None else 2
 
 
 def cmd_collect(args, environment):
     client, session_id, build = _executor_factory(args, environment)
     result, problems = collect_and_stop(client, session_id, build, args.reason, takeover=args.takeover)
     _print(dict(batch=dataclasses.asdict(result), problems=problems))
-    return 2 if problems else 0
+    return 2 if problems or result.wrap_up_error else 0
 
 
 def default_environment():

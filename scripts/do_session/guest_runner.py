@@ -4,10 +4,13 @@
 One subcommand, one JSON document on stdout, like ``guest_agent``. It reports facts and enforces only what cannot wait for
 the controller. The rules live here because they must hold when the controller is gone or stale:
 
-  * a fence file that only rises, checked under one lock with the launch, so a replaced controller cannot start anything;
+  * a fence file that only rises and can only ever close, checked under one lock with the launch, so a replaced controller
+    or a session in cleanup cannot start anything;
+  * a start carries an authorization window of a few seconds from the registry, checked on arrival, after the slow checks and
+    again right before any process exists, so a delayed message cannot outlive its authority by more than that window;
   * one active run per host, and a run directory created exclusively, so nothing overlaps or overwrites;
   * a supervisor with an absolute bound, so a workload stops on time with no controller left;
-  * process identity is pid plus kernel start time, so a reused pid is never mistaken for ours or signalled;
+  * process identity is boot id, pid and kernel start time, so a reused pid is never mistaken for ours or signalled;
   * sealing hashes every file and makes the tree read-only, including for an interrupted run.
 
 Linux facts come from /proc, ``tc`` and systemd. The macOS branches exist only so local fixtures can run real processes on a
@@ -18,6 +21,7 @@ import contextlib
 import ctypes
 import errno
 import fcntl
+import functools
 import hashlib
 import json
 import os
@@ -123,7 +127,9 @@ def run_command(argv, timeout=15, env=None):
 
 # ---- process and socket identity ------------------------------------------------------------------
 
+@functools.lru_cache(maxsize=1)
 def boot_id():
+    """Cached, because a process cannot outlive the boot it started in, and this is read on every identity comparison."""
     try:
         return pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip()
     except OSError:
@@ -159,8 +165,10 @@ def identity_of(pid):
 
 
 def same_process(identity):
-    """True only when this exact process still runs. A reused pid has a different start time."""
-    return bool(identity and identity.get('start_id')) and process_start_id(identity['pid']) == identity['start_id']
+    """True only when this exact process still runs: same boot, pid and start time. Start ticks can repeat after a reboot."""
+    if not identity or not identity.get('start_id') or not identity.get('boot_id') or identity['boot_id'] != boot_id():
+        return False
+    return process_start_id(identity['pid']) == identity['start_id']
 
 
 def parse_proc_net_udp(text, port):
@@ -352,6 +360,22 @@ class Host:
             raise Refused('stale_fence', 'fence is at %s, request carries %s' % (fence.get('token'), token))
         return fence
 
+    def require_open(self, session_id, token):
+        """Authority to start something. Stopping and sealing need only the token, because they must work through cleanup."""
+        fence = self.require_token(session_id, token)
+        if fence.get('closed'):
+            raise Refused('session_closed', 'no process may start: %s' % fence['closed'])
+        return fence
+
+    def require_current_token(self, plan, token):
+        """A run directory with no plan names no session, and the fence still decides."""
+        if plan:
+            return self.require_token(plan['session_id'], token)
+        fence = self.fence()
+        if fence is not None and token != fence.get('token'):
+            raise Refused('stale_fence', 'fence is at %s, request carries %s' % (fence.get('token'), token))
+        return fence
+
 
 def run_summary(run_dir):
     plan = read_json(run_dir / 'plan.json') or {}
@@ -395,7 +419,11 @@ def inventory(host, session_id=None):
 # ---- commands -------------------------------------------------------------------------------------
 
 def cmd_fence(args, host):
-    """Raise the fence, and only ever raise it. Whatever started before this returns is in the inventory."""
+    """Raise the fence, and only ever raise it. Whatever started before this returns is in the inventory.
+
+    ``--close`` is how a live controller carries a revocation here: the registry cannot reach a guest, so an abort committed
+    while no controller is listening is held back only by the authorization window. Closing never reopens, under any token.
+    """
     with host.locked():
         fence = host.fence()
         if fence is not None and fence.get('session_id') != args.session:
@@ -403,9 +431,10 @@ def cmd_fence(args, host):
         if fence is not None and args.token < fence.get('token'):
             raise Refused('stale_fence', 'fence is at %s' % fence.get('token'))
         raised = fence is None or args.token > fence.get('token')
-        if raised:
-            atomic_json(host.fence_path, dict(session_id=args.session, token=args.token))
-        return dict(token=args.token, raised=raised, active=host.active(), runs=inventory(host))
+        closed = (fence or {}).get('closed') or getattr(args, 'close', None)
+        if raised or closed != (fence or {}).get('closed'):
+            atomic_json(host.fence_path, dict(session_id=args.session, token=args.token, closed=closed))
+        return dict(token=args.token, raised=raised, closed=closed, active=host.active(), runs=inventory(host))
 
 
 def _file_facts(path):
@@ -442,10 +471,23 @@ def load_plan(text):
     return plan
 
 
+def _require_launch_window(plan):
+    """An authorization is a few seconds of registry time, so a delayed request expires here rather than acting late."""
+    if time.time() > plan['launch_not_after_wall'] + LAUNCH_CLOCK_TOLERANCE_S:
+        raise Refused('launch_window_closed', 'this start request is past its authorization')
+
+
+def _remaining_bound(plan):
+    """How long a workload started right now may run: never past the absolute stop, and refused if the whole workload no longer fits."""
+    remaining = min(plan['bound_s'], plan['stop_by_wall'] - time.time())
+    if remaining <= 0 or remaining < plan.get('minimum_bound_s', 0):
+        raise Refused('launch_window_closed', 'only %.1f s of the grant is left for this workload' % remaining)
+    return remaining
+
+
 def _require_launchable(host, plan):
     """The last look before a process exists. Each of these can have changed since the controller's preflight."""
-    if time.time() > plan['launch_not_after_wall'] + LAUNCH_CLOCK_TOLERANCE_S:
-        raise Refused('launch_window_closed', 'this start request arrived after its grant')
+    _require_launch_window(plan)
     if host.active() is not None:
         raise Refused('overlap', 'run %s is active on this host' % host.active().get('run_id'))
     facts = host_facts(host, plan)
@@ -459,13 +501,16 @@ def _require_launchable(host, plan):
     busy = sorted(name for name, free in facts['ports_free'].items() if not free)
     if busy:
         raise Refused('port_busy', ', '.join(busy))
+    # Hashing and the process table take real time, and the window has to hold when something actually starts.
+    _require_launch_window(plan)
+    _remaining_bound(plan)
 
 
 def cmd_start(args, host):
     plan = load_plan(args.plan_json)
     run_dir = host.run_dir(plan['run_id'], plan['role'])
     with host.locked():
-        host.require_token(plan['session_id'], plan['fencing_token'])
+        host.require_open(plan['session_id'], plan['fencing_token'])
         _require_launchable(host, plan)
         run_dir.parent.mkdir(exist_ok=True, mode=0o750)
         try:
@@ -507,6 +552,8 @@ def _await_handshake(run_dir):
             return identity
         result = read_json(run_dir / 'result.json')
         if result is not None:
+            if result.get('refused'):
+                raise Refused(result['refused'], result.get('stop_reason'))
             raise Refused('launch_failed', result.get('stop_reason') or 'the supervisor ended before identifying its processes')
         time.sleep(0.05)
     raise Refused('launch_unconfirmed', 'no identity from the supervisor')
@@ -540,9 +587,8 @@ def cmd_stop(args, host):
     """Ask the supervisor first. If it is gone, signal each process only after proving it is still that process."""
     run_dir = _existing_run_dir(host, args.run_id, args.role)
     plan = read_json(run_dir / 'plan.json') or {}
-    if plan:
-        with host.locked():
-            host.require_token(plan['session_id'], args.token)
+    with host.locked():
+        host.require_current_token(plan, args.token)
     if not (run_dir / SEAL).exists():
         with contextlib.suppress(FileExistsError):
             create_json(run_dir / 'stop.request', dict(reason=args.reason, wall=time.time()))
@@ -571,8 +617,7 @@ def cmd_seal(args, host):
     run_dir = _existing_run_dir(host, args.run_id, args.role)
     with host.locked():
         plan = read_json(run_dir / 'plan.json') or {}
-        if plan:
-            host.require_token(plan['session_id'], args.token)
+        host.require_current_token(plan, args.token)
         seal_path = run_dir / SEAL
         if not seal_path.exists():
             summary = run_summary(run_dir)
@@ -628,6 +673,19 @@ def _exit_facts(code):
     return dict(returncode=code if code >= 0 else None, signal=-code if code < 0 else None)
 
 
+def _launch_gate(host, run_dir, plan):
+    """The very last look, from the process about to create the workload. Scheduling can delay this past anything checked earlier.
+
+    Read without the host lock: the start holds it through the handshake, and if that start died, a fence raised after this
+    read finds this directory in its inventory and stops it.
+    """
+    host.require_open(plan['session_id'], plan['fencing_token'])
+    _require_launch_window(plan)
+    if (run_dir / 'stop.request').exists():
+        raise Refused('stop_requested', 'a stop arrived before the workload existed')
+    return _remaining_bound(plan)
+
+
 def cmd_supervise(args, host):
     """Start the workload and the sampler, keep identity and socket facts, and stop everything at the bound, alone if need be."""
     run_dir = pathlib.Path(args.run_dir)
@@ -637,10 +695,16 @@ def cmd_supervise(args, host):
     children = {}
     exits = {}
     stop_reason = None
+    try:
+        bound_s = _launch_gate(host, run_dir, plan)
+    except Refused as refused:
+        atomic_json(run_dir / 'result.json', dict(stop_reason='launch_refused:%s: %s' % (refused.code, refused.detail), refused=refused.code, completed=False, processes={},
+                                                  ended_wall=time.time(), elapsed_s=0.0, bound_s=0.0))
+        return dict(ok=False)
 
     def finish(reason):
         atomic_json(run_dir / 'result.json', dict(stop_reason=reason, completed=True, processes=exits, ended_wall=time.time(),
-                                                  elapsed_s=time.monotonic() - started_mono, bound_s=plan['bound_s']))
+                                                  elapsed_s=time.monotonic() - started_mono, bound_s=bound_s))
 
     def stop_children(signum):
         for name, child in children.items():
@@ -672,7 +736,7 @@ def cmd_supervise(args, host):
         finish('spawn_failed:' + type(error).__name__)
         return dict(ok=False)
     atomic_json(run_dir / 'identity.json', dict(supervisor=identity_of(os.getpid()), processes=processes, invocation_id=os.environ.get('INVOCATION_ID'),
-                                                started_wall=time.time(), bound_s=plan['bound_s'], stop_by_wall=plan['stop_by_wall']))
+                                                started_wall=time.time(), bound_s=bound_s, stop_by_wall=plan['stop_by_wall']))
     primary = next(name for name, item in processes.items() if item['primary'])
     watched_port = plan.get('watch_socket_port')
     next_socket = 0.0
@@ -680,6 +744,8 @@ def cmd_supervise(args, host):
 
     while True:
         reap()
+        # Nothing has been signalled yet, so a sampler already gone died by itself, even in the same poll as the primary's exit.
+        sampler_exited_early = sampler_exited_early or 'sampler' in exits
         if primary in exits:
             stop_reason = stop_reason or 'primary_exited'
             break
@@ -689,10 +755,8 @@ def cmd_supervise(args, host):
             if row is not None:     # keep looking until it appears; the controller is waiting on this first row
                 next_socket = now + SOCKET_SAMPLE_S
                 with (run_dir / 'sockets.ndjson').open('a', encoding='utf-8') as handle:
-                    handle.write(json.dumps(dict(row, pid=processes[primary]['pid'], start_id=processes[primary]['start_id'], mono_ns=time.monotonic_ns(), wall_ns=time.time_ns()),
+                    handle.write(json.dumps(dict(row, pid=processes[primary]['pid'], start_id=processes[primary]['start_id'], boot_id=processes[primary]['boot_id'], mono_ns=time.monotonic_ns(), wall_ns=time.time_ns()),
                                             sort_keys=True) + '\n')
-        if 'sampler' in exits:
-            sampler_exited_early = True
         request = read_json(run_dir / 'stop.request')
         if request is not None:
             stop_reason = 'stop_requested:' + str(request.get('reason'))
@@ -700,7 +764,7 @@ def cmd_supervise(args, host):
         if interrupted:
             stop_reason = interrupted[0]
             break
-        if now - started_mono >= plan['bound_s'] or time.time() >= plan['stop_by_wall']:
+        if now - started_mono >= bound_s or time.time() >= plan['stop_by_wall']:
             stop_reason = 'bound_exhausted'
             break
         time.sleep(SUPERVISOR_POLL_S)
@@ -711,7 +775,7 @@ def cmd_supervise(args, host):
         row = observe_socket(processes[primary]['pid'], watched_port)
         if row is not None:
             with (run_dir / 'sockets.ndjson').open('a', encoding='utf-8') as handle:
-                handle.write(json.dumps(dict(row, pid=processes[primary]['pid'], start_id=processes[primary]['start_id'], mono_ns=time.monotonic_ns(), wall_ns=time.time_ns(), final=True),
+                handle.write(json.dumps(dict(row, pid=processes[primary]['pid'], start_id=processes[primary]['start_id'], boot_id=processes[primary]['boot_id'], mono_ns=time.monotonic_ns(), wall_ns=time.time_ns(), final=True),
                                         sort_keys=True) + '\n')
     stop_children(signal.SIGTERM)
     grace_ends = time.monotonic() + plan['stop_grace_s']
@@ -726,7 +790,7 @@ def cmd_supervise(args, host):
         time.sleep(0.02)
     escalated = [name for name, item in exits.items() if item.get('signal') == signal.SIGKILL]
     atomic_json(run_dir / 'result.json', dict(stop_reason=stop_reason, completed=True, processes=exits, ended_wall=time.time(), elapsed_s=time.monotonic() - started_mono,
-                                              bound_s=plan['bound_s'], sampler_exited_early=sampler_exited_early, killed=escalated))
+                                              bound_s=bound_s, sampler_exited_early=sampler_exited_early, killed=escalated))
     return dict(ok=True)
 
 
@@ -740,6 +804,7 @@ def build_parser():
     fence = sub.add_parser('fence')
     fence.add_argument('--session', required=True)
     fence.add_argument('--token', type=int, required=True)
+    fence.add_argument('--close', help='no process may start on this host again; the reason')
     for name in ('preflight', 'start'):
         sub.add_parser(name).add_argument('--plan-json', required=True)
     sub.add_parser('inspect')

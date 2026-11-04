@@ -134,7 +134,7 @@ def socket_problems(plan, summary, ledger, require_counters):
     if first.get('inode') in seen or last.get('inode') in seen:
         problems.append('the game socket has the identity of an earlier run')
     for row in (first, last):
-        if row.get('pid') != primary.get('pid') or row.get('start_id') != primary.get('start_id'):
+        if row.get('pid') != primary.get('pid') or row.get('start_id') != primary.get('start_id') or row.get('boot_id') != primary.get('boot_id'):
             problems.append('a socket counter row belongs to a different process')
             break
     if first.get('inode') != last.get('inode'):

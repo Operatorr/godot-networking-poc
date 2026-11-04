@@ -1,16 +1,20 @@
 """Exact firewall rules, secret-free bootstrap, pinned SSH, readiness rules and the guest agent's parsers."""
 import base64
+import contextlib
 import copy
 import hashlib
+import io
 import json
 import os
 import pathlib
 import shlex
+import signal
 import socket
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 import types
 import unittest
 import unittest.mock
@@ -20,6 +24,7 @@ import fake_guest
 import fixture_support as fx
 import guest_agent
 import guest_bootstrap
+import guest_runner
 import manifest as manifest_mod
 import provider_preflight
 import readiness
@@ -457,6 +462,41 @@ class Readiness(unittest.TestCase):
             self.assertTrue(readiness.droplet_problems(MANIFEST, 'game', dict(good, **change)), change)
 
 
+def authority(**fields):
+    fields.setdefault('session', 'do-test')
+    fields.setdefault('token', 1)
+    fields.setdefault('not_after_wall', time.time() + 10)
+    return types.SimpleNamespace(**fields)
+
+
+def free_udp_port():
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    probe.bind(('127.0.0.1', 0))
+    port = probe.getsockname()[1]
+    probe.close()
+    return port
+
+
+def port_free(port):
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        probe.bind(('127.0.0.1', port))
+        return True
+    except OSError:
+        return False
+    finally:
+        probe.close()
+
+
+def wait_for(predicate, limit_s):
+    deadline = time.monotonic() + limit_s
+    while time.monotonic() < deadline:
+        if predicate():
+            return
+        time.sleep(0.02)
+    raise AssertionError('the condition was not reached')
+
+
 class GuestAgent(unittest.TestCase):
     def test_listener_parser(self):
         output = ('udp UNCONN 0 0 0.0.0.0:8081 0.0.0.0:*\n'
@@ -510,10 +550,19 @@ class GuestAgent(unittest.TestCase):
         self.assertEqual(used - set(guest_agent.COMMANDS), set())
         self.assertGreaterEqual(len(used), 8)
         parser = guest_agent.build_parser()
-        for arguments in (['clock'], ['probe', '--role', 'game'], ['wait_cloud_init', '--timeout-s', '5'], ['fetch_source', '--sha', 'a', '--timeout-s', '5'],
-                          ['build', '--toolchain', '1.91.0', '--target', 'x', '--timeout-s', '5', '--flag=--features=x'], ['install_release', '--role', 'game', '--incoming', 'x'],
-                          ['sampler'], ['tcp_probe', '--host', 'a', '--port', '22'], ['smoke_game_start'], ['smoke_bot', '--server', 'a:1', '--timeout-s', '5'], ['smoke_game_stop']):
+        fence = ['--session', 's', '--token', '1']
+        start = fence + ['--not-after-wall', '1']
+        for arguments in (['clock'], ['probe', '--role', 'game'], ['wait_cloud_init', '--timeout-s', '5'], ['tcp_probe', '--host', 'a', '--port', '22'],
+                          ['fetch_source', '--sha', 'a', '--timeout-s', '5'] + fence, ['build', '--toolchain', '1.91.0', '--target', 'x', '--timeout-s', '5', '--flag=--features=x'] + fence,
+                          ['install_release', '--role', 'game', '--incoming', 'x'] + fence, ['sampler'] + start, ['smoke_game_start', '--smoke-id', 'x'] + start, ['smoke_bot', '--server', 'a:1', '--timeout-s', '5'] + start, ['smoke_game_stop', '--smoke-id', 'x'] + fence):
             parser.parse_args(arguments)
+
+    def test_every_step_that_changes_the_host_needs_authority(self):
+        parser = guest_agent.build_parser()
+        for arguments in (['fetch_source', '--sha', 'a', '--timeout-s', '5'], ['build', '--toolchain', '1', '--target', 'x', '--timeout-s', '5'], ['install_release', '--role', 'game', '--incoming', 'x'],
+                          ['sampler'], ['smoke_game_start', '--smoke-id', 'x'], ['smoke_bot', '--server', 'a:1'], ['smoke_game_stop', '--smoke-id', 'x']):
+            with self.subTest(arguments[0]), self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+                parser.parse_args(arguments)
 
     def test_clock_and_a_full_probe_run_as_a_real_process(self):
         self.assertIn('wall_ns', guest_agent.cmd_clock(None))
@@ -592,8 +641,10 @@ class GuestAgent(unittest.TestCase):
         root = self.agent_dirs()
         sampler = pathlib.Path(guest_agent.__file__).parents[1] / 'quick_stress' / 'sample_host.py'
         (root / 'release' / 'sample_host.py').write_text(sampler.read_text())
-        report = guest_agent.cmd_sampler(types.SimpleNamespace(seconds=3))
+        report = guest_agent.cmd_sampler(authority(seconds=3))
         self.assertEqual(readiness.sampler_problems('game', report), [], report)
+        again = guest_agent.cmd_sampler(authority(seconds=3))
+        self.assertEqual(readiness.sampler_problems('game', again), [], 'a second pass, as a resume makes, does not read as the clock going backward')
 
     def test_fetch_source_matches_what_the_controller_computes_from_git_objects(self):
         import provision_cli
@@ -611,7 +662,7 @@ class GuestAgent(unittest.TestCase):
         git('-c', 'user.name=fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-q', '-m', 'fixture')
         head = git('rev-parse', 'HEAD')
         with unittest.mock.patch.object(guest_agent, 'REPOSITORY', 'file://' + str(repo)):
-            report = guest_agent.cmd_fetch_source(types.SimpleNamespace(sha=head, timeout_s=30))
+            report = guest_agent.cmd_fetch_source(authority(sha=head, timeout_s=30))
         self.assertTrue(report['ok'], report)
         self.assertTrue(report['clean'])
         frozen = provision_cli.source_digests(repo, head)
@@ -622,7 +673,7 @@ class GuestAgent(unittest.TestCase):
     def test_a_fetch_failure_is_reported(self):
         self.agent_dirs()
         with unittest.mock.patch.object(guest_agent, 'REPOSITORY', '/nonexistent/repository'):
-            report = guest_agent.cmd_fetch_source(types.SimpleNamespace(sha='a' * 40, timeout_s=30))
+            report = guest_agent.cmd_fetch_source(authority(sha='a' * 40, timeout_s=30))
         self.assertFalse(report['ok'])
 
     def test_smoke_commands_report_the_bot_result_and_really_stop_the_server(self):
@@ -632,13 +683,11 @@ class GuestAgent(unittest.TestCase):
         self.stub(release / 'omega-load-test', 'while [ $# -gt 0 ]; do [ "$1" = "--output" ] && out=$2; shift; done\n'
                   'printf \'{"aggregated": {"connected_bots": 2, "disconnected_bots": 0, "total_errors": 0, "total_decode_failures": 0, '
                   '"total_send_failures": 0, "total_panics": 0, "total_packets_sent": 5, "total_packets_received": 7}}\' > "$out"')
-        started = guest_agent.cmd_smoke_game_start(types.SimpleNamespace(wait_s=1))
+        started = guest_agent.cmd_smoke_game_start(authority(smoke_id='1', wait_s=1, lifetime_s=60.0))
         self.assertTrue(started['running'])
-        # In production the agent has exited and init reaps the server. Here the test process is its parent.
-        threading.Thread(target=os.waitpid, args=(started['pid'], 0), daemon=True).start()
-        bot = guest_agent.cmd_smoke_bot(types.SimpleNamespace(server='198.51.100.7:8081', timeout_s=10))
+        bot = guest_agent.cmd_smoke_bot(authority(server='198.51.100.7:8081', timeout_s=10))
         self.assertEqual((bot['report'], bot['connected_bots'], bot['requested_bots']), (True, 2, 2))
-        stopped = guest_agent.cmd_smoke_game_stop(None)
+        stopped = guest_agent.cmd_smoke_game_stop(authority(smoke_id='1'))
         self.assertTrue(stopped['exited_on_signal'])
         with self.assertRaises(ProcessLookupError):
             os.kill(started['pid'], 0)
@@ -657,7 +706,7 @@ class GuestAgent(unittest.TestCase):
     def test_a_missing_bot_report_is_reported_not_guessed(self):
         root = self.agent_dirs()
         self.stub(root / 'release' / 'omega-load-test', 'exit 1')
-        report = guest_agent.cmd_smoke_bot(types.SimpleNamespace(server='a:1', timeout_s=10))
+        report = guest_agent.cmd_smoke_bot(authority(server='a:1', timeout_s=10))
         self.assertFalse(report['report'])
         self.assertTrue(readiness.smoke_problems(None, report, None))
 
@@ -667,7 +716,7 @@ class GuestAgent(unittest.TestCase):
         incoming.mkdir()
         for name in guest_agent.ROLE_FILES['game']:
             (incoming / name).write_text(name)
-        report = guest_agent.cmd_install_release(types.SimpleNamespace(role='game', incoming=str(incoming)))
+        report = guest_agent.cmd_install_release(authority(role='game', incoming=str(incoming)))
         self.assertEqual(sorted(report['release']), sorted(guest_agent.ROLE_FILES['game']))
         self.assertTrue(os.access(str(root / 'release' / 'omega-server'), os.X_OK))
 
@@ -675,8 +724,183 @@ class GuestAgent(unittest.TestCase):
         import ast
         tree = ast.parse(pathlib.Path(guest_agent.__file__).read_text())
         imported = {n.names[0].name.split('.')[0] for n in ast.walk(tree) if isinstance(n, ast.Import)}
-        allowed = {'argparse', 'hashlib', 'json', 'os', 'pathlib', 're', 'shutil', 'signal', 'socket', 'subprocess', 'sys', 'tempfile', 'time', 'urllib'}
+        allowed = {'argparse', 'contextlib', 'ctypes', 'fcntl', 'functools', 'hashlib', 'json', 'os', 'pathlib', 're', 'shutil', 'signal', 'socket', 'struct', 'subprocess', 'sys', 'tempfile', 'time', 'urllib'}
         self.assertEqual(imported - allowed, set())
+
+
+class SmokeAuthority(unittest.TestCase):
+    """The real agent and its real helper: a real server stand-in, a real UDP socket and real signals. Files as on a guest, under a temporary root."""
+
+    SESSION = 'do-test'
+
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = pathlib.Path(directory.name)
+        for name, attribute in (('release', 'RELEASE_DIR'), ('results', 'RESULTS_DIR')):
+            (self.root / name).mkdir()
+            patcher = unittest.mock.patch.object(guest_agent, attribute, self.root / name)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.port = free_udp_port()
+        patcher = unittest.mock.patch.object(guest_agent, 'GAME_PORT', self.port)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        standins = pathlib.Path(guest_agent.__file__).parent / 'fixtures' / 'local_standins'
+        target = self.root / 'release' / 'omega-server'
+        target.write_bytes((standins / 'omega-server').read_bytes())
+        target.chmod(0o755)
+        (self.root / 'release' / 'server_config.json').write_text('{}')
+        self.addCleanup(self.kill_everything)
+
+    def kill_everything(self):
+        record = guest_agent.read_json(guest_agent.bounded_paths('readiness-game')[0]) or {}
+        guest_agent.signal_identity(record.get('process'), signal.SIGKILL)
+        guest_agent.signal_identity(record.get('supervisor'), signal.SIGKILL)
+
+    def start(self, token=1, smoke_id='1', lifetime_s=30.0, not_after=None):
+        return guest_agent.cmd_smoke_game_start(authority(token=token, smoke_id=smoke_id, wait_s=1, lifetime_s=lifetime_s, session=self.SESSION,
+                                                          not_after_wall=time.time() + 10 if not_after is None else not_after))
+
+    def stop(self, token=1, smoke_id='1'):
+        return guest_agent.cmd_smoke_game_stop(authority(token=token, smoke_id=smoke_id, session=self.SESSION))
+
+    def fence(self):
+        return guest_agent.read_json(guest_agent.control_dir() / 'fence.json')
+
+    def assert_refused(self, code, call, *arguments, **options):
+        with self.assertRaises(guest_agent.Refused) as caught:
+            call(*arguments, **options)
+        self.assertEqual(caught.exception.code, code)
+
+    def assert_no_server(self):
+        self.assertIsNone(guest_agent.read_json(guest_agent.bounded_paths('readiness-game')[0]))
+        self.assertTrue(port_free(self.port))
+
+    def test_a_delayed_smoke_from_a_replaced_controller_starts_nothing(self):
+        guest_runner.cmd_fence(types.SimpleNamespace(session=self.SESSION, token=2), guest_runner.Host(self.root / 'results' / 'do-runs'))
+        self.assert_refused('stale_fence', self.start, token=1)
+        self.assert_no_server()
+
+    def test_another_sessions_controller_starts_nothing(self):
+        guest_runner.cmd_fence(types.SimpleNamespace(session='do-other', token=9), guest_runner.Host(self.root / 'results' / 'do-runs'))
+        self.assert_refused('foreign_session', self.start)
+        self.assert_no_server()
+
+    def test_a_smoke_past_its_authorization_starts_nothing(self):
+        self.assert_refused('authorization_expired', self.start, not_after=time.time() - guest_agent.CLOCK_TOLERANCE_S - 0.5)
+        self.assert_no_server()
+
+    def test_a_closed_session_starts_nothing_and_the_close_survives_a_higher_token(self):
+        host = guest_runner.Host(self.root / 'results' / 'do-runs')
+        guest_runner.cmd_fence(types.SimpleNamespace(session=self.SESSION, token=1, close='operator abort'), host)
+        self.assert_refused('session_closed', self.start, token=1)
+        self.assert_refused('session_closed', self.start, token=2)
+        self.assertEqual(self.fence(), dict(session_id=self.SESSION, token=2, closed='operator abort'))
+        self.assert_no_server()
+
+    def test_the_helper_itself_refuses_when_authority_changed_after_the_agent_looked(self):
+        """The helper is a separate process and can be scheduled late. It looks again, right before anything exists."""
+        state, stop, log = guest_agent.bounded_paths('readiness-game')
+        control = guest_agent.control_dir()
+        cases = dict(stale_fence=dict(token=2), session_closed=dict(closed='operator abort'), authorization_expired=dict(not_after=time.time() - 5), stop_requested=dict(stop=True))
+        for code, case in cases.items():
+            with self.subTest(code):
+                guest_agent.atomic_json(control / 'fence.json', dict(session_id=self.SESSION, token=case.get('token', 1), closed=case.get('closed')))
+                if case.get('stop'):
+                    stop.write_text('{}')
+                with unittest.mock.patch.object(guest_agent.subprocess, 'Popen', side_effect=AssertionError('nothing may be started')):
+                    guest_agent.cmd_bounded(types.SimpleNamespace(state=str(state), stop=str(stop), log=str(log), control=str(control), session=self.SESSION, token=1,
+                                                                  not_after_wall=case.get('not_after', time.time() + 10), lifetime_s=5.0, cwd=str(self.root), argv=['--', 'true']))
+                self.assertEqual(guest_agent.read_json(state)['refused'], code)
+                self.assertIsNone(guest_agent.read_json(state)['process'])
+                state.unlink()
+                if case.get('stop'):
+                    stop.unlink()
+
+    def test_a_lost_reply_cannot_outlive_the_helper_with_no_controller_left(self):
+        started = self.start(lifetime_s=1.5)
+        self.assertTrue(started['running'])
+        self.assertFalse(port_free(self.port), 'a real socket is held')
+        identity = started['process']
+        # Nothing more is sent: the reply was lost and the controller is gone.
+        state = guest_agent.bounded_paths('readiness-game')[0]
+        wait_for(lambda: guest_agent.read_json(state).get('ended'), 10.0)
+        self.assertFalse(guest_agent.same_process(identity))
+        self.assertTrue(port_free(self.port))
+        self.assertEqual(guest_agent.read_json(state)['reason'], 'lifetime_exhausted')
+
+    def test_the_stop_settles_a_lost_reply_and_a_start_that_arrives_after_it_is_refused(self):
+        started = self.start()
+        stopped = self.stop()
+        self.assertTrue(stopped['exited_on_signal'])
+        self.assertFalse(guest_agent.same_process(started['process']))
+        self.assertTrue(port_free(self.port))
+        self.assert_refused('smoke_stopped', self.start, smoke_id='1')
+        self.assertTrue(port_free(self.port))
+
+    def test_a_stop_before_any_start_blocks_that_start(self):
+        self.assertTrue(self.stop()['exited_on_signal'], 'nothing to stop is not a failure')
+        self.assert_refused('smoke_stopped', self.start, smoke_id='1')
+
+    def test_a_replaced_controller_cannot_stop_the_new_one(self):
+        started = self.start(token=2)
+        self.assert_refused('stale_fence', self.stop, token=1)
+        self.assertTrue(guest_agent.same_process(started['process']))
+        self.assertTrue(self.stop(token=2)['exited_on_signal'])
+
+    def test_the_stop_still_works_through_cleanup(self):
+        started = self.start()
+        guest_runner.cmd_fence(types.SimpleNamespace(session=self.SESSION, token=1, close='cleanup'), guest_runner.Host(self.root / 'results' / 'do-runs'))
+        self.assertTrue(self.stop()['exited_on_signal'])
+        self.assertFalse(guest_agent.same_process(started['process']))
+
+    def test_a_new_controller_retires_a_smoke_it_never_started(self):
+        started = self.start(token=1)
+        self.stop(token=2, smoke_id='retire-2')
+        self.assertFalse(guest_agent.same_process(started['process']))
+        self.assertEqual(self.fence()['token'], 2, 'and the old controller is fenced out')
+
+    def test_a_second_smoke_cannot_overlap_the_first_or_a_run(self):
+        self.start()
+        self.assert_refused('overlap', self.start, smoke_id='2')
+        self.stop()
+        (guest_agent.control_dir() / 'active.json').write_text(json.dumps(dict(run_id='run')))
+        self.assert_refused('overlap', self.start, smoke_id='3')
+
+    def test_a_killed_helper_leaves_the_server_to_be_stopped_only_by_its_exact_identity(self):
+        started = self.start()
+        os.kill(started['supervisor']['pid'], signal.SIGKILL)
+        wait_for(lambda: not guest_agent.same_process(started['supervisor']), 5.0)
+        if sys.platform == 'darwin':
+            self.assertTrue(guest_agent.same_process(started['process']), 'macOS has no parent-death signal, so this path really runs here')
+            self.assertFalse(self.stop()['exited_on_signal'], 'it had to be killed')
+        else:
+            self.stop()
+        self.assertFalse(guest_agent.same_process(started['process']))
+
+    def test_a_recorded_identity_from_another_boot_is_never_signalled(self):
+        victim = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'], start_new_session=True)
+        self.addCleanup(lambda: (victim.kill(), victim.wait()))
+        wait_for(lambda: guest_agent.process_start_id(victim.pid), 5.0)
+        other_boot = dict(guest_agent.identity_of(victim.pid), boot_id='a-previous-boot')
+        self.assertFalse(guest_agent.same_process(other_boot))
+        state = guest_agent.bounded_paths('readiness-game')[0]
+        state.write_text(json.dumps(dict(supervisor=dict(other_boot), process=other_boot, ended=False)))
+        self.stop()
+        self.assertIsNone(victim.poll())
+
+    def test_the_agent_and_the_runner_see_the_same_identity(self):
+        self.assertEqual(guest_agent.identity_of(os.getpid()), guest_runner.identity_of(os.getpid()))
+        self.assertEqual(guest_agent.CLOCK_TOLERANCE_S, guest_runner.LAUNCH_CLOCK_TOLERANCE_S)
+
+    def test_a_real_refusal_is_a_document_not_a_crash(self):
+        guest_runner.cmd_fence(types.SimpleNamespace(session=self.SESSION, token=2), guest_runner.Host(self.root / 'results' / 'do-runs'))
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            code = guest_agent.main(['smoke_game_start', '--session', self.SESSION, '--token', '1', '--not-after-wall', str(time.time() + 10), '--smoke-id', '1'])
+        document = json.loads(output.getvalue())
+        self.assertEqual((code, document['ok'], document['code']), (0, False, 'stale_fence'))
 
 
 if __name__ == '__main__':

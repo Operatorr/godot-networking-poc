@@ -9,6 +9,11 @@
 The registry is the record of what was dispatched. A crash anywhere after ``dispatch_run`` leaves that run touched for
 good: it cannot be dispatched again, and on return it is stopped, sealed and classified from what it actually left.
 
+No process starts on a guest on this controller's word alone. Each start first gets a window of a few seconds from the registry
+(``authorize_guest_action``), the guest refuses it once that has passed, and this controller asks again as soon as the start
+returns. A start already on its way when an abort commits can still land inside its window. That race has no atomic fix across
+two hosts, so it is bounded, stopped by the recheck, and failing that ended by the guest's own process bound or the deletion.
+
 Workload processes stop by themselves, through the guest's supervisor, by ``launch_by + estimate`` less the time export
 needs. This controller only ends them sooner. Nothing here scores a measurement: ``scorer`` is the boundary described in
 ``run_checks``, and no scorer ships yet, so no run can currently establish PASS or FAIL.
@@ -23,6 +28,7 @@ import tempfile
 import admission
 import cleanup_provider
 import do_session
+import guest_agent
 import guest_runner
 import manifest as manifest_mod
 import provisioner
@@ -40,6 +46,9 @@ ROLES = ('game', 'bot')
 RUNNER_SOURCE = pathlib.Path(guest_runner.__file__)
 FINISHED, STOPPED, PARTIAL, CONTROL_LOST, CLEANUP_STARTED, REFUSED = ('search_finished', 'stopped', 'partial_search', 'control_lost', 'cleanup_started', 'refused')
 NOT_LAUNCHED = 'not_launched'
+SOURCE_CHANGED = 'source_changed'
+ADAPTER_PATH = 'scripts/do_session/run_plan.py'
+LOCAL_FAILURES = (OSError, ValueError, KeyError, TypeError)
 STALE_CODES = ('stale_fencing_token', 'lease_expired', 'control_held')
 CLEANUP_CODES = ('cleanup_in_progress', 'deadline_reached', 'clock_unverifiable')
 SEARCH_ENDINGS = ('confirmed', 'confirmed_search_cap_reached', 'no_passing_target', 'unconfirmed_variable', 'unconfirmed_partial')
@@ -67,6 +76,7 @@ class BatchResult:
     code: str = None
     detail: str = None
     runs: list = dataclasses.field(default_factory=list)
+    wrap_up_error: str = None
 
 
 class ControlLost(Exception):
@@ -128,6 +138,8 @@ class RunContext:
     interrupted: str = None
     launched: bool = False
     exported: dict = dataclasses.field(default_factory=dict)
+    uncertain: list = dataclasses.field(default_factory=list)   # problems of contact, which say nothing about what happened on the host
+    retained_record: dict = None                                # the execution record a crashed controller left for this run
 
 
 def publish_new(source, target):
@@ -168,7 +180,7 @@ class GuestReadiness:
             image = executor.provider.image(executor.manifest['roles'][role]['image_id'])
             found += readiness.observation_problems(executor.manifest, role, observation, (image or {}).get('name'))
             found += readiness.clock_problems(role, executor._measure_clock(role))
-            found += readiness.sampler_problems(role, executor._agent(role, 'sampler'))
+            found += readiness.sampler_problems(role, executor._agent(role, 'sampler', *executor._authorized_arguments()))
             recorded = report['roles'][role]['observation']
             if (observation.get('clock') or {}).get('boot_id') != (recorded.get('clock') or {}).get('boot_id'):
                 found.append(role + ': the host rebooted since readiness')
@@ -179,13 +191,25 @@ class GuestReadiness:
         addresses = executor.addresses
         probe = executor._agent('bot', 'tcp_probe', '--host', addresses['game'], '--port', session_access.SSH_PORT)
         found += readiness.enforcement_problems(probe)
-        started = executor._agent('game', 'smoke_game_start')
-        try:
-            bot = executor._agent('bot', 'smoke_bot', '--server', addresses['game'] + ':' + session_access.GAME_PORT, '--timeout-s', 60, timeout_s=90)
-        finally:
-            stopped = executor._agent('game', 'smoke_game_stop')
-        found += readiness.smoke_problems(started, bot, stopped)
+        found += readiness.smoke_problems(*self._smoke())
         return found
+
+    def _smoke(self):
+        """The start is inside the ``try``: a lost reply may still mean a running server, and only the stop can settle that.
+
+        If this controller vanishes as well, the guest's helper ends the server at the end of its lifetime.
+        """
+        executor = self.executor
+        executor.smokes += 1
+        smoke = ['--smoke-id', '%d-%d' % (executor.token, executor.smokes)]
+        started = bot = None
+        try:
+            started = executor._agent('game', 'smoke_game_start', *executor._authorized_arguments(), *smoke, '--lifetime-s', executor._smoke_lifetime())
+            executor._keepalive(force=True)     # the authority may have gone while that was in flight, and the bot has not started
+            bot = executor._agent('bot', 'smoke_bot', '--server', executor.addresses['game'] + ':' + session_access.GAME_PORT, *executor._authorized_arguments(), '--timeout-s', 60, timeout_s=90)
+        finally:
+            stopped = executor._stop_smoke(smoke)
+        return started, bot, stopped
 
 
 class RunExecutor:
@@ -218,6 +242,10 @@ class RunExecutor:
         self.collecting = False     # stopping and sealing whatever was left must carry on through cleanup
         self.work_cutoff = None     # local monotonic form of C less the delete margin
         self.in_recovery = False    # an evidence recovery episode has its own deadline, up to C itself
+        self.recovery_ends = None   # local monotonic form of min(first failure + grace, C)
+        self.smokes = 0
+        self.fences_closed = False
+        self.never_created = set()  # (run_id, role): a plan went out, and the host says no such run ever existed
         self.addresses = None
         self.report = None
         self.prepared = False
@@ -258,8 +286,27 @@ class RunExecutor:
         """For stopping and sealing, which must finish even after the session has moved on."""
         try:
             self._keepalive()
-        except (ControlLost, CleanupStarted):
+        except (ControlLost, CleanupStarted, registry_client.RegistryRejected):
             pass
+
+    def _wait_callback(self):
+        return self._recovery_wait if self.in_recovery else self._quiet_keepalive
+
+    def _recovery_wait(self):
+        """Inside an episode a callback may not outlast it, and a slow registry may not hold a transfer past its timeout."""
+        remaining = self.recovery_ends - self.monotonic() if self.recovery_ends is not None else 0
+        if remaining <= 0:
+            raise GuestLost('the evidence recovery episode is over')
+        if self.next_renew is not None and self.monotonic() < self.next_renew:
+            return
+        try:
+            self.client.within(remaining).call('renew_control', session_id=self.session_id, fencing_token=self.token)
+        except registry_client.RegistryRejected as rejection:
+            if rejection.code in STALE_CODES:
+                raise ControlLost(rejection.code, rejection.message)
+        except registry_client.RegistryUnavailable:
+            pass
+        self.next_renew = self.monotonic() + self.policy.renew_every_s
 
     def _status(self):
         return self.client.call('status', session_id=self.session_id)
@@ -270,13 +317,14 @@ class RunExecutor:
     # ---- guests ------------------------------------------------------------------------------
 
     def _guest_timeout(self, seconds):
-        """No guest command starts at or past the cutoff, and none is allowed to outlast it."""
-        if self.work_cutoff is None or self.in_recovery:
+        """No guest command starts at or past the cutoff, and none is allowed to outlast it. An episode has a cutoff of its own."""
+        cutoff = self.recovery_ends if self.in_recovery else self.work_cutoff
+        if cutoff is None:
             return seconds
-        remaining = self.work_cutoff - self.monotonic()
+        remaining = cutoff - self.monotonic()
         if remaining <= 0:
             raise GuestLost('past the controller work cutoff')
-        return max(1, min(seconds, remaining))
+        return min(seconds, remaining)
 
     def _set_work_cutoff(self, status):
         asked = self.monotonic()
@@ -300,9 +348,9 @@ class RunExecutor:
             raise ControlLost('stale_fence', '%s: %s' % (role, document.get('detail')))
         return document
 
-    def _agent(self, role, step, *arguments, timeout_s=None):
+    def _agent(self, role, step, *arguments, timeout_s=None, on_wait=None):
         argv = ['python3', provisioner.AGENT_REMOTE, step] + [str(a) for a in arguments]
-        result = self.guests.run(role, argv, self._guest_timeout(timeout_s or self.policy.guest_step_timeout_s), self._keepalive)
+        result = self.guests.run(role, argv, self._guest_timeout(timeout_s or self.policy.guest_step_timeout_s), on_wait or self._keepalive)
         if result.returncode != 0:
             raise GuestLost('%s %s exited %s' % (role, step, result.returncode))
         try:
@@ -311,7 +359,60 @@ class RunExecutor:
             raise GuestLost('%s %s printed no JSON document' % (role, step))
         if manifest_mod.scan_for_secrets(document):
             raise RunAborted(run_checks.INFRASTRUCTURE, '%s %s reported a credential value' % (role, step))
+        if document.get('ok') is False and 'code' in document:
+            code, detail = document['code'], '%s: %s' % (role, document.get('detail'))
+            if code == 'session_closed':
+                raise CleanupStarted(detail)
+            if code in guest_agent.FENCE_CODES:
+                raise ControlLost(code, detail)
+            raise GuestLost('%s %s refused: %s %s' % (role, step, code, document.get('detail')))
         return document
+
+    def _fence_arguments(self):
+        return ['--session', self.session_id, '--token', self.token]
+
+    def _authorize(self, action, run_id=None, role=None):
+        """One fresh answer, immediately before a process start. Unthrottled, and worth seconds. Returns when it expires, in wall time."""
+        self._guest_timeout(1.0)    # no authorization is even requested past the cutoff
+        try:
+            grant = self.client.call('authorize_guest_action', session_id=self.session_id, fencing_token=self.token, action=action, run_id=run_id, role=role)
+        except registry_client.RegistryRejected as rejection:
+            if rejection.code in STALE_CODES:
+                raise ControlLost(rejection.code, rejection.message)
+            if rejection.code in CLEANUP_CODES:
+                raise CleanupStarted(rejection.message)
+            raise
+        return session_clock.parse(grant['authorized_until'])
+
+    def _authorized_arguments(self):
+        return self._fence_arguments() + ['--not-after-wall', self._authorize('smoke')]
+
+    def _smoke_lifetime(self):
+        """The server's own end: the longest smoke there can be, and never past this controller's cutoff."""
+        if self.work_cutoff is None:
+            return guest_agent.SMOKE_GAME_LIFETIME_S
+        return max(1.0, min(guest_agent.SMOKE_GAME_LIFETIME_S, self.work_cutoff - self.monotonic()))
+
+    def _stop_smoke(self, smoke, on_wait=None):
+        """On the way out of a smoke, so it never raises. A controller that can no longer stop it leaves that to the helper's lifetime."""
+        try:
+            return self._agent('game', 'smoke_game_stop', *self._fence_arguments(), *smoke, on_wait=on_wait or self._quiet_keepalive)
+        except (GuestLost, ControlLost, CleanupStarted, RunAborted) as error:
+            self._note('smoke_stop_failed', detail=cleanup_provider.redact(error))
+            return None
+
+    def _close_fences(self, reason):
+        """Nothing may start on these hosts again, whatever is still in flight. Only a controller can carry this, so it is best effort."""
+        if self.fences_closed or not self.prepared:
+            return
+        closed = 0
+        for role in ROLES:
+            try:
+                self._runner(role, 'fence', '--session', self.session_id, '--token', self.token, '--close', str(reason)[:200], on_wait=self._quiet_keepalive)
+                closed += 1
+            except (GuestLost, ControlLost, RunAborted) as error:
+                self._note('fence_not_closed', role=role, detail=cleanup_provider.redact(error))
+        self.fences_closed = closed == len(ROLES)
 
     def _measure_clock(self, role):
         before = self.wall()
@@ -469,10 +570,10 @@ class RunExecutor:
     def _run_dir(self, run_id):
         return self.session_dir / 'runs' / run_id
 
-    def _plan(self, trial, role, launch_not_after_wall=0.0, bound_s=0.0, stop_by_wall=0.0):
+    def _plan(self, trial, role, launch_not_after_wall=0.0, bound_s=0.0, stop_by_wall=0.0, minimum_bound_s=0.0):
         sampler_sha256 = self.report['roles'][role]['observation']['release']['sample_host.py']
         return run_plan.role_plan(self.adapter, self.manifest, self.sha, trial, role, self.addresses, sampler_sha256, self.token, self.guests.UNIT_MODE,
-                                  launch_not_after_wall, bound_s, stop_by_wall, self.policy.stop_grace_s)
+                                  launch_not_after_wall, bound_s, stop_by_wall, self.policy.stop_grace_s, minimum_bound_s)
 
     def _expected_boot(self, role):
         return self.report['roles'][role]['observation']['clock']['boot_id']
@@ -495,9 +596,12 @@ class RunExecutor:
     # ---- one run -----------------------------------------------------------------------------
 
     def run_batch(self):
-        """Run until the search or the session ends, then collect and hand over to cleanup. A stale controller does neither."""
+        """Run until the search or the session ends, then collect and hand over to cleanup.
+
+        A stale controller does neither, and nor does code other than the frozen revision: it changes nothing, and C still arrives.
+        """
         result = self.execute()
-        if result.status == CONTROL_LOST:
+        if result.status == CONTROL_LOST or result.code == SOURCE_CHANGED:
             return result
         self.wrap_up(result)
         return result
@@ -505,6 +609,7 @@ class RunExecutor:
     def execute(self):
         """Run the legal remaining trials. Assumes this controller holds the session in ``ready``."""
         try:
+            self._require_frozen_source()
             self.prepare()
             while True:
                 self._keepalive(force=True)
@@ -535,9 +640,18 @@ class RunExecutor:
             return self._batch_failed('pair_unverifiable', cleanup_provider.redact(error))
         except RunAborted as aborted:
             return self._batch_failed('guest_report_refused', aborted.reason)
-        except (OSError, ValueError, KeyError, TypeError) as error:
+        except LOCAL_FAILURES as error:
             # A defect or a full disk here must not hide behind a clean-looking return. C still arrives.
             return self._batch_failed('controller_failure', type(error).__name__)
+
+    def _require_frozen_source(self):
+        """Before any guest is touched, on the first run as on a resume. No check supplied means no proof, so nothing runs."""
+        try:
+            problems = self.source_problems() if self.source_problems is not None else ['no controller source check was supplied']
+        except OSError as error:
+            problems = ['the controller source could not be checked: ' + type(error).__name__]
+        if problems:
+            raise BatchStop(REFUSED, SOURCE_CHANGED, '; '.join(problems))
 
     def _refused_admission(self, result):
         time_short = any('maximal legal remaining path' in reason for reason in result.reasons)
@@ -638,9 +752,11 @@ class RunExecutor:
             # Stopping comes first. If the registry stays away the commits below raise, with the processes already stopped.
             context.interrupted = 'registry_unavailable'
             self._note('registry_unavailable_during_run', run_id=context.trial.run_id, detail=cleanup_provider.redact(error))
-        except (OSError, ValueError, KeyError, TypeError) as error:
+        except LOCAL_FAILURES as error:
             context.problems[run_checks.INFRASTRUCTURE].append('the controller failed locally: ' + type(error).__name__)
             context.interrupted = 'controller_failure'
+        if cleanup is not None:
+            self._close_fences('cleanup: ' + cleanup.detail)
         self._finish_run(context)
         if cleanup is not None:
             raise cleanup
@@ -665,14 +781,18 @@ class RunExecutor:
         reserved = self.timing['recorder_finalization_s'] + self.timing['per_trial_export_s']
         grace = self.policy.stop_grace_s
         launch_by = session_clock.parse(context.grant['launch_by'])
-        game = self._plan(trial, 'game', launch_by, max(1.0, context.stop_by - self.monotonic() - reserved - grace), must_stop_by - reserved - grace)
+        whole = run_plan.workload_s(trial)
+        game = self._plan(trial, 'game', self._authorize('launch_run', trial.run_id, 'game'), max(1.0, context.stop_by - self.monotonic() - reserved - grace), must_stop_by - reserved - grace, whole)
+        self.failpoint('after_game_authorized')
         self._start_role(context, game)
         self.failpoint('after_game_start')
         self._await_game_socket(context, game)
         bound = context.stop_by - self.monotonic() - reserved - 2 * grace
-        if bound < run_plan.workload_s(trial):
+        if bound < whole:
             raise RunAborted(NOT_LAUNCHED, 'too little of the grant is left for the whole workload: %.1f s' % bound)
-        bot = self._plan(trial, 'bot', launch_by + self.policy.game_start_wait_s, bound, must_stop_by - reserved - 2 * grace)
+        authorized = self._authorize('launch_run', trial.run_id, 'bot')
+        bot = self._plan(trial, 'bot', min(authorized, launch_by + self.policy.game_start_wait_s), bound, must_stop_by - reserved - 2 * grace, whole)
+        self.failpoint('after_bot_authorized')
         self._start_role(context, bot)
         self.failpoint('after_bot_start')
         self.client.mutate('record_run_progress', session_id=self.session_id, run_id=trial.run_id, phase='running', fencing_token=self.token,
@@ -689,12 +809,16 @@ class RunExecutor:
             code, detail = document.get('code'), document.get('detail')
             if code == 'launch_window_closed':
                 raise RunAborted(NOT_LAUNCHED, '%s start arrived after its grant' % role)
+            if code == 'session_closed':
+                raise CleanupStarted('%s start refused: %s' % (role, detail))
             raise RunAborted(run_checks.INFRASTRUCTURE, '%s start refused: %s %s' % (role, code, detail))
         context.launched = True
         context.summaries[role] = document
         problems = run_checks.launch_problems(plan, document, self._ledger_without(context.ledgers.get(role), plan['run_id']))
         if problems:
             raise RunAborted(run_checks.INFRASTRUCTURE, '%s: %s' % (role, '; '.join(problems)))
+        # The authority may have gone while the start was in flight. This is the end of that race: the process stops now.
+        self._keepalive(force=True)
 
     @staticmethod
     def _ledger_without(ledger, run_id):
@@ -765,7 +889,7 @@ class RunExecutor:
             try:
                 failure = self._stop_role(context, role, reason)
             except GuestLost as lost:
-                context.problems[run_checks.INFRASTRUCTURE].append('%s could not be stopped: %s' % (role, cleanup_provider.redact(lost)))
+                self._note_uncertain(context, '%s could not be stopped: %s' % (role, cleanup_provider.redact(lost)))
                 continue
             if failure not in (None, 'unknown_run'):
                 context.problems[run_checks.INFRASTRUCTURE].append('%s could not be stopped: %s' % (role, failure))
@@ -798,7 +922,7 @@ class RunExecutor:
         try:
             sealed = self._runner(role, 'seal', *arguments, timeout_s=max(self.policy.guest_step_timeout_s, self.timing['recorder_finalization_s']), on_wait=self._quiet_keepalive)
         except GuestLost as lost:
-            context.problems[run_checks.INFRASTRUCTURE].append('%s could not be sealed: %s' % (role, cleanup_provider.redact(lost)))
+            self._note_uncertain(context, '%s could not be sealed: %s' % (role, cleanup_provider.redact(lost)))
             return
         if sealed.get('ok') is not True:
             if sealed.get('code') != 'unknown_run':
@@ -807,11 +931,21 @@ class RunExecutor:
         context.sealed[role] = sealed
         context.summaries[role] = sealed
 
+    @staticmethod
+    def _note_uncertain(context, problem):
+        """Infrastructure on an uninterrupted run. To a controller coming back after a crash, only a failure of contact, which proves nothing."""
+        context.problems[run_checks.INFRASTRUCTURE].append(problem)
+        context.uncertain.append(problem)
+
     def _export(self, context):
         for role, sealed in context.sealed.items():
-            context.exported[role] = self._export_role(context.trial.run_id, role, sealed)
-            if not context.exported[role]['complete']:
-                context.problems[run_checks.INFRASTRUCTURE].append('%s evidence was not fully exported: %s' % (role, context.exported[role]['failed']))
+            exported = context.exported[role] = self._export_role(context.trial.run_id, role, sealed)
+            if not exported['complete']:
+                problem = '%s evidence was not fully exported: %s' % (role, exported['failed'])
+                if all(item['kind'] == 'transfer' for item in exported['failed']):
+                    self._note_uncertain(context, problem)
+                else:
+                    context.problems[run_checks.INFRASTRUCTURE].append(problem)
 
     def _export_role(self, run_id, role, sealed):
         """Through ``.partial`` and SHA256, as the lifecycle contract asks. A file that fails stays partial and is never promoted."""
@@ -821,27 +955,32 @@ class RunExecutor:
         wanted = [(item['path'], item['sha256']) for item in sealed['seal']['files']] + [(guest_runner.SEAL, sealed['seal_sha256'])]
         failed, copied = [], 0
         for relative, digest in wanted:
-            local = target / relative
-            if local.exists() and sha256_path(local) == digest:
-                continue
-            local.parent.mkdir(parents=True, exist_ok=True)
-            partial = local.with_name(local.name + '.partial')
             try:
-                result = self.guests.get(role, remote + relative, str(partial), self._guest_timeout(self.policy.transfer_timeout_s), self._quiet_keepalive)
+                local = target / relative
+                if local.exists() and sha256_path(local) == digest:
+                    continue
+                local.parent.mkdir(parents=True, exist_ok=True)
+                partial = local.with_name(local.name + '.partial')
+                result = self.guests.get(role, remote + relative, str(partial), self._guest_timeout(self.policy.transfer_timeout_s), self._wait_callback())
+                if result.returncode != 0:
+                    failed.append(dict(path=relative, kind='transfer', reason=cleanup_provider.redact(result.stderr)))
+                elif sha256_path(partial) != digest:
+                    failed.append(dict(path=relative, kind='corrupt', reason='hash mismatch'))
+                else:
+                    publish_new(partial, local)
+                    copied += 1
             except GuestLost as lost:
-                failed.append(dict(path=relative, reason=cleanup_provider.redact(lost)))
-                continue
-            if result.returncode != 0:
-                failed.append(dict(path=relative, reason=cleanup_provider.redact(result.stderr)))
-            elif sha256_path(partial) != digest:
-                failed.append(dict(path=relative, reason='hash mismatch'))
-            else:
-                publish_new(partial, local)
-                copied += 1
+                failed.append(dict(path=relative, kind='transfer', reason=cleanup_provider.redact(lost)))
+            except OSError as error:
+                # One file's local failure costs that file. An existing file with other bytes is never overwritten.
+                failed.append(dict(path=relative, kind='local', reason=type(error).__name__))
         return dict(complete=not failed, failed=failed, files=len(wanted), copied=copied)
 
-    def _write_execution(self, context, name):
-        """The boundary between running and scoring: what happened, bound by hash. Create-only, like every run file."""
+    def _write_execution(self, context, name, writer='run'):
+        """The boundary between running and scoring: what happened, bound by hash. Create-only, like every run file.
+
+        ``writer`` says whose view this is: the controller that watched the run, or one that came back and saw only what was left.
+        """
         ledgers = {role: self._ledger_without(context.ledgers.get(role), context.trial.run_id) for role in ROLES}
         problems = dict(context.problems)
         if context.plans and set(context.plans) == set(ROLES):
@@ -849,7 +988,7 @@ class RunExecutor:
             for kind, items in found.items():
                 problems[kind] = list(problems.get(kind, [])) + items
         document = dict(schema='omega.do-session.run-execution/1', session_id=self.session_id, manifest_sha256=self.sha, run_id=context.trial.run_id, trial=context.trial.to_dict(),
-                        fencing_token=self.token, grant=context.grant, plan_digests={role: run_plan.plan_digest(plan) for role, plan in context.plans.items()},
+                        writer=writer, fencing_token=self.token, grant=context.grant, plan_digests={role: run_plan.plan_digest(plan) for role, plan in context.plans.items()},
                         launched=context.launched, interrupted=context.interrupted, problems=problems, runner_sha256=self.runner_sha256,
                         roles={role: dict(identity=dict(supervisor=summary.get('supervisor'), processes=summary.get('processes'), invocation_id=summary.get('invocation_id')),
                                           result=summary.get('result'), socket=summary.get('socket'), sampler=summary.get('sampler'), seal_sha256=summary.get('seal_sha256'))
@@ -863,15 +1002,24 @@ class RunExecutor:
         digest = hashlib.sha256(text.encode('utf-8')).hexdigest()
         return dict(document=document, sha256=digest, ref='runs/%s/%s#sha256:%s' % (context.trial.run_id, name, digest), path=path)
 
-    def _classify(self, context, execution):
-        problems = execution['document']['problems']
+    @staticmethod
+    def _settled_verdict(problems, interrupted):
+        """What execution facts alone decide, with no scorer. ``None`` means only a scorer could say more."""
         if problems.get(NOT_LAUNCHED):
             return dict(outcome=search.INCOMPLETE, reasons=problems[NOT_LAUNCHED], scored=False)
-        if context.interrupted and not any(problems.get(kind) for kind in (run_checks.INFRASTRUCTURE,)):
-            return dict(outcome=search.INCOMPLETE, reasons=[context.interrupted], scored=False)
+        if interrupted and not problems.get(run_checks.INFRASTRUCTURE):
+            return dict(outcome=search.INCOMPLETE, reasons=[interrupted], scored=False)
+        settled = run_checks.disposition(problems)
+        return None if settled['scorable'] else dict(outcome=settled['outcome'], reasons=settled['reasons'], scored=False)
+
+    def _classify(self, context, execution):
+        problems = execution['document']['problems']
+        verdict = self._settled_verdict(problems, context.interrupted)
+        if verdict is not None:
+            return verdict
         settled = run_checks.disposition(problems)
         answer = None
-        if settled['scorable'] and self.scorer is not None:
+        if self.scorer is not None:
             answer = self.scorer(self._evidence_for_scorer(context, execution))
         return run_checks.apply_scorer(settled, answer)
 
@@ -931,6 +1079,9 @@ class RunExecutor:
                     # Selected and started by nobody we recorded: it still must not run on, and it is never ours to claim.
                     self._retire_unknown(role, entry, reason)
                     problems.append('%s holds run %s that the registry never dispatched' % (role, entry.get('run_id')))
+        if 'game' in inventories:
+            # A smoke the last controller never got to stop. Its own lifetime would end it anyway, and this frees the port now.
+            self._stop_smoke(['--smoke-id', 'retire-%d' % self.token])
         for row in unfinished:
             self._reconcile_run(row, reason, inventories)
         self._sync_planner_journal()
@@ -951,6 +1102,7 @@ class RunExecutor:
         grant = dict(launch_by=row['launch_by'], must_stop_by=row['must_stop_by'], interrupted_reason=row['interrupted_reason'])
         now = self.monotonic()
         context = RunContext(trial, grant, now, now, now, interrupted=row['interrupted_reason'] or reason)
+        self._carry_retained_record(context, run_dir)
         reachable = True
         for role in ROLES:
             plan_path = run_dir / ('plan-%s.json' % role)
@@ -966,11 +1118,21 @@ class RunExecutor:
         name = 'execution.json' if not (run_dir / 'execution.json').exists() else 'execution-reconciled.json'
         if (run_dir / name).exists():
             name = 'execution-reconciled-%d.json' % self.token
-        execution = self._write_execution(context, name)
+        execution = self._write_execution(context, name, writer='reconcile')
         if set(context.sealed) == set(ROLES):
             self._safe_progress(trial.run_id, 'sealed', execution['ref'])
         verdict = self._interrupted_verdict(context, execution, reachable)
         self._commit_interrupted(context, verdict, execution)
+
+    def _carry_retained_record(self, context, run_dir):
+        """What the crashed controller already wrote down stays true. A second look at a host cannot unsay it."""
+        record = guest_runner.read_json(run_dir / 'execution.json')
+        if not isinstance(record, dict) or record.get('writer') != 'run':
+            return
+        context.retained_record = record
+        for kind, items in (record.get('problems') or {}).items():
+            context.problems.setdefault(kind, [])
+            context.problems[kind] += [item for item in items if item not in context.problems[kind]]
 
     def _reconcile_role(self, context, role, reason):
         run_id = context.trial.run_id
@@ -980,12 +1142,16 @@ class RunExecutor:
             if stopped.get('ok') is True:
                 context.summaries[role] = stopped
         except GuestLost as lost:
-            context.problems[run_checks.INFRASTRUCTURE].append('%s could not be stopped: %s' % (role, cleanup_provider.redact(lost)))
+            self._note_uncertain(context, '%s could not be stopped: %s' % (role, cleanup_provider.redact(lost)))
             return
         self._seal_role(context, role)
 
     def _interrupted_verdict(self, context, execution, reachable):
-        """A crash just before the commit keeps the verdict already reached. Otherwise only retained evidence can say more than INCOMPLETE."""
+        """A crash just before the commit keeps the verdict already reached, and one earlier keeps the facts already written down.
+
+        INCOMPLETE is for what really is unknown: a run that was cut short, or that could not be reached. It never replaces
+        a failure that was demonstrated, with or without a scorer.
+        """
         path = self._run_dir(context.trial.run_id) / 'classification.json'
         if path.exists():
             document = json.loads(path.read_text())
@@ -994,11 +1160,21 @@ class RunExecutor:
         demonstrated = run_checks.interrupted_outcome(context.plans, context.summaries, boots)
         if demonstrated is not None:
             return dict(demonstrated, scored=False)
+        if context.retained_record is not None:
+            # Exactly what that controller would have decided next, had it not died first.
+            verdict = self._settled_verdict(context.retained_record.get('problems') or {}, context.retained_record.get('interrupted'))
+            if verdict is not None:
+                return verdict
+        definite = [p for p in context.problems[run_checks.INFRASTRUCTURE] if p not in context.uncertain]
+        if definite:
+            return dict(outcome=search.INFRASTRUCTURE_FAILURE, reasons=definite, scored=False)
         problems = execution['document']['problems']
-        if not reachable or set(context.sealed) != set(ROLES) or not run_checks.finished_naturally(context.plans, context.summaries):
-            return dict(outcome=search.INCOMPLETE, reasons=['interrupted: ' + str(context.interrupted)], scored=False)
+        if not reachable or set(context.sealed) != set(ROLES) or not run_checks.finished_naturally(context.plans, context.summaries) or context.uncertain:
+            return dict(outcome=search.INCOMPLETE, reasons=['interrupted: ' + str(context.interrupted)] + context.uncertain, scored=False)
         settled = run_checks.disposition(problems)
-        if not settled['scorable'] or self.scorer is None:
+        if not settled['scorable']:
+            return dict(outcome=settled['outcome'], reasons=settled['reasons'], scored=False)
+        if self.scorer is None:
             return dict(outcome=search.INCOMPLETE, reasons=['the run ended by itself, but nothing has scored it: ' + '; '.join(settled['reasons'])], scored=False)
         verdict = run_checks.apply_scorer(settled, self.scorer(self._evidence_for_scorer(context, execution)))
         if not verdict.get('scored'):
@@ -1038,6 +1214,9 @@ class RunExecutor:
             code = getattr(error, 'code', type(error).__name__)
             history.update(decision='refused', code=code, detail=cleanup_provider.redact(error))
             return dict(resumed=False, code=code, detail=cleanup_provider.redact(error), checks=checks)
+        except LOCAL_FAILURES as error:
+            history.update(decision='refused', code='controller_failure', detail=type(error).__name__)
+            return dict(resumed=False, code='controller_failure', detail=type(error).__name__, checks=checks)
         finally:
             self._note('resume_request', **history)
 
@@ -1063,9 +1242,10 @@ class RunExecutor:
         now = session_clock.parse(self.client.call('health', session_id=self.session_id)['evaluated_at'])
         if now >= session_clock.parse(status['cleanup_c_utc']):     # the registry's clock, never this machine's
             raise ResumeRefused('deadline_reached', status['cleanup_c_utc'])
-        source = self.source_problems() if self.source_problems is not None else ['no controller source check was supplied']
-        if source:
-            raise ResumeRefused('source_changed', '; '.join(source))
+        try:
+            self._require_frozen_source()
+        except BatchStop as stop:
+            raise ResumeRefused(stop.code, stop.detail)
         self.prepared = False
         try:
             self.prepare(status)
@@ -1105,17 +1285,41 @@ class RunExecutor:
     # ---- the end of a batch ------------------------------------------------------------------
 
     def wrap_up(self, result, request_cleanup=True):
-        """Stop means collect and delete. Slice 7's exporter replaces the evidence status; a run's own export has already happened."""
-        status = self._status()
+        """Stop means collect and delete, and a failure while collecting never stands in the way of the delete.
+
+        Slice 7's exporter replaces the session's evidence status; a run's own export has already happened. A local failure here
+        is kept on ``result.wrap_up_error`` rather than raised, so everything after it, the cleanup request above all, still runs.
+        """
         label = result.search_status or result.code or result.status
+        evidence_status, inventory_ref = 'partial', None
+        if request_cleanup:
+            self._close_fences('batch ended: ' + str(label))
         try:
+            status = self._status()
             if status['state'] in (registry.READY, registry.PAUSED, registry.EVIDENCE_RECOVERY):
                 self.client.mutate('begin_collection', session_id=self.session_id, fencing_token=self.token)
             missing = self._collect_missing()
             if missing:
                 self._recover_evidence(missing)
+        except registry_client.RegistryRejected as rejection:
+            self._note('wrap_up_rejected', code=rejection.code, detail=str(rejection.message))
+        except registry_client.RegistryUnavailable as error:
+            self._note('wrap_up_unacknowledged', detail=cleanup_provider.redact(error))
+        except (ControlLost, GuestLost, RunAborted, CleanupStarted, BatchStop) + LOCAL_FAILURES as error:
+            self._wrap_up_failed(result, error)
+        try:
+            inventory = self._evidence_inventory()
+            evidence_status = self._evidence_status(inventory)
+            inventory_ref = self._retain_inventory(inventory)
+        except (registry_client.RegistryRejected, registry_client.RegistryUnavailable) as error:
+            self._note('wrap_up_unacknowledged', detail=cleanup_provider.redact(error))
+        except LOCAL_FAILURES + (provisioner.Stop,) as error:
+            evidence_status = 'missing'
+            self._wrap_up_failed(result, error)
+        try:
             self.client.mutate('record_measurement', session_id=self.session_id, fencing_token=self.token, outcome=label, ref='execution/journal.ndjson')
-            self.client.mutate('record_evidence', session_id=self.session_id, fencing_token=self.token, status='partial', ref='run-level exports; session export belongs to slice 7')
+            self.client.mutate('record_evidence', session_id=self.session_id, fencing_token=self.token, status=evidence_status,
+                               ref=inventory_ref or 'run-level exports; session export belongs to slice 7')
         except registry_client.RegistryRejected as rejection:
             self._note('wrap_up_rejected', code=rejection.code, detail=str(rejection.message))
         except registry_client.RegistryUnavailable as error:
@@ -1128,16 +1332,76 @@ class RunExecutor:
                 self._note('cleanup_request_unacknowledged', detail=cleanup_provider.redact(error))
         return result
 
-    def _collect_missing(self):
-        """Files named by a seal that never arrived. Reads only: a sealed tree cannot change, so this can retry safely."""
-        missing = []
+    def _wrap_up_failed(self, result, error):
+        detail = '%s: %s' % (type(error).__name__, cleanup_provider.redact(error))
+        self._note('wrap_up_failed', detail=detail)
+        result.wrap_up_error = result.wrap_up_error or detail
+
+    # ---- what actually arrived ---------------------------------------------------------------
+
+    def _role_inventory(self, run_id, role):
+        """One role's files as they are on this disk, each checked against the seal. A seal says what should be here, not that it is."""
+        target = self._run_dir(run_id) / role
+        if (run_id, role) in self.never_created:
+            return dict(run_id=run_id, role=role, status='never_created', files=[])
+        try:
+            seal_path = target / guest_runner.SEAL
+            if not seal_path.exists():
+                return dict(run_id=run_id, role=role, status='missing', files=[dict(path=guest_runner.SEAL, status='missing')])
+            seal = json.loads(seal_path.read_text())
+            files = [dict(path=guest_runner.SEAL, status='verified')]
+            for item in seal['files']:
+                files.append(dict(path=item['path'], status=self._file_status(target / item['path'], item['sha256'])))
+        except LOCAL_FAILURES as error:
+            return dict(run_id=run_id, role=role, status='corrupt', files=[dict(path=guest_runner.SEAL, status='unreadable', reason=type(error).__name__)])
+        statuses = {entry['status'] for entry in files}
+        overall = 'verified' if statuses == {'verified'} else ('corrupt' if statuses & {'corrupt', 'unreadable'} else 'missing')
+        return dict(run_id=run_id, role=role, status=overall, files=files)
+
+    @staticmethod
+    def _file_status(path, digest):
+        """A retained ``.partial`` is never promoted, so with only that a file is not verified. Bad bytes say corrupt, and no bytes say missing."""
+        partial = path.with_name(path.name + '.partial')
+        try:
+            if path.exists():
+                return 'verified' if sha256_path(path) == digest else 'corrupt'
+            return 'corrupt' if partial.exists() and sha256_path(partial) != digest else 'missing'
+        except OSError:
+            return 'unreadable'
+
+    def _evidence_inventory(self):
+        """Every role of every run that a plan went out for. A role with no plan never reached a host."""
+        inventory = []
         for row in self._records():
             run_dir = self._run_dir(row['run_id'])
             for role in ROLES:
-                local_seal = run_dir / role / guest_runner.SEAL
-                if not local_seal.exists() and (run_dir / ('plan-%s.json' % role)).exists():
-                    missing.append((row['run_id'], role))
-        return missing
+                try:
+                    planned = (run_dir / ('plan-%s.json' % role)).exists()
+                except OSError:
+                    planned = True
+                if planned:
+                    inventory.append(self._role_inventory(row['run_id'], role))
+        return inventory
+
+    @staticmethod
+    def _evidence_status(inventory):
+        statuses = {entry['status'] for entry in inventory}
+        if 'corrupt' in statuses:
+            return 'corrupt'
+        return 'missing' if 'missing' in statuses else 'partial'
+
+    def _retain_inventory(self, inventory):
+        """Create-only, like all evidence, and one per wrap-up. Names and statuses only, with no bytes from any host."""
+        for attempt in range(100):
+            name = 'evidence-inventory-token%d-%d.json' % (self.token, attempt)
+            if not (self.evidence.root / name).exists():
+                self.evidence.artifact(name, dict(schema='omega.do-session.run-evidence-inventory/1', session_id=self.session_id, roles=inventory))
+                return 'execution/' + name
+        raise ValueError('too many wrap-ups under one token')
+
+    def _collect_missing(self):
+        """Every (run, role) with a file not yet verified. Reads only: a sealed tree cannot change, so this can retry safely."""
+        return [(entry['run_id'], entry['role']) for entry in self._evidence_inventory() if entry['status'] not in ('verified', 'never_created')]
 
     def _recover_evidence(self, missing):
         """One bounded episode. It ends at the registry's own deadline, and a reconnect never reopens it."""
@@ -1148,18 +1412,12 @@ class RunExecutor:
             return missing
         asked = self.monotonic()
         now = session_clock.parse(self.client.call('health', session_id=self.session_id)['evaluated_at'])
-        ends = asked + session_clock.parse(episode['recovery_deadline_utc']) - now
+        self.recovery_ends = asked + session_clock.parse(episode['recovery_deadline_utc']) - now
         self.in_recovery = True
         try:
-            while missing and self.monotonic() < ends:
-                remaining = []
-                for run_id, role in missing:
-                    if not self._recover_role(run_id, role):
-                        remaining.append((run_id, role))
-                missing = remaining
-                if missing:
-                    self.sleep(min(self.policy.recovery_poll_s, max(0.01, ends - self.monotonic())))
-                    self._quiet_keepalive()
+            missing = self._recovery_sweeps(missing)
+        except ControlLost as lost:
+            self._note('recovery_control_lost', code=lost.code)
         finally:
             self.in_recovery = False
         for run_id, role in missing:
@@ -1170,20 +1428,40 @@ class RunExecutor:
             self._note('collection_not_reopened', code=rejection.code)
         return missing
 
+    def _recovery_sweeps(self, missing):
+        while missing and self.monotonic() < self.recovery_ends:
+            remaining = []
+            for run_id, role in missing:
+                if not self._recover_role(run_id, role):
+                    remaining.append((run_id, role))
+            missing = remaining
+            left = self.recovery_ends - self.monotonic()
+            if missing and left > 0:
+                self.sleep(min(self.policy.recovery_poll_s, left))
+                try:
+                    self._recovery_wait()
+                except GuestLost:
+                    break
+        return missing
+
     def _recover_role(self, run_id, role):
+        """Each read has the time that is left and no more. Past the end of the episode nothing is even asked."""
         try:
-            sealed = self._runner(role, 'status', '--run-id', run_id, '--role', role, on_wait=self._quiet_keepalive)
+            sealed = self._runner(role, 'status', '--run-id', run_id, '--role', role, on_wait=self._recovery_wait)
+            if sealed.get('code') == 'unknown_run':
+                self.never_created.add((run_id, role))     # the start was refused before any directory existed
+                return True
             if sealed.get('ok') is not True or sealed.get('sealed') is not True:
                 return False
             remote_seal = guest_runner.DEFAULT_ROOT + '/runs/' + run_id + '/' + role + '/' + guest_runner.SEAL
             with tempfile.TemporaryDirectory() as temporary:
                 local = pathlib.Path(temporary) / guest_runner.SEAL
-                result = self.guests.get(role, remote_seal, str(local), self._guest_timeout(self.policy.transfer_timeout_s), self._quiet_keepalive)
+                result = self.guests.get(role, remote_seal, str(local), self._guest_timeout(self.policy.transfer_timeout_s), self._recovery_wait)
                 if result.returncode != 0 or sha256_path(local) != sealed.get('seal_sha256'):
                     return False
                 seal = json.loads(local.read_text())
             return self._export_role(run_id, role, dict(seal=seal, seal_sha256=sealed['seal_sha256']))['complete']
-        except (GuestLost, ControlLost, RunAborted, OSError, ValueError):
+        except (GuestLost, RunAborted, OSError, ValueError):
             return False
 
 
@@ -1198,4 +1476,9 @@ def source_identity_problems(manifest, repository, runner=None):
         problems.append('the controller checkout is not the frozen controller revision')
     if dirty.returncode != 0 or dirty.stdout.strip():
         problems.append('the controller code has uncommitted changes')
+    # The adapter is what turns a trial into arguments, so the file in use must be the one frozen as the adapter revision.
+    adapter = run(['git', '-C', str(repository), 'rev-parse', manifest['source']['adapter_sha'] + ':' + ADAPTER_PATH])
+    current = run(['git', '-C', str(repository), 'rev-parse', 'HEAD:' + ADAPTER_PATH])
+    if adapter.returncode != 0 or current.returncode != 0 or adapter.stdout.strip() != current.stdout.strip():
+        problems.append('the adapter is not the frozen adapter revision')
     return problems
