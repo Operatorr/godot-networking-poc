@@ -1,0 +1,41 @@
+{
+ "checks": [
+  {
+   "check": "both are named",
+   "passed": true
+  },
+  {
+   "check": "nothing was dispatched",
+   "passed": true
+  },
+  {
+   "check": "the failure outlives this controller",
+   "passed": true
+  }
+ ],
+ "clock": "scripted",
+ "host_starts": {
+  "bot": 0,
+  "game": 0
+ },
+ "registry_events": [
+  {
+   "kind": "control_acquired",
+   "takeover": false
+  },
+  {
+   "detail": "host_not_reset: game: port udp/8081 still holds a socket; bot: qdisc netem is not a cleared state",
+   "kind": "batch_stopped",
+   "outcome": "INFRASTRUCTURE_FAILURE"
+  }
+ ],
+ "remote": "fake",
+ "runs": [],
+ "scenario": "leftover_socket_and_netem_stop_before_dispatch",
+ "scorer": "scripted by the fixture, never a measurement",
+ "session": {
+  "fencing_token": 1,
+  "state": "ready",
+  "terminal_failure": "INFRASTRUCTURE_FAILURE"
+ }
+}

@@ -65,6 +65,12 @@ class Trial:
                     nominal_ramp_s=nominal_ramp_s(self.target))
 
 
+def trial_from_dict(document):
+    """A trial as ``to_dict`` wrote it; the derived fields are dropped, and ``derive`` recomputes them."""
+    fields = {k: v for k, v in document.items() if k in Trial.__dataclass_fields__}
+    return Trial(**dict(fields, predecessors=tuple(fields['predecessors'])))
+
+
 @dataclasses.dataclass(frozen=True)
 class TrialRecord:
     trial: Trial

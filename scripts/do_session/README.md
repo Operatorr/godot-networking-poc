@@ -1,4 +1,4 @@
-# do_session — DigitalOcean test-session planner, registry, watchdog and provisioning (handoff slices 1–3)
+# do_session — DigitalOcean test-session planner, registry, watchdog, provisioning and fresh test runs (handoff slices 1–4)
 
 Control code for the disposable DigitalOcean capacity sessions planned in
 [issue #57](https://github.com/Operatorr/godot-networking-poc/issues/57), following the
@@ -11,6 +11,8 @@ Control code for the disposable DigitalOcean capacity sessions planned in
 - **Slice 2, the registry and watchdog:** see [below](#session-registry-fencing-and-cleanup-watchdog-slice-2).
 - **Slice 3, provisioning, access and cold bootstrap:** see [below](#provider-adapter-access-and-cold-bootstrap-slice-3).
   It has only ever run against offline fakes. No live account has exercised this code.
+- **Slice 4, fresh-process runs and explicit resume:** see [below](#fresh-process-runs-and-explicit-resume-slice-4). It has run against a fake
+  remote and as real processes on one machine, never over SSH or on a Droplet. It cannot produce PASS or FAIL yet, because no scorer exists.
 
 Terminology follows `docs/CONTEXT.md` and issues #59/#60: a *test session* owns one game/bot
 Droplet pair with one fixed hardware condition; its *test batch* is the frozen search; a *test
@@ -104,7 +106,8 @@ planner rejects their `admit`, `next-run` and `paths` requests. Their separately
 plans and execution gates belong to later slices; these kinds cannot implicitly start the ladder.
 
 The planner does not create Droplets, firewalls or runs (slices 3–4), does not score evidence
-(slices 5–6) and does not export or publish (slice 7). The historical CAX11 gate
+(slices 5–6) and does not export or publish (slice 7). With a registry, `run_executor` derives the search from the registry and
+mirrors it into this journal, so `paths` and `admit` keep working on the same session directory. The historical CAX11 gate
 ([issue #53](https://github.com/Operatorr/godot-networking-poc/issues/53)) is unchanged.
 
 ## Session registry, fencing and cleanup watchdog (slice 2)
@@ -275,11 +278,8 @@ cleanup. Check the account by unique tag before disposing.
   sync fails closed. A boot whose time daemon has not synced when the watchdog starts cleans up its armed
   sessions: the safe direction, but a reason to let sync finish on boot. Do not order the unit on
   `systemd-time-wait-sync` without a timeout, since a watchdog that never starts protects nothing.
-- **Dispatch grants still need process enforcement.** The registry only proves that a run launched by `launch_by`
-  with its stated estimate ends before deletion starts. Issue #67 must stop the process at that estimate, and must
-  use `estimated_duration_s` that includes every part of the trial it starts.
-- **A dispatch grant cannot reach into a launched process.** `launch_by` bounds when a controller may
-  launch; stopping a workload that started just before a takeover needs slice 4's run identity checks.
+- **Dispatch grants are enforced on the guest, and only there once launched.** See [slice 4](#fresh-process-runs-and-explicit-resume-slice-4). A controller that
+  is gone can no longer stop anything, so the supervisor's bound and the host fence do that work.
 - **Storage failures hold back deletion.** Intent must be durable before a delete, so a full disk stalls
   cleanup and makes the host unhealthy. Losing the single-disk host entirely falls back to manual tag
   cleanup, the residual risk the operator accepted in issue #63.
@@ -408,7 +408,7 @@ deletes what the session owns, and if the request cannot be delivered, C still a
   so they must fit setup, collection, recovery and teardown inside the cap, plus the cost and transfer limits. Their
   workload plans belong to their own gates.
 - **After `mark_ready`.** This slice leaves a verified pair with no workload process running. It renews its lease only
-  while running, and slice 4 owns fresh process execution and the control it needs from there.
+  while running. `run_cli.py execute` continues under the token it printed; if that lease lapses, only `resume` gets back in.
 
 ### Running it
 
@@ -445,3 +445,122 @@ cleans up, or stays open and visible.
   `openssh-server`, `python3`) only if it lost one of them.
 - Automatic detection of the operator's current address. Allowlists are exact values supplied at freeze and refresh, and
   this code cannot prove such a value is current. That stays an operational gate.
+
+## Fresh-process runs and explicit resume (slice 4)
+
+Reuses the verified pair for every run. Each run gets new processes, a new socket and its own sealed directory, and an interruption never turns into a replay.
+
+| File | Owns |
+| --- | --- |
+| `guest_runner.py` | Stdlib program uploaded to both hosts under a content-addressed name: the host fence, launch checks, the supervisor with its absolute bound, identity and socket facts, stop and seal. |
+| `run_plan.py` | What a trial means on one host, as pure data. `ReleaseAdapter` is slice 5's seam: it holds today's binary arguments. |
+| `run_checks.py` | Pure rules over host and run facts. It sorts execution failures and holds the scorer boundary. A missing fact fails. |
+| `run_executor.py` | The controller: one run, reconciliation of an unfinished run, explicit resume, collection and the cleanup request. |
+| `run_cli.py` | Operator CLI: `execute`, `resume`, `collect`. It has no provider mutation and no scorer option. |
+| `fake_run_guest.py`, `run_fixtures.py`, `run_fault_harness.py`, `run_fault_evidence.py`, `fixtures/local_standins/` | Offline only. |
+
+### One run
+
+```text
+admit legal remaining paths -> publish selection -> preflight both hosts      a dirty host stops here, with the run untouched
+  -> dispatch_run: durable intent, grant                                      from here the run id is spent for good
+  -> launching: last fenced check -> game, wait for its new socket -> bot -> running
+  -> watch, renewing the lease -> stop -> seal both hosts -> export through .partial -> execution.json -> sealed
+  -> classification.json -> record_run_outcome -> planner journal mirror
+```
+
+- **The registry decides what comes next.** For a capacity session `dispatch_run` takes only the single legal next trial, replayed from its own `runs` table, with an
+  estimate covering the whole trial. Nothing else can be dispatched, and the search cannot advance past a run with no outcome. Calibration and lifecycle smoke are refused
+  with `no_workload_plan`; their plans belong to their own gates. An outcome that advances the search needs the run in phase `sealed`. `typed_runs=False` exists only for slice 2's
+  lifecycle fixtures, and `registry_cli.py` cannot set it.
+- **Fencing reaches the host.** `start`, `stop` and `seal` carry the token, checked under one lock with the launch against a fence file that only rises. A new controller raises it
+  first, so a replaced controller's late start is refused, and anything started just before is in the inventory the new controller then stops. A start request also carries its
+  `launch_by` and is refused on the guest if it arrives late, with one second allowed for clock error.
+- **Bounds hold with no controller.** The supervisor stops the game by `launch_by + estimate − finalization − export − grace`, and the swarm one grace earlier, by its monotonic clock or the
+  absolute wall time, whichever comes first: SIGTERM, then SIGKILL after the grace. The `systemd-run` unit (`RuntimeMaxSec`, `KillMode=control-group`, `Restart=no`) is the second bound, for a
+  supervisor that dies. Since `launch_by + estimate ≤ C − 0.5 s`, those limits end before the deadline tick. The game's startup wait and both stops come out of `process_reset_s`, and a
+  smaller value is refused. If too little of the grant is left for the whole workload, the swarm does not start and the run is INCOMPLETE. No guest command starts past `C − 0.5 s`,
+  except inside an evidence recovery episode, which has its own deadline of `min(first failure + grace, C)`.
+- **Identity is pid plus kernel start time,** plus the unit's `InvocationID` on systemd. A reused pid is not our process, and it is never signalled. Each new process and socket is compared
+  against the host's ledger of every identity used before. The game socket comes from `/proc/net/udp` joined with `/proc/<pid>/fd`, so its drop counter is that socket's and no other.
+  Counter rows belong to one pid, start time and inode, and a change of owner or a counter moving backward is refused.
+- **Between runs** each host must show: the frozen binary, config, sampler and runner hashes; clean frozen source on the builder; the boot id from readiness; free ports; no process from those
+  paths; no `omega-*` unit; no run active; a new run directory; the fence naming this controller; enough disk; and only `noqueue`, `mq`, `fq_codel`, `fq`, `pfifo_fast` or `pfifo` qdiscs with no
+  filters. Unknown is a failure: no `tc` means the impairment state could not be read. A failure stops the batch through `record_batch_stop`, so it survives this controller.
+- **Directories are immutable.** The run directory is created exclusively. Sealing hashes every file and makes the tree read-only, for interrupted runs too. Exports go through `.partial` and SHA256,
+  and they are promoted with a hard link, because a rename would overwrite. A file that fails stays partial and is never promoted.
+- **Each run has its own sampler,** a separate process writing its own file. One that dies during a run stops that run as infrastructure.
+
+### What a run can say
+
+| Execution facts | Recorded | Effect |
+| --- | --- | --- |
+| Host, identity, sampler, seal or export failure; lost contact for 45 s; a game that ended during startup | `INFRASTRUCTURE_FAILURE` | Terminal |
+| The swarm crashed (a signal or any status but 0 or 1), and the game did not fail | `INVALID_LOAD` | Terminal; no scorer is asked |
+| The swarm overran its bound | `INCONCLUSIVE` | Terminal; a timeout is never called capacity |
+| Controller lost, grant unused, cleanup during the run | `INCOMPLETE` | The dependent coarse or refinement path stops; an untouched confirmation sibling stays eligible |
+| The processes finished, or the game failed by itself | Whatever the scorer says, within the rules below | `PASS` and `FAIL` advance the frozen search; others stop the batch |
+
+The swarm exits 1, with its report written, when the server misses the binary's own success criteria. `ReleaseAdapter.completed_exit_codes` therefore counts that as completing: it is a verdict on the server, which must stay available to the scorer, and this slice ignores the verdict itself. A 1 with no report is missing evidence.
+
+**Evidence boundary.** `execution.json` is the line between running and scoring. It binds identities, exits, socket rows, seal hashes and export results, and it is what `evidence_ref` chains back to. A scorer is
+a function of `dict(run_id, trial, root, execution, execution_sha256, execution_ref)`: verified local files and sealed facts, nothing live. It returns `dict(outcome, evidence_ref, scorer, reasons)`. It cannot
+PASS a run whose processes failed, or call FAIL with a failed generator unless it sets `generator_failure_attributed_to_server`. Anything malformed becomes `INCONCLUSIVE`. **No scorer ships.** Slices 5 and 6
+(issues #68 and #69) own the measurement schema and gates, `run_cli.py` has no option to supply one, and until then every finished trial is `INCONCLUSIVE`, which stops the batch. Fixtures script outcomes
+through `run_fixtures.scripted_scorer`; those outcomes are not measurements.
+
+The current swarm does not meet the measurement contract either: threaded runs skip per-bot observations, and there is no common window. So nothing here should be scored until slice 5 changes the adapter.
+
+### Coming back
+
+A crash leaves whatever the registry last committed. Returning under a new token pauses the session and marks an active run interrupted. Nothing resumes by itself.
+
+| Died | The run | Next |
+| --- | --- | --- |
+| After selection, before `dispatch_run` committed | Untouched | Explicit resume dispatches that same trial |
+| After `dispatch_run`, through launch and watch | Touched for good; stopped, sealed, `INCOMPLETE` | Its dependent path stops, and resume refuses with `no_eligible_untouched_work` |
+| After seal, with the swarm having ended by itself | Scored from retained evidence if a scorer exists, otherwise `INCOMPLETE` | Follows that outcome |
+| After `classification.json`, before the commit | The recorded verdict stands, is not scored again, and a terminal one stays terminal | Follows that outcome |
+| After the commit | Outcome stands; only the local mirror is repaired | Next untouched trial is eligible |
+
+An interruption does not hide a failure the evidence shows: a rebooted host or a sampler that died gives `INFRASTRUCTURE_FAILURE`, and a swarm that crashed by itself gives `INVALID_LOAD`.
+
+`run_cli.py resume --operator-request REF` runs in this order, and any failure leaves the session paused with the attempt recorded in `execution/journal.ndjson`:
+
+1. Exclusive control. A live lease needs `--takeover`, which makes the other controller stale.
+2. Not in cleanup, past C or terminal, and the manifest hash unchanged.
+3. This controller's checkout at the frozen `controller_sha`, with no edits under `scripts/do_session`.
+4. The pair as the provider reports it: exact ids, plan, ownership, address, firewall target, rules and applied state, and nothing extra under the session tag. Host pins are inherited, never made.
+5. Fence raised, then every unfinished run stopped, sealed, exported and classified. A run directory the registry never dispatched refuses the resume.
+6. Admission on the legal remaining paths against the original deadline and spend, and a legal next trial.
+7. Full readiness again: probe, clock, sampler, SSH enforcement and a real ENet smoke, plus the same boot id, kernel and package list as at `mark_ready`.
+8. Both hosts reset, as between runs, then admission once more, because revalidation took time.
+9. `record_resume`, which refuses unless every check is true and names the exact next run.
+
+`run_cli.py collect --reason WHY` is the other exit. It stops and seals whatever is left, records run evidence as `partial` and requests cleanup. Slice 7 owns the session export, so no session can read `clean` yet. C
+arrives regardless.
+
+### Running it
+
+```bash
+cd scripts/do_session
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -q                                  # about 5 minutes with the real-process suites
+OMEGA_LOCAL_RELEASE_DIR=<dir with omega-server and omega-load-test> python3 -m unittest test_run_local_integration.WholeRuns.test_real_binaries_run_through_the_same_path
+```
+
+`test_guest_runner` and `test_run_local_integration` are real processes on one machine: real signals, sockets and crashes through a real registry CLI and watchdog. Retained timelines:
+`docs/netcode/perf-notes/digitalocean-capacity/offline-faults/slice4/` (26 scenarios, regenerated by `run_fault_evidence.py`). They use the fake remote, so they are reproducible and claim nothing about a host.
+
+### What only a live run can show
+
+These are stated so Gates A and B check them instead of assuming them. Each failure direction is safe: the batch stops, or the session stays open and visible.
+
+- **Linux and systemd.** `/proc` start ticks and socket rows ran against text fixtures only. `systemd-run`, `InvocationID`, `RuntimeMaxSec` and `KillMode` ran through shims that start the real supervisor. `sudo -n
+  systemd-run --uid` from an SSH session, cgroup kill and `--collect` behaviour are unverified. Python 3.12 is unverified: everything ran on macOS with Python 3.9.
+- **Real SSH.** Only `SshAccess` argument building and pin restoration are tested. Polling logs in over SSH every 10 s on the host being measured. Its cost is unmeasured, and slice 5 should decide whether to keep it during a hold.
+- **`tc`.** The real output format is untested, and the local fixture's `tc` is scripted. If a stock image reports a qdisc outside the allowed list, every run stops before dispatch; Gate A must read the real list.
+- **Socket identity on macOS** is development-only and has no drop counters, so `require_counters` is off in the local harness. Real drop counters have never been read.
+- **Grace values and the 45 s contact tolerance** are declared, not measured. Export time and size are bounded per file only, and a hold's real log volume is unknown.
+- **A process-group supervisor killed with -9 leaves its workload running,** as the local tests show, until a controller stops it by identity. On a Droplet the systemd unit is what bounds that case, and that is unverified.
+- **Fence and ledger live on the guest.** A guest rebuilt or tampered with loses them, which the boot id, package and hash checks are meant to catch, not prevent. A guest is not a trusted party.
+- **Readiness smoke during resume** overwrites the earlier readiness logs on the guest. Readiness evidence kept by the controller is unaffected.

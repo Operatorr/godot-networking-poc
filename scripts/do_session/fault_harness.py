@@ -99,7 +99,7 @@ def controller_flow(reg, wd_tick, provider, session_id):
 
 
 def open_registry(state_dir, clock, failpoint=None):
-    return registry.Registry(state_dir, clock=clock, failpoint=failpoint, trusted_settlement_bases=create_evidence.OFFLINE_FIXTURE_BASES)
+    return registry.Registry(state_dir, clock=clock, failpoint=failpoint, trusted_settlement_bases=create_evidence.OFFLINE_FIXTURE_BASES, typed_runs=False)
 
 
 def main(argv=None):

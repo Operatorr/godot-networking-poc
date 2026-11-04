@@ -19,6 +19,7 @@ import os
 import pathlib
 import sqlite3
 
+import admission
 import create_evidence
 import deadline_capacity
 import manifest as manifest_mod
@@ -26,7 +27,7 @@ import resource_ownership
 import search
 import session_clock
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2     # 2 added run phases and grant bounds; no state directory has been deployed, so there is no migration
 DB_NAME = 'registry.sqlite3'
 INCIDENT_DIR = 'incidents'
 RECEIPT_DIR = 'receipts'
@@ -55,6 +56,10 @@ LISTING_KINDS = ('inventory_droplet', 'inventory_firewall')
 CREATE_REQUEST_KIND = 'create_request'
 BOOKKEEPING_KINDS = LISTING_KINDS + (CREATE_REQUEST_KIND,)      # scheduled like resources, but never resources themselves
 INCIDENT_ATTEMPT_TAIL = 30
+RUN_PHASES = ('dispatched', 'launching', 'running', 'stopped', 'sealed')     # forward only; the outcome is separate
+# What an explicit resume must have revalidated before the registry accepts it (issue #59 section 4).
+RESUME_REQUIRED_CHECKS = ('control_exclusive', 'manifest_unchanged', 'pair_unchanged', 'source_unchanged', 'readiness_revalidated',
+                          'processes_reset', 'headroom_admitted', 'interrupted_preserved')
 
 GENESIS_HASH = '0' * 64
 
@@ -89,6 +94,7 @@ CREATE TABLE runs(
     session_id TEXT NOT NULL, run_id TEXT NOT NULL, state TEXT NOT NULL, dispatched_at TEXT NOT NULL,
     fencing_token INTEGER NOT NULL, controller_id TEXT, launch_by TEXT NOT NULL, trial_json TEXT,
     finished_at TEXT, outcome TEXT, evidence_ref TEXT, interrupted_at TEXT, interrupted_reason TEXT,
+    phase TEXT NOT NULL DEFAULT 'dispatched', estimated_duration_s REAL, must_stop_by TEXT, execution_ref TEXT,
     PRIMARY KEY(session_id, run_id));
 CREATE TABLE resources(
     session_id TEXT NOT NULL, resource_key TEXT NOT NULL, kind TEXT NOT NULL, provider_id TEXT NOT NULL,
@@ -177,8 +183,10 @@ class Registry:
     def __init__(self, state_dir, clock=None, failpoint=None, lease_ttl_s=DEFAULT_LEASE_TTL_S,
                  watchdog_stale_s=DEFAULT_WATCHDOG_STALE_S, launch_window_s=DEFAULT_LAUNCH_WINDOW_S,
                  clock_tolerance_s=session_clock.DEFAULT_TOLERANCE_S, protected_tags=PROTECTED_TAGS,
-                 trusted_settlement_bases=create_evidence.DEFAULT_TRUSTED_BASES):
+                 trusted_settlement_bases=create_evidence.DEFAULT_TRUSTED_BASES, typed_runs=True):
         self.state_dir = pathlib.Path(state_dir)
+        # False is for slice 2's lifecycle fixtures only, which dispatch placeholder ids. registry_cli.py cannot turn it off.
+        self.typed_runs = typed_runs
         self.clock = clock or session_clock.SystemClock()
         self.failpoint = failpoint or (lambda name: None)
         self.lease_ttl_s = lease_ttl_s
@@ -930,25 +938,56 @@ class Registry:
                                 launch_window_s=launch_by - effective)
             if self.db.execute('SELECT 1 FROM runs WHERE session_id=? AND run_id=?', (session_id, run_id)).fetchone():
                 raise Rejection('duplicate_run', 'a run id is dispatched at most once: ' + run_id)
+            if self.typed_runs:
+                self._require_legal_trial(session, run_id, trial, estimated_duration_s)
             launch_text = session_clock.iso(launch_by)
+            must_stop_by = session_clock.iso(launch_by + estimated_duration_s)
             self.db.execute('INSERT INTO runs(session_id, run_id, state, dispatched_at, fencing_token, controller_id, '
-                            "launch_by, trial_json) VALUES (?, ?, 'dispatched', ?, ?, ?, ?, ?)",
+                            "launch_by, trial_json, estimated_duration_s, must_stop_by) VALUES (?, ?, 'dispatched', ?, ?, ?, ?, ?, ?, ?)",
                             (session_id, run_id, now_text, fencing_token, session['controller_id'], launch_text,
-                             canonical(trial) if trial is not None else None))
+                             canonical(trial) if trial is not None else None, estimated_duration_s, must_stop_by))
             self.db.execute('UPDATE sessions SET state=? WHERE session_id=?', (RUNNING, session_id))
             self.event(now_text, session_id, 'run_dispatch_intent',
                        dict(run_id=run_id, fencing_token=fencing_token, launch_by=launch_text))
-            return dict(session_id=session_id, run_id=run_id, authorized=True, launch_by=launch_text, fencing_token=fencing_token)
+            granted = dict(session_id=session_id, run_id=run_id, authorized=True, launch_by=launch_text, fencing_token=fencing_token)
+            if self.typed_runs:
+                granted.update(granted_at=now_text, must_stop_by=must_stop_by, estimated_duration_s=estimated_duration_s)
+            return granted
         result = self._mutate('dispatch_run', dict(session_id=session_id, run_id=run_id, fencing_token=fencing_token,
                                                    manifest_sha256=manifest_sha256, estimated_duration_s=estimated_duration_s,
                                                    trial=trial), request_id, session_id, body, gate=gate)
         if result.get('replayed'):
             # A lost ack may replay the grant, but a finished run or a closed launch window may not.
-            run = self.db.execute('SELECT state FROM runs WHERE session_id=? AND run_id=?', (session_id, run_id)).fetchone()
-            launchable = (run is not None and run['state'] == 'dispatched'
+            run = self.db.execute('SELECT state, phase FROM runs WHERE session_id=? AND run_id=?', (session_id, run_id)).fetchone()
+            launchable = (run is not None and run['state'] == 'dispatched' and run['phase'] == 'dispatched'
                           and self.peek_now() < session_clock.parse(result['launch_by']))
             result = dict(result, authorized=launchable)
         return result
+
+    def search_state(self, session):
+        """The search as this registry journaled it. A controller's local files never decide what comes next."""
+        session_id = session['session_id']
+        records = []
+        for row in self.runs(session_id):
+            if row['trial_json'] is None:
+                raise Rejection('untyped_run', 'run %s was dispatched without its trial' % row['run_id'])
+            records.append(search.TrialRecord(search.trial_from_dict(json.loads(row['trial_json'])), row['outcome'], row['evidence_ref']))
+        records.sort(key=lambda record: record.trial.ordinal)
+        return search.SearchState(session_id, records)
+
+    def _require_legal_trial(self, session, run_id, trial, estimated_duration_s):
+        """Only the one trial the frozen search allows next, with an estimate covering all of it."""
+        manifest = json.loads(session['manifest_json'])
+        if manifest['session'].get('kind') != 'capacity':
+            raise Rejection('no_workload_plan', 'calibration and lifecycle smoke have no search; their workload plans belong to their own gates')
+        expected = search.derive(self.search_state(session))
+        legal = expected['next']
+        if legal is None or not isinstance(trial, dict) or legal.run_id != run_id or legal.to_dict() != trial:
+            raise Rejection('illegal_trial', 'not the legal next trial of the frozen search', status=expected['status'],
+                            detail=expected['detail'], legal_run_id=legal.run_id if legal is not None else None)
+        needed = admission.trial_duration(manifest, legal)['total_s']
+        if estimated_duration_s < needed:
+            raise Rejection('estimate_too_short', 'the dispatch estimate must cover the whole trial', needed_s=needed)
 
     def _interrupt_active_runs(self, session_id, now_text, reason):
         active = self.db.execute("SELECT run_id FROM runs WHERE session_id=? AND state='dispatched'", (session_id,)).fetchall()
@@ -971,6 +1010,8 @@ class Registry:
                 raise Rejection('unknown_run', 'no dispatch was journaled for ' + str(run_id))
             if run['outcome'] is not None:
                 raise Rejection('outcome_recorded', 'a run outcome is immutable', outcome=run['outcome'])
+            if self.typed_runs and outcome in search.ADVANCING and run['phase'] != 'sealed':
+                raise Rejection('evidence_not_sealed', 'an outcome that advances the search needs sealed run evidence', phase=run['phase'])
             self.db.execute("UPDATE runs SET state='finished', finished_at=?, outcome=?, evidence_ref=? "
                             'WHERE session_id=? AND run_id=?', (now_text, outcome, evidence_ref, session_id, run_id))
             state = READY if session['state'] == RUNNING else session['state']
@@ -983,6 +1024,70 @@ class Registry:
         return self._mutate('record_run_outcome', dict(session_id=session_id, run_id=run_id, outcome=outcome,
                                                        fencing_token=fencing_token, evidence_ref=evidence_ref),
                             request_id, session_id, body)
+
+    def record_run_progress(self, session_id, run_id, phase, fencing_token, execution_ref=None, request_id=None):
+        """Durable transitions of one run. ``launching`` is the last fenced check before anything starts on a guest.
+
+        A later phase may be recorded for an interrupted run, because a new controller still seals what was left. Only
+        ``launching`` needs live authority, a run still dispatched and an open launch window.
+        """
+        if phase not in RUN_PHASES[1:]:
+            raise Rejection('bad_request', 'unknown run phase: ' + str(phase))
+        authority = self._authority_gate(fencing_token)
+
+        def gate(effective, session):
+            self._require_token(session, fencing_token)
+            if phase == 'launching':
+                authority(effective, session)
+
+        def body(effective, now_text, session):
+            run = self.db.execute('SELECT * FROM runs WHERE session_id=? AND run_id=?', (session_id, run_id)).fetchone()
+            if run is None:
+                raise Rejection('unknown_run', 'no dispatch was journaled for ' + str(run_id))
+            if run['outcome'] is not None:
+                raise Rejection('outcome_recorded', 'a run outcome is immutable', outcome=run['outcome'])
+            if RUN_PHASES.index(phase) <= RUN_PHASES.index(run['phase']):
+                raise Rejection('phase_regressed', 'run phases only move forward', phase=run['phase'])
+            if phase == 'launching':
+                if run['state'] != 'dispatched' or run['phase'] != 'dispatched':
+                    raise Rejection('bad_state', 'only a run still dispatched can launch', state=run['state'], phase=run['phase'])
+                if effective >= session_clock.parse(run['launch_by']):
+                    raise Rejection('launch_window_closed', 'the grant expired unused', launch_by=run['launch_by'])
+            self.db.execute('UPDATE runs SET phase=?, execution_ref=COALESCE(?, execution_ref) WHERE session_id=? AND run_id=?',
+                            (phase, execution_ref, session_id, run_id))
+            self.event(now_text, session_id, 'run_progress', dict(run_id=run_id, phase=phase, execution_ref=execution_ref))
+            return dict(session_id=session_id, run_id=run_id, phase=phase, must_stop_by=run['must_stop_by'], launch_by=run['launch_by'])
+        return self._mutate('record_run_progress', dict(session_id=session_id, run_id=run_id, phase=phase, fencing_token=fencing_token,
+                                                        execution_ref=execution_ref), request_id, session_id, body, gate=gate)
+
+    def record_batch_stop(self, session_id, outcome, fencing_token, detail, evidence_ref=None, request_id=None):
+        """A failure that stops the batch with no run to carry it, such as a dirty host found before dispatch."""
+        if outcome not in search.STOPPING:
+            raise Rejection('bad_request', 'a batch stops on ' + ', '.join(sorted(search.STOPPING)))
+        if not isinstance(detail, str) or not detail.strip():
+            raise Rejection('bad_request', 'a batch stop needs its reason')
+
+        def body(effective, now_text, session):
+            self._require_token(session, fencing_token)
+            terminal = session['terminal_failure'] or outcome
+            self.db.execute('UPDATE sessions SET terminal_failure=? WHERE session_id=?', (terminal, session_id))
+            self.event(now_text, session_id, 'batch_stopped', dict(outcome=outcome, detail=detail, evidence_ref=evidence_ref))
+            return dict(session_id=session_id, terminal_failure=terminal, state=session['state'])
+        return self._mutate('record_batch_stop', dict(session_id=session_id, outcome=outcome, fencing_token=fencing_token, detail=detail,
+                                                      evidence_ref=evidence_ref), request_id, session_id, body)
+
+    def run_records(self, session_id):
+        """Everything a controller needs to rebuild a batch after losing its memory."""
+        self.session_row(session_id)
+        return [dict(run_id=r['run_id'], state=r['state'], phase=r['phase'], outcome=r['outcome'], evidence_ref=r['evidence_ref'],
+                     execution_ref=r['execution_ref'], dispatched_at=r['dispatched_at'], finished_at=r['finished_at'], launch_by=r['launch_by'],
+                     must_stop_by=r['must_stop_by'], estimated_duration_s=r['estimated_duration_s'], fencing_token=r['fencing_token'],
+                     controller_id=r['controller_id'], interrupted_at=r['interrupted_at'], interrupted_reason=r['interrupted_reason'],
+                     trial=json.loads(r['trial_json']) if r['trial_json'] else None) for r in self.runs(session_id)]
+
+    def ready_record(self, session_id):
+        session = self.session_row(session_id)
+        return dict(ready_at=session['ready_at'], ready_evidence_ref=session['ready_evidence_ref'], t0_utc=session['t0_utc'])
 
     def record_resume(self, session_id, fencing_token, operator_request_ref, checks, request_id=None):
         """Record an explicit operator resume and its checks. Only untouched work can follow."""
@@ -1001,6 +1106,8 @@ class Registry:
             if unclassified:
                 raise Rejection('interrupted_run_unclassified', 'record each interrupted run before resuming',
                                 run_ids=[r['run_id'] for r in unclassified])
+            if self.typed_runs:
+                self._require_resume_checks(effective, session, checks)
             self.db.execute('UPDATE sessions SET state=? WHERE session_id=?', (READY, session_id))
             self.event(now_text, session_id, 'resumed', dict(operator_request_ref=operator_request_ref, checks=checks,
                                                              fencing_token=fencing_token))
@@ -1008,6 +1115,20 @@ class Registry:
         return self._mutate('record_resume', dict(session_id=session_id, fencing_token=fencing_token,
                                                   operator_request_ref=operator_request_ref, checks=checks),
                             request_id, session_id, body, gate=self._authority_gate(fencing_token))
+
+    def _require_resume_checks(self, effective, session, checks):
+        self._require_watchdog_fresh(effective)
+        unproven = [name for name in RESUME_REQUIRED_CHECKS if checks.get(name) is not True]
+        if unproven:
+            raise Rejection('resume_unverified', 'resume needs every revalidation to have passed', unproven=unproven)
+        if checks.get('manifest_sha256') != session['manifest_sha256']:
+            raise Rejection('manifest_conflict', 'resume names a different manifest')
+        expected = search.derive(self.search_state(session))
+        if expected['next'] is None:
+            raise Rejection('no_untouched_work', 'no run can be established from the evidence on record',
+                            status=expected['status'], detail=expected['detail'])
+        if checks.get('next_run_id') != expected['next'].run_id:
+            raise Rejection('illegal_trial', 'resume names work the frozen search does not allow next', legal_run_id=expected['next'].run_id)
 
     # ---- collection and independent outcome fields -------------------------------------------
 
@@ -1308,7 +1429,7 @@ class Registry:
     RPC_METHODS = ('register_session', 'acquire_control', 'renew_control', 'arm_session', 'begin_create',
                    'record_create_result', 'record_create_settlement', 'dispose_create', 'record_resource', 'report_ownership_conflict',
                    'mark_ready',
-                   'dispatch_run', 'record_run_outcome',
+                   'dispatch_run', 'record_run_outcome', 'record_run_progress', 'record_batch_stop', 'run_records', 'ready_record',
                    'record_resume', 'begin_collection', 'begin_evidence_recovery', 'record_measurement',
                    'record_evidence', 'request_cleanup', 'operator_abort', 'disown_resource', 'health', 'status',
                    'incidents', 'incident_report', 'journal', 'list_sessions', 'verify_journal')
