@@ -45,6 +45,13 @@ class TypedRuns(unittest.TestCase):
         self.assertGreater(until, self.now())
         self.assertLessEqual(until, session_clock.parse(run['launch_by']))
 
+    def test_an_authorization_never_outlives_the_lease(self):
+        trial = self.launching()
+        lease = session_clock.parse(self.stack.registry.status(SESSION)['lease_expires_at'])
+        self.stack.clock.advance(lease - registry.GUEST_ACTION_TTL_S / 2 - self.now())
+        until = session_clock.parse(self.authorize(action='launch_run', run_id=trial.run_id, role='bot')['authorized_until'])
+        self.assertEqual(until, lease)
+
     def test_authorization_changes_nothing_and_journals_nothing(self):
         trial = self.launching()
         before = self.stack.registry.journal(SESSION)
