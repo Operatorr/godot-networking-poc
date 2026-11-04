@@ -29,12 +29,11 @@ REBOOT_TIME_UNVERIFIABLE = 'reboot_time_unverifiable'
 ADJTIMEX_TIME_ERROR = 5     # adjtimex(2): the kernel clock is not synchronized
 
 # Timing policy shared by the planner, the registry and the watchdog.
-PROVIDER_REQUEST_BOUND_S = 35.0     # one provider request, start to finish
-CLEANUP_START_LEAD_S = PROVIDER_REQUEST_BOUND_S + 5.0   # one ownership read, ticks and commits before C
+PROVIDER_REQUEST_BOUND_S = 35.0     # how long this client waits for one provider request; not a provider guarantee
+OWNERSHIP_PREPARE_LEAD_S = PROVIDER_REQUEST_BOUND_S + 5.0   # read-only: one ownership read, ticks and commits before C
+DELETE_ISSUE_MARGIN_S = 0.5         # the deadline tick runs this long before C, so a delete is issued by C
 DISPATCH_LAUNCH_WINDOW_S = 30.0     # how long a dispatch grant may wait before its launch
 CREATE_START_WINDOW_S = 10.0        # a create grant unused for this long must not be sent
-# A create request can land until: start window + request bound + 15 s of inventory visibility lag.
-CREATE_SETTLE_S = CREATE_START_WINDOW_S + PROVIDER_REQUEST_BOUND_S + 15.0
 
 
 def iso(epoch):

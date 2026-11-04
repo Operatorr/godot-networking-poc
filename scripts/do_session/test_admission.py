@@ -1,10 +1,14 @@
 """Exact time/spend accumulation, boundaries, re-admission and zero-mutation rejections."""
+import datetime
 import unittest
 
 import admission as adm
 import fixture_support as fx
 import manifest as m
+import registry
+import registry_fixtures as rf
 import search
+import session_clock
 from search import PASS, FAIL, SearchState, dispatch, next_trial, record_outcome
 
 NOW = '2026-10-30T12:00:00+00:00'
@@ -51,16 +55,141 @@ class TimeAccumulationTests(unittest.TestCase):
         # readiness: 12 rungs <=300 at 60 s, then 62.5,65,67.5,70,72.5,75,77.5,80 for 325..500,
         # refinements 480..495 at 78,78.5,79,79.5, confirmations at 495 -> 79.5 each.
         readiness = 12 * 60 + sum([62.5, 65, 67.5, 70, 72.5, 75, 77.5, 80]) + sum([78, 78.5, 79, 79.5]) + 3 * 79.5
-        fixed_per_trial = 27 * (2 + 30 + 20 + 40)
-        self.assertEqual(maximal['total_s'], readiness + fixed_per_trial + 2340)
+        execution_per_trial = 27 * (2 + 30 + 20 + 40)
+        self.assertEqual(maximal['execution_s'], readiness + execution_per_trial + 2340)
+        self.assertEqual(maximal['launch_windows_s'], 27 * 30, 'every remaining trial may use its whole launch window')
+        self.assertEqual(maximal['total_s'], maximal['execution_s'] + maximal['launch_windows_s'])
         self.assertEqual(result.time['pre_workload_terms'], dict(create_bootstrap_s=900, readiness_access_s=180))
         self.assertEqual(result.time['tail_terms'], dict(collection_export_s=300, evidence_recovery_grace_s=300,
-                                                         cleanup_start_lead_s=40, dispatch_launch_window_s=30))
+                                                         delete_issue_margin_s=0.5))
         self.assertEqual(result.time['workload_deadline_c_s'], 14400 - 120)
         self.assertEqual(result.time['required_before_c_s'],
-                         900 + 180 + maximal['total_s'] + 600 + 40 + 30)
+                         900 + 180 + maximal['total_s'] + 600 + 0.5)
         self.assertEqual(result.time['legal_remaining_paths'], 401)
         self.assertTrue(result.admitted)
+
+    def exact_fit(self, extra_s=0):
+        base, _ = frozen()
+        required = admit(base, m.manifest_sha256(base)).time['required_before_c_s']
+        return frozen(lambda c: c['limits'].update(max_session_duration_s=required + 120 + extra_s))
+
+    def walk_maximal_path(self, manifest, sha, gap_s=0, launch_delay_s=30):
+        """Run the legal maximal path, using every launch window to its end, re-admitting before each trial."""
+        now = adm.parse_utc(NOW) + datetime.timedelta(seconds=900 + 180)
+        outcomes, seen = [], []
+        path = max(search.legal_paths(play([])), key=lambda p: adm.path_cost(manifest, p)['total_s'])
+        for index, trial in enumerate(path):
+            result = adm.admit(manifest, sha, play(outcomes), now.isoformat(), fx.health(sha), phase='pair_ready', t0=NOW)
+            seen.append(result)
+            if not result.admitted:
+                return seen, index
+            self.assertEqual(result.next_run['run_id'], trial.run_id)
+            now += datetime.timedelta(seconds=gap_s + launch_delay_s + result.next_run['estimate']['total_s'])
+            outcomes.append(self.outcome_of(path, index))
+        return seen, len(path)
+
+    @staticmethod
+    def outcome_of(path, index):
+        # The maximal path fails only at the top coarse rung; every refinement and confirmation passes.
+        return search.FAIL if path[index].phase == 'coarse' and path[index].target == 500 else search.PASS
+
+    def test_exact_fit_survives_every_launch_window_being_used_to_its_end(self):
+        manifest, sha = self.exact_fit()
+        seen, reached = self.walk_maximal_path(manifest, sha)
+        self.assertEqual(reached, 27, [r.reasons for r in seen if not r.admitted])
+        self.assertTrue(all(r.admitted for r in seen))
+        self.assertEqual({r.time['slack_s'] for r in seen}, {0}, 'the slack never goes negative along the path it reserved for')
+
+    def test_exact_fit_with_a_trial_taking_longer_than_its_reservation_is_refused_honestly(self):
+        manifest, sha = self.exact_fit()
+        seen, reached = self.walk_maximal_path(manifest, sha, gap_s=1)
+        self.assertEqual(reached, 1, 'one extra second is real lateness, and it is the next admission that says so')
+        self.assertEqual(seen[-1].time['slack_s'], -1)
+
+    def test_unused_launch_windows_come_back_as_slack(self):
+        manifest, sha = self.exact_fit()
+        seen, reached = self.walk_maximal_path(manifest, sha, launch_delay_s=0)
+        self.assertEqual(reached, 27)
+        self.assertEqual(seen[-1].time['slack_s'], 26 * 30)
+
+    def test_just_short_of_the_per_trial_allowance_is_refused_before_any_create(self):
+        manifest, sha = self.exact_fit(extra_s=-1)
+        result = admit(manifest, sha)
+        self.assertFalse(result.admitted)
+        self.assertEqual(result.time['slack_s'], -1)
+        self.assertIsNone(result.next_run)
+
+    def test_review_counterexample_second_admission_after_a_fully_used_window(self):
+        manifest, sha = self.exact_fit()
+        now = adm.parse_utc(NOW) + datetime.timedelta(seconds=900 + 180)
+        first = adm.admit(manifest, sha, search.SearchState(manifest['session']['id']), now.isoformat(), fx.health(sha), phase='pair_ready', t0=NOW)
+        self.assertEqual(first.time['slack_s'], 0)
+        now += datetime.timedelta(seconds=30 + first.next_run['estimate']['total_s'])
+        second = adm.admit(manifest, sha, play([search.PASS]), now.isoformat(), fx.health(sha), phase='pair_ready', t0=NOW)
+        self.assertTrue(second.admitted, second.reasons)
+        self.assertEqual(second.time['slack_s'], 0)
+
+    def test_explicit_resume_is_charged_the_window_of_every_remaining_trial(self):
+        manifest, sha = self.exact_fit()
+        elapsed = 900 + 180 + 300
+        now = adm.parse_utc(NOW) + datetime.timedelta(seconds=elapsed)
+        state = play([search.PASS])
+        result = adm.admit(manifest, sha, state, now.isoformat(), fx.health(sha), phase='pair_ready', t0=NOW, resume_requested=True)
+        remaining = result.time['maximal_path']
+        self.assertEqual(remaining['launch_windows_s'], remaining['count'] * 30)
+        self.assertEqual(result.time['required_before_c_s'],
+                         elapsed + remaining['execution_s'] + remaining['launch_windows_s'] + 600 + 0.5)
+
+    def test_a_more_expensive_shorter_path_cannot_hide_behind_a_longer_one(self):
+        manifest, sha = frozen()
+        paths = search.legal_paths(play([]))
+        costs = [adm.path_cost(manifest, p) for p in paths]
+        self.assertEqual(admit(manifest, sha).time['maximal_path']['total_s'], max(c['total_s'] for c in costs))
+        for cost in costs:
+            self.assertEqual(cost['total_s'], cost['execution_s'] + 30 * cost['count'])
+
+    def test_launch_window_does_not_change_the_cost_estimate(self):
+        manifest, sha = self.exact_fit()
+        result = admit(manifest, sha)
+        self.assertEqual(result.cost['roles']['game']['billed_for_s'], manifest['limits']['max_session_duration_s'],
+                         'cost stays both hosts for the full cap; the allowance moves time, not money')
+        self.assertEqual(result.next_run['estimate']['reserved_s'], result.next_run['estimate']['total_s'] + 30)
+
+    def test_each_dispatch_of_an_exact_fit_is_launch_by_safe_in_the_registry(self):
+        manifest, sha = self.exact_fit()
+        stack = rf.Stack(self)
+        session_id = manifest['session']['id']
+        stack.client.register(manifest, sha)
+        token = stack.client.acquire(session_id)['fencing_token']
+        stack.watchdog.tick()
+        ack = stack.client.arm(session_id, manifest, sha, token)
+        stack.watchdog.tick()
+        stack.create_pair(session_id, token)
+        stack.client.mutate('mark_ready', session_id=session_id, fencing_token=token, evidence_ref='readiness/fake.json')
+        c = session_clock.parse(ack['cleanup_c_utc'])
+        stack.clock.advance(900 + 180)
+        stack.watchdog.tick()
+        outcomes = []
+        path = max(search.legal_paths(play([])), key=lambda p: adm.path_cost(manifest, p)['total_s'])
+        for index, trial in enumerate(path):
+            result = adm.admit(manifest, sha, play(outcomes), session_clock.iso(stack.clock.wall()), fx.health(sha), phase='pair_ready',
+                               t0=ack['t0_utc'])
+            self.assertTrue(result.admitted, result.reasons)
+            estimate = result.next_run['estimate']['total_s']
+            token = stack.client.acquire(session_id, takeover=True)['fencing_token']
+            if stack.registry.status(session_id)['state'] == registry.PAUSED:
+                stack.client.mutate('record_resume', session_id=session_id, fencing_token=token, operator_request_ref='fixture', checks=dict(ok=True))
+            grant = stack.client.mutate('dispatch_run', session_id=session_id, run_id=trial.run_id, fencing_token=token,
+                                        manifest_sha256=sha, estimated_duration_s=estimate)
+            self.assertTrue(grant['authorized'])
+            self.assertLessEqual(session_clock.parse(grant['launch_by']) + estimate, c)
+            stack.clock.advance(30 + estimate)
+            stack.watchdog.tick()
+            outcome = self.outcome_of(path, index)
+            stack.client.mutate('record_run_outcome', session_id=session_id, run_id=trial.run_id, outcome=outcome,
+                                fencing_token=token, evidence_ref='runs/' + trial.run_id)
+            outcomes.append(outcome)
+        self.assertEqual(c - stack.clock.wall(), 600 + 0.5, 'exactly the export, the grace and the margin remain')
 
     def test_exact_cap_boundary(self):
         base, _ = frozen()

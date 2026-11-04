@@ -11,16 +11,6 @@
    "target": "5000002"
   },
   {
-   "at": "2026-10-30T12:07:21+00:00",
-   "op": "list_droplets_by_tag",
-   "target": "omega-session:do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:07:21+00:00",
-   "op": "list_firewalls_by_name",
-   "target": "do-cap-1v1g-20261030a-fw"
-  },
-  {
    "at": "2026-10-30T12:07:22+00:00",
    "op": "get_droplet",
    "target": "5000001"
@@ -29,16 +19,6 @@
    "at": "2026-10-30T12:07:22+00:00",
    "op": "get_droplet",
    "target": "5000002"
-  },
-  {
-   "at": "2026-10-30T12:07:23+00:00",
-   "op": "list_droplets_by_tag",
-   "target": "omega-session:do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:07:23+00:00",
-   "op": "list_firewalls_by_name",
-   "target": "do-cap-1v1g-20261030a-fw"
   },
   {
    "at": "2026-10-30T12:07:26+00:00",
@@ -51,16 +31,6 @@
    "target": "5000002"
   },
   {
-   "at": "2026-10-30T12:07:27+00:00",
-   "op": "list_droplets_by_tag",
-   "target": "omega-session:do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:07:27+00:00",
-   "op": "list_firewalls_by_name",
-   "target": "do-cap-1v1g-20261030a-fw"
-  },
-  {
    "at": "2026-10-30T12:07:34+00:00",
    "op": "get_droplet",
    "target": "5000001"
@@ -69,16 +39,6 @@
    "at": "2026-10-30T12:07:34+00:00",
    "op": "get_droplet",
    "target": "5000002"
-  },
-  {
-   "at": "2026-10-30T12:07:35+00:00",
-   "op": "list_droplets_by_tag",
-   "target": "omega-session:do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:07:35+00:00",
-   "op": "list_firewalls_by_name",
-   "target": "do-cap-1v1g-20261030a-fw"
   },
   {
    "at": "2026-10-30T12:07:50+00:00",
@@ -91,12 +51,42 @@
    "target": "5000002"
   },
   {
-   "at": "2026-10-30T12:07:51+00:00",
+   "at": "2026-10-30T12:08:00+00:00",
    "op": "list_droplets_by_tag",
    "target": "omega-session:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:07:51+00:00",
+   "at": "2026-10-30T12:08:00+00:00",
+   "op": "list_firewalls_by_name",
+   "target": "do-cap-1v1g-20261030a-fw"
+  },
+  {
+   "at": "2026-10-30T12:08:02+00:00",
+   "op": "list_droplets_by_tag",
+   "target": "omega-session:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:08:02+00:00",
+   "op": "list_firewalls_by_name",
+   "target": "do-cap-1v1g-20261030a-fw"
+  },
+  {
+   "at": "2026-10-30T12:08:06+00:00",
+   "op": "list_droplets_by_tag",
+   "target": "omega-session:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:08:06+00:00",
+   "op": "list_firewalls_by_name",
+   "target": "do-cap-1v1g-20261030a-fw"
+  },
+  {
+   "at": "2026-10-30T12:08:14+00:00",
+   "op": "list_droplets_by_tag",
+   "target": "omega-session:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:08:14+00:00",
    "op": "list_firewalls_by_name",
    "target": "do-cap-1v1g-20261030a-fw"
   },
@@ -121,16 +111,6 @@
    "target": "5000002"
   },
   {
-   "at": "2026-10-30T12:08:22+00:00",
-   "op": "list_droplets_by_tag",
-   "target": "omega-session:do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:08:22+00:00",
-   "op": "list_firewalls_by_name",
-   "target": "do-cap-1v1g-20261030a-fw"
-  },
-  {
    "at": "2026-10-30T12:08:23+00:00",
    "op": "get_droplet",
    "target": "5000001"
@@ -139,26 +119,6 @@
    "at": "2026-10-30T12:08:23+00:00",
    "op": "get_droplet",
    "target": "5000002"
-  },
-  {
-   "at": "2026-10-30T12:08:24+00:00",
-   "op": "list_droplets_by_tag",
-   "target": "omega-session:do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:08:24+00:00",
-   "op": "list_firewalls_by_name",
-   "target": "do-cap-1v1g-20261030a-fw"
-  },
-  {
-   "at": "2026-10-30T12:08:26+00:00",
-   "op": "list_droplets_by_tag",
-   "target": "omega-session:do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:08:26+00:00",
-   "op": "list_firewalls_by_name",
-   "target": "do-cap-1v1g-20261030a-fw"
   },
   {
    "at": "2026-10-30T12:08:27+00:00",
@@ -191,16 +151,6 @@
    "target": "5000002"
   },
   {
-   "at": "2026-10-30T12:08:38+00:00",
-   "op": "list_droplets_by_tag",
-   "target": "omega-session:do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:08:38+00:00",
-   "op": "list_firewalls_by_name",
-   "target": "do-cap-1v1g-20261030a-fw"
-  },
-  {
    "at": "2026-10-30T12:08:51+00:00",
    "op": "get_droplet",
    "target": "5000001"
@@ -211,12 +161,52 @@
    "target": "5000002"
   },
   {
-   "at": "2026-10-30T12:08:54+00:00",
+   "at": "2026-10-30T12:09:00+00:00",
    "op": "list_droplets_by_tag",
    "target": "omega-session:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:08:54+00:00",
+   "at": "2026-10-30T12:09:00+00:00",
+   "op": "list_firewalls_by_name",
+   "target": "do-cap-1v1g-20261030a-fw"
+  },
+  {
+   "at": "2026-10-30T12:09:01+00:00",
+   "op": "list_droplets_by_tag",
+   "target": "omega-session:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:09:01+00:00",
+   "op": "list_firewalls_by_name",
+   "target": "do-cap-1v1g-20261030a-fw"
+  },
+  {
+   "at": "2026-10-30T12:09:03+00:00",
+   "op": "list_droplets_by_tag",
+   "target": "omega-session:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:09:03+00:00",
+   "op": "list_firewalls_by_name",
+   "target": "do-cap-1v1g-20261030a-fw"
+  },
+  {
+   "at": "2026-10-30T12:09:07+00:00",
+   "op": "list_droplets_by_tag",
+   "target": "omega-session:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:09:07+00:00",
+   "op": "list_firewalls_by_name",
+   "target": "do-cap-1v1g-20261030a-fw"
+  },
+  {
+   "at": "2026-10-30T12:09:15+00:00",
+   "op": "list_droplets_by_tag",
+   "target": "omega-session:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:09:15+00:00",
    "op": "list_firewalls_by_name",
    "target": "do-cap-1v1g-20261030a-fw"
   },
@@ -251,26 +241,6 @@
    "target": "5000002"
   },
   {
-   "at": "2026-10-30T12:09:25+00:00",
-   "op": "list_droplets_by_tag",
-   "target": "omega-session:do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:09:25+00:00",
-   "op": "list_firewalls_by_name",
-   "target": "do-cap-1v1g-20261030a-fw"
-  },
-  {
-   "at": "2026-10-30T12:09:26+00:00",
-   "op": "list_droplets_by_tag",
-   "target": "omega-session:do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:09:26+00:00",
-   "op": "list_firewalls_by_name",
-   "target": "do-cap-1v1g-20261030a-fw"
-  },
-  {
    "at": "2026-10-30T12:09:28+00:00",
    "op": "get_droplet",
    "target": "5000001"
@@ -281,22 +251,12 @@
    "target": "5000002"
   },
   {
-   "at": "2026-10-30T12:09:29+00:00",
+   "at": "2026-10-30T12:09:31+00:00",
    "op": "list_droplets_by_tag",
    "target": "omega-session:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:09:29+00:00",
-   "op": "list_firewalls_by_name",
-   "target": "do-cap-1v1g-20261030a-fw"
-  },
-  {
-   "at": "2026-10-30T12:09:33+00:00",
-   "op": "list_droplets_by_tag",
-   "target": "omega-session:do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:09:33+00:00",
+   "at": "2026-10-30T12:09:31+00:00",
    "op": "list_firewalls_by_name",
    "target": "do-cap-1v1g-20261030a-fw"
   },
@@ -311,16 +271,6 @@
    "target": "5000002"
   },
   {
-   "at": "2026-10-30T12:09:41+00:00",
-   "op": "list_droplets_by_tag",
-   "target": "omega-session:do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:09:41+00:00",
-   "op": "list_firewalls_by_name",
-   "target": "do-cap-1v1g-20261030a-fw"
-  },
-  {
    "at": "2026-10-30T12:09:52+00:00",
    "op": "get_droplet",
    "target": "5000001"
@@ -331,12 +281,52 @@
    "target": "5000002"
   },
   {
-   "at": "2026-10-30T12:09:57+00:00",
+   "at": "2026-10-30T12:10:01+00:00",
    "op": "list_droplets_by_tag",
    "target": "omega-session:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:09:57+00:00",
+   "at": "2026-10-30T12:10:01+00:00",
+   "op": "list_firewalls_by_name",
+   "target": "do-cap-1v1g-20261030a-fw"
+  },
+  {
+   "at": "2026-10-30T12:10:02+00:00",
+   "op": "list_droplets_by_tag",
+   "target": "omega-session:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:10:02+00:00",
+   "op": "list_firewalls_by_name",
+   "target": "do-cap-1v1g-20261030a-fw"
+  },
+  {
+   "at": "2026-10-30T12:10:04+00:00",
+   "op": "list_droplets_by_tag",
+   "target": "omega-session:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:10:04+00:00",
+   "op": "list_firewalls_by_name",
+   "target": "do-cap-1v1g-20261030a-fw"
+  },
+  {
+   "at": "2026-10-30T12:10:08+00:00",
+   "op": "list_droplets_by_tag",
+   "target": "omega-session:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:10:08+00:00",
+   "op": "list_firewalls_by_name",
+   "target": "do-cap-1v1g-20261030a-fw"
+  },
+  {
+   "at": "2026-10-30T12:10:16+00:00",
+   "op": "list_droplets_by_tag",
+   "target": "omega-session:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:10:16+00:00",
    "op": "list_firewalls_by_name",
    "target": "do-cap-1v1g-20261030a-fw"
   },
@@ -371,26 +361,6 @@
    "target": "5000002"
   },
   {
-   "at": "2026-10-30T12:10:27+00:00",
-   "op": "list_droplets_by_tag",
-   "target": "omega-session:do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:10:27+00:00",
-   "op": "list_firewalls_by_name",
-   "target": "do-cap-1v1g-20261030a-fw"
-  },
-  {
-   "at": "2026-10-30T12:10:28+00:00",
-   "op": "list_droplets_by_tag",
-   "target": "omega-session:do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:10:28+00:00",
-   "op": "list_firewalls_by_name",
-   "target": "do-cap-1v1g-20261030a-fw"
-  },
-  {
    "at": "2026-10-30T12:10:29+00:00",
    "op": "get_droplet",
    "target": "5000001"
@@ -401,22 +371,12 @@
    "target": "5000002"
   },
   {
-   "at": "2026-10-30T12:10:30+00:00",
+   "at": "2026-10-30T12:10:32+00:00",
    "op": "list_droplets_by_tag",
    "target": "omega-session:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:10:30+00:00",
-   "op": "list_firewalls_by_name",
-   "target": "do-cap-1v1g-20261030a-fw"
-  },
-  {
-   "at": "2026-10-30T12:10:34+00:00",
-   "op": "list_droplets_by_tag",
-   "target": "omega-session:do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:10:34+00:00",
+   "at": "2026-10-30T12:10:32+00:00",
    "op": "list_firewalls_by_name",
    "target": "do-cap-1v1g-20261030a-fw"
   },
@@ -431,16 +391,6 @@
    "target": "5000002"
   },
   {
-   "at": "2026-10-30T12:10:42+00:00",
-   "op": "list_droplets_by_tag",
-   "target": "omega-session:do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:10:42+00:00",
-   "op": "list_firewalls_by_name",
-   "target": "do-cap-1v1g-20261030a-fw"
-  },
-  {
    "at": "2026-10-30T12:10:53+00:00",
    "op": "get_droplet",
    "target": "5000001"
@@ -451,12 +401,32 @@
    "target": "5000002"
   },
   {
-   "at": "2026-10-30T12:10:58+00:00",
+   "at": "2026-10-30T12:11:02+00:00",
    "op": "list_droplets_by_tag",
    "target": "omega-session:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:10:58+00:00",
+   "at": "2026-10-30T12:11:02+00:00",
+   "op": "list_firewalls_by_name",
+   "target": "do-cap-1v1g-20261030a-fw"
+  },
+  {
+   "at": "2026-10-30T12:11:03+00:00",
+   "op": "list_droplets_by_tag",
+   "target": "omega-session:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:11:03+00:00",
+   "op": "list_firewalls_by_name",
+   "target": "do-cap-1v1g-20261030a-fw"
+  },
+  {
+   "at": "2026-10-30T12:11:18+00:00",
+   "op": "list_droplets_by_tag",
+   "target": "omega-session:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:11:18+00:00",
    "op": "list_firewalls_by_name",
    "target": "do-cap-1v1g-20261030a-fw"
   },
@@ -472,41 +442,21 @@
   },
   {
    "at": "2026-10-30T12:11:24+00:00",
-   "op": "get_droplet",
+   "op": "delete_droplet",
    "target": "5000001"
   },
   {
    "at": "2026-10-30T12:11:24+00:00",
-   "op": "get_droplet",
-   "target": "5000002"
-  },
-  {
-   "at": "2026-10-30T12:11:25+00:00",
-   "op": "delete_droplet",
-   "target": "5000001"
-  },
-  {
-   "at": "2026-10-30T12:11:25+00:00",
    "op": "delete_droplet",
    "target": "5000002"
   },
   {
-   "at": "2026-10-30T12:11:28+00:00",
+   "at": "2026-10-30T12:11:33+00:00",
    "op": "list_droplets_by_tag",
    "target": "omega-session:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:11:28+00:00",
-   "op": "list_firewalls_by_name",
-   "target": "do-cap-1v1g-20261030a-fw"
-  },
-  {
-   "at": "2026-10-30T12:11:29+00:00",
-   "op": "list_droplets_by_tag",
-   "target": "omega-session:do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:11:29+00:00",
+   "at": "2026-10-30T12:11:33+00:00",
    "op": "list_firewalls_by_name",
    "target": "do-cap-1v1g-20261030a-fw"
   },
@@ -521,102 +471,102 @@
    "target": "5000002"
   },
   {
-   "at": "2026-10-30T12:11:44+00:00",
+   "at": "2026-10-30T12:11:48+00:00",
    "op": "list_droplets_by_tag",
    "target": "omega-session:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:11:44+00:00",
+   "at": "2026-10-30T12:11:48+00:00",
    "op": "list_firewalls_by_name",
    "target": "do-cap-1v1g-20261030a-fw"
   },
   {
-   "at": "2026-10-30T12:11:45+00:00",
+   "at": "2026-10-30T12:11:49+00:00",
    "op": "get_firewall",
    "target": "fw-5000000"
   },
   {
-   "at": "2026-10-30T12:11:46+00:00",
+   "at": "2026-10-30T12:11:50+00:00",
    "op": "delete_firewall",
    "target": "fw-5000000"
   },
   {
-   "at": "2026-10-30T12:11:59+00:00",
+   "at": "2026-10-30T12:12:03+00:00",
    "op": "list_droplets_by_tag",
    "target": "omega-session:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:11:59+00:00",
+   "at": "2026-10-30T12:12:03+00:00",
    "op": "list_firewalls_by_name",
    "target": "do-cap-1v1g-20261030a-fw"
   },
   {
-   "at": "2026-10-30T12:12:00+00:00",
+   "at": "2026-10-30T12:12:04+00:00",
    "op": "get_firewall",
    "target": "fw-5000000"
   },
   {
-   "at": "2026-10-30T12:12:01+00:00",
+   "at": "2026-10-30T12:12:05+00:00",
    "op": "get_tag",
    "target": "omega-role:bot:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:12:01+00:00",
+   "at": "2026-10-30T12:12:05+00:00",
    "op": "get_tag",
    "target": "omega-role:game:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:12:02+00:00",
+   "at": "2026-10-30T12:12:06+00:00",
    "op": "get_tag",
    "target": "omega-session:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:12:02+00:00",
+   "at": "2026-10-30T12:12:06+00:00",
    "op": "delete_tag",
    "target": "omega-role:bot:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:12:03+00:00",
+   "at": "2026-10-30T12:12:07+00:00",
    "op": "delete_tag",
    "target": "omega-role:game:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:12:03+00:00",
+   "at": "2026-10-30T12:12:07+00:00",
    "op": "delete_tag",
    "target": "omega-session:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:12:14+00:00",
+   "at": "2026-10-30T12:12:18+00:00",
    "op": "list_droplets_by_tag",
    "target": "omega-session:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:12:14+00:00",
+   "at": "2026-10-30T12:12:18+00:00",
    "op": "list_firewalls_by_name",
    "target": "do-cap-1v1g-20261030a-fw"
   },
   {
-   "at": "2026-10-30T12:12:16+00:00",
+   "at": "2026-10-30T12:12:20+00:00",
    "op": "get_tag",
    "target": "omega-role:bot:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:12:16+00:00",
+   "at": "2026-10-30T12:12:20+00:00",
    "op": "get_tag",
    "target": "omega-role:game:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:12:17+00:00",
+   "at": "2026-10-30T12:12:21+00:00",
    "op": "get_tag",
    "target": "omega-session:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:12:29+00:00",
+   "at": "2026-10-30T12:12:33+00:00",
    "op": "list_droplets_by_tag",
    "target": "omega-session:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:12:29+00:00",
+   "at": "2026-10-30T12:12:33+00:00",
    "op": "list_firewalls_by_name",
    "target": "do-cap-1v1g-20261030a-fw"
   }
@@ -646,10 +596,10 @@
  "clock": "scripted",
  "incidents": [
   {
-   "attempt_total": 124,
+   "attempt_total": 114,
    "cleanup_c_utc": "2026-10-30T12:08:00+00:00",
    "cleanup_outcome": "verified_absent",
-   "cleanup_verified_at": "2026-10-30T12:12:30+00:00",
+   "cleanup_verified_at": "2026-10-30T12:12:34+00:00",
    "deadline_d_utc": "2026-10-30T12:10:00+00:00",
    "detail": {
     "cleanup_c_utc": "2026-10-30T12:08:00+00:00",
@@ -660,347 +610,347 @@
    "kind": "cleanup-overdue",
    "last_error": "ProviderTransient: 503 service unavailable",
    "opened_at": "2026-10-30T12:10:00+00:00",
-   "overrun_s": 150.0,
+   "overrun_s": 154.0,
    "recent_attempts": [
     {
-     "attempt_id": 95,
+     "attempt_id": 85,
      "error_class": null,
-     "finished_at": "2026-10-30T12:11:24+00:00",
+     "finished_at": "2026-10-30T12:11:18+00:00",
+     "http_status": null,
+     "message": null,
+     "op": "list_droplets_by_tag",
+     "resource_key": "inventory_droplet:droplets",
+     "result": "ok",
+     "started_at": "2026-10-30T12:11:18+00:00"
+    },
+    {
+     "attempt_id": 86,
+     "error_class": null,
+     "finished_at": "2026-10-30T12:11:18+00:00",
+     "http_status": null,
+     "message": null,
+     "op": "list_firewalls_by_name",
+     "resource_key": "inventory_firewall:firewalls",
+     "result": "ok",
+     "started_at": "2026-10-30T12:11:18+00:00"
+    },
+    {
+     "attempt_id": 87,
+     "error_class": null,
+     "finished_at": "2026-10-30T12:11:23+00:00",
      "http_status": null,
      "message": null,
      "op": "get_droplet",
      "resource_key": "droplet:5000001",
      "result": "ok",
+     "started_at": "2026-10-30T12:11:23+00:00"
+    },
+    {
+     "attempt_id": 88,
+     "error_class": null,
+     "finished_at": "2026-10-30T12:11:23+00:00",
+     "http_status": null,
+     "message": null,
+     "op": "get_droplet",
+     "resource_key": "droplet:5000002",
+     "result": "ok",
+     "started_at": "2026-10-30T12:11:23+00:00"
+    },
+    {
+     "attempt_id": 89,
+     "error_class": null,
+     "finished_at": "2026-10-30T12:11:24+00:00",
+     "http_status": null,
+     "message": null,
+     "op": "delete_droplet",
+     "resource_key": "droplet:5000001",
+     "result": "ok",
      "started_at": "2026-10-30T12:11:24+00:00"
+    },
+    {
+     "attempt_id": 90,
+     "error_class": null,
+     "finished_at": "2026-10-30T12:11:24+00:00",
+     "http_status": null,
+     "message": null,
+     "op": "delete_droplet",
+     "resource_key": "droplet:5000002",
+     "result": "ok",
+     "started_at": "2026-10-30T12:11:24+00:00"
+    },
+    {
+     "attempt_id": 91,
+     "error_class": null,
+     "finished_at": "2026-10-30T12:11:33+00:00",
+     "http_status": null,
+     "message": null,
+     "op": "list_droplets_by_tag",
+     "resource_key": "inventory_droplet:droplets",
+     "result": "ok",
+     "started_at": "2026-10-30T12:11:33+00:00"
+    },
+    {
+     "attempt_id": 92,
+     "error_class": null,
+     "finished_at": "2026-10-30T12:11:33+00:00",
+     "http_status": null,
+     "message": null,
+     "op": "list_firewalls_by_name",
+     "resource_key": "inventory_firewall:firewalls",
+     "result": "ok",
+     "started_at": "2026-10-30T12:11:33+00:00"
+    },
+    {
+     "attempt_id": 93,
+     "error_class": null,
+     "finished_at": "2026-10-30T12:11:39+00:00",
+     "http_status": null,
+     "message": null,
+     "op": "get_droplet",
+     "resource_key": "droplet:5000001",
+     "result": "ok",
+     "started_at": "2026-10-30T12:11:39+00:00"
+    },
+    {
+     "attempt_id": 94,
+     "error_class": null,
+     "finished_at": "2026-10-30T12:11:39+00:00",
+     "http_status": null,
+     "message": null,
+     "op": "get_droplet",
+     "resource_key": "droplet:5000002",
+     "result": "ok",
+     "started_at": "2026-10-30T12:11:39+00:00"
+    },
+    {
+     "attempt_id": 95,
+     "error_class": null,
+     "finished_at": "2026-10-30T12:11:48+00:00",
+     "http_status": null,
+     "message": null,
+     "op": "list_droplets_by_tag",
+     "resource_key": "inventory_droplet:droplets",
+     "result": "ok",
+     "started_at": "2026-10-30T12:11:48+00:00"
     },
     {
      "attempt_id": 96,
      "error_class": null,
-     "finished_at": "2026-10-30T12:11:24+00:00",
+     "finished_at": "2026-10-30T12:11:48+00:00",
      "http_status": null,
      "message": null,
-     "op": "get_droplet",
-     "resource_key": "droplet:5000002",
+     "op": "list_firewalls_by_name",
+     "resource_key": "inventory_firewall:firewalls",
      "result": "ok",
-     "started_at": "2026-10-30T12:11:24+00:00"
+     "started_at": "2026-10-30T12:11:48+00:00"
     },
     {
      "attempt_id": 97,
      "error_class": null,
-     "finished_at": "2026-10-30T12:11:25+00:00",
-     "http_status": null,
-     "message": null,
-     "op": "delete_droplet",
-     "resource_key": "droplet:5000001",
-     "result": "ok",
-     "started_at": "2026-10-30T12:11:25+00:00"
-    },
-    {
-     "attempt_id": 98,
-     "error_class": null,
-     "finished_at": "2026-10-30T12:11:25+00:00",
-     "http_status": null,
-     "message": null,
-     "op": "delete_droplet",
-     "resource_key": "droplet:5000002",
-     "result": "ok",
-     "started_at": "2026-10-30T12:11:25+00:00"
-    },
-    {
-     "attempt_id": 99,
-     "error_class": null,
-     "finished_at": "2026-10-30T12:11:28+00:00",
-     "http_status": null,
-     "message": null,
-     "op": "list_droplets_by_tag",
-     "resource_key": "inventory_droplet:droplets",
-     "result": "ok",
-     "started_at": "2026-10-30T12:11:28+00:00"
-    },
-    {
-     "attempt_id": 100,
-     "error_class": null,
-     "finished_at": "2026-10-30T12:11:28+00:00",
-     "http_status": null,
-     "message": null,
-     "op": "list_firewalls_by_name",
-     "resource_key": "inventory_firewall:firewalls",
-     "result": "ok",
-     "started_at": "2026-10-30T12:11:28+00:00"
-    },
-    {
-     "attempt_id": 101,
-     "error_class": null,
-     "finished_at": "2026-10-30T12:11:29+00:00",
-     "http_status": null,
-     "message": null,
-     "op": "list_droplets_by_tag",
-     "resource_key": "inventory_droplet:droplets",
-     "result": "ok",
-     "started_at": "2026-10-30T12:11:29+00:00"
-    },
-    {
-     "attempt_id": 102,
-     "error_class": null,
-     "finished_at": "2026-10-30T12:11:29+00:00",
-     "http_status": null,
-     "message": null,
-     "op": "list_firewalls_by_name",
-     "resource_key": "inventory_firewall:firewalls",
-     "result": "ok",
-     "started_at": "2026-10-30T12:11:29+00:00"
-    },
-    {
-     "attempt_id": 103,
-     "error_class": null,
-     "finished_at": "2026-10-30T12:11:39+00:00",
-     "http_status": null,
-     "message": null,
-     "op": "get_droplet",
-     "resource_key": "droplet:5000001",
-     "result": "ok",
-     "started_at": "2026-10-30T12:11:39+00:00"
-    },
-    {
-     "attempt_id": 104,
-     "error_class": null,
-     "finished_at": "2026-10-30T12:11:39+00:00",
-     "http_status": null,
-     "message": null,
-     "op": "get_droplet",
-     "resource_key": "droplet:5000002",
-     "result": "ok",
-     "started_at": "2026-10-30T12:11:39+00:00"
-    },
-    {
-     "attempt_id": 105,
-     "error_class": null,
-     "finished_at": "2026-10-30T12:11:44+00:00",
-     "http_status": null,
-     "message": null,
-     "op": "list_droplets_by_tag",
-     "resource_key": "inventory_droplet:droplets",
-     "result": "ok",
-     "started_at": "2026-10-30T12:11:44+00:00"
-    },
-    {
-     "attempt_id": 106,
-     "error_class": null,
-     "finished_at": "2026-10-30T12:11:44+00:00",
-     "http_status": null,
-     "message": null,
-     "op": "list_firewalls_by_name",
-     "resource_key": "inventory_firewall:firewalls",
-     "result": "ok",
-     "started_at": "2026-10-30T12:11:44+00:00"
-    },
-    {
-     "attempt_id": 107,
-     "error_class": null,
-     "finished_at": "2026-10-30T12:11:45+00:00",
+     "finished_at": "2026-10-30T12:11:49+00:00",
      "http_status": null,
      "message": null,
      "op": "get_firewall",
      "resource_key": "firewall:fw-5000000",
      "result": "ok",
-     "started_at": "2026-10-30T12:11:45+00:00"
+     "started_at": "2026-10-30T12:11:49+00:00"
     },
     {
-     "attempt_id": 108,
+     "attempt_id": 98,
      "error_class": null,
-     "finished_at": "2026-10-30T12:11:46+00:00",
+     "finished_at": "2026-10-30T12:11:50+00:00",
      "http_status": null,
      "message": null,
      "op": "delete_firewall",
      "resource_key": "firewall:fw-5000000",
      "result": "ok",
-     "started_at": "2026-10-30T12:11:46+00:00"
+     "started_at": "2026-10-30T12:11:50+00:00"
     },
     {
-     "attempt_id": 109,
+     "attempt_id": 99,
      "error_class": null,
-     "finished_at": "2026-10-30T12:11:59+00:00",
+     "finished_at": "2026-10-30T12:12:03+00:00",
      "http_status": null,
      "message": null,
      "op": "list_droplets_by_tag",
      "resource_key": "inventory_droplet:droplets",
      "result": "ok",
-     "started_at": "2026-10-30T12:11:59+00:00"
+     "started_at": "2026-10-30T12:12:03+00:00"
     },
     {
-     "attempt_id": 110,
+     "attempt_id": 100,
      "error_class": null,
-     "finished_at": "2026-10-30T12:11:59+00:00",
+     "finished_at": "2026-10-30T12:12:03+00:00",
      "http_status": null,
      "message": null,
      "op": "list_firewalls_by_name",
      "resource_key": "inventory_firewall:firewalls",
      "result": "ok",
-     "started_at": "2026-10-30T12:11:59+00:00"
+     "started_at": "2026-10-30T12:12:03+00:00"
     },
     {
-     "attempt_id": 111,
+     "attempt_id": 101,
      "error_class": null,
-     "finished_at": "2026-10-30T12:12:00+00:00",
+     "finished_at": "2026-10-30T12:12:04+00:00",
      "http_status": null,
      "message": null,
      "op": "get_firewall",
      "resource_key": "firewall:fw-5000000",
      "result": "ok",
-     "started_at": "2026-10-30T12:12:00+00:00"
+     "started_at": "2026-10-30T12:12:04+00:00"
+    },
+    {
+     "attempt_id": 102,
+     "error_class": null,
+     "finished_at": "2026-10-30T12:12:05+00:00",
+     "http_status": null,
+     "message": null,
+     "op": "get_tag",
+     "resource_key": "tag:omega-role:bot:do-cap-1v1g-20261030a",
+     "result": "ok",
+     "started_at": "2026-10-30T12:12:05+00:00"
+    },
+    {
+     "attempt_id": 103,
+     "error_class": null,
+     "finished_at": "2026-10-30T12:12:05+00:00",
+     "http_status": null,
+     "message": null,
+     "op": "get_tag",
+     "resource_key": "tag:omega-role:game:do-cap-1v1g-20261030a",
+     "result": "ok",
+     "started_at": "2026-10-30T12:12:05+00:00"
+    },
+    {
+     "attempt_id": 104,
+     "error_class": null,
+     "finished_at": "2026-10-30T12:12:06+00:00",
+     "http_status": null,
+     "message": null,
+     "op": "get_tag",
+     "resource_key": "tag:omega-session:do-cap-1v1g-20261030a",
+     "result": "ok",
+     "started_at": "2026-10-30T12:12:06+00:00"
+    },
+    {
+     "attempt_id": 105,
+     "error_class": null,
+     "finished_at": "2026-10-30T12:12:06+00:00",
+     "http_status": null,
+     "message": null,
+     "op": "delete_tag",
+     "resource_key": "tag:omega-role:bot:do-cap-1v1g-20261030a",
+     "result": "ok",
+     "started_at": "2026-10-30T12:12:06+00:00"
+    },
+    {
+     "attempt_id": 106,
+     "error_class": null,
+     "finished_at": "2026-10-30T12:12:07+00:00",
+     "http_status": null,
+     "message": null,
+     "op": "delete_tag",
+     "resource_key": "tag:omega-role:game:do-cap-1v1g-20261030a",
+     "result": "ok",
+     "started_at": "2026-10-30T12:12:07+00:00"
+    },
+    {
+     "attempt_id": 107,
+     "error_class": null,
+     "finished_at": "2026-10-30T12:12:07+00:00",
+     "http_status": null,
+     "message": null,
+     "op": "delete_tag",
+     "resource_key": "tag:omega-session:do-cap-1v1g-20261030a",
+     "result": "ok",
+     "started_at": "2026-10-30T12:12:07+00:00"
+    },
+    {
+     "attempt_id": 108,
+     "error_class": null,
+     "finished_at": "2026-10-30T12:12:18+00:00",
+     "http_status": null,
+     "message": null,
+     "op": "list_droplets_by_tag",
+     "resource_key": "inventory_droplet:droplets",
+     "result": "ok",
+     "started_at": "2026-10-30T12:12:18+00:00"
+    },
+    {
+     "attempt_id": 109,
+     "error_class": null,
+     "finished_at": "2026-10-30T12:12:18+00:00",
+     "http_status": null,
+     "message": null,
+     "op": "list_firewalls_by_name",
+     "resource_key": "inventory_firewall:firewalls",
+     "result": "ok",
+     "started_at": "2026-10-30T12:12:18+00:00"
+    },
+    {
+     "attempt_id": 110,
+     "error_class": null,
+     "finished_at": "2026-10-30T12:12:20+00:00",
+     "http_status": null,
+     "message": null,
+     "op": "get_tag",
+     "resource_key": "tag:omega-role:bot:do-cap-1v1g-20261030a",
+     "result": "ok",
+     "started_at": "2026-10-30T12:12:20+00:00"
+    },
+    {
+     "attempt_id": 111,
+     "error_class": null,
+     "finished_at": "2026-10-30T12:12:20+00:00",
+     "http_status": null,
+     "message": null,
+     "op": "get_tag",
+     "resource_key": "tag:omega-role:game:do-cap-1v1g-20261030a",
+     "result": "ok",
+     "started_at": "2026-10-30T12:12:20+00:00"
     },
     {
      "attempt_id": 112,
      "error_class": null,
-     "finished_at": "2026-10-30T12:12:01+00:00",
+     "finished_at": "2026-10-30T12:12:21+00:00",
      "http_status": null,
      "message": null,
      "op": "get_tag",
-     "resource_key": "tag:omega-role:bot:do-cap-1v1g-20261030a",
+     "resource_key": "tag:omega-session:do-cap-1v1g-20261030a",
      "result": "ok",
-     "started_at": "2026-10-30T12:12:01+00:00"
+     "started_at": "2026-10-30T12:12:21+00:00"
     },
     {
      "attempt_id": 113,
      "error_class": null,
-     "finished_at": "2026-10-30T12:12:01+00:00",
+     "finished_at": "2026-10-30T12:12:33+00:00",
      "http_status": null,
      "message": null,
-     "op": "get_tag",
-     "resource_key": "tag:omega-role:game:do-cap-1v1g-20261030a",
+     "op": "list_droplets_by_tag",
+     "resource_key": "inventory_droplet:droplets",
      "result": "ok",
-     "started_at": "2026-10-30T12:12:01+00:00"
+     "started_at": "2026-10-30T12:12:33+00:00"
     },
     {
      "attempt_id": 114,
      "error_class": null,
-     "finished_at": "2026-10-30T12:12:02+00:00",
-     "http_status": null,
-     "message": null,
-     "op": "get_tag",
-     "resource_key": "tag:omega-session:do-cap-1v1g-20261030a",
-     "result": "ok",
-     "started_at": "2026-10-30T12:12:02+00:00"
-    },
-    {
-     "attempt_id": 115,
-     "error_class": null,
-     "finished_at": "2026-10-30T12:12:02+00:00",
-     "http_status": null,
-     "message": null,
-     "op": "delete_tag",
-     "resource_key": "tag:omega-role:bot:do-cap-1v1g-20261030a",
-     "result": "ok",
-     "started_at": "2026-10-30T12:12:02+00:00"
-    },
-    {
-     "attempt_id": 116,
-     "error_class": null,
-     "finished_at": "2026-10-30T12:12:03+00:00",
-     "http_status": null,
-     "message": null,
-     "op": "delete_tag",
-     "resource_key": "tag:omega-role:game:do-cap-1v1g-20261030a",
-     "result": "ok",
-     "started_at": "2026-10-30T12:12:03+00:00"
-    },
-    {
-     "attempt_id": 117,
-     "error_class": null,
-     "finished_at": "2026-10-30T12:12:03+00:00",
-     "http_status": null,
-     "message": null,
-     "op": "delete_tag",
-     "resource_key": "tag:omega-session:do-cap-1v1g-20261030a",
-     "result": "ok",
-     "started_at": "2026-10-30T12:12:03+00:00"
-    },
-    {
-     "attempt_id": 118,
-     "error_class": null,
-     "finished_at": "2026-10-30T12:12:14+00:00",
-     "http_status": null,
-     "message": null,
-     "op": "list_droplets_by_tag",
-     "resource_key": "inventory_droplet:droplets",
-     "result": "ok",
-     "started_at": "2026-10-30T12:12:14+00:00"
-    },
-    {
-     "attempt_id": 119,
-     "error_class": null,
-     "finished_at": "2026-10-30T12:12:14+00:00",
+     "finished_at": "2026-10-30T12:12:33+00:00",
      "http_status": null,
      "message": null,
      "op": "list_firewalls_by_name",
      "resource_key": "inventory_firewall:firewalls",
      "result": "ok",
-     "started_at": "2026-10-30T12:12:14+00:00"
-    },
-    {
-     "attempt_id": 120,
-     "error_class": null,
-     "finished_at": "2026-10-30T12:12:16+00:00",
-     "http_status": null,
-     "message": null,
-     "op": "get_tag",
-     "resource_key": "tag:omega-role:bot:do-cap-1v1g-20261030a",
-     "result": "ok",
-     "started_at": "2026-10-30T12:12:16+00:00"
-    },
-    {
-     "attempt_id": 121,
-     "error_class": null,
-     "finished_at": "2026-10-30T12:12:16+00:00",
-     "http_status": null,
-     "message": null,
-     "op": "get_tag",
-     "resource_key": "tag:omega-role:game:do-cap-1v1g-20261030a",
-     "result": "ok",
-     "started_at": "2026-10-30T12:12:16+00:00"
-    },
-    {
-     "attempt_id": 122,
-     "error_class": null,
-     "finished_at": "2026-10-30T12:12:17+00:00",
-     "http_status": null,
-     "message": null,
-     "op": "get_tag",
-     "resource_key": "tag:omega-session:do-cap-1v1g-20261030a",
-     "result": "ok",
-     "started_at": "2026-10-30T12:12:17+00:00"
-    },
-    {
-     "attempt_id": 123,
-     "error_class": null,
-     "finished_at": "2026-10-30T12:12:29+00:00",
-     "http_status": null,
-     "message": null,
-     "op": "list_droplets_by_tag",
-     "resource_key": "inventory_droplet:droplets",
-     "result": "ok",
-     "started_at": "2026-10-30T12:12:29+00:00"
-    },
-    {
-     "attempt_id": 124,
-     "error_class": null,
-     "finished_at": "2026-10-30T12:12:29+00:00",
-     "http_status": null,
-     "message": null,
-     "op": "list_firewalls_by_name",
-     "resource_key": "inventory_firewall:firewalls",
-     "result": "ok",
-     "started_at": "2026-10-30T12:12:29+00:00"
+     "started_at": "2026-10-30T12:12:33+00:00"
     }
    ],
    "remediation": [
     "registry_cli.py status --state-dir <state-dir> --session do-cap-1v1g-20261030a",
     "registry_cli.py journal --state-dir <state-dir> --session do-cap-1v1g-20261030a"
    ],
-   "resolved_at": "2026-10-30T12:12:30+00:00",
+   "resolved_at": "2026-10-30T12:12:34+00:00",
    "resources": [
     {
-     "attempts": 27,
+     "attempts": 26,
      "kind": "droplet",
      "last_error": null,
      "name": "do-cap-1v1g-20261030a-game",
@@ -1010,7 +960,7 @@
      "verified_absent_at": "2026-10-30T12:11:39+00:00"
     },
     {
-     "attempts": 27,
+     "attempts": 26,
      "kind": "droplet",
      "last_error": null,
      "name": "do-cap-1v1g-20261030a-bot",
@@ -1027,7 +977,7 @@
      "provider_id": "fw-5000000",
      "resource_key": "firewall:fw-5000000",
      "status": "absent",
-     "verified_absent_at": "2026-10-30T12:12:00+00:00"
+     "verified_absent_at": "2026-10-30T12:12:04+00:00"
     },
     {
      "attempts": 3,
@@ -1037,7 +987,7 @@
      "provider_id": "omega-role:bot:do-cap-1v1g-20261030a",
      "resource_key": "tag:omega-role:bot:do-cap-1v1g-20261030a",
      "status": "absent",
-     "verified_absent_at": "2026-10-30T12:12:16+00:00"
+     "verified_absent_at": "2026-10-30T12:12:20+00:00"
     },
     {
      "attempts": 3,
@@ -1047,7 +997,7 @@
      "provider_id": "omega-role:game:do-cap-1v1g-20261030a",
      "resource_key": "tag:omega-role:game:do-cap-1v1g-20261030a",
      "status": "absent",
-     "verified_absent_at": "2026-10-30T12:12:16+00:00"
+     "verified_absent_at": "2026-10-30T12:12:20+00:00"
     },
     {
      "attempts": 3,
@@ -1057,12 +1007,13 @@
      "provider_id": "omega-session:do-cap-1v1g-20261030a",
      "resource_key": "tag:omega-session:do-cap-1v1g-20261030a",
      "status": "absent",
-     "verified_absent_at": "2026-10-30T12:12:17+00:00"
+     "verified_absent_at": "2026-10-30T12:12:21+00:00"
     }
    ],
    "session_id": "do-cap-1v1g-20261030a",
    "status": "resolved",
    "t0_utc": "2026-10-30T12:00:00+00:00",
+   "unresolved_creates": [],
    "unverified_resource_keys": [],
    "version": 26
   }
@@ -1283,7 +1234,7 @@
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:07:20+00:00",
+   "at": "2026-10-30T12:08:00+00:00",
    "data": {
     "actor": "watchdog:omega-watchdog@mgmt-1",
     "prior_state": "ready",
@@ -1304,7 +1255,7 @@
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:11:25+00:00",
+   "at": "2026-10-30T12:11:24+00:00",
    "data": {
     "note": "accepted is not proof of destruction",
     "resource_key": "droplet:5000001"
@@ -1314,7 +1265,7 @@
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:11:25+00:00",
+   "at": "2026-10-30T12:11:24+00:00",
    "data": {
     "note": "accepted is not proof of destruction",
     "resource_key": "droplet:5000002"
@@ -1342,7 +1293,7 @@
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:11:46+00:00",
+   "at": "2026-10-30T12:11:50+00:00",
    "data": {
     "note": "accepted is not proof of destruction",
     "resource_key": "firewall:fw-5000000"
@@ -1352,7 +1303,7 @@
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:12:00+00:00",
+   "at": "2026-10-30T12:12:04+00:00",
    "data": {
     "resource_key": "firewall:fw-5000000"
    },
@@ -1361,7 +1312,7 @@
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:12:02+00:00",
+   "at": "2026-10-30T12:12:06+00:00",
    "data": {
     "note": "accepted is not proof of destruction",
     "resource_key": "tag:omega-role:bot:do-cap-1v1g-20261030a"
@@ -1371,7 +1322,7 @@
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:12:03+00:00",
+   "at": "2026-10-30T12:12:07+00:00",
    "data": {
     "note": "accepted is not proof of destruction",
     "resource_key": "tag:omega-role:game:do-cap-1v1g-20261030a"
@@ -1381,7 +1332,7 @@
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:12:03+00:00",
+   "at": "2026-10-30T12:12:07+00:00",
    "data": {
     "note": "accepted is not proof of destruction",
     "resource_key": "tag:omega-session:do-cap-1v1g-20261030a"
@@ -1391,7 +1342,7 @@
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:12:16+00:00",
+   "at": "2026-10-30T12:12:20+00:00",
    "data": {
     "resource_key": "tag:omega-role:bot:do-cap-1v1g-20261030a"
    },
@@ -1400,7 +1351,7 @@
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:12:16+00:00",
+   "at": "2026-10-30T12:12:20+00:00",
    "data": {
     "resource_key": "tag:omega-role:game:do-cap-1v1g-20261030a"
    },
@@ -1409,7 +1360,7 @@
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:12:17+00:00",
+   "at": "2026-10-30T12:12:21+00:00",
    "data": {
     "resource_key": "tag:omega-session:do-cap-1v1g-20261030a"
    },
@@ -1418,7 +1369,7 @@
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:12:30+00:00",
+   "at": "2026-10-30T12:12:34+00:00",
    "data": {
     "incident_id": 1,
     "kind": "cleanup-overdue"
@@ -1428,11 +1379,11 @@
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:12:30+00:00",
+   "at": "2026-10-30T12:12:34+00:00",
    "data": {
     "cleanup_outcome": "verified_absent",
     "disowned": [],
-    "overrun_s": 150.0
+    "overrun_s": 154.0
    },
    "kind": "closed",
    "seq": 35,
@@ -1441,7 +1392,7 @@
  ],
  "journal_verification": {
   "events": 35,
-  "head": "cd214504123370379fbfe0a4dca97d6c7e409eef82a873273b593d9f7a6e00d1",
+  "head": "ae421b0cfe527e10059472b00e441bb2fc0a18b9645b192f8a04a278bbe26bd0",
   "valid": true
  },
  "provider": "fake",
@@ -1459,10 +1410,11 @@
     "outcome": "verified_absent",
     "overdue": true,
     "overrun_is_lower_bound": false,
-    "overrun_s": 150.0,
+    "overrun_s": 154.0,
     "reason": "deadline_C",
-    "requested_at": "2026-10-30T12:07:20+00:00",
-    "verified_at": "2026-10-30T12:12:30+00:00"
+    "requested_at": "2026-10-30T12:08:00+00:00",
+    "unresolved_creates": [],
+    "verified_at": "2026-10-30T12:12:34+00:00"
    },
    "cleanup_c_utc": "2026-10-30T12:08:00+00:00",
    "controller_id": "controller-a",
@@ -1484,8 +1436,8 @@
      "kind": "cleanup-overdue",
      "last_error": "ProviderTransient: 503 service unavailable",
      "opened_at": "2026-10-30T12:10:00+00:00",
-     "overrun_s": 150.0,
-     "resolved_at": "2026-10-30T12:12:30+00:00",
+     "overrun_s": 154.0,
+     "resolved_at": "2026-10-30T12:12:34+00:00",
      "session_id": "do-cap-1v1g-20261030a",
      "status": "resolved",
      "version": 26
@@ -1493,6 +1445,7 @@
    ],
    "intents": [
     {
+     "create_request_ref": "do-cap-1v1g-20261030a:droplet:bot#1",
      "expected_name": "do-cap-1v1g-20261030a-bot",
      "expected_tags": [
       "omega-session:do-cap-1v1g-20261030a",
@@ -1506,6 +1459,7 @@
      "state": "created"
     },
     {
+     "create_request_ref": "do-cap-1v1g-20261030a:droplet:game#1",
      "expected_name": "do-cap-1v1g-20261030a-game",
      "expected_tags": [
       "omega-session:do-cap-1v1g-20261030a",
@@ -1519,6 +1473,7 @@
      "state": "created"
     },
     {
+     "create_request_ref": "do-cap-1v1g-20261030a:firewall#1",
      "expected_name": "do-cap-1v1g-20261030a-fw",
      "expected_tags": [
       "omega-role:game:do-cap-1v1g-20261030a",
@@ -1532,6 +1487,7 @@
      "state": "created"
     },
     {
+     "create_request_ref": "do-cap-1v1g-20261030a:tag:bot#1",
      "expected_name": "omega-role:bot:do-cap-1v1g-20261030a",
      "expected_tags": [],
      "intent_id": "do-cap-1v1g-20261030a:tag:bot",
@@ -1542,6 +1498,7 @@
      "state": "created"
     },
     {
+     "create_request_ref": "do-cap-1v1g-20261030a:tag:game#1",
      "expected_name": "omega-role:game:do-cap-1v1g-20261030a",
      "expected_tags": [],
      "intent_id": "do-cap-1v1g-20261030a:tag:game",
@@ -1552,6 +1509,7 @@
      "state": "created"
     },
     {
+     "create_request_ref": "do-cap-1v1g-20261030a:tag:session#1",
      "expected_name": "omega-session:do-cap-1v1g-20261030a",
      "expected_tags": [],
      "intent_id": "do-cap-1v1g-20261030a:tag:session",
@@ -1573,7 +1531,7 @@
    "recovery_deadline_utc": null,
    "resources": [
     {
-     "attempts": 27,
+     "attempts": 26,
      "kind": "droplet",
      "last_error": null,
      "name": "do-cap-1v1g-20261030a-game",
@@ -1584,7 +1542,7 @@
      "verified_absent_at": "2026-10-30T12:11:39+00:00"
     },
     {
-     "attempts": 27,
+     "attempts": 26,
      "kind": "droplet",
      "last_error": null,
      "name": "do-cap-1v1g-20261030a-bot",
@@ -1603,7 +1561,7 @@
      "resource_key": "firewall:fw-5000000",
      "source": "controller",
      "status": "absent",
-     "verified_absent_at": "2026-10-30T12:12:00+00:00"
+     "verified_absent_at": "2026-10-30T12:12:04+00:00"
     },
     {
      "attempts": 3,
@@ -1614,7 +1572,7 @@
      "resource_key": "tag:omega-role:bot:do-cap-1v1g-20261030a",
      "source": "manifest",
      "status": "absent",
-     "verified_absent_at": "2026-10-30T12:12:16+00:00"
+     "verified_absent_at": "2026-10-30T12:12:20+00:00"
     },
     {
      "attempts": 3,
@@ -1625,7 +1583,7 @@
      "resource_key": "tag:omega-role:game:do-cap-1v1g-20261030a",
      "source": "manifest",
      "status": "absent",
-     "verified_absent_at": "2026-10-30T12:12:16+00:00"
+     "verified_absent_at": "2026-10-30T12:12:20+00:00"
     },
     {
      "attempts": 3,
@@ -1636,7 +1594,7 @@
      "resource_key": "tag:omega-session:do-cap-1v1g-20261030a",
      "source": "manifest",
      "status": "absent",
-     "verified_absent_at": "2026-10-30T12:12:17+00:00"
+     "verified_absent_at": "2026-10-30T12:12:21+00:00"
     }
    ],
    "runs": [],

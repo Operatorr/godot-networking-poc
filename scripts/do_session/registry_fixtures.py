@@ -6,6 +6,7 @@ import shutil
 import tempfile
 
 import cleanup_provider
+import create_evidence
 import fake_provider
 import fixture_support as fx
 import registry
@@ -45,7 +46,8 @@ class Stack:
         self.client = self.new_client('controller-a')
 
     def open_registry(self):
-        reg = registry.Registry(self.state_dir, clock=self.clock, failpoint=lambda name: self.failpoint and self.failpoint(name))
+        reg = registry.Registry(self.state_dir, clock=self.clock, failpoint=lambda name: self.failpoint and self.failpoint(name),
+                                trusted_settlement_bases=create_evidence.OFFLINE_FIXTURE_BASES)
         self.case.addCleanup(reg.close)
         return reg
 

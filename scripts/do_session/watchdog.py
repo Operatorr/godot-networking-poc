@@ -7,8 +7,11 @@ sweep starts every 15 s and immediately on service start.
 
 Provider requests run off the main thread through an executor seam, and only the main thread
 touches SQLite. Round-robin dispatch with per-session and global in-flight limits means a session
-whose provider calls hang or fail cannot starve another session's checks. Sessions whose first Droplet
-delete is due by an imminent C go first and have reserved capacity, so hung sessions cannot make them late.
+whose provider calls hang or fail cannot starve another session's checks.
+
+Each session's chain toward a first delete by C (one ownership read, then the delete) goes first and
+runs on reserved slots that ordinary work never occupies. ``arm_session`` admits a session only while
+those reservations fit (``deadline_capacity``), so a due request always has a slot, whatever is hung.
 """
 import collections
 import contextlib
@@ -26,10 +29,10 @@ import session_clock
 
 LOG = logging.getLogger('omega.do_watchdog')
 LOCK_NAME = 'watchdog.lock'
-DEFAULT_MAX_IN_FLIGHT = 8
+DEFAULT_MAX_IN_FLIGHT = 12
 DEFAULT_MAX_IN_FLIGHT_PER_SESSION = 2
 DEFAULT_REQUEST_DEADLINE_S = session_clock.PROVIDER_REQUEST_BOUND_S
-DEFAULT_TICK_INTERVAL_S = 1.0
+DEFAULT_TICK_INTERVAL_S = cleanup_ledger.DEFAULT_TICK_INTERVAL_S
 
 
 class WatchdogAlreadyRunning(RuntimeError):
@@ -78,18 +81,25 @@ class Watchdog:
     def __init__(self, registry, provider, executor=None, max_in_flight=DEFAULT_MAX_IN_FLIGHT,
                  max_in_flight_per_session=DEFAULT_MAX_IN_FLIGHT_PER_SESSION,
                  request_deadline_s=DEFAULT_REQUEST_DEADLINE_S, sweep_interval_s=cleanup_ledger.SWEEP_INTERVAL_S,
-                 ledger_options=None):
+                 ledger_options=None, deadline_reserved_slots=None):
         self.registry = registry
         self.provider = provider
         self.identity = registry.watchdog_identity
         self.executor = executor or ThreadExecutor()
+        if deadline_reserved_slots is None:
+            # Ordinary work keeps two sessions' share, or half when that is less, so one hung session cannot stop it.
+            deadline_reserved_slots = max_in_flight - min(2 * max_in_flight_per_session, (max_in_flight + 1) // 2)
+        if not 0 <= deadline_reserved_slots < max_in_flight:
+            raise ValueError('reserved deadline slots must leave ordinary work at least one of %d slots' % max_in_flight)
         self.ledger = cleanup_ledger.CleanupLedger(registry, self.identity, sweep_interval_s=sweep_interval_s,
+                                                   deadline_slots=deadline_reserved_slots, request_bound_s=request_deadline_s,
                                                    **(ledger_options or {}))
         self.max_in_flight = max_in_flight
         self.max_in_flight_per_session = max_in_flight_per_session
+        self.deadline_reserved_slots = deadline_reserved_slots
         self.request_deadline_s = request_deadline_s
         self.sweep_interval_s = sweep_interval_s
-        self._require_read_fits_cleanup_lead(DEFAULT_TICK_INTERVAL_S)
+        self._require_read_fits_prepare_lead(DEFAULT_TICK_INTERVAL_S)
         self._results = collections.deque()
         self._next_sweep = None
         self._rr_last = None
@@ -97,14 +107,15 @@ class Watchdog:
         self._written_receipts = set()
         self._logged_open = set()
         self._lock_fd = None
+        self._last_evaluated = None
         self.storage_healthy = True
 
-    def _require_read_fits_cleanup_lead(self, tick_interval_s):
+    def _require_read_fits_prepare_lead(self, tick_interval_s):
         """The first delete follows one ownership read, seen on the next tick, after a start up to one tick late."""
         needed = self.request_deadline_s + 2 * tick_interval_s
-        if self.ledger.cleanup_lead_s < needed:
-            raise ValueError('cleanup lead %.1f s cannot cover a %.1f s read and the tick delays; first delete would miss C'
-                             % (self.ledger.cleanup_lead_s, self.request_deadline_s))
+        if self.ledger.prepare_lead_s < needed:
+            raise ValueError('preparation lead %.1f s cannot cover a %.1f s read and the tick delays; first delete would miss C'
+                             % (self.ledger.prepare_lead_s, self.request_deadline_s))
 
     # ---- lifecycle ---------------------------------------------------------------------------
 
@@ -132,11 +143,13 @@ class Watchdog:
 
     def tick(self):
         """Evaluate deadlines first. Storage faults leave work queued and hold back side effects."""
+        self._last_evaluated = None
         try:
             self._drain_results()
             effective = self.registry.peek_now()
             new_sweep = self._next_sweep is None or effective >= self._next_sweep
             effective = self.ledger.tick(new_sweep=new_sweep)
+            self._last_evaluated = effective
             if new_sweep:
                 # Keep the 15-second cadence unless the loop fell a whole interval behind.
                 scheduled = (self._next_sweep or effective) + self.sweep_interval_s
@@ -151,8 +164,23 @@ class Watchdog:
             LOG.error('registry storage failure; holding provider side effects: %s', error)
         self._publish_artifacts()
 
+    def next_wait_s(self, tick_interval_s):
+        """Until the next tick, cut short so that a tick lands on the next session boundary.
+
+        A boundary that passed while the last tick was running was never evaluated, so it counts from
+        what that tick saw: no wait at all. After a failed tick there is no such moment, so no hot loop.
+        """
+        try:
+            effective = self.registry.peek_now()
+            evaluated = effective if self._last_evaluated is None else self._last_evaluated
+            boundary = self.ledger.next_boundary_after(evaluated)
+        except sqlite3.Error:
+            return tick_interval_s
+        return tick_interval_s if boundary is None else max(0.0, min(tick_interval_s, boundary - effective))
+
     def run_forever(self, stop_event, tick_interval_s=DEFAULT_TICK_INTERVAL_S):
-        self._require_read_fits_cleanup_lead(tick_interval_s)
+        self._require_read_fits_prepare_lead(tick_interval_s)
+        self.ledger.tick_interval_s = tick_interval_s
         self.acquire_lock()
         try:
             self.start()
@@ -162,7 +190,7 @@ class Watchdog:
                 except Exception:
                     # Stay supervised and visible: a stale heartbeat turns the health check unhealthy.
                     LOG.exception('watchdog tick failed; retrying')
-                stop_event.wait(tick_interval_s)    # monotonic: clock changes cannot stretch this wait
+                stop_event.wait(self.next_wait_s(tick_interval_s))    # monotonic: clock changes cannot stretch this wait
         finally:
             self.release_lock()
 
@@ -176,17 +204,24 @@ class Watchdog:
         if not due:
             return
         counts = self.ledger.in_flight_counts()
+        chain_in_flight, ordinary_in_flight = self.ledger.in_flight_classes()
         queues = {s: collections.deque(due[s]) for s in due}
-        urgent = self.ledger.awaiting_first_delete(due, effective)
-        self._serve(urgent, queues, counts, self.max_in_flight - sum(counts.values()))
-        # Ordinary work leaves one session's share free, so an imminent C never waits on hung requests.
-        fits_reserve = self.max_in_flight > 2 * self.max_in_flight_per_session
-        reserve = self.max_in_flight_per_session if fits_reserve else 0
-        order = sorted(s for s in due if s not in urgent)
+        # Deadline chains go first. Their reservations are what make a free slot certain here.
+        free = self.max_in_flight - chain_in_flight - ordinary_in_flight
+        for session_id, row in self.ledger.deadline_chains(due, effective):
+            if free <= 0:
+                LOG.error('no free slot for a deadline request of session=%s: admitted capacity was exceeded', session_id)
+                break
+            queues[session_id] = collections.deque(r for r in queues[session_id] if r['resource_key'] != row['resource_key'])
+            if self._start_request(session_id, row['resource_key'], deadline_chain=True):
+                counts[session_id] = counts.get(session_id, 0) + 1
+                free -= 1
+        # Ordinary work stays out of the reserved slots, even when it leaves them idle.
+        order = sorted(due)
         if self._rr_last is not None:
             later = [s for s in order if s > self._rr_last]
             order = later + [s for s in order if s <= self._rr_last]
-        self._serve(order, queues, counts, self.max_in_flight - reserve - sum(counts.values()))
+        self._serve(order, queues, counts, min(free, self.max_in_flight - self.deadline_reserved_slots - ordinary_in_flight))
 
     def _serve(self, order, queues, counts, capacity):
         """Give each session one slot per pass, up to its own limit and ``capacity``."""
@@ -207,8 +242,8 @@ class Watchdog:
             if not progressed:
                 break
 
-    def _start_request(self, session_id, resource_key):
-        started = self.ledger.start_attempt(session_id, resource_key)
+    def _start_request(self, session_id, resource_key, deadline_chain=False):
+        started = self.ledger.start_attempt(session_id, resource_key, deadline_chain)
         if started is None:
             return False
         attempt_id, op, target = started

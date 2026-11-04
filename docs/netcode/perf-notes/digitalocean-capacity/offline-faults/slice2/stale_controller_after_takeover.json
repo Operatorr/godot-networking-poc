@@ -602,6 +602,7 @@
     "overrun_s": 0.0,
     "reason": "operator abort after takeover",
     "requested_at": "2026-10-30T12:00:00+00:00",
+    "unresolved_creates": [],
     "verified_at": "2026-10-30T12:01:02+00:00"
    },
    "cleanup_c_utc": "2026-10-30T12:08:00+00:00",
@@ -616,6 +617,7 @@
    "incidents": [],
    "intents": [
     {
+     "create_request_ref": "do-cap-1v1g-20261030a:droplet:bot#1",
      "expected_name": "do-cap-1v1g-20261030a-bot",
      "expected_tags": [
       "omega-session:do-cap-1v1g-20261030a",
@@ -629,6 +631,7 @@
      "state": "created"
     },
     {
+     "create_request_ref": "do-cap-1v1g-20261030a:droplet:game#1",
      "expected_name": "do-cap-1v1g-20261030a-game",
      "expected_tags": [
       "omega-session:do-cap-1v1g-20261030a",
@@ -642,6 +645,7 @@
      "state": "created"
     },
     {
+     "create_request_ref": "do-cap-1v1g-20261030a:firewall#1",
      "expected_name": "do-cap-1v1g-20261030a-fw",
      "expected_tags": [
       "omega-role:game:do-cap-1v1g-20261030a",
@@ -655,6 +659,7 @@
      "state": "created"
     },
     {
+     "create_request_ref": "do-cap-1v1g-20261030a:tag:bot#1",
      "expected_name": "omega-role:bot:do-cap-1v1g-20261030a",
      "expected_tags": [],
      "intent_id": "do-cap-1v1g-20261030a:tag:bot",
@@ -665,6 +670,7 @@
      "state": "created"
     },
     {
+     "create_request_ref": "do-cap-1v1g-20261030a:tag:game#1",
      "expected_name": "omega-role:game:do-cap-1v1g-20261030a",
      "expected_tags": [],
      "intent_id": "do-cap-1v1g-20261030a:tag:game",
@@ -675,6 +681,7 @@
      "state": "created"
     },
     {
+     "create_request_ref": "do-cap-1v1g-20261030a:tag:session#1",
      "expected_name": "omega-session:do-cap-1v1g-20261030a",
      "expected_tags": [],
      "intent_id": "do-cap-1v1g-20261030a:tag:session",

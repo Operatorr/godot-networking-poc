@@ -10,10 +10,10 @@ touches a network or an account.
     fault_harness.py controller --state-dir D --account F --failpoint P [--hit N] --wall W --mono M --boot B --session S
 """
 import argparse
-import math
 import os
 import sys
 
+import create_evidence
 import fake_provider
 import fixture_support as fx
 import registry
@@ -54,12 +54,19 @@ def create_for(provider):
     def create(grant):
         kind, name, tags = grant['kind'], grant['expected_name'], grant['expected_tags']
         if kind == 'droplet':
-            return provider.add_droplet(name, tags)
-        if kind == 'firewall':
-            return provider.add_firewall(name, tags=tags)
-        provider.add_tag(name)
-        return name
+            resource_id = provider.add_droplet(name, tags)
+        elif kind == 'firewall':
+            resource_id = provider.add_firewall(name, tags=tags)
+        else:
+            provider.add_tag(name)
+            resource_id = name
+        provider.note_create(grant['create_request_ref'], resource_id)
+        return resource_id
     return create
+
+
+def settlement_for(provider):
+    return lambda grant: provider.get_request_settlement(grant['create_request_ref'])
 
 
 def controller_flow(reg, wd_tick, provider, session_id):
@@ -71,7 +78,7 @@ def controller_flow(reg, wd_tick, provider, session_id):
     wd_tick()
     client.arm(session_id, manifest, sha, token, request_id='r-arm')
     wd_tick()
-    find, create = find_existing(provider, session_id), create_for(provider)
+    find, create, settle = find_existing(provider, session_id), create_for(provider), settlement_for(provider)
     # A restarted controller reads durable state and continues; it does not replay finished stages.
     status = reg.status(session_id)
     if status['state'] == registry.PROVISIONING:
@@ -79,14 +86,8 @@ def controller_flow(reg, wd_tick, provider, session_id):
         for suffix in ('tag:session', 'tag:game', 'tag:bot', 'firewall', 'droplet:game', 'droplet:bot'):
             intent = session_id + ':' + suffix
             if intent not in created:
-                try:
-                    client.guarded_create(session_id, intent, token, create, find, request_id='r-create-' + intent)
-                except registry_client.CreateStillSettling as settling:
-                    # A restart reached an outstanding grant: wait out its bound on the scripted clock.
-                    for _ in range(math.ceil(settling.retry_after_s)):
-                        reg.clock.advance(1)
-                        wd_tick()
-                    client.guarded_create(session_id, intent, token, create, find, request_id='r-create-' + intent)
+                # A restart reaching an outstanding grant needs the provider's receipt before any retry.
+                client.guarded_create(session_id, intent, token, create, find, request_id='r-create-' + intent, settlement_fn=settle)
         client.mutate('mark_ready', 'r-ready', session_id=session_id, fencing_token=token, evidence_ref='readiness/fake.json')
     if not reg.runs(session_id) or reg.status(session_id)['state'] == registry.RUNNING:
         client.mutate('dispatch_run', 'r-dispatch', session_id=session_id, run_id='run-1', fencing_token=token,
@@ -95,6 +96,10 @@ def controller_flow(reg, wd_tick, provider, session_id):
         client.mutate('record_run_outcome', 'r-outcome', session_id=session_id, run_id='run-1', outcome='PASS',
                       fencing_token=token, evidence_ref='runs/run-1')
     client.mutate('request_cleanup', 'r-cleanup', session_id=session_id, fencing_token=token, reason='batch finished')
+
+
+def open_registry(state_dir, clock, failpoint=None):
+    return registry.Registry(state_dir, clock=clock, failpoint=failpoint, trusted_settlement_bases=create_evidence.OFFLINE_FIXTURE_BASES)
 
 
 def main(argv=None):
@@ -115,17 +120,16 @@ def main(argv=None):
     provider = fake_provider.FakeProvider(args.account, clock=clock)
     failpoint = crash_at(args.failpoint, args.hit)
     if args.mode == 'watchdog':
-        service = watchdog.Watchdog(registry.Registry(args.state_dir, clock=clock, failpoint=failpoint), provider,
-                                    executor=watchdog.InlineExecutor())
+        service = watchdog.Watchdog(open_registry(args.state_dir, clock, failpoint), provider, executor=watchdog.InlineExecutor())
         service.start()
         for _ in range(args.steps):
             clock.advance(1)
             service.tick()
     else:
         # The watchdog is a separate service, so the controller's failpoints never fire inside it.
-        service = watchdog.Watchdog(registry.Registry(args.state_dir, clock=clock), provider, executor=watchdog.InlineExecutor())
+        service = watchdog.Watchdog(open_registry(args.state_dir, clock), provider, executor=watchdog.InlineExecutor())
         service.start()
-        controller_flow(registry.Registry(args.state_dir, clock=clock, failpoint=failpoint), service.tick, provider, args.session)
+        controller_flow(open_registry(args.state_dir, clock, failpoint), service.tick, provider, args.session)
     return 0
 
 

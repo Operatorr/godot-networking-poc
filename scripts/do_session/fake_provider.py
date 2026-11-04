@@ -10,6 +10,7 @@ import pathlib
 import threading
 
 import cleanup_provider
+import create_evidence
 
 
 class FakeProvider(cleanup_provider.CleanupProvider):
@@ -69,6 +70,27 @@ class FakeProvider(cleanup_provider.CleanupProvider):
 
     def clear_faults(self):
         self.faults = []
+
+    def issue_receipt(self, ref, terminal=create_evidence.NOT_CREATED, resource_id=None):
+        """The fixture decides when a request is finished. Until then there is no receipt to read."""
+        with self.lock:
+            self.data.setdefault('receipts', {})[ref] = self.offline_receipt(ref, terminal, resource_id)
+            self._save()
+
+    def answer_all_requests(self):
+        """Crash fixtures: every request has finished, so a receipt reports what the account really holds."""
+        with self.lock:
+            self.data['answer_all_requests'] = True
+            self._save()
+
+    def note_create(self, ref, resource_id):
+        with self.lock:
+            self.data.setdefault('landed', {})[ref] = str(resource_id)
+            self._save()
+
+    @staticmethod
+    def offline_receipt(ref, terminal, resource_id=None):
+        return create_evidence.receipt(ref, terminal, create_evidence.OFFLINE_FIXTURE_RECEIPT, 'fake-operation:' + ref, resource_id)
 
     def block(self, op, target):
         """Make a matching request hang until the returned event is set."""
@@ -164,6 +186,17 @@ class FakeProvider(cleanup_provider.CleanupProvider):
         with self.lock:
             self.data['tags'].pop(name, None)
             self._save()
+
+    def get_request_settlement(self, request_ref):
+        self._request('get_request_settlement', request_ref)
+        with self.lock:
+            issued = self.data.get('receipts', {}).get(request_ref)
+            if issued is not None or not self.data.get('answer_all_requests'):
+                return issued
+            landed = self.data.get('landed', {}).get(request_ref)
+            if landed is not None:
+                return self.offline_receipt(request_ref, create_evidence.CREATED, landed)
+            return self.offline_receipt(request_ref, create_evidence.NOT_CREATED)
 
 
 def from_file(path):

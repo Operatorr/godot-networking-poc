@@ -6,7 +6,8 @@ preserve are out of reach by construction. The real DigitalOcean adapter belongs
 3; this slice exercises the seam with ``fake_provider.FakeProvider``.
 
 Adapters bound every request with their own timeout, map HTTP 404 to ``None`` on reads and to
-acceptance on deletes, and raise exactly one of the errors below.
+acceptance on deletes, and raise exactly one of the errors below. ``get_request_settlement`` is a
+read as well, and its default is the fail-closed answer that no evidence exists.
 """
 import re
 
@@ -73,6 +74,14 @@ class CleanupProvider:
     def get_tag(self, name):
         """{name, resource_count} or None."""
         raise NotImplementedError
+
+    def get_request_settlement(self, request_ref):
+        """A ``create_evidence`` receipt for this exact request, or None when there is no such evidence.
+
+        None is the honest default: the request stays unresolved, which refuses a retry and a clean
+        closure. An adapter overrides this only for a documented provider guarantee (see README.md).
+        """
+        return None
 
     def delete_tag(self, name):
         raise NotImplementedError

@@ -12,9 +12,15 @@ abandoned. An accepted DELETE only moves a resource to ``delete_accepted``. Only
 read returning absent verifies it, and a session closes only after a fresh, empty inventory and
 settled create requests.
 
+Cleanup has a read-only half and a destructive half. Ownership preparation reads known Droplets from
+``C - lead``, while a workload or evidence recovery may still be running; it changes no session state.
+The destructive half needs durable cleanup intent, and at C that intent and the first delete happen
+on one tick. A delete is therefore never issued during preparation, by construction.
+
 Droplets go first and are never held back. Firewalls and tags wait until every outstanding create
-has settled, because a late Droplet would land unprotected and recreate its tags. Settling needs only
-listings and tag reads, which nothing blocks, so it cannot deadlock against protection removal.
+has settled, because a late Droplet would land unprotected and recreate its tags. Elapsed time settles
+nothing: an unresolved create keeps protection in place and blocks closure until the resource is seen
+or typed evidence (``create_evidence``) arrives. Reconciliation keeps looking and overdue stays visible.
 
 Deletion authority is the exact recorded id plus matching session ownership; project membership
 is never consulted, and a mismatch becomes an incident instead of a delete.
@@ -22,6 +28,8 @@ is never consulted, and a mismatch becomes an incident instead of a delete.
 import json
 
 import cleanup_provider
+import create_evidence
+import deadline_capacity
 import registry as registry_mod
 import session_clock
 
@@ -32,17 +40,21 @@ SWEEP_INTERVAL_S = 15.0
 DEFAULT_RATE_LIMIT_HOLD_S = 30.0
 MAX_RATE_LIMIT_HOLD_S = 3600.0
 REDELETE_AFTER_S = 60.0
-CREATE_SETTLE_S = registry_mod.CREATE_SETTLE_S
-CREATE_SETTLE_LISTINGS = 2
-CLEANUP_LEAD_S = registry_mod.CLEANUP_LEAD_S
+PREPARE_LEAD_S = registry_mod.PREPARE_LEAD_S
+DELETE_MARGIN_S = registry_mod.DELETE_MARGIN_S
+CHAIN_TAIL_TICKS = 2
+DEFAULT_TICK_INTERVAL_S = 1.0
 
 TERMINAL = registry_mod.TERMINAL_RESOURCE_STATES
 PENDING_CREATE = registry_mod.PENDING_CREATE_STATES
 LISTING_KINDS = registry_mod.LISTING_KINDS
+BOOKKEEPING_KINDS = registry_mod.BOOKKEEPING_KINDS
+CREATE_REQUEST_KIND = registry_mod.CREATE_REQUEST_KIND
+SETTLEMENT_OP = 'get_request_settlement'
 READ_OPS = dict(droplet='get_droplet', firewall='get_firewall', tag='get_tag')
 DELETE_OPS = dict(droplet='delete_droplet', firewall='delete_firewall', tag='delete_tag')
 LIST_OPS = dict(inventory_droplet='list_droplets_by_tag', inventory_firewall='list_firewalls_by_name')
-KIND_PRIORITY = dict(droplet=0, inventory_droplet=1, firewall=2, inventory_firewall=3, tag=4)
+KIND_PRIORITY = dict(droplet=0, inventory_droplet=1, create_request=2, firewall=3, inventory_firewall=4, tag=5)
 
 
 def backoff_s(attempts_done):
@@ -51,14 +63,42 @@ def backoff_s(attempts_done):
 
 class CleanupLedger:
     def __init__(self, registry, identity, redelete_after_s=REDELETE_AFTER_S, sweep_interval_s=SWEEP_INTERVAL_S,
-                 cleanup_lead_s=CLEANUP_LEAD_S):
+                 prepare_lead_s=PREPARE_LEAD_S, delete_margin_s=DELETE_MARGIN_S, deadline_slots=0,
+                 request_bound_s=session_clock.PROVIDER_REQUEST_BOUND_S, tick_interval_s=DEFAULT_TICK_INTERVAL_S):
         self.registry = registry
         self.db = registry.db
         self.identity = identity
         self.redelete_after_s = redelete_after_s
-        self.create_settle_s = registry.create_settle_s
         self.sweep_interval_s = sweep_interval_s
-        self.cleanup_lead_s = cleanup_lead_s
+        self.prepare_lead_s = prepare_lead_s
+        self.delete_margin_s = delete_margin_s
+        self.deadline_slots = deadline_slots
+        self.request_bound_s = request_bound_s
+        self.tick_interval_s = tick_interval_s
+        self.ownership_fresh_s = prepare_lead_s + sweep_interval_s
+
+    @property
+    def chain_tail_s(self):
+        """A delete issued by C holds its reserved slot until its bound, noticed within two ticks."""
+        return self.request_bound_s + CHAIN_TAIL_TICKS * self.tick_interval_s
+
+    def _publish_capacity(self):
+        self.db.execute('UPDATE watchdog_status SET deadline_slots=?, prepare_lead_s=?, chain_tail_s=? WHERE id=1',
+                        (self.deadline_slots, self.prepare_lead_s, self.chain_tail_s))
+
+    def _check_admitted_capacity(self, effective, now_text):
+        """A restart with fewer slots cannot unarm anyone, so the broken promise must at least be visible."""
+        cleanups = [session_clock.parse(row['cleanup_c_utc']) for row in self.db.execute(
+            'SELECT cleanup_c_utc FROM sessions WHERE t0_utc IS NOT NULL AND state != ?', (registry_mod.CLOSED,))]
+        cleanups = [c for c in cleanups if c + self.chain_tail_s > effective]
+        peak = deadline_capacity.overall_peak(cleanups, self.prepare_lead_s, self.chain_tail_s)
+        incident = self.registry.open_incident_of(None, 'deadline-capacity-overcommitted')
+        if peak > self.deadline_slots and incident is None:
+            self.registry.open_incident(None, 'deadline-capacity-overcommitted', now_text,
+                                        dict(deadline_slots=self.deadline_slots, reservations_at_peak=peak),
+                                        last_error='this watchdog has fewer deadline slots than armed sessions were promised')
+        elif peak <= self.deadline_slots and incident is not None:
+            self.registry.resolve_incident(incident['incident_id'], now_text)
 
     # ---- startup -----------------------------------------------------------------------------
 
@@ -77,6 +117,8 @@ class CleanupLedger:
                             (MAX_ATTEMPTS_PER_BURST,))
             self.db.execute('UPDATE watchdog_status SET identity=?, pid=?, boot_id=?, started_at=?, last_tick_at=? WHERE id=1',
                             (self.identity, pid, self.registry.clock.boot_id(), now_text, now_text))
+            self._publish_capacity()
+            self._check_admitted_capacity(effective, now_text)
             self.registry.event(now_text, None, 'watchdog_started', dict(identity=self.identity, pid=pid,
                                                                          orphaned_attempts=len(orphaned)))
             return effective
@@ -99,9 +141,11 @@ class CleanupLedger:
                     continue
                 session = self._evaluate_deadlines(session, effective, now_text)
                 if session['state'] == registry_mod.DELETING:
-                    self._settle_creates(session, effective, now_text)
+                    self._track_unresolved_creates(session, now_text)
                     self._start_bursts(session, effective, now_text, sweep)
                     self._try_close(session, effective, now_text)
+                else:
+                    self._start_preparation(session, effective, now_text, sweep)
             return effective
 
     def _acknowledge(self, session, now_text):
@@ -122,7 +166,7 @@ class CleanupLedger:
         cleanup_at = session_clock.parse(session['cleanup_c_utc'])
         if session['cleanup_requested_at'] is None:
             reason = None
-            if effective >= cleanup_at - self.cleanup_lead_s:
+            if effective >= cleanup_at - self.delete_margin_s:
                 reason = 'deadline_C'
             elif (session['recovery_deadline_utc'] is not None
                   and effective >= session_clock.parse(session['recovery_deadline_utc'])):
@@ -147,62 +191,48 @@ class CleanupLedger:
     def _rows(self, session_id):
         return self.db.execute('SELECT * FROM resources WHERE session_id=?', (session_id,)).fetchall()
 
-    def _settle_remaining(self, intent, session, effective):
-        """Seconds until this outstanding create can no longer land, counted from its request and from cleanup."""
-        since_cleanup = effective - session_clock.parse(session['cleanup_requested_at'])
-        return self.create_settle_s - min(self.registry.create_settle_elapsed(intent, effective), since_cleanup)
-
     def _pending_creates(self, session_id):
         return [i for i in self.registry.intents(session_id) if i['state'] in PENDING_CREATE]
 
-    def _settle_creates(self, session, effective, now_text):
-        """Resolve Droplet and firewall creates once empty listings started after their settle bound.
-
-        Tags have no listing. Once a tag's bound passes, its own read decides (``_resolve_tag_intent``).
-        """
+    def _track_unresolved_creates(self, session, now_text):
+        """Keep asking about each unresolved request and keep it visible. Time never resolves one."""
         session_id = session['session_id']
-        listings = {r['kind']: r for r in self._rows(session_id) if r['kind'] in LISTING_KINDS}
-        for intent in self._pending_creates(session_id):
-            if intent['kind'] == 'tag':
+        pending = self._pending_creates(session_id)
+        current = {create_evidence.request_ref(i['intent_id'], i['request_count']): i for i in pending}
+        known = set()
+        for row in self._rows(session_id):
+            if row['kind'] != CREATE_REQUEST_KIND:
                 continue
-            remaining = self._settle_remaining(intent, session, effective)
-            listing = listings['inventory_' + intent['kind']]
-            if (remaining > 0 or listing['in_flight_attempt'] is not None or listing['listing_started_at'] is None
-                    or listing['consecutive_empty'] < CREATE_SETTLE_LISTINGS
-                    or session_clock.parse(listing['listing_started_at']) < effective + remaining):
-                continue
-            self._resolve_intent_absent(session_id, intent['intent_id'], now_text,
-                                        'no resource appeared in authenticated inventory started after the settle bound')
+            known.add(row['provider_id'])
+            if row['provider_id'] not in current and row['status'] not in TERMINAL:
+                self.db.execute("UPDATE resources SET status='settled', burst_state='done', burst_next_at=NULL "
+                                'WHERE session_id=? AND resource_key=?', (session_id, row['resource_key']))
+        for ref, intent in current.items():
+            if ref not in known:
+                self.registry.insert_bookkeeping_row(session_id, CREATE_REQUEST_KIND, ref, intent['intent_id'], now_text)
+        incident = self.registry.open_incident_of(session_id, registry_mod.UNRESOLVED_CREATE_INCIDENT)
+        if pending and incident is None:
+            self.registry.open_incident(session_id, registry_mod.UNRESOLVED_CREATE_INCIDENT, now_text,
+                                        dict(create_request_refs=sorted(current)),
+                                        last_error='a create outcome is unknown: closure and protection removal wait for evidence')
+        elif not pending and incident is not None:
+            self.registry.resolve_incident(incident['incident_id'], now_text)
 
-    def _resolve_intent_absent(self, session_id, intent_id, now_text, note):
-        self.db.execute("UPDATE intents SET state='resolved_absent', resolved_at=?, note=? WHERE session_id=? AND intent_id=?",
-                        (now_text, note, session_id, intent_id))
-        self.registry.event(now_text, session_id, 'create_settled_absent', dict(intent_id=intent_id))
-
-    def _resolve_tag_intent(self, session_id, row, present, now_text):
-        """This read started after the tag's settle bound, so it settles an outstanding tag create."""
+    def _resolve_tag_intent(self, session_id, row, now_text):
+        """A tag seen by name answers its own outstanding request. A 404 answers nothing: it can still land."""
         intent = next((i for i in self._pending_creates(session_id)
                        if i['kind'] == 'tag' and i['expected_name'] == row['provider_id']), None)
-        if intent is None:
-            return
-        if present:
+        if intent is not None:
             self.db.execute("UPDATE intents SET state='created', resource_key=?, resolved_at=? WHERE session_id=? AND intent_id=?",
                             (row['resource_key'], now_text, session_id, intent['intent_id']))
-        else:
-            self._resolve_intent_absent(session_id, intent['intent_id'], now_text,
-                                        'authenticated read started after the settle bound found no tag')
 
-    def _creates_hold_protection(self, session, effective):
-        """True while a create that could still land keeps firewalls and tags in place."""
-        return any(i['kind'] != 'tag' or self._settle_remaining(i, session, effective) > 0
-                   for i in self._pending_creates(session['session_id']))
-
-    def _blocked(self, row, rows, creates_outstanding):
+    def _blocked(self, row, rows, pending):
         """Droplets first, then firewalls, then tags; each only once what they protect is gone."""
-        if row['kind'] in ('droplet',) + LISTING_KINDS:
+        if row['kind'] in ('droplet',) + BOOKKEEPING_KINDS:
             return False
-        if creates_outstanding:
-            return True
+        if pending:
+            # Reading a tag with its own request outstanding can only settle it. Deleting waits (_apply_read).
+            return not (row['kind'] == 'tag' and any(i['kind'] == 'tag' and i['expected_name'] == row['provider_id'] for i in pending))
         by_kind = {}
         for other in rows:
             by_kind.setdefault(other['kind'], []).append(other)
@@ -216,75 +246,156 @@ class CleanupLedger:
             return not layer_clear('droplet', 'inventory_droplet')
         return not (layer_clear('droplet', 'inventory_droplet') and layer_clear('firewall', 'inventory_firewall'))
 
-    def _start_bursts(self, session, effective, now_text, sweep):
-        rows = self._rows(session['session_id'])
-        creates_outstanding = self._creates_hold_protection(session, effective)
-        for row in rows:
-            if row['status'] in TERMINAL or row['burst_state'] == 'active' or row['burst_sweep'] == sweep:
+    def _ownership_fresh(self, row, effective):
+        verified = row['ownership_verified_at']
+        return verified is not None and effective - session_clock.parse(verified) <= self.ownership_fresh_s
+
+    def _first_delete_ready(self, row, effective):
+        """A Droplet preparation already verified goes straight to its first delete, without waiting for a sweep."""
+        return (row['kind'] == 'droplet' and row['status'] == 'unverified' and self._ownership_fresh(row, effective)
+                and self.db.execute("SELECT 1 FROM attempts WHERE session_id=? AND resource_key=? AND op='delete_droplet' LIMIT 1",
+                                    (row['session_id'], row['resource_key'])).fetchone() is None)
+
+    def _start_preparation(self, session, effective, now_text, sweep):
+        """Read known Droplets before C. This only records ownership; it deletes nothing and changes no state."""
+        if effective < session_clock.parse(session['cleanup_c_utc']) - self.prepare_lead_s:
+            return
+        for row in self._rows(session['session_id']):
+            if (row['kind'] != 'droplet' or row['status'] in TERMINAL or row['burst_state'] == 'active'
+                    or row['burst_sweep'] == sweep or self._ownership_fresh(row, effective)):
                 continue
-            if self._blocked(row, rows, creates_outstanding):
-                continue
-            # A restart begins a sweep immediately. This keeps a crash loop from buying extra bursts.
             if (row['burst_started_at'] is not None
                     and effective - session_clock.parse(row['burst_started_at']) < self.sweep_interval_s):
                 continue
-            first_op = LIST_OPS.get(row['kind']) or READ_OPS[row['kind']]
             self.db.execute("UPDATE resources SET burst_state='active', burst_sweep=?, burst_started_at=?, burst_attempts=0, "
                             'burst_next_at=?, burst_next_op=? WHERE session_id=? AND resource_key=?',
-                            (sweep, now_text, now_text, first_op, session['session_id'], row['resource_key']))
+                            (sweep, now_text, now_text, READ_OPS['droplet'], session['session_id'], row['resource_key']))
+
+    def _start_bursts(self, session, effective, now_text, sweep):
+        rows = self._rows(session['session_id'])
+        pending = self._pending_creates(session['session_id'])
+        all_gone = not pending and all(r['status'] in TERMINAL for r in rows if r['kind'] not in BOOKKEEPING_KINDS)
+        floor = self._closure_floor(session, rows)
+        for row in rows:
+            if row['status'] in TERMINAL or row['burst_state'] == 'active':
+                continue
+            # A listing that already proves closure must not start again: with slow requests two listings could
+            # otherwise overlap forever, and closure needs both idle at once.
+            if all_gone and row['kind'] in LISTING_KINDS and self._listing_proves(row, floor):
+                continue
+            ready = self._first_delete_ready(row, effective)
+            if row['burst_sweep'] == sweep and not ready:
+                continue
+            if self._blocked(row, rows, pending):
+                continue
+            # A restart begins a sweep immediately. This keeps a crash loop from buying extra bursts.
+            if (not ready and row['burst_started_at'] is not None
+                    and effective - session_clock.parse(row['burst_started_at']) < self.sweep_interval_s):
+                continue
+            # Preparation and its first delete can share one sweep, and share its six attempts.
+            attempts = row['burst_attempts'] if row['burst_sweep'] == sweep else 0
+            if attempts >= MAX_ATTEMPTS_PER_BURST:
+                continue
+            first_op = DELETE_OPS['droplet'] if ready else self._first_op(row)
+            self.db.execute("UPDATE resources SET burst_state='active', burst_sweep=?, burst_started_at=?, burst_attempts=?, "
+                            'burst_next_at=?, burst_next_op=? WHERE session_id=? AND resource_key=?',
+                            (sweep, now_text, attempts, now_text, first_op, session['session_id'], row['resource_key']))
+
+    @staticmethod
+    def _first_op(row):
+        if row['kind'] == CREATE_REQUEST_KIND:
+            return SETTLEMENT_OP
+        return LIST_OPS.get(row['kind']) or READ_OPS[row['kind']]
 
     def due_work(self, effective):
         """Requests that may start now, grouped by session, most billable first."""
         rows = self.db.execute("SELECT r.* FROM resources r JOIN sessions s ON s.session_id = r.session_id "
-                               "WHERE s.state = ? AND r.burst_state = 'active' AND r.in_flight_attempt IS NULL",
-                               (registry_mod.DELETING,)).fetchall()
+                               "WHERE s.state != ? AND r.burst_state = 'active' AND r.in_flight_attempt IS NULL",
+                               (registry_mod.CLOSED,)).fetchall()
+        # Schedules are stored as microsecond text, and rounding can put one just after the instant it was stamped from.
+        effective = session_clock.parse(session_clock.iso(effective))
         grouped = {}
         for row in rows:
             if session_clock.parse(row['burst_next_at']) <= effective:
                 grouped.setdefault(row['session_id'], []).append(row)
         for work in grouped.values():
-            work.sort(key=lambda r: (KIND_PRIORITY[r['kind']], r['last_attempt_at'] or '', r['resource_key']))
+            # A due Droplet delete first, then whatever waited longest: repeating listings cannot starve the rest.
+            work.sort(key=lambda r: (r['burst_next_op'] != DELETE_OPS['droplet'], r['last_attempt_at'] or '',
+                                     KIND_PRIORITY[r['kind']], r['resource_key']))
         return grouped
 
-    def awaiting_first_delete(self, due, effective):
-        """Sessions, earliest C first, whose first Droplet delete must still be issued by an imminent C.
+    def deadline_chains(self, due, effective):
+        """The one Droplet request each session needs next for a first delete by C, earliest C first.
 
-        A session stays here for at most the cleanup lead, so this ordering cannot starve anyone.
+        A session gets one chain request at a time and only inside ``[C - lead, C]``, which is what its
+        reserved slot covers, so a hung session can never hold more and a late one gets no permanent priority.
         """
-        urgent = []
+        chains = []
         for session_id, work in due.items():
-            if not any(row['kind'] == 'droplet' for row in work):
+            droplets = [row for row in work if row['kind'] == 'droplet']
+            if not droplets:
                 continue
-            cleanup_at = session_clock.parse(self.registry.session_row(session_id)['cleanup_c_utc'])
-            if not cleanup_at - self.cleanup_lead_s <= effective <= cleanup_at:
+            session = self.registry.session_row(session_id)
+            cleanup_at = session_clock.parse(session['cleanup_c_utc'])
+            if not cleanup_at - self.prepare_lead_s <= effective <= cleanup_at:
                 continue
-            if self.db.execute("SELECT 1 FROM attempts WHERE session_id=? AND op='delete_droplet' LIMIT 1", (session_id,)).fetchone() is None:
-                urgent.append((cleanup_at, session_id))
-        return [session_id for _, session_id in sorted(urgent)]
+            if self.db.execute("SELECT 1 FROM attempts WHERE session_id=? AND op='delete_droplet' LIMIT 1", (session_id,)).fetchone():
+                continue
+            if self.db.execute('SELECT 1 FROM attempts WHERE session_id=? AND deadline_chain=1 AND finished_at IS NULL LIMIT 1',
+                               (session_id,)).fetchone():
+                continue
+            if session['cleanup_requested_at'] is None and any(self._ownership_fresh(r, effective) for r in self._rows(session_id)):
+                continue    # prepared: its next chain request is the delete at C
+            row = next((r for r in droplets if r['burst_next_op'] == DELETE_OPS['droplet']), droplets[0])
+            chains.append((cleanup_at, session_id, row))
+        return [(session_id, row) for _, session_id, row in sorted(chains, key=lambda chain: chain[:2])]
 
     def in_flight_counts(self):
         rows = self.db.execute('SELECT session_id, COUNT(*) AS n FROM resources WHERE in_flight_attempt IS NOT NULL GROUP BY session_id')
         return {row['session_id']: row['n'] for row in rows}
 
+    def in_flight_classes(self):
+        """(deadline chain requests, ordinary requests) now outstanding."""
+        row = self.db.execute('SELECT COALESCE(SUM(a.deadline_chain), 0) AS chain, COUNT(*) AS total FROM resources r '
+                              'JOIN attempts a ON a.attempt_id = r.in_flight_attempt').fetchone()
+        return row['chain'], row['total'] - row['chain']
+
+    def next_boundary_after(self, effective):
+        """The next instant a session deadline needs a tick, so a tick lands on it rather than up to a tick after."""
+        boundaries = []
+        for row in self.db.execute('SELECT cleanup_c_utc, deadline_d_utc, recovery_deadline_utc FROM sessions '
+                                   'WHERE t0_utc IS NOT NULL AND state != ?', (registry_mod.CLOSED,)):
+            cleanup_at = session_clock.parse(row['cleanup_c_utc'])
+            boundaries += [cleanup_at - self.prepare_lead_s, cleanup_at - self.delete_margin_s, session_clock.parse(row['deadline_d_utc'])]
+            if row['recovery_deadline_utc'] is not None:
+                boundaries.append(session_clock.parse(row['recovery_deadline_utc']))
+        return min((b for b in boundaries if b > effective), default=None)
+
     def rate_limit_hold(self):
         return self.db.execute('SELECT rate_limit_hold_until FROM watchdog_status WHERE id=1').fetchone()['rate_limit_hold_until']
 
-    def start_attempt(self, session_id, resource_key):
-        """Persist the attempt BEFORE its side effect. Returns (attempt_id, op, target) or None."""
+    def start_attempt(self, session_id, resource_key, deadline_chain=False):
+        """Persist the attempt BEFORE its side effect. Returns (attempt_id, op, target) or None.
+
+        A destructive request needs durable cleanup intent, so preparation can never issue one.
+        """
         with self.registry.txn('wd_start_attempt') as effective:
             now_text = session_clock.iso(effective)
             row = self.db.execute('SELECT * FROM resources WHERE session_id=? AND resource_key=?',
                                   (session_id, resource_key)).fetchone()
             session = self.registry.session_row(session_id)
             if (row['burst_state'] != 'active' or row['in_flight_attempt'] is not None
-                    or session['state'] != registry_mod.DELETING):
+                    or session['state'] == registry_mod.CLOSED):
                 return None
+            if row['burst_next_op'] in DELETE_OPS.values() and session['cleanup_requested_at'] is None:
+                raise AssertionError('a delete was scheduled without durable cleanup intent: ' + resource_key)
             attempt_number = row['burst_attempts'] + 1
             if attempt_number > MAX_ATTEMPTS_PER_BURST:
                 raise AssertionError('burst attempt ceiling violated for ' + resource_key)
-            cursor = self.db.execute('INSERT INTO attempts(session_id, resource_key, sweep_seq, burst_attempt, op, started_at) '
-                                     'VALUES (?, ?, ?, ?, ?, ?)',
-                                     (session_id, resource_key, row['burst_sweep'], attempt_number, row['burst_next_op'], now_text))
+            cursor = self.db.execute('INSERT INTO attempts(session_id, resource_key, sweep_seq, burst_attempt, op, started_at, deadline_chain) '
+                                     'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                                     (session_id, resource_key, row['burst_sweep'], attempt_number, row['burst_next_op'], now_text,
+                                      1 if deadline_chain else 0))
             self.db.execute('UPDATE resources SET burst_attempts=?, attempt_total=attempt_total+1, last_attempt_at=?, '
                             'in_flight_attempt=? WHERE session_id=? AND resource_key=?',
                             (attempt_number, now_text, cursor.lastrowid, session_id, resource_key))
@@ -361,7 +472,9 @@ class CleanupLedger:
 
     def _apply_success(self, attempt, row, value, effective, now_text):
         op = attempt['op']
-        if op in LIST_OPS.values():
+        if op == SETTLEMENT_OP:
+            self._apply_settlement(attempt, row, value, now_text)
+        elif op in LIST_OPS.values():
             self._apply_listing(attempt, row, value or [], now_text)    # only a successful listing is ever fresh
         elif op in READ_OPS.values():
             self._apply_read(attempt, row, value, effective, now_text)
@@ -371,6 +484,22 @@ class CleanupLedger:
                             (now_text, attempt['session_id'], attempt['resource_key']))
             self.registry.event(now_text, attempt['session_id'], 'delete_accepted',
                                 dict(resource_key=attempt['resource_key'], note='accepted is not proof of destruction'))
+
+    def _apply_settlement(self, attempt, row, value, now_text):
+        """Only a typed receipt for the current request counts. No receipt leaves the request unresolved."""
+        session_id, key = attempt['session_id'], attempt['resource_key']
+        self.db.execute("UPDATE resources SET burst_state='done', burst_next_at=NULL, last_error=NULL WHERE session_id=? AND resource_key=?",
+                        (session_id, key))
+        intent = next((i for i in self._pending_creates(session_id) if i['intent_id'] == row['intent_id']), None)
+        if value is None or intent is None:
+            return
+        try:
+            self.registry.apply_settlement(self.registry.session_row(session_id), intent, value, now_text, 'watchdog')
+        except create_evidence.EvidenceRefused as refused:
+            self.db.execute('UPDATE resources SET last_error=? WHERE session_id=? AND resource_key=?', (refused.code, session_id, key))
+            if self.registry.open_incident_of(session_id, 'create-evidence-refused') is None:
+                self.registry.open_incident(session_id, 'create-evidence-refused', now_text,
+                                            dict(request=row['provider_id'], code=refused.code), last_error=refused.message)
 
     def _apply_listing(self, attempt, row, items, now_text):
         session_id = attempt['session_id']
@@ -437,9 +566,15 @@ class CleanupLedger:
 
     def _apply_read(self, attempt, row, value, effective, now_text):
         session_id, key = attempt['session_id'], attempt['resource_key']
-        if row['kind'] == 'tag':
-            self._resolve_tag_intent(session_id, row, value is not None, now_text)
+        pending = self._pending_creates(session_id)     # as of this read: settling its own request releases nothing yet
+        if row['kind'] == 'tag' and value is not None:
+            self._resolve_tag_intent(session_id, row, now_text)
         if value is None:
+            if row['kind'] == 'tag' and any(i['kind'] == 'tag' and i['expected_name'] == row['provider_id'] for i in pending):
+                # Its own create can still land, so this 404 is no verification. Later sweeps read it again.
+                self.db.execute("UPDATE resources SET burst_state='done', burst_next_at=NULL WHERE session_id=? AND resource_key=?",
+                                (session_id, key))
+                return
             if (row['revalidate_after'] is not None
                     and session_clock.parse(attempt['started_at']) <= session_clock.parse(row['revalidate_after'])):
                 # This read began before a late resource appeared, so its 404 is out of date.
@@ -451,10 +586,16 @@ class CleanupLedger:
             self.registry.event(now_text, session_id, 'verified_absent', dict(resource_key=key))
             self._resolve_ownership_incident(session_id, key, now_text)
             return
+        if row['kind'] != 'droplet' and pending:
+            # Protection stays while any create is unresolved, whatever this read found.
+            self.db.execute("UPDATE resources SET burst_state='done', burst_next_at=NULL WHERE session_id=? AND resource_key=?",
+                            (session_id, key))
+            return
         problems = self._ownership_problems(session_id, row, value)
         if problems:
-            self.db.execute("UPDATE resources SET status='ownership_refused', ownership_detail=?, burst_state='done', burst_next_at=NULL "
-                            'WHERE session_id=? AND resource_key=?', (registry_mod.canonical(problems), session_id, key))
+            self.db.execute("UPDATE resources SET status='ownership_refused', ownership_detail=?, ownership_verified_at=NULL, "
+                            "burst_state='done', burst_next_at=NULL WHERE session_id=? AND resource_key=?",
+                            (registry_mod.canonical(problems), session_id, key))
             if row['status'] != 'ownership_refused':
                 self.registry.open_incident(session_id, 'ownership-mismatch', now_text,
                                             dict(resource_key=key, problems=problems, observed_name=value.get('name')),
@@ -462,6 +603,13 @@ class CleanupLedger:
             return
         self._resolve_ownership_incident(session_id, key, now_text)
         status = 'unverified' if row['status'] == 'ownership_refused' else row['status']
+        self.db.execute('UPDATE resources SET ownership_verified_at=? WHERE session_id=? AND resource_key=?',
+                        (attempt['started_at'], session_id, key))
+        if self.registry.session_row(session_id)['cleanup_requested_at'] is None:
+            # Preparation only records what it saw. The delete belongs to the deadline tick.
+            self.db.execute("UPDATE resources SET status=?, burst_state='done', burst_next_at=NULL WHERE session_id=? AND resource_key=?",
+                            (status, session_id, key))
+            return
         recently_accepted = (row['delete_accepted_at'] is not None
                              and effective - session_clock.parse(row['delete_accepted_at']) < self.redelete_after_s)
         if recently_accepted:
@@ -493,24 +641,34 @@ class CleanupLedger:
 
     # ---- closure -----------------------------------------------------------------------------
 
+    def _closure_floor(self, session, rows):
+        """The empty listing closure needs must start after every verification and every settled request."""
+        verified = [session_clock.parse(r['verified_absent_at']) for r in rows
+                    if r['kind'] not in BOOKKEEPING_KINDS and r['verified_absent_at']]
+        verified += [session_clock.parse(i['resolved_at']) for i in self.registry.intents(session['session_id']) if i['resolved_at']]
+        return max(verified + [session_clock.parse(session['cleanup_requested_at'])])
+
+    @staticmethod
+    def _listing_proves(listing, floor):
+        return (listing['listing_finished_at'] is not None and listing['consecutive_empty'] >= 1
+                and session_clock.parse(listing['listing_started_at']) >= floor)
+
     def _try_close(self, session, effective, now_text):
         """Close only after verified absence, a fresh empty inventory and settled create requests."""
         session_id = session['session_id']
         rows = self._rows(session_id)
-        real = [r for r in rows if r['kind'] not in LISTING_KINDS]
+        real = [r for r in rows if r['kind'] not in BOOKKEEPING_KINDS]
         listings = [r for r in rows if r['kind'] in LISTING_KINDS]
         if any(r['status'] not in TERMINAL or r['in_flight_attempt'] is not None for r in real):
             return
         if self._pending_creates(session_id):
             return
-        verified = [session_clock.parse(r['verified_absent_at']) for r in real if r['verified_absent_at']]
-        latest = max(verified) if verified else session_clock.parse(session['cleanup_requested_at'])
+        floor = self._closure_floor(session, rows)
         for listing in listings:
-            if (listing['listing_finished_at'] is None or listing['consecutive_empty'] < 1
-                    or listing['in_flight_attempt'] is not None
-                    or session_clock.parse(listing['listing_started_at']) < latest):
+            if listing['in_flight_attempt'] is not None or not self._listing_proves(listing, floor):
                 return
         disowned = [r['resource_key'] for r in real if r['status'] == 'disowned']
+        disowned += [i['intent_id'] for i in self.registry.intents(session_id) if i['state'] == 'operator_disposed']
         outcome = registry_mod.VERIFIED_WITH_DISPOSITION if disowned else registry_mod.VERIFIED_ABSENT
         overrun = max(0.0, effective - session_clock.parse(session['deadline_d_utc']))
         self.db.execute('UPDATE sessions SET state=?, cleanup_outcome=?, cleanup_verified_at=?, overrun_s=?, closure_count=closure_count+1 '
@@ -527,7 +685,7 @@ class CleanupLedger:
 
     def render_receipt(self, session_id):
         session = self.registry.session_row(session_id)
-        resources = [r for r in self.registry.resources(session_id) if r['kind'] not in LISTING_KINDS]
+        resources = [r for r in self.registry.resources(session_id) if r['kind'] not in BOOKKEEPING_KINDS]
         return dict(
             session_id=session_id, manifest_sha256=session['manifest_sha256'], closure=session['closure_count'],
             t0_utc=session['t0_utc'], cleanup_c_utc=session['cleanup_c_utc'], deadline_d_utc=session['deadline_d_utc'],

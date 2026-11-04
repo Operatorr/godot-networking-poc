@@ -6,149 +6,144 @@
    "target": "omega-session:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:00:01+00:00",
+   "at": "2026-10-30T12:00:10+00:00",
    "op": "list_droplets_by_tag",
    "target": "omega-session:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:00:02+00:00",
+   "at": "2026-10-30T12:00:20+00:00",
    "op": "list_droplets_by_tag",
    "target": "omega-session:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:00:03+00:00",
+   "at": "2026-10-30T12:00:30+00:00",
    "op": "list_droplets_by_tag",
    "target": "omega-session:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:00:04+00:00",
+   "at": "2026-10-30T12:00:40+00:00",
    "op": "list_droplets_by_tag",
    "target": "omega-session:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:00:05+00:00",
+   "at": "2026-10-30T12:00:50+00:00",
    "op": "list_droplets_by_tag",
    "target": "omega-session:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:00:06+00:00",
+   "at": "2026-10-30T12:01:00+00:00",
    "op": "list_droplets_by_tag",
    "target": "omega-session:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:00:07+00:00",
+   "at": "2026-10-30T12:01:15+00:00",
    "op": "list_droplets_by_tag",
    "target": "omega-session:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:00:08+00:00",
-   "op": "list_droplets_by_tag",
-   "target": "omega-session:do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:00:09+00:00",
-   "op": "list_droplets_by_tag",
-   "target": "omega-session:do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:01:10+00:00",
-   "op": "list_droplets_by_tag",
-   "target": "omega-session:do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:01:11+00:00",
+   "at": "2026-10-30T12:01:16+00:00",
    "op": "get_droplet",
    "target": "5000000"
   },
   {
-   "at": "2026-10-30T12:01:11+00:00",
+   "at": "2026-10-30T12:01:16+00:00",
    "op": "list_droplets_by_tag",
    "target": "omega-session:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:01:12+00:00",
+   "at": "2026-10-30T12:01:17+00:00",
    "op": "delete_droplet",
    "target": "5000000"
   },
   {
-   "at": "2026-10-30T12:01:12+00:00",
+   "at": "2026-10-30T12:01:17+00:00",
    "op": "list_firewalls_by_name",
    "target": "do-cap-1v1g-20261030a-fw"
   },
   {
-   "at": "2026-10-30T12:01:26+00:00",
+   "at": "2026-10-30T12:01:31+00:00",
+   "op": "list_droplets_by_tag",
+   "target": "omega-session:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:01:31+00:00",
    "op": "get_droplet",
    "target": "5000000"
   },
   {
-   "at": "2026-10-30T12:01:26+00:00",
-   "op": "list_droplets_by_tag",
-   "target": "omega-session:do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:01:27+00:00",
+   "at": "2026-10-30T12:01:32+00:00",
    "op": "list_firewalls_by_name",
    "target": "do-cap-1v1g-20261030a-fw"
   },
   {
-   "at": "2026-10-30T12:01:27+00:00",
+   "at": "2026-10-30T12:01:46+00:00",
+   "op": "list_droplets_by_tag",
+   "target": "omega-session:do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:01:46+00:00",
+   "op": "list_firewalls_by_name",
+   "target": "do-cap-1v1g-20261030a-fw"
+  },
+  {
+   "at": "2026-10-30T12:01:47+00:00",
    "op": "get_tag",
    "target": "omega-role:bot:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:01:28+00:00",
+   "at": "2026-10-30T12:01:47+00:00",
    "op": "get_tag",
    "target": "omega-role:game:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:01:28+00:00",
+   "at": "2026-10-30T12:01:48+00:00",
    "op": "get_tag",
    "target": "omega-session:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:01:29+00:00",
+   "at": "2026-10-30T12:01:48+00:00",
    "op": "delete_tag",
    "target": "omega-role:game:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:01:29+00:00",
+   "at": "2026-10-30T12:01:49+00:00",
    "op": "delete_tag",
    "target": "omega-session:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:01:41+00:00",
+   "at": "2026-10-30T12:02:01+00:00",
    "op": "list_droplets_by_tag",
    "target": "omega-session:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:01:41+00:00",
+   "at": "2026-10-30T12:02:01+00:00",
    "op": "list_firewalls_by_name",
    "target": "do-cap-1v1g-20261030a-fw"
   },
   {
-   "at": "2026-10-30T12:01:42+00:00",
+   "at": "2026-10-30T12:02:02+00:00",
    "op": "get_tag",
    "target": "omega-role:game:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:01:42+00:00",
+   "at": "2026-10-30T12:02:02+00:00",
    "op": "get_tag",
    "target": "omega-session:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:01:56+00:00",
+   "at": "2026-10-30T12:02:16+00:00",
    "op": "list_droplets_by_tag",
    "target": "omega-session:do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:01:56+00:00",
+   "at": "2026-10-30T12:02:16+00:00",
    "op": "list_firewalls_by_name",
    "target": "do-cap-1v1g-20261030a-fw"
   }
  ],
  "checks": [
   {
-   "check": "every empty listing inside the bound was refused",
+   "check": "every empty listing was refused, including after the former 60 s bound",
    "passed": true
   },
   {
@@ -277,17 +272,17 @@
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:00:00+00:00",
+   "at": "2026-10-30T12:00:10+00:00",
    "data": {
-    "code": "create_settling",
-    "method": "begin_reconcile"
+    "code": "create_outcome_unknown",
+    "method": "begin_create"
    },
    "kind": "rejected",
    "seq": 10,
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:00:01+00:00",
+   "at": "2026-10-30T12:00:20+00:00",
    "data": {
     "code": "create_outcome_unknown",
     "method": "begin_create"
@@ -297,17 +292,17 @@
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:00:01+00:00",
+   "at": "2026-10-30T12:00:30+00:00",
    "data": {
-    "code": "create_settling",
-    "method": "begin_reconcile"
+    "code": "create_outcome_unknown",
+    "method": "begin_create"
    },
    "kind": "rejected",
    "seq": 12,
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:00:02+00:00",
+   "at": "2026-10-30T12:00:40+00:00",
    "data": {
     "code": "create_outcome_unknown",
     "method": "begin_create"
@@ -317,17 +312,17 @@
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:00:02+00:00",
+   "at": "2026-10-30T12:00:50+00:00",
    "data": {
-    "code": "create_settling",
-    "method": "begin_reconcile"
+    "code": "create_outcome_unknown",
+    "method": "begin_create"
    },
    "kind": "rejected",
    "seq": 14,
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:00:03+00:00",
+   "at": "2026-10-30T12:01:00+00:00",
    "data": {
     "code": "create_outcome_unknown",
     "method": "begin_create"
@@ -337,248 +332,118 @@
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:00:03+00:00",
+   "at": "2026-10-30T12:01:15+00:00",
    "data": {
-    "code": "create_settling",
-    "method": "begin_reconcile"
+    "code": "create_outcome_unknown",
+    "method": "begin_create"
    },
    "kind": "rejected",
    "seq": 16,
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:00:04+00:00",
-   "data": {
-    "code": "create_outcome_unknown",
-    "method": "begin_create"
-   },
-   "kind": "rejected",
-   "seq": 17,
-   "session_id": "do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:00:04+00:00",
-   "data": {
-    "code": "create_settling",
-    "method": "begin_reconcile"
-   },
-   "kind": "rejected",
-   "seq": 18,
-   "session_id": "do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:00:05+00:00",
-   "data": {
-    "code": "create_outcome_unknown",
-    "method": "begin_create"
-   },
-   "kind": "rejected",
-   "seq": 19,
-   "session_id": "do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:00:05+00:00",
-   "data": {
-    "code": "create_settling",
-    "method": "begin_reconcile"
-   },
-   "kind": "rejected",
-   "seq": 20,
-   "session_id": "do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:00:06+00:00",
-   "data": {
-    "code": "create_outcome_unknown",
-    "method": "begin_create"
-   },
-   "kind": "rejected",
-   "seq": 21,
-   "session_id": "do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:00:06+00:00",
-   "data": {
-    "code": "create_settling",
-    "method": "begin_reconcile"
-   },
-   "kind": "rejected",
-   "seq": 22,
-   "session_id": "do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:00:07+00:00",
-   "data": {
-    "code": "create_outcome_unknown",
-    "method": "begin_create"
-   },
-   "kind": "rejected",
-   "seq": 23,
-   "session_id": "do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:00:07+00:00",
-   "data": {
-    "code": "create_settling",
-    "method": "begin_reconcile"
-   },
-   "kind": "rejected",
-   "seq": 24,
-   "session_id": "do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:00:08+00:00",
-   "data": {
-    "code": "create_outcome_unknown",
-    "method": "begin_create"
-   },
-   "kind": "rejected",
-   "seq": 25,
-   "session_id": "do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:00:08+00:00",
-   "data": {
-    "code": "create_settling",
-    "method": "begin_reconcile"
-   },
-   "kind": "rejected",
-   "seq": 26,
-   "session_id": "do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:00:09+00:00",
-   "data": {
-    "code": "create_outcome_unknown",
-    "method": "begin_create"
-   },
-   "kind": "rejected",
-   "seq": 27,
-   "session_id": "do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:00:09+00:00",
-   "data": {
-    "code": "create_settling",
-    "method": "begin_reconcile"
-   },
-   "kind": "rejected",
-   "seq": 28,
-   "session_id": "do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:01:10+00:00",
-   "data": {
-    "code": "create_outcome_unknown",
-    "method": "begin_create"
-   },
-   "kind": "rejected",
-   "seq": 29,
-   "session_id": "do-cap-1v1g-20261030a"
-  },
-  {
-   "at": "2026-10-30T12:01:10+00:00",
+   "at": "2026-10-30T12:01:15+00:00",
    "data": {
     "intent_id": "do-cap-1v1g-20261030a:droplet:game",
     "resource_key": "droplet:5000000",
     "source": "controller"
    },
    "kind": "resource_recorded",
-   "seq": 30,
+   "seq": 17,
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:01:10+00:00",
+   "at": "2026-10-30T12:01:15+00:00",
    "data": {
     "actor": "operator",
     "prior_state": "provisioning",
     "reason": "fixture finished"
    },
    "kind": "cleanup_intent",
-   "seq": 31,
+   "seq": 18,
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:01:12+00:00",
+   "at": "2026-10-30T12:01:17+00:00",
    "data": {
     "note": "accepted is not proof of destruction",
     "resource_key": "droplet:5000000"
    },
    "kind": "delete_accepted",
-   "seq": 32,
+   "seq": 19,
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:01:26+00:00",
+   "at": "2026-10-30T12:01:31+00:00",
    "data": {
     "resource_key": "droplet:5000000"
    },
    "kind": "verified_absent",
-   "seq": 33,
+   "seq": 20,
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:01:27+00:00",
+   "at": "2026-10-30T12:01:47+00:00",
    "data": {
     "resource_key": "tag:omega-role:bot:do-cap-1v1g-20261030a"
    },
    "kind": "verified_absent",
-   "seq": 34,
+   "seq": 21,
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:01:29+00:00",
+   "at": "2026-10-30T12:01:48+00:00",
    "data": {
     "note": "accepted is not proof of destruction",
     "resource_key": "tag:omega-role:game:do-cap-1v1g-20261030a"
    },
    "kind": "delete_accepted",
-   "seq": 35,
+   "seq": 22,
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:01:29+00:00",
+   "at": "2026-10-30T12:01:49+00:00",
    "data": {
     "note": "accepted is not proof of destruction",
     "resource_key": "tag:omega-session:do-cap-1v1g-20261030a"
    },
    "kind": "delete_accepted",
-   "seq": 36,
+   "seq": 23,
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:01:42+00:00",
+   "at": "2026-10-30T12:02:02+00:00",
    "data": {
     "resource_key": "tag:omega-role:game:do-cap-1v1g-20261030a"
    },
    "kind": "verified_absent",
-   "seq": 37,
+   "seq": 24,
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:01:42+00:00",
+   "at": "2026-10-30T12:02:02+00:00",
    "data": {
     "resource_key": "tag:omega-session:do-cap-1v1g-20261030a"
    },
    "kind": "verified_absent",
-   "seq": 38,
+   "seq": 25,
    "session_id": "do-cap-1v1g-20261030a"
   },
   {
-   "at": "2026-10-30T12:01:57+00:00",
+   "at": "2026-10-30T12:02:17+00:00",
    "data": {
     "cleanup_outcome": "verified_absent",
     "disowned": [],
     "overrun_s": 0.0
    },
    "kind": "closed",
-   "seq": 39,
+   "seq": 26,
    "session_id": "do-cap-1v1g-20261030a"
   }
  ],
  "journal_verification": {
-  "events": 39,
-  "head": "d02d4e7ad55e19300b3e4cd520c43db485ed040724eff4887a18ccd37c6c636c",
+  "events": 26,
+  "head": "6c289f7f05555a9c871627788d38b98a897ddf1b0b2fa7374f7085df383774d4",
   "valid": true
  },
  "provider": "fake",
@@ -598,8 +463,9 @@
     "overrun_is_lower_bound": false,
     "overrun_s": 0.0,
     "reason": "fixture finished",
-    "requested_at": "2026-10-30T12:01:10+00:00",
-    "verified_at": "2026-10-30T12:01:57+00:00"
+    "requested_at": "2026-10-30T12:01:15+00:00",
+    "unresolved_creates": [],
+    "verified_at": "2026-10-30T12:02:17+00:00"
    },
    "cleanup_c_utc": "2026-10-30T12:08:00+00:00",
    "controller_id": "controller-a",
@@ -613,6 +479,7 @@
    "incidents": [],
    "intents": [
     {
+     "create_request_ref": null,
      "expected_name": "do-cap-1v1g-20261030a-bot",
      "expected_tags": [
       "omega-session:do-cap-1v1g-20261030a",
@@ -626,6 +493,7 @@
      "state": "declared"
     },
     {
+     "create_request_ref": "do-cap-1v1g-20261030a:droplet:game#1",
      "expected_name": "do-cap-1v1g-20261030a-game",
      "expected_tags": [
       "omega-session:do-cap-1v1g-20261030a",
@@ -639,6 +507,7 @@
      "state": "created"
     },
     {
+     "create_request_ref": null,
      "expected_name": "do-cap-1v1g-20261030a-fw",
      "expected_tags": [
       "omega-role:game:do-cap-1v1g-20261030a",
@@ -652,6 +521,7 @@
      "state": "declared"
     },
     {
+     "create_request_ref": null,
      "expected_name": "omega-role:bot:do-cap-1v1g-20261030a",
      "expected_tags": [],
      "intent_id": "do-cap-1v1g-20261030a:tag:bot",
@@ -662,6 +532,7 @@
      "state": "declared"
     },
     {
+     "create_request_ref": null,
      "expected_name": "omega-role:game:do-cap-1v1g-20261030a",
      "expected_tags": [],
      "intent_id": "do-cap-1v1g-20261030a:tag:game",
@@ -672,6 +543,7 @@
      "state": "declared"
     },
     {
+     "create_request_ref": null,
      "expected_name": "omega-session:do-cap-1v1g-20261030a",
      "expected_tags": [],
      "intent_id": "do-cap-1v1g-20261030a:tag:session",
@@ -701,7 +573,7 @@
      "resource_key": "droplet:5000000",
      "source": "controller",
      "status": "absent",
-     "verified_absent_at": "2026-10-30T12:01:26+00:00"
+     "verified_absent_at": "2026-10-30T12:01:31+00:00"
     },
     {
      "attempts": 1,
@@ -712,7 +584,7 @@
      "resource_key": "tag:omega-role:bot:do-cap-1v1g-20261030a",
      "source": "manifest",
      "status": "absent",
-     "verified_absent_at": "2026-10-30T12:01:27+00:00"
+     "verified_absent_at": "2026-10-30T12:01:47+00:00"
     },
     {
      "attempts": 3,
@@ -723,7 +595,7 @@
      "resource_key": "tag:omega-role:game:do-cap-1v1g-20261030a",
      "source": "manifest",
      "status": "absent",
-     "verified_absent_at": "2026-10-30T12:01:42+00:00"
+     "verified_absent_at": "2026-10-30T12:02:02+00:00"
     },
     {
      "attempts": 3,
@@ -734,7 +606,7 @@
      "resource_key": "tag:omega-session:do-cap-1v1g-20261030a",
      "source": "manifest",
      "status": "absent",
-     "verified_absent_at": "2026-10-30T12:01:42+00:00"
+     "verified_absent_at": "2026-10-30T12:02:02+00:00"
     }
    ],
    "runs": [],

@@ -10,6 +10,7 @@
     registry_cli.py sessions|incidents|journal|verify-journal --state-dir D [--session S]
     registry_cli.py abort    --state-dir D --session S --reason TEXT
     registry_cli.py disown   --state-dir D --session S --resource KEY --note TEXT
+    registry_cli.py dispose-create --state-dir D --session S --intent ID --note TEXT
 
 ``watchdog`` refuses to start without an explicit provider factory; there is no silent no-op mode.
 Exit codes: 0 done, 2 refused, 1 storage or configuration failure.
@@ -25,6 +26,7 @@ import sys
 import threading
 
 import cleanup_ledger
+import create_evidence
 import registry as registry_mod
 import watchdog as watchdog_mod
 
@@ -82,7 +84,9 @@ def cmd_rpc(args):
 def cmd_watchdog(args):
     configure_logging()
     provider = load_provider(args.provider, args.provider_arg, args.allow_offline_fake)
-    registry = registry_mod.Registry(args.state_dir)
+    # Only the offline fake's own receipts are ever trusted here; a real provider has no trusted basis yet.
+    trusted = create_evidence.OFFLINE_FIXTURE_BASES if getattr(provider, 'offline_fixture', False) else create_evidence.DEFAULT_TRUSTED_BASES
+    registry = registry_mod.Registry(args.state_dir, trusted_settlement_bases=trusted)
     service = watchdog_mod.Watchdog(registry, provider, sweep_interval_s=args.sweep_interval_s)
     stop = threading.Event()
     for signum in (signal.SIGTERM, signal.SIGINT):
@@ -113,6 +117,8 @@ def read_command(args):
             emit(registry.operator_abort(args.session, args.reason))
         elif args.command == 'disown':
             emit(registry.disown_resource(args.session, args.resource, args.note))
+        elif args.command == 'dispose-create':
+            emit(registry.dispose_create(args.session, args.intent, args.note))
     finally:
         registry.close()
     return 0
@@ -152,6 +158,9 @@ def build_parser():
     disown = command('disown', read_command, session=True)
     disown.add_argument('--resource', required=True)
     disown.add_argument('--note', required=True)
+    dispose = command('dispose-create', read_command, session=True)
+    dispose.add_argument('--intent', required=True)
+    dispose.add_argument('--note', required=True)
     return parser
 
 

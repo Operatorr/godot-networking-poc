@@ -755,6 +755,7 @@
     "overrun_s": null,
     "reason": "hung fixture",
     "requested_at": "2026-10-30T12:00:00+00:00",
+    "unresolved_creates": [],
     "verified_at": null
    },
    "cleanup_c_utc": "2026-10-30T12:08:00+00:00",
@@ -769,6 +770,7 @@
    "incidents": [],
    "intents": [
     {
+     "create_request_ref": "do-cap-aaa-hung:droplet:bot#1",
      "expected_name": "do-cap-aaa-hung-bot",
      "expected_tags": [
       "omega-session:do-cap-aaa-hung",
@@ -782,6 +784,7 @@
      "state": "created"
     },
     {
+     "create_request_ref": "do-cap-aaa-hung:droplet:game#1",
      "expected_name": "do-cap-aaa-hung-game",
      "expected_tags": [
       "omega-session:do-cap-aaa-hung",
@@ -795,6 +798,7 @@
      "state": "created"
     },
     {
+     "create_request_ref": "do-cap-aaa-hung:firewall#1",
      "expected_name": "do-cap-aaa-hung-fw",
      "expected_tags": [
       "omega-role:game:do-cap-aaa-hung",
@@ -808,6 +812,7 @@
      "state": "created"
     },
     {
+     "create_request_ref": "do-cap-aaa-hung:tag:bot#1",
      "expected_name": "omega-role:bot:do-cap-aaa-hung",
      "expected_tags": [],
      "intent_id": "do-cap-aaa-hung:tag:bot",
@@ -818,6 +823,7 @@
      "state": "created"
     },
     {
+     "create_request_ref": "do-cap-aaa-hung:tag:game#1",
      "expected_name": "omega-role:game:do-cap-aaa-hung",
      "expected_tags": [],
      "intent_id": "do-cap-aaa-hung:tag:game",
@@ -828,6 +834,7 @@
      "state": "created"
     },
     {
+     "create_request_ref": "do-cap-aaa-hung:tag:session#1",
      "expected_name": "omega-session:do-cap-aaa-hung",
      "expected_tags": [],
      "intent_id": "do-cap-aaa-hung:tag:session",
@@ -931,6 +938,7 @@
     "overrun_s": 0.0,
     "reason": "healthy fixture",
     "requested_at": "2026-10-30T12:00:00+00:00",
+    "unresolved_creates": [],
     "verified_at": "2026-10-30T12:01:02+00:00"
    },
    "cleanup_c_utc": "2026-10-30T12:08:00+00:00",
@@ -945,6 +953,7 @@
    "incidents": [],
    "intents": [
     {
+     "create_request_ref": "do-cap-bbb-healthy:droplet:bot#1",
      "expected_name": "do-cap-bbb-healthy-bot",
      "expected_tags": [
       "omega-session:do-cap-bbb-healthy",
@@ -958,6 +967,7 @@
      "state": "created"
     },
     {
+     "create_request_ref": "do-cap-bbb-healthy:droplet:game#1",
      "expected_name": "do-cap-bbb-healthy-game",
      "expected_tags": [
       "omega-session:do-cap-bbb-healthy",
@@ -971,6 +981,7 @@
      "state": "created"
     },
     {
+     "create_request_ref": "do-cap-bbb-healthy:firewall#1",
      "expected_name": "do-cap-bbb-healthy-fw",
      "expected_tags": [
       "omega-role:game:do-cap-bbb-healthy",
@@ -984,6 +995,7 @@
      "state": "created"
     },
     {
+     "create_request_ref": "do-cap-bbb-healthy:tag:bot#1",
      "expected_name": "omega-role:bot:do-cap-bbb-healthy",
      "expected_tags": [],
      "intent_id": "do-cap-bbb-healthy:tag:bot",
@@ -994,6 +1006,7 @@
      "state": "created"
     },
     {
+     "create_request_ref": "do-cap-bbb-healthy:tag:game#1",
      "expected_name": "omega-role:game:do-cap-bbb-healthy",
      "expected_tags": [],
      "intent_id": "do-cap-bbb-healthy:tag:game",
@@ -1004,6 +1017,7 @@
      "state": "created"
     },
     {
+     "create_request_ref": "do-cap-bbb-healthy:tag:session#1",
      "expected_name": "omega-session:do-cap-bbb-healthy",
      "expected_tags": [],
      "intent_id": "do-cap-bbb-healthy:tag:session",

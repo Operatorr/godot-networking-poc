@@ -25,7 +25,7 @@ class FaultEvidenceTests(unittest.TestCase):
 
     def test_evidence_covers_each_accepted_fault_family(self):
         names = {s.__name__ for s in fault_evidence.SCENARIOS}
-        for family in ('lost_controller', 'api_outage', 'stale_controller', 'rate_limit', 'ownership', 'clock', 'late_create', 'fairness', 'restart'):
+        for family in ('lost_controller', 'api_outage', 'stale_controller', 'rate_limit', 'ownership', 'clock', 'late_create', 'fairness', 'restart', 'unresolved_create', 'recovery', 'capacity'):
             self.assertTrue(any(family in name for name in names), family)
 
 

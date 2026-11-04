@@ -12,6 +12,7 @@ import tempfile
 import time
 import unittest
 
+import create_evidence
 import fake_provider
 import fault_harness
 import fixture_support as fx
@@ -38,6 +39,11 @@ def cli(state_dir, *args, stdin=None):
                           env=ENV, input=stdin, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60, check=False)
 
 
+def cli_help():
+    return b''.join(subprocess.run([sys.executable, str(HERE / 'registry_cli.py'), command, '--help'], env=ENV, capture_output=True, check=True).stdout
+                    for command in ('rpc', 'watchdog', 'dispose-create'))
+
+
 class ProcessFixture(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
@@ -57,10 +63,11 @@ class ProcessFixture(unittest.TestCase):
         seed = fake_provider.FakeProvider(self.account)
         self.stray = seed.add_droplet(STRAY, ['production'])
         seed.add_tag('production')
+        seed.answer_all_requests()      # a crash leaves requests unresolved until the fake's receipts settle them
 
     def reopen(self, wall, mono, boot):
         clock = fx.ScriptedClock(wall, mono, boot)
-        reg = registry.Registry(self.state, clock=clock)
+        reg = registry.Registry(self.state, clock=clock, trusted_settlement_bases=create_evidence.OFFLINE_FIXTURE_BASES)
         self.addCleanup(reg.close)
         provider = fake_provider.FakeProvider(self.account, clock=clock)
         service = watchdog.Watchdog(reg, provider, executor=watchdog.InlineExecutor())
@@ -253,12 +260,12 @@ class ControllerCrashMatrix(ProcessFixture):
                 self.crash(point, hit)
                 clock = fx.ScriptedClock(fx.T0_WALL + 3, 1003.0, 'boot-a')
                 provider = fake_provider.FakeProvider(self.account, clock=clock)
-                reg_probe = registry.Registry(self.state, clock=clock)
+                reg_probe = fault_harness.open_registry(self.state, clock)
                 self.addCleanup(reg_probe.close)
                 before = self.deadlines_if_armed(reg_probe)
                 service = watchdog.Watchdog(reg_probe, provider, executor=watchdog.InlineExecutor())
                 service.start(pid=2)
-                reg_client = registry.Registry(self.state, clock=clock)
+                reg_client = fault_harness.open_registry(self.state, clock)
                 self.addCleanup(reg_client.close)
                 fault_harness.controller_flow(reg_client, service.tick, provider, SESSION)
                 status = reg_probe.status(SESSION)
@@ -378,6 +385,57 @@ class ConcurrentProcessTests(ProcessFixture):
         self.assertEqual(winners[0]['result']['fencing_token'], 1)
         self.assertEqual({r['code'] for r in responses if not r['ok']}, {'control_held'})
 
+    def test_production_rpc_refuses_every_receipt_and_offers_no_way_to_trust_one(self):
+        clock = fx.ScriptedClock(wall=time.time(), mono=time.monotonic(), boot=session_clock.UNKNOWN_BOOT)
+        clock.wall = time.time
+        clock.mono = time.monotonic
+        reg = fault_harness.open_registry(self.state, clock)
+        self.addCleanup(reg.close)
+        service = watchdog.Watchdog(reg, fake_provider.FakeProvider(self.account), executor=watchdog.InlineExecutor())
+        service.start(pid=1)
+        manifest, sha = fx.session_manifest(SESSION)
+        argv = [sys.executable, str(HERE / 'registry_cli.py'), 'rpc', '--state-dir', str(self.state)]
+        client = registry_client.RegistryClient(registry_client.SubprocessTransport(argv), 'controller-a', attempts=2, retry_delay_s=0)
+        client.register(manifest, sha)
+        token = client.acquire(SESSION)['fencing_token']
+        service.tick()
+        client.arm(SESSION, manifest, sha, token)
+        service.tick()
+        intent = SESSION + ':droplet:game'
+        client.mutate('begin_create', session_id=SESSION, intent_id=intent, fencing_token=token)
+        receipt = fake_provider.FakeProvider.offline_receipt(intent + '#1', create_evidence.NOT_CREATED)
+        with self.assertRaises(registry_client.RegistryRejected) as caught:
+            client.mutate('record_create_settlement', session_id=SESSION, intent_id=intent, settlement=receipt, fencing_token=token)
+        self.assertEqual(caught.exception.code, 'untrusted_settlement_basis')
+        self.assertNotIn(b'trust', cli_help(), 'no runtime switch can widen what counts as evidence')
+        status = json.loads(cli(self.state, 'status', '--session', SESSION).stdout)
+        self.assertEqual(next(i for i in status['intents'] if i['intent_id'] == intent)['state'], 'requested')
+
+    def test_dispose_create_cli_needs_cleanup_and_labels_the_session(self):
+        clock = fx.ScriptedClock(wall=time.time(), mono=time.monotonic(), boot=session_clock.UNKNOWN_BOOT)
+        clock.wall = time.time
+        clock.mono = time.monotonic
+        reg = fault_harness.open_registry(self.state, clock)
+        self.addCleanup(reg.close)
+        service = watchdog.Watchdog(reg, fake_provider.FakeProvider(self.account), executor=watchdog.InlineExecutor())
+        service.start(pid=1)
+        manifest, sha = fx.session_manifest(SESSION)
+        argv = [sys.executable, str(HERE / 'registry_cli.py'), 'rpc', '--state-dir', str(self.state)]
+        client = registry_client.RegistryClient(registry_client.SubprocessTransport(argv), 'controller-a', attempts=2, retry_delay_s=0)
+        client.register(manifest, sha)
+        token = client.acquire(SESSION)['fencing_token']
+        service.tick()
+        client.arm(SESSION, manifest, sha, token)
+        service.tick()
+        intent = SESSION + ':droplet:game'
+        client.mutate('begin_create', session_id=SESSION, intent_id=intent, fencing_token=token)
+        early = cli(self.state, 'dispose-create', '--session', SESSION, '--intent', intent, '--note', 'too early')
+        self.assertEqual(early.returncode, 2, early.stderr.decode())
+        self.assertEqual(cli(self.state, 'abort', '--session', SESSION, '--reason', 'unknown create').returncode, 0)
+        done = cli(self.state, 'dispose-create', '--session', SESSION, '--intent', intent, '--note', 'checked by hand')
+        self.assertEqual(done.returncode, 0, done.stderr.decode())
+        self.assertEqual(json.loads(done.stdout)['state'], 'operator_disposed')
+
     def test_racing_dispatches_with_one_token_start_exactly_one_run(self):
         clock = fx.ScriptedClock(wall=time.time(), mono=time.monotonic(), boot=session_clock.UNKNOWN_BOOT)
         clock.wall = time.time
@@ -426,8 +484,8 @@ class RealServiceTests(ProcessFixture):
         self.fail('condition not reached in real time')
 
     def test_sigkill_during_cleanup_after_the_controller_vanished(self):
-        # Cleanup starts about 9 s from now: cap - reserve - the cleanup lead.
-        manifest, sha = fx.session_manifest(SESSION, cap_s=50, reserve_s=1, grace_s=1)
+        # Deletion starts at C, about 9 s from now, and read-only preparation has already begun by then.
+        manifest, sha = fx.session_manifest(SESSION, cap_s=10, reserve_s=1, grace_s=1)
         argv = [sys.executable, str(HERE / 'registry_cli.py'), 'rpc', '--state-dir', str(self.state)]
         client = registry_client.RegistryClient(registry_client.SubprocessTransport(argv), 'controller-a', attempts=2, retry_delay_s=0)
         service = self.start_service()
@@ -459,7 +517,7 @@ class RealServiceTests(ProcessFixture):
         def ops():
             return json.loads(self.account.read_text()).get('ops', [])
 
-        self.poll(lambda: any(o['op'] == 'delete_droplet' for o in ops()) or any(o['op'] == 'get_droplet' for o in ops()))
+        self.poll(lambda: any(o['op'] == 'delete_droplet' for o in ops()))
         service.send_signal(signal.SIGKILL)
         service.wait()
         self.start_service()

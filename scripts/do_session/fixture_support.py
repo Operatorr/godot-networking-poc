@@ -81,6 +81,31 @@ class ScriptedClock:
         self.synced = True
 
 
+class TimedExecutor:
+    """Every provider request is issued at once and answered ``latency_s`` of scripted time later."""
+
+    def __init__(self, latency_s=34.0):
+        self.latency_s = latency_s
+        self.clock = None
+        self.pending = []
+
+    def submit(self, call, done, session_id=None):
+        import watchdog
+        self.pending.append((self.clock.mono() + self.latency_s, watchdog._invoke(call), done))
+
+    def release_due(self):
+        due = [entry for entry in self.pending if entry[0] <= self.clock.mono()]
+        self.pending = [entry for entry in self.pending if entry[0] > self.clock.mono()]
+        for _, result, done in due:
+            done(*result)
+
+    def run(self, stack, seconds):
+        for _ in range(int(seconds)):
+            stack.clock.advance(1)
+            self.release_due()
+            stack.watchdog.tick()
+
+
 class DeferredExecutor:
     """Hold each provider call until the fixture releases it: slow requests without sleeping."""
 

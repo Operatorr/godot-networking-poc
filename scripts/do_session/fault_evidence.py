@@ -153,8 +153,9 @@ def ambiguous_and_late_create(stack, checks):
     stack.client.mutate('begin_create', session_id=SESSION, intent_id=intent, fencing_token=token)
     stack.client.mutate('record_create_result', session_id=SESSION, intent_id=intent, outcome='ambiguous', note='client timeout')
     stack.registry.operator_abort(SESSION, 'ambiguous create fixture')
-    stack.step(40)
-    checks('protection is untouched while the create can land', not stack.provider.ops_named('delete_firewall', 'delete_tag'))
+    stack.step(77)
+    checks('no closure from elapsed time', not stack.closed(SESSION))
+    checks('protection is untouched while the create is unresolved', not stack.provider.ops_named('delete_firewall', 'delete_tag'))
     late = stack.provider.add_droplet(SESSION + '-game', [tags['session'], tags['game']])
     stack.run_until(lambda: stack.closed(SESSION))
     checks('the late create was deleted', stack.provider.live_ids()['droplets'] == [])
@@ -175,12 +176,14 @@ def pending_creates_hold_protection(stack, checks):
     stack.step(35)
     checks('the firewall is still there at +35 s', firewall.split(':')[1] in stack.provider.live_ids()['firewalls'])
     checks('nothing protective was deleted', not stack.provider.ops_named('delete_firewall', 'delete_tag'))
-    stack.step(5)
+    stack.step(300)
+    checks('still nothing after minutes without evidence', not stack.provider.ops_named('delete_firewall', 'delete_tag'))
     stack.provider.add_tag(tags['session'])
-    checks('closure has not happened before the bound', not stack.closed(SESSION))
+    checks('closure has not happened', not stack.closed(SESSION))
+    stack.provider.issue_receipt(SESSION + ':droplet:game#1')
     stack.run_until(lambda: stack.closed(SESSION))
     states = {i['intent_id']: i['state'] for i in stack.registry.status(SESSION)['intents']}
-    checks('the Droplet create settled absent', states[SESSION + ':droplet:game'] == 'resolved_absent')
+    checks('the receipt settled the Droplet create', states[SESSION + ':droplet:game'] == 'resolved_absent')
     checks('the late tag answered its intent', states[SESSION + ':tag:session'] == 'created')
     checks('no resource survives', stack.provider.live_ids() == dict(droplets=[], firewalls=[], tags=[]))
 
@@ -200,16 +203,16 @@ def delayed_original_create_gets_no_retry(stack, checks):
     except TimeoutError:
         pass
     refused = 0
-    for _ in range(10):
+    for _ in range(7):
         try:
             stack.client.guarded_create(SESSION, intent, token, retries.append, find)
-        except registry_client.CreateStillSettling:
+        except registry_client.CreateUnresolved:
             refused += 1
-        stack.step(1)
-    checks('every empty listing inside the bound was refused', refused == 10)
+        stack.step(10)
+    checks('every empty listing was refused, including after the former 60 s bound', refused == 7)
     checks('the retry callback never ran', retries == [])
     original = create(grants[0])
-    stack.step(session_clock.CREATE_SETTLE_S)
+    stack.step(5)
     key = stack.client.guarded_create(SESSION, intent, token, retries.append, find)
     checks('the original was adopted by its exact id', key == 'droplet:' + original)
     checks('one Droplet exists', stack.provider.live_ids()['droplets'] == [original])
@@ -217,6 +220,31 @@ def delayed_original_create_gets_no_retry(stack, checks):
     checks('one request was granted', state['request_count'] == 1)
     stack.registry.operator_abort(SESSION, 'fixture finished')
     stack.run_until(lambda: stack.closed(SESSION))
+
+
+def unresolved_create_blocks_clean_closure_past_d(stack, checks):
+    _, _, token, ack = stack.armed(SESSION, **SHORT)
+    d = session_clock.parse(ack['deadline_d_utc'])
+    create = fault_harness.create_for(stack.provider)
+    find = fault_harness.find_existing(stack.provider, SESSION)
+    for suffix in ('tag:session', 'tag:game', 'tag:bot', 'droplet:bot'):
+        stack.client.guarded_create(SESSION, SESSION + ':' + suffix, token, create, find)
+    stack.client.mutate('begin_create', session_id=SESSION, intent_id=SESSION + ':droplet:game', fencing_token=token)
+    stack.registry.operator_abort(SESSION, 'the game Droplet request has no known outcome')
+    stack.step(20)
+    checks('the known Droplet was deleted at once', stack.provider.live_ids()['droplets'] == [])
+    checks('its tags stay while the other request is unresolved', len(stack.provider.live_ids()['tags']) == 3)
+    while stack.clock.wall_value < d + 30:
+        stack.step(1)
+    status = stack.registry.status(SESSION)
+    checks('the session stays open past D', status['state'] == registry.DELETING)
+    checks('overdue is reported, not success', status['overall'] == 'cleanup_overdue')
+    checks('the unresolved request is named', [u['create_request_ref'] for u in status['cleanup']['unresolved_creates']] == [SESSION + ':droplet:game#1'])
+    stack.provider.issue_receipt(SESSION + ':droplet:game#1')
+    stack.run_until(lambda: stack.closed(SESSION))
+    final = stack.registry.status(SESSION)
+    checks('the receipt let it finish', stack.provider.live_ids() == dict(droplets=[], firewalls=[], tags=[]))
+    checks('the breach stays visible', final['cleanup']['overdue'] is True and final['cleanup']['overrun_s'] > 0)
 
 
 def reboot_with_rtc_behind_fails_closed(stack, checks):
@@ -263,24 +291,73 @@ def recovery_deadline_survives_reconnect(stack, checks):
     stack.run_until(lambda: stack.closed(SESSION))
 
 
-def delayed_ownership_reads_delete_by_c(stack, checks):
-    names = ['do-cap-' + c + '-delayed' for c in 'abcd']
+def recovery_lasts_until_c_while_ownership_is_prepared(stack, checks):
+    _, _, _, ack, _ = stack.ready(SESSION, **SHORT)
+    c = session_clock.parse(ack['cleanup_c_utc'])
+    while stack.clock.wall_value < c - 60:
+        stack.step(1)
+    token = stack.client.acquire(SESSION, takeover=True)['fencing_token']
+    stack.registry.begin_collection(SESSION, token)
+    first_failure = stack.clock.wall_value
+    recovery = stack.registry.begin_evidence_recovery(SESSION, token)
+    checks('the episode is exactly min(first_failure + grace, C)',
+           session_clock.parse(recovery['recovery_deadline_utc']) == min(first_failure + SHORT['grace_s'], c) == c)
+    while stack.clock.wall_value < c - 1:
+        stack.step(1)
+    status = stack.registry.status(SESSION)
+    checks('recovery is still active one second before C', status['state'] == registry.EVIDENCE_RECOVERY)
+    checks('ownership was prepared meanwhile', len(stack.provider.ops_named('get_droplet')) == 2)
+    checks('no delete was issued during recovery', not stack.provider.ops_named('delete_droplet', 'delete_firewall', 'delete_tag'))
+    checks('the evidence hosts are intact', len(stack.provider.live_ids()['droplets']) == 2)
+    stack.step(1)
+    first = stack.provider.ops_named('delete_droplet')[0]['at']
+    checks('the first delete was issued at C', first == c)
+    stack.run_until(lambda: stack.closed(SESSION))
+    checks('no resource survives', stack.provider.live_ids() == dict(droplets=[], firewalls=[], tags=[]))
+
+
+def five_sessions_with_slow_requests_delete_by_c(stack, checks):
+    names = ['do-cap-' + c + '-delayed' for c in 'abcde']
     acks = [stack.ready(name, **SHORT)[3] for name in names]
     c = session_clock.parse(acks[0]['cleanup_c_utc'])
-    while stack.clock.wall_value < c - registry.CLEANUP_LEAD_S:
-        stack.step(1)
-    checks('all eight ownership reads are out', len(stack.executor.pending) == 8)
-    stack.step(session_clock.PROVIDER_REQUEST_BOUND_S - 1)
-    checks('no delete before ownership is known', not stack.provider.ops_named('delete_droplet'))
-    stack.executor.release()
+    checks('all five share one C', {a['cleanup_c_utc'] for a in acks} == {acks[0]['cleanup_c_utc']})
+    stack.executor.run(stack, c - stack.clock.wall_value)
+    first = {name: min(session_clock.parse(a['started_at']) for a in stack.registry.attempts(name) if a['op'] == 'delete_droplet') for name in names}
+    checks('every session issued its first delete', set(first) == set(names))
+    checks('every first delete was issued by C', max(first.values()) <= c)
+    checks('no request failed', not [a for name in names for a in stack.registry.attempts(name) if a['result'] == 'error'])
+    stack.executor.run(stack, 1500)
+    checks('every session verified absent', all(stack.closed(name) for name in names) and stack.provider.live_ids() == dict(droplets=[], firewalls=[], tags=[]))
+
+
+def capacity_rejected_before_create_behind_hung_slots(stack, checks):
+    hung = ['do-cap-a-hung', 'do-cap-b-hung', 'do-cap-c-hung']
+    for name in hung:
+        stack.ready(name)
+    due = ['do-cap-z-due-%d' % i for i in range(stack.watchdog.deadline_reserved_slots)]
+    acks = [stack.ready(name, **SHORT)[3] for name in due]
+    c = session_clock.parse(acks[0]['cleanup_c_utc'])
+    extra = 'do-cap-z-over-capacity'
+    manifest, sha, token = stack.registered(extra, **SHORT)
+    stack.watchdog.tick()
+    refused = None
+    try:
+        stack.client.arm(extra, manifest, sha, token)
+    except registry_client.RegistryRejected as rejection:
+        refused = rejection
+    checks('the extra session was refused explicitly', refused is not None and refused.code == 'deadline_capacity_exceeded')
+    checks('the refusal says when it would fit', refused.details['retry_after_s'] > 0)
+    checks('it has no deadline', stack.registry.status(extra)['t0_utc'] is None)
+    checks('nothing was created for it', not [d for d in stack.provider.data['droplets'].values() if extra in d['name']])
+    for name in hung:
+        stack.registry.operator_abort(name, 'provider calls hang')
+    stack.executor.hold_sessions = set(hung)
     stack.step(1)
-    stack.executor.release()
-    first = {o['at'] for o in stack.provider.ops_named('delete_droplet')}
-    checks('every session issued its first delete', {a['session_id'] for name in names for a in stack.registry.attempts(name) if a['op'] == 'delete_droplet'} == set(names))
-    checks('every first delete was issued by C', first and max(first) <= c)
-    stack.executor.hold_sessions = set()
-    stack.run_until(lambda: all(stack.closed(name) for name in names) or (stack.executor.release() and False))
-    checks('every session verified absent', stack.provider.live_ids() == dict(droplets=[], firewalls=[], tags=[]))
+    while stack.clock.wall_value < c:
+        stack.step(1)
+    deletes = {a['session_id']: session_clock.parse(a['started_at']) for name in due for a in stack.registry.attempts(name) if a['op'] == 'delete_droplet'}
+    checks('every due session deleted by C behind hung slots', set(deletes) == set(due) and max(deletes.values()) <= c)
+    checks('hung sessions deleted nothing unread', not [a for name in hung for a in stack.registry.attempts(name) if a['op'] == 'delete_droplet'])
 
 
 def fairness_with_a_hung_session(stack, checks):
@@ -314,7 +391,9 @@ SCENARIOS = (lost_controller_cleanup_by_c, api_outage_overdue_then_verified, sta
              rate_limit_then_auth_repair, ownership_refusal_preserves_unrelated, backward_wall_clock_jump,
              ambiguous_and_late_create, fairness_with_a_hung_session, watchdog_restart_mid_burst,
              pending_creates_hold_protection, delayed_original_create_gets_no_retry, reboot_with_rtc_behind_fails_closed,
-             recovery_deadline_survives_reconnect, delayed_ownership_reads_delete_by_c)
+             recovery_deadline_survives_reconnect, recovery_lasts_until_c_while_ownership_is_prepared,
+             unresolved_create_blocks_clean_closure_past_d, five_sessions_with_slow_requests_delete_by_c,
+             capacity_rejected_before_create_behind_hung_slots)
 
 
 def record(stack):
@@ -335,9 +414,13 @@ def run_scenario(scenario):
         executor = None
         if scenario is fairness_with_a_hung_session:
             executor = fx.DeferredExecutor(hold_sessions=set())
-        elif scenario is delayed_ownership_reads_delete_by_c:
+        elif scenario is capacity_rejected_before_create_behind_hung_slots:
             executor = fx.DeferredExecutor()
+        elif scenario is five_sessions_with_slow_requests_delete_by_c:
+            executor = fx.TimedExecutor()
         stack = rf.Stack(context, executor=executor)
+        if isinstance(executor, fx.TimedExecutor):
+            executor.clock = stack.clock
         results = []
         scenario(stack, lambda name, passed: results.append(dict(check=name, passed=bool(passed))))
         failed = [r['check'] for r in results if not r['passed']]
