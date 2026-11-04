@@ -3,6 +3,9 @@ import hashlib
 import json
 import pathlib
 import tempfile
+import subprocess
+import sys
+import time
 import unittest
 
 import cleanup_provider
@@ -17,6 +20,7 @@ import remote_authorization
 import session_access
 import session_clock
 import fake_guest
+import ssh_access
 
 OTHER_KEY = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA other'
 FAST_OBSERVE = provisioner.Policy(reconcile_observe_s=30.0, host_contact_wait_s=30.0, firewall_apply_wait_s=30.0, firewall_update_attempts=2, assign_attempts=2)
@@ -1185,6 +1189,28 @@ class RefreshStopsBetweenAttempts(unittest.TestCase):
         return provisioner.refresh_access(sim.client, sim.provider, sim.manifest, result.fencing_token, [self.NEW], [self.NEW], sleep, sim.monotonic,
                                           policy=FAST_OBSERVE, evidence=sim.evidence)
 
+    def test_control_loss_during_successful_final_read_back_is_not_success(self):
+        for matching in (False, True):
+            for intervene in self.interventions():
+                with self.subTest(matching=matching, stop=intervene.__name__):
+                    sim, result = self.ready()
+                    if matching:
+                        self.assertTrue(self.refresh(sim, result, sim.sleep)['applied'])
+                    original = sim.provider.get_firewall
+                    reads = []
+                    puts = len(sim.puts())
+                    def slow(firewall_id):
+                        value = original(firewall_id)
+                        reads.append(1)
+                        if len(reads) == (2 if matching else 3):
+                            intervene(sim, result)
+                        return value
+                    sim.provider.get_firewall = slow
+                    outcome = self.refresh(sim, result, sim.sleep)
+                    self.assertFalse(outcome['applied'], outcome)
+                    self.assertTrue(outcome['stopped'], outcome)
+                    self.assertEqual(len(sim.puts()), puts + (0 if matching else 1))
+
     def test_a_stop_during_the_retry_wait_sends_no_second_put(self):
         for intervene in self.interventions():
             with self.subTest(intervene.__name__):
@@ -1675,6 +1701,32 @@ class AuthorizationExpiringWhileConnecting(unittest.TestCase):
 class PackageProvenance(unittest.TestCase):
     def artifacts(self, sim):
         return {role: json.loads((sim.evidence.root / ('packages-%s.json' % role)).read_text()) for role in ('game', 'bot')}
+
+    def test_large_package_observations_pass_real_subprocess_and_reach_ready(self):
+        sim = pf.Sim(self)
+        extra = {'fixture-extra-%04d' % i: '1.0-fixture-version' for i in range(2000)}
+        sim.guests.package_versions = {role: extra for role in ('game', 'bot')}
+        original = sim.guests.run
+        access = object.__new__(ssh_access.SshAccess)
+        access.popen, access.monotonic = subprocess.Popen, time.monotonic
+        access.sleep = lambda _: time.sleep(0.01)
+        seen = []
+        def run(role, argv, timeout_s, on_wait=None):
+            result = original(role, argv, timeout_s, on_wait)
+            if 'probe' in argv and result.returncode == 0:
+                self.assertGreater(len(result.stdout), 65536)
+                path = sim.evidence.root / ('subprocess-fixture-%s.json' % role)
+                path.write_text(result.stdout)
+                result = access._execute([sys.executable, '-c',
+                    'import pathlib,sys; sys.stdout.write(pathlib.Path(sys.argv[1]).read_text())', str(path)], 5, on_wait)
+                seen.append(role)
+            return result
+        sim.guests.run = run
+        result = sim.run()
+        self.assertEqual(result.status, provisioner.READY, result)
+        self.assertEqual(sorted(seen), ['bot', 'game'])
+        for artifact in self.artifacts(sim).values():
+            self.assertEqual(len(artifact['inventory']), len(fake_guest.FIXTURE_PACKAGES) + 2000)
 
     def test_version_drift_between_two_hosts_stays_identifiable_after_teardown(self):
         sim = pf.Sim(self)

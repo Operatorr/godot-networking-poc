@@ -894,6 +894,7 @@ def apply_firewall(provider, manifest, firewall_id, desired, sleep, monotonic, p
         else:
             problems = ['firewall is gone'] if actual is None else (session_access.firewall_problems(actual, desired)
                                                                     + session_access.applied_problems(actual))
+        authority()     # Read-back can finish after cleanup, takeover or lease expiry.
         if not problems or (actual is not None and actual.get('status') == 'failed') or monotonic() >= deadline:
             return dict(problems=problems, attempts=attempt, firewall=actual)
         sleep(policy.provider_poll_s)

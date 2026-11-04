@@ -19,6 +19,7 @@ import pathlib
 import shlex
 import stat
 import subprocess
+import tempfile
 import time
 
 import cleanup_provider
@@ -146,25 +147,36 @@ class SshAccess(GuestAccess):
 
     def _execute(self, argv, timeout_s, on_wait):
         """Poll rather than block, so a build can run for minutes while the controller lease is kept alive."""
-        process = self.popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        deadline = self.monotonic() + timeout_s
-        try:
-            while process.poll() is None:
-                if self.monotonic() >= deadline:
-                    process.kill()
-                    process.communicate()
-                    return CommandResult(None, '', 'timed out after %s s' % timeout_s)
-                if on_wait is not None:
-                    on_wait()
-                self.sleep(POLL_S)
-        except BaseException:
-            # ``on_wait`` raises when the lease or budget ends. No local ssh process outlives that decision.
-            process.kill()
+        # Regular temporary files cannot fill a pipe and block the child before it exits.
+        # They also keep output out of memory while lease callbacks continue to run.
+        with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
+            process = self.popen(argv, stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr)
+            deadline = self.monotonic() + timeout_s
+            def oversized():
+                return any(os.fstat(stream.fileno()).st_size > MAX_OUTPUT_CHARS for stream in (stdout, stderr))
+            try:
+                while process.poll() is None:
+                    if oversized() or self.monotonic() >= deadline:
+                        reason = 'command output limit exceeded' if oversized() else 'timed out after %s s' % timeout_s
+                        process.kill()
+                        process.communicate()
+                        return CommandResult(None, '', reason)
+                    if on_wait is not None:
+                        on_wait()
+                    self.sleep(POLL_S)
+            except BaseException:
+                # No local ssh process outlives lease loss or cancellation.
+                process.kill()
+                process.communicate()
+                raise
             process.communicate()
-            raise
-        out, err = process.communicate()
-        return CommandResult(process.returncode, out.decode('utf-8', 'replace')[:MAX_OUTPUT_CHARS],
-                             cleanup_provider.redact(err.decode('utf-8', 'replace')))
+            if oversized():
+                return CommandResult(None, '', 'command output limit exceeded')
+            stdout.seek(0)
+            stderr.seek(0)
+            out, err = stdout.read(MAX_OUTPUT_CHARS), stderr.read(MAX_OUTPUT_CHARS)
+            return CommandResult(process.returncode, out.decode('utf-8', 'replace'),
+                                 cleanup_provider.redact(err.decode('utf-8', 'replace')))
 
     def _scan_host_key(self, address):
         result = self._execute(['ssh-keyscan', '-T', str(KEYSCAN_TIMEOUT_S), '-t', 'ed25519', address], KEYSCAN_TIMEOUT_S + 5, None)

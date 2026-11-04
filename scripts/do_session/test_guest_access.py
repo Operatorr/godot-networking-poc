@@ -8,6 +8,7 @@ import pathlib
 import shlex
 import socket
 import subprocess
+import sys
 import tempfile
 import threading
 import types
@@ -243,7 +244,12 @@ class SshCommands(unittest.TestCase):
             self.calls.append(argv)
             self.assertEqual(kwargs['stdin'], subprocess.DEVNULL)
             self.assertNotIn('shell', kwargs)
-            return processes.pop(0)
+            process = processes.pop(0)
+            kwargs['stdout'].write(process.stdout_bytes)
+            kwargs['stderr'].write(process.stderr_bytes)
+            kwargs['stdout'].flush()
+            kwargs['stderr'].flush()
+            return process
         self.clock = [0.0]
 
         def sleep(seconds):
@@ -330,6 +336,24 @@ class SshCommands(unittest.TestCase):
         access = self.access([FakeProcess(stderr=b'Authorization: Bearer ' + b'a' * 40, returncode=1)])
         access.pins['game'] = '1.2.3.4'
         self.assertNotIn('a' * 40, access.run('game', ['x'], 5).stderr)
+
+    def test_real_child_output_larger_than_a_pipe_completes(self):
+        access = self.access([])
+        access.popen = subprocess.Popen
+        access.monotonic = __import__('time').monotonic
+        access.sleep = lambda _: __import__('time').sleep(0.01)
+        script = "import json,sys; print(json.dumps({'packages': ['package-1.0'] * 10000})); sys.stderr.write('x' * 100000)"
+        result = access._execute([sys.executable, '-c', script], 5, None)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(json.loads(result.stdout)['packages']), 10000)
+        self.assertEqual(result.stderr, ssh_access.cleanup_provider.redact('x' * 100000))
+
+    def test_oversized_output_is_failure_not_successful_truncation(self):
+        access = self.access([FakeProcess(stdout=b'x' * (ssh_access.MAX_OUTPUT_CHARS + 1))])
+        result = access._execute(['fixture'], 5, None)
+        self.assertIsNone(result.returncode)
+        self.assertEqual(result.stdout, '')
+        self.assertIn('limit', result.stderr)
 
 
 class Readiness(unittest.TestCase):

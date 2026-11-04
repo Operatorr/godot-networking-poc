@@ -381,6 +381,12 @@ deletes what the session owns, and if the request cannot be delivered, C still a
   exporter must carry. Its own hash, in `mark_ready`'s evidence reference, binds them. A failed, incomplete, malformed or
   self-contradicting list stops readiness, and one that parsed is still retained to explain why. Real inventories stay in
   the private session directory. Committed timelines hold only the synthetic fixture.
+- **Subprocess output.** SSH stdout and stderr go to private temporary files while the controller polls and
+  services lease callbacks, avoiding pipe backpressure from full package inventories. Each stream is checked
+  against a 4 MiB limit on every poll and after exit; oversized output fails rather than becoming a truncated
+  success. Temporary storage can grow between polls and needs local disk space; files close on every exit path.
+- **Refresh completion.** The final firewall read-back must still have live controller authority before it
+  reports success, including when the requested rules already match and no PUT was necessary.
 - **First contact.** No private key goes into user data. Each Droplet gets a random nonce through the authenticated API,
   and at first boot it publishes `HMAC(nonce, host key)` and deletes the nonce file. The controller scans the key, reads
   the proof over a connection pinned to that key, and pins it only if the proof matches. The nonce exists only in
