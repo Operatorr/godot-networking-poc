@@ -1,6 +1,6 @@
 # Stage 4 coverage: deferred load-test evidence and economics
 
-Evidence-only pass for [Complete deferred load-test evidence and economics — Stage 4](https://github.com/Operatorr/godot-networking-poc/issues/47), 2026-11-04. No tests, reruns, workloads, deployments, host access or provider API calls were made. Historical files were not changed. `derive.py` regenerates `fixed-build-transfer.csv` and `economics-and-reconciliation.json` from retained evidence. The JSON's `archive_check` counts depend on the machine it runs on.
+Evidence-only pass for [Complete deferred load-test evidence and economics — Stage 4](https://github.com/Operatorr/godot-networking-poc/issues/47), 2026-11-04. No tests, reruns, workloads, deployments, host access or provider API calls were made. Historical files were not changed. `derive.py` regenerates `fixed-build-transfer.csv` and `economics-and-reconciliation.json` from retained evidence.
 
 ## Coverage
 
@@ -9,7 +9,7 @@ Evidence-only pass for [Complete deferred load-test evidence and economics — S
 | Controlled network groups and native controls | Combat100 native-before and delay25 only, on the old build. No after-control. Combined profile exists only as 3-player preflights. | **Not established.** 1 of 9 impairment profiles at one position |
 | Transfer comparisons | Every clean-run config, climb config diff and retained report variant is at Snapshot 30 Hz, AoI 1000. No Snapshot15 or AoI600 observation exists. | **Not established.** Savings stay `[MEASURE]` |
 | External-client accounting | One valid 3-client run on the old build. Provider display did not change across it. | **Measured; not reconciled** |
-| Case, source and archive verification | Attempt counts reconcile. Committed bundles are intact. All 134 report-bundle archives match on the author's MacBook. Clean-run evidence is not yet confirmed. | **Partial.** Clean-run check outstanding |
+| Case, source and archive verification | Attempt counts reconcile. Committed bundles are intact. All 1,110 recorded evidence hashes resolve on the author's MacBook, with no mismatches. | **Verified, except off-host retention, which was not checked** |
 | Fixed-build transfer and economics | Ten clean cells have matched 299 s wire bytes and player-seconds. | **Established for build `de92e120`, same-zone volume only** |
 
 ## Fixed-build transfer
@@ -104,10 +104,16 @@ Missing: delay50/100, jitter5/20, loss0.1/1/3%, combined at scored populations, 
 
 - **Committed bundles:** no historical report file has been modified since 2026-10-24, apart from the later 2026-10-29 reports. Hash lists passed: Idle150 8/8, Strategy200 12/12, Change A run 60/60.
 - **Clean-run campaign:** lives at `fcf4f62`, protected by tag `archive/issue39-campaign-20261024`. It is not on master.
-- **Original archives (report bundles):** 68 retained manifests name 134 archive hashes under `deployment/hetzner/results/…`. **All 134 are present and match on the author's MacBook**, checked 2026-11-04 with `python3 derive.py --check-archives`. They are not on the Mac mini where the rest of this pass ran.
-- **Clean-run evidence:** the summaries name 976 further evidence hashes, most of them scripts and proof files rather than archives. On the MacBook, 675 matched at the paths the check tried, **with no mismatches**. The other 301 (252 `.py`, 46 `.json`, 3 `.tar.gz`) are unresolved, not missing, because that check guessed paths. Of the 272 bare-name script hashes, 271 match exact bytes in git history. The content-hash check still needs to run on the MacBook.
-- **Off-host preservation:** remote retention was not checked.
-- **2026-10-24 audit files:** `RESULTS.md` and `attempt-inventory.csv` were gitignored and are not on the Mac mini. They may be on the MacBook too, which hasn't been confirmed. The audit's tracker comment remains the record.
+- **Evidence hashes:** checked 2026-11-04 on the author's MacBook with `python3 derive.py --check-archives`, which finds each recorded hash by file content. [Output](archive-check-macbook-20261104.json).
+
+  | Group | Hashes | At recorded path | Elsewhere under `results/` | Only in git history | Mismatch | Not found |
+  |---|---:|---:|---:|---:|---:|---:|
+  | Report-bundle archives | 134 | 134 | 0 | 0 | 0 | 0 |
+  | Clean-run evidence | 976 | 675 | 293 | 8 | 0 | 0 |
+
+  "Elsewhere" and "git history" mean the exact bytes exist, not that a copy sits where that run's evidence implies. A file shared by several runs can satisfy several entries. This confirms bytes against recorded hashes. It does not reproduce any result or remove the qualifications below. These files are not on the Mac mini.
+- **Off-host preservation:** remote retention was not checked, and the MacBook is the only verified copy of these originals.
+- **2026-10-24 audit files:** `RESULTS.md` and `attempt-inventory.csv` are on the author's MacBook, confirmed by listing. They are gitignored and their contents were not rechecked here.
 - **Retained qualifications:** the known scratch/verifier overwrites, the concurrent-ledger census exception, `original-3-full` left `not_yet_classified`, and the one-pass `matrix-coverage.json` and `source-audit.json` both reading `complete: false`. Nothing was regenerated.
 
 ## What this does not establish

@@ -1,0 +1,18 @@
+{
+  "clean-runs": {
+    "claimed": 976,
+    "elsewhere": 293,
+    "git_history": 8,
+    "mismatch": [],
+    "not_found": [],
+    "recorded_path": 675
+  },
+  "report-bundles": {
+    "claimed": 134,
+    "elsewhere": 0,
+    "git_history": 0,
+    "mismatch": [],
+    "not_found": [],
+    "recorded_path": 134
+  }
+}

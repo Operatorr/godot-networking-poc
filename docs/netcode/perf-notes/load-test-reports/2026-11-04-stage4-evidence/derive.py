@@ -255,7 +255,7 @@ def main():
         "test_pair_USD_month": (COMPUTE + IPV4) * 2, "test_pair_USD_year": (COMPUTE + IPV4) * 24,
         "year": YEAR,
     }
-    json.dump({"assumptions": assumptions, "models": models, "inventories": inventories(), "archive_check": verify_tree()},
+    json.dump({"assumptions": assumptions, "models": models, "inventories": inventories()},
               open(os.path.join(HERE, "economics-and-reconciliation.json"), "w"), indent=2, sort_keys=True)
 
 
