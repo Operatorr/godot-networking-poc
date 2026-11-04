@@ -53,10 +53,11 @@ Don't re-derive what's already written there; read it, then go deep where needed
 - `deployment/` — **native** deploy (no Docker — [ADR 0007](docs/adr/0007-native-systemd-deployment.md)):
   systemd units (`systemd/`), per-instance configs (`server_config.{arena,sanctuary}.json`), env
   templates (`env/`), `provision_server.sh` (one-time bootstrap) + `server_update.sh` (git-pull deploy),
-  `harden_vps.sh` (firewall/fail2ban/SSH).
-- `scripts/` — build/deploy/run automation. `scripts/do_session/` is the offline DigitalOcean
-  test-session planner (immutable manifest, legal search branches, time/spend admission; no
-  provider calls) — see its README and issue #61 slice 1.
+  `harden_vps.sh` (firewall/fail2ban/SSH). `do-watchdog/` holds the DigitalOcean cleanup watchdog's portable unit.
+- `scripts/` — build/deploy/run automation. `scripts/do_session/` is the DigitalOcean test-session
+  control code: the offline planner (immutable manifest, legal search branches, time/spend admission)
+  plus the durable session registry, fencing and independent cleanup watchdog, so far exercised only
+  against a fake provider — see its README and issue #61 slices 1–2.
 - `docs/` — **system of record** (map below).
 
 ## Documentation map

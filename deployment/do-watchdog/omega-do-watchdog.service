@@ -1,0 +1,40 @@
+# Independent DigitalOcean session cleanup watchdog (scripts/do_session, issue #65).
+#
+# Portable role: this unit, /etc/omega-do-watchdog/watchdog.env and the one state directory are
+# everything the service needs. To move hosts: stop, copy /var/lib/omega-do-watchdog, start. The
+# registry has no daemon; the controller runs `registry_cli.py rpc` per request over key-only SSH.
+#
+# watchdog.env sets OMEGA_DO_PROVIDER (MODULE:FACTORY) and OMEGA_DO_PROVIDER_ARG. With neither set the
+# service refuses to start, because a watchdog without a real provider would protect nothing. The real
+# DigitalOcean adapter and its restricted token file arrive with issue #66; install and enable this
+# unit under issue #72 only.
+#
+# After a reboot the registry trusts the clock only if the kernel reports it synchronized; otherwise armed
+# sessions start cleanup. time-sync.target only waits if a sync service provides it. Do not add an unbounded
+# systemd-time-wait-sync dependency: a watchdog that never starts protects nothing.
+[Unit]
+Description=Omega Realm DigitalOcean session cleanup watchdog
+# Never let systemd stop retrying: giving up would strand billable hosts.
+StartLimitIntervalSec=0
+Wants=time-sync.target network-online.target
+After=time-sync.target network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/omega-do-watchdog/watchdog.env
+ExecStart=/usr/bin/python3 /opt/omega-do-watchdog/registry_cli.py watchdog --state-dir /var/lib/omega-do-watchdog --provider ${OMEGA_DO_PROVIDER} --provider-arg ${OMEGA_DO_PROVIDER_ARG}
+Restart=always
+RestartSec=2
+
+
+StateDirectory=omega-do-watchdog
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/omega-do-watchdog
+
+[Install]
+WantedBy=multi-user.target
