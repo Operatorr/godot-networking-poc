@@ -2,6 +2,14 @@
 
 Evidence-only pass for [Complete deferred load-test evidence and economics — Stage 4](https://github.com/Operatorr/godot-networking-poc/issues/47), 2026-11-04. No tests, reruns, workloads, deployments, host access or provider API calls were made. Historical files were not changed. `derive.py` regenerates `fixed-build-transfer.csv` and `economics-and-reconciliation.json` from retained evidence.
 
+## Update: copy on the Mac mini (added 2026-11-04)
+
+The original evidence and the 2026-10-24 audit files were copied from the MacBook to the Mac mini after this report was written. The report below is left as written, so this update replaces its statements that the files aren't on the Mac mini and that the MacBook holds the only verified copy.
+
+- **Hash check:** `python3 derive.py --check-archives` on the Mac mini gave the same result as the MacBook: 1,110 of 1,110 hashes resolved, with no mismatches and nothing missing. [Output](archive-check-macmini-20261104.json).
+- **Full comparison:** a checksum `rsync` dry run from the MacBook reported no differences for `deployment/hetzner/results/` or the audit files. It covers the files on the MacBook. The Mac mini's `results/` also holds one access record that was already there before the copy.
+- **Still open:** both copies are on the author's own machines, and remote retention was not checked. These checks compare bytes only, so they don't reproduce any result. The audit files' contents were not rechecked.
+
 ## Coverage
 
 | Deferred requirement | What the retained evidence supports | Status |
