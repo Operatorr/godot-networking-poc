@@ -515,6 +515,21 @@ class CrashWindows(Base):
         self.assertEqual(outcome['next_run_id'], search.run_id(self.sim.session_id, 2, search.COARSE, 50, 1))
         self.assertEqual(len(self.guests.runner_steps('game', 'start')), 1)
 
+    def test_crashes_between_the_natural_end_and_the_verdict_score_only_once_from_what_was_left(self):
+        for point in ('after_stop', 'after_execution_record'):
+            with self.subTest(point=point):
+                self.setUp()
+                scorer = self.scorer()
+                self.crash_run(point, scorer=scorer)
+                self.assertEqual(scorer.seen, [])
+                run_id = self.sim.records()[0]['run_id']
+                _, outcome = self.resume(scorer=scorer)
+                self.assertEqual(self.sim.records()[0]['outcome'], search.PASS)
+                self.assertEqual(len(scorer.seen), 1)
+                self.assertTrue(outcome['resumed'], outcome)
+                self.assertEqual(len(self.guests.runner_steps('game', 'start')), 1)
+                self.assertTrue((self.sim.run_dir(run_id) / 'execution.json').exists(), 'the earlier record, if any, is kept')
+
     def test_natural_end_with_no_scorer_stays_incomplete(self):
         self.crash_run('after_seal')
         executor, control = self.sim.controller(scorer=None)
