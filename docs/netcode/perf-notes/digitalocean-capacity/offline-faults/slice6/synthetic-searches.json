@@ -1,0 +1,3377 @@
+{
+ "kind": "synthetic",
+ "measurement_schema": "omega.measurement/3",
+ "measurement_schema_sha256": "dac9395161b89090cf71315e52250cd22efba19f5680beed47fc6ca70a32e0be",
+ "note": "Synthetic. Nothing ran: every tree is mocked recorder files, and each \"60 s window\" is arithmetic. It shows what the real scorer does with those bytes and says nothing about any host. Not a capacity observation. Outcomes are not scripted: each comes from the real prover and scorer over the bytes the fake guest exported.",
+ "policy": {
+  "boundaries": "Tick counts and socket drops are evaluated over the widest and the narrowest interval the clocks allow. A verdict must hold for both, or it stays unknown.",
+  "enet_loss": {
+   "borrow_limit_s": 2,
+   "definition": "one bin per second from the window start. A bot counts once per bin: the mean of its readings in that bin, or else its nearest in-window reading within 2 s of the bin, labelled borrowed. A bin's value is the mean over the bots still owed there. Every bin must stay strictly below the limit.",
+   "estimator": "ENet smoothed reliable-command loss estimate, updated at most once per 10 s epoch. Not a measured fraction of datagrams dropped.",
+   "limit_strictly_below": "2/100",
+   "scale": 65536
+  },
+  "input": {
+   "definition": "per bot: sent over its own scheduled grid slots in the window, in integers. Exactly 99 percent is valid. A disconnected bot is held to the part it was connected for, less the one slot the disconnect can interrupt.",
+   "min_percent": 99
+  },
+  "rtt_limit_ms_strictly_below": 150,
+  "rtt_quantile": {
+   "definition": "empirical nearest rank: sort every in-window sample of every bot into one pool of n, take the value at 1-based rank ceil(95 n / 100). No interpolation, and never an average of per-bot quantiles.",
+   "estimator": "ENet smoothed mean round trip time in whole milliseconds",
+   "percent": 95
+  },
+  "tick_budget_ns": 33300000,
+  "tick_over_percent_strictly_below": 1
+ },
+ "policy_sha256": "c7466422b1175b96fde5844ee703742926f9588efb2f8bf6a177dcc5c559817f",
+ "scenarios": {
+  "all_coarse_pass_search_cap_at_500": {
+   "batch": "search_finished",
+   "claim": {
+    "confirmed": true,
+    "kind": "at_least_search_cap",
+    "lower_bound": 500,
+    "players": null,
+    "search_cap_reached": true,
+    "statement": "At least 500 players under this condition; search cap reached, not a discovered ceiling."
+   },
+   "counts": {
+    "coarse": 20,
+    "confirm": 3,
+    "refine": 0,
+    "total": 23
+   },
+   "game_starts": 23,
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 3,
+     "pending": 0,
+     "stopped": 0,
+     "target": 500
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": 500,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 23
+   },
+   "status": "confirmed_search_cap_reached",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 2,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 50
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 3,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 75
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 4,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 100
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 5,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 125
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 6,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 150
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 7,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 175
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 8,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 200
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 9,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 225
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 10,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 250
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 11,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 275
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 12,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 300
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 13,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 325
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 14,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 350
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 15,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 375
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 16,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 400
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 17,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 425
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 18,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 450
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 19,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 475
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 20,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 500
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 21,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 1,
+     "target": 500
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 22,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 2,
+     "target": 500
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 23,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 3,
+     "target": 500
+    }
+   ]
+  },
+  "coarse_inconclusive_stops": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence). The highest one-minute pass was 25; it stays an exploratory observation."
+   },
+   "counts": {
+    "coarse": 2,
+    "confirm": 0,
+    "refine": 0,
+    "total": 2
+   },
+   "game_starts": 2,
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 2
+   },
+   "status": "stopped_inconclusive_evidence",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "inconclusive_evidence",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "unknown",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 2,
+     "outcome": "INCONCLUSIVE",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 50
+    }
+   ]
+  },
+  "coarse_infrastructure_stops": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_infrastructure_failure",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_infrastructure_failure). The highest one-minute pass was 25; it stays an exploratory observation."
+   },
+   "counts": {
+    "coarse": 2,
+    "confirm": 0,
+    "refine": 0,
+    "total": 2
+   },
+   "game_starts": 2,
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 2
+   },
+   "status": "stopped_infrastructure_failure",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "infrastructure_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "unknown",
+      "rtt_p95": "pass",
+      "tick_budget": "unknown"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 2,
+     "outcome": "INFRASTRUCTURE_FAILURE",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 50
+    }
+   ]
+  },
+  "coarse_invalid_load_stops": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_invalid_load",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_invalid_load). The highest one-minute pass was 25; it stays an exploratory observation."
+   },
+   "counts": {
+    "coarse": 2,
+    "confirm": 0,
+    "refine": 0,
+    "total": 2
+   },
+   "game_starts": 2,
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 2
+   },
+   "status": "stopped_invalid_load",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "invalid_offered_load",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "invalid",
+     "ordinal": 2,
+     "outcome": "INVALID_LOAD",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 50
+    }
+   ]
+  },
+  "confirmation_1_fails": {
+   "batch": "search_finished",
+   "claim": {
+    "candidate": 25,
+    "confirmed": false,
+    "kind": "unconfirmed_variable",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "Candidate 25 is unconfirmed and variable: a valid confirmation failed. The bracket and every result are kept, with no replacement trial."
+   },
+   "counts": {
+    "coarse": 2,
+    "confirm": 1,
+    "refine": 1,
+    "total": 4
+   },
+   "game_starts": 4,
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 1,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": 25
+    },
+    "failed_targets": [
+     30,
+     50
+    ],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": 30,
+    "retries": 0,
+    "trials": 4
+   },
+   "status": "unconfirmed_variable",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 2,
+     "outcome": "FAIL",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 50
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 3,
+     "outcome": "FAIL",
+     "phase": "refine",
+     "repetition": 1,
+     "target": 30
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 4,
+     "outcome": "FAIL",
+     "phase": "confirm",
+     "repetition": 1,
+     "target": 25
+    }
+   ]
+  },
+  "confirmation_1_interrupted_siblings_run_set_stays_partial": {
+   "batch": "search_finished",
+   "claim": {
+    "candidate": 25,
+    "confirmed": false,
+    "kind": "unconfirmed_partial",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "Candidate 25 is unconfirmed: the confirmation set is partial, 2 of 3 passed. Repeating it needs a separately bounded batch."
+   },
+   "counts": {
+    "coarse": 2,
+    "confirm": 3,
+    "refine": 1,
+    "total": 6
+   },
+   "crashed_at": "after_running_commit in the first confirmation",
+   "game_starts": 6,
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 1,
+     "passed": 2,
+     "pending": 0,
+     "stopped": 0,
+     "target": 25
+    },
+    "failed_targets": [
+     30,
+     50
+    ],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": 30,
+    "retries": 0,
+    "trials": 6
+   },
+   "resume_code": null,
+   "resumed": true,
+   "status": "unconfirmed_partial",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 2,
+     "outcome": "FAIL",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 50
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 3,
+     "outcome": "FAIL",
+     "phase": "refine",
+     "repetition": 1,
+     "target": 30
+    },
+    {
+     "classification": null,
+     "gates": {},
+     "hold_s": 300,
+     "offered_load": null,
+     "ordinal": 4,
+     "outcome": "INCOMPLETE",
+     "phase": "confirm",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 5,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 2,
+     "target": 25
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 6,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 3,
+     "target": 25
+    }
+   ]
+  },
+  "confirmation_2_fails": {
+   "batch": "search_finished",
+   "claim": {
+    "candidate": 25,
+    "confirmed": false,
+    "kind": "unconfirmed_variable",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "Candidate 25 is unconfirmed and variable: a valid confirmation failed. The bracket and every result are kept, with no replacement trial."
+   },
+   "counts": {
+    "coarse": 2,
+    "confirm": 2,
+    "refine": 1,
+    "total": 5
+   },
+   "game_starts": 5,
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 1,
+     "incomplete": 0,
+     "passed": 1,
+     "pending": 0,
+     "stopped": 0,
+     "target": 25
+    },
+    "failed_targets": [
+     30,
+     50
+    ],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": 30,
+    "retries": 0,
+    "trials": 5
+   },
+   "status": "unconfirmed_variable",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 2,
+     "outcome": "FAIL",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 50
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 3,
+     "outcome": "FAIL",
+     "phase": "refine",
+     "repetition": 1,
+     "target": 30
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 4,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 5,
+     "outcome": "FAIL",
+     "phase": "confirm",
+     "repetition": 2,
+     "target": 25
+    }
+   ]
+  },
+  "confirmation_2_invalid_load_stops": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_invalid_load",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_invalid_load). The highest one-minute pass was 25, with 30 failing above it; it stays an exploratory observation."
+   },
+   "counts": {
+    "coarse": 2,
+    "confirm": 2,
+    "refine": 1,
+    "total": 5
+   },
+   "game_starts": 5,
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 1,
+     "pending": 0,
+     "stopped": 1,
+     "target": 25
+    },
+    "failed_targets": [
+     30,
+     50
+    ],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": 30,
+    "retries": 0,
+    "trials": 5
+   },
+   "status": "stopped_invalid_load",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 2,
+     "outcome": "FAIL",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 50
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 3,
+     "outcome": "FAIL",
+     "phase": "refine",
+     "repetition": 1,
+     "target": 30
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 4,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "invalid_offered_load",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "invalid",
+     "ordinal": 5,
+     "outcome": "INVALID_LOAD",
+     "phase": "confirm",
+     "repetition": 2,
+     "target": 25
+    }
+   ]
+  },
+  "confirmation_3_fails": {
+   "batch": "search_finished",
+   "claim": {
+    "candidate": 25,
+    "confirmed": false,
+    "kind": "unconfirmed_variable",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "Candidate 25 is unconfirmed and variable: a valid confirmation failed. The bracket and every result are kept, with no replacement trial."
+   },
+   "counts": {
+    "coarse": 2,
+    "confirm": 3,
+    "refine": 1,
+    "total": 6
+   },
+   "game_starts": 6,
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 1,
+     "incomplete": 0,
+     "passed": 2,
+     "pending": 0,
+     "stopped": 0,
+     "target": 25
+    },
+    "failed_targets": [
+     30,
+     50
+    ],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": 30,
+    "retries": 0,
+    "trials": 6
+   },
+   "status": "unconfirmed_variable",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 2,
+     "outcome": "FAIL",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 50
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 3,
+     "outcome": "FAIL",
+     "phase": "refine",
+     "repetition": 1,
+     "target": 30
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 4,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 5,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 2,
+     "target": 25
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 6,
+     "outcome": "FAIL",
+     "phase": "confirm",
+     "repetition": 3,
+     "target": 25
+    }
+   ]
+  },
+  "confirmation_3_inconclusive_stops": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence). The highest one-minute pass was 25, with 30 failing above it; it stays an exploratory observation."
+   },
+   "counts": {
+    "coarse": 2,
+    "confirm": 3,
+    "refine": 1,
+    "total": 6
+   },
+   "game_starts": 6,
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 2,
+     "pending": 0,
+     "stopped": 1,
+     "target": 25
+    },
+    "failed_targets": [
+     30,
+     50
+    ],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": 30,
+    "retries": 0,
+    "trials": 6
+   },
+   "status": "stopped_inconclusive_evidence",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 2,
+     "outcome": "FAIL",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 50
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 3,
+     "outcome": "FAIL",
+     "phase": "refine",
+     "repetition": 1,
+     "target": 30
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 4,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 5,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 2,
+     "target": 25
+    },
+    {
+     "classification": "inconclusive_evidence",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "unknown",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 6,
+     "outcome": "INCONCLUSIVE",
+     "phase": "confirm",
+     "repetition": 3,
+     "target": 25
+    }
+   ]
+  },
+  "confirmed": {
+   "batch": "search_finished",
+   "claim": {
+    "confirmed": true,
+    "kind": "confirmed_observation",
+    "lower_bound": 25,
+    "players": 25,
+    "search_cap_reached": false,
+    "statement": "Confirmed 25 players on this rented pair: three valid five-minute passes. An observed candidate, not provider-wide capacity."
+   },
+   "counts": {
+    "coarse": 2,
+    "confirm": 3,
+    "refine": 1,
+    "total": 6
+   },
+   "game_starts": 6,
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 3,
+     "pending": 0,
+     "stopped": 0,
+     "target": 25
+    },
+    "failed_targets": [
+     30,
+     50
+    ],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": 30,
+    "retries": 0,
+    "trials": 6
+   },
+   "status": "confirmed",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 2,
+     "outcome": "FAIL",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 50
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 3,
+     "outcome": "FAIL",
+     "phase": "refine",
+     "repetition": 1,
+     "target": 30
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 4,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 5,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 2,
+     "target": 25
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 6,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 3,
+     "target": 25
+    }
+   ]
+  },
+  "first_rung_failure_all_refinements_pass": {
+   "batch": "search_finished",
+   "claim": {
+    "confirmed": true,
+    "kind": "confirmed_observation",
+    "lower_bound": 20,
+    "players": 20,
+    "search_cap_reached": false,
+    "statement": "Confirmed 20 players on this rented pair: three valid five-minute passes. An observed candidate, not provider-wide capacity."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 3,
+    "refine": 4,
+    "total": 8
+   },
+   "game_starts": 8,
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 3,
+     "pending": 0,
+     "stopped": 0,
+     "target": 20
+    },
+    "failed_targets": [
+     25
+    ],
+    "highest_exploration_pass": 20,
+    "lowest_failure_above_it": 25,
+    "retries": 0,
+    "trials": 8
+   },
+   "status": "confirmed",
+   "trials": [
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "FAIL",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 2,
+     "outcome": "PASS",
+     "phase": "refine",
+     "repetition": 1,
+     "target": 5
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 3,
+     "outcome": "PASS",
+     "phase": "refine",
+     "repetition": 1,
+     "target": 10
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 4,
+     "outcome": "PASS",
+     "phase": "refine",
+     "repetition": 1,
+     "target": 15
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 5,
+     "outcome": "PASS",
+     "phase": "refine",
+     "repetition": 1,
+     "target": 20
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 6,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 1,
+     "target": 20
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 7,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 2,
+     "target": 20
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 8,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 3,
+     "target": 20
+    }
+   ]
+  },
+  "first_rung_failure_candidate_under_it": {
+   "batch": "search_finished",
+   "claim": {
+    "confirmed": true,
+    "kind": "confirmed_observation",
+    "lower_bound": 5,
+    "players": 5,
+    "search_cap_reached": false,
+    "statement": "Confirmed 5 players on this rented pair: three valid five-minute passes. An observed candidate, not provider-wide capacity."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 3,
+    "refine": 2,
+    "total": 6
+   },
+   "game_starts": 6,
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 3,
+     "pending": 0,
+     "stopped": 0,
+     "target": 5
+    },
+    "failed_targets": [
+     10,
+     25
+    ],
+    "highest_exploration_pass": 5,
+    "lowest_failure_above_it": 10,
+    "retries": 0,
+    "trials": 6
+   },
+   "status": "confirmed",
+   "trials": [
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "FAIL",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 2,
+     "outcome": "PASS",
+     "phase": "refine",
+     "repetition": 1,
+     "target": 5
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 3,
+     "outcome": "FAIL",
+     "phase": "refine",
+     "repetition": 1,
+     "target": 10
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 4,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 1,
+     "target": 5
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 5,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 2,
+     "target": 5
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 6,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 3,
+     "target": 5
+    }
+   ]
+  },
+  "first_rung_failure_then_5_fails": {
+   "batch": "search_finished",
+   "claim": {
+    "confirmed": false,
+    "kind": "no_passing_target_at_resolution",
+    "lower_bound": null,
+    "players": null,
+    "resolution": 5,
+    "search_cap_reached": false,
+    "statement": "No passing target at the search resolution: 5 players failed. Not proof that no smaller population could work, and not a capacity of zero."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 1,
+    "total": 2
+   },
+   "game_starts": 2,
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [
+     5,
+     25
+    ],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": 5,
+    "retries": 0,
+    "trials": 2
+   },
+   "status": "no_passing_target",
+   "trials": [
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "FAIL",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 2,
+     "outcome": "FAIL",
+     "phase": "refine",
+     "repetition": 1,
+     "target": 5
+    }
+   ]
+  },
+  "first_rung_invalid_load_stops_with_no_claim": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_invalid_load",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_invalid_load)."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "game_starts": 1,
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "status": "stopped_invalid_load",
+   "trials": [
+    {
+     "classification": "invalid_offered_load",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "invalid",
+     "ordinal": 1,
+     "outcome": "INVALID_LOAD",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    }
+   ]
+  },
+  "interrupted_active_trial_is_never_replayed": {
+   "batch": null,
+   "claim": {
+    "confirmed": false,
+    "kind": "undecidable_incomplete_predecessor",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: an interrupted trial left the next branch undecidable, and it is neither inferred nor replayed."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "crashed_at": "after_running_commit",
+   "game_starts": 1,
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "resume_code": "no_eligible_untouched_work",
+   "resumed": false,
+   "status": "undecidable_incomplete_predecessor",
+   "trials": [
+    {
+     "classification": null,
+     "gates": {},
+     "hold_s": 60,
+     "offered_load": null,
+     "ordinal": 1,
+     "outcome": "INCOMPLETE",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    }
+   ]
+  },
+  "natural_end_found_on_return_is_scored_then_resumes": {
+   "batch": "search_finished",
+   "claim": {
+    "confirmed": true,
+    "kind": "confirmed_observation",
+    "lower_bound": 25,
+    "players": 25,
+    "search_cap_reached": false,
+    "statement": "Confirmed 25 players on this rented pair: three valid five-minute passes. An observed candidate, not provider-wide capacity."
+   },
+   "counts": {
+    "coarse": 2,
+    "confirm": 3,
+    "refine": 1,
+    "total": 6
+   },
+   "crashed_at": "after_execution_record",
+   "game_starts": 6,
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 3,
+     "pending": 0,
+     "stopped": 0,
+     "target": 25
+    },
+    "failed_targets": [
+     30,
+     50
+    ],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": 30,
+    "retries": 0,
+    "trials": 6
+   },
+   "resume_code": null,
+   "resumed": true,
+   "status": "confirmed",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 2,
+     "outcome": "FAIL",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 50
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 3,
+     "outcome": "FAIL",
+     "phase": "refine",
+     "repetition": 1,
+     "target": 30
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 4,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 5,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 2,
+     "target": 25
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 6,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 3,
+     "target": 25
+    }
+   ]
+  },
+  "ramp_overrun_opens_the_bracket": {
+   "batch": "search_finished",
+   "claim": {
+    "confirmed": true,
+    "kind": "confirmed_observation",
+    "lower_bound": 25,
+    "players": 25,
+    "search_cap_reached": false,
+    "statement": "Confirmed 25 players on this rented pair: three valid five-minute passes. An observed candidate, not provider-wide capacity."
+   },
+   "counts": {
+    "coarse": 2,
+    "confirm": 3,
+    "refine": 1,
+    "total": 6
+   },
+   "game_starts": 6,
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 3,
+     "pending": 0,
+     "stopped": 0,
+     "target": 25
+    },
+    "failed_targets": [
+     30,
+     50
+    ],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": 30,
+    "retries": 0,
+    "trials": 6
+   },
+   "status": "confirmed",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "unknown",
+      "continuity": "unknown",
+      "enet_loss": "unknown",
+      "game_socket_drops": "unknown",
+      "rtt_p95": "unknown",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 2,
+     "outcome": "FAIL",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 50
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 3,
+     "outcome": "FAIL",
+     "phase": "refine",
+     "repetition": 1,
+     "target": 30
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 4,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 5,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 2,
+     "target": 25
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 6,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 3,
+     "target": 25
+    }
+   ]
+  },
+  "refine_inconclusive_stops": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence). The highest one-minute pass was 25, with 50 failing above it; it stays an exploratory observation."
+   },
+   "counts": {
+    "coarse": 2,
+    "confirm": 0,
+    "refine": 1,
+    "total": 3
+   },
+   "game_starts": 3,
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [
+     50
+    ],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": 50,
+    "retries": 0,
+    "trials": 3
+   },
+   "status": "stopped_inconclusive_evidence",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 2,
+     "outcome": "FAIL",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 50
+    },
+    {
+     "classification": "inconclusive_evidence",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "unknown",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 3,
+     "outcome": "INCONCLUSIVE",
+     "phase": "refine",
+     "repetition": 1,
+     "target": 30
+    }
+   ]
+  },
+  "refine_invalid_load_stops": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_invalid_load",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_invalid_load). The highest one-minute pass was 25, with 50 failing above it; it stays an exploratory observation."
+   },
+   "counts": {
+    "coarse": 2,
+    "confirm": 0,
+    "refine": 1,
+    "total": 3
+   },
+   "game_starts": 3,
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [
+     50
+    ],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": 50,
+    "retries": 0,
+    "trials": 3
+   },
+   "status": "stopped_invalid_load",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 2,
+     "outcome": "FAIL",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 50
+    },
+    {
+     "classification": "invalid_offered_load",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "invalid",
+     "ordinal": 3,
+     "outcome": "INVALID_LOAD",
+     "phase": "refine",
+     "repetition": 1,
+     "target": 30
+    }
+   ]
+  },
+  "refinement_all_pass_confirms_top_of_bracket": {
+   "batch": "search_finished",
+   "claim": {
+    "confirmed": true,
+    "kind": "confirmed_observation",
+    "lower_bound": 45,
+    "players": 45,
+    "search_cap_reached": false,
+    "statement": "Confirmed 45 players on this rented pair: three valid five-minute passes. An observed candidate, not provider-wide capacity."
+   },
+   "counts": {
+    "coarse": 2,
+    "confirm": 3,
+    "refine": 4,
+    "total": 9
+   },
+   "game_starts": 9,
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 3,
+     "pending": 0,
+     "stopped": 0,
+     "target": 45
+    },
+    "failed_targets": [
+     50
+    ],
+    "highest_exploration_pass": 45,
+    "lowest_failure_above_it": 50,
+    "retries": 0,
+    "trials": 9
+   },
+   "status": "confirmed",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 2,
+     "outcome": "FAIL",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 50
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 3,
+     "outcome": "PASS",
+     "phase": "refine",
+     "repetition": 1,
+     "target": 30
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 4,
+     "outcome": "PASS",
+     "phase": "refine",
+     "repetition": 1,
+     "target": 35
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 5,
+     "outcome": "PASS",
+     "phase": "refine",
+     "repetition": 1,
+     "target": 40
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 6,
+     "outcome": "PASS",
+     "phase": "refine",
+     "repetition": 1,
+     "target": 45
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 7,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 1,
+     "target": 45
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 8,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 2,
+     "target": 45
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 9,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 3,
+     "target": 45
+    }
+   ]
+  },
+  "retained_score_is_read_on_return": {
+   "batch": "search_finished",
+   "claim": {
+    "confirmed": true,
+    "kind": "confirmed_observation",
+    "lower_bound": 25,
+    "players": 25,
+    "search_cap_reached": false,
+    "statement": "Confirmed 25 players on this rented pair: three valid five-minute passes. An observed candidate, not provider-wide capacity."
+   },
+   "counts": {
+    "coarse": 2,
+    "confirm": 3,
+    "refine": 1,
+    "total": 6
+   },
+   "crashed_at": "after_score_retained",
+   "game_starts": 6,
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 3,
+     "pending": 0,
+     "stopped": 0,
+     "target": 25
+    },
+    "failed_targets": [
+     30,
+     50
+    ],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": 30,
+    "retries": 0,
+    "trials": 6
+   },
+   "resume_code": null,
+   "resumed": true,
+   "status": "confirmed",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 2,
+     "outcome": "FAIL",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 50
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 3,
+     "outcome": "FAIL",
+     "phase": "refine",
+     "repetition": 1,
+     "target": 30
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 4,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 5,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 2,
+     "target": 25
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 6,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 3,
+     "target": 25
+    }
+   ]
+  },
+  "server_disconnect_opens_the_bracket": {
+   "batch": "search_finished",
+   "claim": {
+    "confirmed": true,
+    "kind": "confirmed_observation",
+    "lower_bound": 25,
+    "players": 25,
+    "search_cap_reached": false,
+    "statement": "Confirmed 25 players on this rented pair: three valid five-minute passes. An observed candidate, not provider-wide capacity."
+   },
+   "counts": {
+    "coarse": 2,
+    "confirm": 3,
+    "refine": 1,
+    "total": 6
+   },
+   "game_starts": 6,
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 3,
+     "pending": 0,
+     "stopped": 0,
+     "target": 25
+    },
+    "failed_targets": [
+     30,
+     50
+    ],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": 30,
+    "retries": 0,
+    "trials": 6
+   },
+   "status": "confirmed",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "fail",
+      "continuity": "fail",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 2,
+     "outcome": "FAIL",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 50
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 3,
+     "outcome": "FAIL",
+     "phase": "refine",
+     "repetition": 1,
+     "target": 30
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 4,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 5,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 2,
+     "target": 25
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 6,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 3,
+     "target": 25
+    }
+   ]
+  },
+  "terminal_fact_committed_before_crash_refuses_resume": {
+   "batch": null,
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_invalid_load",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_invalid_load)."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "crashed_at": "after_outcome_commit",
+   "game_starts": 1,
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "resume_code": "terminal_failure",
+   "resumed": false,
+   "status": "stopped_invalid_load",
+   "trials": [
+    {
+     "classification": "invalid_offered_load",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "invalid",
+     "ordinal": 1,
+     "outcome": "INVALID_LOAD",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    }
+   ]
+  },
+  "time_exhausted_keeps_partial_results": {
+   "batch": "partial_search",
+   "claim": {
+    "confirmed": false,
+    "kind": "partial_time_exhausted",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the search stopped early (partial_time_exhausted) and its partial evidence is retained. The highest one-minute pass was 50; it stays an exploratory observation."
+   },
+   "counts": {
+    "coarse": 2,
+    "confirm": 0,
+    "refine": 0,
+    "total": 2
+   },
+   "game_starts": 2,
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": 50,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 2
+   },
+   "status": "partial_time_exhausted",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "valid_pass",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 2,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 50
+    }
+   ]
+  },
+  "verdict_before_outcome_commit_is_kept": {
+   "batch": "search_finished",
+   "claim": {
+    "confirmed": false,
+    "kind": "no_passing_target_at_resolution",
+    "lower_bound": null,
+    "players": null,
+    "resolution": 5,
+    "search_cap_reached": false,
+    "statement": "No passing target at the search resolution: 5 players failed. Not proof that no smaller population could work, and not a capacity of zero."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 1,
+    "total": 2
+   },
+   "crashed_at": "before_outcome_commit",
+   "game_starts": 2,
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [
+     5,
+     25
+    ],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": 5,
+    "retries": 0,
+    "trials": 2
+   },
+   "resume_code": null,
+   "resumed": true,
+   "status": "no_passing_target",
+   "trials": [
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "FAIL",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "capacity_failure",
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 2,
+     "outcome": "FAIL",
+     "phase": "refine",
+     "repetition": 1,
+     "target": 5
+    }
+   ]
+  }
+ },
+ "schema": "omega.do-session.search-evidence/1",
+ "scorer": "omega.do-session.capacity-scorer/1"
+}

@@ -15,9 +15,9 @@ refuses it past its elapsed window. A takeover or cleanup that commits while a g
 grant is resolved, acknowledged by the guest's fence or conclusively expired; only then does it take effect. See ``registry.pending_revocation``.
 
 Workload processes stop by themselves, through the guest's supervisor, by ``launch_by + estimate`` less the time export
-needs. This controller only ends them sooner. Nothing here scores a measurement: ``scorer`` is the boundary described in
-``run_checks``, and no scorer ships yet, so no run can currently establish PASS or FAIL. ``measurement_window`` proves or refuses the
-common scored interval from the sealed files, and that proof is retained with the run and handed to any scorer.
+needs. This controller only ends them sooner. ``measurement_window`` proves or refuses the common scored interval from the sealed files, and
+``capacity_scorer`` decides gates and validity from those same files. Both are retained with the run, each create-only and hash-bound, and held against the
+execution facts by ``run_checks.apply_scorer``. A returning controller reuses what is retained, so a crash can move no verdict.
 """
 import dataclasses
 import hashlib
@@ -27,6 +27,8 @@ import pathlib
 import tempfile
 
 import admission
+import capacity_report
+import capacity_scorer
 import cleanup_provider
 import do_session
 import guest_agent
@@ -220,7 +222,7 @@ class GuestReadiness:
 
 
 class RunExecutor:
-    def __init__(self, client, guests, provider, manifest, sha, session_dir, fencing_token, sleep, monotonic, wall, scorer=None, adapter=None, policy=None,
+    def __init__(self, client, guests, provider, manifest, sha, session_dir, fencing_token, sleep, monotonic, wall, scorer=capacity_scorer.score, adapter=None, policy=None,
                  failpoint=None, source_problems=None, readiness_problems=None, require_counters=True, window_prover=measurement_window.prove):
         self.client = client
         self.guests = guests
@@ -232,7 +234,7 @@ class RunExecutor:
         self.sleep = sleep
         self.monotonic = monotonic
         self.wall = wall
-        self.scorer = scorer
+        self.scorer = scorer        # None or a scripted stand-in only in fixtures. Neither can produce what ``capacity_scorer`` admits.
         self.adapter = adapter or run_plan.ReleaseAdapter()
         self.policy = policy or Policy()
         self.failpoint = failpoint or (lambda name: None)
@@ -1109,9 +1111,8 @@ class RunExecutor:
         if verdict is not None:
             return verdict
         settled = run_checks.disposition(problems)
-        answer = None
-        if self.scorer is not None:
-            answer = self.scorer(self._evidence_for_scorer(context, execution, proof))
+        answer = self._score(context, execution, proof)
+        self.failpoint('after_score_retained')
         return run_checks.apply_scorer(settled, answer, proof)
 
     def _window_proof(self, context, execution):
@@ -1150,8 +1151,69 @@ class RunExecutor:
 
     def _evidence_for_scorer(self, context, execution, proof=None):
         """Everything a scorer may read: verified local files, the sealed execution facts and the window proof. Nothing live."""
+        path = self._run_dir(context.trial.run_id) / 'window-proof.json'
         return dict(run_id=context.trial.run_id, trial=context.trial.to_dict(), root=str(self._run_dir(context.trial.run_id)), execution=execution['document'],
-                    execution_sha256=execution['sha256'], execution_ref=execution['ref'], window_proof=proof)
+                    execution_sha256=execution['sha256'], execution_ref=execution['ref'], window_proof=proof, window_proof_sha256=sha256_path(path) if path.exists() else None,
+                    workload=self.manifest.get('workload'), telemetry_schema=self.manifest.get('telemetry_schema'))
+
+    def _score(self, context, execution, proof):
+        """The scorer's answer, retained before anything acts on it. Create-only and computed once, so a returning controller reads the verdict this one reached.
+
+        Without a scorer a run establishes nothing. A scorer that breaks is inconclusive, like a prover that breaks, and never stops the path to the outcome commit.
+        """
+        if self.scorer is None:
+            return None
+        run_id = context.trial.run_id
+        retained = self._retained_score(run_id)
+        if retained is not None:
+            return retained
+        try:
+            answer = self.scorer(self._evidence_for_scorer(context, execution, proof))
+        except Exception as error:     # a defect in a parser or a surprising file: the run still needs its outcome committed
+            self._note('scorer_failed', run_id=run_id, detail=type(error).__name__)
+            return dict(outcome=search.INCONCLUSIVE, evidence_ref=execution['ref'], scorer='capacity_scorer', reasons=['the scorer failed: ' + type(error).__name__])
+        document = answer.get('score') if isinstance(answer, dict) else None
+        if document is None:
+            return answer
+        answer = {key: value for key, value in answer.items() if key != 'score'}
+        if manifest_mod.scan_for_secrets(document):
+            return dict(answer, outcome=search.INCONCLUSIVE, generator_failure_attributed_to_server=False, reasons=['the score held a credential value and was not retained'])
+        text = capacity_scorer.canonical(document)
+        run_dir = self._run_dir(run_id)
+        try:
+            do_session.write_new(run_dir / capacity_report.SCORE_FILE, text)
+        except FileExistsError:
+            return self._retained_score(run_id) or dict(answer, outcome=search.INCONCLUSIVE, generator_failure_attributed_to_server=False, reasons=['a retained score could not be read back'])
+        except OSError as error:
+            self._note('score_not_retained', run_id=run_id, detail=type(error).__name__)
+            return dict(answer, outcome=search.INCONCLUSIVE, generator_failure_attributed_to_server=False, reasons=['the score could not be retained: ' + type(error).__name__])
+        self._retain_run_report(run_id, document)
+        return dict(answer, evidence_ref=self._score_ref(run_id, text))
+
+    def _retain_run_report(self, run_id, document):
+        """Only a rendering of a retained decision, so losing it costs a convenience and decides nothing."""
+        path = self._run_dir(run_id) / capacity_report.RUN_REPORT_FILE
+        try:
+            if not path.exists():
+                do_session.write_new(path, capacity_report.render_run(document))
+        except (OSError, KeyError, TypeError, ValueError) as error:
+            self._note('run_report_not_retained', run_id=run_id, detail=type(error).__name__)
+
+    @staticmethod
+    def _score_ref(run_id, text):
+        return 'runs/%s/%s#sha256:%s' % (run_id, capacity_report.SCORE_FILE, hashlib.sha256(text.encode('utf-8')).hexdigest())
+
+    def _retained_score(self, run_id):
+        """The answer a retained score stands for. Same scorer and same bytes, so it is the same answer. A file that no longer reads proves nothing."""
+        path = self._run_dir(run_id) / capacity_report.SCORE_FILE
+        if not path.exists():
+            return None
+        document = capacity_scorer.load_retained(path)
+        if document is None or document.get('outcome') not in run_checks.SCORER_OUTCOMES:
+            return dict(outcome=search.INCONCLUSIVE, evidence_ref=self._score_ref(run_id, path.read_text(errors='replace')), scorer='capacity_scorer', reasons=['the retained score could not be read'])
+        self._retain_run_report(run_id, document)
+        return dict(outcome=document['outcome'], evidence_ref=self._score_ref(run_id, path.read_text()), scorer=document.get('scorer'), reasons=list(document.get('reasons') or ()),
+                    generator_failure_attributed_to_server=document['outcome'] == search.FAIL)
 
     def _commit_outcome(self, context, verdict):
         run_id = context.trial.run_id
@@ -1313,6 +1375,10 @@ class RunExecutor:
             verdict = self._settled_verdict(context.retained_record.get('problems') or {}, context.retained_record.get('interrupted'))
             if verdict is not None:
                 return verdict
+            # The score was retained from verified local files, so losing a host now cannot unsay it.
+            answer = self._retained_score(context.trial.run_id)
+            if answer is not None:
+                return run_checks.apply_scorer(run_checks.disposition(context.retained_record.get('problems') or {}), answer, self._window_proof(context, execution))
         definite = [p for p in context.problems[run_checks.INFRASTRUCTURE] if p not in context.uncertain]
         if definite:
             return dict(outcome=search.INFRASTRUCTURE_FAILURE, reasons=definite, scored=False)
@@ -1325,7 +1391,7 @@ class RunExecutor:
         proof = self._window_proof(context, execution)
         if self.scorer is None:
             return dict(outcome=search.INCOMPLETE, reasons=['the run ended by itself, but nothing has scored it: ' + '; '.join(settled['reasons'])] + run_checks.window_reasons(proof), scored=False)
-        verdict = run_checks.apply_scorer(settled, self.scorer(self._evidence_for_scorer(context, execution, proof)), proof)
+        verdict = run_checks.apply_scorer(settled, self._score(context, execution, proof), proof)
         if not verdict.get('scored'):
             return dict(outcome=search.INCOMPLETE, reasons=verdict['reasons'], scored=False)
         return verdict
@@ -1483,6 +1549,7 @@ class RunExecutor:
         except LOCAL_FAILURES + (provisioner.Stop,) as error:
             evidence_status = 'missing'
             self._wrap_up_failed(result, error)
+        self._retain_capacity_report()
         try:
             self.client.mutate('record_measurement', session_id=self.session_id, fencing_token=self.token, outcome=label, ref='execution/journal.ndjson')
             self.client.mutate('record_evidence', session_id=self.session_id, fencing_token=self.token, status=evidence_status,
@@ -1561,6 +1628,22 @@ class RunExecutor:
         if 'corrupt' in statuses:
             return 'corrupt'
         return 'missing' if 'missing' in statuses else 'partial'
+
+    def _retain_capacity_report(self):
+        """One per wrap-up, create-only. It only renders retained decisions, so failing to write it costs a convenience: ``capacity_report`` regenerates it from the same files."""
+        try:
+            self._sync_planner_journal()
+            report = capacity_report.build(self.session_dir)
+            if manifest_mod.scan_for_secrets(report):
+                raise ValueError('the report held a credential value')
+            for attempt in range(100):
+                stem = 'capacity-report-token%d-%d' % (self.token, attempt)
+                if not (self.evidence.root / (stem + '.json')).exists():
+                    do_session.write_new(self.evidence.root / (stem + '.json'), capacity_report.canonical(report))
+                    do_session.write_new(self.evidence.root / (stem + '.md'), capacity_report.render_search(report))
+                    return
+        except Exception as error:     # nothing that goes wrong rendering a report may stand between a finished batch and its cleanup
+            self._note('capacity_report_not_retained', detail=type(error).__name__)
 
     def _retain_inventory(self, inventory):
         """Create-only, like all evidence, and one per wrap-up. Names and statuses only, with no bytes from any host."""

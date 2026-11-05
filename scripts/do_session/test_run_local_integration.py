@@ -223,7 +223,7 @@ class WholeRuns(LocalFixture):
         release = pathlib.Path(os.environ['OMEGA_LOCAL_RELEASE_DIR'])
         session = self.session(release_dir=release)
         result = self.document(self.harness(session, 'execute', 'controller-real', '--fencing-token', str(session.token), '--no-wrap-up', timeout=300))['batch']
-        # A real 60 s window for 25 strategy bots through the whole controller path, and still nothing is scored.
+        # A real 60 s window for 25 strategy bots through the whole controller path. The production scorer measures it and refuses it: no counters here, and optional counters never pass.
         self.assertEqual(result['search_status'], 'stopped_inconclusive_evidence', result)
         row = self.records(session)[0]
         self.assertEqual(row['outcome'], search.INCONCLUSIVE)
@@ -238,8 +238,18 @@ class WholeRuns(LocalFixture):
         self.assertTrue(proof['facts']['contract_hold'])
         self.assertFalse(proof['socket_counters_required'], 'macOS has no drop counters, and this run says so')
         self.assertEqual(proof['facts']['input']['scheduled_total'], 25 * 60 * 30)
+        score = json.loads((session.session_dir / 'runs' / row['run_id'] / 'score.json').read_text())
+        self.assertEqual(score['classification'], 'inconclusive_evidence')
+        self.assertIn('socket_counter_bypass', ' '.join(score['reasons']))
+        for gate in ('continuity', 'bot_errors', 'tick_budget', 'rtt_p95', 'enet_loss'):
+            self.assertEqual(score['gates'][gate]['verdict'], 'pass', score['gates'][gate])
+        self.assertEqual(score['gates']['game_socket_drops']['verdict'], 'unknown', 'no counter here, and that is not zero')
+        self.assertEqual(score['validity']['offered_input'], 'valid')
+        self.assertEqual(score['validity']['generator_sockets'], 'not_proven')
+        self.assertEqual(score['offered_load']['scheduled_total'], 25 * 60 * 30)
         classification = json.loads((session.session_dir / 'runs' / row['run_id'] / 'classification.json').read_text())
-        self.assertIn('window proof: complete', classification['verdict']['reasons'])
+        self.assertEqual(classification['verdict']['outcome'], search.INCONCLUSIVE)
+        self.assertIn('score.json#sha256:', classification['verdict']['evidence_ref'])
         self.assert_nothing_runs(session)
 
 

@@ -1,0 +1,867 @@
+"""``capacity_scorer`` over deterministic recorder files: one complete tree, one thing changed, the exact decision expected.
+
+Nothing ran to make these, so a 60 s window here is arithmetic and says nothing about any host. The real binaries' bytes are ``test_capacity_real``. Whole searches through the executor are ``test_capacity_search``.
+"""
+import fractions
+import json
+import shutil
+import tempfile
+import unittest
+
+import capacity_report
+import capacity_scorer as cs
+import measurement_fixtures as fx
+import measurement_window as mw
+import run_checks
+import scoring_fixtures as sf
+import search
+
+NS = mw.NS
+
+
+class Base(unittest.TestCase):
+    def scenario(self, **options):
+        root = tempfile.mkdtemp(prefix='omega-score-')
+        self.addCleanup(shutil.rmtree, root, True)
+        return sf.Scenario(root, **options)
+
+    def assertClassified(self, document, classification, code=None):
+        self.assertEqual(document['classification'], classification, document['reasons'])
+        self.assertEqual(document['outcome'], cs.OUTCOME_OF[classification])
+        if code:
+            self.assertIn(code, ' '.join(document['reasons']))
+        return document
+
+
+class TheCompleteCase(Base):
+    def test_a_complete_healthy_window_is_a_valid_pass(self):
+        document = self.assertClassified(self.scenario().score(), cs.VALID_PASS)
+        self.assertEqual({gate['verdict'] for gate in document['gates'].values()}, {cs.PASS})
+        self.assertEqual(document['validity']['verdict'], cs.VALID)
+        self.assertFalse(document['establishes_capacity'], 'one run is never a capacity')
+
+    def test_a_300_s_confirmation_window_scores_the_same_way(self):
+        document = self.assertClassified(self.scenario(hold_s=300).score(), cs.VALID_PASS)
+        self.assertEqual(document['gates']['rtt_p95']['samples'], 8 * 300)
+        self.assertEqual(document['gates']['enet_loss']['seconds'], 300)
+
+    def test_the_answer_is_a_pure_function_of_the_bytes(self):
+        scenario = self.scenario()
+        self.assertEqual(cs.canonical(scenario.score()), cs.canonical(scenario.score()))
+
+    def test_the_policy_is_pinned_in_every_score(self):
+        document = self.scenario().score()
+        self.assertEqual(document['policy']['tick_budget_ns'], 33_300_000)
+        self.assertIn('nearest rank', document['policy']['rtt_quantile']['definition'])
+        self.assertIn('never an average of per-bot quantiles', document['policy']['rtt_quantile']['definition'])
+        self.assertIn('Not a measured fraction of datagrams', document['policy']['enet_loss']['estimator'])
+        self.assertEqual(document['policy_sha256'], cs.POLICY_SHA256)
+
+    def test_the_legacy_whole_run_report_decides_nothing(self):
+        healthy, failed = self.scenario(), self.scenario()
+        for scenario, status in ((healthy, 'perfect'), (failed, 'window_incomplete')):
+            scenario.tree.path('bot/report.json').write_text(json.dumps(dict(legacy_whole_run_diagnostic=True, measured_window_status=status, total_errors=99, enet_packet_loss=0.9)))
+        one, other = healthy.score(), failed.score()
+        self.assertClassified(one, cs.VALID_PASS)
+        self.assertClassified(other, cs.VALID_PASS)
+        self.assertTrue(one['legacy_report']['decides_nothing'])
+        self.assertEqual(one['legacy_report']['measured_window_status'], 'perfect')
+
+
+class TickBudget(Base):
+    def tight(self):
+        scenario = self.scenario()
+        sf.tight_clocks(scenario.tree)
+        return scenario
+
+    def test_a_tick_of_exactly_33_3_ms_is_not_above_it(self):
+        scenario = self.tight()
+        rows = sf.tick_rows(scenario.tree)
+        for row in rows[1:]:
+            row[3] = str(33_300_000)
+        sf.write_ticks(scenario.tree, rows)
+        document = self.assertClassified(scenario.score(), cs.VALID_PASS)
+        self.assertEqual(document['gates']['tick_budget']['over_wide'], 0)
+
+    def test_one_nanosecond_above_it_counts(self):
+        scenario = self.tight()
+        sf.set_slow_ticks(scenario.tree, 1, 33_300_001)
+        self.assertEqual(scenario.score()['gates']['tick_budget']['over_wide'], 1)
+
+    def test_exactly_one_percent_fails_and_one_tick_fewer_passes(self):
+        probe = self.tight()
+        total = sf.count_ticks(probe.tree)
+        self.assertEqual(total % 100, 0, 'this fixture needs a whole 1 percent')
+        exactly = self.tight()
+        sf.set_slow_ticks(exactly.tree, total // 100, 40_000_000)
+        document = self.assertClassified(exactly.score(), cs.CAPACITY_FAILURE, '33.3 ms')
+        gate = document['gates']['tick_budget']
+        self.assertEqual(gate['verdict'], cs.FAIL)
+        self.assertEqual((gate['over_wide'], gate['ticks_wide']), (total // 100, total))
+        self.assertEqual(gate['worst_possible_ratio']['exact'], '1/100', 'kept unrounded')
+        fewer = self.tight()
+        sf.set_slow_ticks(fewer.tree, total // 100 - 1, 40_000_000)
+        document = self.assertClassified(fewer.score(), cs.VALID_PASS)
+        self.assertEqual(document['gates']['tick_budget']['worst_possible_ratio']['exact'], str(fractions.Fraction(total // 100 - 1, total)))
+
+    def test_a_ratio_that_depends_on_where_the_clocks_put_the_window_stays_unknown(self):
+        scenario = self.scenario()
+        sf.tight_clocks(scenario.tree, half_ns=900_000_000)
+        total = sf.count_ticks(self.scenario().tree)
+        sf.set_slow_ticks(scenario.tree, total // 100, 40_000_000)
+        document = self.assertClassified(scenario.score(), cs.INCONCLUSIVE)
+        gate = document['gates']['tick_budget']
+        self.assertEqual(gate['verdict'], cs.UNKNOWN)
+        self.assertLess(gate['ticks_narrow'], gate['ticks_wide'])
+
+    def test_a_clear_failure_survives_wide_clocks(self):
+        scenario = self.scenario()
+        sf.tight_clocks(scenario.tree, half_ns=900_000_000)
+        sf.set_slow_ticks(scenario.tree, 180, 40_000_000)
+        self.assertClassified(scenario.score(), cs.CAPACITY_FAILURE)
+
+    def test_a_clear_pass_survives_wide_clocks(self):
+        scenario = self.scenario()
+        sf.tight_clocks(scenario.tree, half_ns=900_000_000)
+        sf.set_slow_ticks(scenario.tree, 2, 40_000_000)
+        document = self.assertClassified(scenario.score(), cs.VALID_PASS)
+        self.assertEqual(document['gates']['tick_budget']['verdict'], cs.PASS)
+
+    def test_ticks_outside_the_interval_are_not_counted(self):
+        scenario = self.tight()
+        rows = sf.tick_rows(scenario.tree)
+        start = fx.to_game_mono(scenario.tree.timeline.start) - 2 * NS
+        for row in rows[1:]:
+            if int(row[1]) < start:
+                row[3] = str(500_000_000)
+        sf.write_ticks(scenario.tree, rows)
+        document = self.assertClassified(scenario.score(), cs.VALID_PASS)
+        self.assertEqual(document['gates']['tick_budget']['over_wide'], 0)
+
+    def test_a_stepped_wall_clock_makes_server_side_gates_unknown(self):
+        scenario = self.scenario()
+
+        def step(rows):
+            for row in rows:
+                clock = row.get('clock')
+                if clock and clock['mono_ns'] >= scenario.tree.timeline.start + 10 * NS:
+                    clock['wall_before_ns'] += NS
+                    clock['wall_after_ns'] += NS
+        scenario.tree.edit_rows('bot/swarm/coordinator.ndjson', step)
+        sf.set_slow_ticks(scenario.tree, 180, 40_000_000)
+        document = self.assertClassified(scenario.score(), cs.INCONCLUSIVE)
+        self.assertEqual(document['gates']['tick_budget']['verdict'], cs.UNKNOWN)
+
+
+class PooledRtt(Base):
+    def test_exactly_150_ms_fails_and_anything_below_passes(self):
+        at_limit = self.scenario()
+        sf.set_rtt(at_limit.tree, lambda bot, second: 150)
+        document = self.assertClassified(at_limit.score(), cs.CAPACITY_FAILURE, 'RTT p95')
+        self.assertEqual(document['gates']['rtt_p95']['p95_ms'], 150)
+        below = self.scenario()
+        sf.set_rtt(below.tree, lambda bot, second: 149.999)
+        self.assertClassified(below.score(), cs.VALID_PASS)
+
+    def test_the_producer_turns_whole_milliseconds_into_exactly_this_float(self):
+        # rusty_enet gives Duration::from_millis(n), and bot.rs does as_secs_f64() * 1000.0.
+        self.assertEqual(150_000_000 / 1e9 * 1000.0, 150.0)
+        self.assertLess(149_000_000 / 1e9 * 1000.0, 150)
+
+    def test_the_rank_is_nearest_rank_over_the_exact_pool(self):
+        # 8 bots x 60 s = 480 samples, so rank ceil(0.95 x 480) = 456, and 24 samples may sit above it.
+        def high(count):
+            scenario = self.scenario()
+            seen = []
+
+            def value(bot, second):
+                seen.append(1)
+                return 500 if len(seen) <= count else 12.5
+            sf.set_rtt(scenario.tree, value)
+            return scenario.score()
+        allowed = self.assertClassified(high(24), cs.VALID_PASS)
+        self.assertEqual((allowed['gates']['rtt_p95']['rank'], allowed['gates']['rtt_p95']['samples']), (456, 480))
+        self.assertEqual(allowed['gates']['rtt_p95']['p95_ms'], 12.5)
+        self.assertEqual(high(25)['gates']['rtt_p95']['p95_ms'], 500)
+
+    def test_small_pools_use_the_same_rank(self):
+        self.assertEqual(cs.nearest_rank([1], 95), 1)
+        self.assertEqual(cs.nearest_rank(list(range(1, 101)), 95), 95)
+        self.assertEqual(cs.nearest_rank(list(range(1, 102)), 95), 96)
+        self.assertEqual(cs.nearest_rank(list(range(1, 21)), 95), 19)
+
+    def test_it_pools_samples_and_never_averages_per_bot_quantiles(self):
+        # Three bots always slow: an average of per-bot p95s is (3 x 200 + 5 x 12.5) / 8, about 83, yet the pool's p95 is 200.
+        slow_bots = self.scenario()
+        sf.set_rtt(slow_bots.tree, lambda bot, second: 200 if bot <= 3 else 12.5)
+        self.assertEqual(self.assertClassified(slow_bots.score(), cs.CAPACITY_FAILURE)['gates']['rtt_p95']['p95_ms'], 200)
+        # Two bots each slow for 4 seconds: each of those bots has a p95 of 1000, so the average is about 259, yet only 8 of 480 pooled samples are slow.
+        brief = self.scenario()
+        sf.set_rtt(brief.tree, lambda bot, second: 1000 if bot <= 2 and second < 4 else 12.5)
+        self.assertEqual(self.assertClassified(brief.score(), cs.VALID_PASS)['gates']['rtt_p95']['p95_ms'], 12.5)
+
+    def test_ramp_and_drain_samples_are_not_in_the_pool(self):
+        scenario = self.scenario()
+        start, end = scenario.tree.timeline.start, scenario.tree.timeline.end
+
+        def change(rows):
+            for row in rows:
+                if row.get('k') == 'sample':
+                    for item in row['bots']:
+                        item[-1] = [[sample[0], 5000 if not start <= sample[0] < end else sample[1], sample[2]] for sample in item[-1]]
+        for shard in range(4):
+            scenario.tree.edit_rows('bot/swarm/shard-%d.ndjson' % shard, change)
+        document = self.assertClassified(scenario.score(), cs.VALID_PASS)
+        self.assertEqual(document['gates']['rtt_p95']['max_ms'], 12.5)
+
+    def test_a_sample_exactly_at_the_end_is_out_and_at_the_start_is_in(self):
+        scenario = self.scenario()
+        start, end = scenario.tree.timeline.start, scenario.tree.timeline.end
+
+        def change(rows):
+            row = next(row for row in rows if row.get('k') == 'sample')
+            row['bots'][0][-1] = [[end, 5000, 0]]
+            row['bots'][1][-1] = [[start, 77, 0]]
+        scenario.tree.edit_rows('bot/swarm/shard-0.ndjson', change)
+        self.assertEqual(scenario.score()['gates']['rtt_p95']['max_ms'], 77)
+
+    def test_a_missing_sample_is_not_a_fast_one(self):
+        scenario = self.scenario()
+        sf.edit_peer_samples(scenario.tree, lambda bot, second, sample: None if bot == 3 else sample)
+        document = self.assertClassified(scenario.score(), cs.INCONCLUSIVE, 'too few in-window ENet samples')
+        self.assertEqual(document['gates']['rtt_p95']['verdict'], cs.UNKNOWN)
+        self.assertEqual(document['validity']['verdict'], cs.NOT_PROVEN, 'missing samples are missing evidence, and do not show a failed generator')
+
+    def test_a_non_finite_or_negative_sample_refuses_the_gate(self):
+        for bad in (float('inf'), -1):
+            scenario = self.scenario()
+            sf.set_rtt(scenario.tree, lambda bot, second: bad if bot == 1 and second == 3 else 12.5)
+            document = scenario.score()
+            self.assertEqual(document['gates']['rtt_p95']['verdict'], cs.UNKNOWN, bad)
+            self.assertClassified(document, cs.INCONCLUSIVE)
+
+
+class EnetLoss(Base):
+    def test_exactly_two_percent_in_one_second_fails_exactly(self):
+        # 25 bots: 32768 / (25 x 65536) is exactly 2/100. One bot, one second.
+        at_limit = self.scenario(target=25)
+        sf.set_loss(at_limit.tree, lambda bot, second: 32768 if bot == 1 and second == 7 else 0)
+        document = self.assertClassified(at_limit.score(), cs.CAPACITY_FAILURE, 'ENet loss')
+        gate = document['gates']['enet_loss']
+        self.assertEqual(gate['per_second_mean_peak']['ratio']['exact'], '1/50')
+        self.assertEqual(gate['seconds_at_or_above_limit'], [7])
+        below = self.scenario(target=25)
+        sf.set_loss(below.tree, lambda bot, second: 32767 if bot == 1 and second == 7 else 0)
+        document = self.assertClassified(below.score(), cs.VALID_PASS)
+        self.assertEqual(document['gates']['enet_loss']['per_second_mean_peak']['ratio']['exact'], '32767/1638400', 'no rounding moved this across the line')
+
+    def test_one_second_excursion_fails_a_window_whose_average_is_fine(self):
+        scenario = self.scenario()
+        sf.set_loss(scenario.tree, lambda bot, second: 3000 if second == 30 else 0)
+        document = self.assertClassified(scenario.score(), cs.CAPACITY_FAILURE)
+        gate = document['gates']['enet_loss']
+        self.assertEqual(gate['seconds_at_or_above_limit'], [30])
+        self.assertLess(gate['window_mean_of_seconds']['approximate'], 0.002, 'the whole-window mean hides what the per-second gate catches')
+
+    def test_each_bot_weighs_the_same_whatever_its_peak(self):
+        # One bot at 10 percent among 8 is a mean of 1.25 percent: its peer peak is reported, and it is no gate.
+        scenario = self.scenario()
+        sf.set_loss(scenario.tree, lambda bot, second: 6554 if bot == 1 else 0)
+        document = self.assertClassified(scenario.score(), cs.VALID_PASS)
+        gate = document['gates']['enet_loss']
+        self.assertEqual(gate['peer_peak']['bot'], 1)
+        self.assertGreater(gate['peer_peak']['ratio']['approximate'], 0.09)
+        self.assertLess(gate['per_second_mean_peak']['ratio']['approximate'], 0.02)
+
+    def test_a_bot_with_two_readings_in_a_second_counts_once(self):
+        readings = {1: [(0, 0, 6554), (1, 0, 6554)], 2: [(0, 0, 0)], 3: [(0, 0, 0)], 4: [(0, 0, 0)], 5: [(0, 0, 0)], 6: [(0, 0, 0)], 7: [(0, 0, 0)], 8: [(0, 0, 0)]}
+        bins = cs.loss_bins({bot: [(at, rtt, loss) for at, rtt, loss in rows] for bot, rows in readings.items()}, {bot: 1 for bot in readings}, 0, 1)
+        self.assertEqual(bins[0]['value'], fractions.Fraction(6554, 8 * 65536))
+
+    def test_a_missing_reading_borrows_a_neighbour_and_is_never_zero(self):
+        # Bot 1 sits at 20 percent, and with 8 bots that alone is a mean of 2.5 percent. Its sample in second 10 is missing.
+        scenario = self.scenario()
+        sf.set_loss(scenario.tree, lambda bot, second: 13108 if bot == 1 else 0)
+        sf.edit_peer_samples(scenario.tree, lambda bot, second, sample: None if bot == 1 and second == 10 else sample)
+        gate = scenario.score()['gates']['enet_loss']
+        self.assertEqual(gate['verdict'], cs.FAIL)
+        self.assertEqual(gate['seconds_at_or_above_limit'][:12], list(range(12)), 'second 10 is still failing: a zero there would have hidden it')
+        self.assertEqual(gate['borrowed_readings'], 1)
+
+    def test_a_gap_too_long_to_borrow_across_stays_unknown(self):
+        scenario = self.scenario()
+        sf.edit_peer_samples(scenario.tree, lambda bot, second, sample: None if bot == 1 and 10 <= second < 16 else sample)
+        document = scenario.score()
+        self.assertEqual(document['gates']['enet_loss']['verdict'], cs.UNKNOWN)
+        self.assertEqual(document['gates']['enet_loss']['seconds_without_coverage'], [12, 13])
+        self.assertNotEqual(document['classification'], cs.VALID_PASS)
+
+    def test_a_short_gap_is_tolerated_but_counted(self):
+        scenario = self.scenario()
+        sf.edit_peer_samples(scenario.tree, lambda bot, second, sample: None if bot == 1 and second == 10 else sample)
+        gate = self.assertClassified(scenario.score(), cs.VALID_PASS)['gates']['enet_loss']
+        self.assertEqual((gate['borrowed_readings'], gate['seconds_evaluated']), (1, 60))
+
+    def test_a_failure_elsewhere_stands_even_if_another_second_is_unknown(self):
+        scenario = self.scenario()
+        sf.set_loss(scenario.tree, lambda bot, second: 3000 if second == 40 else 0)
+        sf.edit_peer_samples(scenario.tree, lambda bot, second, sample: None if bot == 1 and 10 <= second < 16 else sample)
+        self.assertEqual(scenario.score()['gates']['enet_loss']['verdict'], cs.FAIL)
+
+    def test_a_reading_above_the_estimators_scale_is_refused(self):
+        scenario = self.scenario()
+        sf.set_loss(scenario.tree, lambda bot, second: 70000 if bot == 1 and second == 2 else 0)
+        self.assertClassified(scenario.score(), cs.INCONCLUSIVE)
+
+    def test_the_estimator_is_labelled_wherever_it_appears(self):
+        document = self.scenario().score()
+        self.assertIn('smoothed', document['gates']['enet_loss']['estimator'])
+        self.assertIn('estimate', capacity_report.render_run(document))
+        self.assertNotIn('packet loss', capacity_report.render_run(document).lower())
+
+    def test_ticks_between_ten_second_epochs_hold_a_value_the_gate_can_read(self):
+        # ENet moves this value at most every 10 s, so a whole hold of one reading is an ordinary series.
+        scenario = self.scenario()
+        sf.set_loss(scenario.tree, lambda bot, second: 1000)
+        document = self.assertClassified(scenario.score(), cs.VALID_PASS)
+        self.assertEqual(document['gates']['enet_loss']['per_second_mean_peak']['ratio']['exact'], '125/8192')
+
+
+class GameSocket(Base):
+    def test_zero_drops_passes_on_an_exact_count(self):
+        document = self.scenario().score()
+        self.assertEqual(document['gates']['game_socket_drops']['drops_in_widest_interval'], 0)
+
+    def test_a_drop_proven_inside_is_a_capacity_failure(self):
+        scenario = self.scenario()
+        sf.game_drop(scenario.tree, 30, count=3)
+        document = self.assertClassified(scenario.score(), cs.CAPACITY_FAILURE, 'drops on the game socket')
+        self.assertEqual(document['gates']['game_socket_drops']['drops_proven_inside'], 3)
+
+    def test_a_drop_that_may_be_just_outside_proves_neither(self):
+        scenario = self.scenario()
+        sf.game_drop_before_any_window_read(scenario.tree)
+        document = self.assertClassified(scenario.score(), cs.INCONCLUSIVE)
+        gate = document['gates']['game_socket_drops']
+        self.assertEqual(gate['verdict'], cs.UNKNOWN)
+        self.assertEqual((gate['drops_proven_inside'], gate['drops_at_the_uncertain_edge']), (0, 1))
+
+    def test_a_missing_counter_is_not_zero(self):
+        scenario = self.scenario()
+        sf.foggy(scenario.tree)
+        document = self.assertClassified(scenario.score(), cs.INCONCLUSIVE)
+        self.assertEqual(document['gates']['game_socket_drops']['verdict'], cs.UNKNOWN)
+
+    def test_a_counter_moving_backward_refuses_everything(self):
+        scenario = self.scenario()
+
+        def rewind(index, row):
+            for item in row['procs']['game']['sockets']:
+                item['drops'] = 9 if index < 30 else 2
+        scenario.tree.edit_sampler('game', rewind)
+        self.assertClassified(scenario.score(), cs.INCONCLUSIVE, 'socket_counter_reset')
+
+    def test_host_wide_kernel_counters_never_decide(self):
+        scenario = self.scenario()
+
+        def noisy(index, row):
+            row['udp']['snmp']['RcvbufErrors'] = index * 1000
+        scenario.tree.edit_sampler('game', noisy)
+        document = self.assertClassified(scenario.score(), cs.VALID_PASS)
+        self.assertGreater(document['diagnostics']['game_host_kernel_counters']['RcvbufErrors'], 0)
+
+
+class OfferedLoad(Base):
+    def test_exactly_99_percent_is_valid_and_one_frame_fewer_is_not(self):
+        exact = self.scenario()
+        exact.tree.edit_frozen_bot(3, lambda row: row.update(scheduled=1800, sent=1782))
+        document = self.assertClassified(exact.score(), cs.VALID_PASS)
+        self.assertEqual(document['offered_load']['worst_ratio']['exact'], '99/100')
+        below = self.scenario()
+        below.tree.edit_frozen_bot(3, lambda row: row.update(scheduled=1800, sent=1781))
+        document = self.assertClassified(below.score(), cs.INVALID_LOAD, 'offered_input_below_minimum')
+        self.assertEqual(document['validity']['offered_input'], cs.INVALID)
+        self.assertEqual(document['offered_load']['bots_below_floor'], [3])
+
+    def test_one_bot_is_held_to_it_however_good_the_total_is(self):
+        scenario = self.scenario(target=25)
+        scenario.tree.edit_frozen_bot(9, lambda row: row.update(sent=1000))
+        document = self.assertClassified(scenario.score(), cs.INVALID_LOAD)
+        self.assertGreater(document['offered_load']['sent_total'] / document['offered_load']['scheduled_total'], 0.98)
+
+    def test_a_generator_socket_drop_is_invalid_load(self):
+        scenario = self.scenario()
+        sf.bot_drop(scenario.tree, 2)
+        self.assertClassified(scenario.score(), cs.INVALID_LOAD, 'generator_socket_drops')
+
+    def test_a_missing_generator_counter_is_not_zero(self):
+        scenario = self.scenario()
+
+        def missing(index, row):
+            for item in row['procs']['bot']['sockets']:
+                item['drops'] = None
+        scenario.tree.edit_sampler('bot', missing)
+        document = self.assertClassified(scenario.score(), cs.INCONCLUSIVE)
+        self.assertEqual(document['validity']['generator_sockets'], cs.NOT_PROVEN)
+
+    def test_a_dead_in_game_bot_still_sending_is_valid_load(self):
+        scenario = self.scenario()
+        scenario.tree.edit_frozen_bot(2, lambda row: row.update(alive=False, dead_frames=900))
+        document = self.assertClassified(scenario.score(), cs.VALID_PASS)
+        self.assertEqual(document['offered_load']['dead_frames_total'], 900)
+
+    def test_bot_errors_of_every_kind(self):
+        for change, classification in ((dict(panics=1), cs.INVALID_LOAD), (dict(errors=1), cs.INVALID_LOAD), (dict(send_errors=2), cs.INVALID_LOAD), (dict(socket_send_errors=1), cs.INVALID_LOAD),
+                                       (dict(socket_receive_errors=1), cs.INVALID_LOAD), (dict(decode_failures=1), cs.INCONCLUSIVE)):
+            scenario = self.scenario()
+            scenario.tree.edit_frozen_bot(1, lambda row: row.update(change))
+            document = self.assertClassified(scenario.score(), classification)
+            self.assertEqual(document['gates']['bot_errors']['verdict'], cs.FAIL, change)
+
+    def test_a_frozen_counter_that_is_missing_is_not_zero(self):
+        for field in ('errors', 'panics', 'decode_failures', 'sent', 'scheduled', 'socket_send_errors'):
+            scenario = self.scenario()
+            scenario.tree.edit_frozen_bot(2, lambda row: row.pop(field))
+            document = self.assertClassified(scenario.score(), cs.INCONCLUSIVE)
+            self.assertEqual(document['validity']['offered_input'], cs.NOT_PROVEN, field)
+
+    def test_a_missing_shard_file_is_not_a_healthy_one(self):
+        scenario = self.scenario()
+        scenario.tree.path('bot/swarm/shard-2.ndjson').unlink()
+        self.assertClassified(scenario.score(), cs.INCONCLUSIVE)
+
+    def test_cpu_and_gaps_are_no_gate(self):
+        scenario = self.scenario()
+        for shard in range(4):
+            scenario.tree.edit_shard_row(shard, 'footer', lambda row: row.update(max_poll_gap_ns=499_000_000))
+        scenario.tree.edit_frozen_bot(1, lambda row: row.update(gap_max_ns=400_000_000))
+        self.assertClassified(scenario.score(), cs.VALID_PASS)
+
+
+class Attribution(Base):
+    def test_a_kick_with_a_healthy_generator_is_a_capacity_failure_and_not_generator_failure(self):
+        scenario = self.scenario()
+        sf.lose_bot(scenario.tree, 2, 30, reason=cs.REASON_KICKED, server_reason=0)
+        proof = scenario.proof()
+        self.assertIn('bot_errors', [item['code'] for item in proof['reasons'] if item['category'] == mw.GENERATOR], 'the prover cannot tell this error from any other')
+        document = self.assertClassified(scenario.score(proof=proof), cs.CAPACITY_FAILURE, 'disconnected bots [2]')
+        self.assertEqual(document['validity']['verdict'], cs.VALID)
+        self.assertEqual(document['gates']['bot_errors']['errors_that_are_the_disconnect_itself'], 1)
+        self.assertEqual(document['gates']['bot_errors']['independent'], 0)
+        self.assertEqual(document['gates']['continuity']['verdict'], cs.FAIL)
+
+    def test_frames_a_kicked_bot_never_sent_afterward_are_not_held_against_it(self):
+        scenario = self.scenario()
+        sf.lose_bot(scenario.tree, 2, 1, reason=cs.REASON_KICKED)
+        document = self.assertClassified(scenario.score(), cs.CAPACITY_FAILURE)
+        self.assertEqual(document['offered_load']['bots_below_floor'], [])
+        worst = document['offered_load']['worst_ratio']
+        self.assertLess(worst['approximate'], 0.1, 'the raw ratio is kept, and it is not what the floor judges')
+
+    def test_starvation_before_the_disconnect_stays_visible(self):
+        scenario = self.scenario()
+        sf.lose_bot(scenario.tree, 2, 30, reason=cs.REASON_KICKED, sent=0)
+        document = self.assertClassified(scenario.score(), cs.INCONCLUSIVE, 'both the generator and the server failed')
+        self.assertEqual(document['offered_load']['bots_below_floor'], [2])
+        self.assertIn('offered_input_below_minimum', [item['code'] for item in document['validity']['independent_failures']])
+
+    def test_one_slot_can_be_interrupted_and_two_cannot(self):
+        ok = self.scenario()
+        sf.lose_bot(ok.tree, 2, 30, reason=cs.REASON_KICKED, sent=890)   # 900 owed: (890 + 1) x 100 >= 900 x 99
+        self.assertClassified(ok.score(), cs.CAPACITY_FAILURE)
+        short = self.scenario()
+        sf.lose_bot(short.tree, 2, 30, reason=cs.REASON_KICKED, sent=889)
+        self.assertClassified(short.score(), cs.INCONCLUSIVE, 'both the generator and the server failed')
+
+    def test_lag_in_seeing_a_disconnect_is_kept_apart_from_the_servers_event(self):
+        scenario = self.scenario()
+        # The server kicks it 1 s in. The bot sees that 400 ms later: 12 more frames fell due, and none were sent, because the poll was busy elsewhere.
+        sf.lose_bot(scenario.tree, 2, 1.4, reason=cs.REASON_KICKED, server_at_s=1.0, sent=30)
+        document = self.assertClassified(scenario.score(), cs.CAPACITY_FAILURE)
+        row = next(item for item in document['offered_load']['per_bot'] if item['bot'] == 2)
+        self.assertTrue(row['input_missing_only_after_the_server_event'])
+        self.assertEqual(document['attribution']['input_missing_only_after_a_server_event'], [2])
+        lost = row['disconnect']
+        self.assertEqual(lost['scheduled_before_observation'], 42)
+        self.assertLess(lost['scheduled_before_server_event'], 42)
+        self.assertEqual(lost['order'], 'server_first')
+        self.assertGreater(lost['observation_lag_ns'][0], 300 * 1_000_000)
+        self.assertEqual(document['offered_load']['bots_below_floor'], [])
+        self.assertIn('offered_input_below_minimum', document['inputs']['proof_reasons'], 'the proof still says what it saw')
+
+    def test_starvation_before_the_servers_event_is_not_excused_by_the_lag(self):
+        scenario = self.scenario()
+        sf.lose_bot(scenario.tree, 2, 1.4, reason=cs.REASON_KICKED, server_at_s=1.0, sent=10)
+        self.assertClassified(scenario.score(), cs.INCONCLUSIVE, 'both the generator and the server failed')
+
+    def test_clocks_that_cannot_place_the_server_event_do_not_excuse_it_either(self):
+        scenario = self.scenario()
+        sf.lose_bot(scenario.tree, 2, 1.4, reason=cs.REASON_KICKED, server_at_s=1.0, sent=30)
+        scenario.tree.brackets = dict(scenario.tree.brackets, after=None)
+        self.assertClassified(scenario.score(), cs.INCONCLUSIVE, 'offered_input_below_minimum')
+
+    def test_a_transport_timeout_alone_proves_no_cause(self):
+        scenario = self.scenario()
+        sf.lose_bot(scenario.tree, 2, 30, reason=0)
+        document = self.assertClassified(scenario.score(), cs.INCONCLUSIVE, 'cause is unknown')
+        self.assertEqual(document['attribution']['departures'][0]['cause'], 'transport_timeout_unattributed')
+        self.assertEqual(document['gates']['continuity']['verdict'], cs.FAIL, 'N/N is broken either way')
+        self.assertEqual(document['validity']['verdict'], cs.VALID, 'and it is not generator failure either')
+
+    def test_a_transport_timeout_beside_real_server_distress_is_attributed(self):
+        for distress, label in ((lambda tree: sf.set_slow_ticks(tree, 180, 40_000_000), '33.3 ms'), (lambda tree: sf.game_drop(tree, 20), 'drops on the game socket')):
+            scenario = self.scenario()
+            sf.lose_bot(scenario.tree, 2, 30, reason=0)
+            distress(scenario.tree)
+            document = self.assertClassified(scenario.score(), cs.CAPACITY_FAILURE, label)
+            self.assertEqual(document['attribution']['departures'][0]['cause'], 'transport_timeout_with_server_distress')
+
+    def test_a_kick_stands_beside_a_timeout_with_no_cause(self):
+        scenario = self.scenario()
+        sf.lose_bot(scenario.tree, 2, 30, reason=cs.REASON_KICKED)
+        sf.lose_bot(scenario.tree, 3, 31, reason=0)
+        document = self.assertClassified(scenario.score(), cs.CAPACITY_FAILURE, 'no cause on record')
+        self.assertEqual({item['bot']: item['cause'] for item in document['attribution']['departures']}, {2: 'server_kick', 3: 'transport_timeout_unattributed'})
+
+    def test_reasons_that_are_no_capacity_signal(self):
+        for reason in (cs.REASON_SERVER_SHUTDOWN, 4, 5, 1, 77):
+            scenario = self.scenario()
+            sf.lose_bot(scenario.tree, 2, 30, reason=reason)
+            self.assertClassified(scenario.score(), cs.INCONCLUSIVE)
+
+    def test_a_server_row_the_bot_never_saw_is_still_lost_population(self):
+        scenario = self.scenario()
+        sf.server_row_only(scenario.tree, 2, 30)
+        document = self.assertClassified(scenario.score(), cs.INCONCLUSIVE, 'cause is unknown')
+        self.assertEqual(document['attribution']['departures'][0]['source'], 'server_only')
+
+    def test_a_bot_that_asked_to_leave_is_the_generators_doing(self):
+        scenario = self.scenario()
+        sf.lose_bot(scenario.tree, 2, 30, reason=0)
+        scenario.tree.edit_frozen_bot(2, lambda row: row.update(errors=0, disconnected=dict(row['disconnected'], expected=True)))
+        document = scenario.score()
+        self.assertIn('bot_quit_inside_the_window', [item['code'] for item in document['validity']['independent_failures']])
+        self.assertNotEqual(document['classification'], cs.CAPACITY_FAILURE)
+
+    def test_a_disconnect_that_the_bot_saw_after_the_end_cannot_be_placed(self):
+        scenario = self.scenario()
+        end = scenario.tree.timeline.end
+        scenario.tree.edit_frozen_bot(2, lambda row: row.update(errors=1, disconnected=dict(at_ns=end + 500_000, reason=0, expected=False), scheduled_before_disconnect=row['scheduled']))
+        document = self.assertClassified(scenario.score(), cs.INCONCLUSIVE)
+        self.assertEqual(document['gates']['continuity']['verdict'], cs.UNKNOWN)
+
+    def test_population_below_n_with_no_account_of_who(self):
+        scenario = self.scenario()
+        rows = sf.tick_rows(scenario.tree)
+        rows[sf.ticks_in_window(scenario.tree, rows)[100]][4] = str(scenario.tree.timeline.target - 1)
+        sf.write_ticks(scenario.tree, rows)
+        document = self.assertClassified(scenario.score(), cs.INCONCLUSIVE)
+        self.assertEqual(document['gates']['continuity']['verdict'], cs.FAIL)
+
+    def test_a_loss_only_in_the_clock_uncertainty_cannot_pass(self):
+        scenario = self.scenario()
+        sf.tight_clocks(scenario.tree, half_ns=900_000_000)
+
+        def edit(rows):
+            row = next(row for row in rows if row.get('k') == 'disconnect' and row.get('name') == 'LoadBot002')
+            row['mono_ns'] = fx.to_game_mono(scenario.tree.timeline.end) + 100_000_000
+        scenario.tree.edit_rows('game/telemetry/population.ndjson', edit)
+        document = self.assertClassified(scenario.score(), cs.INCONCLUSIVE)
+        self.assertEqual(document['gates']['continuity']['verdict'], cs.UNKNOWN)
+
+    def test_generator_failure_alone_never_blames_the_server(self):
+        for change in (lambda tree: tree.edit_shard_row(1, 'footer', lambda row: row.update(max_poll_gap_ns=501_000_000)),
+                       lambda tree: tree.drop_shard_rows(0, 'ack_end')):
+            scenario = self.scenario()
+            change(scenario.tree)
+            document = self.assertClassified(scenario.score(), cs.INVALID_LOAD)
+            self.assertEqual({gate['verdict'] for name, gate in document['gates'].items() if name == 'tick_budget'}, {cs.PASS})
+
+    def test_a_generator_failure_beside_a_server_failure_cannot_be_separated(self):
+        for server in (lambda tree: sf.set_slow_ticks(tree, 180, 40_000_000), lambda tree: sf.game_drop(tree, 20), lambda tree: sf.lose_bot(tree, 3, 30, cs.REASON_KICKED)):
+            for generator in (lambda tree: tree.edit_shard_row(1, 'footer', lambda row: row.update(max_poll_gap_ns=501_000_000)), lambda tree: sf.bot_drop(tree, 2), lambda tree: tree.edit_frozen_bot(4, lambda row: row.update(sent=1, last_input_ns=row['last_input_ns']))):
+                scenario = self.scenario()
+                server(scenario.tree)
+                generator(scenario.tree)
+                document = self.assertClassified(scenario.score(), cs.INCONCLUSIVE, 'nothing separates them')
+                self.assertTrue(document['validity']['independent_failures'], 'the generator failure stays visible')
+
+
+class GameProcess(Base):
+    def crashed(self, code, signal, at_s=30, **options):
+        scenario = self.scenario(**options)
+        sf.game_died(scenario.tree, at_s)
+        sf.bots_time_out_after_game_died(scenario.tree, [1, 2], at_s + 5)
+        return scenario, sf.execution(game_exit=(code, signal))
+
+    def test_a_panic_or_a_crash_signal_is_demonstrated_even_with_its_evidence_cut(self):
+        for code, signal, kind in ((101, None, 'server_panic'), (None, 11, 'server_crash_signal'), (None, 6, 'server_crash_signal')):
+            scenario, record = self.crashed(code, signal)
+            document = self.assertClassified(scenario.score(execution_record=record), cs.CAPACITY_FAILURE, kind)
+            self.assertEqual(document['validity']['verdict'], cs.VALID)
+            self.assertEqual(document['gates']['tick_budget']['verdict'], cs.UNKNOWN, 'its Ticks are lost, and that is not zero')
+            self.assertEqual({item['cause'] for item in document['attribution']['departures']}, {'transport_timeout_with_server_distress'})
+
+    def test_a_kill_with_no_cause_on_record_proves_nothing(self):
+        scenario, record = self.crashed(None, 9)
+        document = self.assertClassified(scenario.score(execution_record=record), cs.INCONCLUSIVE, 'nothing on record says why')
+        self.assertFalse(document['attribution']['game_exit']['demonstrated'])
+
+    def test_a_kill_beside_the_kernels_oom_count_is_out_of_memory(self):
+        scenario, record = self.crashed(None, 9)
+
+        def memory(index, row):
+            row['memory'] = dict(oom_kill=0 if index < 10 else 1, MemAvailable=100_000 - index, pgmajfault=index, pswpout=0)
+        scenario.tree.edit_sampler('game', memory)
+        document = self.assertClassified(scenario.score(execution_record=record), cs.CAPACITY_FAILURE, 'out_of_memory')
+        self.assertEqual(document['attribution']['game_exit']['oom_kills'], 1)
+        self.assertEqual(document['diagnostics']['game_memory']['oom_kill_delta'], 1)
+
+    def test_an_exit_that_looks_tidy_mid_run_is_not_capacity(self):
+        for code, signal in ((0, None), (1, None), (None, 15)):
+            scenario, record = self.crashed(code, signal)
+            self.assertClassified(scenario.score(execution_record=record), cs.INCONCLUSIVE, 'nothing on record says why')
+
+    def test_a_swarm_that_also_failed_cannot_blame_the_server(self):
+        scenario, record = self.crashed(101, None)
+        record['problems']['generator'] = ['the swarm exited 4 signal None']
+        self.assertClassified(scenario.score(execution_record=record), cs.INCONCLUSIVE, 'nothing separates them')
+
+    def test_a_swarm_that_failed_beside_a_game_that_ended_for_no_known_reason(self):
+        scenario, record = self.crashed(0, None)
+        record['problems']['generator'] = ['the swarm exited 4 signal None']
+        self.assertClassified(scenario.score(execution_record=record), cs.INCONCLUSIVE, 'nothing separates them')
+
+    def test_a_host_reboot_is_infrastructure(self):
+        scenario = self.scenario()
+        sf.rebooted(scenario.tree)
+        self.assertClassified(scenario.score(), cs.INFRASTRUCTURE_FAILURE, 'rebooted')
+
+    def test_a_demonstrated_execution_problem_is_infrastructure(self):
+        scenario = self.scenario()
+        document = self.assertClassified(scenario.score(execution_record=sf.execution(infrastructure=['game still has processes after the run'])), cs.INFRASTRUCTURE_FAILURE, 'still has processes')
+        self.assertEqual(document['gates']['tick_budget']['verdict'], cs.PASS, 'the numbers stay on record')
+
+
+class Ramp(Base):
+    def ramp(self, reason='readiness_timeout', authenticated=None, **options):
+        scenario = self.scenario(**options)
+        sf.ramp_failure(scenario.tree, reason, authenticated)
+        return scenario
+
+    def test_the_prover_calls_every_ramp_failure_a_generator_reason(self):
+        proof = self.ramp().proof()
+        self.assertEqual([(item['code'], item['category']) for item in proof['reasons']], [('window_not_established', mw.GENERATOR)])
+
+    def test_a_timeout_alone_is_never_a_capacity_limit(self):
+        document = self.assertClassified(self.ramp(authenticated=5).score(), cs.INCONCLUSIVE, 'a timeout alone is not a capacity limit')
+        self.assertFalse(document['established'])
+        self.assertEqual(document['validity']['verdict'], cs.VALID)
+        self.assertEqual(document['gates']['tick_budget']['verdict'], cs.PASS)
+
+    def test_a_timeout_beside_a_proven_overrun_with_a_valid_generator_is_a_failing_bracket(self):
+        scenario = self.ramp(authenticated=5)
+        sf.ramp_slow_ticks(scenario.tree, 2)
+        document = self.assertClassified(scenario.score(), cs.CAPACITY_FAILURE, '33.3 ms')
+        self.assertEqual(document['gates']['tick_budget']['verdict'], cs.FAIL)
+        self.assertIn('ramp', capacity_report.gate_value('tick_budget', document['gates']['tick_budget']))
+
+    def test_exactly_one_percent_of_ramp_ticks_fails_and_fewer_does_not(self):
+        scenario = self.ramp(authenticated=5)
+        rows = sf.tick_rows(scenario.tree)
+        held = [index for index, row in enumerate(rows) if index and int(row[4]) >= 1]
+        for index in held[:len(held) % 100]:     # so that 1 percent of them is a whole number of Ticks
+            rows[index][4] = '0'
+        held = held[len(held) % 100:]
+        for index in held[:len(held) // 100]:
+            rows[index][3] = str(40_000_000)
+        sf.write_ticks(scenario.tree, rows)
+        self.assertClassified(scenario.score(), cs.CAPACITY_FAILURE)
+        rows[held[0]][3] = str(33_300_000)
+        sf.write_ticks(scenario.tree, rows)
+        self.assertClassified(scenario.score(), cs.INCONCLUSIVE, 'a timeout alone')
+
+    def test_a_kick_in_the_ramp_is_demonstrated(self):
+        scenario = self.ramp('bot_failed_before_window', authenticated=5)
+        sf.add_bot_end(scenario.tree, 3, 'server disconnected (reason 2)', dict(at_ns=2 * NS, reason=cs.REASON_KICKED, expected=False))
+        self.assertClassified(scenario.score(), cs.CAPACITY_FAILURE, 'disconnected authenticated bots [3]')
+
+    def test_a_transport_timeout_in_the_ramp_alone_is_not(self):
+        scenario = self.ramp('bot_failed_before_window', authenticated=5)
+        sf.add_bot_end(scenario.tree, 3, 'server disconnected (reason 0)', dict(at_ns=2 * NS, reason=0, expected=False))
+        self.assertClassified(scenario.score(), cs.INCONCLUSIVE, 'a timeout alone')
+
+    def test_a_crash_in_the_ramp_is_demonstrated(self):
+        scenario = self.ramp(authenticated=5)
+        scenario.tree.path('game/telemetry/final.json').unlink()
+        document = self.assertClassified(scenario.score(execution_record=sf.execution(game_exit=(101, None))), cs.CAPACITY_FAILURE, 'server_panic')
+        self.assertEqual(document['gates']['continuity']['verdict'], cs.FAIL)
+
+    def test_a_refused_join_is_a_limit_or_a_ticket_and_not_capacity(self):
+        scenario = self.ramp('bot_failed_before_window', authenticated=5)
+
+        def refused(rows):
+            rows.insert(-1, dict(k='connect_rejected', peer=9, mono_ns=rows[-1]['mono_ns'] - 1, tick=1, entity_id=None, name=None, reason=cs.REASON_KICKED, authenticated_after=5))
+            for index, row in enumerate(rows):
+                row['seq'] = index
+        scenario.tree.edit_rows('game/telemetry/population.ndjson', refused)
+        scenario.tree.edit_json('game/telemetry/final.json', lambda d: d.update(population_rows=d['population_rows'] + 1))
+        sf.ramp_slow_ticks(scenario.tree, 2)
+        self.assertClassified(scenario.score(), cs.INCONCLUSIVE, 'no capacity signal')
+
+    def test_a_starved_generator_cannot_establish_a_bracket(self):
+        scenario = self.ramp(authenticated=5)
+        scenario.tree.edit_shard_row(1, 'footer', lambda row: row.update(max_poll_gap_ns=600_000_000))
+        self.assertClassified(scenario.score(), cs.INVALID_LOAD, 'did not poll')
+
+    def test_a_join_outside_the_global_stagger_is_the_generators(self):
+        scenario = self.ramp(authenticated=5)
+        scenario.tree.edit_shard_row(2, 'join', lambda row: row.update(actual_ns=row['scheduled_ns'] + 101_000_000))
+        self.assertClassified(scenario.score(), cs.INVALID_LOAD, 'after its slot')
+
+    def test_both_failing_in_the_ramp_cannot_be_separated(self):
+        scenario = self.ramp(authenticated=5)
+        scenario.tree.edit_shard_row(1, 'footer', lambda row: row.update(max_poll_gap_ns=600_000_000))
+        sf.ramp_slow_ticks(scenario.tree, 2)
+        self.assertClassified(scenario.score(), cs.INCONCLUSIVE, 'nothing separates them')
+
+    def test_unproven_generator_counters_establish_nothing(self):
+        scenario = self.ramp(authenticated=5)
+
+        def missing(index, row):
+            for item in row['procs']['bot']['sockets']:
+                item['drops'] = None
+        scenario.tree.edit_sampler('bot', missing)
+        sf.ramp_slow_ticks(scenario.tree, 2)
+        self.assertClassified(scenario.score(), cs.INCONCLUSIVE, 'not proven valid')
+
+    def test_a_generator_socket_drop_in_the_ramp(self):
+        scenario = self.ramp(authenticated=5)
+        sf.bot_drop(scenario.tree, 2)
+        self.assertClassified(scenario.score(), cs.INVALID_LOAD, 'dropped')
+
+    def test_interrupted_or_a_shard_gone_says_nothing_about_the_server(self):
+        self.assertClassified(self.ramp('interrupted').score(), cs.INCONCLUSIVE, 'stopped before a window')
+        self.assertClassified(self.ramp('shard_exited_before_window').score(), cs.INVALID_LOAD)
+
+    def test_a_ramp_can_never_pass(self):
+        document = self.ramp().score()
+        self.assertNotEqual(document['classification'], cs.VALID_PASS)
+        self.assertEqual(document['gates']['rtt_p95']['verdict'], cs.UNKNOWN)
+
+    def test_foreign_or_fault_build_ramp_evidence_refused(self):
+        foreign = self.ramp()
+        foreign.tree.edit_json('bot/swarm/swarm.json', lambda d: d.update(build=dict(fault_injection=True)))
+        sf.ramp_slow_ticks(foreign.tree, 2)
+        self.assertClassified(foreign.score(), cs.INCONCLUSIVE, 'fault_injection_build')
+
+    def test_apply_scorer_lets_a_proven_ramp_failure_past_the_generator_reason(self):
+        scenario = self.ramp(authenticated=5)
+        sf.ramp_slow_ticks(scenario.tree, 2)
+        evidence = scenario.evidence()
+        verdict = run_checks.apply_scorer(run_checks.disposition(evidence['execution']['problems']), cs.score(evidence), evidence['window_proof'])
+        self.assertEqual(verdict['outcome'], search.FAIL)
+
+
+class WhatMayBeScoredAtAll(Base):
+    def refused(self, code, **options):
+        document = self.assertClassified(self.scenario().score(**options), cs.INCONCLUSIVE, code)
+        return document
+
+    def test_local_counter_bypass_can_never_pass(self):
+        document = self.refused('socket_counter_bypass', require_counters=False)
+        self.assertEqual(document['gates']['tick_budget']['verdict'], cs.PASS, 'the numbers it measured stay visible')
+
+    def test_a_prover_never_given_the_schema(self):
+        scenario = self.scenario()
+        self.assertClassified(scenario.score(proof=scenario.proof(telemetry_schema=None)), cs.INCONCLUSIVE, 'schema_check_bypassed')
+
+    def test_the_historical_placeholder_manifest_is_refused(self):
+        placeholder = dict(id='omega.measurement/2', sha256='a' * 64)
+        scenario = self.scenario()
+        document = scenario.score(telemetry_schema=placeholder, proof=scenario.proof(telemetry_schema=placeholder))
+        self.assertClassified(document, cs.INCONCLUSIVE, 'manifest_schema_mismatch')
+
+    def test_a_short_hold_is_refused_even_when_the_prover_was_allowed_it(self):
+        scenario = self.scenario(hold_s=5)
+        self.assertClassified(scenario.score(allow_short_hold=True), cs.INCONCLUSIVE, 'non_contract_hold')
+
+    def test_no_proof_or_a_foreign_one(self):
+        scenario = self.scenario()
+        for proof in ({}, dict(schema='omega.do-session.window-proof/0'), dict(schema=mw.PROOF_SCHEMA, status='complete', reasons=[], facts=dict(contract_hold=True))):
+            self.assertClassified(cs.evaluate(dict(scenario.evidence(), window_proof=proof)), cs.INCONCLUSIVE)
+        self.assertClassified(cs.evaluate(dict(scenario.evidence(), window_proof=None)), cs.INCONCLUSIVE, 'no_window_proof')
+
+    def test_a_proof_of_another_trial(self):
+        scenario = self.scenario()
+        proof = scenario.proof()
+        proof['facts']['target'] = 500
+        self.assertClassified(scenario.score(proof=proof), cs.INCONCLUSIVE, 'proof_is_of_another_trial')
+
+    def test_evidence_not_verified_locally(self):
+        self.refused('export_incomplete', execution_record=sf.execution(exported=False))
+
+    def test_a_proof_with_no_retained_copy(self):
+        scenario = self.scenario()
+        self.assertClassified(cs.evaluate(dict(scenario.evidence(), window_proof_sha256=None)), cs.INCONCLUSIVE, 'proof_not_retained')
+
+    def test_a_swarm_told_to_stop_inside_the_window_says_nothing_about_either_side(self):
+        scenario = self.scenario()
+        scenario.tree.edit_json('bot/swarm/window.json', lambda d: d.update(status='window_incomplete', reason='interrupted'))
+        self.assertClassified(scenario.score(), cs.INCONCLUSIVE, 'told to stop')
+
+    def test_no_execution_record(self):
+        scenario = self.scenario()
+        self.assertClassified(cs.evaluate(dict(scenario.evidence(), execution=None)), cs.INCONCLUSIVE, 'execution_record_missing')
+
+    def test_foreign_or_tampered_evidence_says_nothing_even_about_a_failure(self):
+        changes = (lambda t: t.edit_json('bot/swarm/swarm.json', lambda d: d.update(schema='omega.measurement/2')),
+                   lambda t: t.edit_json('bot/swarm/swarm.json', lambda d: d.update(build=dict(fault_injection=True))),
+                   lambda t: t.edit_json('game/telemetry/process.json', lambda d: d.update(schema='omega.measurement/999')),
+                   lambda t: t.edit_shard_row(1, 'header', lambda r: r.update(schema='omega.measurement/999')),
+                   lambda t: t.edit_rows('bot/swarm/shard-0.ndjson', lambda rows: rows[2].update(nonce='other')),)
+        for change in changes:
+            scenario = self.scenario()
+            sf.set_slow_ticks(scenario.tree, 180, 40_000_000)
+            change(scenario.tree)
+            self.assertClassified(scenario.score(), cs.INCONCLUSIVE)
+
+    def test_every_missing_recorder_is_not_a_quiet_one(self):
+        for relative in ('bot/swarm/swarm.json', 'bot/swarm/window.json', 'bot/swarm/coordinator.ndjson', 'bot/swarm/shard-0.ndjson', 'game/telemetry/process.json', 'game/telemetry/final.json', 'game/telemetry/population.ndjson', 'game/telemetry/ticks.csv', 'game/sampler.ndjson', 'bot/sampler.ndjson'):
+            scenario = self.scenario()
+            scenario.tree.path(relative).unlink()
+            document = scenario.score()
+            self.assertEqual(document['classification'], cs.INCONCLUSIVE, relative)
+
+    def test_missing_clock_brackets_cannot_pass(self):
+        scenario = self.scenario()
+        scenario.tree.brackets = dict(scenario.tree.brackets, after=None)
+        self.assertClassified(scenario.score(), cs.INCONCLUSIVE)
+
+    def test_a_retained_score_that_does_not_read_is_nothing(self):
+        scenario = self.scenario()
+        path = scenario.tree.root / 'score.json'
+        path.write_text('{"schema": "something else"}')
+        self.assertIsNone(cs.load_retained(path))
+        path.write_text('not json')
+        self.assertIsNone(cs.load_retained(path))
+
+
+class Reports(Base):
+    def test_a_run_report_renders_exact_counts_and_says_what_it_is(self):
+        scenario = self.scenario()
+        sf.tight_clocks(scenario.tree)
+        sf.set_slow_ticks(scenario.tree, 18, 40_000_000)
+        text = capacity_report.render_run(scenario.score())
+        self.assertIn('**capacity_failure**', text)
+        self.assertIn('1/100', text)
+        self.assertIn('A single run establishes no capacity', text)
+        self.assertIn('decides nothing', text)
+
+    def test_rendering_is_deterministic_and_adds_no_judgement(self):
+        document = self.scenario().score()
+        self.assertEqual(capacity_report.render_run(document), capacity_report.render_run(json.loads(cs.canonical(document))))
+
+
+if __name__ == '__main__':
+    unittest.main()

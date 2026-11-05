@@ -7,7 +7,7 @@ one future interval, with the server's Ticks and transitions proving N throughou
   invalid       the evidence shows the interval or its offered load was broken, and says how
   inconclusive  the evidence cannot show it: missing, truncated, foreign or ambiguous
 
-``PASS`` and capacity live in the scorer (handoff slice 6, issue #69), which may only build on ``complete``. The facts here carry no
+``PASS`` and capacity live in ``capacity_scorer`` (handoff slice 6, issue #69), which may only pass on ``complete``. The facts here carry no
 gates: RTT, loss, Tick time and game-socket drops are kept for that scorer and judged by nothing in this file.
 
 Time. Each process has its own monotonic domain with an arbitrary origin, and these are never compared directly. A boundary moves
@@ -803,7 +803,7 @@ def prove(root, trial, workload, identities, brackets, telemetry_schema=None, re
     limits = schema()['limits']
     reasons = Reasons()
     prior = prior or {}
-    facts = dict(contract_hold=trial['hold_s'] in schema()['contract_holds_s'], hold_s=trial['hold_s'], target=trial['target'])
+    facts = dict(contract_hold=trial['hold_s'] in schema()['contract_holds_s'], hold_s=trial['hold_s'], target=trial['target'], telemetry_schema_checked=telemetry_schema is not None)
     if telemetry_schema is not None and (telemetry_schema.get('id') != schema()['id'] or telemetry_schema.get('sha256') != schema_sha256()):
         reasons.add('schema_mismatch', EVIDENCE, 'the manifest froze %s %s' % (telemetry_schema.get('id'), telemetry_schema.get('sha256')))
     if not facts['contract_hold'] and not allow_short_hold:
@@ -823,12 +823,17 @@ def prove(root, trial, workload, identities, brackets, telemetry_schema=None, re
     if game is not None:
         _check_game_identity(game, game_ident.get('game'), reasons)
     mapping = _map_interval(swarm, game, brackets, limits, reasons, facts)
-    bot_rows = load_sampler(root, 'bot', reasons)
     if mapping is not None and game is not None and 'game_mono' in mapping:
         facts['population'] = check_population(game, swarm, mapping['game_mono'], mapping['game_core'], trial, reasons)
+    # Each host's own problems are named apart, because a dead game host says nothing about whether the generator's counters were proven.
+    mark = len(reasons.items)
+    bot_rows = load_sampler(root, 'bot', reasons)
     facts['bot_host'] = _check_bot_host(swarm, bot_rows, bot_ident.get('bot'), prior.get('bot') or {}, require_counters, limits, reasons)
+    facts['bot_host_problems'] = sorted({item['code'] for item in reasons.items[mark:]})
+    mark = len(reasons.items)
     game_rows = load_sampler(root, 'game', reasons)
     facts['game_host'] = _check_game_host(mapping, game_rows, game_ident.get('game'), prior.get('game') or {}, require_counters, limits, reasons)
+    facts['game_host_problems'] = sorted({item['code'] for item in reasons.items[mark:]})
     return _document(trial, reasons, facts, require_counters)
 
 
@@ -897,6 +902,7 @@ def _map_interval(swarm, game, brackets, limits, reasons, facts):
         reasons.add('clock_mapping_missing', CLOCK, 'no server wall pair near a mapped boundary')
         return mapping
     mapping.update(game_wall=(start_game[0], end_game[1]), game_mono=(start_mono[0], end_mono[1]), game_core=(start_mono[1], end_mono[0]))
+    facts['clock'].update(game_wall_ns=list(mapping['game_wall']), game_core_wall_ns=[start_game[1], end_game[0]])
     return mapping
 
 

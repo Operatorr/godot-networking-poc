@@ -1,4 +1,4 @@
-# do_session — DigitalOcean test-session planner, registry, watchdog, provisioning, fresh test runs and the measured window (handoff slices 1–5)
+# do_session — DigitalOcean test-session planner, registry, watchdog, provisioning, fresh test runs, the measured window and its scorer (handoff slices 1–6)
 
 Control code for the disposable DigitalOcean capacity sessions planned in
 [issue #57](https://github.com/Operatorr/godot-networking-poc/issues/57), following the
@@ -12,9 +12,11 @@ Control code for the disposable DigitalOcean capacity sessions planned in
 - **Slice 3, provisioning, access and cold bootstrap:** see [below](#provider-adapter-access-and-cold-bootstrap-slice-3).
   It has only ever run against offline fakes. No live account has exercised this code.
 - **Slice 4, fresh-process runs and explicit resume:** see [below](#fresh-process-runs-and-explicit-resume-slice-4). It has run against a fake
-  remote and as real processes on one machine, never over SSH or on a Droplet. It cannot produce PASS or FAIL yet, because no scorer exists.
+  remote and as real processes on one machine, never over SSH or on a Droplet.
 - **Slice 5, the two-host window and recorders:** see [below](#two-host-measurement-window-and-recorders-slice-5). The real binaries and recorders have run on loopback on one
   macOS machine, including real 60 s and 300 s windows, never on a Droplet or on Linux. It proves or refuses a window and scores nothing.
+- **Slice 6, the strict scorer and search outcomes:** see [below](#strict-scoring-and-search-outcomes-slice-6). It has scored mocked recorder files and short real loopback runs. **No run can pass on this path outside Linux,**
+  because it needs per-socket kernel counters, and no real pass has ever been scored. It makes no capacity claim.
 
 Terminology follows `docs/CONTEXT.md` and issues #59/#60: a *test session* owns one game/bot
 Droplet pair with one fixed hardware condition; its *test batch* is the frozen search; a *test
@@ -538,9 +540,8 @@ The swarm exits 1, with its report written, when the server misses the binary's 
 
 **Evidence boundary.** `execution.json` is the line between running and scoring. It binds identities, exits, socket rows, seal hashes and export results, and it is what `evidence_ref` chains back to. A scorer is
 a function of `dict(run_id, trial, root, execution, execution_sha256, execution_ref)`: verified local files and sealed facts, nothing live. It returns `dict(outcome, evidence_ref, scorer, reasons)`. It cannot
-PASS a run whose processes failed, or call FAIL with a failed generator unless it sets `generator_failure_attributed_to_server`. Anything malformed becomes `INCONCLUSIVE`. **No scorer ships.** Slices 5 and 6
-(issues #68 and #69) own the measurement schema and gates, `run_cli.py` has no option to supply one, and until then every finished trial is `INCONCLUSIVE`, which stops the batch. Fixtures script outcomes
-through `run_fixtures.scripted_scorer`; those outcomes are not measurements.
+PASS a run whose processes failed, or call FAIL with a failed generator unless it sets `generator_failure_attributed_to_server`. Anything malformed becomes `INCONCLUSIVE`. The executor's default scorer is
+[`capacity_scorer.score`](#strict-scoring-and-search-outcomes-slice-6), and `run_cli.py` has no option to replace it. Fixtures in this slice script outcomes through `run_fixtures.scripted_scorer`; those outcomes are not measurements.
 
 Since slice 5 the adapter runs the measured swarm, and each finished run keeps a `window-proof.json`. A scorer receives it as `window_proof`, and `apply_scorer` refuses a PASS unless its status is `complete`. See [below](#two-host-measurement-window-and-recorders-slice-5).
 
@@ -552,7 +553,7 @@ A crash leaves whatever the registry last committed. Returning under a new token
 | --- | --- | --- |
 | After selection, before `dispatch_run` committed | Untouched | Explicit resume dispatches that same trial |
 | After `dispatch_run`, through launch and watch | Touched for good; stopped, sealed, `INCOMPLETE` | Its dependent path stops, and resume refuses with `no_eligible_untouched_work` |
-| After seal, with the swarm having ended by itself | Scored from retained evidence if a scorer exists, otherwise `INCOMPLETE` | Follows that outcome |
+| After seal, with the swarm having ended by itself | Scored from retained evidence, or read back if `score.json` was already retained (`INCOMPLETE` only for a fixture with no scorer) | Follows that outcome |
 | After `classification.json`, before the commit | The recorded verdict stands, is not scored again, and a terminal one stays terminal | Follows that outcome |
 | After the commit | Outcome stands; only the local mirror is repaired | Next untouched trial is eligible |
 
@@ -622,7 +623,7 @@ These are stated so Gates A and B check them instead of assuming them. Each fail
 
 ## Two-host measurement window and recorders (slice 5)
 
-Turns a fresh run into attributable per-role observations over one common scored interval, or an explicit refusal. It scores nothing, and no production scorer exists: every finished run still ends `INCONCLUSIVE` until issue #69. Terms: a *generator shard* is one swarm thread that owns its bots, and is not the glossary's server **Shard**. A *window* is the common scored interval.
+Turns a fresh run into attributable per-role observations over one common scored interval, or an explicit refusal. It scores nothing: [slice 6](#strict-scoring-and-search-outcomes-slice-6) does, over this proof and the same files. Terms: a *generator shard* is one swarm thread that owns its bots, and is not the glossary's server **Shard**. A *window* is the common scored interval.
 
 | File | Owns |
 | --- | --- |
@@ -689,7 +690,7 @@ Limits live in `measurement_schema.json`, which the manifest freezes.
 
 A reason's category sets the status: `generator` or `server` evidence means `invalid`; `evidence` or `clock` means `inconclusive`. Generator and server facts decide over missing evidence, and all reasons stay listed, because attribution is the scorer's.
 
-`facts` keeps the counts the scorer needs (per-bot scheduled, sent and what was owed before any disconnect, sample coverage, socket drops, kernel deltas), and the raw per-bot ENet samples stay timestamped in the shard files. **For issue 69:** a disconnected bot's `scheduled_before_disconnect`, `sent` and `disconnected.at_ns` let the scorer tell starvation before a disconnect from frames missing after it. This proof reports both and names no cause: a below-minimum reason here does not say the server or the generator was to blame, and establishing a server-caused disconnect is still the scorer's. RTT, loss, Tick time and game-socket drops are not judged here. **The proof never says PASS, and `establishes_capacity` is always false.**
+`facts` keeps the counts the scorer needs (per-bot scheduled, sent and what was owed before any disconnect, sample coverage, socket drops, kernel deltas), and the raw per-bot ENet samples stay timestamped in the shard files. A disconnected bot's `scheduled_before_disconnect`, `sent` and `disconnected.at_ns` let the scorer tell starvation before a disconnect from frames missing after it. This proof reports both and names no cause: a below-minimum reason here does not say the server or the generator was to blame, and establishing a server-caused disconnect is still the scorer's. RTT, loss, Tick time and game-socket drops are not judged here. **The proof never says PASS, and `establishes_capacity` is always false.**
 
 ### How clocks are handled
 
@@ -739,3 +740,107 @@ python3 measurement_local.py --release ../../rust/target/release --target 8 --ho
 `measurement_local` always tries every role's stop and the relay, whatever failed before or among them, and a setup failure after the relay exists is covered too. A cleanup failure on a clean run raises `CleanupFailed` naming every failure; after an execution failure that failure stays the one raised, carrying `cleanup_failures`. A process whose stop failed is still ended by its own supervisor bound.
 
 Retained results: [`offline-faults/slice5/`](../../docs/netcode/perf-notes/digitalocean-capacity/offline-faults/slice5/README.md). These are local integration results, not live-host validation or capacity findings.
+
+## Strict scoring and search outcomes (slice 6)
+
+Turns one run's common-window evidence into separate validity and gate decisions, and a session's runs into one bounded claim. It reads retained files and nothing live. It has scored only mocked recorder files and short loopback runs of the real binaries. Retained evidence: [`offline-faults/slice6`](../../docs/netcode/perf-notes/digitalocean-capacity/offline-faults/slice6/README.md).
+
+| File | Owns |
+| --- | --- |
+| `capacity_scorer.py` | The production scorer and its pinned policy. Pure over verified files, the sealed execution record and the window proof. The executor's default scorer. |
+| `capacity_report.py` | Renders a run's `score-report.md` and a session's search report, with nothing added. `capacity_report.py --session-dir D --out DIR` regenerates the same bytes offline. |
+| `search.py` | `observations` and `capacity_claim`: the facts that outlive a search's status, and the one sentence each ending may say. |
+| `scoring_fixtures.py`, `scoring_evidence.py` | Mocked trees with one thing changed, and `ScoredSim`, which runs the real executor, prover and scorer over a fake guest that exports those trees. |
+
+### What each number really is
+
+Traced to the producer, not the field name. See the docstring of `capacity_scorer.py` for each.
+
+| Value | What it is |
+| --- | --- |
+| Tick work | `work_ns` in `ticks.csv`: nanoseconds across `world.tick`, its outbox flush and `host.flush`. ENet service between Ticks is not in it. Its `mono_ns` is the Tick's start, on the server's own origin. |
+| RTT | `peer.round_trip_time()`: ENet's smoothed mean in whole ms, read about once a second per bot and stamped when read. It starts at 500 ms. It is not a raw ping. |
+| ENet loss | `peer.packet_loss()`: a smoothed (7/8 old, 1/8 new) estimate of **reliable commands retransmitted per command sent**, on scale 65536, moved at most once per 10 s epoch. It is not a measured fraction of datagrams dropped, and every report labels it an estimate. |
+| Disconnect reason | On the bot, the data of a server's disconnect command, or 0 when ENet gave up. A bot learns a non-zero reason only from the server. `USER_QUIT` is also 0, so a server row with reason 0 may be a bot leaving or a server-side timeout. A real blocked path records 0 on both sides (`test_capacity_real`). |
+| Disconnect time | `at_ns` is when the bot's poll saw it. The server's row has its own time on its own clock, which is moved across through the clock intervals. Both are kept, with the lag bounds and which came first. |
+| Bot `errors` | `Bot::fail` raises it once, so a disconnect the bot did not ask for counts one error. That error **is** the disconnect, and the prover's generator-labelled `bot_errors` cannot tell the difference, so the scorer re-derives it per bot. |
+
+### Gates and validity
+
+Every comparison is on exact integers or fractions. Floats appear only as labelled approximations of a retained `n/d`.
+
+| Gate | Passes when | Exact boundary |
+| --- | --- | --- |
+| N/N continuity | The proof shows N in every Tick across the interval, with no unexpected disconnect | |
+| Zero bot errors | Every frozen counter is a real 0, the disconnect's own error excepted and counted | A missing counter is no reading |
+| Tick budget | Fewer than 1% of Ticks have `work_ns > 33_300_000` | A Tick of exactly 33.3 ms is not above it; exactly 1% fails |
+| Game socket | The identified socket's counter did not move between reads bracketing the widest interval | |
+| RTT p95 | The nearest-rank p95 of every in-window sample of every bot, in one pool, is below 150 ms: value at 1-based rank `ceil(95 n / 100)` | Exactly 150 fails; no interpolation; never an average of per-bot p95s |
+| ENet loss | Every one-second bin's mean over the bots owed there is below 2/100 | Exactly 2/100 fails; a window average cannot hide one bad second |
+
+**Bins.** One per second from the window start. A bot counts once per bin: the mean of its readings there, or its nearest in-window reading within 2 s, counted as `borrowed`. The estimator moves at most every 10 s and readings drift later with each poll, so one bin can honestly lack a reading, and a bin must not be counted as lower for it. A longer gap leaves that bin `seconds_without_coverage` and the gate unknown. A failure in a bin that can be evaluated still stands.
+
+**Boundaries.** The clock mapping gives a narrow and a wide interval on the server's clock. A verdict must hold across all of it. The worst possible Tick ratio is the wide interval's slow Ticks over the narrow interval's Ticks, and the least is the narrow's slow Ticks over the wide's Ticks. Pass needs the first under 1%, failure needs the second at 1% or more, and anything between is unknown. A socket drop proves a failure only when both counter reads around it fall inside the narrow interval. A drop that might be just outside proves neither. A stepped wall clock makes both unknown, because the mapping is no longer conservative. RTT and loss are on the swarm's own clock, so they are untouched.
+
+**Offered load** is its own axis: `valid`, `invalid` or `not_proven`. Each bot needs `sent x 100 >= scheduled x 99`, so exactly 99% is valid. A disconnected bot is held to the part it was connected for, less the one interrupted slot. If it misses that floor only because it saw the disconnect late, the floor is recomputed up to the latest time the server's event could have happened, and `input_missing_only_after_the_server_event` records that this happened. If the clocks cannot place the server's event, nothing is excused. Generator socket drops are read per bot socket, never from a host counter. A missing counter, a missing frozen row, too few ENet samples or a decode failure (the server or the bot could have caused it) leave it `not_proven`.
+
+### Classification
+
+Decided in this order. Every gate is still computed, so a refused run shows what it measured.
+
+1. **Refused evidence → inconclusive.** No retained proof of the frozen schema, a proof made without the manifest's schema, `require_counters=False`, a hold that is not 60 or 300 s, a proof of another trial, an unverified export, or integrity reasons (foreign schema, fault build, overwritten recorder, reused identity, counter reset, and so on). A failure on foreign bytes is no failure.
+2. **Host rebooted, or an execution infrastructure problem → infrastructure failure.**
+3. **Independent generator failure.** Alone it is **invalid offered load**. Beside any server failure or unexplained loss it is **inconclusive**, because nothing separates them, and both stay visible. Generator trouble never produces a capacity failure.
+4. **Not a capacity signal → inconclusive.** A game exit with no cause on record, a `SERVER_SHUTDOWN` reason, a refused session.
+5. **Offered load not proven → inconclusive.** A server failure cannot stand on it.
+6. **Demonstrated server failure → capacity failure.** A panic or crash signal, a SIGKILL beside the kernel's OOM count, a kick, a Tick or game-socket gate proven failed, a failed RTT or loss gate, or a transport timeout beside proven server distress.
+7. **A transport timeout alone → inconclusive.** A server, a path and a stalled bot can each cause one, and nothing here says which.
+8. **Anything unknown, or a proof that is not `complete` → inconclusive.** Otherwise **valid pass**.
+
+**RTT and loss are measured on the path from the generator.** A failed one with a valid generator is a capacity failure, as the accepted gates say, but it does not isolate the server from the network. Reports show which gate failed.
+
+**A ramp that never held N** has no window, so it can never pass, and the prover labels it a generator reason. The scorer proves generator health itself from the shard files and every bot socket's counter, then needs something on the server's record: a crash, a kick of an authenticated bot, or at least 1% of Ticks above 33.3 ms among those with an authenticated player, read on the server's own clock. A timeout alone is inconclusive. A refused join is a limit or a ticket, and no capacity signal.
+
+The whole-run `report.json` is carried as a labelled diagnostic and never read for a decision. CPU, memory, gaps, bandwidth and host kernel counters are diagnostics and add no gate.
+
+### Through the executor
+
+`RunExecutor`'s default scorer is `capacity_scorer.score`, beside the strict prover and `require_counters=True`, and `run_cli.py` takes no option that changes any of them.
+
+- **Retained once.** `score.json` and `score-report.md` are create-only and the verdict's `evidence_ref` is `score.json`'s hash. A returning controller reads a retained score and never recomputes it, even with a host unreachable. A score that no longer reads is inconclusive.
+- **A scorer that fails is inconclusive,** like a prover that fails, and the outcome still commits. A credential value is refused before retention.
+- **`apply_scorer` still holds the answer** against the execution facts and the proof: no PASS over a failed process or an incomplete window.
+- **Terminal facts survive.** Every existing rule stands: nothing dispatched twice, no successor from an incomplete trial, no resume past a terminal failure, cleanup requested whatever happens. Failing to write a report never delays cleanup.
+
+### What a search may say
+
+`search.capacity_claim` is the only sentence. `capacity_report` renders it above every retained trial.
+
+| Ending | Claim |
+| --- | --- |
+| `confirmed` | Three valid five-minute passes at that target: an observed candidate on this rented pair, not provider-wide capacity |
+| `confirmed_search_cap_reached` | At least 500 under this condition; search cap reached, not a discovered ceiling. `players` is null and `lower_bound` is 500 |
+| `no_passing_target` | No passing target at the five-player resolution. Not proof that no smaller population could work, and not a capacity of zero. `players` and `lower_bound` are null |
+| `unconfirmed_variable` | A valid confirmation failed. The bracket and every result are kept, with no replacement |
+| `unconfirmed_partial` | Part of the confirmation set is incomplete, and the rest may pass. Not a confirmed capacity |
+| `stopped_*`, `undecidable_incomplete_predecessor`, `partial_*` | No capacity established. The highest one-minute pass is named as an exploratory observation only |
+
+The search graph and admission are unchanged from slice 1. `test_capacity_search.EveryLegalPath` walks all 401 leaves and checks each claim against its history. `Trial`s that were selected but never dispatched are not trials of the report.
+
+### Running it
+
+```bash
+cd scripts/do_session
+python3 -m unittest test_capacity_scorer test_capacity_search test_scoring_evidence
+OMEGA_LOCAL_RELEASE_DIR=<dir with omega-server and omega-load-test> sandbox-exec -f measurement_offline.sb python3 -m unittest test_capacity_real
+python3 scoring_evidence.py synthetic --out ../../docs/netcode/perf-notes/digitalocean-capacity/offline-faults/slice6
+python3 capacity_report.py --session-dir loadtest-runs/digitalocean/<session_id> --out <new dir>
+```
+
+### Limits
+
+- **No real pass exists.** macOS has no per-socket counters, so a real local run is refused at step 1. Linux `/proc` counters, independent-host clocks, public routes and generator headroom remain unverified, and the fixtures' mocked sampler rows stand in for all of them.
+- **The kernel's OOM count is host-wide.** It is read only beside a SIGKILL that already happened on a host running one load, and that is not process-attributed proof.
+- **Declared limits are declarations.** The 2 s borrow bound and the prover's clock limits are chosen, not calibrated.
+- **Distress is coarse.** A transport timeout is attributed only beside a proven Tick or game-socket failure or a lost process. Server stalls that show up in neither stay inconclusive. A long stall outside `world.tick` counts as one Tick at most, and the accepted gate has no cadence term, so it is a diagnostic.
+- **Compact findings, cost and full run reports are slice 7.** `score-report.md` covers the decision only.

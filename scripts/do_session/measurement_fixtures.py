@@ -61,14 +61,14 @@ def scheduled(timeline):
     return timeline.hold_s * 30
 
 
-def swarm_files(root, timeline):
+def swarm_files(root, timeline, pid=4001, start_id='ticks:9001', boot='boot-bot'):
     directory = root / 'bot' / 'swarm'
     directory.mkdir(parents=True)
     nonce = 'fixture-nonce'
     controls = dict(server='203.0.113.10:8081', bots=timeline.target, threads=timeline.threads, bot_id_assignment='round-robin', join_stagger_ms=100, behavior='strategy', difficulty=1.0, input_hz=30, input_interval_ns=33_333_333,
                     seed=1, hold_s=timeline.hold_s, readiness_timeout_s=60.0, bandwidth_budget_bps=0, warmup_ns=2 * NS, publish_lead_ns=NS, end_guard_ns=2 * NS, drain_ns=1_500_000_000, ticket_auth=False, faults=[])
-    (directory / 'swarm.json').write_text(json.dumps(dict(schema=mw.schema()['id'], nonce=nonce, role='bot', pid=4001, kernel_start_id='ticks:9001', boot_id='boot-bot', version='0.1.0', clock=bot_pair(0), build=dict(fault_injection=False), controls=controls)) + '\n')
-    rows = [dict(k='header', nonce=nonce, schema=mw.schema()['id'], role='bot', clock=bot_pair(0), pid=4001)]
+    (directory / 'swarm.json').write_text(json.dumps(dict(schema=mw.schema()['id'], nonce=nonce, role='bot', pid=pid, kernel_start_id=start_id, boot_id=boot, version='0.1.0', clock=bot_pair(0), build=dict(fault_injection=False), controls=controls)) + '\n')
+    rows = [dict(k='header', nonce=nonce, schema=mw.schema()['id'], role='bot', clock=bot_pair(0), pid=pid)]
     for second in range(0, int(timeline.finish // NS) + 1):
         rows.append(dict(k='clock', nonce=nonce, mono_ns=second * NS, clock=bot_pair(second * NS), authenticated=timeline.target, lost_after_auth=0))
     rows.append(dict(k='barrier', nonce=nonce, mono_ns=timeline.barrier, final_auth_ns=timeline.final_auth, authenticated=timeline.target))
@@ -109,19 +109,20 @@ def to_game_mono(mono_bot):
     return mono_bot + BOT_MONO_ORIGIN_WALL - GAME_MONO_ORIGIN_WALL
 
 
-def game_files(root, timeline, game_wall_offset=0):
+def game_files(root, timeline, game_wall_offset=0, pid=3001, start_id='ticks:8001', boot='boot-game'):
     directory = root / 'game' / 'telemetry'
     directory.mkdir(parents=True)
     start = to_game_mono(0)
     end = to_game_mono(timeline.finish) + 2 * NS
-    (directory / 'process.json').write_text(json.dumps(dict(schema=mw.schema()['id'], role='game', pid=3001, kernel_start_id='ticks:8001', boot_id='boot-game', clock=game_pair(0, game_wall_offset))) + '\n')
+    (directory / 'process.json').write_text(json.dumps(dict(schema=mw.schema()['id'], role='game', pid=pid, kernel_start_id=start_id, boot_id=boot, clock=game_pair(0, game_wall_offset))) + '\n')
     rows = []
     for second in range(0, int(end // NS) + 1):
         rows.append(dict(k='clock', mono_ns=second * NS, clock=game_pair(second * NS, game_wall_offset), tick=START_TICK + second * 30))
     for bot in range(1, timeline.target + 1):
         rows.append(dict(k='auth', peer=bot, mono_ns=to_game_mono(timeline.auths[bot]) - 5_000_000, tick=START_TICK, entity_id=bot, name='LoadBot%03d' % bot, reason=None, authenticated_after=bot))
     for bot in range(1, timeline.target + 1):
-        rows.append(dict(k='disconnect', peer=bot, mono_ns=to_game_mono(timeline.drain) + 50_000_000 + bot, tick=START_TICK, entity_id=bot, name='LoadBot%03d' % bot, reason=3, authenticated_after=timeline.target - bot))
+        # USER_QUIT, which is what a real drain's disconnect carries.
+        rows.append(dict(k='disconnect', peer=bot, mono_ns=to_game_mono(timeline.drain) + 50_000_000 + bot, tick=START_TICK, entity_id=bot, name='LoadBot%03d' % bot, reason=0, authenticated_after=timeline.target - bot))
     rows.sort(key=lambda row: row['mono_ns'])
     rows.append(dict(k='footer', mono_ns=end, clock=game_pair(end, game_wall_offset)))
     rows = [dict(row, seq=index) for index, row in enumerate(rows)]
@@ -150,13 +151,13 @@ def game_files(root, timeline, game_wall_offset=0):
 READ_NS = 200_000     # how long a fixture collector takes to read its counters
 
 
-def sampler_rows(role, timeline, port_map, pid, start_id, boot, pair_of, first_mono, last_mono, counters=True):
+def sampler_rows(role, timeline, port_map, pid, start_id, boot, pair_of, first_mono, last_mono, counters=True, inode=None):
     rows = [dict(kind='meta', platform='fixture', cpus=4, ts=0.0, schema=mw.schema()['id'])]
     mono = first_mono
     seq = 0
     while mono <= last_mono:
         drops = 0 if counters else None
-        sockets = [dict(inode='%s-socket-%d' % (role, port), local='00000000:%04X' % port, local_port=port, drops=drops, rx_queue=0, tx_queue=0) for port in port_map]
+        sockets = [dict(inode=inode or '%s-socket-%d' % (role, port), local='00000000:%04X' % port, local_port=port, drops=drops, rx_queue=0, tx_queue=0) for port in port_map]
         rows.append(dict(ts=1.0, mono_s=seq, clock=pair_of(mono), clock_after=pair_of(mono + READ_NS), seq=seq, boot_id=boot, system={}, udp=dict(snmp=dict(InDatagrams=seq * 100, InErrors=0, RcvbufErrors=0)), collector_ns=250_000,
                          procs={role: dict(pid=pid, alive=True, start_id=start_id, sockets=sockets, cpu_s=seq * 0.2)}))
         mono += NS
@@ -182,19 +183,21 @@ IDENTITIES = dict(bot=dict(bot=dict(pid=4001, start_id='ticks:9001', boot_id='bo
 class Tree:
     """One complete run, ready to break. ``prove()`` is the production prover with this run's arguments."""
 
-    def __init__(self, root, target=8, hold_s=60, game_wall_offset=0):
+    def __init__(self, root, target=8, hold_s=60, game_wall_offset=0, identities=None, game_inode=None):
+        """``identities`` and ``game_inode`` let a tree stand for processes a fake guest named, which only the integrated fixtures need."""
         self.root = pathlib.Path(root)
         self.timeline = Timeline(target, hold_s)
         self.trial = dict(run_id='fixture-run', ordinal=1, phase='coarse' if hold_s == 60 else 'confirm', target=target, repetition=1, hold_s=hold_s, predecessors=[])
         self.workload = dict(manifest_mod.WORKLOAD_SCHEMA)
-        self.identities = copy.deepcopy(IDENTITIES)
+        self.identities = copy.deepcopy(identities or IDENTITIES)
         self.game_wall_offset = game_wall_offset
-        swarm_files(self.root, self.timeline)
-        game_files(self.root, self.timeline, game_wall_offset)
-        ports = [40000 + bot for bot in range(1, target + 1)]
-        write_sampler(self.root, 'bot', sampler_rows('bot', self.timeline, ports, 4001, 'ticks:9001', 'boot-bot', bot_pair, 0, self.timeline.finish))
+        bot, game = self.identities['bot']['bot'], self.identities['game']['game']
+        swarm_files(self.root, self.timeline, bot['pid'], bot['start_id'], bot['boot_id'])
+        game_files(self.root, self.timeline, game_wall_offset, game['pid'], game['start_id'], game['boot_id'])
+        ports = [40000 + bot_id for bot_id in range(1, target + 1)]
+        write_sampler(self.root, 'bot', sampler_rows('bot', self.timeline, ports, bot['pid'], bot['start_id'], bot['boot_id'], bot_pair, 0, self.timeline.finish))
         game_first = to_game_mono(0)
-        write_sampler(self.root, 'game', sampler_rows('game', self.timeline, [8081], 3001, 'ticks:8001', 'boot-game', lambda mono: game_pair(mono, game_wall_offset), game_first, to_game_mono(self.timeline.finish)))
+        write_sampler(self.root, 'game', sampler_rows('game', self.timeline, [8081], game['pid'], game['start_id'], game['boot_id'], lambda mono: game_pair(mono, game_wall_offset), game_first, to_game_mono(self.timeline.finish), inode=game_inode))
         self.brackets = dict(before=bracket('before', BOT_MONO_ORIGIN_WALL - 30 * NS, game_wall_offset), after=bracket('after', BOT_MONO_ORIGIN_WALL + self.timeline.finish + 30 * NS, game_wall_offset))
 
     def prove(self, **options):

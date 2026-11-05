@@ -6,8 +6,8 @@ A missing fact is a failure, never a pass. Nothing here scores a measurement. It
   generator        the swarm itself failed, which is invalid offered load unless the game failed too
   game             the game process failed; only a scorer with its own evidence can call that a capacity failure
 
-The scorer (handoff slices 5 and 6, issues #68 and #69) sits behind ``apply_scorer``. Without one, a finished run is
-INCONCLUSIVE, which stops the batch and establishes nothing.
+``capacity_scorer`` (handoff slice 6, issue #69) sits behind ``apply_scorer``. Without a scorer, as in fixtures with no recorder files, a
+finished run is INCONCLUSIVE, which stops the batch and establishes nothing.
 """
 import guest_runner
 import search

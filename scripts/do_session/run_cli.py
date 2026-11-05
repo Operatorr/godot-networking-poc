@@ -11,9 +11,9 @@ un-pauses it. ``collect`` is the other exit, and it stops whatever was left, sea
 
 ``execute`` and ``resume`` refuse before touching any guest unless this checkout is the frozen controller and adapter revision.
 
-None of this has ever been run against a live account. The scorer for slices 5 and 6 does not exist yet, so a trial here
-ends INCONCLUSIVE and stops the batch by design. Exit codes: 0 finished or resumed and finished, 2 refused, stopped, or a
-wrap-up that failed locally (its cleanup request still went out).
+None of this has ever been run against a live account. Trials are scored by ``capacity_scorer``, the executor's default, and no argument here
+can replace it or relax the prover. Exit codes: 0 finished or resumed and finished, 2 refused, stopped, or a wrap-up that failed locally
+(its cleanup request still went out).
 """
 import argparse
 import dataclasses
