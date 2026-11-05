@@ -1,0 +1,92 @@
+{
+ "kind": "real_process_normalized",
+ "note": "Real local processes on one machine, on real clocks: registry CLI, watchdog service, controllers, role runners and stand-in workloads on loopback. The provider and the pair view are JSON files, tc is a stub and outcomes come from a scripted scorer. Only facts that do not depend on timing are kept. Nothing here ran on a Droplet, over SSH, under systemd or on Linux, and nothing here is a measurement.",
+ "scenarios": {
+  "controller_exit_between_trials_then_resume": {
+   "cleanup": "verified_absent",
+   "controller_exit": 137,
+   "deadlines_unchanged": true,
+   "evidence": "missing",
+   "journal_valid": true,
+   "measurement": "confirmed",
+   "next_run": "coarse-n050-r1",
+   "overall": "resources_verified_evidence_incomplete",
+   "provider_held_at_start": [
+    "droplets",
+    "droplets",
+    "firewalls",
+    "omega-role:bot:do-local-20261105a",
+    "omega-role:game:do-local-20261105a",
+    "omega-session:do-local-20261105a"
+   ],
+   "provider_holds": [],
+   "resumed": true,
+   "run_ids_unique": true,
+   "runs": [
+    [
+     "coarse-n025-r1",
+     "PASS"
+    ],
+    [
+     "coarse-n050-r1",
+     "FAIL"
+    ],
+    [
+     "refine-n030-r1",
+     "FAIL"
+    ],
+    [
+     "confirm-n025-r1",
+     "PASS"
+    ],
+    [
+     "confirm-n025-r2",
+     "PASS"
+    ],
+    [
+     "confirm-n025-r3",
+     "PASS"
+    ]
+   ],
+   "search_status": "confirmed",
+   "state": "closed",
+   "watchdog_replaced": true,
+   "workloads_left": 0
+  },
+  "kill_nine_controller_and_watchdog_mid_run": {
+   "cleanup": "verified_absent",
+   "collect_code": "operator_collect",
+   "controller_killed": true,
+   "deadlines_unchanged": true,
+   "evidence": "missing",
+   "export_generations": 1,
+   "export_verifies": true,
+   "journal_valid": true,
+   "measurement": "operator_collect",
+   "overall": "resources_verified_evidence_incomplete",
+   "provider_held_at_start": [
+    "droplets",
+    "droplets",
+    "firewalls",
+    "omega-role:bot:do-local-20261105a",
+    "omega-role:game:do-local-20261105a",
+    "omega-session:do-local-20261105a"
+   ],
+   "provider_holds": [],
+   "resume_code": "no_eligible_untouched_work",
+   "run_ids_unique": true,
+   "runs": [
+    [
+     "coarse-n025-r1",
+     "INCOMPLETE"
+    ]
+   ],
+   "seal_interrupted": "controller_replaced",
+   "state": "closed",
+   "watchdog_replaced": true,
+   "workloads_left": 0,
+   "workloads_survived_their_controller": true
+  }
+ },
+ "schema": "omega.do-session.fault-battery-process/1"
+}

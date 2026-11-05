@@ -1,4 +1,4 @@
-# do_session — DigitalOcean test-session planner, registry, watchdog, provisioning, fresh test runs, the measured window, its scorer and the evidence export (handoff slices 1–7)
+# do_session — DigitalOcean test-session planner, registry, watchdog, provisioning, fresh test runs, the measured window, its scorer, the evidence export and the integrated offline fault battery (handoff slices 1–7 and the offline part of 8)
 
 Control code for the disposable DigitalOcean capacity sessions planned in
 [issue #57](https://github.com/Operatorr/godot-networking-poc/issues/57), following the
@@ -22,6 +22,7 @@ Terminology follows `docs/CONTEXT.md` and issues #59/#60: a *test session* owns 
 Droplet pair with one fixed hardware condition; its *test batch* is the frozen search; a *test
 run* is one fresh workload execution. These are infrastructure terms, not the gameplay Instance.
 - **Slice 7, the evidence export and reports:** see [below](#checksum-verified-evidence-export-and-reports-slice-7). Only fakes and one-machine real processes have exercised it. Nothing has been published, and no real session exists.
+- **Slice 8, offline part: the integrated fault battery:** see [below](#integrated-offline-fault-battery-slice-8). Whole sessions through all of the above with faults at several boundaries at once, over fakes and a few real local processes. It is the offline gate before any paid operation, not the operational gates themselves.
 
 ## Modules
 
@@ -984,4 +985,47 @@ Exit codes: 0 complete or done, 2 incomplete, different or refused, 1 unreadable
 - **Private reports are scrubbed of known credentials and this session's registered addresses, not of everything.** Their reason text comes from hosts, and they stay on the laptop.
 - **Single-copy raw evidence is an accepted risk.** If that disk is lost, the published hashes point at nothing.
 - **Hashes catch accident, not intent.** Someone rewriting a session directory and recomputing every digest is not detected here. Publishing the inventory is what makes that detectable later.
-- **Combined offline fault validation is issue #71, and the three operational gates are separately authorized.** Neither is claimed here.
+- **Combined offline fault validation is [below](#integrated-offline-fault-battery-slice-8), and the three operational gates are separately authorized.** No gate is claimed here.
+
+## Integrated offline fault battery (slice 8)
+
+Issue [#71](https://github.com/Operatorr/godot-networking-poc/issues/71): the offline gate of handoff slice 8. `fault_battery.py` runs whole sessions through every real seam above at once and keeps what it observed; `test_fault_battery.py` and `test_fault_battery_process.py` hold it to account. Retained evidence and the requirement map are in [`offline-faults/slice8`](../../docs/netcode/perf-notes/digitalocean-capacity/offline-faults/slice8/README.md).
+
+### What runs, and what is fake
+
+Each scenario builds one `export_fixtures.ExportSim`, the same stack slice 7 used: `provisioner` (with planner admission inside it) over `do_api` and `fake_do_http.FakeDoAccount`, `registry` and `watchdog` on a scripted clock, `run_executor` over `fake_run_guest` guests whose runs leave real-format recorder files, the real `measurement_window` prover and `capacity_scorer`, and `session_export`/`session_report`/`evidence_publication`. The scenario then injects faults where those meet their fakes, and usually more than one per session:
+
+| Boundary | Injected by |
+| --- | --- |
+| Provider API | Scripted HTTP answers on the fake account: lost, delayed-landing or never-landing creates, 422, 503 outages, 429 with `retry-after`, deletes that are accepted and still listed, foreign tags and retargeted firewalls |
+| Registry and its storage | A transport that loses one acknowledgement after the registry acted; an `sqlite3` disk error at a named commit; a watchdog restart; a management-host reboot with its own boot, monotonic origin and possibly an untrusted RTC (`ManagementClock`), while the laptop's clock carries on |
+| Controller and laptop | `SimulatedCrash` at the executor's own failpoints, controllers that never return, takeovers, stale executors that wake up, a returning controller whose wall clock is behind, and a checkout that is not the frozen revision |
+| Guests and transfers | Corrupt or failing transfers and the recorder files a script shapes: a starved generator, a server kick, a missing socket counter, a guest reboot, slow Ticks |
+| Local storage | `ENOSPC` while promoting a verified file |
+
+A second session can share the stack and account (`SiblingSim`), provisioned by the real provisioner with its own controller, to show one session's outage cannot starve another's deletion.
+
+`test_fault_battery_process.py` repeats the most important shape with real processes: `run_fixtures.LocalSession`'s real registry CLI and watchdog service, `run_fault_harness.py` controllers and real role runners over stand-in workloads. A controller is `kill -9`'d mid-run or exits at a named boundary, the watchdog service is `kill -9`'d and restarted (`LocalSession.restart_watchdog`), and a returning controller resumes or collects before the restarted watchdog closes the session.
+
+### What it keeps and asserts
+
+Each session's row holds its registry timeline (without the per-second progress and grant noise), every provider mutation with repeats folded, read counts by route, owned resources at named moments, cleanup attempts and their errors, incidents, run records, guest starts and transfers, the latest export's status and claim, and its three results. Ids become the names the session gave them, so a row is the same on every run. `checks` are assertions on those observations, made at the moment they were observed; `invariants` are eight assertions every session must meet (see the slice 8 README). `REQUIREMENTS` maps issue #71's criteria and the contract points the review asked to see together to the scenarios that show them.
+
+`test_fault_battery` regenerates the file and compares its hash, asserts every check and invariant, every requirement's coverage and cross-scenario comparisons against the unfaulted control, and then breaks four production behaviours at their seams (`ChecksFailOnBrokenCode`) to show the checks are not vacuous. Two of the three layers that refuse a counter gap were broken one at a time first and changed nothing, which is why that control replaces the whole verdict.
+
+### Running it
+
+```bash
+cd scripts/do_session
+sandbox-exec -f measurement_offline.sb python3 -m unittest test_fault_battery                  # about 75 s
+sandbox-exec -f measurement_offline.sb python3 -m unittest test_fault_battery_process          # about 40 s, real local processes
+python3 fault_battery.py --out ../../docs/netcode/perf-notes/digitalocean-capacity/offline-faults/slice8 --real-process ../../docs/netcode/perf-notes/digitalocean-capacity/offline-faults/slice8/real-process.json
+OMEGA_FAULT_BATTERY_RECORD=DIR python3 -m unittest test_fault_battery_process                  # a deliberate refresh of the real-process facts
+```
+
+### Limits
+
+- **No real binary, SSH session, Droplet, Linux host or systemd unit is in this battery.** It proves how the combined controller treats the faults its fakes can express. Gate A (cold calibration), Gate B (live lifecycle smoke) and Gate C (capacity) remain separately authorized.
+- **Bounded, not exhaustive.** Scenarios combine faults chosen from the contracts' risks; they do not enumerate every combination.
+- **Fakes decide what a fault looks like.** A provider or kernel that fails in a shape no fake models is not covered, and the real-process sessions use stand-in workloads, a provider file and a scripted scorer.
+- **One finding is a statement of the accepted design, not a defect.** A session whose export confirmed a candidate keeps that claim while cleanup stays open on an ownership incident: measurement, evidence and cleanup are independent results, and the registry's `overall` never reads `clean` there.
