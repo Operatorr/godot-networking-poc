@@ -168,6 +168,12 @@ SCENARIOS = (
 ) + tuple(('generator_%s_beside_a_tick_overrun' % name, {}, (lambda change: lambda t: (sf.slow(t), change(t)))(change), None) for name, _, change in sf.GENERATOR_OMISSIONS) \
   + tuple(('generator_%s_beside_a_demonstrated_crash' % name, {}, (lambda change: lambda t: (_crash(t), change(t)))(change), sf.execution(game_exit=(101, None))) for name, _, change in sf.GENERATOR_OMISSIONS) \
   + tuple(('ramp_%s_beside_a_proven_overrun' % name, {}, _ramp(then=(lambda change: lambda t: (sf.ramp_slow_ticks(t, 2), change(t)))(change)), None) for name, _, change in sf.RAMP_NOT_PROVEN)
+OOM_SCENARIOS = (('game_oom_kill_matched_to_the_game', {}, _crash, sf.oom_killed),
+                 ('ramp_oom_kill_matched_to_the_game', {}, _ramp('bot_failed_before_window'), sf.oom_killed),
+                 ('ramp_oom_kill_with_the_last_read_before_the_abort', {}, lambda t: (_ramp('bot_failed_before_window')(t), sf._keep_bot_reads(t, sf._last_read_before_abort(t))), sf.oom_killed),
+                 ('ramp_overflow_on_a_read_after_the_abort_beside_an_overrun', {}, _ramp(then=lambda t: (sf.ramp_slow_ticks(t, 2), sf._bot_socket(t, lambda item: item.update(drops=1 if item['local_port'] == 40003 else 0)))), None)
+                 ) + tuple(('game_oom_%s' % name, {}, _crash, (lambda change: lambda t: sf.oom_killed(t, change))(change)) for name, _, change in sf.OOM_NOT_ATTRIBUTED)
+SCENARIOS = SCENARIOS + OOM_SCENARIOS
 BYPASSES = (
     ('local_counter_bypass', dict(require_counters=False)),
     ('prover_never_given_the_schema', dict(prove=dict(telemetry_schema=None))),
@@ -183,7 +189,7 @@ def score_scenarios():
             scenario = sf.Scenario(root, **options)
             if change is not None:
                 change(scenario.tree)
-            rows[name] = sf.summary(scenario.score(execution_record=record))
+            rows[name] = sf.summary(scenario.score(execution_record=record(scenario.tree) if callable(record) else record))
     for name, options in BYPASSES:
         with tempfile.TemporaryDirectory(prefix='omega-score-') as root:
             scenario = sf.Scenario(root, **options.get('tree', {}))
@@ -212,7 +218,7 @@ def _search_summary(sim, result, extra=None):
     report = capacity_report.build(sim.stack.root)
     starts = len([call for call in sim.guests.calls if call['command'] == 'start' and call['role'] == 'game'])
     return dict(status=report['status'], claim=report['claim'], journal_claim=report['journal_claim'], evidence=report['evidence'], batch=result.status if result is not None else None, observations=report['observations'], counts=report['counts'], game_starts=starts, no_hidden_retry=starts == len(sim.records()),
-                trials=[{key: row.get(key) for key in ('ordinal', 'phase', 'target', 'repetition', 'hold_s', 'outcome', 'classification', 'gates', 'offered_load', 'evidence_problems')} for row in report['trials']], **(extra or {}))
+                trials=[{key: row.get(key) for key in ('ordinal', 'phase', 'target', 'repetition', 'hold_s', 'outcome', 'classification', 'gates', 'offered_load', 'evidence_problems', 'hard_facts', 'superseded_decisions')} for row in report['trials']], **(extra or {}))
 
 
 def _plain(rules, **options):
@@ -248,6 +254,109 @@ def _crash_in_coarse(point, rules=None):
         result = executor.run_batch() if outcome['resumed'] else None
         return sim, result, dict(crashed_at=point, resumed=outcome['resumed'], resume_code=outcome.get('code'))
     return play
+
+
+def _lose_a_file(sim, index=0, corrupt=True):
+    path = sim.run_dir(sim.records()[index]['run_id']) / 'bot' / 'bot.stdout.log'
+    path.chmod(0o644)
+    path.unlink()
+    if corrupt:
+        sim.guests.corrupt_export.add('bot.stdout.log')
+
+
+def _nth(point, nth):
+    seen = []
+
+    def failpoint(name):
+        if name == point:
+            seen.append(name)
+            if len(seen) == nth:
+                raise rf.SimulatedCrash(name)
+    return failpoint
+
+
+def _stop_fact_on_return(point, nth=1, index=0, second_crash=False, corrupt=True):
+    """A controller dies at ``point``. One required raw file is gone on the return, and the transfer brings corrupt bytes or cannot run at all."""
+    def play(case):
+        sim = sf.ScoredSim(case, sf.by_target({50: sf.slow, 30: sf.slow}))
+        case.addCleanup(rf.make_writable, sim.stack.root)
+        sim.ready()
+        try:
+            sim.executor(failpoint=_nth(point, nth)).execute()
+        except rf.SimulatedCrash:
+            pass
+        _lose_a_file(sim, index, corrupt)
+        if not corrupt:
+            sim.guests.copy_failures.add(('bot', 'get'))
+        if second_crash:
+            executor, control = sim.controller(failpoint=rf.crash_at('after_reconcile_record'))
+            try:
+                executor.resume('operator: resume remaining runs', control)
+            except rf.SimulatedCrash:
+                pass
+            sim.guests.corrupt_export.clear()
+        executor, control = sim.controller(name='controller-c')
+        outcome = executor.resume('operator: resume remaining runs', control)
+        return sim, None, dict(crashed_at=point, resumed=outcome['resumed'], resume_code=outcome.get('code'), terminal_failure=sim.status_now()['terminal_failure'])
+    return play
+
+
+def _corrupt_at_wrap_up(case):
+    sim = sf.ScoredSim(case, sf.by_target({50: sf.slow, 30: sf.slow}))
+    case.addCleanup(rf.make_writable, sim.stack.root)
+    sim.ready()
+    executor = sim.executor()
+    result = executor.execute()
+    _lose_a_file(sim)
+    executor.wrap_up(result)
+    return sim, result, dict(terminal_failure=sim.status_now()['terminal_failure'])
+
+
+def _oom_kills(rules, change=None):
+    """A real search over runs whose game is SIGKILLed, each leaving what its supervisor would have. Every run is killed, so 5 ends the search too."""
+    def play(case):
+        def rule(tree):
+            sf.game_died(tree, 30)
+            sf.bots_time_out_after_game_died(tree, [1], 35)
+            sf.supervisor_saw_an_oom_kill(tree, change)
+        sim = sf.ScoredSim(case, sf.by_target({target: rule for target in rules}))
+        case.addCleanup(rf.make_writable, sim.stack.root)
+        sim.ready()
+        sim.guests.game_crash_after_s = 20
+        sim.guests.game_exit = (None, 9)
+        sim.guests.UNIT_MODE = 'systemd'
+        return sim, sim.executor().execute(), None
+    return play
+
+
+def _oom_change(name):
+    return next(change for found, _, change in sf.OOM_NOT_ATTRIBUTED if found == name)
+
+
+def _ramp_tail(name, then=None, crash=False):
+    change = next(item for found, _, item in sf.RAMP_NOT_PROVEN if found == name)
+
+    def ramp(tree):
+        sf.ramp_failure(tree, 'bot_failed_before_window' if then else 'readiness_timeout', 5 if then else tree.timeline.target - 1)
+        if then:
+            then(tree)
+        else:
+            sf.ramp_slow_ticks(tree, 2)
+        change(tree)
+
+    def play(case):
+        sim = sf.ScoredSim(case, sf.by_target({25: ramp, 5: sf.slow}))
+        case.addCleanup(rf.make_writable, sim.stack.root)
+        sim.ready()
+        if crash:
+            sim.guests.game_crash_after_s = 20
+            sim.guests.game_exit = (101, None)
+        return sim, sim.executor().execute(), None
+    return play
+
+
+def _kick_bot_3(tree):
+    sf.add_bot_end(tree, 3, 'server disconnected (reason 2)', dict(at_ns=2 * NS, reason=cs.REASON_KICKED, expected=False))
 
 
 def _interrupted_confirmation(case):
@@ -440,6 +549,26 @@ SEARCHES = (
     ('unfrozen_controller_collects_and_decides_nothing', _crash_then_collect('after_execution_record', {}, source_problems=_unfrozen)),
     ('unfrozen_controller_recovers_a_validated_retained_score', _crash_then_collect('after_score_retained', {25: sf.slow}, source_problems=_unfrozen)),
     ('unfrozen_controller_refuses_a_foreign_retained_score', _crash_then_collect('after_score_retained', {25: sf.slow}, _foreign_score, source_problems=_unfrozen)),
+    # a ramp's generator is proven by a counter read certainly after the abort, and by nothing less
+    ('ramp_overrun_with_the_last_read_just_before_the_abort_stops_with_no_refinement', _ramp_tail('last_read_just_before_the_abort')),
+    ('ramp_overrun_with_the_last_read_possibly_before_the_abort_stops_with_no_refinement', _ramp_tail('last_read_may_be_before_the_abort')),
+    ('ramp_overrun_with_a_socket_gone_by_the_read_after_the_abort_stops_with_no_refinement', _ramp_tail('socket_gone_before_the_read_after_the_abort')),
+    ('ramp_kick_with_the_last_read_just_before_the_abort_stops_with_no_refinement', _ramp_tail('last_read_just_before_the_abort', then=_kick_bot_3)),
+    ('ramp_server_crash_with_the_last_read_just_before_the_abort_stops_with_no_refinement', _ramp_tail('last_read_just_before_the_abort', crash=True)),
+    # a stop fact outranks an intact retained decision, in every generation, and stops the session if the decision was already committed
+    ('corrupt_bytes_on_return_outrank_a_retained_score', _stop_fact_on_return('after_score_retained')),
+    ('corrupt_bytes_on_return_outrank_a_retained_classification', _stop_fact_on_return('before_outcome_commit')),
+    ('corrupt_bytes_survive_a_second_crash_and_a_restored_transfer_after_a_retained_score', _stop_fact_on_return('after_score_retained', second_crash=True)),
+    ('corrupt_bytes_survive_a_second_crash_and_a_restored_transfer_after_a_retained_classification', _stop_fact_on_return('before_outcome_commit', second_crash=True)),
+    ('corrupt_bytes_in_a_confirmation_keep_its_siblings_untouched', _stop_fact_on_return('before_outcome_commit', nth=4, index=3)),
+    ('corrupt_bytes_found_after_the_commit_stop_the_session_and_keep_the_outcome', _stop_fact_on_return('after_outcome_commit')),
+    ('corrupt_bytes_found_by_recovery_at_wrap_up_withhold_the_claim', _corrupt_at_wrap_up),
+    ('a_transfer_that_cannot_run_costs_a_retained_score_nothing', _stop_fact_on_return('after_score_retained', corrupt=False)),
+    ('a_transfer_that_cannot_run_costs_a_committed_outcome_nothing', _stop_fact_on_return('after_outcome_commit', corrupt=False)),
+    # a SIGKILL is the kernel's, of this process, only with evidence that says so
+    ('oom_kill_matched_to_the_game_opens_the_bracket', _oom_kills((25, 5))),
+    ('oom_kill_of_a_reused_pid_stops_with_no_refinement', _oom_kills((25, 5), _oom_change('a_reused_pid'))),
+    ('oom_kill_in_a_shared_cgroup_stops_with_no_refinement', _oom_kills((25, 5), _oom_change('a_shared_cgroup'))),
 )
 
 

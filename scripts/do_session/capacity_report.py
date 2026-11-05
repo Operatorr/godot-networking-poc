@@ -127,12 +127,15 @@ def _file_sha256(path):
 def audit(session_dir, manifest, sha, record):
     """What the retained files say of one trial, set against what the journal says. A file's current hash is only ever compared with a hash recorded earlier, and never taken as the expected one.
 
-    Returns (problems, verdict, score): the verdict and score only when they hold up, so nothing unverified can be rendered as this run's.
+    Returns (problems, verdict, score): the verdict and score only when they hold up, so nothing unverified can be rendered as this run's. A stop fact on record beside an outcome that does not stop is a problem of its own: the
+    outcome may be immutable and intact, and it still cannot be vouched for.
     """
     run_id = record.trial.run_id
     run_dir = session_dir / 'runs' / run_id
     expected = _expectation(run_dir, record, manifest, sha)
     problems = []
+    if record.outcome is not None and record.outcome not in search.STOPPING:
+        problems += ['the journal says %s, and %s records a stop fact: %s' % (record.outcome, fact['record'], '; '.join(fact['details'])) for fact in capacity_scorer.hard_facts(run_dir)]
     reference = capacity_scorer.parse_reference(record.evidence_ref)
     verdict = None
     if record.outcome is not None:
@@ -176,11 +179,14 @@ def build(session_dir):
         run_dir = session_dir / 'runs' / trial.run_id
         problems, verdict, score = audit(session_dir, manifest, sha, record)
         row = dict(run_id=trial.run_id, ordinal=trial.ordinal, phase=trial.phase, target=trial.target, repetition=trial.repetition, hold_s=trial.hold_s, predecessors=list(trial.predecessors), outcome=record.outcome, evidence_ref=record.evidence_ref, evidence_problems=problems,
+                   hard_facts=capacity_scorer.hard_facts(run_dir), superseded_decisions=list((verdict or {}).get('supersedes') or ()),
                    score_sha256=_file_sha256(run_dir / SCORE_FILE), classification_sha256=_file_sha256(run_dir / 'classification.json'), window_proof_sha256=_file_sha256(run_dir / 'window-proof.json'))
         if score is not None:
             row.update(classification=score.get('classification'), reasons=score.get('reasons'), gates={name: gate.get('verdict') for name, gate in (score.get('gates') or {}).items()}, offered_load=(score.get('validity') or {}).get('verdict'), values={name: gate_value(name, gate) for name, gate in (score.get('gates') or {}).items()})
             if verdict is not None and verdict.get('outcome') != score.get('outcome'):
                 row['reasons'] = list(verdict.get('reasons') or ()) + list(score.get('reasons') or ())
+            if row['superseded_decisions']:
+                row['classification'] = None    # the gates and offered load stay readable, under a row that says they are history
         else:
             row.update(classification=None, reasons=list((verdict or {}).get('reasons') or ()), gates={}, offered_load=None, values={})
         trials.append(row)
@@ -189,14 +195,18 @@ def build(session_dir):
     if disputed:
         claim = dict(kind='evidence_disagreement', players=None, lower_bound=None, search_cap_reached=False, confirmed=False,
                      statement='No evidence-backed claim: the retained files of %d of %d trials disagree with the journal or cannot be verified. What the journal says is kept apart as history, and is not verified here.' % (len(disputed), len(trials)))
-    return dict(schema=SEARCH_REPORT_SCHEMA, session_id=state.condition_id, status=derived['status'], detail=derived['detail'], claim=claim, journal_claim=journal_claim, evidence=dict(verified=not disputed, disputed_trials=disputed), observations=search.observations(state), counts=derived['counts'], trials=trials, establishes=claim['confirmed'])
+    superseded = [row['run_id'] for row in trials if row['superseded_decisions']]
+    evidence = dict(verified=not disputed and not superseded, disputed_trials=disputed, superseded_trials=superseded, trials_with_stop_facts=[row['run_id'] for row in trials if row['hard_facts']])
+    return dict(schema=SEARCH_REPORT_SCHEMA, session_id=state.condition_id, status=derived['status'], detail=derived['detail'], claim=claim, journal_claim=journal_claim, evidence=evidence, observations=search.observations(state), counts=derived['counts'], trials=trials, establishes=claim['confirmed'])
 
 
 def render_search(report):
     claim = report['claim']
     lines = ['# Capacity search: %s' % report['session_id'], '', '**%s**' % claim['statement'], '']
-    if not report['evidence']['verified']:
+    if report['evidence']['disputed_trials']:
         lines += ['**History only, from the journal and not verified:** %s' % report['journal_claim']['statement'], '']
+    if report['evidence']['superseded_trials']:
+        lines += ['**Not verified as a whole.** A stop fact outranked a retained decision in: %s. Those decisions are kept as history and do not stand.' % ', '.join(report['evidence']['superseded_trials']), '']
     lines += ['Status `%s`. %s' % (report['status'], report['detail']), '',
              '| # | Phase | Target | Rep | Hold (s) | Outcome | Offered load | Continuity | Errors | Ticks | Game socket | RTT p95 | ENet loss |', '| ---: | --- | ---: | ---: | ---: | --- | --- | --- | --- | --- | --- | --- | --- |']
     for row in report['trials']:
@@ -207,6 +217,8 @@ def render_search(report):
     for row in report['trials']:
         lines += ['', '**%s**: %s' % (row['run_id'], row['outcome'] or 'pending')]
         lines += ['- Not verified: ' + problem for problem in row['evidence_problems']]
+        lines += ['- Stop fact %s (%s): %s' % (fact['outcome'], fact['record'], '; '.join(str(item) for item in fact['details'])) for fact in row.get('hard_facts') or ()]
+        lines += ['- History, does not stand: %s said %s (sha256 %s). The gates below are what it decided.' % (item['file'], item['outcome'], item['sha256']) for item in row.get('superseded_decisions') or ()]
         lines += ['- ' + str(reason) for reason in (row.get('reasons') or ())]
         lines += ['- %s: %s' % (name, value) for name, value in sorted((row.get('values') or {}).items()) if value]
     lines += ['', 'CPU, memory, bandwidth and variance are diagnostics and add no gate. ENet loss is a smoothed estimate, not a measured fraction of datagrams dropped. This report renders retained decisions and proves nothing by existing.', '']

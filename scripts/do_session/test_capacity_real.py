@@ -87,7 +87,8 @@ class RealBytes(unittest.TestCase):
         host = ramp['bot_host']
         self.assertEqual(host['sockets_with_counters'], 0, 'this platform has none')
         self.assertGreaterEqual(host['sockets_without_counters'], 1)
-        self.assertLessEqual(host['last_read_before_abort_ns'], mw.RAMP_READ_TAIL_NS)
+        self.assertGreaterEqual(host['reads_certainly_after_abort'], 1, 'the swarm held its sockets open for a read after it gave up')
+        self.assertGreater(host['first_read_after_abort_ns'], 0)
         self.assertEqual(document['validity']['verdict'], cs.NOT_PROVEN, 'the missing counters leave it unproven, on this platform')
 
 

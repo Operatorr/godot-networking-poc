@@ -17,7 +17,8 @@ grant is resolved, acknowledged by the guest's fence or conclusively expired; on
 Workload processes stop by themselves, through the guest's supervisor, by ``launch_by + estimate`` less the time export
 needs. This controller only ends them sooner. ``measurement_window`` proves or refuses the common scored interval from the sealed files, and
 ``capacity_scorer`` decides gates and validity from those same files. Both are retained with the run, each create-only and hash-bound, and held against the
-execution facts by ``run_checks.apply_scorer``. A returning controller reuses what is retained once it is shown to be this run's own, so a crash can move no verdict, and only the frozen revision can make a new one.
+execution facts by ``run_checks.apply_scorer``. A returning controller reuses what is retained once it is shown to be this run's own, so a crash can move no verdict and only the frozen revision can make a new one, unless a stop fact
+is on record. That outranks any decision not yet committed, and stops the session past one that was.
 """
 import dataclasses
 import hashlib
@@ -256,6 +257,7 @@ class RunExecutor:
         self.smokes = 0
         self.fences_closed = False
         self.never_created = set()  # (run_id, role): a plan went out, and the host says no such run ever existed
+        self.terminal_facts_found = set()   # (run_id, role): corrupt bytes this controller already wrote down, so a repeated sweep does not write them again
         self.addresses = None
         self.report = None
         self.prepared = False
@@ -1312,8 +1314,53 @@ class RunExecutor:
             self._stop_smoke(['--smoke-id', 'retire-%d' % self.token])
         for row in unfinished:
             self._reconcile_run(row, reason, inventories)
+        self._settle_committed_runs(records, inventories)
         self._sync_planner_journal()
         return problems
+
+    def _settle_committed_runs(self, records, inventories):
+        """An outcome is immutable once committed, and a failure found after it still stops what depends on it. Facts already on record count, and so do the bytes an advancing outcome stood on.
+
+        A file that cannot be fetched now says nothing, so it stays a note and costs a committed decision nothing.
+        """
+        for row in records:
+            if row['outcome'] is None or row['outcome'] in search.STOPPING:
+                continue
+            run_id = row['run_id']
+            facts = capacity_scorer.hard_facts(self._run_dir(run_id))
+            if facts:
+                self._record_terminal_fact(run_id, facts[0]['outcome'], 'run %s holds %s beside its committed %s: %s' % (run_id, facts[0]['record'], row['outcome'], '; '.join(facts[0]['details'])[:400]), facts[0]['record'])
+            if row['outcome'] not in search.ADVANCING:
+                continue
+            for role in inventories:
+                try:
+                    if self._role_inventory(run_id, role)['status'] not in ('verified', 'never_created') and not self._recover_role(run_id, role, self._quiet_keepalive):
+                        self._note('committed_evidence_unverified', run_id=run_id, role=role)
+                except LOCAL_FAILURES as error:     # a surprising seal on one committed run must not cost the return, and it proves nothing about what the run decided
+                    self._note('committed_evidence_unverified', run_id=run_id, role=role, detail=type(error).__name__)
+
+    def _retain_terminal_fact(self, run_id, role, failed):
+        """Corrupt bytes found for a run whose outcome is already committed. Written down first, so a crash before the registry hears of it leaves the next controller to finish the job."""
+        for attempt in range(100):
+            name = 'terminal-fact-%04d-%d.json' % (self.token, attempt)
+            if not (self._run_dir(run_id) / name).exists():
+                break
+        details = ['%s evidence was not fully exported: %s' % (role, failed)]
+        document = dict(schema=capacity_scorer.TERMINAL_FACT_SCHEMA, session_id=self.session_id, manifest_sha256=self.sha, run_id=run_id, role=role, outcome=search.INFRASTRUCTURE_FAILURE, details=details, fencing_token=self.token, found_at=session_clock.iso(self.wall()))
+        try:
+            do_session.write_new_durable(self._run_dir(run_id) / name, json.dumps(document, indent=2, sort_keys=True) + '\n')
+        except OSError as error:     # this disk's trouble must not keep the session from hearing of it
+            self._note('terminal_fact_not_retained', run_id=run_id, detail=type(error).__name__)
+        self.failpoint('after_terminal_fact')
+        self._record_terminal_fact(run_id, search.INFRASTRUCTURE_FAILURE, 'run %s: %s' % (run_id, details[0]), name)
+
+    def _record_terminal_fact(self, run_id, outcome, detail, record):
+        """The run keeps its outcome, and the session stops. It must survive this process, so a resume cannot walk past it."""
+        self._note('terminal_fact', run_id=run_id, outcome=outcome, detail=detail)
+        try:
+            self.client.mutate('record_batch_stop', session_id=self.session_id, outcome=outcome, fencing_token=self.token, detail=detail, evidence_ref='runs/%s/%s' % (run_id, record))
+        except (registry_client.RegistryRejected, registry_client.RegistryUnavailable) as error:
+            self._note('batch_stop_unrecorded', detail=cleanup_provider.redact(error))
 
     def _retire_unknown(self, role, entry, reason):
         run_id = entry['run_id']
@@ -1399,33 +1446,60 @@ class RunExecutor:
             return
         self._seal_role(context, role)
 
+    def _stop_fact(self, context, settled):
+        """A stop fact that any generation or this return demonstrated, or None. What a host only failed to answer is not one, so a healthy retained decision outlives an unreachable host."""
+        if context.demonstrated is not None:
+            return dict(context.demonstrated, scored=False)
+        if settled is not None and settled['outcome'] in search.STOPPING:
+            return settled
+        if ((context.retained_record or {}).get('problems') or {}).get(NOT_LAUNCHED):
+            return None     # nothing ran, so all that is on record is what a start that never happened could not show
+        definite = [p for p in context.problems[run_checks.INFRASTRUCTURE] if p not in context.uncertain]
+        return dict(outcome=search.INFRASTRUCTURE_FAILURE, reasons=definite, scored=False) if definite else None
+
+    def _decisions_on_record(self, run_id):
+        """What this run's retained decision files said, by file and hash. They stay on disk as they were, as history."""
+        found = []
+        for name in ('classification.json', capacity_report.SCORE_FILE):
+            path = self._run_dir(run_id) / name
+            if path.exists():
+                document = guest_runner.read_json(path)
+                document = document if isinstance(document, dict) else {}
+                found.append(dict(file=name, sha256=sha256_path(path), outcome=(document.get('verdict') or {}).get('outcome') if name == 'classification.json' else document.get('outcome')))
+        return found
+
     def _interrupted_verdict(self, context, execution, reachable):
         """A crash just before the commit keeps the verdict already reached, and one earlier keeps the facts already written down.
 
-        INCOMPLETE is for what really is unknown: a run that was cut short, or that could not be reached. It never replaces
-        a failure that was demonstrated, with or without a scorer.
+        A stop fact comes first, from every generation of records and from this return, whatever an earlier decision says: until an outcome is committed it is not settled, and an intact retained decision
+        must not authorize more work past a failure that is on record. That decision's files stay as they were, as history, and the new verdict names them. INCOMPLETE is for what really is unknown: a run that
+        was cut short, or that could not be reached. It never replaces a failure that was demonstrated, with or without a scorer.
         """
         retained, refused = self._retained_classification(context)
-        if retained is not None:
-            return dict(retained, reused=True)
-        if context.demonstrated is not None:
-            return dict(context.demonstrated, scored=False)
+        settled = None
         if context.retained_record is not None:
             # Exactly what that controller would have decided next, had it not died first.
-            verdict = self._settled_verdict(context.retained_record.get('problems') or {}, context.retained_record.get('interrupted'))
-            if verdict is not None:
-                return verdict
-        definite = [p for p in context.problems[run_checks.INFRASTRUCTURE] if p not in context.uncertain]
-        if refused and not definite:
+            settled = self._settled_verdict(context.retained_record.get('problems') or {}, context.retained_record.get('interrupted'))
+        stop = self._stop_fact(context, settled)
+        if stop is not None:
+            if retained is not None and retained['outcome'] in search.STOPPING:
+                return dict(retained, reused=True)     # a terminal verdict stays what it is, and the fact beside it stays on record
+            decisions = [item for item in self._decisions_on_record(context.trial.run_id) if item['outcome'] != stop['outcome']]
+            if decisions:
+                stop = dict(stop, supersedes=decisions, reasons=list(stop.get('reasons') or ()) + ['%s says %s, and is kept as history: it does not stand beside this failure' % (item['file'], item['outcome']) for item in decisions])
+            return stop
+        if retained is not None:
+            return dict(retained, reused=True)
+        if settled is not None:
+            return settled
+        if refused:
             # Short of a terminal fact, what this run decided is not known, and it must not be decided again from files that already disagree.
             return dict(outcome=search.INCONCLUSIVE, reasons=refused, scored=False)
-        if context.retained_record is not None and not refused:
-            # The score was retained from verified local files, so losing a host now cannot unsay it. A score that cannot be read back says nothing, so it cannot outrank a terminal fact.
+        if context.retained_record is not None:
+            # The score was retained from verified local files, so losing a host now cannot unsay it.
             answer = self._retained_score(context, execution)
-            if answer is not None and not (definite and answer.get('retained_refused')):
+            if answer is not None:
                 return run_checks.apply_scorer(run_checks.disposition(context.retained_record.get('problems') or {}), answer, self._window_proof(context, execution))
-        if definite:
-            return dict(outcome=search.INFRASTRUCTURE_FAILURE, reasons=definite, scored=False)
         problems = execution['document']['problems']
         if not reachable or set(context.sealed) != set(ROLES) or not run_checks.finished_naturally(context.plans, context.summaries) or context.uncertain:
             return dict(outcome=search.INCOMPLETE, reasons=['interrupted: ' + str(context.interrupted)] + context.uncertain, scored=False)
@@ -1747,10 +1821,11 @@ class RunExecutor:
                     break
         return missing
 
-    def _recover_role(self, run_id, role):
-        """Each read has the time that is left and no more. Past the end of the episode nothing is even asked."""
+    def _recover_role(self, run_id, role, on_wait=None):
+        """Each read has the time that is left and no more. Past the end of the episode nothing is even asked. Bytes that fail their hash are a demonstrated failure, and a transfer that could not run says nothing."""
+        on_wait = on_wait or self._recovery_wait
         try:
-            sealed = self._runner(role, 'status', '--run-id', run_id, '--role', role, on_wait=self._recovery_wait)
+            sealed = self._runner(role, 'status', '--run-id', run_id, '--role', role, on_wait=on_wait)
             if sealed.get('code') == 'unknown_run':
                 self.never_created.add((run_id, role))     # the start was refused before any directory existed
                 return True
@@ -1759,11 +1834,16 @@ class RunExecutor:
             remote_seal = guest_runner.DEFAULT_ROOT + '/runs/' + run_id + '/' + role + '/' + guest_runner.SEAL
             with tempfile.TemporaryDirectory() as temporary:
                 local = pathlib.Path(temporary) / guest_runner.SEAL
-                result = self.guests.get(role, remote_seal, str(local), self._guest_timeout(self.policy.transfer_timeout_s), self._recovery_wait)
+                result = self.guests.get(role, remote_seal, str(local), self._guest_timeout(self.policy.transfer_timeout_s), on_wait)
                 if result.returncode != 0 or sha256_path(local) != sealed.get('seal_sha256'):
                     return False
                 seal = json.loads(local.read_text())
-            return self._export_role(run_id, role, dict(seal=seal, seal_sha256=sealed['seal_sha256']))['complete']
+            exported = self._export_role(run_id, role, dict(seal=seal, seal_sha256=sealed['seal_sha256']))
+            corrupt = [item for item in exported['failed'] if item['kind'] == 'corrupt']
+            if corrupt and (run_id, role) not in self.terminal_facts_found:
+                self.terminal_facts_found.add((run_id, role))
+                self._retain_terminal_fact(run_id, role, corrupt)
+            return exported['complete']
         except (GuestLost, RunAborted, OSError, ValueError):
             return False
 

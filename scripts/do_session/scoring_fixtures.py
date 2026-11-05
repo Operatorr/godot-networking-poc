@@ -13,9 +13,11 @@ import tempfile
 
 import capacity_scorer as cs
 import fake_run_guest
+import guest_runner
 import measurement_fixtures as fx
 import measurement_window as mw
 import run_fixtures as rf
+import run_plan
 
 NS = mw.NS
 FROZEN_SCHEMA = dict(id=mw.schema()['id'], sha256=mw.schema_sha256())
@@ -359,6 +361,18 @@ def _keep_bot_reads(tree, count):
     tree.edit_rows('bot/sampler.ndjson', change)
 
 
+def _last_read_before_abort(tree):
+    """How many reads come before a ramp's abort, which is also the index of the first read after it. Reads come at every whole second, from zero."""
+    return int(tree.timeline.drain // NS) + 1
+
+
+def _abort_straddles_the_last_read(tree):
+    """The final read and the abort are close enough that the clocks allow either order."""
+    last = _last_read_before_abort(tree)
+    _set_abort(tree, lambda row: row.update(mono_ns=last * NS - 40_000))
+    _keep_bot_reads(tree, last + 1)
+
+
 def _forget_bot_join(tree, bot=3):
     def change(rows):
         rows[:] = [row for row in rows if not (row.get('k') in ('join', 'connected', 'auth') and row.get('bot') == bot)]
@@ -404,11 +418,101 @@ RAMP_NOT_PROVEN = (
     ('no_abort_row', 'window_boundaries_missing', lambda t: _drop_coordinator_rows(t, 'abort')),
     ('abort_says_something_else', 'boundary_contradiction', lambda t: _set_abort(t, lambda row: row.update(reason='interrupted'))),
     ('last_read_long_before_the_abort', 'collector_boundary_missing', lambda t: _keep_bot_reads(t, 10)),
+    ('last_read_just_before_the_abort', 'collector_boundary_missing', lambda t: _keep_bot_reads(t, _last_read_before_abort(t))),
+    ('last_read_may_be_before_the_abort', 'collector_boundary_missing', _abort_straddles_the_last_read),
+    ('socket_gone_before_the_read_after_the_abort', 'socket_evidence_missing', lambda t: _drop_bot_socket(t, 40001, only_index=_last_read_before_abort(t))),
     ('no_bot_collector', 'collector_evidence_missing', lambda t: t.path('bot/sampler.ndjson').unlink()),
     ('footer_without_poll_liveness', 'poll_liveness_missing', lambda t: t.edit_shard_row(0, 'footer', lambda row: row.pop('max_poll_gap_ns'))),
     ('no_drain_record', 'drain_missing', lambda t: t.drop_shard_rows(1, 'drain_start')),
     ('shard_owning_someone_elses_bots', 'ownership_mismatch', lambda t: t.edit_shard_row(0, 'header', lambda row: row.update(bots=[2]))),
     ('shard_file_missing', 'shard_evidence_missing', lambda t: t.path('bot/swarm/shard-1.ndjson').unlink()),
+)
+
+
+# ---- what the supervisor keeps when the kernel kills a process -------------------------------------------
+
+OOM_UNIT = run_plan.unit_name('fixture-session', 'fixture-run', 'game')      # a unit's real form, suffix and all
+OOM_SUPERVISOR = dict(pid=2999, start_id='ticks:7999', boot_id='boot-game')
+OOM_SAMPLER = dict(pid=3002, start_id='ticks:8002', boot_id='boot-game')
+OOM_INVOCATION = 'fixture-invocation-oom'
+
+
+def _oom_reading(at_ns, oom_kill, procs, **more):
+    return dict(mono_ns=at_ns, wall_ns=fx.GAME_MONO_ORIGIN_WALL + at_ns, oom_kill=oom_kill, oom_group_kill=0, oom=oom_kill, procs=procs, **more)
+
+
+def process_oom_document(game, supervisor=None, sampler=None, invocation=OOM_INVOCATION, unit=OOM_UNIT):
+    """The file ``guest_runner.OomWatch`` leaves when the kernel takes the game: a baseline with the supervisor alone, all three in the unit, one kill, the reap, the other two alive."""
+    supervisor, sampler = supervisor or OOM_SUPERVISOR, sampler or OOM_SAMPLER
+    cgroup = '/system.slice/' + unit
+    all_three = [supervisor['pid'], game['pid'], sampler['pid']]
+    keep = lambda item: {key: item[key] for key in ('pid', 'start_id', 'boot_id')}
+    return dict(schema=guest_runner.OOM_SCHEMA, source='cgroup v2 memory.events of the run unit', run_id='fixture-run', role='game', unit=unit, unit_mode='systemd', available=True, unavailable=None, cgroup=cgroup, invocation_id=invocation,
+                supervisor=keep(supervisor), processes=dict(game=keep(game), sampler=keep(sampler)), member_cgroups=dict(game=cgroup, sampler=cgroup, supervisor=cgroup),
+                baseline=_oom_reading(1_000, 0, [supervisor['pid']]), bound=_oom_reading(2_000, 0, all_three),
+                primary_exit=_oom_reading(3_000, 1, [supervisor['pid'], sampler['pid']], primary='game', returncode=None, signal=9, alive=['sampler']),
+                final=_oom_reading(4_000, 1, [supervisor['pid']]))
+
+
+def oom_killed(tree, change=None, identity=None):
+    """The sealed record of a SIGKILLed game, and the supervisor's file beside it. ``change(document)`` breaks one thing in the file."""
+    game = dict(tree.identities['game']['game'])
+    document = process_oom_document(game)
+    if change is not None:
+        change(document)
+    tree.path('game/process-oom.json').write_text(json.dumps(document))
+    tree.path('plan-game.json').write_text(json.dumps(dict(unit=OOM_UNIT, unit_mode='systemd', role='game')))
+    record = execution(game_exit=(None, 9))
+    record['roles']['game'].update(identity=identity or dict(supervisor=dict(OOM_SUPERVISOR), processes=dict(game=game, sampler=dict(OOM_SAMPLER)), invocation_id=OOM_INVOCATION))
+    return record
+
+
+def _oom_set(**fields):
+    return lambda document: document.update(fields)
+
+
+def _oom_reading_set(name, **fields):
+    return lambda document: document[name].update(fields)
+
+
+def _oom_cgroup(cgroup):
+    """Everything agrees on a cgroup that is not the unit's, so that nothing but its name can refuse it."""
+    return lambda document: document.update(cgroup=cgroup, member_cgroups={name: cgroup for name in document['member_cgroups']})
+
+
+def _oom_process(name, **fields):
+    return lambda document: document['processes'][name].update(fields)
+
+
+# What must leave a SIGKILL unexplained. (name, the status the attribution reports, the change to the supervisor's file.)
+OOM_NOT_ATTRIBUTED = (
+    ('another_process_was_the_victim', 'not_attributable', _oom_process('game', pid=123456)),
+    ('a_reused_pid', 'not_attributable', _oom_process('game', start_id='ticks:1')),
+    ('another_boot', 'not_attributable', _oom_process('game', boot_id='another-boot')),
+    ('a_victim_with_no_start_identity', 'not_attributable', _oom_process('game', start_id=None)),
+    ('another_supervisor', 'not_attributable', lambda d: d['supervisor'].update(pid=123456)),
+    ('another_invocation_of_the_unit', 'not_attributable', _oom_set(invocation_id='other-invocation')),
+    ('another_units_cgroup', 'not_attributable', _oom_cgroup('/system.slice/ssh.service')),
+    ('another_unit_named', 'not_attributable', _oom_set(unit='omega-run-other-game.service', cgroup='/system.slice/omega-run-other-game.service')),
+    ('a_shared_cgroup', 'not_attributable', _oom_cgroup('/user.slice/user-1000.slice/session-1.scope')),
+    ('a_member_in_another_cgroup', 'not_attributable', lambda d: d['member_cgroups'].update(game='/system.slice/ssh.service')),
+    ('a_stranger_in_the_cgroup', 'not_attributable', lambda d: d['bound']['procs'].append(777)),
+    ('a_stranger_at_the_reap', 'not_attributable', lambda d: d['primary_exit']['procs'].append(777)),
+    ('a_stranger_before_anything_started', 'not_attributable', lambda d: d['baseline']['procs'].append(777)),
+    ('no_kill_counted', 'not_attributable', _oom_reading_set('primary_exit', oom_kill=0)),
+    ('two_kills_counted', 'not_attributable', lambda d: (d['primary_exit'].update(oom_kill=2), d['final'].update(oom_kill=2))),
+    ('a_kill_only_after_the_reap', 'not_attributable', lambda d: (d['primary_exit'].update(oom_kill=0), d['final'].update(oom_kill=1))),
+    ('a_group_kill', 'not_attributable', _oom_reading_set('primary_exit', oom_group_kill=1)),
+    ('the_sampler_died_too', 'not_attributable', lambda d: d['primary_exit'].update(alive=[], procs=[d['supervisor']['pid']])),
+    ('the_counter_restarted', 'not_attributable', lambda d: (d['baseline'].update(oom_kill=5), d['bound'].update(oom_kill=5))),
+    ('the_counter_went_back_before_the_reap', 'not_attributable', lambda d: (d['baseline'].update(oom_kill=3), d['bound'].update(oom_kill=0), d['primary_exit'].update(oom_kill=4), d['final'].update(oom_kill=4))),
+    ('the_counter_went_back_after_the_reap', 'not_attributable', _oom_reading_set('final', oom_kill=0)),
+    ('a_read_that_failed', 'not_attributable', _oom_set(primary_exit=dict(unreadable=True))),
+    ('no_baseline', 'not_attributable', lambda d: d.pop('baseline')),
+    ('reads_out_of_order', 'not_attributable', _oom_reading_set('bound', mono_ns=500)),
+    ('the_exit_it_read_was_something_else', 'not_attributable', _oom_reading_set('primary_exit', signal=15)),
+    ('no_unit_of_its_own', 'unavailable', _oom_set(available=False, unavailable='this run has no unit of its own, so no cgroup boundary is its alone')),
+    ('another_schema', 'refused', _oom_set(schema='omega.other/1')),
 )
 
 
@@ -493,6 +597,7 @@ class ScoredGuests(fake_run_guest.FakeRunGuests):
         tree = fx.Tree(self.base / run_id, target=target, hold_s=hold_s, identities=identities_of(self.hosts, run_id), game_inode=self.hosts['game'].runs[run_id].socket_rows)
         phase = run_id.split('-')[-3]
         tree.trial = dict(run_id=run_id, phase=phase, target=target, hold_s=hold_s)
+        tree.guest_run = self.hosts['game'].runs[run_id]    # what a script needs to write what this run's supervisor would have
         self.script(tree, tree.trial)
         self.trees[run_id] = tree
         return tree
@@ -529,6 +634,17 @@ class ScoredSim(rf.RunSim):
 
     def score_of(self, run_id):
         return cs.load_retained(self.run_dir(run_id) / 'score.json')
+
+
+def supervisor_saw_an_oom_kill(tree, change=None):
+    """For a whole search: the file this fake run's own supervisor would leave. Hold it to the identities the fake guest really sealed."""
+    run = tree.guest_run
+    identity = run.identity
+    document = process_oom_document(dict(identity['processes']['game'], boot_id=identity['processes']['game']['boot_id']), supervisor=identity['supervisor'], sampler=identity['processes']['sampler'], invocation=identity['invocation_id'], unit=run.plan['unit'])
+    document['run_id'] = run.plan['run_id']
+    if change is not None:
+        change(document)
+    tree.path('game/process-oom.json').write_text(json.dumps(document))
 
 
 def by_target(rules, default=None):

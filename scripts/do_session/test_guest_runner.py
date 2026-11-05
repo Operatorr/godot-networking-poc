@@ -3,10 +3,12 @@
 Stand-in workloads hold real sockets and take real signals. What cannot run here is named where it is faked: ``tc`` is a
 scripted program, and the systemd path runs through shims. Neither says anything about a real Droplet.
 """
+import argparse
 import json
 import os
 import pathlib
 import secrets
+import shutil
 import signal
 import socket
 import subprocess
@@ -23,6 +25,7 @@ import run_checks
 import run_executor
 import run_fixtures as rf
 import run_plan
+import scoring_fixtures as sf
 import search
 
 SESSION = 'do-local-guest-a'
@@ -41,6 +44,11 @@ def wait_until(predicate, limit_s=10.0):
             return value
         time.sleep(0.02)
     raise AssertionError('the condition was not reached')
+
+
+def _alive(pid):
+    """A live process, as cgroup.procs lists one: a zombie is not listed, and a reaped pid is gone."""
+    return guest_runner.process_start_id(pid) is not None
 
 
 class GuestFixture(unittest.TestCase):
@@ -601,6 +609,156 @@ class Contract(GuestFixture):
         self.assertEqual(set(self.do('game', 'inspect')), set(fake_run_guest.CONTRACT_KEYS['inspect']))
 
 
+class OomEvidence(unittest.TestCase):
+    """The real supervisor and real child processes, over a directory standing where the kernel's cgroup files would be. No kernel counted anything here, so what is proven is the seam: what the producer does with
+    those files, and what the consumer makes of what it wrote. Whether a real kill looks like this on a real Droplet is an operational check that no test here can make."""
+    UNIT = run_plan.unit_name('fixture-session', 'fixture-run', 'game')     # the name a real plan carries: systemd-run --unit takes it whole
+    CGROUP = '/system.slice/' + UNIT
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = pathlib.Path(temporary.name)
+        self.cgroup_dir = self.root / 'sys' / 'system.slice' / self.UNIT
+        self.cgroup_dir.mkdir(parents=True)
+        self.write_events(0)
+        (self.cgroup_dir / 'cgroup.procs').write_text('%d\n' % os.getpid())
+        previous = signal.getsignal(signal.SIGTERM)
+        self.addCleanup(signal.signal, signal.SIGTERM, previous)
+
+    def write_events(self, oom_kill):
+        (self.cgroup_dir / 'memory.events').write_text('low 0\nhigh 0\nmax 0\noom %d\noom_kill %d\noom_group_kill 0\n' % (oom_kill, oom_kill))
+
+    def supervise(self, game_script, sampler_argv=None, unit_mode=guest_runner.SYSTEMD, bind_game_cgroup=None):
+        """Runs the real ``cmd_supervise``. ``game_script`` runs in a real child, and can raise the counter the way the kernel does, before the signal."""
+        run_dir = self.root / 'run'
+        run_dir.mkdir()
+        plan = dict(run_id='fixture-run', role='game', unit=self.UNIT, unit_mode=unit_mode, processes=[dict(name='game', argv=['/bin/sh', '-c', game_script], primary=True)], sampler=dict(name='sampler', argv=sampler_argv or ['/bin/sleep', '30']),
+                    stop_grace_s=2.0, stop_by_wall=time.time() + 60)
+        (run_dir / 'plan.json').write_text(json.dumps(plan))
+        real_reading = guest_runner.cgroup_reading
+
+        def reading(cgroup):
+            # cgroup.procs on a real host lists the live members. This stands in for that, from the real children.
+            document = real_reading(cgroup)
+            if document is not None:
+                pids = [os.getpid()]
+                if (run_dir / 'identity.json').exists():
+                    pids += [item['pid'] for item in json.loads((run_dir / 'identity.json').read_text())['processes'].values()]
+                document['procs'] = sorted(pid for pid in pids if _alive(pid))
+            return document
+
+        def member(pid, proc_root='/proc'):
+            return bind_game_cgroup if bind_game_cgroup and pid != os.getpid() else self.CGROUP
+        args = argparse.Namespace(run_dir=str(run_dir))
+        with mock.patch.object(guest_runner, 'CGROUP_ROOT', str(self.root / 'sys')), mock.patch.object(guest_runner, 'cgroup_reading', reading), mock.patch.object(guest_runner, 'cgroup_of', member), \
+                mock.patch.object(guest_runner, '_launch_gate', lambda host, run_dir, plan: 30.0), mock.patch.object(guest_runner, '_spawned_too_late', lambda host, plan: None), mock.patch.dict(os.environ, {'INVOCATION_ID': 'fixture-invocation'}):
+            guest_runner.cmd_supervise(args, None)
+        return run_dir
+
+    def score(self, run_dir):
+        root = tempfile.mkdtemp(prefix='omega-oom-')
+        self.addCleanup(shutil.rmtree, root, True)
+        scenario = sf.Scenario(root)
+        sf.game_died(scenario.tree, 30)
+        sf.bots_time_out_after_game_died(scenario.tree, [1, 2], 35)
+        shutil.copy(str(run_dir / guest_runner.OOM_EVIDENCE), str(scenario.tree.path('game/' + guest_runner.OOM_EVIDENCE)))
+        shutil.copy(str(run_dir / 'plan.json'), str(scenario.tree.path('plan-game.json')))
+        identity = json.loads((run_dir / 'identity.json').read_text())
+        result = json.loads((run_dir / 'result.json').read_text())
+        record = sf.execution(game_exit=(None, 9))
+        record['roles']['game'].update(identity=dict(supervisor=identity['supervisor'], processes=identity['processes'], invocation_id=identity['invocation_id']), result=result)
+        return scenario.score(execution_record=record)
+
+    KILLED_BY_THE_KERNEL = "sleep 0.4; printf 'oom 1\\noom_kill 1\\noom_group_kill 0\\n' > '%s'; kill -9 $$"
+
+    def test_a_kill_the_kernel_counted_reaches_the_consumer_as_the_games(self):
+        run_dir = self.supervise(self.KILLED_BY_THE_KERNEL % (self.cgroup_dir / 'memory.events'))
+        evidence = json.loads((run_dir / guest_runner.OOM_EVIDENCE).read_text())
+        self.assertTrue(evidence['available'], evidence)
+        self.assertEqual((evidence['baseline']['oom_kill'], evidence['primary_exit']['oom_kill']), (0, 1))
+        self.assertEqual(evidence['baseline']['procs'], [os.getpid()], 'before any child existed')
+        self.assertEqual(evidence['primary_exit']['alive'], ['sampler'])
+        self.assertEqual(evidence['primary_exit']['signal'], 9)
+        document = self.score(run_dir)
+        self.assertEqual(document['attribution']['game_exit']['kind'], 'out_of_memory', document['attribution']['game_exit'])
+        self.assertEqual(document['classification'], 'capacity_failure')
+
+    def test_a_sigkill_the_kernel_did_not_count_stays_unexplained(self):
+        run_dir = self.supervise('sleep 0.4; kill -9 $$')
+        self.assertEqual(json.loads((run_dir / guest_runner.OOM_EVIDENCE).read_text())['primary_exit']['oom_kill'], 0)
+        document = self.score(run_dir)
+        self.assertEqual(document['attribution']['game_exit']['kind'], 'killed_with_no_cause_on_record')
+        self.assertEqual(document['classification'], 'inconclusive_evidence')
+
+    def test_a_kill_that_could_be_the_samplers_stays_unexplained(self):
+        run_dir = self.supervise(self.KILLED_BY_THE_KERNEL % (self.cgroup_dir / 'memory.events'), sampler_argv=['/bin/sh', '-c', 'kill -9 $$'])
+        document = self.score(run_dir)
+        self.assertEqual(document['attribution']['game_exit']['kind'], 'killed_with_no_cause_on_record')
+
+    def test_a_game_that_a_cgroup_move_took_elsewhere_stays_unexplained(self):
+        run_dir = self.supervise(self.KILLED_BY_THE_KERNEL % (self.cgroup_dir / 'memory.events'), bind_game_cgroup='/system.slice/ssh.service')
+        self.assertEqual(self.score(run_dir)['attribution']['game_exit']['kind'], 'killed_with_no_cause_on_record')
+
+    def test_a_run_with_no_unit_of_its_own_writes_that_it_has_nothing_to_say(self):
+        run_dir = self.supervise('kill -9 $$', unit_mode=guest_runner.PROCESS_GROUP)
+        evidence = json.loads((run_dir / guest_runner.OOM_EVIDENCE).read_text())
+        self.assertFalse(evidence['available'])
+        self.assertIn('no unit of its own', evidence['unavailable'])
+        self.assertEqual(json.loads((run_dir / 'result.json').read_text())['stop_reason'], 'primary_exited')
+        self.assertEqual(self.score(run_dir)['attribution']['game_exit']['process_oom']['status'], 'unavailable')
+
+    def test_a_real_plans_unit_is_what_the_watch_expects_of_its_cgroup(self):
+        """systemd-run --unit=NAME.service runs it in a cgroup called NAME.service, with no second suffix."""
+        self.assertTrue(self.UNIT.endswith('.service'))
+        with mock.patch.object(guest_runner, 'cgroup_of', lambda pid, proc_root='/proc': self.CGROUP), mock.patch.object(guest_runner, 'CGROUP_ROOT', str(self.root / 'sys')):
+            watch = guest_runner.OomWatch(dict(unit=self.UNIT, unit_mode=guest_runner.SYSTEMD, run_id='fixture-run', role='game'))
+        self.assertTrue(watch.document['available'], watch.document)
+        self.assertEqual(watch.document['cgroup'], self.CGROUP)
+
+    def test_a_cgroup_that_is_not_the_units_or_cannot_be_read_says_so(self):
+        plan = dict(unit=self.UNIT, unit_mode=guest_runner.SYSTEMD, run_id='r', role='game')
+        with mock.patch.object(guest_runner, 'cgroup_of', lambda pid, proc_root='/proc': None):
+            self.assertIn('no cgroup v2', guest_runner.OomWatch(plan).document['unavailable'])
+        with mock.patch.object(guest_runner, 'cgroup_of', lambda pid, proc_root='/proc': '/user.slice/session-1.scope'):
+            self.assertIn('not in the run unit', guest_runner.OomWatch(plan).document['unavailable'])
+        with mock.patch.object(guest_runner, 'cgroup_of', lambda pid, proc_root='/proc': self.CGROUP), mock.patch.object(guest_runner, 'CGROUP_ROOT', str(self.root / 'nowhere')):
+            self.assertIn('cannot be read', guest_runner.OomWatch(plan).document['unavailable'])
+
+    def test_collecting_it_never_stops_a_run_from_stopping(self):
+        def broken(*_):
+            raise RuntimeError('a surprising file')
+        with mock.patch.object(guest_runner, 'cgroup_of', broken):
+            watch = guest_runner.OomWatch(dict(unit=self.UNIT, unit_mode=guest_runner.SYSTEMD))
+        self.assertIn('RuntimeError', watch.document['unavailable'])
+        watch.bind(dict(pid=1), {}, None)
+        watch.primary_exited('game', dict(returncode=None, signal=9), [])
+        watch.finish(self.root / 'nowhere' / 'at' / 'all.json')
+
+    def test_a_missing_counter_is_never_zero(self):
+        (self.cgroup_dir / 'memory.events').write_text('low 0\nhigh 0\n')
+        with mock.patch.object(guest_runner, 'CGROUP_ROOT', str(self.root / 'sys')):
+            self.assertIsNone(guest_runner.cgroup_reading(self.CGROUP))
+        (self.cgroup_dir / 'memory.events').write_text('oom_kill not-a-number\n')
+        with mock.patch.object(guest_runner, 'CGROUP_ROOT', str(self.root / 'sys')):
+            self.assertIsNone(guest_runner.cgroup_reading(self.CGROUP))
+
+    def test_the_v2_line_of_proc_pid_cgroup(self):
+        proc = self.root / 'proc' / '42'
+        proc.mkdir(parents=True)
+        for text, expected in (('0::/system.slice/a.service\n', '/system.slice/a.service'), ('12:memory:/x\n0::/b\n', '/b'), ('12:memory:/x\n', None), ('0::/gone (deleted)\n', None), ('0::relative\n', None)):
+            (proc / 'cgroup').write_text(text)
+            self.assertEqual(guest_runner.cgroup_of(42, str(self.root / 'proc')), expected, text)
+        self.assertIsNone(guest_runner.cgroup_of(43, str(self.root / 'proc')))
+
+    @unittest.skipUnless(os.path.exists('/sys/fs/cgroup/cgroup.controllers') and guest_runner.cgroup_of(os.getpid()) not in (None, '/'), 'needs a Linux host on cgroup v2. Nothing else can run this')
+    def test_the_real_files_read_on_a_real_cgroup(self):
+        reading = guest_runner.cgroup_reading(guest_runner.cgroup_of(os.getpid()))
+        self.assertIsNotNone(reading)
+        self.assertIn(os.getpid(), reading['procs'])
+        self.assertIsInstance(reading['oom_kill'], int)
+
+
 class SystemdPath(GuestFixture):
     """Through shims for ``sudo``, ``systemd-run`` and ``systemctl``, which run the real supervisor. Real units are a Gate A check."""
 
@@ -629,6 +787,13 @@ class SystemdPath(GuestFixture):
         ledger = [dict(run_id='old', invocation_id=started['invocation_id'])]
         self.assertIn('the unit invocation was already used by an earlier run', run_checks.launch_problems(plan, started, ledger))
         self.assertEqual(self.stop(plan)['stopped'], True)
+
+    def test_the_unit_keeps_its_supervisor_alive_through_an_oom_kill(self):
+        self.fence()
+        plan = self.plan(unit_mode=guest_runner.SYSTEMD, bound_s=30.0, stop_grace_s=1.0)
+        self.assertTrue(self.start(plan)['ok'])
+        self.assertIn('--property=OOMPolicy=continue', self.record.read_text())
+        self.stop(plan)
 
     def test_a_failed_unit_start_is_refused(self):
         (self.hosts.bin_dir / 'systemd-run').write_text('#!/bin/sh\nexit 1\n')

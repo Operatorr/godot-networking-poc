@@ -808,9 +808,9 @@ def host_counter_delta(rows):
 
 # ---- a window that was never established ----------------------------------------------------------
 
-# The collector reads about once a second, and an aborted swarm can drain and close its sockets within milliseconds, so no read after the abort is promised. How long before
-# the abort the last read may have been, for the ramp to count as observed. Past this, or with a socket a read should have seen and did not, the generator stays unproven.
-RAMP_READ_TAIL_NS = 2 * NS
+# A kernel drop counter counts from the socket's creation, so one read proves zero for everything before it and nothing after it. A ramp's generator is proven only by a read that is certainly
+# after the abort, on every socket it opened: the last read before an abort, however close, says nothing of the time between them, and a socket no read saw says nothing at all. This is cumulative
+# socket counting, and the two-second borrow for ENet loss samples is a different estimate of a different metric. The swarm holds its sockets open for this read (``COUNTER_HOLD_NS``, measured.rs).
 
 
 def prove_ramp(root, trial, identity, prior, require_counters, limits, reasons):
@@ -946,9 +946,10 @@ def _alive_rows(rows, name):
 
 
 def _check_ramp_bot_host(rows, started, abort_ns, domain, identity, prior, require_counters, limits, reasons):
-    """The supervised swarm's own collector rows, and each socket it opened. A socket read owes a socket from the moment it opened until the abort, as a shard holds them all until it exits.
+    """The supervised swarm's own collector rows, and each socket it opened, up to a read certainly after the abort.
 
-    The counters count from socket creation, so no baseline read is needed and a drop before the first read still counts. Reads are read on the host's own wall clock, the same as the swarm's pairs.
+    The counters count from socket creation, so no baseline read is needed and a drop before the first read still counts. Reads are placed on the host's own wall clock, the same as the swarm's pairs.
+    A read that may have come before the abort proves nothing about the end of the ramp, whichever way the clocks fall, and so does a socket that was gone by the time one came.
     """
     chosen = _alive_rows(rows, 'bot')
     if not chosen:
@@ -964,38 +965,44 @@ def _check_ramp_bot_host(rows, started, abort_ns, domain, identity, prior, requi
     check_process_identity(chosen, 'bot', 'bot', identity, prior.get('processes') or set(), reasons)
     bounds = [counter_read_bounds(row, limits) for row in chosen]
     abort_wall = domain.to_wall(abort_ns) if is_count(abort_ns) else None
-    last = next((bound for bound in reversed(bounds) if bound is not None), None)
-    tail_ns = None
+    after_abort = []
     if abort_wall is None:
         reasons.add('clock_mapping_missing', CLOCK, 'no swarm wall pair near the abort')
-    elif last is None:
+    elif not any(bound is not None for bound in bounds):
         reasons.add('collector_boundary_missing', EVIDENCE, 'no bot collector row can be placed on the wall clock')
     else:
-        tail_ns = max(0, abort_wall[1] - last[0])
-        if tail_ns > RAMP_READ_TAIL_NS:
-            reasons.add('collector_boundary_missing', EVIDENCE, 'the last bot collector read may have been %.1f s before the abort' % (tail_ns / NS))
+        after_abort = [index for index, bound in enumerate(bounds) if bound is not None and bound[0] >= abort_wall[1]]
+        if not after_abort:
+            reasons.add('collector_boundary_missing', EVIDENCE, 'no bot collector read is certainly after the abort, so nothing shows the end of the ramp was free of drops')
     series = socket_series(chosen, 'bot')
     claimed = {join.get('local_port') for join in started.values()}
     for port in sorted(set(series) - claimed, key=str):
         reasons.add('socket_evidence_missing', EVIDENCE, 'the swarm holds a socket on %s that no bot claims' % port)
     ports_read = [{item.get('local_port') for item in ((row.get('procs') or {}).get('bot') or {}).get('sockets') or () if isinstance(item, dict)} for row in chosen]
-    drops, without, unread = 0, [], []
+    drops, without = 0, []
     for bot, join in sorted(started.items()):
         port = join.get('local_port')
         opened = domain.to_wall(join['actual_ns']) if is_count(join.get('actual_ns')) else None
         if opened is None or abort_wall is None:
             without.append(bot)     # already a reason, and without a time for it no read can be said to owe this socket
             continue
-        owed = [index for index, bound in enumerate(bounds) if bound is not None and bound[0] >= opened[1] and bound[1] <= abort_wall[0]]
+        closing = next((index for index in after_abort if bounds[index][0] >= opened[1]), None)
+        if closing is None:
+            if after_abort:
+                reasons.add('socket_evidence_missing', EVIDENCE, 'bot %s: no read certainly after the abort came once the socket on %s opened' % (bot, port))
+            # Short of proving zero, a drop that an earlier read did show is still a fact about the generator.
+            readings = series.get(port) or []
+            if readings and check_socket(series, port, 'bot %s' % bot, require_counters, prior.get('inodes') or set(), reasons, GENERATOR, len(readings)) == 0 and readings[0]['drops']:
+                reasons.add('generator_socket_drops', GENERATOR, 'bot %s dropped %d datagrams before its first read' % (bot, readings[0]['drops']))
+            without.append(bot)
+            continue
+        owed = [index for index in range(closing + 1) if bounds[index] is not None and bounds[index][0] >= opened[1]]
         seen = sum(1 for index in owed if port in ports_read[index])
         if seen != len(owed):
-            reasons.add('socket_evidence_missing', EVIDENCE, 'bot %s: the socket on %s is in %d of the %d reads made while it was open' % (bot, port, seen, len(owed)))
+            reasons.add('socket_evidence_missing', EVIDENCE, 'bot %s: the socket on %s is in %d of the %d reads up to the first one certainly after the abort' % (bot, port, seen, len(owed)))
             without.append(bot)
             continue
         readings = series.get(port) or []
-        if not readings:
-            unread.append(bot)      # it opened after the last read, inside the tail
-            continue
         delta = check_socket(series, port, 'bot %s' % bot, require_counters, prior.get('inodes') or set(), reasons, GENERATOR, len(readings))
         if delta is None:
             without.append(bot)
@@ -1003,8 +1010,9 @@ def _check_ramp_bot_host(rows, started, abort_ns, domain, identity, prior, requi
         if readings[0]['drops'] and not delta:
             reasons.add('generator_socket_drops', GENERATOR, 'bot %s dropped %d datagrams before its first read' % (bot, readings[0]['drops']))
         drops += readings[-1]['drops']
-    return dict(rows=len(chosen), kernel_counters=host_counter_delta(chosen), socket_drops_total=None if without else drops, sockets_with_counters=len(started) - len(without) - len(unread), sockets_without_counters=len(without),
-                bots_without_counters=without[:20], sockets_opened_after_the_last_read=len(unread), last_read_before_abort_ns=tail_ns, collector_cost_ns_max=max((row.get('collector_ns') or 0 for row in chosen), default=None))
+    margin = bounds[after_abort[0]][0] - abort_wall[1] if after_abort else None
+    return dict(rows=len(chosen), kernel_counters=host_counter_delta(chosen), socket_drops_total=None if without else drops, sockets_with_counters=len(started) - len(without), sockets_without_counters=len(without),
+                bots_without_counters=without[:20], reads_certainly_after_abort=len(after_abort), first_read_after_abort_ns=margin, collector_cost_ns_max=max((row.get('collector_ns') or 0 for row in chosen), default=None))
 
 
 def _check_ramp_game_host(rows, identity, prior, reasons):

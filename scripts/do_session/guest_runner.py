@@ -12,7 +12,8 @@ the controller. The rules live here because they must hold when the controller i
   * one active run per host, and a run directory created exclusively, so nothing overlaps or overwrites;
   * a supervisor with an absolute bound, so a workload stops on time with no controller left;
   * process identity is boot id, pid and kernel start time, so a reused pid is never mistaken for ours or signalled;
-  * sealing hashes every file and makes the tree read-only, including for an interrupted run.
+  * sealing hashes every file and makes the tree read-only, including for an interrupted run;
+  * the supervisor keeps what the kernel counted against its own unit, so an OOM kill can be told from any other SIGKILL.
 
 Linux facts come from /proc, ``tc`` and systemd. The macOS branches exist only so local fixtures can run real processes on a
 developer machine, and they do not provide socket drop counters. Neither path has run on a real Droplet yet.
@@ -52,6 +53,9 @@ GRANT_COMMIT_SLACK_S = 1.0          # registry.GUEST_COMMIT_SLACK_S: a process s
 SAFE_NAME = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,180}$')
 GRANT_ID = re.compile(r'^[0-9a-f]{32}$')
 SEAL = 'seal.json'
+OOM_EVIDENCE = 'process-oom.json'
+OOM_SCHEMA = 'omega.do-session.process-oom/1'
+CGROUP_ROOT = '/sys/fs/cgroup'
 
 
 class Refused(Exception):
@@ -598,15 +602,112 @@ def cmd_start(args, host):
         return run_summary(run_dir)
 
 
+# ---- process-attributable OOM evidence ------------------------------------------------------------
+
+def cgroup_of(pid, proc_root='/proc'):
+    """This process's cgroup v2 path, from the ``0::$PATH`` line of /proc/<pid>/cgroup. None if it has none, or if that cgroup is gone."""
+    try:
+        with open('%s/%s/cgroup' % (proc_root, pid), encoding='utf-8') as handle:
+            for line in handle:
+                if line.startswith('0::'):
+                    path = line[3:].strip()
+                    return path if path.startswith('/') and not path.endswith(' (deleted)') else None
+    except OSError:
+        pass
+    return None
+
+
+def cgroup_reading(cgroup):
+    """The kernel's own OOM counters for one cgroup and who is in it now. Zombies are not listed in cgroup.procs. None if either file cannot be read: a missing value is never zero."""
+    root = CGROUP_ROOT + cgroup
+    try:
+        with open(root + '/memory.events', encoding='utf-8') as handle:
+            events = {key: int(value) for key, value in (line.split() for line in handle if line.strip())}
+        with open(root + '/cgroup.procs', encoding='utf-8') as handle:
+            procs = sorted(int(line) for line in handle if line.strip())
+    except (OSError, ValueError):
+        return None
+    if 'oom_kill' not in events:
+        return None
+    return dict(mono_ns=time.monotonic_ns(), wall_ns=time.time_ns(), oom_kill=events['oom_kill'], oom_group_kill=events.get('oom_group_kill'), oom=events.get('oom'), procs=procs)
+
+
+class OomWatch:
+    """What the kernel counted against this run's own unit, read by the supervisor inside that unit, while the unit still exists.
+
+    ``memory.events`` ``oom_kill`` is 'the number of processes belonging to this cgroup killed by any kind of OOM killer' (cgroup-v2.rst), including for a host-wide OOM, and the kernel raises it before it sends the
+    SIGKILL (``__oom_kill_process``, 'task reaper must see this'), so a read after reaping cannot miss it. It names no victim. This run's unit holds only the supervisor, the primary and the sampler, so one kill, with the
+    other two still alive right after the reap, can only have been the primary's. This names nothing more than that, and ``capacity_scorer`` decides what it proves. Outside a unit of the run's own there is
+    no such boundary, so the record says unavailable. Collecting this can never stop a run from stopping: it records what went wrong and carries on.
+    """
+
+    def __init__(self, plan):
+        self.cgroup = None
+        self.document = dict(schema=OOM_SCHEMA, source='cgroup v2 memory.events of the run unit', run_id=plan.get('run_id'), role=plan.get('role'), unit=plan.get('unit'), unit_mode=plan.get('unit_mode'), available=False, unavailable=None)
+        self._guarded(self._begin, plan)
+
+    def _guarded(self, step, *arguments):
+        try:
+            step(*arguments)
+        except Exception as error:     # evidence must not stand between a run and its stop
+            self.cgroup = None
+            self.document.update(available=False, unavailable='%s failed: %s' % (step.__name__.strip('_'), type(error).__name__))
+
+    def _unavailable(self, why):
+        self.cgroup = None
+        self.document.update(available=False, unavailable=why)
+
+    def _begin(self, plan):
+        if plan.get('unit_mode') != SYSTEMD or not plan.get('unit'):
+            return self._unavailable('this run has no unit of its own, so no cgroup boundary is its alone')
+        cgroup = cgroup_of(os.getpid())
+        if cgroup is None:
+            return self._unavailable('no cgroup v2 membership')
+        if pathlib.PurePosixPath(cgroup).name != plan['unit']:
+            return self._unavailable('the supervisor is in %s, not in the run unit' % cgroup)
+        baseline = cgroup_reading(cgroup)
+        if baseline is None:
+            return self._unavailable('memory.events or cgroup.procs cannot be read for %s' % cgroup)
+        self.cgroup = cgroup
+        self.document.update(available=True, cgroup=cgroup, baseline=baseline)
+        return None
+
+    def bind(self, supervisor, processes, invocation_id):
+        """Who is in the unit, once they all are. A process of this run in another cgroup leaves the kernel's count saying nothing of it."""
+        def step():
+            if self.cgroup is None:
+                return
+            identity = lambda item: {key: item.get(key) for key in ('pid', 'start_id', 'boot_id')}
+            self.document.update(supervisor=identity(supervisor), invocation_id=invocation_id, processes={name: identity(item) for name, item in processes.items()},
+                                 member_cgroups=dict({name: cgroup_of(item['pid']) for name, item in processes.items()}, supervisor=self.cgroup), bound=cgroup_reading(self.cgroup))
+        self._guarded(step)
+
+    def primary_exited(self, primary, facts, alive):
+        """Right after the reap and before any signal from here, so that everything still alive was certainly not this kill's victim."""
+        def step():
+            if self.cgroup is not None:
+                self.document['primary_exit'] = dict(cgroup_reading(self.cgroup) or dict(unreadable=True), primary=primary, returncode=facts.get('returncode'), signal=facts.get('signal'), alive=sorted(alive))
+        self._guarded(step)
+
+    def finish(self, path):
+        def step():
+            if self.cgroup is not None:
+                self.document['final'] = cgroup_reading(self.cgroup)
+        self._guarded(step)
+        with contextlib.suppress(OSError):
+            atomic_json(path, self.document)
+
+
 def launch_supervisor(host, run_dir, plan):
     command = [sys.executable, os.path.abspath(__file__), '--root', str(host.root), 'supervise', '--run-dir', str(run_dir)]
     if plan['unit_mode'] == SYSTEMD:
         # The unit is the second bound, for a supervisor that dies. KillMode takes everything in its cgroup with it.
+        # OOMPolicy=continue: the default stops the whole unit when one process is OOM-killed, which would stop the supervisor before it has reaped the victim and read the kernel's count.
         limit = plan['bound_s'] + plan['stop_grace_s'] + 5
         code, _ = run_command(['sudo', '-n', 'systemd-run', '--quiet', '--collect', '--unit=' + plan['unit'], '--uid=' + str(os.getuid()),
                                '--property=RuntimeMaxSec=%d' % max(1, int(limit)), '--property=KillMode=control-group', '--property=TimeoutStopSec=15',
                                '--property=Restart=no', '--property=LimitCORE=0', '--property=LimitNOFILE=65536', '--property=CPUAccounting=yes',
-                               '--property=MemoryAccounting=yes'] + command, timeout=20)
+                               '--property=MemoryAccounting=yes', '--property=OOMPolicy=continue'] + command, timeout=20)
         if code != 0:
             raise Refused('unit_start_failed', 'systemd-run exited %s' % code)
         return
@@ -833,6 +934,7 @@ def cmd_supervise(args, host):
 
     interrupted = []
     signal.signal(signal.SIGTERM, lambda *_: interrupted.append('supervisor_terminated'))
+    oom_watch = OomWatch(plan)      # before any child exists, so its count covers their whole lives
     try:
         for spec in plan['processes']:
             child = _spawn(spec, run_dir, str(run_dir))
@@ -848,8 +950,10 @@ def cmd_supervise(args, host):
         stop_children(signal.SIGKILL)
         finish('spawn_failed:' + type(error).__name__)
         return dict(ok=False)
-    atomic_json(run_dir / 'identity.json', dict(supervisor=identity_of(os.getpid()), processes=processes, invocation_id=os.environ.get('INVOCATION_ID'),
+    supervisor_identity = identity_of(os.getpid())
+    atomic_json(run_dir / 'identity.json', dict(supervisor=supervisor_identity, processes=processes, invocation_id=os.environ.get('INVOCATION_ID'),
                                                 started_wall=time.time(), bound_s=bound_s, stop_by_wall=plan['stop_by_wall']))
+    oom_watch.bind(supervisor_identity, processes, os.environ.get('INVOCATION_ID'))
     primary = next(name for name, item in processes.items() if item['primary'])
     watched_port = plan.get('watch_socket_port')
     next_socket = 0.0
@@ -862,6 +966,7 @@ def cmd_supervise(args, host):
         sampler_exited_early = sampler_exited_early or 'sampler' in exits
         if primary in exits:
             stop_reason = 'primary_exited'
+            oom_watch.primary_exited(primary, exits[primary], [name for name in children if name not in exits])
             break
         now = time.monotonic()
         if watched_port is not None and now >= next_socket:
@@ -903,6 +1008,7 @@ def cmd_supervise(args, host):
         reap()
         time.sleep(0.02)
     escalated = [name for name, item in exits.items() if item.get('signal') == signal.SIGKILL]
+    oom_watch.finish(run_dir / OOM_EVIDENCE)
     atomic_json(run_dir / 'result.json', dict(stop_reason=stop_reason, completed=True, processes=exits, ended_wall=time.time(), elapsed_s=time.monotonic() - started_mono,
                                               bound_s=bound_s, sampler_exited_early=sampler_exited_early, killed=escalated))
     return dict(ok=True)

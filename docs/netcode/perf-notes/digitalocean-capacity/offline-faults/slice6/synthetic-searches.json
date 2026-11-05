@@ -17,10 +17,9 @@
    "definition": "per bot: sent over its own scheduled grid slots in the window, in integers. Exactly 99 percent is valid. A disconnected bot is held to the part it was connected for, less the one slot the disconnect can interrupt.",
    "min_percent": 99
   },
-  "oom": "The kernel OOM count is host-wide, so it is a diagnostic and never explains a process exit. No producer here names an OOM victim, so a SIGKILL stays killed_with_no_cause_on_record.",
+  "oom": "The host-wide kernel OOM count is a diagnostic and never explains a process exit. A game SIGKILL is out_of_memory only when the kernel counted exactly one OOM kill in the cgroup of the run's own unit between a baseline before any process started and a read right after the reap, every member of that cgroup is a supervised identity, and every other member was still alive after that read. Anything less stays killed_with_no_cause_on_record.",
   "ramp": {
-   "definition": "A ramp can fail and can never pass. Its failure needs the supervised swarm and game identities, every opened socket read while open, and a kick only of a bot both sides recorded as authenticated.",
-   "last_read_before_abort_limit_ns": 2000000000
+   "definition": "A ramp can fail and can never pass. Its failure needs the supervised swarm and game identities, a kick only of a bot both sides recorded as authenticated, and zero generator socket drops proven on every opened socket by a counter read certainly after the abort. A read that may precede the abort, or a socket no such read saw, leaves the generator not proven."
   },
   "rtt_limit_ms_strictly_below": 150,
   "rtt_quantile": {
@@ -31,8 +30,160 @@
   "tick_budget_ns": 33300000,
   "tick_over_percent_strictly_below": 1
  },
- "policy_sha256": "29c024c22e2478cce0f65a77cd9f3e40a54827d35b68f471680f0018acc897fa",
+ "policy_sha256": "042bdbbd8a2ca1639c694750abc33f70a286273d864d5623a26ecf476edbadbb",
  "scenarios": {
+  "a_transfer_that_cannot_run_costs_a_committed_outcome_nothing": {
+   "batch": null,
+   "claim": {
+    "confirmed": false,
+    "kind": "in_progress",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the search is not finished (in_progress). The highest one-minute pass was 25; it stays an exploratory observation."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "crashed_at": "after_outcome_commit",
+   "evidence": {
+    "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
+    "verified": true
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "in_progress",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the search is not finished (in_progress). The highest one-minute pass was 25; it stays an exploratory observation."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "resume_code": null,
+   "resumed": true,
+   "status": "in_progress",
+   "terminal_failure": null,
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hard_facts": [],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 25
+    }
+   ]
+  },
+  "a_transfer_that_cannot_run_costs_a_retained_score_nothing": {
+   "batch": null,
+   "claim": {
+    "confirmed": false,
+    "kind": "in_progress",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the search is not finished (in_progress). The highest one-minute pass was 25; it stays an exploratory observation."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "crashed_at": "after_score_retained",
+   "evidence": {
+    "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
+    "verified": true
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "in_progress",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the search is not finished (in_progress). The highest one-minute pass was 25; it stays an exploratory observation."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "resume_code": null,
+   "resumed": true,
+   "status": "in_progress",
+   "terminal_failure": null,
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hard_facts": [],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 25
+    }
+   ]
+  },
   "all_coarse_pass_search_cap_at_500": {
    "batch": "search_finished",
    "claim": {
@@ -51,6 +202,8 @@
    },
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 23,
@@ -91,12 +244,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 1,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -110,12 +265,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 2,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 50
     },
     {
@@ -129,12 +286,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 3,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 75
     },
     {
@@ -148,12 +307,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 4,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 100
     },
     {
@@ -167,12 +328,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 5,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 125
     },
     {
@@ -186,12 +349,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 6,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 150
     },
     {
@@ -205,12 +370,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 7,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 175
     },
     {
@@ -224,12 +391,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 8,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 200
     },
     {
@@ -243,12 +412,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 9,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 225
     },
     {
@@ -262,12 +433,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 10,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 250
     },
     {
@@ -281,12 +454,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 11,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 275
     },
     {
@@ -300,12 +475,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 12,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 300
     },
     {
@@ -319,12 +496,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 13,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 325
     },
     {
@@ -338,12 +517,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 14,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 350
     },
     {
@@ -357,12 +538,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 15,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 375
     },
     {
@@ -376,12 +559,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 16,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 400
     },
     {
@@ -395,12 +580,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 17,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 425
     },
     {
@@ -414,12 +601,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 18,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 450
     },
     {
@@ -433,12 +622,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 19,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 475
     },
     {
@@ -452,12 +643,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 20,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 500
     },
     {
@@ -471,12 +664,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 21,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 500
     },
     {
@@ -490,12 +685,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 22,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 2,
+     "superseded_decisions": [],
      "target": 500
     },
     {
@@ -509,12 +706,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 23,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 3,
+     "superseded_decisions": [],
      "target": 500
     }
    ]
@@ -537,6 +736,8 @@
    },
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 2,
@@ -577,12 +778,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 1,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -596,12 +799,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 2,
      "outcome": "INCONCLUSIVE",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 50
     }
    ]
@@ -624,6 +829,8 @@
    },
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 2,
@@ -664,12 +871,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 1,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -683,12 +892,14 @@
       "rtt_p95": "pass",
       "tick_budget": "unknown"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 2,
      "outcome": "INFRASTRUCTURE_FAILURE",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 50
     }
    ]
@@ -711,6 +922,8 @@
    },
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 2,
@@ -751,12 +964,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 1,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -770,12 +985,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "invalid",
      "ordinal": 2,
      "outcome": "INVALID_LOAD",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 50
     }
    ]
@@ -799,6 +1016,8 @@
    },
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 4,
@@ -843,12 +1062,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 1,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -862,12 +1083,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 2,
      "outcome": "FAIL",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 50
     },
     {
@@ -881,12 +1104,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 3,
      "outcome": "FAIL",
      "phase": "refine",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 30
     },
     {
@@ -900,12 +1125,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 4,
      "outcome": "FAIL",
      "phase": "confirm",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     }
    ]
@@ -930,6 +1157,8 @@
    "crashed_at": "after_running_commit in the first confirmation",
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 6,
@@ -976,12 +1205,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 1,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -995,12 +1226,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 2,
      "outcome": "FAIL",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 50
     },
     {
@@ -1014,24 +1247,28 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 3,
      "outcome": "FAIL",
      "phase": "refine",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 30
     },
     {
      "classification": null,
      "evidence_problems": [],
      "gates": {},
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": null,
      "ordinal": 4,
      "outcome": "INCOMPLETE",
      "phase": "confirm",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -1045,12 +1282,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 5,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 2,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -1064,12 +1303,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 6,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 3,
+     "superseded_decisions": [],
      "target": 25
     }
    ]
@@ -1093,6 +1334,8 @@
    },
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 5,
@@ -1137,12 +1380,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 1,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -1156,12 +1401,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 2,
      "outcome": "FAIL",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 50
     },
     {
@@ -1175,12 +1422,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 3,
      "outcome": "FAIL",
      "phase": "refine",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 30
     },
     {
@@ -1194,12 +1443,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 4,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -1213,12 +1464,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 5,
      "outcome": "FAIL",
      "phase": "confirm",
      "repetition": 2,
+     "superseded_decisions": [],
      "target": 25
     }
    ]
@@ -1241,6 +1494,8 @@
    },
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 5,
@@ -1284,12 +1539,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 1,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -1303,12 +1560,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 2,
      "outcome": "FAIL",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 50
     },
     {
@@ -1322,12 +1581,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 3,
      "outcome": "FAIL",
      "phase": "refine",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 30
     },
     {
@@ -1341,12 +1602,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 4,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -1360,12 +1623,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "invalid",
      "ordinal": 5,
      "outcome": "INVALID_LOAD",
      "phase": "confirm",
      "repetition": 2,
+     "superseded_decisions": [],
      "target": 25
     }
    ]
@@ -1389,6 +1654,8 @@
    },
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 6,
@@ -1433,12 +1700,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 1,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -1452,12 +1721,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 2,
      "outcome": "FAIL",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 50
     },
     {
@@ -1471,12 +1742,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 3,
      "outcome": "FAIL",
      "phase": "refine",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 30
     },
     {
@@ -1490,12 +1763,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 4,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -1509,12 +1784,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 5,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 2,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -1528,12 +1805,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 6,
      "outcome": "FAIL",
      "phase": "confirm",
      "repetition": 3,
+     "superseded_decisions": [],
      "target": 25
     }
    ]
@@ -1556,6 +1835,8 @@
    },
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 6,
@@ -1599,12 +1880,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 1,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -1618,12 +1901,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 2,
      "outcome": "FAIL",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 50
     },
     {
@@ -1637,12 +1922,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 3,
      "outcome": "FAIL",
      "phase": "refine",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 30
     },
     {
@@ -1656,12 +1943,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 4,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -1675,12 +1964,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 5,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 2,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -1694,12 +1985,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 6,
      "outcome": "INCONCLUSIVE",
      "phase": "confirm",
      "repetition": 3,
+     "superseded_decisions": [],
      "target": 25
     }
    ]
@@ -1722,6 +2015,8 @@
    },
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 6,
@@ -1765,12 +2060,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 1,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -1784,12 +2081,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 2,
      "outcome": "FAIL",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 50
     },
     {
@@ -1803,12 +2102,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 3,
      "outcome": "FAIL",
      "phase": "refine",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 30
     },
     {
@@ -1822,12 +2123,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 4,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -1841,12 +2144,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 5,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 2,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -1860,12 +2165,873 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 6,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 3,
+     "superseded_decisions": [],
+     "target": 25
+    }
+   ]
+  },
+  "corrupt_bytes_found_after_the_commit_stop_the_session_and_keep_the_outcome": {
+   "batch": null,
+   "claim": {
+    "confirmed": false,
+    "kind": "evidence_disagreement",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No evidence-backed claim: the retained files of 1 of 1 trials disagree with the journal or cannot be verified. What the journal says is kept apart as history, and is not verified here."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "crashed_at": "after_outcome_commit",
+   "evidence": {
+    "disputed_trials": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "verified": false
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "in_progress",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the search is not finished (in_progress). The highest one-minute pass was 25; it stays an exploratory observation."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "resume_code": "terminal_failure",
+   "resumed": false,
+   "status": "in_progress",
+   "terminal_failure": "INFRASTRUCTURE_FAILURE",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [
+      "the journal says PASS, and terminal-fact-0002-0.json records a stop fact: bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch'}]"
+     ],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hard_facts": [
+      {
+       "details": [
+        "bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch'}]"
+       ],
+       "outcome": "INFRASTRUCTURE_FAILURE",
+       "record": "terminal-fact-0002-0.json",
+       "sha256": "0a14e9d5b03989ff64d9bd61c3bf2f1e61f821521931f817ce72dcb91afba4e6"
+      }
+     ],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 25
+    }
+   ]
+  },
+  "corrupt_bytes_found_by_recovery_at_wrap_up_withhold_the_claim": {
+   "batch": "search_finished",
+   "claim": {
+    "confirmed": false,
+    "kind": "evidence_disagreement",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No evidence-backed claim: the retained files of 1 of 6 trials disagree with the journal or cannot be verified. What the journal says is kept apart as history, and is not verified here."
+   },
+   "counts": {
+    "coarse": 2,
+    "confirm": 3,
+    "refine": 1,
+    "total": 6
+   },
+   "evidence": {
+    "disputed_trials": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "verified": false
+   },
+   "game_starts": 6,
+   "journal_claim": {
+    "confirmed": true,
+    "kind": "confirmed_observation",
+    "lower_bound": 25,
+    "players": 25,
+    "search_cap_reached": false,
+    "statement": "Confirmed 25 players on this rented pair: three valid five-minute passes. An observed candidate, not provider-wide capacity."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 3,
+     "pending": 0,
+     "stopped": 0,
+     "target": 25
+    },
+    "failed_targets": [
+     30,
+     50
+    ],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": 30,
+    "retries": 0,
+    "trials": 6
+   },
+   "status": "confirmed",
+   "terminal_failure": "INFRASTRUCTURE_FAILURE",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [
+      "the journal says PASS, and terminal-fact-0001-0.json records a stop fact: bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch'}]"
+     ],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hard_facts": [
+      {
+       "details": [
+        "bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch'}]"
+       ],
+       "outcome": "INFRASTRUCTURE_FAILURE",
+       "record": "terminal-fact-0001-0.json",
+       "sha256": "77f3347e9d175eb44591eb5d0bd0e3bc249dd6a0e6b1b18125d67672cdac885f"
+      }
+     ],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 25
+    },
+    {
+     "classification": "capacity_failure",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hard_facts": [],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 2,
+     "outcome": "FAIL",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 50
+    },
+    {
+     "classification": "capacity_failure",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hard_facts": [],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 3,
+     "outcome": "FAIL",
+     "phase": "refine",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 30
+    },
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hard_facts": [],
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 4,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 25
+    },
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hard_facts": [],
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 5,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 2,
+     "superseded_decisions": [],
+     "target": 25
+    },
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hard_facts": [],
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 6,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 3,
+     "superseded_decisions": [],
+     "target": 25
+    }
+   ]
+  },
+  "corrupt_bytes_in_a_confirmation_keep_its_siblings_untouched": {
+   "batch": null,
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_infrastructure_failure",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_infrastructure_failure). The highest one-minute pass was 25, with 30 failing above it; it stays an exploratory observation."
+   },
+   "counts": {
+    "coarse": 2,
+    "confirm": 1,
+    "refine": 1,
+    "total": 4
+   },
+   "crashed_at": "before_outcome_commit",
+   "evidence": {
+    "disputed_trials": [],
+    "superseded_trials": [
+     "do-cap-1v1g-20261030a-t04-confirm-n025-r1"
+    ],
+    "trials_with_stop_facts": [
+     "do-cap-1v1g-20261030a-t04-confirm-n025-r1"
+    ],
+    "verified": false
+   },
+   "game_starts": 4,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_infrastructure_failure",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_infrastructure_failure). The highest one-minute pass was 25, with 30 failing above it; it stays an exploratory observation."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 1,
+     "target": 25
+    },
+    "failed_targets": [
+     30,
+     50
+    ],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": 30,
+    "retries": 0,
+    "trials": 4
+   },
+   "resume_code": "terminal_failure",
+   "resumed": false,
+   "status": "stopped_infrastructure_failure",
+   "terminal_failure": "INFRASTRUCTURE_FAILURE",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hard_facts": [],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 25
+    },
+    {
+     "classification": "capacity_failure",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hard_facts": [],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 2,
+     "outcome": "FAIL",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 50
+    },
+    {
+     "classification": "capacity_failure",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hard_facts": [],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 3,
+     "outcome": "FAIL",
+     "phase": "refine",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 30
+    },
+    {
+     "classification": null,
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hard_facts": [
+      {
+       "details": [
+        "bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch'}]"
+       ],
+       "outcome": "INFRASTRUCTURE_FAILURE",
+       "record": "execution-reconciled-0002-1.json",
+       "sha256": "826551bed24be2cef144355c481c769d32e2d32b2aff7d371c23741baf66c3ca"
+      }
+     ],
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 4,
+     "outcome": "INFRASTRUCTURE_FAILURE",
+     "phase": "confirm",
+     "repetition": 1,
+     "superseded_decisions": [
+      {
+       "file": "classification.json",
+       "outcome": "PASS",
+       "sha256": "24c08f53b5662e17c52072952fa596353a61f08880e46bc22657897a0646fdd0"
+      },
+      {
+       "file": "score.json",
+       "outcome": "PASS",
+       "sha256": "478ec031d817fc8c35ed775bf783e74b0f044d544a6d18b539c242d993ec2a3e"
+      }
+     ],
+     "target": 25
+    }
+   ]
+  },
+  "corrupt_bytes_on_return_outrank_a_retained_classification": {
+   "batch": null,
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_infrastructure_failure",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_infrastructure_failure)."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "crashed_at": "before_outcome_commit",
+   "evidence": {
+    "disputed_trials": [],
+    "superseded_trials": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "trials_with_stop_facts": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "verified": false
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_infrastructure_failure",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_infrastructure_failure)."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "resume_code": "terminal_failure",
+   "resumed": false,
+   "status": "stopped_infrastructure_failure",
+   "terminal_failure": "INFRASTRUCTURE_FAILURE",
+   "trials": [
+    {
+     "classification": null,
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hard_facts": [
+      {
+       "details": [
+        "bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch'}]"
+       ],
+       "outcome": "INFRASTRUCTURE_FAILURE",
+       "record": "execution-reconciled-0002-1.json",
+       "sha256": "6eebeca0099535c5161787d60234d2f3cfdb618b117e4dd85b154fa3ea2f2abc"
+      }
+     ],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "INFRASTRUCTURE_FAILURE",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [
+      {
+       "file": "classification.json",
+       "outcome": "PASS",
+       "sha256": "fce5161a34e853bd10a52e77db7c8293ae68a1bb638f930d0899098fc4030b5f"
+      },
+      {
+       "file": "score.json",
+       "outcome": "PASS",
+       "sha256": "405867e5f5874e0f9281830e9e10a76efdfe39195af538f2dce7f27b91f9166c"
+      }
+     ],
+     "target": 25
+    }
+   ]
+  },
+  "corrupt_bytes_on_return_outrank_a_retained_score": {
+   "batch": null,
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_infrastructure_failure",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_infrastructure_failure)."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "crashed_at": "after_score_retained",
+   "evidence": {
+    "disputed_trials": [],
+    "superseded_trials": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "trials_with_stop_facts": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "verified": false
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_infrastructure_failure",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_infrastructure_failure)."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "resume_code": "terminal_failure",
+   "resumed": false,
+   "status": "stopped_infrastructure_failure",
+   "terminal_failure": "INFRASTRUCTURE_FAILURE",
+   "trials": [
+    {
+     "classification": null,
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hard_facts": [
+      {
+       "details": [
+        "bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch'}]"
+       ],
+       "outcome": "INFRASTRUCTURE_FAILURE",
+       "record": "execution-reconciled-0002-1.json",
+       "sha256": "6eebeca0099535c5161787d60234d2f3cfdb618b117e4dd85b154fa3ea2f2abc"
+      }
+     ],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "INFRASTRUCTURE_FAILURE",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [
+      {
+       "file": "score.json",
+       "outcome": "PASS",
+       "sha256": "405867e5f5874e0f9281830e9e10a76efdfe39195af538f2dce7f27b91f9166c"
+      }
+     ],
+     "target": 25
+    }
+   ]
+  },
+  "corrupt_bytes_survive_a_second_crash_and_a_restored_transfer_after_a_retained_classification": {
+   "batch": null,
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_infrastructure_failure",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_infrastructure_failure)."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "crashed_at": "before_outcome_commit",
+   "evidence": {
+    "disputed_trials": [],
+    "superseded_trials": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "trials_with_stop_facts": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "verified": false
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_infrastructure_failure",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_infrastructure_failure)."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "resume_code": "terminal_failure",
+   "resumed": false,
+   "status": "stopped_infrastructure_failure",
+   "terminal_failure": "INFRASTRUCTURE_FAILURE",
+   "trials": [
+    {
+     "classification": null,
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hard_facts": [
+      {
+       "details": [
+        "bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch'}]"
+       ],
+       "outcome": "INFRASTRUCTURE_FAILURE",
+       "record": "execution-reconciled-0002-1.json",
+       "sha256": "6eebeca0099535c5161787d60234d2f3cfdb618b117e4dd85b154fa3ea2f2abc"
+      },
+      {
+       "details": [
+        "bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch'}]"
+       ],
+       "outcome": "INFRASTRUCTURE_FAILURE",
+       "record": "execution-reconciled-0003-1.json",
+       "sha256": "65628422c82295c9483e3d4d27aab37bc1a44078cfc53785f72a056bd67986be"
+      }
+     ],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "INFRASTRUCTURE_FAILURE",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [
+      {
+       "file": "classification.json",
+       "outcome": "PASS",
+       "sha256": "fce5161a34e853bd10a52e77db7c8293ae68a1bb638f930d0899098fc4030b5f"
+      },
+      {
+       "file": "score.json",
+       "outcome": "PASS",
+       "sha256": "405867e5f5874e0f9281830e9e10a76efdfe39195af538f2dce7f27b91f9166c"
+      }
+     ],
+     "target": 25
+    }
+   ]
+  },
+  "corrupt_bytes_survive_a_second_crash_and_a_restored_transfer_after_a_retained_score": {
+   "batch": null,
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_infrastructure_failure",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_infrastructure_failure)."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "crashed_at": "after_score_retained",
+   "evidence": {
+    "disputed_trials": [],
+    "superseded_trials": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "trials_with_stop_facts": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "verified": false
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_infrastructure_failure",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_infrastructure_failure)."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "resume_code": "terminal_failure",
+   "resumed": false,
+   "status": "stopped_infrastructure_failure",
+   "terminal_failure": "INFRASTRUCTURE_FAILURE",
+   "trials": [
+    {
+     "classification": null,
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hard_facts": [
+      {
+       "details": [
+        "bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch'}]"
+       ],
+       "outcome": "INFRASTRUCTURE_FAILURE",
+       "record": "execution-reconciled-0002-1.json",
+       "sha256": "6eebeca0099535c5161787d60234d2f3cfdb618b117e4dd85b154fa3ea2f2abc"
+      },
+      {
+       "details": [
+        "bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch'}]"
+       ],
+       "outcome": "INFRASTRUCTURE_FAILURE",
+       "record": "execution-reconciled-0003-1.json",
+       "sha256": "65628422c82295c9483e3d4d27aab37bc1a44078cfc53785f72a056bd67986be"
+      }
+     ],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "INFRASTRUCTURE_FAILURE",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [
+      {
+       "file": "score.json",
+       "outcome": "PASS",
+       "sha256": "405867e5f5874e0f9281830e9e10a76efdfe39195af538f2dce7f27b91f9166c"
+      }
+     ],
      "target": 25
     }
    ]
@@ -1889,6 +3055,8 @@
    },
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 2,
@@ -1933,12 +3101,14 @@
       "rtt_p95": "pass",
       "tick_budget": "unknown"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 1,
      "outcome": "FAIL",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -1952,12 +3122,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 2,
      "outcome": "FAIL",
      "phase": "refine",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 5
     }
    ]
@@ -1985,6 +3157,8 @@
     "disputed_trials": [
      "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
     ],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": false
    },
    "game_starts": 1,
@@ -2022,12 +3196,14 @@
       "score.json: it does not read as a whole score, or its content was changed after it was written"
      ],
      "gates": {},
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": null,
      "ordinal": 1,
      "outcome": "INCONCLUSIVE",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     }
    ]
@@ -2050,6 +3226,8 @@
    },
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 8,
@@ -2092,12 +3270,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 1,
      "outcome": "FAIL",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -2111,12 +3291,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 2,
      "outcome": "PASS",
      "phase": "refine",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 5
     },
     {
@@ -2130,12 +3312,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 3,
      "outcome": "PASS",
      "phase": "refine",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 10
     },
     {
@@ -2149,12 +3333,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 4,
      "outcome": "PASS",
      "phase": "refine",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 15
     },
     {
@@ -2168,12 +3354,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 5,
      "outcome": "PASS",
      "phase": "refine",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 20
     },
     {
@@ -2187,12 +3375,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 6,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 20
     },
     {
@@ -2206,12 +3396,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 7,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 2,
+     "superseded_decisions": [],
      "target": 20
     },
     {
@@ -2225,12 +3417,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 8,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 3,
+     "superseded_decisions": [],
      "target": 20
     }
    ]
@@ -2253,6 +3447,8 @@
    },
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 6,
@@ -2296,12 +3492,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 1,
      "outcome": "FAIL",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -2315,12 +3513,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 2,
      "outcome": "PASS",
      "phase": "refine",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 5
     },
     {
@@ -2334,12 +3534,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 3,
      "outcome": "FAIL",
      "phase": "refine",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 10
     },
     {
@@ -2353,12 +3555,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 4,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 5
     },
     {
@@ -2372,12 +3576,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 5,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 2,
+     "superseded_decisions": [],
      "target": 5
     },
     {
@@ -2391,12 +3597,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 6,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 3,
+     "superseded_decisions": [],
      "target": 5
     }
    ]
@@ -2420,6 +3628,8 @@
    },
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 2,
@@ -2464,12 +3674,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 1,
      "outcome": "FAIL",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -2483,12 +3695,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 2,
      "outcome": "FAIL",
      "phase": "refine",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 5
     }
    ]
@@ -2511,6 +3725,8 @@
    },
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 1,
@@ -2551,12 +3767,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "invalid",
      "ordinal": 1,
      "outcome": "INVALID_LOAD",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     }
    ]
@@ -2584,6 +3802,8 @@
     "disputed_trials": [
      "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
     ],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": false
    },
    "game_starts": 1,
@@ -2628,12 +3848,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 1,
      "outcome": "INCONCLUSIVE",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     }
    ]
@@ -2661,6 +3883,8 @@
     "disputed_trials": [
      "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
     ],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": false
    },
    "game_starts": 1,
@@ -2701,12 +3925,14 @@
       "score.json: its window proof 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd' is not the retained one"
      ],
      "gates": {},
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": null,
      "ordinal": 1,
      "outcome": "INCONCLUSIVE",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     }
    ]
@@ -2732,6 +3958,8 @@
    "crashed_at": "after_execution_record",
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 1,
@@ -2774,12 +4002,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 1,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     }
    ]
@@ -2803,6 +4033,8 @@
    "crashed_at": "after_running_commit",
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 1,
@@ -2838,12 +4070,14 @@
      "classification": null,
      "evidence_problems": [],
      "gates": {},
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": null,
      "ordinal": 1,
      "outcome": "INCOMPLETE",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     }
    ]
@@ -2867,6 +4101,8 @@
    "crashed_at": "after_execution_record",
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 6,
@@ -2912,12 +4148,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 1,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -2931,12 +4169,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 2,
      "outcome": "FAIL",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 50
     },
     {
@@ -2950,12 +4190,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 3,
      "outcome": "FAIL",
      "phase": "refine",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 30
     },
     {
@@ -2969,12 +4211,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 4,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -2988,12 +4232,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 5,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 2,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -3007,12 +4253,256 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 6,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 3,
+     "superseded_decisions": [],
+     "target": 25
+    }
+   ]
+  },
+  "oom_kill_in_a_shared_cgroup_stops_with_no_refinement": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "evidence": {
+    "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
+    "verified": true
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "status": "stopped_inconclusive_evidence",
+   "trials": [
+    {
+     "classification": "inconclusive_evidence",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "fail",
+      "continuity": "fail",
+      "enet_loss": "pass",
+      "game_socket_drops": "unknown",
+      "rtt_p95": "pass",
+      "tick_budget": "unknown"
+     },
+     "hard_facts": [],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "INCONCLUSIVE",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 25
+    }
+   ]
+  },
+  "oom_kill_matched_to_the_game_opens_the_bracket": {
+   "batch": "search_finished",
+   "claim": {
+    "confirmed": false,
+    "kind": "no_passing_target_at_resolution",
+    "lower_bound": null,
+    "players": null,
+    "resolution": 5,
+    "search_cap_reached": false,
+    "statement": "No passing target at the search resolution: 5 players failed. Not proof that no smaller population could work, and not a capacity of zero."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 1,
+    "total": 2
+   },
+   "evidence": {
+    "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
+    "verified": true
+   },
+   "game_starts": 2,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "no_passing_target_at_resolution",
+    "lower_bound": null,
+    "players": null,
+    "resolution": 5,
+    "search_cap_reached": false,
+    "statement": "No passing target at the search resolution: 5 players failed. Not proof that no smaller population could work, and not a capacity of zero."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [
+     5,
+     25
+    ],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": 5,
+    "retries": 0,
+    "trials": 2
+   },
+   "status": "no_passing_target",
+   "trials": [
+    {
+     "classification": "capacity_failure",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "fail",
+      "continuity": "fail",
+      "enet_loss": "pass",
+      "game_socket_drops": "unknown",
+      "rtt_p95": "pass",
+      "tick_budget": "unknown"
+     },
+     "hard_facts": [],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "FAIL",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 25
+    },
+    {
+     "classification": "capacity_failure",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "fail",
+      "continuity": "fail",
+      "enet_loss": "pass",
+      "game_socket_drops": "unknown",
+      "rtt_p95": "pass",
+      "tick_budget": "unknown"
+     },
+     "hard_facts": [],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 2,
+     "outcome": "FAIL",
+     "phase": "refine",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 5
+    }
+   ]
+  },
+  "oom_kill_of_a_reused_pid_stops_with_no_refinement": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "evidence": {
+    "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
+    "verified": true
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "status": "stopped_inconclusive_evidence",
+   "trials": [
+    {
+     "classification": "inconclusive_evidence",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "fail",
+      "continuity": "fail",
+      "enet_loss": "pass",
+      "game_socket_drops": "unknown",
+      "rtt_p95": "pass",
+      "tick_budget": "unknown"
+     },
+     "hard_facts": [],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "INCONCLUSIVE",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     }
    ]
@@ -3035,6 +4525,8 @@
    },
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 6,
@@ -3078,12 +4570,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 1,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -3097,12 +4591,14 @@
       "rtt_p95": "unknown",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 2,
      "outcome": "FAIL",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 50
     },
     {
@@ -3116,12 +4612,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 3,
      "outcome": "FAIL",
      "phase": "refine",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 30
     },
     {
@@ -3135,12 +4633,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 4,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -3154,12 +4654,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 5,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 2,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -3173,12 +4675,86 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 6,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 3,
+     "superseded_decisions": [],
+     "target": 25
+    }
+   ]
+  },
+  "ramp_kick_with_the_last_read_just_before_the_abort_stops_with_no_refinement": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "evidence": {
+    "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
+    "verified": true
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "status": "stopped_inconclusive_evidence",
+   "trials": [
+    {
+     "classification": "inconclusive_evidence",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "unknown",
+      "continuity": "fail",
+      "enet_loss": "unknown",
+      "game_socket_drops": "unknown",
+      "rtt_p95": "unknown",
+      "tick_budget": "pass"
+     },
+     "hard_facts": [],
+     "hold_s": 60,
+     "offered_load": "not_proven",
+     "ordinal": 1,
+     "outcome": "INCONCLUSIVE",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     }
    ]
@@ -3201,6 +4777,8 @@
    },
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 6,
@@ -3244,12 +4822,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 1,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -3263,12 +4843,14 @@
       "rtt_p95": "unknown",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 2,
      "outcome": "FAIL",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 50
     },
     {
@@ -3282,12 +4864,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 3,
      "outcome": "FAIL",
      "phase": "refine",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 30
     },
     {
@@ -3301,12 +4885,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 4,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -3320,12 +4906,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 5,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 2,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -3339,12 +4927,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 6,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 3,
+     "superseded_decisions": [],
      "target": 25
     }
    ]
@@ -3367,6 +4957,8 @@
    },
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 1,
@@ -3407,12 +4999,14 @@
       "rtt_p95": "unknown",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "not_proven",
      "ordinal": 1,
      "outcome": "INCONCLUSIVE",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     }
    ]
@@ -3435,6 +5029,8 @@
    },
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 1,
@@ -3475,12 +5071,14 @@
       "rtt_p95": "unknown",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "not_proven",
      "ordinal": 1,
      "outcome": "INCONCLUSIVE",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     }
    ]
@@ -3503,6 +5101,8 @@
    },
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 1,
@@ -3543,12 +5143,86 @@
       "rtt_p95": "unknown",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "not_proven",
      "ordinal": 1,
      "outcome": "INCONCLUSIVE",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
+     "target": 25
+    }
+   ]
+  },
+  "ramp_overrun_with_a_socket_gone_by_the_read_after_the_abort_stops_with_no_refinement": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "evidence": {
+    "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
+    "verified": true
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "status": "stopped_inconclusive_evidence",
+   "trials": [
+    {
+     "classification": "inconclusive_evidence",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "unknown",
+      "continuity": "unknown",
+      "enet_loss": "unknown",
+      "game_socket_drops": "unknown",
+      "rtt_p95": "unknown",
+      "tick_budget": "fail"
+     },
+     "hard_facts": [],
+     "hold_s": 60,
+     "offered_load": "not_proven",
+     "ordinal": 1,
+     "outcome": "INCONCLUSIVE",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     }
    ]
@@ -3571,6 +5245,8 @@
    },
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 1,
@@ -3611,12 +5287,230 @@
       "rtt_p95": "unknown",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "not_proven",
      "ordinal": 1,
      "outcome": "INCONCLUSIVE",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
+     "target": 25
+    }
+   ]
+  },
+  "ramp_overrun_with_the_last_read_just_before_the_abort_stops_with_no_refinement": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "evidence": {
+    "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
+    "verified": true
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "status": "stopped_inconclusive_evidence",
+   "trials": [
+    {
+     "classification": "inconclusive_evidence",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "unknown",
+      "continuity": "unknown",
+      "enet_loss": "unknown",
+      "game_socket_drops": "unknown",
+      "rtt_p95": "unknown",
+      "tick_budget": "fail"
+     },
+     "hard_facts": [],
+     "hold_s": 60,
+     "offered_load": "not_proven",
+     "ordinal": 1,
+     "outcome": "INCONCLUSIVE",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 25
+    }
+   ]
+  },
+  "ramp_overrun_with_the_last_read_possibly_before_the_abort_stops_with_no_refinement": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "evidence": {
+    "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
+    "verified": true
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "status": "stopped_inconclusive_evidence",
+   "trials": [
+    {
+     "classification": "inconclusive_evidence",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "unknown",
+      "continuity": "unknown",
+      "enet_loss": "unknown",
+      "game_socket_drops": "unknown",
+      "rtt_p95": "unknown",
+      "tick_budget": "fail"
+     },
+     "hard_facts": [],
+     "hold_s": 60,
+     "offered_load": "not_proven",
+     "ordinal": 1,
+     "outcome": "INCONCLUSIVE",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 25
+    }
+   ]
+  },
+  "ramp_server_crash_with_the_last_read_just_before_the_abort_stops_with_no_refinement": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "evidence": {
+    "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
+    "verified": true
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "status": "stopped_inconclusive_evidence",
+   "trials": [
+    {
+     "classification": "inconclusive_evidence",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "unknown",
+      "continuity": "fail",
+      "enet_loss": "unknown",
+      "game_socket_drops": "unknown",
+      "rtt_p95": "unknown",
+      "tick_budget": "fail"
+     },
+     "hard_facts": [],
+     "hold_s": 60,
+     "offered_load": "not_proven",
+     "ordinal": 1,
+     "outcome": "INCONCLUSIVE",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     }
    ]
@@ -3639,6 +5533,8 @@
    },
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 3,
@@ -3681,12 +5577,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 1,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -3700,12 +5598,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 2,
      "outcome": "FAIL",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 50
     },
     {
@@ -3719,12 +5619,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 3,
      "outcome": "INCONCLUSIVE",
      "phase": "refine",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 30
     }
    ]
@@ -3747,6 +5649,8 @@
    },
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 3,
@@ -3789,12 +5693,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 1,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -3808,12 +5714,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 2,
      "outcome": "FAIL",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 50
     },
     {
@@ -3827,12 +5735,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "invalid",
      "ordinal": 3,
      "outcome": "INVALID_LOAD",
      "phase": "refine",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 30
     }
    ]
@@ -3855,6 +5765,8 @@
    },
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 9,
@@ -3897,12 +5809,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 1,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -3916,12 +5830,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 2,
      "outcome": "FAIL",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 50
     },
     {
@@ -3935,12 +5851,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 3,
      "outcome": "PASS",
      "phase": "refine",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 30
     },
     {
@@ -3954,12 +5872,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 4,
      "outcome": "PASS",
      "phase": "refine",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 35
     },
     {
@@ -3973,12 +5893,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 5,
      "outcome": "PASS",
      "phase": "refine",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 40
     },
     {
@@ -3992,12 +5914,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 6,
      "outcome": "PASS",
      "phase": "refine",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 45
     },
     {
@@ -4011,12 +5935,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 7,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 45
     },
     {
@@ -4030,12 +5956,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 8,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 2,
+     "superseded_decisions": [],
      "target": 45
     },
     {
@@ -4049,12 +5977,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 9,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 3,
+     "superseded_decisions": [],
      "target": 45
     }
    ]
@@ -4079,6 +6009,8 @@
     "disputed_trials": [
      "do-cap-1v1g-20261030a-t02-coarse-n050-r1"
     ],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": false
    },
    "game_starts": 6,
@@ -4123,12 +6055,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 1,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -4138,12 +6072,14 @@
       "score.json: it does not read as a whole score, or its content was changed after it was written"
      ],
      "gates": {},
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": null,
      "ordinal": 2,
      "outcome": "FAIL",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 50
     },
     {
@@ -4157,12 +6093,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 3,
      "outcome": "FAIL",
      "phase": "refine",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 30
     },
     {
@@ -4176,12 +6114,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 4,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -4195,12 +6135,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 5,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 2,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -4214,12 +6156,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 6,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 3,
+     "superseded_decisions": [],
      "target": 25
     }
    ]
@@ -4243,6 +6187,8 @@
    "crashed_at": "after_score_retained",
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 6,
@@ -4288,12 +6234,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 1,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -4307,12 +6255,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 2,
      "outcome": "FAIL",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 50
     },
     {
@@ -4326,12 +6276,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 3,
      "outcome": "FAIL",
      "phase": "refine",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 30
     },
     {
@@ -4345,12 +6297,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 4,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -4364,12 +6318,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 5,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 2,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -4383,12 +6339,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 6,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 3,
+     "superseded_decisions": [],
      "target": 25
     }
    ]
@@ -4414,6 +6372,8 @@
    "crashed_at": "after_score_retained",
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 1,
@@ -4458,12 +6418,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 1,
      "outcome": "FAIL",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     }
    ]
@@ -4486,6 +6448,8 @@
    },
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 1,
@@ -4526,12 +6490,14 @@
       "rtt_p95": "pass",
       "tick_budget": "unknown"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "not_proven",
      "ordinal": 1,
      "outcome": "INCONCLUSIVE",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     }
    ]
@@ -4554,6 +6520,8 @@
    },
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 6,
@@ -4597,12 +6565,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 1,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -4616,12 +6586,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 2,
      "outcome": "FAIL",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 50
     },
     {
@@ -4635,12 +6607,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 3,
      "outcome": "FAIL",
      "phase": "refine",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 30
     },
     {
@@ -4654,12 +6628,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 4,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -4673,12 +6649,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 5,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 2,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -4692,12 +6670,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 300,
      "offered_load": "valid",
      "ordinal": 6,
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 3,
+     "superseded_decisions": [],
      "target": 25
     }
    ]
@@ -4721,6 +6701,8 @@
    "crashed_at": "after_outcome_commit",
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 1,
@@ -4763,12 +6745,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "invalid",
      "ordinal": 1,
      "outcome": "INVALID_LOAD",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     }
    ]
@@ -4791,6 +6775,8 @@
    },
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 1,
@@ -4831,12 +6817,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "not_proven",
      "ordinal": 1,
      "outcome": "INCONCLUSIVE",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     }
    ]
@@ -4859,6 +6847,8 @@
    },
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 1,
@@ -4899,12 +6889,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "not_proven",
      "ordinal": 1,
      "outcome": "INCONCLUSIVE",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     }
    ]
@@ -4927,6 +6919,8 @@
    },
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 2,
@@ -4967,12 +6961,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 1,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -4986,12 +6982,14 @@
       "rtt_p95": "pass",
       "tick_budget": "pass"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 2,
      "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 50
     }
    ]
@@ -5017,6 +7015,8 @@
    "crashed_at": "after_execution_record",
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 1,
@@ -5052,12 +7052,14 @@
      "classification": null,
      "evidence_problems": [],
      "gates": {},
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": null,
      "ordinal": 1,
      "outcome": "INCOMPLETE",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     }
    ]
@@ -5083,6 +7085,8 @@
    "crashed_at": "after_score_retained",
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 1,
@@ -5127,12 +7131,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 1,
      "outcome": "FAIL",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     }
    ]
@@ -5160,6 +7166,8 @@
     "disputed_trials": [
      "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
     ],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": false
    },
    "game_starts": 1,
@@ -5200,12 +7208,14 @@
       "score.json: its window proof 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd' is not the retained one"
      ],
      "gates": {},
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": null,
      "ordinal": 1,
      "outcome": "INCONCLUSIVE",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     }
    ]
@@ -5230,6 +7240,8 @@
    "crashed_at": "before_outcome_commit",
    "evidence": {
     "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
     "verified": true
    },
    "game_starts": 2,
@@ -5276,12 +7288,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 1,
      "outcome": "FAIL",
      "phase": "coarse",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 25
     },
     {
@@ -5295,12 +7309,14 @@
       "rtt_p95": "pass",
       "tick_budget": "fail"
      },
+     "hard_facts": [],
      "hold_s": 60,
      "offered_load": "valid",
      "ordinal": 2,
      "outcome": "FAIL",
      "phase": "refine",
      "repetition": 1,
+     "superseded_decisions": [],
      "target": 5
     }
    ]

@@ -26,7 +26,8 @@ What each number really is, traced to its producer (``rust/load_test/src/measure
 Whose evidence. A hash shows which bytes arrived, not whose they are. ``measurement_window`` holds every recorder to the identities the supervisors sealed, including for a ramp that never produced a window, and it names which
 reasons come from the swarm's own files. All of those stand beside any server failure, because none of them can be the server's doing. A server's missing data can be the consequence of its demonstrated crash.
 
-An exit. Only the supervisor's record of the exit proves anything. The kernel's OOM count is host-wide, so it cannot say who was killed or when: it stays a diagnostic. No producer here names an OOM victim, so a SIGKILL stays unexplained.
+An exit. Only the supervisor's record of the exit proves anything. The host's OOM count cannot say who was killed or when: it stays a diagnostic. A SIGKILL is an out-of-memory kill of the game only with ``process_oom``'s proof, from the kernel's
+count for the run's own unit, bound to the supervised processes. Without all of that it stays unexplained.
 
 Boundaries. A Tick or a counter read near an edge of a mapped interval may or may not belong to the window, so a verdict must hold for every position the clocks allow. Tick counts
 and socket drops are evaluated at both extremes of that uncertainty, and anything that depends on where the window really was stays unknown.
@@ -39,6 +40,7 @@ import math
 import pathlib
 import re
 
+import guest_runner
 import measurement_window as mw
 import search
 
@@ -46,6 +48,8 @@ SCORE_SCHEMA = 'omega.do-session.run-score/1'
 CLASSIFICATION_SCHEMA = 'omega.do-session.run-classification/1'
 SCORER = 'omega.do-session.capacity-scorer/1'
 SCORE_FILE = 'score.json'
+TERMINAL_FACT_SCHEMA = 'omega.do-session.run-terminal-fact/1'
+TERMINAL_FACT_GLOB = 'terminal-fact-*.json'
 GATE_NAMES = ('continuity', 'bot_errors', 'tick_budget', 'game_socket_drops', 'rtt_p95', 'enet_loss')
 PASS, FAIL, UNKNOWN = 'pass', 'fail', 'unknown'
 VALID, INVALID, NOT_PROVEN = 'valid', 'invalid', 'not_proven'
@@ -95,8 +99,8 @@ POLICY = dict(
                definition='per bot: sent over its own scheduled grid slots in the window, in integers. Exactly 99 percent is valid. A disconnected bot is held to the part it was connected for, less the one slot the disconnect can interrupt.'),
     boundaries='Tick counts and socket drops are evaluated over the widest and the narrowest interval the clocks allow. A verdict must hold for both, or it stays unknown.',
     generator_evidence='A failed gate or a crash establishes nothing over a generator not proven valid. Every reason the prover draws from the swarm\'s own files stands: a server\'s missing data can be the consequence of its demonstrated crash, and a generator\'s cannot.',
-    ramp=dict(definition='A ramp can fail and can never pass. Its failure needs the supervised swarm and game identities, every opened socket read while open, and a kick only of a bot both sides recorded as authenticated.', last_read_before_abort_limit_ns=mw.RAMP_READ_TAIL_NS),
-    oom='The kernel OOM count is host-wide, so it is a diagnostic and never explains a process exit. No producer here names an OOM victim, so a SIGKILL stays killed_with_no_cause_on_record.',
+    ramp=dict(definition='A ramp can fail and can never pass. Its failure needs the supervised swarm and game identities, a kick only of a bot both sides recorded as authenticated, and zero generator socket drops proven on every opened socket by a counter read certainly after the abort. A read that may precede the abort, or a socket no such read saw, leaves the generator not proven.'),
+    oom='The host-wide kernel OOM count is a diagnostic and never explains a process exit. A game SIGKILL is out_of_memory only when the kernel counted exactly one OOM kill in the cgroup of the run\'s own unit between a baseline before any process started and a read right after the reap, every member of that cgroup is a supervised identity, and every other member was still alive after that read. Anything less stays killed_with_no_cause_on_record.',
 )
 POLICY_SHA256 = hashlib.sha256(json.dumps(POLICY, sort_keys=True).encode('utf-8')).hexdigest()
 
@@ -168,7 +172,88 @@ def _load_shards(root):
     return loaded
 
 
-def game_exit(execution, sampler_rows):
+def _oom_reading(document, name):
+    reading = document.get(name)
+    return reading if isinstance(reading, dict) and mw.is_count(reading.get('oom_kill')) and mw.is_count(reading.get('mono_ns')) and isinstance(reading.get('procs'), list) else None
+
+
+def process_oom(root, execution):
+    """Whether the sealed evidence shows the kernel's OOM killer took the game process. Returns (shown, facts), where ``facts`` always says why, and a host-wide count never enters into it.
+
+    The kernel's count for the run's own unit names no victim. So it is held to the sealed identities, and every other way to read one kill is excluded: another process in the cgroup, a member elsewhere, a member that
+    died too, a counter that restarted or a group kill. A file of this schema is what ``guest_runner.OomWatch`` writes, read after the same sealed hashes as every other run file.
+    """
+    root = pathlib.Path(root)
+    role = ((execution or {}).get('roles') or {}).get('game') or {}
+    identity = role.get('identity') or {}
+    result = role.get('result') or {}
+    document, problem = mw.load_json(root / 'game' / guest_runner.OOM_EVIDENCE)
+    if problem:
+        return False, dict(status='missing', problems=['%s %s' % (guest_runner.OOM_EVIDENCE, problem)])
+    if document.get('schema') != guest_runner.OOM_SCHEMA:
+        return False, dict(status='refused', problems=['it is schema %r' % (document.get('schema'),)])
+    if document.get('available') is not True:
+        return False, dict(status='unavailable', problems=[str(document.get('unavailable'))])
+    problems = []
+    plan, plan_problem = mw.load_json(root / 'plan-game.json')
+    if plan_problem:
+        problems.append('no plan to hold its unit to: %s' % plan_problem)
+    elif plan.get('unit_mode') != guest_runner.SYSTEMD or not plan.get('unit') or document.get('unit') != plan['unit']:
+        problems.append('it is of unit %r, and the plan says %r in mode %r' % (document.get('unit'), plan.get('unit'), plan.get('unit_mode')))
+    cgroup = document.get('cgroup')
+    if not isinstance(cgroup, str) or pathlib.PurePosixPath(cgroup).name != document.get('unit'):
+        problems.append('cgroup %r is not that unit\'s own' % (cgroup,))
+    if (execution or {}).get('run_id', document.get('run_id')) != document.get('run_id') or document.get('role') != 'game':
+        problems.append('it is of run %r role %r' % (document.get('run_id'), document.get('role')))
+    processes = identity.get('processes') or {}
+    expected = dict(processes, supervisor=identity.get('supervisor'))
+    named = dict(document.get('processes') or {}, supervisor=document.get('supervisor'))
+    keys = ('pid', 'start_id', 'boot_id')
+    for name in ('game', 'sampler', 'supervisor'):
+        want, have = expected.get(name), named.get(name)
+        if not isinstance(want, dict) or not isinstance(have, dict) or any(not want.get(key) or want.get(key) != have.get(key) for key in keys):
+            problems.append('%s is not the supervised process: %s, sealed %s' % (name, have, want))
+    if set(named) != {'game', 'sampler', 'supervisor'}:
+        problems.append('it names members %s' % sorted(named))
+    if not identity.get('invocation_id') or document.get('invocation_id') != identity.get('invocation_id'):
+        problems.append('it is of invocation %r, and the sealed one is %r' % (document.get('invocation_id'), identity.get('invocation_id')))
+    if (document.get('member_cgroups') or {}) != {name: cgroup for name in ('game', 'sampler', 'supervisor')}:
+        problems.append('not every member is in that cgroup: %s' % (document.get('member_cgroups'),))
+    readings = [_oom_reading(document, name) for name in ('baseline', 'bound', 'primary_exit')]
+    if any(reading is None for reading in readings):
+        problems.append('a read of the unit\'s counters is missing')
+        return False, dict(status='not_attributable', problems=problems)
+    baseline, bound, at_exit = readings
+    final = _oom_reading(document, 'final')
+    pid_of = lambda name: (named.get(name) or {}).get('pid')
+    known = {pid_of(name) for name in ('game', 'sampler', 'supervisor')}
+    for name, reading, allowed in (('baseline', baseline, {pid_of('supervisor')}), ('bound', bound, known), ('primary_exit', at_exit, known)):
+        if not set(reading['procs']) <= allowed:
+            problems.append('at %s the cgroup held %s, which are not all this run\'s' % (name, sorted(set(reading['procs']) - allowed)))
+    if any(right['mono_ns'] <= left['mono_ns'] for left, right in zip(readings, readings[1:])):
+        problems.append('its reads are out of order')
+    series = [reading['oom_kill'] for reading in readings + ([final] if final else [])]
+    if any(right < left for left, right in zip(series, series[1:])):
+        return False, dict(status='not_attributable', problems=problems + ['the counter moved backward: %s' % series], counts=series)
+    if document.get('final') is not None and final is None:
+        problems.append('the last read is malformed')
+    delta = at_exit['oom_kill'] - baseline['oom_kill']
+    facts = dict(source=document.get('source'), cgroup=cgroup, oom_kill_in_unit=delta, read_after_reap_ns=at_exit['mono_ns'])
+    if delta != 1:
+        problems.append('the kernel counted %d OOM kills in this unit before the reap, and one kill of one process is what this can attribute' % delta)
+    if (at_exit.get('oom_group_kill') or 0) != (baseline.get('oom_group_kill') or 0):
+        problems.append('a group OOM kill took more than one process')
+    if at_exit.get('primary') != 'game' or at_exit.get('signal') != SIGKILL or at_exit.get('returncode') is not None:
+        problems.append('what it read followed the exit %r signal %r of %r' % (at_exit.get('returncode'), at_exit.get('signal'), at_exit.get('primary')))
+    survivor = pid_of('sampler')
+    if at_exit.get('alive') != ['sampler'] or survivor not in at_exit['procs'] or pid_of('supervisor') not in at_exit['procs']:
+        problems.append('the other members were not all alive right after the reap: %s, %s' % (at_exit.get('alive'), at_exit['procs']))
+    if result.get('sampler_exited_early'):
+        problems.append('the sampler is on record as dying during the run')
+    return not problems, dict(facts, status='victim_matched' if not problems else 'not_attributable', problems=problems)
+
+
+def game_exit(execution, sampler_rows, root):
     """What the game process's exit proves, if it ended before the swarm did. Never more than the exit itself shows."""
     role = ((execution or {}).get('roles') or {}).get('game') or {}
     result = role.get('result') or {}
@@ -182,7 +267,9 @@ def game_exit(execution, sampler_rows):
     if signal in SELF_INFLICTED_SIGNALS:
         return dict(facts, kind='server_crash_signal', demonstrated=True)
     if signal == SIGKILL:
-        return dict(facts, kind='killed_with_no_cause_on_record', demonstrated=False, host_oom_kill_delta=_counter_delta(_memory_values(sampler_rows, 'oom_kill')))
+        shown, oom = process_oom(root, execution)
+        facts.update(host_oom_kill_delta=_counter_delta(_memory_values(sampler_rows, 'oom_kill')), process_oom=oom)
+        return dict(facts, kind='out_of_memory', demonstrated=True) if shown else dict(facts, kind='killed_with_no_cause_on_record', demonstrated=False)
     return dict(facts, kind='ended_with_no_cause_on_record', demonstrated=False)
 
 
@@ -548,7 +635,7 @@ def _score_window(evidence, proof, root, trial, workload, limits, execution, fac
     swarm = mw.load_swarm(root, trial, workload, limits, _sink())
     game = mw.load_game(root, _sink(), limits)
     game_rows = mw.load_sampler(root, 'game', _sink())
-    exit_facts = game_exit(execution, game_rows)
+    exit_facts = game_exit(execution, game_rows, root)
     population = facts.get('population') if isinstance(facts.get('population'), dict) else None
     # A wall clock that stepped breaks every mapping across it, so an interval on the server's clock is no longer conservative. The swarm's own monotonic readings do not care.
     clock_broken = bool(codes & CLOCK_BREAKING_CODES)
@@ -785,7 +872,7 @@ def _score_ramp(evidence, proof, root, trial, workload, limits, execution, windo
     health = ramp_generator(proof)
     game = mw.load_game(root, _sink(), limits)
     game_rows = mw.load_sampler(root, 'game', _sink())
-    exit_facts = game_exit(execution, game_rows)
+    exit_facts = game_exit(execution, game_rows, root)
     overrun = ramp_overrun(game)
     refused = [row for row in (game or {}).get('population') or () if row.get('k') in ('connect_rejected', 'auth_rejected')]
     # The server also sends this reason to a join it refuses, so a kick needs a bot both sides recorded as authenticated.
@@ -954,6 +1041,30 @@ def _binding_problems(document, expected):
         if (execution.get('problems') or {}).get('infrastructure') and document.get('classification') != INFRASTRUCTURE_FAILURE:
             problems.append('its execution record shows an infrastructure failure, and it says %s' % document.get('classification'))
     return problems
+
+
+def hard_facts(run_dir):
+    """Every stop fact any generation of controllers wrote down for this run, whichever decision it sits beside. Pure over retained files.
+
+    What a host only failed to answer is kept under ``uncertain`` and is no fact of this kind. An immutable decision stays what it was when it was made, so a fact found later is read from here and never from the decision.
+    """
+    run_dir = pathlib.Path(run_dir)
+    facts = []
+    for path in sorted(run_dir.glob('execution*.json'), key=lambda item: (item.name != 'execution.json', item.name)):
+        record, problem = mw.load_json(path)
+        if problem or not isinstance(record, dict):
+            continue
+        demonstrated = record.get('demonstrated_outcome') if isinstance(record.get('demonstrated_outcome'), dict) else None
+        details = list((record.get('demonstrated_problems') or {}).get('infrastructure') or ()) if isinstance(record.get('demonstrated_problems'), dict) else []
+        if demonstrated is not None and demonstrated.get('outcome') in search.STOPPING:
+            facts.append(dict(record=path.name, sha256=file_sha256(path), outcome=demonstrated['outcome'], details=list(demonstrated.get('reasons') or ())))
+        if details:
+            facts.append(dict(record=path.name, sha256=file_sha256(path), outcome=search.INFRASTRUCTURE_FAILURE, details=details))
+    for path in sorted(run_dir.glob(TERMINAL_FACT_GLOB)):
+        record, problem = mw.load_json(path)
+        if not problem and isinstance(record, dict) and record.get('schema') == TERMINAL_FACT_SCHEMA and record.get('outcome') in search.STOPPING:
+            facts.append(dict(record=path.name, sha256=file_sha256(path), outcome=record['outcome'], details=list(record.get('details') or ())))
+    return facts
 
 
 def load_retained(path):

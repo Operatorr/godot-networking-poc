@@ -82,6 +82,49 @@ class GeneratorEvidence(Base):
         self.assertEqual(result.search_status, 'no_passing_target')
 
 
+class ProcessOomThroughTheExecutor(Base):
+    """A SIGKILLed game through the real executor, registry, prover and scorer, in the mode a real session runs in: each run a unit of its own. No kernel ran."""
+
+    def killed_sim(self, change=None, wrong_mode=False):
+        def rule(tree):
+            sf.game_died(tree, 30)
+            sf.bots_time_out_after_game_died(tree, [1], 35)
+            sf.supervisor_saw_an_oom_kill(tree, change)
+        sim = self.sim_of({25: rule, 5: rule})
+        sim.guests.game_crash_after_s = 20
+        sim.guests.game_exit = (None, 9)
+        sim.guests.UNIT_MODE = 'process_group' if wrong_mode else 'systemd'
+        return sim
+
+    def test_a_victim_matched_kill_advances_the_search(self):
+        sim = self.killed_sim()
+        result = sim.executor().execute()
+        self.assertEqual(sim.outcomes()[:2], [('coarse', 25, FAIL), ('refine', 5, FAIL)])
+        score = sim.score_of(sim.records()[0]['run_id'])
+        self.assertEqual(score['attribution']['game_exit']['kind'], 'out_of_memory', score['attribution'])
+        self.assertEqual(result.search_status, 'no_passing_target')
+
+    def test_anything_less_stops_with_no_successor(self):
+        for name, status, change in sf.OOM_NOT_ATTRIBUTED:
+            with self.subTest(name):
+                sim = self.killed_sim(change)
+                self.stops_at_the_first_run(sim, sim.executor().execute())
+                self.assertEqual(sim.score_of(sim.records()[0]['run_id'])['attribution']['game_exit']['kind'], 'killed_with_no_cause_on_record')
+
+    def test_a_run_without_a_unit_of_its_own_has_nothing_to_show(self):
+        sim = self.killed_sim(wrong_mode=True)
+        self.stops_at_the_first_run(sim, sim.executor().execute())
+
+    def test_a_kill_with_no_evidence_at_all_stays_as_conservative_as_ever(self):
+        def rule(tree):
+            sf.game_died(tree, 30)
+            sf.bots_time_out_after_game_died(tree, [1], 35)
+        sim = self.sim_of({25: rule})
+        sim.guests.game_crash_after_s = 20
+        sim.guests.game_exit = (None, 9)
+        self.stops_at_the_first_run(sim, sim.executor().execute())
+
+
 class RampEvidence(Base):
     def failing_ramp(self, tree):
         sf.ramp_failure(tree, 'readiness_timeout', tree.timeline.target - 1)
@@ -106,6 +149,24 @@ class RampEvidence(Base):
                 sim = self.sim_of({25: lambda tree: (self.failing_ramp(tree), change(tree)), 5: sf.slow})
                 self.stops_at_the_first_run(sim, sim.executor().execute())
                 self.assertIn('schema_mismatch' if name == 'no_bot_collector' else code, sim.score_of(sim.records()[0]['run_id'])['inputs']['proof_reasons'])
+
+    def test_a_server_crash_over_an_unobserved_tail_stops_with_no_refinement(self):
+        for name, code, change in sf.RAMP_NOT_PROVEN:
+            if 'read' not in name:
+                continue
+            with self.subTest(name):
+                sim = self.sim_of({25: lambda tree: (self.failing_ramp(tree), change(tree)), 5: sf.slow})
+                sim.guests.game_crash_after_s = 20
+                sim.guests.game_exit = (101, None)
+                self.stops_at_the_first_run(sim, sim.executor().execute())
+
+    def test_a_fully_bracketed_ramp_with_an_overflow_stops_beside_server_distress(self):
+        def overflow(tree):
+            self.failing_ramp(tree)
+            sf._bot_socket(tree, lambda item: item.update(drops=1 if item['local_port'] == 40003 else 0))
+        sim = self.sim_of({25: overflow, 5: sf.slow})
+        self.stops_at_the_first_run(sim, sim.executor().execute())
+        self.assertEqual(sim.score_of(sim.records()[0]['run_id'])['validity']['verdict'], cs.INVALID)
 
     def test_a_kick_over_a_broken_generator_proof_stops_with_no_refinement(self):
         for name, code, change in sf.RAMP_NOT_PROVEN:
@@ -300,6 +361,277 @@ def _carry_a_demonstrated_infrastructure_failure(sim, run_dir):
     """What a returning controller that saw corrupt bytes and then died leaves behind: a fact, kept apart from anything it could not reach."""
     record = json.loads((run_dir / 'execution.json').read_text())
     (run_dir / 'execution-reconciled-0099-1.json').write_text(json.dumps(dict(record, writer='reconcile', demonstrated_problems=dict(infrastructure=['bot evidence failed its hash']), demonstrated_outcome=None, uncertain=[], problems=dict(infrastructure=['bot evidence failed its hash'], generator=[], game=[]))))
+
+
+def _nth_crash(point, nth):
+    """Dies the nth time ``point`` is reached, which is how a test picks out one run of a search."""
+    seen = []
+
+    def failpoint(name):
+        if name == point:
+            seen.append(name)
+            if len(seen) == nth:
+                raise rf.SimulatedCrash(name)
+    return failpoint
+
+
+class StopFacts(Base):
+    """A failure demonstrated on a return outranks an intact retained decision that was never committed, and stops the session if the decision already was."""
+    POINTS = ('after_score_retained', 'before_outcome_commit')
+    RULES = {50: sf.slow, 30: sf.slow}
+
+    def lose_a_file(self, sim, index=0, corrupt=True):
+        run_dir = sim.run_dir(sim.records()[index]['run_id'])
+        path = run_dir / 'bot' / 'bot.stdout.log'
+        path.chmod(0o644)
+        path.unlink()
+        if corrupt:
+            sim.guests.corrupt_export.add('bot.stdout.log')
+        return run_dir
+
+    def decision_bytes(self, run_dir):
+        return {name: (run_dir / name).read_bytes() for name in ('score.json', 'classification.json', 'window-proof.json', 'score-report.md', 'execution.json') if (run_dir / name).exists()}
+
+    def assertStoppedInfrastructure(self, sim, run_dir, before, starts, result):
+        self.assertFalse(result['resumed'], result)
+        self.assertEqual(result['code'], 'terminal_failure')
+        self.assertEqual(sim.status_now()['terminal_failure'], INFRASTRUCTURE_FAILURE)
+        self.assertEqual(len(sim.guests.runner_steps('game', 'start')), starts, 'no successor')
+        now = self.decision_bytes(run_dir)
+        self.assertEqual({name: now.get(name) for name in before}, before, 'an earlier decision stays as it was written')
+
+    def assertReported(self, sim, run_id, claim_kind='stopped_infrastructure_failure', superseded=True):
+        report = capacity_report.build(sim.stack.root)
+        self.assertEqual(report['claim']['kind'], claim_kind, report['claim'])
+        self.assertFalse(report['establishes'])
+        self.assertFalse(report['evidence']['verified'], 'the whole cannot be called verified with a stop fact standing against part of it')
+        self.assertIn(run_id, report['evidence']['trials_with_stop_facts'])
+        row = next(item for item in report['trials'] if item['run_id'] == run_id)
+        self.assertTrue(any('hash mismatch' in str(fact['details']) or 'failed its hash' in str(fact['details']) for fact in row['hard_facts']), row['hard_facts'])
+        if superseded:
+            self.assertTrue(row['superseded_decisions'], row)
+            self.assertIn(run_id, report['evidence']['superseded_trials'])
+            self.assertTrue(any(item['outcome'] == PASS for item in row['superseded_decisions']))
+            self.assertIsNone(row['classification'], 'what the old score classified is not the run\'s classification any more')
+        rendered = capacity_report.render_search(report)
+        self.assertIn('Stop fact', rendered)
+        self.assertNotIn('confirmed', report['claim']['kind'])
+        return report, rendered
+
+    def test_corrupt_bytes_on_return_outrank_a_valid_retained_decision(self):
+        for point in self.POINTS:
+            with self.subTest(point):
+                sim = self.sim_of(self.RULES)
+                self.crash(sim, point)
+                run_dir = self.lose_a_file(sim)
+                before = self.decision_bytes(run_dir)
+                self.assertEqual(json.loads((run_dir / 'score.json').read_text())['outcome'], PASS, 'the score really was a healthy one')
+                executor, control = sim.controller()
+                starts = len(sim.guests.runner_steps('game', 'start'))
+                result = executor.resume('operator: remaining', control)
+                self.assertStoppedInfrastructure(sim, run_dir, before, starts, result)
+                self.assertEqual(sim.outcomes(), [('coarse', 25, INFRASTRUCTURE_FAILURE)])
+                self.assertReported(sim, sim.records()[0]['run_id'])
+
+    def test_the_fact_survives_a_second_crash_and_a_transfer_that_works_again(self):
+        for point in self.POINTS:
+            with self.subTest(point):
+                sim = self.sim_of(self.RULES)
+                self.crash(sim, point)
+                run_dir = self.lose_a_file(sim)
+                before = self.decision_bytes(run_dir)
+                starts = len(sim.guests.runner_steps('game', 'start'))
+                executor, control = sim.controller(failpoint=rf.crash_at('after_reconcile_record'))
+                with self.assertRaises(rf.SimulatedCrash):
+                    executor.resume('operator', control)
+                sim.guests.corrupt_export.clear()
+                executor, control = sim.controller(name='controller-c')
+                result = executor.resume('operator', control)
+                self.assertStoppedInfrastructure(sim, run_dir, before, starts, result)
+                self.assertEqual(sim.outcomes(), [('coarse', 25, INFRASTRUCTURE_FAILURE)])
+                records = [json.loads(path.read_text()) for path in sorted(run_dir.glob('execution-reconciled-*.json'))]
+                self.assertTrue(any(item['problems'].get('infrastructure') for record in records for item in record['carried_from']), 'the source of the fact is named')
+                self.assertReported(sim, sim.records()[0]['run_id'])
+
+    def test_a_report_made_between_the_crashes_withholds_the_claim(self):
+        """Nobody has committed anything yet. The classification on disk says PASS, and a record beside it says otherwise."""
+        sim = self.sim_of(self.RULES)
+        self.crash(sim, 'before_outcome_commit')
+        self.lose_a_file(sim)
+        executor, control = sim.controller(failpoint=rf.crash_at('after_reconcile_record'))
+        with self.assertRaises(rf.SimulatedCrash):
+            executor.resume('operator', control)
+        report = capacity_report.build(sim.stack.root)
+        self.assertFalse(report['evidence']['verified'])
+        self.assertEqual(report['claim']['kind'], 'evidence_disagreement')
+        self.assertIn('stop fact', str(report['trials'][0]['evidence_problems']))
+
+    def test_confirmation_siblings_stay_untouched(self):
+        for point in self.POINTS:
+            for name, crashes_twice in (('one_crash', False), ('second_crash', True)):
+                with self.subTest(point=point, name=name):
+                    sim = self.sim_of(self.RULES)
+                    with self.assertRaises(rf.SimulatedCrash):
+                        sim.executor(failpoint=_nth_crash(point, 4)).execute()
+                    self.assertEqual(sim.outcomes()[:3], [('coarse', 25, PASS), ('coarse', 50, FAIL), ('refine', 30, FAIL)])
+                    self.assertEqual(sim.outcomes()[3][:2], ('confirm', 25))
+                    run_dir = self.lose_a_file(sim, 3)
+                    before = self.decision_bytes(run_dir)
+                    starts = len(sim.guests.runner_steps('game', 'start'))
+                    if crashes_twice:
+                        executor, control = sim.controller(failpoint=rf.crash_at('after_reconcile_record'))
+                        with self.assertRaises(rf.SimulatedCrash):
+                            executor.resume('operator', control)
+                        sim.guests.corrupt_export.clear()
+                    executor, control = sim.controller(name='controller-c')
+                    result = executor.resume('operator', control)
+                    self.assertStoppedInfrastructure(sim, run_dir, before, starts, result)
+                    self.assertEqual(sim.outcomes()[3], ('confirm', 25, INFRASTRUCTURE_FAILURE))
+                    self.assertEqual(len(sim.records()), 4, 'repetitions 2 and 3 were never dispatched')
+                    self.assertReported(sim, sim.records()[3]['run_id'])
+
+    def test_collect_from_any_controller_records_the_stop_too(self):
+        for point in self.POINTS:
+            with self.subTest(point):
+                sim = self.sim_of(self.RULES)
+                self.crash(sim, point)
+                self.lose_a_file(sim)
+                self.collect(sim, source_problems=lambda: ['controller revision is not frozen'])
+                self.assertEqual(sim.records()[0]['outcome'], INFRASTRUCTURE_FAILURE)
+                self.assertEqual(sim.status_now()['terminal_failure'], INFRASTRUCTURE_FAILURE)
+
+    def test_an_earlier_generations_invalid_load_fact_outranks_a_retained_decision(self):
+        for point in self.POINTS:
+            with self.subTest(point):
+                sim = self.sim_of(self.RULES)
+                self.crash(sim, point)
+                run_dir = sim.run_dir(sim.records()[0]['run_id'])
+                record = json.loads((run_dir / 'execution.json').read_text())
+                (run_dir / 'execution-reconciled-0099-1.json').write_text(json.dumps(dict(record, writer='reconcile', fencing_token=99, demonstrated_problems={}, demonstrated_outcome=dict(outcome=INVALID_LOAD, reasons=['the swarm crashed by itself: exit 3 signal None']), uncertain=[])))
+                executor, control = sim.controller()
+                result = executor.resume('operator', control)
+                self.assertEqual((result['resumed'], result['code']), (False, 'terminal_failure'))
+                self.assertEqual(sim.records()[0]['outcome'], INVALID_LOAD)
+                self.assertEqual(sim.status_now()['terminal_failure'], INVALID_LOAD)
+
+    def test_a_retained_terminal_verdict_stays_what_it_is_with_the_fact_beside_it(self):
+        sim = self.sim_of({25: sf.starved})
+        self.crash(sim, 'before_outcome_commit')
+        self.lose_a_file(sim)
+        executor, control = sim.controller()
+        self.assertEqual(executor.resume('operator', control)['code'], 'terminal_failure')
+        self.assertEqual(sim.records()[0]['outcome'], INVALID_LOAD)
+        report = capacity_report.build(sim.stack.root)
+        self.assertTrue(report['trials'][0]['hard_facts'], 'the fact stays visible beside the verdict that stands')
+
+    def test_an_unreachable_host_alone_costs_a_healthy_retained_decision_nothing(self):
+        for point in self.POINTS:
+            with self.subTest(point):
+                sim = self.sim_of(self.RULES)
+                self.crash(sim, point)
+                run_dir = self.lose_a_file(sim, corrupt=False)
+                sim.guests.copy_failures.update({('bot', 'get')})
+                self.collect(sim)
+                self.assertEqual(sim.records()[0]['outcome'], PASS, 'a transfer that could not run says nothing')
+                self.assertIsNone(sim.status_now()['terminal_failure'])
+                executions = [json.loads(path.read_text()) for path in run_dir.glob('execution-reconciled-*.json')]
+                self.assertTrue(all(not (record.get('demonstrated_problems') or {}).get('infrastructure') for record in executions))
+                self.assertTrue(any(record['uncertain'] for record in executions))
+
+    def test_an_unknown_recorded_host_identity_is_no_stop_fact_either(self):
+        sim = self.sim_of(self.RULES)
+        self.crash(sim, 'after_score_retained')
+        sim.guests.unreachable.update({(role, step) for role in ('game', 'bot') for step in ('inspect', 'stop', 'clock', 'seal')})
+        self.collect(sim)
+        self.assertEqual(sim.records()[0]['outcome'], PASS)
+        self.assertIsNone(sim.status_now()['terminal_failure'])
+
+    # ---- the outcome was already committed ------------------------------------------------------------
+
+    def test_corrupt_bytes_found_after_the_commit_stop_the_session_and_leave_the_outcome(self):
+        sim = self.sim_of(self.RULES)
+        self.crash(sim, 'after_outcome_commit')
+        self.assertEqual(sim.records()[0]['outcome'], PASS)
+        run_dir = self.lose_a_file(sim)
+        before = self.decision_bytes(run_dir)
+        starts = len(sim.guests.runner_steps('game', 'start'))
+        executor, control = sim.controller()
+        result = executor.resume('operator', control)
+        self.assertStoppedInfrastructure(sim, run_dir, before, starts, result)
+        self.assertEqual(sim.outcomes(), [('coarse', 25, PASS)], 'a committed outcome is immutable')
+        self.assertEqual(len(sorted(run_dir.glob('terminal-fact-*.json'))), 1)
+        report, rendered = self.assertReported(sim, sim.records()[0]['run_id'], claim_kind='evidence_disagreement', superseded=False)
+        self.assertEqual(report['trials'][0]['outcome'], PASS, 'what the journal recorded stays in the row')
+        self.assertIn('History only', rendered)
+
+    def test_a_crash_between_writing_that_fact_and_the_registry_hearing_of_it_is_finished_by_the_next_controller(self):
+        sim = self.sim_of(self.RULES)
+        self.crash(sim, 'after_outcome_commit')
+        run_dir = self.lose_a_file(sim)
+        executor, control = sim.controller(failpoint=rf.crash_at('after_terminal_fact'))
+        with self.assertRaises(rf.SimulatedCrash):
+            executor.resume('operator', control)
+        self.assertIsNone(sim.status_now()['terminal_failure'], 'it was only written down')
+        self.assertEqual(len(sorted(run_dir.glob('terminal-fact-*.json'))), 1)
+        sim.guests.corrupt_export.clear()
+        executor, control = sim.controller(name='controller-c')
+        self.assertEqual(executor.resume('operator', control)['code'], 'terminal_failure')
+        self.assertEqual(sim.status_now()['terminal_failure'], INFRASTRUCTURE_FAILURE)
+
+    def test_a_committed_run_whose_transfer_cannot_run_keeps_its_successor(self):
+        sim = self.sim_of(self.RULES)
+        self.crash(sim, 'after_outcome_commit')
+        self.lose_a_file(sim, corrupt=False)
+        sim.guests.copy_failures.update({('bot', 'get')})
+        executor, control = sim.controller()
+        result = executor.resume('operator', control)
+        self.assertTrue(result['resumed'], result)
+        self.assertIsNone(sim.status_now()['terminal_failure'])
+
+    def test_a_stop_fact_beside_a_committed_outcome_refuses_the_resume(self):
+        """A record a generation left beside an outcome already in the registry, however it got there."""
+        sim = self.sim_of(self.RULES)
+        self.crash(sim, 'after_outcome_commit')
+        run_dir = sim.run_dir(sim.records()[0]['run_id'])
+        _carry_a_demonstrated_infrastructure_failure(sim, run_dir)
+        executor, control = sim.controller()
+        self.assertEqual(executor.resume('operator', control)['code'], 'terminal_failure')
+        self.assertEqual(sim.outcomes(), [('coarse', 25, PASS)])
+
+    def test_recovery_at_wrap_up_records_corrupt_bytes_for_a_committed_run(self):
+        sim = self.sim_of(self.RULES)
+        executor = sim.executor()
+        result = executor.execute()
+        self.assertEqual(result.search_status, 'confirmed')
+        run_dir = self.lose_a_file(sim)
+        before = self.decision_bytes(run_dir)
+        self.assertEqual(capacity_report.build(sim.stack.root)['claim']['kind'], 'confirmed_observation')
+        executor.wrap_up(result)
+        self.assertEqual(sim.status_now()['terminal_failure'], INFRASTRUCTURE_FAILURE)
+        self.assertEqual(self.decision_bytes(run_dir), before)
+        self.assertEqual(sim.status_now()['cleanup']['requested_at'] is not None, True, 'it never stands between a finished batch and its cleanup')
+        self.assertEqual(len(sorted(run_dir.glob('terminal-fact-*.json'))), 1, 'one fact, however many sweeps saw it')
+        report, _ = self.assertReported(sim, sim.records()[0]['run_id'], claim_kind='evidence_disagreement', superseded=False)
+        self.assertEqual(report['journal_claim']['kind'], 'confirmed_observation', 'the journal\'s history stays')
+
+    def test_bytes_that_fail_on_one_sweep_and_recover_on_the_next_are_not_unsaid(self):
+        sim = self.sim_of(self.RULES)
+        executor = sim.executor()
+        result = executor.execute()
+        run_dir = self.lose_a_file(sim)
+        real_get = sim.guests.get
+        calls = []
+
+        def get(role, remote, local, timeout_s, on_wait=None):
+            answer = real_get(role, remote, local, timeout_s, on_wait)
+            if remote.endswith('bot.stdout.log'):
+                calls.append(remote)
+                sim.guests.corrupt_export.clear()
+            return answer
+        sim.guests.get = get
+        executor.wrap_up(result)
+        self.assertEqual((run_dir / 'bot' / 'bot.stdout.log').exists(), True, 'recovered')
+        self.assertEqual(sim.status_now()['terminal_failure'], INFRASTRUCTURE_FAILURE)
 
 
 class RetainedClassifications(Base):

@@ -17,10 +17,9 @@
    "definition": "per bot: sent over its own scheduled grid slots in the window, in integers. Exactly 99 percent is valid. A disconnected bot is held to the part it was connected for, less the one slot the disconnect can interrupt.",
    "min_percent": 99
   },
-  "oom": "The kernel OOM count is host-wide, so it is a diagnostic and never explains a process exit. No producer here names an OOM victim, so a SIGKILL stays killed_with_no_cause_on_record.",
+  "oom": "The host-wide kernel OOM count is a diagnostic and never explains a process exit. A game SIGKILL is out_of_memory only when the kernel counted exactly one OOM kill in the cgroup of the run's own unit between a baseline before any process started and a read right after the reap, every member of that cgroup is a supervised identity, and every other member was still alive after that read. Anything less stays killed_with_no_cause_on_record.",
   "ramp": {
-   "definition": "A ramp can fail and can never pass. Its failure needs the supervised swarm and game identities, every opened socket read while open, and a kick only of a bot both sides recorded as authenticated.",
-   "last_read_before_abort_limit_ns": 2000000000
+   "definition": "A ramp can fail and can never pass. Its failure needs the supervised swarm and game identities, a kick only of a bot both sides recorded as authenticated, and zero generator socket drops proven on every opened socket by a counter read certainly after the abort. A read that may precede the abort, or a socket no such read saw, leaves the generator not proven."
   },
   "rtt_limit_ms_strictly_below": 150,
   "rtt_quantile": {
@@ -31,7 +30,7 @@
   "tick_budget_ns": 33300000,
   "tick_over_percent_strictly_below": 1
  },
- "policy_sha256": "29c024c22e2478cce0f65a77cd9f3e40a54827d35b68f471680f0018acc897fa",
+ "policy_sha256": "042bdbbd8a2ca1639c694750abc33f70a286273d864d5623a26ecf476edbadbb",
  "scenarios": {
   "bot_panic_invalid": {
    "classification": "invalid_offered_load",
@@ -628,6 +627,3081 @@
     "the game process ended and nothing on record says why: ended_with_no_cause_on_record"
    ]
   },
+  "game_oom_a_group_kill": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
+     "oom_kill_in_unit": 1,
+     "problems": [
+      "a group OOM kill took more than one process"
+     ],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events of the run unit",
+     "status": "not_attributable"
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_a_kill_only_after_the_reap": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
+     "oom_kill_in_unit": 0,
+     "problems": [
+      "the kernel counted 0 OOM kills in this unit before the reap, and one kill of one process is what this can attribute"
+     ],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events of the run unit",
+     "status": "not_attributable"
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_a_member_in_another_cgroup": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
+     "oom_kill_in_unit": 1,
+     "problems": [
+      "not every member is in that cgroup: {'game': '/system.slice/ssh.service', 'sampler': '/system.slice/omega-run-55cd2cdf438a5f4f-game.service', 'supervisor': '/system.slice/omega-run-55cd2cdf438a5f4f-game.service'}"
+     ],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events of the run unit",
+     "status": "not_attributable"
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_a_read_that_failed": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "problems": [
+      "a read of the unit's counters is missing"
+     ],
+     "status": "not_attributable"
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_a_reused_pid": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
+     "oom_kill_in_unit": 1,
+     "problems": [
+      "game is not the supervised process: {'pid': 3001, 'start_id': 'ticks:1', 'boot_id': 'boot-game'}, sealed {'pid': 3001, 'start_id': 'ticks:8001', 'boot_id': 'boot-game', 'primary': True}"
+     ],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events of the run unit",
+     "status": "not_attributable"
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_a_shared_cgroup": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/user.slice/user-1000.slice/session-1.scope",
+     "oom_kill_in_unit": 1,
+     "problems": [
+      "cgroup '/user.slice/user-1000.slice/session-1.scope' is not that unit's own"
+     ],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events of the run unit",
+     "status": "not_attributable"
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_a_stranger_at_the_reap": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
+     "oom_kill_in_unit": 1,
+     "problems": [
+      "at primary_exit the cgroup held [777], which are not all this run's"
+     ],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events of the run unit",
+     "status": "not_attributable"
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_a_stranger_before_anything_started": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
+     "oom_kill_in_unit": 1,
+     "problems": [
+      "at baseline the cgroup held [777], which are not all this run's"
+     ],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events of the run unit",
+     "status": "not_attributable"
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_a_stranger_in_the_cgroup": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
+     "oom_kill_in_unit": 1,
+     "problems": [
+      "at bound the cgroup held [777], which are not all this run's"
+     ],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events of the run unit",
+     "status": "not_attributable"
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_a_victim_with_no_start_identity": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
+     "oom_kill_in_unit": 1,
+     "problems": [
+      "game is not the supervised process: {'pid': 3001, 'start_id': None, 'boot_id': 'boot-game'}, sealed {'pid': 3001, 'start_id': 'ticks:8001', 'boot_id': 'boot-game', 'primary': True}"
+     ],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events of the run unit",
+     "status": "not_attributable"
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_another_boot": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
+     "oom_kill_in_unit": 1,
+     "problems": [
+      "game is not the supervised process: {'pid': 3001, 'start_id': 'ticks:8001', 'boot_id': 'another-boot'}, sealed {'pid': 3001, 'start_id': 'ticks:8001', 'boot_id': 'boot-game', 'primary': True}"
+     ],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events of the run unit",
+     "status": "not_attributable"
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_another_invocation_of_the_unit": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
+     "oom_kill_in_unit": 1,
+     "problems": [
+      "it is of invocation 'other-invocation', and the sealed one is 'fixture-invocation-oom'"
+     ],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events of the run unit",
+     "status": "not_attributable"
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_another_process_was_the_victim": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
+     "oom_kill_in_unit": 1,
+     "problems": [
+      "game is not the supervised process: {'pid': 123456, 'start_id': 'ticks:8001', 'boot_id': 'boot-game'}, sealed {'pid': 3001, 'start_id': 'ticks:8001', 'boot_id': 'boot-game', 'primary': True}",
+      "at bound the cgroup held [3001], which are not all this run's"
+     ],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events of the run unit",
+     "status": "not_attributable"
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_another_schema": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "problems": [
+      "it is schema 'omega.other/1'"
+     ],
+     "status": "refused"
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_another_supervisor": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
+     "oom_kill_in_unit": 1,
+     "problems": [
+      "supervisor is not the supervised process: {'pid': 123456, 'start_id': 'ticks:7999', 'boot_id': 'boot-game'}, sealed {'pid': 2999, 'start_id': 'ticks:7999', 'boot_id': 'boot-game'}",
+      "at baseline the cgroup held [2999], which are not all this run's",
+      "at bound the cgroup held [2999], which are not all this run's",
+      "at primary_exit the cgroup held [2999], which are not all this run's",
+      "the other members were not all alive right after the reap: ['sampler'], [2999, 3002]"
+     ],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events of the run unit",
+     "status": "not_attributable"
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_another_unit_named": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-other-game.service",
+     "oom_kill_in_unit": 1,
+     "problems": [
+      "it is of unit 'omega-run-other-game.service', and the plan says 'omega-run-55cd2cdf438a5f4f-game.service' in mode 'systemd'",
+      "not every member is in that cgroup: {'game': '/system.slice/omega-run-55cd2cdf438a5f4f-game.service', 'sampler': '/system.slice/omega-run-55cd2cdf438a5f4f-game.service', 'supervisor': '/system.slice/omega-run-55cd2cdf438a5f4f-game.service'}"
+     ],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events of the run unit",
+     "status": "not_attributable"
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_another_units_cgroup": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/ssh.service",
+     "oom_kill_in_unit": 1,
+     "problems": [
+      "cgroup '/system.slice/ssh.service' is not that unit's own"
+     ],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events of the run unit",
+     "status": "not_attributable"
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_kill_matched_to_the_game": {
+   "classification": "capacity_failure",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_with_server_distress",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_with_server_distress",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": true,
+    "host_oom_kill_delta": null,
+    "kind": "out_of_memory",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
+     "oom_kill_in_unit": 1,
+     "problems": [],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events of the run unit",
+     "status": "victim_matched"
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "FAIL",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "game process lost: out_of_memory (exit None signal 9)",
+    "bots [1, 2] timed out while the server was failing"
+   ]
+  },
+  "game_oom_no_baseline": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "problems": [
+      "a read of the unit's counters is missing"
+     ],
+     "status": "not_attributable"
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_no_kill_counted": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
+     "oom_kill_in_unit": 0,
+     "problems": [
+      "the kernel counted 0 OOM kills in this unit before the reap, and one kill of one process is what this can attribute"
+     ],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events of the run unit",
+     "status": "not_attributable"
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_no_unit_of_its_own": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "problems": [
+      "this run has no unit of its own, so no cgroup boundary is its alone"
+     ],
+     "status": "unavailable"
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_reads_out_of_order": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
+     "oom_kill_in_unit": 1,
+     "problems": [
+      "its reads are out of order"
+     ],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events of the run unit",
+     "status": "not_attributable"
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_the_counter_restarted": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "counts": [
+      5,
+      5,
+      1,
+      1
+     ],
+     "problems": [
+      "the counter moved backward: [5, 5, 1, 1]"
+     ],
+     "status": "not_attributable"
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_the_counter_went_back_after_the_reap": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "counts": [
+      0,
+      0,
+      1,
+      0
+     ],
+     "problems": [
+      "the counter moved backward: [0, 0, 1, 0]"
+     ],
+     "status": "not_attributable"
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_the_counter_went_back_before_the_reap": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "counts": [
+      3,
+      0,
+      4,
+      4
+     ],
+     "problems": [
+      "the counter moved backward: [3, 0, 4, 4]"
+     ],
+     "status": "not_attributable"
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_the_exit_it_read_was_something_else": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
+     "oom_kill_in_unit": 1,
+     "problems": [
+      "what it read followed the exit None signal 15 of 'game'"
+     ],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events of the run unit",
+     "status": "not_attributable"
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_the_sampler_died_too": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
+     "oom_kill_in_unit": 1,
+     "problems": [
+      "the other members were not all alive right after the reap: [], [2999]"
+     ],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events of the run unit",
+     "status": "not_attributable"
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_two_kills_counted": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
+     "oom_kill_in_unit": 2,
+     "problems": [
+      "the kernel counted 2 OOM kills in this unit before the reap, and one kill of one process is what this can attribute"
+     ],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events of the run unit",
+     "status": "not_attributable"
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
   "game_panic_mid_window": {
    "classification": "capacity_failure",
    "departures": [
@@ -857,6 +3931,12 @@
     "host_oom_kill_delta": null,
     "kind": "killed_with_no_cause_on_record",
     "lost": true,
+    "process_oom": {
+     "problems": [
+      "process-oom.json missing"
+     ],
+     "status": "missing"
+    },
     "returncode": null,
     "signal": 9
    },
@@ -958,6 +4038,12 @@
     "host_oom_kill_delta": null,
     "kind": "killed_with_no_cause_on_record",
     "lost": true,
+    "process_oom": {
+     "problems": [
+      "process-oom.json missing"
+     ],
+     "status": "missing"
+    },
     "returncode": null,
     "signal": 9
    },
@@ -1058,6 +4144,12 @@
     "host_oom_kill_delta": 0,
     "kind": "killed_with_no_cause_on_record",
     "lost": true,
+    "process_oom": {
+     "problems": [
+      "process-oom.json missing"
+     ],
+     "status": "missing"
+    },
     "returncode": null,
     "signal": 9
    },
@@ -1158,6 +4250,12 @@
     "host_oom_kill_delta": 1,
     "kind": "killed_with_no_cause_on_record",
     "lost": true,
+    "process_oom": {
+     "problems": [
+      "process-oom.json missing"
+     ],
+     "status": "missing"
+    },
     "returncode": null,
     "signal": 9
    },
@@ -1258,6 +4356,12 @@
     "host_oom_kill_delta": null,
     "kind": "killed_with_no_cause_on_record",
     "lost": true,
+    "process_oom": {
+     "problems": [
+      "process-oom.json missing"
+     ],
+     "status": "missing"
+    },
     "returncode": null,
     "signal": 9
    },
@@ -7783,7 +10887,7 @@
     "unproven": [
      "bot 1 opened a socket and names no local port",
      "the swarm holds a socket on 40001 that no bot claims",
-     "bot 1: the socket on None is in 0 of the 65 reads made while it was open",
+     "bot 1: the socket on None is in 0 of the 66 reads up to the first one certainly after the abort",
      "generator socket counters are not proven: 7 of the opened sockets have one, none for bots [1]"
     ],
     "verdict": "not_proven",
@@ -7796,7 +10900,7 @@
    ],
    "proof_status": "invalid",
    "reasons": [
-    "the ramp failed over a generator not proven valid: bot 1 opened a socket and names no local port; the swarm holds a socket on 40001 that no bot claims; bot 1: the socket on None is in 0 of the 65 reads made while it was open; generator socket counters are not proven: 7 of the opened sockets have one, none for bots [1]"
+    "the ramp failed over a generator not proven valid: bot 1 opened a socket and names no local port; the swarm holds a socket on 40001 that no bot claims; bot 1: the socket on None is in 0 of the 66 reads up to the first one certainly after the abort; generator socket counters are not proven: 7 of the opened sockets have one, none for bots [1]"
    ]
   },
   "ramp_kick": {
@@ -7917,6 +11021,69 @@
     "the ramp ended (bot_failed_before_window) with a valid generator and no failure on the server's record: a timeout alone is not a capacity limit"
    ]
   },
+  "ramp_last_read_just_before_the_abort_beside_a_proven_overrun": {
+   "classification": "inconclusive_evidence",
+   "departures": [],
+   "established": false,
+   "establishes_capacity": false,
+   "game_exit": {
+    "lost": false
+   },
+   "gates": {
+    "bot_errors": {
+     "verdict": "unknown",
+     "why": "no common window was established"
+    },
+    "continuity": {
+     "verdict": "unknown",
+     "why": "N never held: readiness_timeout"
+    },
+    "enet_loss": {
+     "verdict": "unknown",
+     "why": "no common window was established"
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no common window was established"
+    },
+    "rtt_p95": {
+     "verdict": "unknown",
+     "why": "no common window was established"
+    },
+    "tick_budget": {
+     "over": 40,
+     "ratio": {
+      "approximate": 0.02027369488089204,
+      "exact": "40/1973"
+     },
+     "scope": "every Tick with at least one authenticated player, the ramp and any drain",
+     "ticks": 1973,
+     "verdict": "fail"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "not_proven",
+    "scheduled": null,
+    "sent": null,
+    "sockets": "not_proven",
+    "unproven": [
+     "no bot collector read is certainly after the abort, so nothing shows the end of the ramp was free of drops",
+     "generator socket counters are not proven: 0 of the opened sockets have one, none for bots [1, 2, 3, 4, 5, 6, 7, 8]"
+    ],
+    "verdict": "not_proven",
+    "worst_ratio": null
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "collector_boundary_missing",
+    "window_not_established"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the ramp failed over a generator not proven valid: no bot collector read is certainly after the abort, so nothing shows the end of the ramp was free of drops; generator socket counters are not proven: 0 of the opened sockets have one, none for bots [1, 2, 3, 4, 5, 6, 7, 8]"
+   ]
+  },
   "ramp_last_read_long_before_the_abort_beside_a_proven_overrun": {
    "classification": "inconclusive_evidence",
    "departures": [],
@@ -7964,7 +11131,8 @@
     "sent": null,
     "sockets": "not_proven",
     "unproven": [
-     "the last bot collector read may have been 56.8 s before the abort"
+     "no bot collector read is certainly after the abort, so nothing shows the end of the ramp was free of drops",
+     "generator socket counters are not proven: 0 of the opened sockets have one, none for bots [1, 2, 3, 4, 5, 6, 7, 8]"
     ],
     "verdict": "not_proven",
     "worst_ratio": null
@@ -7976,7 +11144,70 @@
    ],
    "proof_status": "invalid",
    "reasons": [
-    "the ramp failed over a generator not proven valid: the last bot collector read may have been 56.8 s before the abort"
+    "the ramp failed over a generator not proven valid: no bot collector read is certainly after the abort, so nothing shows the end of the ramp was free of drops; generator socket counters are not proven: 0 of the opened sockets have one, none for bots [1, 2, 3, 4, 5, 6, 7, 8]"
+   ]
+  },
+  "ramp_last_read_may_be_before_the_abort_beside_a_proven_overrun": {
+   "classification": "inconclusive_evidence",
+   "departures": [],
+   "established": false,
+   "establishes_capacity": false,
+   "game_exit": {
+    "lost": false
+   },
+   "gates": {
+    "bot_errors": {
+     "verdict": "unknown",
+     "why": "no common window was established"
+    },
+    "continuity": {
+     "verdict": "unknown",
+     "why": "N never held: readiness_timeout"
+    },
+    "enet_loss": {
+     "verdict": "unknown",
+     "why": "no common window was established"
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no common window was established"
+    },
+    "rtt_p95": {
+     "verdict": "unknown",
+     "why": "no common window was established"
+    },
+    "tick_budget": {
+     "over": 40,
+     "ratio": {
+      "approximate": 0.02027369488089204,
+      "exact": "40/1973"
+     },
+     "scope": "every Tick with at least one authenticated player, the ramp and any drain",
+     "ticks": 1973,
+     "verdict": "fail"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "not_proven",
+    "scheduled": null,
+    "sent": null,
+    "sockets": "not_proven",
+    "unproven": [
+     "no bot collector read is certainly after the abort, so nothing shows the end of the ramp was free of drops",
+     "generator socket counters are not proven: 0 of the opened sockets have one, none for bots [1, 2, 3, 4, 5, 6, 7, 8]"
+    ],
+    "verdict": "not_proven",
+    "worst_ratio": null
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "collector_boundary_missing",
+    "window_not_established"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the ramp failed over a generator not proven valid: no bot collector read is certainly after the abort, so nothing shows the end of the ramp was free of drops; generator socket counters are not proven: 0 of the opened sockets have one, none for bots [1, 2, 3, 4, 5, 6, 7, 8]"
    ]
   },
   "ramp_no_abort_row_beside_a_proven_overrun": {
@@ -8295,6 +11526,216 @@
     "the ramp failed over a generator not proven valid: shard-2 has no join row for bots [3], whose slots came before the abort"
    ]
   },
+  "ramp_oom_kill_matched_to_the_game": {
+   "classification": "capacity_failure",
+   "departures": [],
+   "established": false,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": true,
+    "host_oom_kill_delta": null,
+    "kind": "out_of_memory",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
+     "oom_kill_in_unit": 1,
+     "problems": [],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events of the run unit",
+     "status": "victim_matched"
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "verdict": "unknown",
+     "why": "no common window was established"
+    },
+    "continuity": {
+     "verdict": "fail",
+     "why": "N never held: bot_failed_before_window"
+    },
+    "enet_loss": {
+     "verdict": "unknown",
+     "why": "no common window was established"
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no common window was established"
+    },
+    "rtt_p95": {
+     "verdict": "unknown",
+     "why": "no common window was established"
+    },
+    "tick_budget": {
+     "over": 0,
+     "ratio": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     },
+     "scope": "every Tick with at least one authenticated player, the ramp and any drain",
+     "ticks": 1973,
+     "verdict": "pass"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "not_proven",
+    "scheduled": null,
+    "sent": null,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": null
+   },
+   "outcome": "FAIL",
+   "proof_reasons": [
+    "window_not_established"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "game process lost in the ramp: out_of_memory (exit None signal 9)"
+   ]
+  },
+  "ramp_oom_kill_with_the_last_read_before_the_abort": {
+   "classification": "inconclusive_evidence",
+   "departures": [],
+   "established": false,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": true,
+    "host_oom_kill_delta": null,
+    "kind": "out_of_memory",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
+     "oom_kill_in_unit": 1,
+     "problems": [],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events of the run unit",
+     "status": "victim_matched"
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "verdict": "unknown",
+     "why": "no common window was established"
+    },
+    "continuity": {
+     "verdict": "fail",
+     "why": "N never held: bot_failed_before_window"
+    },
+    "enet_loss": {
+     "verdict": "unknown",
+     "why": "no common window was established"
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no common window was established"
+    },
+    "rtt_p95": {
+     "verdict": "unknown",
+     "why": "no common window was established"
+    },
+    "tick_budget": {
+     "over": 0,
+     "ratio": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     },
+     "scope": "every Tick with at least one authenticated player, the ramp and any drain",
+     "ticks": 1973,
+     "verdict": "pass"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "not_proven",
+    "scheduled": null,
+    "sent": null,
+    "sockets": "not_proven",
+    "unproven": [
+     "no bot collector read is certainly after the abort, so nothing shows the end of the ramp was free of drops",
+     "generator socket counters are not proven: 0 of the opened sockets have one, none for bots [1, 2, 3, 4, 5, 6, 7, 8]"
+    ],
+    "verdict": "not_proven",
+    "worst_ratio": null
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "collector_boundary_missing",
+    "window_not_established"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the ramp failed over a generator not proven valid: no bot collector read is certainly after the abort, so nothing shows the end of the ramp was free of drops; generator socket counters are not proven: 0 of the opened sockets have one, none for bots [1, 2, 3, 4, 5, 6, 7, 8]"
+   ]
+  },
+  "ramp_overflow_on_a_read_after_the_abort_beside_an_overrun": {
+   "classification": "inconclusive_evidence",
+   "departures": [],
+   "established": false,
+   "establishes_capacity": false,
+   "game_exit": {
+    "lost": false
+   },
+   "gates": {
+    "bot_errors": {
+     "verdict": "unknown",
+     "why": "no common window was established"
+    },
+    "continuity": {
+     "verdict": "unknown",
+     "why": "N never held: readiness_timeout"
+    },
+    "enet_loss": {
+     "verdict": "unknown",
+     "why": "no common window was established"
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no common window was established"
+    },
+    "rtt_p95": {
+     "verdict": "unknown",
+     "why": "no common window was established"
+    },
+    "tick_budget": {
+     "over": 40,
+     "ratio": {
+      "approximate": 0.02027369488089204,
+      "exact": "40/1973"
+     },
+     "scope": "every Tick with at least one authenticated player, the ramp and any drain",
+     "ticks": 1973,
+     "verdict": "fail"
+    }
+   },
+   "offered_load": {
+    "independent": [
+     "ramp"
+    ],
+    "input": "not_proven",
+    "scheduled": null,
+    "sent": null,
+    "sockets": "not_proven",
+    "unproven": [],
+    "verdict": "invalid",
+    "worst_ratio": null
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "generator_socket_drops",
+    "window_not_established"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "both the generator and the server failed in the ramp, and nothing separates them: bot 3 dropped 1 datagrams before its first read; Ticks over the literal 33.3 ms budget at 1 percent or more while the server held players"
+   ]
+  },
   "ramp_poll_starvation": {
    "classification": "invalid_offered_load",
    "departures": [],
@@ -8588,7 +12029,7 @@
     "sent": null,
     "sockets": "not_proven",
     "unproven": [
-     "bot 1: the socket on 40001 is in 64 of the 65 reads made while it was open",
+     "bot 1: the socket on 40001 is in 65 of the 66 reads up to the first one certainly after the abort",
      "generator socket counters are not proven: 7 of the opened sockets have one, none for bots [1]"
     ],
     "verdict": "not_proven",
@@ -8601,7 +12042,7 @@
    ],
    "proof_status": "invalid",
    "reasons": [
-    "the ramp failed over a generator not proven valid: bot 1: the socket on 40001 is in 64 of the 65 reads made while it was open; generator socket counters are not proven: 7 of the opened sockets have one, none for bots [1]"
+    "the ramp failed over a generator not proven valid: bot 1: the socket on 40001 is in 65 of the 66 reads up to the first one certainly after the abort; generator socket counters are not proven: 7 of the opened sockets have one, none for bots [1]"
    ]
   },
   "ramp_socket_changed_inode_beside_a_proven_overrun": {
@@ -8736,6 +12177,69 @@
     "the ramp failed over a generator not proven valid: bot 1 has no kernel drop counter; bot 2 has no kernel drop counter; bot 3 has no kernel drop counter; bot 4 has no kernel drop counter; bot 5 has no kernel drop counter; bot 6 has no kernel drop counter; bot 7 has no kernel drop counter; bot 8 has no kernel drop counter; generator socket counters are not proven: 0 of the opened sockets have one, none for bots [1, 2, 3, 4, 5, 6, 7, 8]"
    ]
   },
+  "ramp_socket_gone_before_the_read_after_the_abort_beside_a_proven_overrun": {
+   "classification": "inconclusive_evidence",
+   "departures": [],
+   "established": false,
+   "establishes_capacity": false,
+   "game_exit": {
+    "lost": false
+   },
+   "gates": {
+    "bot_errors": {
+     "verdict": "unknown",
+     "why": "no common window was established"
+    },
+    "continuity": {
+     "verdict": "unknown",
+     "why": "N never held: readiness_timeout"
+    },
+    "enet_loss": {
+     "verdict": "unknown",
+     "why": "no common window was established"
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no common window was established"
+    },
+    "rtt_p95": {
+     "verdict": "unknown",
+     "why": "no common window was established"
+    },
+    "tick_budget": {
+     "over": 40,
+     "ratio": {
+      "approximate": 0.02027369488089204,
+      "exact": "40/1973"
+     },
+     "scope": "every Tick with at least one authenticated player, the ramp and any drain",
+     "ticks": 1973,
+     "verdict": "fail"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "not_proven",
+    "scheduled": null,
+    "sent": null,
+    "sockets": "not_proven",
+    "unproven": [
+     "bot 1: the socket on 40001 is in 65 of the 66 reads up to the first one certainly after the abort",
+     "generator socket counters are not proven: 7 of the opened sockets have one, none for bots [1]"
+    ],
+    "verdict": "not_proven",
+    "worst_ratio": null
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "socket_evidence_missing",
+    "window_not_established"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the ramp failed over a generator not proven valid: bot 1: the socket on 40001 is in 65 of the 66 reads up to the first one certainly after the abort; generator socket counters are not proven: 7 of the opened sockets have one, none for bots [1]"
+   ]
+  },
   "ramp_socket_never_read_beside_a_proven_overrun": {
    "classification": "inconclusive_evidence",
    "departures": [],
@@ -8783,7 +12287,7 @@
     "sent": null,
     "sockets": "not_proven",
     "unproven": [
-     "bot 2: the socket on 40002 is in 0 of the 65 reads made while it was open",
+     "bot 2: the socket on 40002 is in 0 of the 66 reads up to the first one certainly after the abort",
      "generator socket counters are not proven: 7 of the opened sockets have one, none for bots [2]"
     ],
     "verdict": "not_proven",
@@ -8796,7 +12300,7 @@
    ],
    "proof_status": "invalid",
    "reasons": [
-    "the ramp failed over a generator not proven valid: bot 2: the socket on 40002 is in 0 of the 65 reads made while it was open; generator socket counters are not proven: 7 of the opened sockets have one, none for bots [2]"
+    "the ramp failed over a generator not proven valid: bot 2: the socket on 40002 is in 0 of the 66 reads up to the first one certainly after the abort; generator socket counters are not proven: 7 of the opened sockets have one, none for bots [2]"
    ]
   },
   "ramp_socket_nobody_claims_beside_a_proven_overrun": {
@@ -8909,7 +12413,7 @@
     "sockets": "not_proven",
     "unproven": [
      "the swarm holds a socket on 40999 that no bot claims",
-     "bot 3: the socket on 40003 is in 0 of the 65 reads made while it was open",
+     "bot 3: the socket on 40003 is in 0 of the 66 reads up to the first one certainly after the abort",
      "generator socket counters are not proven: 7 of the opened sockets have one, none for bots [3]"
     ],
     "verdict": "not_proven",
@@ -8922,7 +12426,7 @@
    ],
    "proof_status": "invalid",
    "reasons": [
-    "the ramp failed over a generator not proven valid: the swarm holds a socket on 40999 that no bot claims; bot 3: the socket on 40003 is in 0 of the 65 reads made while it was open; generator socket counters are not proven: 7 of the opened sockets have one, none for bots [3]"
+    "the ramp failed over a generator not proven valid: the swarm holds a socket on 40999 that no bot claims; bot 3: the socket on 40003 is in 0 of the 66 reads up to the first one certainly after the abort; generator socket counters are not proven: 7 of the opened sockets have one, none for bots [3]"
    ]
   },
   "ramp_starvation_beside_an_overrun": {
