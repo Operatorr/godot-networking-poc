@@ -96,8 +96,8 @@ def _state(session_dir, manifest, sha, state):
             verdict = _retained_verdict(run_dir / 'classification.json', _expectation(run_dir, record, manifest, sha))
             if verdict is not None:
                 record = search.TrialRecord(record.trial, verdict, 'runs/%s/classification.json#sha256:%s' % (record.trial.run_id, _file_sha256(run_dir / 'classification.json')))
-            elif not (run_dir / 'grant.json').exists():
-                continue
+            elif run_dir.is_dir() and not (run_dir / 'grant.json').exists():
+                continue     # a directory that is gone is no selection left untouched: ``publish_selection`` makes one for every selection, and ``stop_records`` says what its absence means
         kept.append(record)
     return search.SearchState(state.condition_id, kept, state.stop_reason)
 
@@ -121,7 +121,7 @@ def _retained_verdict(path, expected):
 
 
 def _file_sha256(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None
+    return capacity_scorer.file_sha256(path)     # None for anything that cannot be read, which compares with no recorded hash
 
 
 def audit(session_dir, manifest, sha, record):
@@ -222,7 +222,7 @@ def render_search(report):
         lines += ['- Not verified: ' + problem for problem in row['evidence_problems']]
         lines += ['- Stop fact %s (%s): %s' % (fact['outcome'], fact['record'], '; '.join(str(item) for item in fact['details'])) for fact in row.get('hard_facts') or ()]
         lines += ['- Unverified stop record %s (sha256 %s), not this session\'s fact: %s' % (item['record'], item['sha256'], '; '.join(item['problems'])) for item in row.get('unverified_stop_records') or ()]
-        lines += ['- History, does not stand: %s said %s (sha256 %s). The gates below are what it decided.' % (item['file'], item['outcome'], item['sha256']) for item in row.get('superseded_decisions') or ()]
+        lines += ['- History, does not stand: %s said %s (sha256 %s). The gates below are what it decided.' % (item['file'], item.get('outcome'), item['sha256']) for item in row.get('superseded_decisions') or ()]
         lines += ['- ' + str(reason) for reason in (row.get('reasons') or ())]
         lines += ['- %s: %s' % (name, value) for name, value in sorted((row.get('values') or {}).items()) if value]
     lines += ['', 'CPU, memory, bandwidth and variance are diagnostics and add no gate. ENet loss is a smoothed estimate, not a measured fraction of datagrams dropped. This report renders retained decisions and proves nothing by existing.', '']

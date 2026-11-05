@@ -55,6 +55,8 @@ TERMINAL_FACT_NAME = re.compile(r'terminal-fact-(\d{4,})-\d+\.json')
 CORRUPT_OBSERVATION_SCHEMA = 'omega.do-session.corrupt-observation/1'
 CORRUPT_OBSERVATION_GLOB = 'corrupt-observation-*.json'
 CORRUPT_EVIDENCE_DIR = 'corrupt-evidence'
+SEAL_RECEIPT_SCHEMA = 'omega.do-session.seal-receipt/1'
+SEAL_RECEIPT_GLOB = 'seal-receipt-*.json'
 STOP_RECORD_WRITES = (TERMINAL_FACT_GLOB + do_session.WRITING + '*', CORRUPT_OBSERVATION_GLOB + do_session.WRITING + '*')
 READ_FAILURES = (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError, RecursionError)     # whatever a file in a run directory turns out to hold, a reader answers
 GATE_NAMES = ('continuity', 'bot_errors', 'tick_budget', 'game_socket_drops', 'rtt_p95', 'enet_loss')
@@ -586,14 +588,33 @@ def _legacy(root):
     return dict(present=True, decides_nothing=True, labelled_whole_run=report.get('legacy_whole_run_diagnostic') is True, measured_window_status=report.get('measured_window_status'))
 
 
+def _reasons_of(proof):
+    """A proof's reasons that are of a shape to read. Whether all of them are is ``proof_shape_problems``' to say."""
+    reasons = proof.get('reasons') if isinstance(proof, dict) else None
+    return [item for item in reasons if isinstance(item, dict) and isinstance(item.get('code'), str)] if isinstance(reasons, list) else []
+
+
 def _codes(proof):
-    if not isinstance(proof, dict):
-        return []
-    return sorted({item.get('code') for item in proof.get('reasons') or () if isinstance(item, dict)})
+    return sorted({item['code'] for item in _reasons_of(proof)})
 
 
 def _generator_reasons(proof):
-    return sorted({item.get('code') for item in (proof or {}).get('reasons') or () if isinstance(item, dict) and item.get('category') == mw.GENERATOR})
+    return sorted({item['code'] for item in _reasons_of(proof) if item.get('category') == mw.GENERATOR})
+
+
+def proof_shape_problems(proof):
+    """Whether a retained window proof has the shape its writer gives it, so that what it says can be read at all. Says nothing of whose it is."""
+    if not isinstance(proof, dict):
+        return ['it is not a JSON object']
+    problems = []
+    reasons = proof.get('reasons')
+    if reasons is not None and (not isinstance(reasons, list) or len(_reasons_of(proof)) != len(reasons) or not all(isinstance(item.get('category'), (str, type(None))) for item in reasons)):
+        problems.append('its reasons are of no known shape')
+    if not isinstance(proof.get('facts'), (dict, type(None))):
+        problems.append('its facts are of no known shape')
+    if not isinstance(proof.get('status'), (str, type(None))):
+        problems.append('its status is of no known shape')
+    return problems
 
 
 def execution_identities(execution):
@@ -986,12 +1007,78 @@ def retained_expectation(run_dir, trial, session_id, manifest_sha256, controller
                 executions=executions, proof=None if problem else proof, proof_sha256=None if problem else file_sha256(run_dir / 'window-proof.json'))
 
 
+def _is_number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def _is_ratio(value):
+    return not value or (isinstance(value, dict) and 'exact' in value and _is_number(value.get('approximate')))
+
+
+def _gate_shape_problems(name, gate):
+    """What the report reads out of one gate. A gate says only what its branch of the scorer found, so each field is held to its shape when it is there, and the fields that come with it have to be there too."""
+    ratios, numbers = [], []
+    if name == 'tick_budget':
+        if 'ticks_wide' in gate and 'worst_possible_ratio' in gate:
+            ratios += [gate.get('worst_possible_ratio'), gate.get('least_possible_ratio')]
+        if 'ticks' in gate:
+            ratios.append(gate.get('ratio'))
+    elif name == 'rtt_p95' and 'p95_ms' in gate:
+        numbers += [gate.get(key) for key in ('rank', 'samples')]
+    elif name == 'enet_loss' and 'per_second_mean_peak' in gate:
+        peak = gate['per_second_mean_peak']
+        if not isinstance(peak, dict):
+            return ['its %s gate has no peak of any known shape' % name]
+        ratios += [peak.get('ratio'), gate.get('window_mean_of_seconds')]
+        numbers += [peak.get('second')] + [gate.get(key) for key in ('seconds_evaluated', 'seconds', 'borrowed_readings')]
+    elif name == 'game_socket_drops' and 'drops_in_widest_interval' in gate:
+        numbers.append(gate['drops_in_widest_interval'])
+    elif name == 'bot_errors' and 'errors' in gate:
+        numbers += [gate.get(key) for key in ('errors', 'errors_that_are_the_disconnect_itself', 'independent')]
+    if not all(_is_ratio(item) for item in ratios) or not all(_is_number(item) for item in numbers) or not isinstance(gate.get('why', ''), str):
+        return ['its %s gate is of no known shape' % name]
+    return []
+
+
+def _departure_problems(attribution):
+    departures = attribution.get('departures')
+    if departures is not None and (not isinstance(departures, list) or not all(isinstance(item, dict) and all(key in item for key in ('bot', 'cause', 'reason', 'server_reason', 'order', 'observation_lag_ns')) for item in departures)):
+        return ['its departures are of no known shape']
+    return []
+
+
+def _score_shape_problems(document):
+    """Whether a retained score has the shape its writer gives it, for everything anyone reads back out of it. A score carries its own digest, which only says it was not changed afterwards, so this is checked before any lookup or iteration, here rather than where each reader would trip on it."""
+    problems = []
+    gates, validity, attribution, inputs, offered = (document.get(key) for key in ('gates', 'validity', 'attribution', 'inputs', 'offered_load'))
+    if isinstance(gates, dict):
+        for name, gate in gates.items():
+            if isinstance(gate, dict):
+                problems += _gate_shape_problems(name, gate)
+    if not isinstance(attribution, dict):
+        problems.append('its attribution is of no known shape')
+    else:
+        problems += _departure_problems(attribution)
+        if not isinstance(attribution.get('game_exit'), (dict, type(None))):
+            problems.append('what it says of the game process is of no known shape')
+    if not isinstance(inputs, dict):
+        problems.append('its inputs are of no known shape')
+    if isinstance(validity, dict) and ('offered_input' not in validity or 'generator_sockets' not in validity or not isinstance(validity.get('unproven'), (list, type(None))) or not isinstance(validity.get('independent_failures'), (list, type(None))) or not all(isinstance(item, dict) for item in validity.get('independent_failures') or ())):
+        problems.append('its offered-load verdict is of no known shape')
+    if not isinstance(offered, (dict, type(None))) or (offered and offered.get('bots') and (not all(key in offered for key in ('sent_total', 'scheduled_total', 'worst_bot')) or not _is_ratio(offered.get('worst_ratio')))):
+        problems.append('its offered load is of no known shape')
+    return problems
+
+
 def _result_problems(document):
     """Whether this document's own result can be what it says. No decision is recomputed here: each classification simply needs the facts it stands on to be in the document."""
     problems = []
     classification, gates, validity = document.get('classification'), document.get('gates'), document.get('validity')
     if not isinstance(classification, str) or classification not in OUTCOME_OF:
         return ['it has the classification %r' % (classification,)]
+    shape = _score_shape_problems(document)
+    if shape:
+        return shape
     if document.get('outcome') != OUTCOME_OF[classification]:
         problems.append('its outcome %r is not what %s means' % (document.get('outcome'), classification))
     if document.get('establishes_capacity') is not False:
@@ -1009,7 +1096,7 @@ def _result_problems(document):
             problems.append('it says valid_pass and its gates, offered load or proof do not')
     elif classification == CAPACITY_FAILURE:
         exit_facts = attribution.get('game_exit') if isinstance(attribution.get('game_exit'), dict) else {}
-        shown = any(gate['verdict'] == FAIL for gate in gates.values()) or exit_facts.get('demonstrated') is True or attribution.get('server_kicks') or any(isinstance(item, dict) and item.get('cause') == 'server_kick' for item in attribution.get('departures') or ())
+        shown = any(gate['verdict'] == FAIL for gate in gates.values()) or exit_facts.get('demonstrated') is True or attribution.get('server_kicks') or any(item.get('cause') == 'server_kick' for item in attribution.get('departures') or ())
         if not shown or validity['verdict'] != VALID or inputs.get('inadmissible'):
             problems.append('it says capacity_failure and shows no demonstrated failure over a proven generator')
     elif classification == INVALID_LOAD:
@@ -1038,11 +1125,15 @@ def _binding_problems(document, expected):
     proof = expected['proof']
     if proof is None or inputs.get('window_proof_sha256') != expected['proof_sha256']:
         problems.append('its window proof %r is not the retained one' % (inputs.get('window_proof_sha256'),))
+    elif proof_shape_problems(proof):
+        problems += ['its window proof: ' + item for item in proof_shape_problems(proof)]
     elif proof.get('run_id') != expected['run_id'] or inputs.get('proof_status') != proof.get('status') or inputs.get('proof_reasons') != _codes(proof):
         problems.append('what it says of the proof disagrees with the retained proof')
     execution = expected['executions'].get(inputs['execution_sha256']) if isinstance(inputs.get('execution_sha256'), str) else None
     if execution is None:
         problems.append('its execution record %r is not one retained for this run' % (inputs.get('execution_sha256'),))
+    elif execution_record_problems(execution):
+        problems += ['its execution record: ' + item for item in execution_record_problems(execution)]
     else:
         if execution.get('run_id') != expected['run_id'] or execution.get('session_id') != expected['session_id'] or execution.get('manifest_sha256') != expected['manifest_sha256']:
             problems.append('its execution record belongs to another run')
@@ -1170,17 +1261,125 @@ def _observation_problems(path, record, expected):
         problems.append('its name %s does not follow from what it says' % path.name)
     if record.get('retained_as') != corrupt_evidence_name(role, relative, actual):
         problems.append('it names bytes at %r, which is not where they are kept' % (record.get('retained_as'),))
-    return problems + _sealed_digest_problems(path.parent, role, relative, expected_digest)
+    return problems + _corroboration_problems(path.parent, record, expected)
 
 
-def _sealed_digest_problems(run_dir, role, relative, expected_digest):
-    """What it says should have arrived is what this role's seal says, when an intact seal is here to ask."""
-    seal, problem = mw.load_json(run_dir / role / guest_runner.SEAL)
-    files = None if problem else seal.get('files')
-    for item in files if isinstance(files, list) else ():
-        if isinstance(item, dict) and item.get('path') == relative and item.get('sha256') != expected_digest:
-            return ['it expected %s of %s, and the retained seal says %r' % (expected_digest, relative, item.get('sha256'))]
+def seal_inventory(seal, run_id, role):
+    """What a sealed document lists, as ``(path, sha256)`` pairs in a plain form, or None when it is of no shape or of another run. A receipt carries only what an observation is held to."""
+    if not isinstance(seal, dict) or seal.get('run_id') != run_id or seal.get('role') != role or not isinstance(seal.get('files'), list):
+        return None
+    if not all(isinstance(item, dict) and _safe_inside(item.get('path')) and is_digest(item.get('sha256')) for item in seal['files']):
+        return None
+    return [dict(path=item['path'], sha256=item['sha256']) for item in seal['files']]
+
+
+def seal_receipt_name(token, role, seal_sha256, files):
+    """Keyed by what it says, so the same reply read twice keeps one file, and a status reply and the seal it named keep two."""
+    key = hashlib.sha256(canonical(dict(seal_sha256=seal_sha256, files=files)).encode('utf-8')).hexdigest()[:16]
+    return 'seal-receipt-%04d-%s-%s.json' % (token, role, key)
+
+
+def seal_receipt(session_id, manifest_sha256, run_id, role, seal_sha256, files, token, found_at):
+    """What a guest's own reply said this role sealed, written down before any file of it is judged. ``files`` is None for a reply that named only the digest."""
+    return dict(schema=SEAL_RECEIPT_SCHEMA, session_id=session_id, manifest_sha256=manifest_sha256, run_id=run_id, role=role, seal_sha256=seal_sha256, files=files, fencing_token=token, found_at=found_at)
+
+
+def _seal_receipt_problems(path, record, expected):
+    """Why a seal receipt cannot be this run's own."""
+    if not isinstance(record, dict) or record.get('schema') != SEAL_RECEIPT_SCHEMA:
+        return ['it is not a seal receipt of schema %s' % SEAL_RECEIPT_SCHEMA]
+    problems = _identity_problems(record, expected)
+    role, digest, files, token = record.get('role'), record.get('seal_sha256'), record.get('files'), record.get('fencing_token')
+    if role not in ('game', 'bot'):
+        problems.append('it names role %r' % (role,))
+    if not is_digest(digest):
+        problems.append('it holds no seal digest')
+    if files is not None and seal_inventory(dict(run_id=expected['run_id'], role=role, files=files), expected['run_id'], role) != files:
+        problems.append('its inventory is of no known shape')
+    problems += _fence_problems(token, expected)
+    if not problems and path.name != seal_receipt_name(token, role, digest, files):
+        problems.append('its name %s does not follow from what it says' % path.name)
+    return problems
+
+
+def _seal_receipts(run_dir, role, token, expected):
+    """(this role's receipts no newer than ``token``, problems). A receipt newer than what it would vouch for came too late to say what that controller expected, and a receipt that cannot be held to this run taints all of them."""
+    receipts, problems = [], []
+    for path in sorted(run_dir.glob(SEAL_RECEIPT_GLOB)):
+        record, problem = mw.load_json(path)
+        found = [problem] if problem else _seal_receipt_problems(path, record, expected)
+        if found:
+            problems.append('the seal receipt %s cannot be held to this run: %s' % (path.name, '; '.join(found)))
+        elif record['role'] == role and record['fencing_token'] <= token:
+            receipts.append(record)
+    return receipts, problems
+
+
+def _execution_seal_problems(run_dir, role, sealed, expected):
+    """(problems, exported): what this run's own execution records say of the seal, and whether one says it reached this disk. A record that cannot be held to this run says nothing here, and ``stop_records`` already refuses over it."""
+    problems, exported = [], False
+    for path in sorted(run_dir.glob('execution*.json')):
+        record, problem = mw.load_json(path)
+        if problem or execution_record_problems(record) or _identity_problems(record, expected):
+            continue
+        roles = record.get('roles') if isinstance(record.get('roles'), dict) else {}
+        view = roles.get(role) if isinstance(roles.get(role), dict) else {}
+        digest = view.get('seal_sha256')
+        if digest is not None and digest != sealed:
+            problems.append('the sealed execution record %s says the seal was %r, and the retained seal receipts say %s' % (path.name, digest, sealed))
+        views = record.get('exported') if isinstance(record.get('exported'), dict) else {}
+        failed = views.get(role).get('failed') if isinstance(views.get(role), dict) else None
+        if isinstance(failed, list) and not any(isinstance(item, dict) and item.get('path') == guest_runner.SEAL for item in failed):
+            exported = True
+    return problems, exported
+
+
+def _retained_seal_problems(run_dir, role, relative, expected_digest, sealed, exported, expected):
+    """The role's own seal file against the receipts, when it is here. It is the last file a transfer brings, so a crash can leave it not yet arrived, and only a record that says it did arrive makes its absence a problem."""
+    path = run_dir / role / guest_runner.SEAL
+    try:
+        data = path.read_bytes()
+    except FileNotFoundError:
+        return ['the sealed execution record says the seal arrived, and it is gone'] if exported else []
+    except OSError as error:
+        return ['the retained seal could not be read: ' + type(error).__name__]
+    if hashlib.sha256(data).hexdigest() != sealed:
+        return ['the retained seal is not the one its receipts name']
+    seal, problem = mw.load_json(path)
+    files = None if problem else seal_inventory(seal, expected['run_id'], role)
+    if files is None:
+        return ['the retained seal cannot be held to this run and role']
+    if relative != guest_runner.SEAL and dict(path=relative, sha256=expected_digest) not in files:
+        return ['the retained seal does not list %s at %s' % (relative, expected_digest)]
     return []
+
+
+def _corroboration_problems(run_dir, record, expected):
+    """Whether something older than this observation says what it says it expected. Its name and its retained hash only prove which bytes it has: without this, its expected hash would be nothing but its own word, and a good file could be labelled corrupt for good.
+
+    The receipt is retained before any transfer that could produce an observation, so a genuine one finds it after any crash, and nothing here recomputes or replaces an expected hash. Whatever is missing, unreadable, changed or of another role leaves an unverified record, never a fact.
+    """
+    role, relative, expected_digest = record['role'], record['path'], record['expected_sha256']
+    receipts, problems = _seal_receipts(run_dir, role, record['fencing_token'], expected)
+    if problems:
+        return problems
+    if not receipts:
+        return ['nothing retained before it says what %s sealed, so the hash it expected is only its own word' % role]
+    seals = sorted({item['seal_sha256'] for item in receipts})
+    if len(seals) != 1:
+        return ['the retained seal receipts of %s disagree: %s' % (role, ', '.join(seals))]
+    sealed = seals[0]
+    if relative == guest_runner.SEAL:
+        if expected_digest != sealed:
+            return ['it expected %s of the seal, and the retained seal receipts say %s' % (expected_digest, sealed)]
+    else:
+        inventories = [item['files'] for item in receipts if item['files'] is not None]
+        if not inventories:
+            return ['no retained seal receipt lists what %s sealed, so nothing says %s was among it' % (role, relative)]
+        if any(dict(path=relative, sha256=expected_digest) not in files for files in inventories):
+            return ['the retained seal receipts do not list %s at %s' % (relative, expected_digest)]
+    problems, exported = _execution_seal_problems(run_dir, role, sealed, expected)
+    return problems + _retained_seal_problems(run_dir, role, relative, expected_digest, sealed, exported, expected)
 
 
 def _covered_by_a_fact(record, facts):
@@ -1249,6 +1448,8 @@ def stop_records(run_dir, expected):
     ``expected`` holds ``session_id``, ``manifest_sha256`` and ``run_id``, and may hold ``current_token``.
     """
     run_dir = pathlib.Path(run_dir)
+    if not run_dir.is_dir():
+        return [], [dict(record=run_dir.name, sha256=None, problems=['this run was dispatched and its directory is gone, with whatever it held: no crash takes a name that went durably onto disk before its dispatch'])]
     expected = dict(expected, dispatch_token=_dispatch_token(run_dir))
     facts, unverified, bound = [], [], {}
 
@@ -1348,7 +1549,7 @@ def _dispatch_token(run_dir):
 
 def load_retained(path):
     """The document, if the file is a whole score of this schema with its own content intact. Says nothing of whose it is."""
-    with contextlib.suppress(OSError, ValueError, UnicodeDecodeError):
+    with contextlib.suppress(OSError, ValueError, UnicodeDecodeError, RecursionError):
         text = pathlib.Path(path).read_text()
         document = json.loads(text)
         if isinstance(document, dict) and document.get('schema') == SCORE_SCHEMA and text == canonical(document) and seal(document) == document:
@@ -1357,15 +1558,37 @@ def load_retained(path):
 
 
 def bound_score(path, expected):
-    """(document, problems) for a retained score. Empty problems is the only thing that lets anyone act on it, or on a claim resting on it."""
+    """(document, problems) for a retained score. Empty problems is the only thing that lets anyone act on it, or on a claim resting on it. Total: whatever the file holds is an answer, and one this cannot finish reading is a refusal."""
     document = load_retained(path)
     if document is None:
         return None, ['it does not read as a whole score, or its content was changed after it was written']
-    return document, _binding_problems(document, expected) + _result_problems(document)
+    try:
+        return document, _binding_problems(document, expected) + _result_problems(document)
+    except READ_FAILURES as error:
+        return document, ['it could not be read to the end: ' + type(error).__name__]
 
 
 def classification_problems(document, expected, require_score=True):
-    """Why a retained classification cannot stand for this run. A PASS or FAIL must rest on a bound score by the hash it recorded when it was written. ``require_score`` is False only for a fixture's scripted scorer."""
+    """Why a retained classification cannot stand for this run. A PASS or FAIL must rest on a bound score by the hash it recorded when it was written. ``require_score`` is False only for a fixture's scripted scorer. Total, like ``bound_score``."""
+    try:
+        return _classification_problems(document, expected, require_score)
+    except READ_FAILURES as error:
+        return ['it could not be read to the end: ' + type(error).__name__]
+
+
+def _verdict_shape_problems(verdict):
+    """What anyone reads back out of a verdict. A verdict of the wrong shape cannot be rendered, and it must not be committed on the way to finding that out."""
+    reasons, supersedes = verdict.get('reasons'), verdict.get('supersedes')
+    if not (reasons is None or (isinstance(reasons, list) and all(isinstance(item, str) for item in reasons))):
+        return ['its verdict has reasons of no known shape']
+    if not isinstance(supersedes, (list, type(None))) or not all(isinstance(item, dict) and isinstance(item.get('file'), str) and isinstance(item.get('sha256'), (str, type(None))) and isinstance(item.get('outcome'), (str, type(None))) for item in supersedes or ()):
+        return ['its verdict supersedes files of no known shape']
+    if not isinstance(verdict.get('evidence_ref'), (str, type(None))):
+        return ['its verdict names evidence of no known shape']
+    return []
+
+
+def _classification_problems(document, expected, require_score):
     if not isinstance(document, dict) or document.get('schema') != CLASSIFICATION_SCHEMA:
         return ['it is not a classification of the expected schema']
     if document.get('run_id') != expected['run_id']:
@@ -1373,8 +1596,9 @@ def classification_problems(document, expected, require_score=True):
     verdict = document.get('verdict')
     if not isinstance(verdict, dict) or verdict.get('outcome') not in search.OUTCOMES:
         return ['it holds no verdict with a known outcome']
-    if not isinstance(verdict.get('reasons'), (list, type(None))) or not isinstance(verdict.get('supersedes'), (list, type(None))) or not all(isinstance(item, dict) and isinstance(item.get('file'), str) and isinstance(item.get('sha256'), str) for item in verdict.get('supersedes') or ()):
-        return ['its verdict has reasons of no known shape']
+    shape = _verdict_shape_problems(verdict)
+    if shape:
+        return shape
     if not require_score:
         return []
     reference = parse_reference(verdict.get('evidence_ref'))

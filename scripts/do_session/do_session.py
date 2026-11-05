@@ -50,8 +50,46 @@ def _fsync_directory(directory):
         os.close(handle)
 
 
+def make_directory_durable(directory, root):
+    """Every level of ``directory`` below ``root`` exists, and its name is on disk in its parent, when this returns.
+
+    Creating a name does not persist it. That takes an fsync of the directory holding it, and an fsync of the child says nothing about the child's own name (fsync(2)). So every level is synced on every call, whoever made it and whenever:
+    a directory that is merely there may be what a failed fsync or a dead process left, and nothing on disk can tell. ``root`` is where this claim stops. It must exist, and its own name is ``make_session_durable``'s to answer for.
+    A failure raises OSError and nothing below that level has been promised.
+    """
+    directory, root = pathlib.Path(directory), pathlib.Path(root)
+    current = root
+    for part in directory.relative_to(root).parts:
+        (current / part).mkdir(exist_ok=True)
+        _fsync_directory(current)
+        current = current / part
+
+
+def _top_of_filesystem(directory):
+    """The highest ancestor of an absolute ``directory`` on its own filesystem that this account can open. A name above that is on another filesystem, or is one this account did not make."""
+    top = directory
+    while not top.exists():
+        top = top.parent
+    device = top.stat().st_dev
+    for parent in top.parents:
+        if not os.access(str(parent), os.R_OK) or parent.stat().st_dev != device:
+            break
+        top = parent
+    return top
+
+
+def make_session_durable(session_dir):
+    """The durable root of a session is its directory. This puts the directory's own name on disk, all the way up one path on one filesystem, and what is directly inside it too.
+
+    Bounded by that one path, and only ever asked once per freeze and once per controller. Everything below the session directory is ``make_directory_durable``'s, with the session directory as its root.
+    """
+    absolute = pathlib.Path(session_dir).resolve()
+    make_directory_durable(absolute, _top_of_filesystem(absolute))
+    _fsync_directory(absolute)
+
+
 def _make_parents_durable(directory):
-    """A directory this write had to create is one more name that a crash could otherwise take away, with everything under it."""
+    """A directory this write had to create is one more name that a crash could otherwise take away, with everything under it. It answers only for those: whoever holds a durable root calls ``make_directory_durable`` first, and the session's own writes do."""
     missing = []
     probe = directory
     while not probe.exists():
@@ -147,8 +185,11 @@ def cmd_freeze(args):
         print(json.dumps(dict(frozen=False, reasons=error.reasons), indent=2))
         return 2
     session_dir = pathlib.Path(args.session_root) / manifest['session']['id']
-    write_new(session_dir / 'manifest.json', manifest_mod.canonical_json(manifest))
-    write_new(session_dir / 'manifest.sha256', sha + '  manifest.json\n')
+    if (session_dir / 'manifest.json').exists():     # create-only, and a refusal leaves nothing behind it
+        raise FileExistsError(str(session_dir / 'manifest.json'))
+    make_session_durable(session_dir)
+    write_new_durable(session_dir / 'manifest.json', manifest_mod.canonical_json(manifest))
+    write_new_durable(session_dir / 'manifest.sha256', sha + '  manifest.json\n')
     print(json.dumps(dict(frozen=True, session_dir=str(session_dir), manifest_sha256=sha,
                           condition=manifest['session']['condition']['name']), indent=2))
     return 0

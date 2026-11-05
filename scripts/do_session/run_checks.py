@@ -233,7 +233,7 @@ def window_reasons(proof):
     """The window proof's answer as plain reasons, for a verdict record. Nothing here turns it into an outcome."""
     if not isinstance(proof, dict):
         return []
-    codes = sorted({item.get('code') for item in proof.get('reasons') or [] if isinstance(item, dict)})
+    codes = sorted({str(item.get('code')) for item in proof.get('reasons') or [] if isinstance(item, dict)})
     return ['window proof: %s%s' % (proof.get('status'), ' (%s)' % ', '.join(str(code) for code in codes) if codes else '')]
 
 

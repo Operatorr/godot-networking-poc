@@ -54,9 +54,11 @@ NOT_LAUNCHED = 'not_launched'
 SOURCE_CHANGED = 'source_changed'
 TERMINAL_FACT_UNACKNOWLEDGED = 'terminal_fact_unacknowledged'
 STOP_RECORD_UNVERIFIED = 'stop_record_unverified'
+DIRECTORY_NOT_DURABLE = 'directory_not_durable'
+RUN_DIRECTORY_LOST = 'run_directory_lost'
 CORRUPT_EVIDENCE_DIR = capacity_scorer.CORRUPT_EVIDENCE_DIR
 ADAPTER_PATH = 'scripts/do_session/run_plan.py'
-LOCAL_FAILURES = (OSError, ValueError, KeyError, TypeError)
+LOCAL_FAILURES = (OSError, ValueError, KeyError, TypeError, RecursionError)
 STALE_CODES = ('stale_fencing_token', 'lease_expired', 'control_held')
 CLEANUP_CODES = ('cleanup_in_progress', 'deadline_reached', 'clock_unverifiable')
 GRANT_STILL_USABLE = ('lock_timeout', 'bad_request')     # the only refusals that come before the guest burns or outlaws a grant
@@ -586,6 +588,7 @@ class RunExecutor:
         """Once per controller: the exact pair, pins from the first contact, this runner on both hosts, and the fence raised."""
         if self.prepared:
             return
+        self._require_durable_session()
         status = status or self._status()
         for name, seconds in self.timing.items():
             if not isinstance(seconds, (int, float)):
@@ -654,6 +657,43 @@ class RunExecutor:
 
     def _run_dir(self, run_id):
         return self.session_dir / 'runs' / run_id
+
+    def _require_durable_session(self):
+        """Before anything else this controller does. A directory that is merely there may be all a crash left of one that was never made durable, so existing proves nothing and this is asked again. A disk that cannot answer says nothing about any host, so this stops the work and leaves the session recoverable. Stopping and collecting what is already running goes on regardless."""
+        try:
+            do_session.make_session_durable(self.session_dir)
+        except OSError as error:
+            if self.collecting:
+                self._note('session_directory_not_durable', detail=type(error).__name__)
+                return
+            raise BatchStop(STOPPED, DIRECTORY_NOT_DURABLE, 'the session directory could not be made durable: ' + type(error).__name__, search.STOPPING[search.INCONCLUSIVE])
+
+    def _under_durable_directories(self, path, write):
+        """Every write this controller depends on. The directories above it are made durable from this session's root on every write, whoever created them, before the writer's own commit means anything.
+
+        A failure there still raises, because this write is then not durable, and it comes after the write: what a process crash would otherwise take from the next controller is on disk for it to read, and only a power cut can still take it, which is what the caller was told.
+        """
+        trouble = None
+        try:
+            do_session.make_directory_durable(pathlib.Path(path).parent, self.session_dir)
+        except OSError as error:
+            trouble = error
+        write()
+        if trouble is not None:
+            raise trouble
+
+    def _write_durable_bytes(self, path, data):
+        self._under_durable_directories(path, lambda: do_session.write_new_durable_bytes(path, data))
+
+    def _write_durable(self, path, text):
+        self._under_durable_directories(path, lambda: do_session.write_new_durable(path, text))
+
+    def _require_durable_run_dir(self, run_id):
+        """Before the run is dispatched. Every stop record that run can leave lives under this name, and no guest should start on the word of a directory a power cut can take back."""
+        try:
+            do_session.make_directory_durable(self._run_dir(run_id), self.session_dir)
+        except OSError as error:
+            raise BatchStop(STOPPED, DIRECTORY_NOT_DURABLE, 'the directory of run %s could not be made durable: %s' % (run_id, type(error).__name__), search.STOPPING[search.INCONCLUSIVE])
 
     def _plan(self, trial, role, launch_not_after_wall=0.0, bound_s=0.0, stop_by_wall=0.0, minimum_bound_s=0.0):
         sampler_sha256 = self.report['roles'][role]['observation']['release']['sample_host.py']
@@ -772,6 +812,7 @@ class RunExecutor:
     def _one_run(self, state, result):
         self._require_no_open_stop()
         trial = search.next_trial(state)
+        self._require_durable_run_dir(trial.run_id)
         self._publish_selection(state, result)
         self.failpoint('after_selection')
         ledgers = {}
@@ -786,8 +827,7 @@ class RunExecutor:
         grant = self._dispatch(trial, estimate)
         self.failpoint('after_dispatch_commit')
         run_dir = self._run_dir(trial.run_id)
-        run_dir.mkdir(parents=True, exist_ok=True)
-        do_session.write_new(run_dir / 'grant.json', json.dumps(grant, indent=2, sort_keys=True) + '\n')
+        self._write_durable(run_dir / 'grant.json', json.dumps(grant, indent=2, sort_keys=True) + '\n')
         if bracket is not None:
             self._retain_bracket(trial.run_id, 'before', bracket)
         # ``asked`` is before the grant existed, so these local limits can only err early.
@@ -1052,9 +1092,17 @@ class RunExecutor:
     def _export_role(self, run_id, role, sealed):
         """Through ``.partial`` and SHA256, as the lifecycle contract asks. A file that fails stays partial and is never promoted."""
         target = self._run_dir(run_id) / role
-        target.mkdir(parents=True, exist_ok=True)
         remote = guest_runner.DEFAULT_ROOT + '/runs/' + run_id + '/' + role + '/'
         wanted = [(item['path'], item['sha256']) for item in sealed['seal']['files']] + [(guest_runner.SEAL, sealed['seal_sha256'])]
+        self._retain_seal_receipt(run_id, role, sealed['seal_sha256'], sealed['seal'])
+        try:
+            do_session.make_directory_durable(target, self.session_dir)
+        except OSError as error:     # this disk's trouble, which says nothing about the bytes on the host, and must not keep them from being compared
+            self._note('role_directory_not_durable', run_id=run_id, role=role, detail=type(error).__name__)
+            try:
+                target.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                return dict(complete=False, failed=[dict(path=relative, kind='local', reason=type(error).__name__) for relative, _ in wanted], files=len(wanted), copied=0)
         failed, copied = [], 0
         for relative, digest in wanted:
             try:
@@ -1078,9 +1126,28 @@ class RunExecutor:
                 failed.append(dict(path=relative, kind='local', reason=type(error).__name__))
         return dict(complete=not failed, failed=failed, files=len(wanted), copied=copied)
 
+    def _retain_seal_receipt(self, run_id, role, seal_sha256, seal=None):
+        """What a guest's own reply said this role sealed, on disk before any byte of it is judged, so a mismatch found later is held to something older than itself.
+
+        ``seal`` is the sealed document when the reply carried it or its bytes have passed their hash: a status reply only names the digest. A reply of another run or of no shape makes no receipt, and an observation with no receipt proves nothing.
+        Failing to keep this never stops the transfer. It only means that a crash from here on leaves an observation that refuses instead of one that replays.
+        """
+        files = capacity_scorer.seal_inventory(seal, run_id, role)
+        if not capacity_scorer.is_digest(seal_sha256) or (seal is not None and files is None):
+            self._note('seal_receipt_not_retained', run_id=run_id, role=role, detail='its reply cannot be held to this run')
+            return
+        path = self._run_dir(run_id) / capacity_scorer.seal_receipt_name(self.token, role, seal_sha256, files)
+        try:
+            if not path.exists():
+                document = capacity_scorer.seal_receipt(self.session_id, self.sha, run_id, role, seal_sha256, files, self.token, session_clock.iso(self.wall()))
+                self._write_durable(path, json.dumps(document, indent=2, sort_keys=True) + '\n')
+        except OSError as error:
+            self._note('seal_receipt_not_retained', run_id=run_id, role=role, detail=type(error).__name__)
+
     def _corrupt_receipt(self, run_id, role, relative, source, expected):
         """Bytes failed their hash, and from here on no later transfer may unsay it. Each step is on disk before the next begins, and each crash between them leaves something ``capacity_scorer.stop_records`` reads before any recovery or admission:
 
+          0. the seal receipt that says what ``expected`` was, already written by the caller before this transfer began. Without it the observation below only has its own word, and refuses
           1. the observation, naming this run and both hashes. Nothing is on disk but a ``.writing`` file until it is whole, so a crash here is an interrupted write, or nothing at all
           2. the bytes, under a name no later transfer writes to, keyed by their hash. A crash before they land leaves an observation short of them, which refuses as unverified
           3. the caller's outcome or terminal fact, and then the registry. A crash before those leaves an observation with its bytes, which is a fact in its own right and is replayed
@@ -1094,7 +1161,7 @@ class RunExecutor:
         try:
             if not observation.exists():
                 document = capacity_scorer.corrupt_observation(self.session_id, self.sha, run_id, role, relative, expected, actual, self.token, session_clock.iso(self.wall()))
-                do_session.write_new_durable(observation, json.dumps(document, indent=2, sort_keys=True) + '\n')
+                self._write_durable(observation, json.dumps(document, indent=2, sort_keys=True) + '\n')
         except OSError as error:
             self._note('corrupt_observation_not_retained', run_id=run_id, role=role, path=relative, detail=type(error).__name__)
         self.failpoint('after_corrupt_observation')
@@ -1102,7 +1169,7 @@ class RunExecutor:
         target = run_dir / name
         try:
             if not target.exists():
-                do_session.write_new_durable_bytes(target, pathlib.Path(source).read_bytes())
+                self._write_durable_bytes(target, pathlib.Path(source).read_bytes())
             receipt['retained_as'] = name
         except OSError as error:     # the hashes still say what was found
             self._note('corrupt_bytes_not_retained', run_id=run_id, role=role, path=relative, detail=type(error).__name__)
@@ -1133,7 +1200,7 @@ class RunExecutor:
         text = json.dumps(document, indent=2, sort_keys=True) + '\n'
         if manifest_mod.scan_for_secrets(document):
             raise RunAborted(run_checks.INFRASTRUCTURE, 'the execution record held a credential value and was not written')
-        do_session.write_new_durable(path, text)
+        self._write_durable(path, text)
         digest = hashlib.sha256(text.encode('utf-8')).hexdigest()
         return dict(document=document, sha256=digest, ref='runs/%s/%s#sha256:%s' % (context.trial.run_id, name, digest), path=path)
 
@@ -1168,7 +1235,7 @@ class RunExecutor:
         run_id = context.trial.run_id
         path = self._run_dir(run_id) / 'window-proof.json'
         retained = measurement_window.load_json(path)[0]
-        if isinstance(retained, dict) and retained.get('run_id') == run_id:
+        if isinstance(retained, dict) and retained.get('run_id') == run_id and not capacity_scorer.proof_shape_problems(retained):
             return retained
         if path.exists():
             return dict(schema=measurement_window.PROOF_SCHEMA, run_id=run_id, status=measurement_window.INCONCLUSIVE, reasons=[dict(code='proof_unreadable', category=measurement_window.EVIDENCE, detail='window-proof.json')])
@@ -1191,7 +1258,7 @@ class RunExecutor:
         except Exception as error:     # a defect in a parser or a surprising file: the run still needs its outcome committed
             proof = dict(schema=measurement_window.PROOF_SCHEMA, run_id=run_id, status=measurement_window.INCONCLUSIVE, reasons=[dict(code='prover_failed', category=measurement_window.EVIDENCE, detail=type(error).__name__)])
         try:
-            do_session.write_new_durable(path, json.dumps(proof, indent=2, sort_keys=True, default=sorted) + '\n')
+            self._write_durable(path, json.dumps(proof, indent=2, sort_keys=True, default=sorted) + '\n')
         except OSError as error:
             self._note('window_proof_not_retained', run_id=run_id, detail=type(error).__name__)
         return proof
@@ -1234,7 +1301,7 @@ class RunExecutor:
         text = capacity_scorer.canonical(document)
         run_dir = self._run_dir(run_id)
         try:
-            do_session.write_new_durable(run_dir / capacity_report.SCORE_FILE, text)
+            self._write_durable(run_dir / capacity_report.SCORE_FILE, text)
         except FileExistsError:
             return self._retained_score(context, execution) or dict(answer, outcome=search.INCONCLUSIVE, generator_failure_attributed_to_server=False, reasons=['a retained score could not be read back'])
         except OSError as error:
@@ -1273,8 +1340,9 @@ class RunExecutor:
             return None
         document, problems = capacity_scorer.bound_score(path, self._retained_expectation(context))
         if problems or document.get('outcome') not in run_checks.SCORER_OUTCOMES:
-            self._note('retained_score_refused', run_id=run_id, sha256=sha256_path(path), problems=problems[:5])
-            return dict(outcome=search.INCONCLUSIVE, evidence_ref=execution['ref'], scorer='capacity_scorer', reasons=['the retained score was refused and nothing was recomputed: ' + '; '.join(problems[:5] or ['its outcome is unknown']), 'the refused file has sha256 %s' % sha256_path(path)], retained_refused=True)
+            refused = capacity_scorer.file_sha256(path)     # the file may be anything at all, and a read that fails is one more reason to refuse it
+            self._note('retained_score_refused', run_id=run_id, sha256=refused, problems=problems[:5])
+            return dict(outcome=search.INCONCLUSIVE, evidence_ref=execution['ref'], scorer='capacity_scorer', reasons=['the retained score was refused and nothing was recomputed: ' + '; '.join(problems[:5] or ['its outcome is unknown']), 'the refused file has sha256 %s' % refused], retained_refused=True)
         self._retain_run_report(run_id, document)
         return dict(outcome=document['outcome'], evidence_ref=self._score_ref(run_id, path.read_text()), scorer=document.get('scorer'), reasons=list(document.get('reasons') or ()),
                     generator_failure_attributed_to_server=document['outcome'] == search.FAIL)
@@ -1287,8 +1355,9 @@ class RunExecutor:
         document = measurement_window.load_json(path)[0]
         problems = capacity_scorer.classification_problems(document, self._retained_expectation(context), require_score=self.scorer is capacity_scorer.score)
         if problems:
-            self._note('retained_classification_refused', run_id=context.trial.run_id, sha256=sha256_path(path), problems=problems[:5])
-            return None, ['the retained classification was refused and nothing was recomputed: ' + '; '.join(problems[:5]), 'the refused file has sha256 %s' % sha256_path(path)]
+            refused = capacity_scorer.file_sha256(path)
+            self._note('retained_classification_refused', run_id=context.trial.run_id, sha256=refused, problems=problems[:5])
+            return None, ['the retained classification was refused and nothing was recomputed: ' + '; '.join(problems[:5]), 'the refused file has sha256 %s' % refused]
         return document['verdict'], None
 
     def _commit_outcome(self, context, verdict):
@@ -1303,7 +1372,7 @@ class RunExecutor:
         while (self._run_dir(run_id) / name).exists():      # only ever a refused one: it stays as it is, and the outcome's hash says which file decided
             attempt += 1
             name = 'classification-reconciled-%04d-%d.json' % (self.token, attempt)
-        do_session.write_new_durable(self._run_dir(run_id) / name, text)
+        self._write_durable(self._run_dir(run_id) / name, text)
         reference = 'runs/%s/%s#sha256:%s' % (run_id, name, hashlib.sha256(text.encode('utf-8')).hexdigest())
         self.failpoint('before_outcome_commit')
         self._record_outcome(run_id, verdict['outcome'], reference)
@@ -1331,6 +1400,12 @@ class RunExecutor:
         Returns the host problems found, for the caller to judge.
         """
         records = self._records()
+        lost = [row['run_id'] for row in records if not self._run_dir(row['run_id']).is_dir()]
+        if lost and self.collecting:
+            self._note('run_directories_lost', run_ids=lost)     # nothing more runs either way, and whatever is still running must still be stopped
+        elif lost:
+            # Each of these names went durably onto disk before its run was dispatched, so no crash took it, and whatever it held may have said a run failed. Making it again would make that impossible to see.
+            raise BatchStop(STOPPED, RUN_DIRECTORY_LOST, 'the directories of dispatched runs are gone, with whatever they held: %s' % ', '.join(lost), search.STOPPING[search.INCONCLUSIVE])
         unfinished = [r for r in records if r['outcome'] is None]
         known = {r['run_id'] for r in records}
         problems = []
@@ -1400,7 +1475,7 @@ class RunExecutor:
         document = dict(schema=capacity_scorer.TERMINAL_FACT_SCHEMA, session_id=self.session_id, manifest_sha256=self.sha, run_id=run_id, role=role, outcome=search.INFRASTRUCTURE_FAILURE, details=details, fencing_token=self.token, found_at=session_clock.iso(self.wall()),
                         receipts=[item for item in failed if item.get('kind') == 'corrupt'])
         try:
-            do_session.write_new_durable(self._run_dir(run_id) / name, json.dumps(document, indent=2, sort_keys=True) + '\n')
+            self._write_durable(self._run_dir(run_id) / name, json.dumps(document, indent=2, sort_keys=True) + '\n')
         except OSError as error:     # this disk's trouble must not keep the session from hearing of it
             self._note('terminal_fact_not_retained', run_id=run_id, detail=type(error).__name__)
         self.failpoint('after_terminal_fact')
@@ -1461,7 +1536,12 @@ class RunExecutor:
     def _reconcile_run(self, row, reason, inventories):
         trial = search.trial_from_dict(row['trial'])
         run_dir = self._run_dir(trial.run_id)
-        run_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            do_session.make_directory_durable(run_dir, self.session_dir)
+        except OSError as error:
+            if not self.collecting:
+                raise
+            self._note('run_directory_not_durable', run_id=trial.run_id, detail=type(error).__name__)
         grant = dict(launch_by=row['launch_by'], must_stop_by=row['must_stop_by'], interrupted_reason=row['interrupted_reason'])
         now = self.monotonic()
         context = RunContext(trial, grant, now, now, now, interrupted=row['interrupted_reason'] or reason)
@@ -1564,7 +1644,8 @@ class RunExecutor:
             if path.exists():
                 document = measurement_window.load_json(path)[0] or {}
                 verdict = document.get('verdict') if isinstance(document.get('verdict'), dict) else {}
-                found.append(dict(file=name, sha256=sha256_path(path), outcome=verdict.get('outcome') if name == 'classification.json' else document.get('outcome')))
+                outcome = verdict.get('outcome') if name == 'classification.json' else document.get('outcome')
+                found.append(dict(file=name, sha256=capacity_scorer.file_sha256(path), outcome=outcome if isinstance(outcome, str) else None))
         return found
 
     def _interrupted_verdict(self, context, execution, reachable):
@@ -1951,6 +2032,8 @@ class RunExecutor:
                 result = self.guests.get(role, remote_seal, str(local), self._guest_timeout(self.policy.transfer_timeout_s), on_wait)
                 if result.returncode != 0 or not capacity_scorer.is_digest(sealed.get('seal_sha256')):
                     return False     # no bytes, or nothing to hold them to: this says nothing about the host's seal
+                if (sealed.get('session_id'), sealed.get('run_id'), sealed.get('role')) == (self.session_id, run_id, role):
+                    self._retain_seal_receipt(run_id, role, sealed['seal_sha256'])
                 if sha256_path(local) != sealed['seal_sha256']:
                     self._retain_corrupt(run_id, role, [self._corrupt_receipt(run_id, role, guest_runner.SEAL, local, sealed['seal_sha256'])])
                     return False
