@@ -80,7 +80,7 @@ These also pin what a search may not do with evidence it cannot trust, with each
 
 | | |
 | --- | --- |
-| Source revision (clean tree) | `40631234295a845dc0d0a4d9b03ec63b351c3c09`, tree `476786560c151ae8435845f213576b3a4f02ae50`. These replace the summaries from `673e17a` and `e0d9b29`, which are in this file's history and tested the scorer and the swarm before these fixes |
+| Source revision (clean tree) | `0d99d4eedc96fba51e479c8f3c69e2bf76d90f7c`, tree `acbc0a78b790d4a5056619cadd2d10b93e745916`. These replace the summaries from `673e17a` and `e0d9b29`, which are in this file's history and tested the scorer and the swarm before these fixes |
 | Binaries, SHA-256 | `omega-server` `d574418be9edfec3f3a34e7bd363bcd5e4f80e146a4fc03056db35760a85ef19`, `omega-load-test` `599a735d6253b077863573486dc11cf7f38b12c7b6a2d6dd503512e323f7c82a` |
 | Binary origin | **Rebuilt** from the revision above with `cargo build --release --offline`, because a swarm that gives up now holds its sockets for a last counter read. `omega-server` came out with the hash [slice 5](../slice5/README.md) retains from `f1f6188`, and no server code changed. Slice 5's `omega-load-test` is the older one, and its summaries stay what they were: a held window never reaches the new path |
 | `Cargo.lock` | `904a78967ed19cb3403c3f498b16e90f4c171daa3ea0c2311dc9d793f90e148b` |
@@ -90,21 +90,21 @@ These also pin what a search may not do with evidence it cannot trust, with each
 | Scorer policy | `omega.do-session.capacity-scorer/1` `042bdbbd8a2ca1639c694750abc33f70a286273d864d5623a26ecf476edbadbb` |
 | Sandbox | All of it under `scripts/do_session/measurement_offline.sb`. That profile was probed for the earlier summaries: a sent UDP datagram and a TCP connect to `192.0.2.1` and a resolver lookup were refused, and loopback UDP and `/bin/ps` worked. The probe was not repeated for this rerun |
 
-Commits after that revision change only this directory, and no commit changed `scripts/` or `rust/` since. Every row is a real run again, so each number moved a little from the last refresh. The prover ran with `require_counters=False`, because macOS has no per-socket drop counter, and the scorer refuses that. **So every row is `inconclusive_evidence` by construction.** These runs check the producers' real units and reasons. They cannot show a pass.
+Commits after that revision change only this directory, and no commit changed `scripts/` or `rust/` since. Every row is a real run again, so each number moved from the last refresh. **This refresh ran while unrelated work loaded the machine, at a load average of about 40.** That is why the clock intervals are wider and RTT is higher than before, and none of it is a measurement of anything. No classification moved. The prover ran with `require_counters=False`, because macOS has no per-socket drop counter, and the scorer refuses that. **So every row is `inconclusive_evidence` by construction.** These runs check the producers' real units and reasons. They cannot show a pass.
 
 | Scenario | Proof | Continuity | Errors | Ticks over / narrow..wide | RTT p95 (samples) | ENet loss peak | Sent / scheduled, worst bot |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `contract_60s_25_bots` | complete | pass | pass | 0 / 1798..1802 | 3.0 ms (1498) | 0/1, 2 borrowed | 44998 / 45000, 1799/1800 |
-| `short_complete_8_bots`, 6 s | complete | pass | pass | 0 / 178..182 | 3.0 ms (47) | 0/1, 1 borrowed | 1440 / 1440, 1/1 |
-| `one_bot_path_blocked_mid_window`, 20 s | invalid | **fail** | fail, 1 error that is the disconnect itself | 0 / 597..603 | 3.0 ms (147) | 63/131072 | 4437 / 4800, 2/5 |
-| `game_killed_mid_window`, 20 s | invalid | **fail** | fail, 8 errors that are the disconnects themselves | unknown | 3.0 ms (63) | 881/262144, 5 borrowed, later seconds unknown | 1924 / 4800, 221/600 |
-| `swarm_paused_mid_window`, 6 s | invalid | pass | pass | 0 / 177..183 | 3.0 ms (35) | 0/1, 13 borrowed | 1087 / 1440, 3/4 |
+| `contract_60s_25_bots` | complete | pass | pass | 0 / 1788..1812 | 4.0 ms (1498) | 353/1638400, 2 borrowed | 44999 / 45000, 1799/1800 |
+| `short_complete_8_bots`, 6 s | complete | pass | pass | 0 / 174..186 | 4.0 ms (47) | 0/1, 1 borrowed | 1440 / 1440, 1/1 |
+| `one_bot_path_blocked_mid_window`, 20 s | invalid | **fail** | fail, 1 error that is the disconnect itself | 0 / 595..605 | 8.0 ms (147) | 113/262144, 2 borrowed | 4454 / 4800, 127/300 |
+| `game_killed_mid_window`, 20 s | invalid | **fail** | fail, 8 errors that are the disconnects themselves | unknown | 3.0 ms (62) | 277/81920, 7 borrowed, later seconds unknown | 1938 / 4800, 73/200 |
+| `swarm_paused_mid_window`, 6 s | invalid | pass | pass | 0 / 172..188 | 3.0 ms (35) | 0/1, 13 borrowed | 1087 / 1440, 3/4 |
 | `authentication_never_arrives`, 4 s bound | invalid | unknown | unknown | 0 of 134 ramp Ticks | none | none | none |
 
 What these confirm on real bytes:
 
-- **RTT is whole milliseconds** (3.0), and real ENet loss is non-zero once something goes wrong, on the 65536 scale.
-- **A blocked path records reason 0 on both the bot and the server.** In this run the interval between the bot seeing it and the mapped server event straddled zero, from 19 ms before to 52 ms after, so the order is `unresolved`. Earlier runs of the same path gave `server_first` and `bot_first`. Whichever it is, the cause stays `transport_timeout_unattributed`. Its input floor still held, at 2/5 of the whole window, because frames after the disconnect are not owed.
+- **RTT is whole milliseconds** (3.0 to 8.0 here), and real ENet loss moves on the 65536 scale, in the healthy 60 s run too on this loaded machine, where its peak of 353/1638400 stayed far under the gate.
+- **A blocked path records reason 0 on both the bot and the server.** In this run the order is `server_first`, with the bot seeing it between 1118 and 1282 ms after the mapped server event. The same path has given every order across runs, so nothing rests on it. Whichever it is, the cause stays `transport_timeout_unattributed`. Its input floor still held, at 127/300 of the whole window, because frames after the disconnect are not owed.
 - **A real SIGKILL leaves `killed_with_no_cause_on_record`.** Every bot timed out with reason 0, and the exit says nothing. This platform has no OOM count, and on any platform that host-wide count would stay a diagnostic. Attribution needs the supervisor's file from a unit of the run's own, and these runs have neither. The server's missing data left the generator's own evidence unaffected: of its reasons, `recorder_truncated` and `collector_boundary_missing` are the game's, and only the absent socket counters leave the generator unproven.
 - **A real stalled swarm is the generator's:** `poll_starvation` and `offered_input_below_minimum`, in `independent_failures`.
 - **A real readiness timeout stays no capacity limit,** with a generator that cannot be proven here anyway. The ramp's identity and coverage checks read real bytes for it: the swarm, the game and both collectors were recognized as the supervised processes, the coordinator's abort row was read, all 8 started bots were found with their sockets, and the only reason is `window_not_established`. `test_capacity_real` also holds this path to the new swarm's behaviour on real bytes: its collector made a read certainly after the abort. This platform has no counter for that read to prove anything with, so what it shows is the timing of the hold and nothing about a drop.
