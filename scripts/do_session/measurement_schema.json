@@ -1,0 +1,24 @@
+{
+  "id": "omega.measurement/2",
+  "description": "Frozen meaning of a measured DigitalOcean test run: what the recorders write and the limits measurement_window.py holds them to. A manifest freezes this file's SHA-256 as telemetry_schema.sha256.",
+  "workload": {"behavior": "strategy", "difficulty": 1.0, "input_hz": 30, "seed": 1, "generator_threads": 4, "bot_id_assignment": "round-robin", "join_stagger_ms": 100},
+  "contract_holds_s": [60, 300],
+  "swarm_timing_ns": {"warmup": 2000000000, "publish_lead": 1000000000, "end_guard": 2000000000, "drain": 1500000000},
+  "limits": {
+    "input_min_percent": 99,
+    "poll_starvation_ms": 500,
+    "stagger_tolerance_ms": 100,
+    "ack_lateness_ms": 500,
+    "rtt_min_coverage": 0.9,
+    "clock_drift_ppm": 200,
+    "clock_step_ms": 100,
+    "clock_max_half_width_ms": 2000,
+    "pair_max_age_s": 5,
+    "collector_max_gap_s": 5
+  },
+  "files": {
+    "bot": ["swarm/swarm.json", "swarm/coordinator.ndjson", "swarm/window.json", "swarm/shard-<k>.ndjson", "sampler.ndjson", "report.json (legacy whole-run diagnostic)"],
+    "game": ["telemetry/process.json", "telemetry/population.ndjson", "telemetry/ticks.csv", "telemetry/server.ndjson", "telemetry/final.json", "sampler.ndjson", "sockets.ndjson"],
+    "controller": ["clock-before.json", "clock-after.json", "window-proof.json"]
+  }
+}

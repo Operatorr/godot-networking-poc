@@ -229,12 +229,24 @@ def disposition(problems):
     return dict(outcome=None, scorable=True, reasons=list(generator) + list(game), generator_failed=bool(generator), game_failed=bool(game))
 
 
-def apply_scorer(settled, classification):
-    """Hold a scorer's answer against the execution facts. Refusing it is never a pass. It becomes INCONCLUSIVE, with the reason."""
+def window_reasons(proof):
+    """The window proof's answer as plain reasons, for a verdict record. Nothing here turns it into an outcome."""
+    if not isinstance(proof, dict):
+        return []
+    codes = sorted({item.get('code') for item in proof.get('reasons') or [] if isinstance(item, dict)})
+    return ['window proof: %s%s' % (proof.get('status'), ' (%s)' % ', '.join(str(code) for code in codes) if codes else '')]
+
+
+def apply_scorer(settled, classification, proof=None):
+    """Hold a scorer's answer against the execution facts and the window proof. Refusing it is never a pass. It becomes INCONCLUSIVE, with the reason.
+
+    ``proof`` is ``measurement_window.prove``'s document. It is None only for fixtures that run no prover. A PASS needs a complete
+    window; a capacity failure can precede a full hold, but it cannot stand on a generator the proof shows to have failed unless the scorer names the server as the cause.
+    """
     if not settled['scorable']:
-        return dict(outcome=settled['outcome'], reasons=settled['reasons'], scored=False)
+        return dict(outcome=settled['outcome'], reasons=settled['reasons'] + window_reasons(proof), scored=False)
     if classification is None:
-        return dict(outcome=search.INCONCLUSIVE, reasons=['no reviewed scorer is available: this run establishes nothing'] + settled['reasons'], scored=False)
+        return dict(outcome=search.INCONCLUSIVE, reasons=['no reviewed scorer is available: this run establishes nothing'] + settled['reasons'] + window_reasons(proof), scored=False)
     outcome = classification.get('outcome') if isinstance(classification, dict) else None
     reason = None
     if outcome not in SCORER_OUTCOMES:
@@ -245,8 +257,13 @@ def apply_scorer(settled, classification):
         reason = 'a PASS cannot stand on a run whose processes failed'
     elif outcome == search.FAIL and settled['generator_failed'] and classification.get('generator_failure_attributed_to_server') is not True:
         reason = 'a capacity failure with a failed generator needs the server named as the cause'
+    elif proof is not None and outcome == search.PASS and proof.get('status') != 'complete':
+        reason = 'a PASS needs a proven common window'
+    elif (proof is not None and outcome == search.FAIL and classification.get('generator_failure_attributed_to_server') is not True
+          and any(isinstance(item, dict) and item.get('category') == 'generator' for item in proof.get('reasons') or [])):
+        reason = 'a capacity failure over a generator the window proof shows failing needs the server named as the cause'
     if reason is not None:
-        return dict(outcome=search.INCONCLUSIVE, reasons=[reason] + settled['reasons'], scored=False)
+        return dict(outcome=search.INCONCLUSIVE, reasons=[reason] + settled['reasons'] + window_reasons(proof), scored=False)
     return dict(outcome=outcome, reasons=list(classification.get('reasons') or []), scored=True, evidence_ref=classification['evidence_ref'],
                 scorer=classification.get('scorer'))
 

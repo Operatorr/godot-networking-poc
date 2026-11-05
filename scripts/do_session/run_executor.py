@@ -16,7 +16,8 @@ grant is resolved, acknowledged by the guest's fence or conclusively expired; on
 
 Workload processes stop by themselves, through the guest's supervisor, by ``launch_by + estimate`` less the time export
 needs. This controller only ends them sooner. Nothing here scores a measurement: ``scorer`` is the boundary described in
-``run_checks``, and no scorer ships yet, so no run can currently establish PASS or FAIL.
+``run_checks``, and no scorer ships yet, so no run can currently establish PASS or FAIL. ``measurement_window`` proves or refuses the
+common scored interval from the sealed files, and that proof is retained with the run and handed to any scorer.
 """
 import dataclasses
 import hashlib
@@ -31,6 +32,7 @@ import do_session
 import guest_agent
 import guest_runner
 import manifest as manifest_mod
+import measurement_window
 import provisioner
 import readiness
 import registry
@@ -52,6 +54,7 @@ LOCAL_FAILURES = (OSError, ValueError, KeyError, TypeError)
 STALE_CODES = ('stale_fencing_token', 'lease_expired', 'control_held')
 CLEANUP_CODES = ('cleanup_in_progress', 'deadline_reached', 'clock_unverifiable')
 GRANT_STILL_USABLE = ('lock_timeout', 'bad_request')     # the only refusals that come before the guest burns or outlaws a grant
+CLOCK_ATTEMPTS = 3     # the narrowest wins, because a slow login only widens that one reading
 SEARCH_ENDINGS = ('confirmed', 'confirmed_search_cap_reached', 'no_passing_target', 'unconfirmed_variable', 'unconfirmed_partial')
 
 
@@ -218,7 +221,7 @@ class GuestReadiness:
 
 class RunExecutor:
     def __init__(self, client, guests, provider, manifest, sha, session_dir, fencing_token, sleep, monotonic, wall, scorer=None, adapter=None, policy=None,
-                 failpoint=None, source_problems=None, readiness_problems=None, require_counters=True):
+                 failpoint=None, source_problems=None, readiness_problems=None, require_counters=True, window_prover=measurement_window.prove):
         self.client = client
         self.guests = guests
         self.provider = provider
@@ -236,6 +239,7 @@ class RunExecutor:
         self.source_problems = source_problems
         self.readiness_problems = readiness_problems or GuestReadiness(self).problems
         self.require_counters = require_counters
+        self.window_prover = window_prover  # None only in fixtures whose fake guests write no recorder files
         self.session_id = manifest['session']['id']
         self.timing = {name: manifest['timing_basis'][name]['seconds'] for name in ('process_reset_s', 'recorder_finalization_s', 'per_trial_export_s')}
         self.evidence = provisioner.Evidence(self.session_dir / 'execution', wall)
@@ -470,6 +474,32 @@ class RunExecutor:
 
     # ---- the pair ----------------------------------------------------------------------------
 
+    def _clock_bracket(self, label):
+        """Raw readings of each host's wall clock, bracketed by this controller's. A host that cannot answer leaves no reading, and the proof says so.
+
+        Never allowed to stop what is happening: a measured run is stopped and sealed whether or not its clocks could be read.
+        """
+        document = dict(schema='omega.do-session.clock-bracket/1', label=label, roles={})
+        for role in ROLES:
+            attempts = document['roles'][role] = []
+            for _ in range(CLOCK_ATTEMPTS):
+                before = self.wall()
+                try:
+                    reading = self._runner(role, 'clock', on_wait=self._quiet_keepalive)
+                except (GuestLost, RunAborted, ControlLost, CleanupStarted) as error:
+                    document.setdefault('errors', []).append('%s: %s' % (role, type(error).__name__))
+                    break
+                after = self.wall()
+                if reading.get('ok') is True and isinstance(reading.get('wall_ns'), int):
+                    attempts.append(dict(before_ns=int(before * 1e9), guest_wall_ns=reading['wall_ns'], guest_monotonic_ns=reading.get('monotonic_ns'), after_ns=int(after * 1e9), boot_id=reading.get('boot_id')))
+        return document
+
+    def _retain_bracket(self, run_id, label, document):
+        try:
+            do_session.write_new(self._run_dir(run_id) / ('clock-%s.json' % label), json.dumps(document, indent=2, sort_keys=True) + '\n')
+        except OSError as error:
+            self._note('clock_bracket_not_retained', run_id=run_id, label=label, detail=type(error).__name__)
+
     def _load_readiness(self):
         """The record ``mark_ready`` bound by hash. Anything else is not the readiness this session was granted."""
         ready = self.client.call('ready_record', session_id=self.session_id)
@@ -551,9 +581,9 @@ class RunExecutor:
         for name, seconds in self.timing.items():
             if not isinstance(seconds, (int, float)):
                 raise BatchStop(REFUSED, 'timing_basis_invalid', name)
-        needed = self.policy.game_start_wait_s + 2 * self.policy.stop_grace_s
+        needed = self.policy.game_start_wait_s + 2 * self.policy.stop_grace_s + run_plan.SWARM_TAIL_S
         if self.timing['process_reset_s'] < needed:
-            raise BatchStop(REFUSED, 'timing_basis_too_small', 'process_reset_s must cover the game start wait and two stop graces: %s s' % needed)
+            raise BatchStop(REFUSED, 'timing_basis_too_small', 'process_reset_s must cover the game start wait, two stop graces and the swarm\'s publish lead, end guard and drain: %s s' % needed)
         self._set_work_cutoff(status)
         self._load_readiness()
         problems = self._pair_problems(status)
@@ -736,6 +766,7 @@ class RunExecutor:
             stopped = self._batch_failed('host_not_reset', '; '.join(problems))
             raise BatchStop(STOPPED, stopped.code, stopped.detail, stopped.search_status)
         estimate = result.next_run['estimate']['total_s']
+        bracket = self._clock_bracket('before') if self.window_prover is not None else None
         asked = self.monotonic()
         self.failpoint('before_dispatch_commit')
         grant = self._dispatch(trial, estimate)
@@ -743,6 +774,8 @@ class RunExecutor:
         run_dir = self._run_dir(trial.run_id)
         run_dir.mkdir(parents=True, exist_ok=True)
         do_session.write_new(run_dir / 'grant.json', json.dumps(grant, indent=2, sort_keys=True) + '\n')
+        if bracket is not None:
+            self._retain_bracket(trial.run_id, 'before', bracket)
         # ``asked`` is before the grant existed, so these local limits can only err early.
         launch_deadline = asked + session_clock.parse(grant['launch_by']) - session_clock.parse(grant['granted_at'])
         stop_by = launch_deadline + estimate
@@ -828,7 +861,7 @@ class RunExecutor:
         reserved = self.timing['recorder_finalization_s'] + self.timing['per_trial_export_s']
         grace = self.policy.stop_grace_s
         launch_by = session_clock.parse(context.grant['launch_by'])
-        whole = run_plan.workload_s(trial)
+        whole = run_plan.swarm_bound_s(trial)
         granted = self._authorize('launch_run', 'game', trial.run_id, self._runner)
         game = self._plan(trial, 'game', session_clock.parse(granted['authorized_until']), max(1.0, context.stop_by - self.monotonic() - reserved - grace), must_stop_by - reserved - grace, whole)
         self.failpoint('after_game_authorized')
@@ -947,6 +980,8 @@ class RunExecutor:
                 context.problems[run_checks.INFRASTRUCTURE].append('%s could not be stopped: %s' % (role, failure))
         self.failpoint('after_stop')
         self._safe_progress(run_id, 'stopped')
+        if self.window_prover is not None and context.launched:
+            self._retain_bracket(run_id, 'after', self._clock_bracket('after'))
         for role in ROLES:
             self._seal_role(context, role)
         self.failpoint('after_seal')
@@ -1069,19 +1104,54 @@ class RunExecutor:
 
     def _classify(self, context, execution):
         problems = execution['document']['problems']
+        proof = self._window_proof(context, execution)
         verdict = self._settled_verdict(problems, context.interrupted)
         if verdict is not None:
             return verdict
         settled = run_checks.disposition(problems)
         answer = None
         if self.scorer is not None:
-            answer = self.scorer(self._evidence_for_scorer(context, execution))
-        return run_checks.apply_scorer(settled, answer)
+            answer = self.scorer(self._evidence_for_scorer(context, execution, proof))
+        return run_checks.apply_scorer(settled, answer, proof)
 
-    def _evidence_for_scorer(self, context, execution):
-        """Everything a scorer may read: verified local files and the sealed execution facts. Nothing live."""
+    def _window_proof(self, context, execution):
+        """Whether the sealed files prove the common interval. Create-only and computed once: the bytes it read cannot change, so a returning controller reuses it.
+
+        A prover that fails proves nothing, which is inconclusive. It never stops the path to the outcome commit.
+        """
+        if self.window_prover is None:
+            return None
+        run_id = context.trial.run_id
+        path = self._run_dir(run_id) / 'window-proof.json'
+        retained = guest_runner.read_json(path)
+        if isinstance(retained, dict):
+            return retained
+        if path.exists():
+            return dict(schema=measurement_window.PROOF_SCHEMA, status=measurement_window.INCONCLUSIVE, reasons=[dict(code='proof_unreadable', category=measurement_window.EVIDENCE, detail='window-proof.json')])
+        roles = execution['document'].get('roles') or {}
+        identities = {role: (view.get('identity') or {}).get('processes') or {} for role, view in roles.items()}
+        brackets = {label: guest_runner.read_json(self._run_dir(run_id) / ('clock-%s.json' % label)) for label in ('before', 'after')}
+        prior = {}
+        for role, ledger in context.ledgers.items():
+            processes, inodes, _ = run_checks.prior_identities(self._ledger_without(ledger, run_id))
+            prior[role] = dict(processes=processes, inodes=inodes)
+        try:
+            proof = self.window_prover(self._run_dir(run_id), context.trial.to_dict(), self.manifest['workload'], identities, brackets, telemetry_schema=self.manifest.get('telemetry_schema'),
+                                       require_counters=self.require_counters, prior=prior)
+            if manifest_mod.scan_for_secrets(proof):
+                raise ValueError('the proof held a credential value')
+        except Exception as error:     # a defect in a parser or a surprising file: the run still needs its outcome committed
+            proof = dict(schema=measurement_window.PROOF_SCHEMA, status=measurement_window.INCONCLUSIVE, reasons=[dict(code='prover_failed', category=measurement_window.EVIDENCE, detail=type(error).__name__)])
+        try:
+            do_session.write_new(path, json.dumps(proof, indent=2, sort_keys=True, default=sorted) + '\n')
+        except OSError as error:
+            self._note('window_proof_not_retained', run_id=run_id, detail=type(error).__name__)
+        return proof
+
+    def _evidence_for_scorer(self, context, execution, proof=None):
+        """Everything a scorer may read: verified local files, the sealed execution facts and the window proof. Nothing live."""
         return dict(run_id=context.trial.run_id, trial=context.trial.to_dict(), root=str(self._run_dir(context.trial.run_id)), execution=execution['document'],
-                    execution_sha256=execution['sha256'], execution_ref=execution['ref'])
+                    execution_sha256=execution['sha256'], execution_ref=execution['ref'], window_proof=proof)
 
     def _commit_outcome(self, context, verdict):
         run_id = context.trial.run_id
@@ -1169,6 +1239,8 @@ class RunExecutor:
             context.ledgers[role] = inventories[role].get('ledger') or []
             if any(entry.get('run_id') == trial.run_id and entry.get('role') == role for entry in inventories[role].get('runs') or []):
                 self._reconcile_role(context, role, reason)
+        if self.window_prover is not None and context.plans and reachable and not (run_dir / 'clock-after.json').exists():
+            self._retain_bracket(trial.run_id, 'after', self._clock_bracket('after'))
         self._export(context)
         # Create-only: each writer's view is kept, in token order, and the glob above reads them all.
         name = 'execution.json'
@@ -1250,9 +1322,10 @@ class RunExecutor:
         settled = run_checks.disposition(problems)
         if not settled['scorable']:
             return dict(outcome=settled['outcome'], reasons=settled['reasons'], scored=False)
+        proof = self._window_proof(context, execution)
         if self.scorer is None:
-            return dict(outcome=search.INCOMPLETE, reasons=['the run ended by itself, but nothing has scored it: ' + '; '.join(settled['reasons'])], scored=False)
-        verdict = run_checks.apply_scorer(settled, self.scorer(self._evidence_for_scorer(context, execution)))
+            return dict(outcome=search.INCOMPLETE, reasons=['the run ended by itself, but nothing has scored it: ' + '; '.join(settled['reasons'])] + run_checks.window_reasons(proof), scored=False)
+        verdict = run_checks.apply_scorer(settled, self.scorer(self._evidence_for_scorer(context, execution, proof)), proof)
         if not verdict.get('scored'):
             return dict(outcome=search.INCOMPLETE, reasons=verdict['reasons'], scored=False)
         return verdict

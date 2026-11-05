@@ -2,7 +2,7 @@
 
 Everything is on this machine and real clocks. It proves the execution paths are real, not that they work on a Droplet:
 there is no SSH, systemd, /proc, netem or DigitalOcean account here, and the pair's provider view is a JSON file.
-``OMEGA_LOCAL_RELEASE_DIR`` adds one run of the real omega-server and omega-load-test binaries when a build is supplied.
+``OMEGA_LOCAL_RELEASE_DIR`` adds one real 60 s window of the real omega-server and omega-load-test binaries through this whole path when a build is supplied.
 """
 import concurrent.futures
 import json
@@ -221,14 +221,25 @@ class WholeRuns(LocalFixture):
     @unittest.skipUnless(os.environ.get('OMEGA_LOCAL_RELEASE_DIR'), 'needs a real release build; see the module docstring')
     def test_real_binaries_run_through_the_same_path(self):
         release = pathlib.Path(os.environ['OMEGA_LOCAL_RELEASE_DIR'])
-        session = self.session(release_dir=release, workload_seconds=3.0)
-        result = self.document(self.harness(session, 'execute', 'controller-real', '--fencing-token', str(session.token), '--no-wrap-up', timeout=240))['batch']
-        # Whether the swarm's own criteria passed on a loaded laptop varies. Either way it completed, and nothing is scored.
+        session = self.session(release_dir=release)
+        result = self.document(self.harness(session, 'execute', 'controller-real', '--fencing-token', str(session.token), '--no-wrap-up', timeout=300))['batch']
+        # A real 60 s window for 25 strategy bots through the whole controller path, and still nothing is scored.
         self.assertEqual(result['search_status'], 'stopped_inconclusive_evidence', result)
         row = self.records(session)[0]
         self.assertEqual(row['outcome'], search.INCONCLUSIVE)
-        report = json.loads((session.run_tree('bot', row['run_id']) / 'report.json').read_text())
-        self.assertGreater(report['aggregated']['connected_bots'], 0)
+        tree = session.run_tree('bot', row['run_id'])
+        window = json.loads((tree / 'swarm/window.json').read_text())
+        self.assertEqual(window['status'], 'window_recorded')
+        report = json.loads((tree / 'report.json').read_text())
+        self.assertTrue(report['legacy_whole_run_diagnostic'], 'whole-run numbers stay labelled, and decide nothing')
+        self.assertEqual(report['aggregated']['connected_bots'], 25)
+        proof = json.loads((session.session_dir / 'runs' / row['run_id'] / 'window-proof.json').read_text())
+        self.assertEqual(proof['status'], 'complete', proof['reasons'])
+        self.assertTrue(proof['facts']['contract_hold'])
+        self.assertFalse(proof['socket_counters_required'], 'macOS has no drop counters, and this run says so')
+        self.assertEqual(proof['facts']['input']['scheduled_total'], 25 * 60 * 30)
+        classification = json.loads((session.session_dir / 'runs' / row['run_id'] / 'classification.json').read_text())
+        self.assertIn('window proof: complete', classification['verdict']['reasons'])
         self.assert_nothing_runs(session)
 
 

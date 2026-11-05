@@ -1,8 +1,9 @@
 """What one trial means on each host: pure, from the frozen manifest and the grant. Nothing here touches anything.
 
-``ReleaseAdapter`` is the seam for handoff slice 5. It maps a trial to today's binaries, and the threaded common-window
-recorder will change only the arguments it produces. Budget terms come from the same place as admission, so the process
-bound and the admitted estimate cannot drift apart.
+``ReleaseAdapter`` maps a trial to the release binaries in their measured mode: the four-thread common-window swarm and a game
+server with window evidence on (handoff slice 5, omega.measurement/2). Every workload control is passed explicitly, so nothing
+depends on a binary default. Budget terms come from the same place as admission, so the process bound and the admitted estimate
+cannot drift apart.
 """
 import hashlib
 import json
@@ -16,6 +17,9 @@ SOURCE_DIR = '/home/deploy/omega-source'
 GAME_PORT = 8081
 METRICS_PORT = 9100
 SAMPLER_INTERVAL_S = 1
+# What the swarm spends past its hold: publish lead + end guard + drain (omega-load-test measured.rs). It lives inside the
+# admitted process_reset_s, and the controller refuses a manifest whose value cannot hold it.
+SWARM_TAIL_S = 4.5
 
 
 def runner_remote_path(runner_sha256):
@@ -33,6 +37,11 @@ def workload_s(trial):
     return search.readiness_bound_s(trial.target) + search.POST_AUTH_WARMUP_S + trial.hold_s
 
 
+def swarm_bound_s(trial):
+    """The most a healthy swarm can need: a final auth at the readiness bound, then warmup, lead, hold, guard and drain."""
+    return workload_s(trial) + SWARM_TAIL_S
+
+
 class ReleaseAdapter:
     """Today's release layout on a provisioned pair. Every argument is the frozen workload's, named explicitly."""
     release_dir = RELEASE_DIR
@@ -46,21 +55,22 @@ class ReleaseAdapter:
         return addresses['game']
 
     def game_process(self, manifest, trial, addresses):
-        program = self.release_dir + '/omega-server'
-        return dict(name='game', primary=True, argv=[program, '--config', self.release_dir + '/server_config.json', '--mode', 'arena',
+        return dict(name='game', primary=True, argv=[self.program_paths()['game'], '--config', self.config_path(), '--mode', 'arena',
                                                      '--port', str(self.game_port), '--allow-unsigned-tickets'],
-                    env=dict(OMEGA_MEASURE_DIR='{run_dir}/telemetry', RUST_LOG='info'), make_dirs=['{run_dir}/telemetry'])
+                    env=dict(OMEGA_MEASURE_DIR='{run_dir}/telemetry', OMEGA_MEASURE_WINDOW_EVIDENCE='1', RUST_LOG='info'), make_dirs=['{run_dir}/telemetry'], stop_signal='SIGINT')
 
     def bot_process(self, manifest, trial, addresses):
         workload = manifest['workload']
-        return dict(name='bot', primary=True, argv=[self.release_dir + '/omega-load-test', '--server', '%s:%d' % (self.game_address(addresses), self.game_port),
-                                                    '--bots', str(trial.target), '--duration', str(trial.hold_s), '--behavior', workload['behavior'],
+        return dict(name='bot', primary=True, argv=[self.program_paths()['bot'], '--measured-window', '--server', '%s:%d' % (self.game_address(addresses), self.game_port),
+                                                    '--bots', str(trial.target), '--hold-s', str(trial.hold_s), '--behavior', workload['behavior'],
                                                     '--difficulty', str(workload['difficulty']), '--input-hz', str(workload['input_hz']), '--seed', str(workload['seed']),
                                                     '--threads', str(workload['generator_threads']), '--stagger', str(workload['join_stagger_ms']),
-                                                    '--output', '{run_dir}/report.json'], env=dict(RUST_LOG='info'))
+                                                    '--readiness-timeout-s', str(search.readiness_bound_s(trial.target)),
+                                                    '--evidence-dir', '{run_dir}/swarm', '--output', '{run_dir}/report.json'],
+                    env=dict(RUST_LOG='info', OMEGA_TICKET_API=''), stop_signal='SIGINT')
 
     def sampler_process(self, role):
-        argv = ['python3', self.release_dir + '/sample_host.py', '--out', '{run_dir}/sampler.ndjson', '--pids', '{run_dir}/sampler.pids', '--interval', str(SAMPLER_INTERVAL_S)]
+        argv = ['python3', self.sampler_path(role), '--out', '{run_dir}/sampler.ndjson', '--pids', '{run_dir}/sampler.pids', '--interval', str(SAMPLER_INTERVAL_S), '--identity']
         if role == 'game':
             argv += ['--udp-port', str(self.game_port)]
         return dict(name='sampler', argv=argv)
@@ -75,15 +85,16 @@ class ReleaseAdapter:
         return self.release_dir + '/sample_host.py'
 
     def completed_exit_codes(self, role):
-        """Statuses meaning the process ran to its end. The swarm exits 1 when its own success criteria fail, after writing its report.
-
-        That is a verdict on the server's numbers, not a generator failure, and this slice ignores the verdict itself.
-        Anything else is a crash: 2 is a usage or configuration error, 101 a panic, and a signal has no status.
+        """Statuses meaning the process ran to its end with its evidence finished. In measured mode the swarm's status never judges the server:
+        0 is a recorded window, 1 a window that was not established or stayed incomplete, with ``swarm/window.json`` saying why.
+        Anything else is a crash: 2 is a usage or configuration error, 4 a recorder failure, 101 a panic, and a signal has no status.
         """
         return (0, 1) if role == 'bot' else (0,)
 
     def required_on_clean_exit(self, role):
-        return ('sampler.ndjson', 'report.json') if role == 'bot' else ('sampler.ndjson',)
+        if role == 'bot':
+            return ('sampler.ndjson', 'report.json', 'swarm/swarm.json', 'swarm/coordinator.ndjson', 'swarm/window.json')
+        return ('sampler.ndjson', 'telemetry/process.json', 'telemetry/population.ndjson', 'telemetry/ticks.csv', 'telemetry/server.ndjson', 'telemetry/final.json')
 
 
 def expected_files(adapter, manifest, role, sampler_sha256):

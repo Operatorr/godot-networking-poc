@@ -1,4 +1,4 @@
-# do_session — DigitalOcean test-session planner, registry, watchdog, provisioning and fresh test runs (handoff slices 1–4)
+# do_session — DigitalOcean test-session planner, registry, watchdog, provisioning, fresh test runs and the measured window (handoff slices 1–5)
 
 Control code for the disposable DigitalOcean capacity sessions planned in
 [issue #57](https://github.com/Operatorr/godot-networking-poc/issues/57), following the
@@ -13,6 +13,8 @@ Control code for the disposable DigitalOcean capacity sessions planned in
   It has only ever run against offline fakes. No live account has exercised this code.
 - **Slice 4, fresh-process runs and explicit resume:** see [below](#fresh-process-runs-and-explicit-resume-slice-4). It has run against a fake
   remote and as real processes on one machine, never over SSH or on a Droplet. It cannot produce PASS or FAIL yet, because no scorer exists.
+- **Slice 5, the two-host window and recorders:** see [below](#two-host-measurement-window-and-recorders-slice-5). The real binaries and recorders have run on loopback on one
+  macOS machine, including real 60 s and 300 s windows, never on a Droplet or on Linux. It proves or refuses a window and scores nothing.
 
 Terminology follows `docs/CONTEXT.md` and issues #59/#60: a *test session* owns one game/bot
 Droplet pair with one fixed hardware condition; its *test batch* is the frozen search; a *test
@@ -453,7 +455,7 @@ Reuses the verified pair for every run. Each run gets new processes, a new socke
 | File | Owns |
 | --- | --- |
 | `guest_runner.py` | Stdlib program uploaded to both hosts under a content-addressed name: the host fence, launch checks, the supervisor with its absolute bound, identity and socket facts, stop and seal. |
-| `run_plan.py` | What a trial means on one host, as pure data. `ReleaseAdapter` is slice 5's seam: it holds today's binary arguments. |
+| `run_plan.py` | What a trial means on one host, as pure data. `ReleaseAdapter` holds the measured binary arguments of slice 5, and `swarm_bound_s` the time a healthy swarm needs. |
 | `run_checks.py` | Pure rules over host and run facts. It sorts execution failures and holds the scorer boundary. A missing fact fails. |
 | `run_executor.py` | The controller: one run, reconciliation of an unfinished run, explicit resume, collection and the cleanup request. |
 | `run_cli.py` | Operator CLI: `execute`, `resume`, `collect`. It has no provider mutation and no scorer option. |
@@ -540,7 +542,7 @@ PASS a run whose processes failed, or call FAIL with a failed generator unless i
 (issues #68 and #69) own the measurement schema and gates, `run_cli.py` has no option to supply one, and until then every finished trial is `INCONCLUSIVE`, which stops the batch. Fixtures script outcomes
 through `run_fixtures.scripted_scorer`; those outcomes are not measurements.
 
-The current swarm does not meet the measurement contract either: threaded runs skip per-bot observations, and there is no common window. So nothing here should be scored until slice 5 changes the adapter.
+Since slice 5 the adapter runs the measured swarm, and each finished run keeps a `window-proof.json`. A scorer receives it as `window_proof`, and `apply_scorer` refuses a PASS unless its status is `complete`. See [below](#two-host-measurement-window-and-recorders-slice-5).
 
 ### Coming back
 
@@ -617,3 +619,114 @@ These are stated so Gates A and B check them instead of assuming them. Each fail
   is the safe direction but stops the search. A start now costs one more SSH login, before any workload exists.
 - **A smoke helper killed with -9** takes its server with it on Linux through `PR_SET_PDEATHSIG`, which has not run here. On macOS the server survives until a stop settles it by identity, as the local tests show.
 - **Readiness smoke during resume** overwrites the earlier readiness logs on the guest. Readiness evidence kept by the controller is unaffected.
+
+## Two-host measurement window and recorders (slice 5)
+
+Turns a fresh run into attributable per-role observations over one common scored interval, or an explicit refusal. It scores nothing, and no production scorer exists: every finished run still ends `INCONCLUSIVE` until issue #69. Terms: a *generator shard* is one swarm thread that owns its bots, and is not the glossary's server **Shard**. A *window* is the common scored interval.
+
+| File | Owns |
+| --- | --- |
+| `rust/load_test/src/measured.rs` | `omega-load-test --measured-window`: the barrier, future window, acknowledgments, per-bot input grid and per-shard create-only recorders. [Its README section](../../rust/load_test/README.md#measured-window---measured-window) has the details. |
+| `rust/server/src/measurement.rs` | With `OMEGA_MEASURE_WINDOW_EVIDENCE=1`: `process.json`, `population.ndjson` (auth and disconnect transitions, wall/monotonic pairs) and `final.json`, all create-only, including `ticks.csv` and `server.ndjson`. Unset, it behaves as before, so historical campaign units keep restarting in place. |
+| `scripts/quick_stress/sample_host.py --identity` | The role collector: this sampler's own clock pair, boot id, each process's kernel start identity and per-thread CPU, every UDP socket that exact process owns (inode, endpoint, drops, queues), raw memory, OOM and interface counters, and what each sample cost. Host-wide kernel counters stay in `udp.snmp`. |
+| `measurement_schema.json` | The frozen schema: `omega.measurement/2`, the limits below and the file lists. A manifest freezes its id and SHA-256 as `telemetry_schema`; `provision_cli.py source-digests` prints both. |
+| `measurement_window.py` | `prove(...)`: pure over verified local files. `complete`, `invalid` or `inconclusive`, with coded reasons and facts. |
+| `measurement_fixtures.py`, `measurement_local.py`, `measurement_evidence.py` | Offline only: mocked recorder files, one real local run, and the retained evidence. |
+
+### Reconciling the checkout with the historical harness
+
+The handoff inspected a single-threaded `bb583d4` and the Change A reference `98a6304`. The checkout this slice started from has neither shape, so nothing here assumes them:
+
+| | Inspected earlier | This checkout before slice 5 (PR 52's swarm) | Slice 5 measured mode |
+| --- | --- | --- | --- |
+| Threads | One thread | `--threads N`, round-robin, geometry on each thread | Kept, with 4 explicit threads and refused if fewer bots than threads |
+| Join cadence | Sequential settle | Slot by global stagger, but each shard waits for a bot to settle, so a slow handshake delays that shard's later slots | No settling. A slow handshake never moves another bot's slot, and each actual time is recorded |
+| Start of measurement | Timer | `RunClock` fires when the last shard's ramp ends, including a shard that failed. No authentication barrier and no warmup | All N authenticated, 2 s warmup, one published future start and end |
+| Barrier | None | Other shards keep polling, because `RunClock` never blocked them | Kept: readiness is a value the coordinator reads, and shards read a window. Nothing waits |
+| End of measurement | Timer | Each shard times out by itself | One published end, an end acknowledgment and frozen counters from each shard, then a 2 s guard before drain |
+| Per-bot observations | Single-thread `bots.ndjson` | Disabled when threaded, and overwriting on restart | One create-only file per shard |
+| Input accounting | Cumulative, re-anchored after a stall | The same | A fixed grid from authentication. What a window was owed is arithmetic |
+| Server population | Tick rows only | Tick rows only | Tick rows, auth and disconnect transitions, and a final count |
+
+The legacy path is unchanged: `quick_stress`, the campaign harness and `--threads` runs without `--measured-window` take the same code, apart from the counting socket wrapper, which adds counters and no behavior.
+
+### One measured run
+
+```text
+controller  clock-before.json (raw readings, narrowest of 3 per role), then dispatch
+game        ENet socket open, recorders on
+swarm       bot i connects at i x 100 ms -> N authenticated -> 2 s warmup -> window published 1 s ahead, durable first
+  shards    each records window_observed, ack_start, ack_end, freeze
+  hold      60 or 300 s, all shards polling, all recorders flushing 1/s
+  guard     2 s still connected and polling, so the server's population is provable past the end
+  drain     up to 1.5 s, outside the window by construction; footer, fsync, window.json
+controller  stop (SIGINT first, so recorders finish), clock-after.json, seal, export
+            window-proof.json over the verified files -> execution/classification as in slice 4
+```
+
+The 4.5 s of lead, guard and drain live inside the admitted `process_reset_s`, and the controller refuses a manifest whose value cannot also hold the game start wait and two stop graces (29.5 s with default policy). The bound also covers a final authentication at the readiness limit, so the search's time model and its 401 legal paths are unchanged.
+
+### What the proof holds a run to
+
+Limits live in `measurement_schema.json`, which the manifest freezes.
+
+| Evidence | Rule | Reason code |
+| --- | --- | --- |
+| Controls | Exactly the trial's N and hold, and the manifest's strategy, difficulty, seed, 30 Hz, 4 threads, 100 ms, round-robin. A fault build names itself and can never prove a window | `workload_mismatch`, `fault_injection_build`, `ownership_mismatch`, `geometry_not_initialized` |
+| Recorders | Numbered from zero, one process nonce, header first, footer last, no recorder failure. Server rows match `final.json` | `recorder_truncated`, `recorder_overwritten`, `recorder_failed` |
+| Join | Each bot within 100 ms of its global slot, and authenticated | `global_stagger_violated`, `bot_never_authenticated` |
+| Liveness | No shard gap over 500 ms, from first poll to drain, measured by the shard and reported separately by the coordinator | `poll_starvation`, `poll_liveness_missing` |
+| Window | Published before its start, start at least 2 s after the final authentication, seen by every shard first, length exactly the hold, each acknowledgment within 500 ms, frozen before drain | `window_not_established`, `window_not_future`, `warmup_violated`, `window_observed_late`, `missing_acknowledgment`, `counters_not_frozen`, `early_shard_exit` |
+| Input | Per bot, integers only: `sent x 100 >= scheduled x 99`, so exactly 99% is valid. Bots dead in the game still send idle frames and still count. Missing is missing, and a pooled average cannot hide one bot | `offered_input_below_minimum`, `input_record_missing`, `bot_errors`, `generator_socket_errors`, `peer_sample_coverage` |
+| Clocks | Below | `clock_mapping_missing`, `clock_ambiguous`, `clock_step`, `host_rebooted` |
+| Population | Every Tick in the mapped interval holds exactly N with contiguous numbers, every bot has a server auth before the interval, no disconnect in it, and entity ids agree. A bot the server disconnected is excused from its input floor, because the disconnect is judged by itself | `population_lost_in_window`, `population_boundary_ambiguous`, `server_tick_gap`, `server_tick_coverage`, `server_auth_evidence_missing`, `server_refused_a_join` |
+| Identity | Supervisor pid, kernel start and boot id match every recorder and collector row, and nothing was used by an earlier run on that host | `pid_reused`, `process_identity_reused`, `process_identity_changed`, `process_lost_in_window`, `recorder_overwritten` |
+| Sockets | Per bot and for the game: one inode from baseline to final row, counter never backward. A generator drop is invalid load; a game drop stays a fact for the scorer. Host kernel counters are reported beside them and attribute nothing | `socket_identity_changed`, `socket_identity_reused`, `socket_counter_reset`, `socket_counters_missing`, `socket_evidence_missing`, `generator_socket_drops` |
+| Collectors | A row before and after the interval, and no silence over 5 s | `collector_boundary_missing`, `collector_gap` |
+
+A reason's category sets the status: `generator` or `server` evidence means `invalid`; `evidence` or `clock` means `inconclusive`. Generator and server facts decide over missing evidence, and all reasons stay listed, because attribution is the scorer's.
+
+`facts` keeps the counts the scorer needs (per-bot scheduled and sent, sample coverage, socket drops, kernel deltas), and the raw per-bot ENet samples stay timestamped in the shard files. RTT, loss, Tick time and game-socket drops are not judged here. **The proof never says PASS, and `establishes_capacity` is always false.**
+
+### How clocks are handled
+
+Each process counts from its own start, and the two roles are never compared directly. A boundary moves only through intervals:
+
+```text
+swarm mono -> bot wall      nearest tight pair from the coordinator, plus 200 ppm per second of distance
+bot wall -> game wall       hull of the before and after brackets, for both hosts
+game wall -> game mono      nearest tight pair from the server, the same way
+```
+
+The result is an interval around each boundary, and the server must prove N across the outer one. A loss in the certain middle is `population_lost_in_window`; a loss only at the uncertain edge is `population_boundary_ambiguous`. A half-width over 2 s, the size of the swarm's end guard, is `clock_ambiguous`. Neighbouring pairs jumping more than 100 ms is `clock_step`. A missing bracket is `clock_mapping_missing`. None of these can reach `complete`.
+
+**Local integration keeps these separate from a live clock.** On loopback both roles read one wall clock, so the real brackets are small and the before/after hull is honest but cannot have seen real offset between hosts. Offsets and drift are exercised by editing real recorder bytes and brackets, and by mocked files.
+
+### Limits
+
+- **Never on Linux, a Droplet, a public route or systemd.** `/proc` parsing has only fixture coverage, so inode joins, kernel start ticks and drop counters on a real kernel are Gate A's first job.
+- **macOS has no per-socket drop counter.** Its collector reports `counter_source: unavailable_on_platform`. A proof with counters required is `inconclusive` there, so real local runs pass `require_counters=False`, say so in `socket_counters_required`, and report the total as unknown, not zero. The executor requires counters by default.
+- **Limits are declared, not calibrated.** 500 ms, 100 ms, 200 ppm and 2 s come from the contract's frames and margins. A real generator may need different values, and changing them means a new schema hash. Whether SSH brackets stay inside 2 s on a real pair is unmeasured.
+- **One poll gap is not one lost frame.** A shard that recovers quickly can stay above 99%; the proof still refuses a gap over 500 ms, on purpose, because it would hide RTT and acknowledgment evidence.
+- **Observer effect is measured, not excluded.** Each shard records `observer_ns` and each collector `collector_ns`. Those are costs of the recorders' own work, and they do not prove the recorders changed nothing.
+- **A start can be seen late only if a loop takes longer than the 1 s publication lead.** Frames in that gap are not counted, and `window_observed_late` refuses the window.
+- **Disconnect reasons on the server are ENet's `data`.** A timeout reads 0. Telling a server-caused timeout from a generator's is the scorer's work, with `poll_starvation` beside it.
+- **`evidence.required_artifacts` in existing conditions fixtures is still a placeholder list.** Slice 7 owns the exporter that checks it; a real manifest should list the recorder files from `measurement_schema.json`.
+
+### Running it
+
+```bash
+cd scripts/do_session
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest test_measurement_window test_measurement_collector test_measurement_executor test_measurement_evidence   # deterministic and offline
+
+# Real binaries in real time. Needs builds of the exact revision under test:
+(cd ../../rust && cargo build --release --locked -p omega-server -p omega-load-test)
+(cd ../../rust && cargo build --release --locked -p omega-load-test --features omega-load-test/fault-injection --target-dir /tmp/omega-fault)
+OMEGA_LOCAL_RELEASE_DIR=$PWD/../../rust/target/release OMEGA_FAULT_RELEASE_DIR=/tmp/omega-fault/release python3 -m unittest test_measurement_integration
+OMEGA_LOCAL_RELEASE_DIR=$PWD/../../rust/target/release OMEGA_MEASURE_LONG=1 python3 -m unittest test_measurement_integration.ContractWindows   # about 6 minutes
+OMEGA_LOCAL_RELEASE_DIR=$PWD/../../rust/target/release python3 -m unittest test_run_local_integration.WholeRuns.test_real_binaries_run_through_the_same_path   # 60 s through the whole controller
+
+python3 measurement_local.py --release ../../rust/target/release --target 8 --hold-s 6     # one run, by hand
+```
+
+Retained results: [`offline-faults/slice5/`](../../docs/netcode/perf-notes/digitalocean-capacity/offline-faults/slice5/README.md). These are local integration results, not live-host validation or capacity findings.

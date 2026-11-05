@@ -1,0 +1,770 @@
+{
+ "kind": "synthetic",
+ "measurement_schema": "omega.measurement/2",
+ "measurement_schema_sha256": "59d3d2b89a6fa356dfdf858e53fdbbcd625821546456d466c3845954afaee67a",
+ "note": "The real prover over mocked recorder files. Nothing ran. Every window here is arithmetic.",
+ "scenarios": {
+  "below_99_percent_input_invalid": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [
+     3
+    ],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14381,
+    "worst_bot": 3,
+    "worst_ratio": 0.9894444444444445
+   },
+   "reasons": [
+    "generator:offered_input_below_minimum"
+   ],
+   "socket_counters_required": true,
+   "status": "invalid",
+   "target": 8
+  },
+  "clock_bracket_missing": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "clock:clock_mapping_missing",
+    "evidence:collector_boundary_missing"
+   ],
+   "socket_counters_required": true,
+   "status": "inconclusive",
+   "target": 8
+  },
+  "clock_bracket_too_wide": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "clock:clock_ambiguous",
+    "clock:population_boundary_ambiguous",
+    "evidence:collector_boundary_missing",
+    "evidence:server_tick_coverage"
+   ],
+   "socket_counters_required": true,
+   "status": "inconclusive",
+   "target": 8
+  },
+  "clock_drift_is_ambiguous": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "clock:clock_ambiguous",
+    "clock:population_boundary_ambiguous",
+    "evidence:collector_boundary_missing",
+    "evidence:server_tick_coverage"
+   ],
+   "socket_counters_required": true,
+   "status": "inconclusive",
+   "target": 8
+  },
+  "complete_300s": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 300,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 300,
+    "peer_samples_total": 2400,
+    "scheduled_total": 72000,
+    "sent_total": 72000,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [],
+   "socket_counters_required": true,
+   "status": "complete",
+   "target": 8
+  },
+  "complete_60s": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [],
+   "socket_counters_required": true,
+   "status": "complete",
+   "target": 8
+  },
+  "connected_but_not_sending_invalid": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [
+     2
+    ],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 12600,
+    "worst_bot": 2,
+    "worst_ratio": 0.0
+   },
+   "reasons": [
+    "generator:offered_input_below_minimum"
+   ],
+   "socket_counters_required": true,
+   "status": "invalid",
+   "target": 8
+  },
+  "dead_in_game_still_sending_idle_frames_valid": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 900,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [],
+   "socket_counters_required": true,
+   "status": "complete",
+   "target": 8
+  },
+  "early_shard_exit": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "generator:early_shard_exit",
+    "generator:window_incomplete"
+   ],
+   "socket_counters_required": true,
+   "status": "invalid",
+   "target": 8
+  },
+  "exactly_99_percent_input_valid": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14382,
+    "worst_bot": 3,
+    "worst_ratio": 0.99
+   },
+   "reasons": [],
+   "socket_counters_required": true,
+   "status": "complete",
+   "target": 8
+  },
+  "game_socket_drop_is_a_fact_not_a_broken_window": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [],
+   "socket_counters_required": true,
+   "status": "complete",
+   "target": 8
+  },
+  "generator_socket_drop_invalid": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "generator:generator_socket_drops"
+   ],
+   "socket_counters_required": true,
+   "status": "invalid",
+   "target": 8
+  },
+  "global_stagger_violated": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "generator:global_stagger_violated"
+   ],
+   "socket_counters_required": true,
+   "status": "invalid",
+   "target": 8
+  },
+  "large_known_wall_offset_still_maps": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [],
+   "socket_counters_required": true,
+   "status": "complete",
+   "target": 8
+  },
+  "missing_end_acknowledgment": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "generator:missing_acknowledgment"
+   ],
+   "socket_counters_required": true,
+   "status": "invalid",
+   "target": 8
+  },
+  "missing_input_counter_is_not_zero": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 7,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 420,
+    "scheduled_total": 12600,
+    "sent_total": 12600,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "evidence:input_record_missing"
+   ],
+   "socket_counters_required": true,
+   "status": "inconclusive",
+   "target": 8
+  },
+  "pid_reused": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "evidence:pid_reused"
+   ],
+   "socket_counters_required": true,
+   "status": "inconclusive",
+   "target": 8
+  },
+  "poll_starvation": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "generator:poll_starvation"
+   ],
+   "socket_counters_required": true,
+   "status": "invalid",
+   "target": 8
+  },
+  "population_tick_below_n": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "server:population_lost_in_window"
+   ],
+   "socket_counters_required": true,
+   "status": "invalid",
+   "target": 8
+  },
+  "process_identity_reused_from_earlier_run": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "evidence:process_identity_reused"
+   ],
+   "socket_counters_required": true,
+   "status": "inconclusive",
+   "target": 8
+  },
+  "readiness_timeout_has_no_window": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": null,
+   "reasons": [
+    "generator:window_not_established"
+   ],
+   "socket_counters_required": true,
+   "status": "invalid",
+   "target": 8
+  },
+  "recorder_cut_inside_a_line": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 6,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 360,
+    "scheduled_total": 10800,
+    "sent_total": 10800,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "evidence:recorder_truncated"
+   ],
+   "socket_counters_required": true,
+   "status": "inconclusive",
+   "target": 8
+  },
+  "recorder_lost_its_footer": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 6,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 360,
+    "scheduled_total": 10800,
+    "sent_total": 10800,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "evidence:recorder_truncated"
+   ],
+   "socket_counters_required": true,
+   "status": "inconclusive",
+   "target": 8
+  },
+  "recorder_overwritten": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 6,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 360,
+    "scheduled_total": 10800,
+    "sent_total": 10800,
+    "worst_bot": 2,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "evidence:recorder_overwritten"
+   ],
+   "socket_counters_required": true,
+   "status": "inconclusive",
+   "target": 8
+  },
+  "schema_not_the_frozen_one": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "evidence:schema_mismatch"
+   ],
+   "socket_counters_required": true,
+   "status": "inconclusive",
+   "target": 8
+  },
+  "server_never_finished_recorders": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "evidence:collector_boundary_missing",
+    "evidence:recorder_truncated"
+   ],
+   "socket_counters_required": true,
+   "status": "inconclusive",
+   "target": 8
+  },
+  "server_transition_missing": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "evidence:server_auth_evidence_missing"
+   ],
+   "socket_counters_required": true,
+   "status": "inconclusive",
+   "target": 8
+  },
+  "short_hold_refused": {
+   "contract_hold": false,
+   "establishes_capacity": false,
+   "hold_s": 5,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 5,
+    "peer_samples_total": 40,
+    "scheduled_total": 1200,
+    "sent_total": 1200,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "evidence:non_contract_hold"
+   ],
+   "socket_counters_required": true,
+   "status": "inconclusive",
+   "target": 8
+  },
+  "socket_counter_missing_is_not_zero": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "evidence:socket_counters_missing"
+   ],
+   "socket_counters_required": true,
+   "status": "inconclusive",
+   "target": 8
+  },
+  "socket_counter_moved_backward": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "evidence:socket_counter_reset"
+   ],
+   "socket_counters_required": true,
+   "status": "inconclusive",
+   "target": 8
+  },
+  "socket_inode_changed": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "evidence:socket_identity_changed"
+   ],
+   "socket_counters_required": true,
+   "status": "inconclusive",
+   "target": 8
+  },
+  "socket_inode_reused_from_earlier_run": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "evidence:socket_identity_reused"
+   ],
+   "socket_counters_required": true,
+   "status": "inconclusive",
+   "target": 8
+  },
+  "wall_clock_stepped": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "clock:clock_step"
+   ],
+   "socket_counters_required": true,
+   "status": "inconclusive",
+   "target": 8
+  },
+  "warmup_violated": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "generator:warmup_violated"
+   ],
+   "socket_counters_required": true,
+   "status": "invalid",
+   "target": 8
+  },
+  "window_seen_after_it_began": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "generator:window_observed_late"
+   ],
+   "socket_counters_required": true,
+   "status": "invalid",
+   "target": 8
+  }
+ },
+ "schema": "omega.do-session.window-evidence/1"
+}
