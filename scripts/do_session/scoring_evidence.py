@@ -218,7 +218,7 @@ def _search_summary(sim, result, extra=None):
     report = capacity_report.build(sim.stack.root)
     starts = len([call for call in sim.guests.calls if call['command'] == 'start' and call['role'] == 'game'])
     return dict(status=report['status'], claim=report['claim'], journal_claim=report['journal_claim'], evidence=report['evidence'], batch=result.status if result is not None else None, observations=report['observations'], counts=report['counts'], game_starts=starts, no_hidden_retry=starts == len(sim.records()),
-                trials=[{key: row.get(key) for key in ('ordinal', 'phase', 'target', 'repetition', 'hold_s', 'outcome', 'classification', 'gates', 'offered_load', 'evidence_problems', 'hard_facts', 'superseded_decisions')} for row in report['trials']], **(extra or {}))
+                trials=[{key: row.get(key) for key in ('ordinal', 'phase', 'target', 'repetition', 'hold_s', 'outcome', 'classification', 'gates', 'offered_load', 'evidence_problems', 'hard_facts', 'unverified_stop_records', 'superseded_decisions')} for row in report['trials']], **(extra or {}))
 
 
 def _plain(rules, **options):

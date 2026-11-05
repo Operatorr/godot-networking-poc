@@ -52,6 +52,9 @@ RUNNER_SOURCE = pathlib.Path(guest_runner.__file__)
 FINISHED, STOPPED, PARTIAL, CONTROL_LOST, CLEANUP_STARTED, REFUSED = ('search_finished', 'stopped', 'partial_search', 'control_lost', 'cleanup_started', 'refused')
 NOT_LAUNCHED = 'not_launched'
 SOURCE_CHANGED = 'source_changed'
+TERMINAL_FACT_UNACKNOWLEDGED = 'terminal_fact_unacknowledged'
+STOP_RECORD_UNVERIFIED = 'stop_record_unverified'
+CORRUPT_EVIDENCE_DIR = 'corrupt-evidence'
 ADAPTER_PATH = 'scripts/do_session/run_plan.py'
 LOCAL_FAILURES = (OSError, ValueError, KeyError, TypeError)
 STALE_CODES = ('stale_fencing_token', 'lease_expired', 'control_held')
@@ -258,6 +261,8 @@ class RunExecutor:
         self.fences_closed = False
         self.never_created = set()  # (run_id, role): a plan went out, and the host says no such run ever existed
         self.terminal_facts_found = set()   # (run_id, role): corrupt bytes this controller already wrote down, so a repeated sweep does not write them again
+        self.stops_heard = set()            # (run_id, record): stop facts the registry acknowledged to this controller
+        self.stops_unheard = {}             # (run_id, record): stop facts it did not, each kept until it does. Nothing more runs while one is here
         self.addresses = None
         self.report = None
         self.prepared = False
@@ -765,6 +770,7 @@ class RunExecutor:
         return BatchResult(STOPPED, search_status=search.STOPPING[search.INFRASTRUCTURE_FAILURE], code=code, detail=detail, runs=self.outcomes)
 
     def _one_run(self, state, result):
+        self._require_no_open_stop()
         trial = search.next_trial(state)
         self._publish_selection(state, result)
         self.failpoint('after_selection')
@@ -1061,7 +1067,7 @@ class RunExecutor:
                 if result.returncode != 0:
                     failed.append(dict(path=relative, kind='transfer', reason=cleanup_provider.redact(result.stderr)))
                 elif sha256_path(partial) != digest:
-                    failed.append(dict(path=relative, kind='corrupt', reason='hash mismatch'))
+                    failed.append(self._corrupt_receipt(run_id, role, relative, partial, digest))
                 else:
                     publish_new(partial, local)
                     copied += 1
@@ -1071,6 +1077,21 @@ class RunExecutor:
                 # One file's local failure costs that file. An existing file with other bytes is never overwritten.
                 failed.append(dict(path=relative, kind='local', reason=type(error).__name__))
         return dict(complete=not failed, failed=failed, files=len(wanted), copied=copied)
+
+    def _corrupt_receipt(self, run_id, role, relative, source, expected):
+        """What a digest mismatch leaves: both hashes, and the bytes themselves under a name no later transfer writes to. Keyed by their hash, so a repeated sweep over the same bytes keeps one copy."""
+        actual = sha256_path(source)
+        receipt = dict(path=relative, kind='corrupt', reason='hash mismatch', expected_sha256=expected, actual_sha256=actual, retained_as=None)
+        name = '%s/%s/%s.%s' % (CORRUPT_EVIDENCE_DIR, role, relative.replace('/', '__'), actual)
+        target = self._run_dir(run_id) / name
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if not target.exists():
+                do_session.write_new_durable_bytes(target, pathlib.Path(source).read_bytes())
+            receipt['retained_as'] = name
+        except OSError as error:     # the hashes still say what was found
+            self._note('corrupt_bytes_not_retained', run_id=run_id, role=role, path=relative, detail=type(error).__name__)
+        return receipt
 
     def _write_execution(self, context, name, writer='run'):
         """The boundary between running and scoring: what happened, bound by hash. Create-only, like every run file.
@@ -1323,21 +1344,35 @@ class RunExecutor:
 
         A file that cannot be fetched now says nothing, so it stays a note and costs a committed decision nothing.
         """
+        self._replay_retained_stops(records)
         for row in records:
-            if row['outcome'] is None or row['outcome'] in search.STOPPING:
-                continue
-            run_id = row['run_id']
-            facts = capacity_scorer.hard_facts(self._run_dir(run_id))
-            if facts:
-                self._record_terminal_fact(run_id, facts[0]['outcome'], 'run %s holds %s beside its committed %s: %s' % (run_id, facts[0]['record'], row['outcome'], '; '.join(facts[0]['details'])[:400]), facts[0]['record'])
             if row['outcome'] not in search.ADVANCING:
                 continue
+            run_id = row['run_id']
             for role in inventories:
                 try:
                     if self._role_inventory(run_id, role)['status'] not in ('verified', 'never_created') and not self._recover_role(run_id, role, self._quiet_keepalive):
                         self._note('committed_evidence_unverified', run_id=run_id, role=role)
                 except LOCAL_FAILURES as error:     # a surprising seal on one committed run must not cost the return, and it proves nothing about what the run decided
                     self._note('committed_evidence_unverified', run_id=run_id, role=role, detail=type(error).__name__)
+
+    def _stop_records(self, run_id):
+        return capacity_scorer.stop_records(self._run_dir(run_id), dict(session_id=self.session_id, manifest_sha256=self.sha, run_id=run_id, current_token=self.token))
+
+    def _replay_retained_stops(self, records):
+        """Tells the registry of every stop fact this run directory holds beside an outcome that does not itself stop, so a fact a crash left written down and unheard is finished here. Returns what could not be held to this run."""
+        unverified = []
+        for row in records:
+            if row['outcome'] is None or row['outcome'] in search.STOPPING:
+                continue
+            run_id = row['run_id']
+            facts, foreign = self._stop_records(run_id)
+            unverified += [dict(item, run_id=run_id) for item in foreign]
+            for fact in facts:
+                self._record_terminal_fact(run_id, fact['outcome'], 'run %s holds %s beside its committed %s: %s' % (run_id, fact['record'], row['outcome'], '; '.join(str(item) for item in fact['details'])[:400]), fact['record'])
+        for item in unverified:
+            self._note('stop_record_unverified', run_id=item['run_id'], record=item['record'], sha256=item['sha256'], problems=item['problems'])
+        return unverified
 
     def _retain_terminal_fact(self, run_id, role, failed):
         """Corrupt bytes found for a run whose outcome is already committed. Written down first, so a crash before the registry hears of it leaves the next controller to finish the job."""
@@ -1346,7 +1381,8 @@ class RunExecutor:
             if not (self._run_dir(run_id) / name).exists():
                 break
         details = ['%s evidence was not fully exported: %s' % (role, failed)]
-        document = dict(schema=capacity_scorer.TERMINAL_FACT_SCHEMA, session_id=self.session_id, manifest_sha256=self.sha, run_id=run_id, role=role, outcome=search.INFRASTRUCTURE_FAILURE, details=details, fencing_token=self.token, found_at=session_clock.iso(self.wall()))
+        document = dict(schema=capacity_scorer.TERMINAL_FACT_SCHEMA, session_id=self.session_id, manifest_sha256=self.sha, run_id=run_id, role=role, outcome=search.INFRASTRUCTURE_FAILURE, details=details, fencing_token=self.token, found_at=session_clock.iso(self.wall()),
+                        receipts=[item for item in failed if item.get('kind') == 'corrupt'])
         try:
             do_session.write_new_durable(self._run_dir(run_id) / name, json.dumps(document, indent=2, sort_keys=True) + '\n')
         except OSError as error:     # this disk's trouble must not keep the session from hearing of it
@@ -1355,12 +1391,48 @@ class RunExecutor:
         self._record_terminal_fact(run_id, search.INFRASTRUCTURE_FAILURE, 'run %s: %s' % (run_id, details[0]), name)
 
     def _record_terminal_fact(self, run_id, outcome, detail, record):
-        """The run keeps its outcome, and the session stops. It must survive this process, so a resume cannot walk past it."""
+        """The run keeps its outcome, and the session stops. It must survive this process, so a resume cannot walk past it. Whether the registry heard is kept, and ``_require_no_open_stop`` holds all further work to it."""
+        key = (run_id, record)
+        if key in self.stops_heard or key in self.stops_unheard:
+            return
         self._note('terminal_fact', run_id=run_id, outcome=outcome, detail=detail)
+        digest = capacity_scorer.file_sha256(self._run_dir(run_id) / record)
+        self.stops_unheard[key] = dict(outcome=outcome, detail=detail, evidence_ref='runs/%s/%s%s' % (run_id, record, '#sha256:' + digest if digest else ''))
+        self._send_stop(key)
+
+    def _send_stop(self, key):
+        """The same request each time: an acknowledgement lost on the way back is replayed by the registry, and a stop it never received is applied."""
+        pending = self.stops_unheard[key]
         try:
-            self.client.mutate('record_batch_stop', session_id=self.session_id, outcome=outcome, fencing_token=self.token, detail=detail, evidence_ref='runs/%s/%s' % (run_id, record))
+            self.client.mutate('record_batch_stop', 'stop:%s:%s:%s:%d' % (self.session_id, key[0], key[1], self.token), session_id=self.session_id, outcome=pending['outcome'], fencing_token=self.token, detail=pending['detail'], evidence_ref=pending['evidence_ref'])
         except (registry_client.RegistryRejected, registry_client.RegistryUnavailable) as error:
-            self._note('batch_stop_unrecorded', detail=cleanup_provider.redact(error))
+            pending['code'] = getattr(error, 'code', 'registry_unavailable')
+            self._note('batch_stop_unrecorded', code=pending['code'], detail=cleanup_provider.redact(error))
+            return False
+        del self.stops_unheard[key]
+        self.stops_heard.add(key)
+        return True
+
+    def _require_no_open_stop(self):
+        """Nothing more runs, and no resume stands, past a stop fact this controller knows of. Failing to tell the registry is not permission to carry on, and neither is the registry's silence.
+
+        Asked again here so that a registry back from a moment's trouble hears of it now. Each fact stays in its file for the next controller, whose first look replays it before any work, and every path to cleanup is unaffected.
+        An unverifiable record stops this controller too, without an irreversible word to the registry: it is not this session's demonstrated failure, and an operator can look at it.
+        """
+        unverified = self._replay_retained_stops(self._records())
+        for key in list(self.stops_unheard):
+            self._send_stop(key)
+        if self.stops_unheard:
+            (run_id, record), pending = next(iter(self.stops_unheard.items()))
+            detail = 'run %s holds a stop fact the registry has not acknowledged (%s): %s' % (run_id, record, pending['detail'])
+            if pending.get('code') in STALE_CODES:
+                raise ControlLost(pending['code'], detail)
+            raise BatchStop(STOPPED, TERMINAL_FACT_UNACKNOWLEDGED, detail, search.STOPPING[pending['outcome']])
+        status = self._status()
+        if status['terminal_failure'] is not None and status['cleanup']['requested_at'] is None:
+            raise BatchStop(STOPPED, 'terminal_failure', status['terminal_failure'], search.STOPPING[status['terminal_failure']])
+        if unverified:
+            raise BatchStop(STOPPED, STOP_RECORD_UNVERIFIED, '; '.join('%s of run %s: %s' % (item['record'], item['run_id'], '; '.join(item['problems'])) for item in unverified)[:800], search.STOPPING[search.INCONCLUSIVE])
 
     def _retire_unknown(self, role, entry, reason):
         run_id = entry['run_id']
@@ -1593,6 +1665,11 @@ class RunExecutor:
         checks['pair_unchanged'] = True
         unknown = self.reconcile()
         checks['interrupted_preserved'] = True
+        try:
+            self._require_no_open_stop()
+        except BatchStop as stop:
+            self._require_resumable(self._status())     # what an interruption can never excuse keeps its own name
+            raise ResumeRefused(stop.code, stop.detail)
         if unknown:
             raise ResumeRefused('unknown_run_on_host', '; '.join(unknown))
         status = self._status()
@@ -1671,6 +1748,9 @@ class RunExecutor:
         except LOCAL_FAILURES + (provisioner.Stop,) as error:
             evidence_status = 'missing'
             self._wrap_up_failed(result, error)
+        for key in list(self.stops_unheard):
+            if not self._send_stop(key):     # its file stays for the next controller, and the cleanup below still goes ahead
+                self._wrap_up_problem(result, 'run %s: the registry has not acknowledged the stop fact %s' % key)
         self._retain_capacity_report()
         try:
             self.client.mutate('record_measurement', session_id=self.session_id, fencing_token=self.token, outcome=label, ref='execution/journal.ndjson')
@@ -1708,7 +1788,9 @@ class RunExecutor:
         try:
             seal_path = target / guest_runner.SEAL
             if not seal_path.exists():
-                return dict(run_id=run_id, role=role, status='missing', files=[dict(path=guest_runner.SEAL, status='missing')])
+                # A seal that failed its hash on the way back is kept apart, and a sealed role with corrupt bytes on record is not merely absent.
+                damaged = any((self._run_dir(run_id) / CORRUPT_EVIDENCE_DIR / role).glob(guest_runner.SEAL + '.*'))
+                return dict(run_id=run_id, role=role, status='corrupt' if damaged else 'missing', files=[dict(path=guest_runner.SEAL, status='corrupt' if damaged else 'missing')])
             seal = json.loads(seal_path.read_text())
             files = [dict(path=guest_runner.SEAL, status='verified')]
             for item in seal['files']:
@@ -1822,7 +1904,7 @@ class RunExecutor:
         return missing
 
     def _recover_role(self, run_id, role, on_wait=None):
-        """Each read has the time that is left and no more. Past the end of the episode nothing is even asked. Bytes that fail their hash are a demonstrated failure, and a transfer that could not run says nothing."""
+        """Each read has the time that is left and no more. Past the end of the episode nothing is even asked. Bytes that fail their hash are a demonstrated failure, the seal's as much as any other's, and a transfer that could not run says nothing."""
         on_wait = on_wait or self._recovery_wait
         try:
             sealed = self._runner(role, 'status', '--run-id', run_id, '--role', role, on_wait=on_wait)
@@ -1835,17 +1917,22 @@ class RunExecutor:
             with tempfile.TemporaryDirectory() as temporary:
                 local = pathlib.Path(temporary) / guest_runner.SEAL
                 result = self.guests.get(role, remote_seal, str(local), self._guest_timeout(self.policy.transfer_timeout_s), on_wait)
-                if result.returncode != 0 or sha256_path(local) != sealed.get('seal_sha256'):
+                if result.returncode != 0 or not capacity_scorer.is_digest(sealed.get('seal_sha256')):
+                    return False     # no bytes, or nothing to hold them to: this says nothing about the host's seal
+                if sha256_path(local) != sealed['seal_sha256']:
+                    self._retain_corrupt(run_id, role, [self._corrupt_receipt(run_id, role, guest_runner.SEAL, local, sealed['seal_sha256'])])
                     return False
                 seal = json.loads(local.read_text())
             exported = self._export_role(run_id, role, dict(seal=seal, seal_sha256=sealed['seal_sha256']))
-            corrupt = [item for item in exported['failed'] if item['kind'] == 'corrupt']
-            if corrupt and (run_id, role) not in self.terminal_facts_found:
-                self.terminal_facts_found.add((run_id, role))
-                self._retain_terminal_fact(run_id, role, corrupt)
+            self._retain_corrupt(run_id, role, [item for item in exported['failed'] if item['kind'] == 'corrupt'])
             return exported['complete']
         except (GuestLost, RunAborted, OSError, ValueError):
             return False
+
+    def _retain_corrupt(self, run_id, role, corrupt):
+        if corrupt and (run_id, role) not in self.terminal_facts_found:
+            self.terminal_facts_found.add((run_id, role))
+            self._retain_terminal_fact(run_id, role, corrupt)
 
 
 def source_identity_problems(manifest, repository, runner=None):

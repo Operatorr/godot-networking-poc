@@ -134,8 +134,10 @@ def audit(session_dir, manifest, sha, record):
     run_dir = session_dir / 'runs' / run_id
     expected = _expectation(run_dir, record, manifest, sha)
     problems = []
+    facts, unverified = capacity_scorer.stop_records(run_dir, expected)
     if record.outcome is not None and record.outcome not in search.STOPPING:
-        problems += ['the journal says %s, and %s records a stop fact: %s' % (record.outcome, fact['record'], '; '.join(fact['details'])) for fact in capacity_scorer.hard_facts(run_dir)]
+        problems += ['the journal says %s, and %s records a stop fact: %s' % (record.outcome, fact['record'], '; '.join(str(item) for item in fact['details'])) for fact in facts]
+    problems += ['%s says a run stopped, and cannot be held to this run: %s' % (item['record'], '; '.join(item['problems'])) for item in unverified]
     reference = capacity_scorer.parse_reference(record.evidence_ref)
     verdict = None
     if record.outcome is not None:
@@ -178,8 +180,9 @@ def build(session_dir):
         trial = record.trial
         run_dir = session_dir / 'runs' / trial.run_id
         problems, verdict, score = audit(session_dir, manifest, sha, record)
+        facts, unverified = capacity_scorer.stop_records(run_dir, _expectation(run_dir, record, manifest, sha))
         row = dict(run_id=trial.run_id, ordinal=trial.ordinal, phase=trial.phase, target=trial.target, repetition=trial.repetition, hold_s=trial.hold_s, predecessors=list(trial.predecessors), outcome=record.outcome, evidence_ref=record.evidence_ref, evidence_problems=problems,
-                   hard_facts=capacity_scorer.hard_facts(run_dir), superseded_decisions=list((verdict or {}).get('supersedes') or ()),
+                   hard_facts=facts, unverified_stop_records=unverified, superseded_decisions=list((verdict or {}).get('supersedes') or ()),
                    score_sha256=_file_sha256(run_dir / SCORE_FILE), classification_sha256=_file_sha256(run_dir / 'classification.json'), window_proof_sha256=_file_sha256(run_dir / 'window-proof.json'))
         if score is not None:
             row.update(classification=score.get('classification'), reasons=score.get('reasons'), gates={name: gate.get('verdict') for name, gate in (score.get('gates') or {}).items()}, offered_load=(score.get('validity') or {}).get('verdict'), values={name: gate_value(name, gate) for name, gate in (score.get('gates') or {}).items()})
@@ -196,7 +199,7 @@ def build(session_dir):
         claim = dict(kind='evidence_disagreement', players=None, lower_bound=None, search_cap_reached=False, confirmed=False,
                      statement='No evidence-backed claim: the retained files of %d of %d trials disagree with the journal or cannot be verified. What the journal says is kept apart as history, and is not verified here.' % (len(disputed), len(trials)))
     superseded = [row['run_id'] for row in trials if row['superseded_decisions']]
-    evidence = dict(verified=not disputed and not superseded, disputed_trials=disputed, superseded_trials=superseded, trials_with_stop_facts=[row['run_id'] for row in trials if row['hard_facts']])
+    evidence = dict(verified=not disputed and not superseded, disputed_trials=disputed, superseded_trials=superseded, trials_with_stop_facts=[row['run_id'] for row in trials if row['hard_facts']], trials_with_unverified_stop_records=[row['run_id'] for row in trials if row['unverified_stop_records']])
     return dict(schema=SEARCH_REPORT_SCHEMA, session_id=state.condition_id, status=derived['status'], detail=derived['detail'], claim=claim, journal_claim=journal_claim, evidence=evidence, observations=search.observations(state), counts=derived['counts'], trials=trials, establishes=claim['confirmed'])
 
 
@@ -218,6 +221,7 @@ def render_search(report):
         lines += ['', '**%s**: %s' % (row['run_id'], row['outcome'] or 'pending')]
         lines += ['- Not verified: ' + problem for problem in row['evidence_problems']]
         lines += ['- Stop fact %s (%s): %s' % (fact['outcome'], fact['record'], '; '.join(str(item) for item in fact['details'])) for fact in row.get('hard_facts') or ()]
+        lines += ['- Unverified stop record %s (sha256 %s), not this session\'s fact: %s' % (item['record'], item['sha256'], '; '.join(item['problems'])) for item in row.get('unverified_stop_records') or ()]
         lines += ['- History, does not stand: %s said %s (sha256 %s). The gates below are what it decided.' % (item['file'], item['outcome'], item['sha256']) for item in row.get('superseded_decisions') or ()]
         lines += ['- ' + str(reason) for reason in (row.get('reasons') or ())]
         lines += ['- %s: %s' % (name, value) for name, value in sorted((row.get('values') or {}).items()) if value]

@@ -11,6 +11,7 @@ import capacity_report
 import capacity_scorer as cs
 import do_session
 import measurement_window as mw
+import registry_client
 import run_cli
 import run_executor
 import run_fixtures as rf
@@ -632,6 +633,510 @@ class StopFacts(Base):
         executor.wrap_up(result)
         self.assertEqual((run_dir / 'bot' / 'bot.stdout.log').exists(), True, 'recovered')
         self.assertEqual(sim.status_now()['terminal_failure'], INFRASTRUCTURE_FAILURE)
+
+
+class UnacknowledgedStops(Base):
+    """A stop fact the registry did not take is still a stop fact. Refused by no one at the registry, failing to say so must not turn into permission: every case here has a real controller, a real resume and a real dispatch to walk into."""
+    RULES = {50: sf.slow, 30: sf.slow}
+
+    def fixture(self, retained=False, point='after_outcome_commit'):
+        """A committed PASS, then corrupt bytes on the way back. ``retained``: an earlier controller already wrote the fact, and died before the registry heard."""
+        sim = self.sim_of(self.RULES)
+        self.crash(sim, point)
+        run_dir = sim.run_dir(sim.records()[0]['run_id'])
+        path = run_dir / 'bot' / 'bot.stdout.log'
+        path.chmod(0o644)
+        path.unlink()
+        sim.guests.corrupt_export.add('bot.stdout.log')
+        if retained:
+            executor, control = sim.controller(name='controller-a', failpoint=rf.crash_at('after_terminal_fact'))
+            with self.assertRaises(rf.SimulatedCrash):
+                executor.resume('operator', control)
+            self.assertEqual(len(list(run_dir.glob('terminal-fact-*.json'))), 1)
+            sim.guests.corrupt_export.clear()
+        self.assertIsNone(sim.status_now()['terminal_failure'])
+        return sim, run_dir
+
+    @staticmethod
+    def stop_fails(executor, error, times=None, commit=False):
+        """``record_batch_stop`` fails, ``times`` over or for ever, either before the registry commits it or after, with only its answer lost."""
+        real, seen = executor.client.mutate, []
+
+        def mutate(method, *arguments, **parameters):
+            if method != 'record_batch_stop' or (times is not None and len(seen) >= times):
+                return real(method, *arguments, **parameters)
+            seen.append(arguments)
+            if commit:
+                real(method, *arguments, **parameters)
+            raise error
+        executor.client.mutate = mutate
+        return seen
+
+    def assertNoSuccessor(self, sim, starts):
+        self.assertEqual(len(sim.guests.runner_steps('game', 'start')), starts, 'no second workload')
+        self.assertEqual(sim.outcomes(), [('coarse', 25, PASS)], 'nothing dispatched, and the committed outcome stays')
+
+    def assertReplayedBeforeWork(self, sim, starts):
+        """A later controller, with a healthy registry and a healthy transfer, finishes what was left."""
+        sim.guests.corrupt_export.clear()
+        executor, control = sim.controller(name='controller-later')
+        result = executor.resume('operator', control)
+        self.assertEqual((result['resumed'], result['code']), (False, 'terminal_failure'), result)
+        self.assertEqual(sim.status_now()['terminal_failure'], INFRASTRUCTURE_FAILURE)
+        self.assertNoSuccessor(sim, starts)
+
+    def test_an_unavailable_registry_refuses_the_resume_and_the_dispatch_for_a_new_and_for_a_retained_fact(self):
+        for retained in (False, True):
+            with self.subTest(retained=retained):
+                sim, run_dir = self.fixture(retained)
+                starts = len(sim.guests.runner_steps('game', 'start'))
+                executor, control = sim.controller()
+                self.stop_fails(executor, registry_client.RegistryUnavailable('down for this one request'))
+                result = executor.resume('operator', control)
+                self.assertFalse(result['resumed'], result)
+                self.assertEqual(result['code'], run_executor.TERMINAL_FACT_UNACKNOWLEDGED)
+                self.assertIsNone(sim.status_now()['terminal_failure'], 'the registry never heard')
+                self.assertIsNone(result['checks']['next_run_id'])
+                self.assertEqual(len(list(run_dir.glob('terminal-fact-*.json'))), 1, 'written down whatever the registry did')
+                done = executor.execute()
+                self.assertEqual((done.status, done.code), (run_executor.STOPPED, run_executor.TERMINAL_FACT_UNACKNOWLEDGED), done)
+                self.assertEqual(done.search_status, 'stopped_infrastructure_failure')
+                self.assertNoSuccessor(sim, starts)
+                self.assertEqual(capacity_report.build(sim.stack.root)['claim']['kind'], 'evidence_disagreement')
+                self.assertReplayedBeforeWork(sim, starts)
+
+    def test_a_rejected_stop_refuses_the_same_way(self):
+        for retained in (False, True):
+            with self.subTest(retained=retained):
+                sim, _ = self.fixture(retained)
+                starts = len(sim.guests.runner_steps('game', 'start'))
+                executor, control = sim.controller()
+                self.stop_fails(executor, registry_client.RegistryRejected('lock_timeout', 'the registry would not take it'))
+                result = executor.resume('operator', control)
+                self.assertEqual((result['resumed'], result['code']), (False, run_executor.TERMINAL_FACT_UNACKNOWLEDGED), result)
+                self.assertNoSuccessor(sim, starts)
+                self.assertReplayedBeforeWork(sim, starts)
+
+    def test_a_stale_controller_is_told_it_lost_control_and_runs_nothing(self):
+        sim, _ = self.fixture()
+        starts = len(sim.guests.runner_steps('game', 'start'))
+        executor, control = sim.controller()
+        self.stop_fails(executor, registry_client.RegistryRejected('stale_fencing_token', 'another controller holds this'))
+        result = executor.resume('operator', control)
+        self.assertEqual((result['resumed'], result['code']), (False, 'stale_fencing_token'), result)
+        self.assertEqual(executor.execute().status, run_executor.CONTROL_LOST)
+        self.assertNoSuccessor(sim, starts)
+
+    def test_one_failed_request_is_retried_before_any_decision_and_the_session_stops(self):
+        """The reproduced case: one failure, then a healthy registry for every later request."""
+        for retained in (False, True):
+            with self.subTest(retained=retained):
+                sim, _ = self.fixture(retained)
+                starts = len(sim.guests.runner_steps('game', 'start'))
+                executor, control = sim.controller()
+                seen = self.stop_fails(executor, registry_client.RegistryUnavailable('down for this one request'), times=1)
+                result = executor.resume('operator', control)
+                self.assertEqual(len(seen), 1)
+                self.assertEqual((result['resumed'], result['code']), (False, 'terminal_failure'), result)
+                self.assertEqual(sim.status_now()['terminal_failure'], INFRASTRUCTURE_FAILURE)
+                self.assertNoSuccessor(sim, starts)
+
+    def test_an_answer_lost_after_the_commit_is_not_taken_for_a_stop_that_was_not_made(self):
+        sim, _ = self.fixture()
+        starts = len(sim.guests.runner_steps('game', 'start'))
+        executor, control = sim.controller()
+        seen = self.stop_fails(executor, registry_client.RegistryUnavailable('the answer was lost'), commit=True)
+        result = executor.resume('operator', control)
+        self.assertEqual((result['resumed'], result['code']), (False, 'terminal_failure'), result)
+        self.assertEqual(sim.status_now()['terminal_failure'], INFRASTRUCTURE_FAILURE, 'it did commit')
+        self.assertEqual(len(seen), 2, 'asked again, and refused all the same')
+        self.assertEqual(len(set(seen)), 1, 'the same request id, so the registry replays and does not apply it twice')
+        self.assertEqual(executor.execute().code, run_executor.TERMINAL_FACT_UNACKNOWLEDGED)
+        self.assertNoSuccessor(sim, starts)
+
+    def test_a_stop_not_committed_stays_refused_and_is_replayed_by_the_same_request(self):
+        sim, _ = self.fixture()
+        starts = len(sim.guests.runner_steps('game', 'start'))
+        executor, control = sim.controller()
+        seen = self.stop_fails(executor, registry_client.RegistryUnavailable('never arrived'), times=3)
+        self.assertEqual(executor.resume('operator', control)['code'], run_executor.TERMINAL_FACT_UNACKNOWLEDGED)
+        self.assertIsNone(sim.status_now()['terminal_failure'])
+        self.assertEqual(len(seen), 2)
+        self.assertEqual(executor.execute().code, run_executor.TERMINAL_FACT_UNACKNOWLEDGED, 'the third attempt fails too')
+        self.assertEqual(len(set(seen)), 1)
+        result = executor.resume('operator again', control)     # the fourth reaches it
+        self.assertEqual((result['resumed'], result['code']), (False, 'terminal_failure'), result)
+        self.assertEqual(sim.status_now()['terminal_failure'], INFRASTRUCTURE_FAILURE)
+        self.assertNoSuccessor(sim, starts)
+
+    def test_a_fact_no_disk_kept_still_refuses_this_controller(self):
+        sim, run_dir = self.fixture()
+        starts = len(sim.guests.runner_steps('game', 'start'))
+        executor, control = sim.controller()
+        self.stop_fails(executor, registry_client.RegistryUnavailable('down'))
+        real = do_session.write_new_durable
+
+        def refuse_facts(path, text):
+            if 'terminal-fact' in str(path):
+                raise OSError('no space left')
+            return real(path, text)
+        with mock.patch.object(do_session, 'write_new_durable', refuse_facts):
+            result = executor.resume('operator', control)
+        self.assertEqual(result['code'], run_executor.TERMINAL_FACT_UNACKNOWLEDGED)
+        self.assertEqual(list(run_dir.glob('terminal-fact-*.json')), [])
+        self.assertEqual(executor.execute().code, run_executor.TERMINAL_FACT_UNACKNOWLEDGED, 'kept in this controller\'s memory')
+        self.assertNoSuccessor(sim, starts)
+
+    def test_a_failed_stop_mutation_costs_the_batch_neither_its_wrap_up_nor_its_cleanup(self):
+        sim = self.sim_of(self.RULES)
+        executor = sim.executor()
+        result = executor.execute()
+        self.assertEqual(result.search_status, 'confirmed')
+        run_dir = sim.run_dir(sim.records()[0]['run_id'])
+        path = run_dir / 'bot' / 'bot.stdout.log'
+        path.chmod(0o644)
+        path.unlink()
+        sim.guests.corrupt_export.add('bot.stdout.log')
+        self.stop_fails(executor, registry_client.RegistryUnavailable('down'))
+        executor.wrap_up(result)
+        self.assertIsNotNone(sim.status_now()['cleanup']['requested_at'], 'it never stands between a batch and its cleanup')
+        self.assertIsNone(sim.status_now()['terminal_failure'])
+        self.assertTrue(any('has not acknowledged the stop fact' in item for item in result.wrap_up_errors), result.wrap_up_errors)
+        self.assertEqual(len(list(run_dir.glob('terminal-fact-*.json'))), 1, 'kept for whoever comes next')
+        self.assertEqual(capacity_report.build(sim.stack.root)['claim']['kind'], 'evidence_disagreement')
+
+    def test_a_fact_that_appears_between_runs_stops_the_next_dispatch(self):
+        """Nothing returned and nothing resumed: the same controller, about to dispatch, finds a fact beside the run it just committed."""
+        sim = self.sim_of(self.RULES)
+
+        def leave_a_fact(point):
+            if point == 'after_outcome_commit' and not leave_a_fact.done:
+                leave_a_fact.done = True
+                row = sim.records()[0]
+                _terminal_fact_file(sim, row['run_id'], row['fencing_token'])
+        leave_a_fact.done = False
+        result = sim.executor(failpoint=leave_a_fact).execute()
+        self.assertEqual((result.status, result.code), (run_executor.STOPPED, 'terminal_failure'), result)
+        self.assertEqual(result.search_status, 'stopped_infrastructure_failure')
+        self.assertEqual(len(sim.guests.runner_steps('game', 'start')), 1)
+        self.assertEqual(sim.status_now()['terminal_failure'], INFRASTRUCTURE_FAILURE)
+
+
+class CorruptSeals(Base):
+    """A seal that came back whole with the wrong hash is corrupt bytes, like any other file. A transfer that could not run is no such thing."""
+    RULES = {50: sf.slow, 30: sf.slow}
+
+    def fixture(self):
+        sim = self.sim_of(self.RULES)
+        self.crash(sim, 'after_outcome_commit')
+        run_dir = sim.run_dir(sim.records()[0]['run_id'])
+        path = run_dir / 'bot' / 'bot.stdout.log'
+        path.chmod(0o644)
+        path.unlink()
+        return sim, run_dir
+
+    def assertKept(self, run_dir, facts=1):
+        found = sorted(run_dir.glob('terminal-fact-*.json'))
+        self.assertEqual(len(found), facts, found)
+        fact = json.loads(found[0].read_text())
+        receipt = fact['receipts'][0]
+        self.assertEqual((fact['role'], receipt['path'], receipt['kind']), ('bot', 'seal.json', 'corrupt'))
+        self.assertNotEqual(receipt['expected_sha256'], receipt['actual_sha256'])
+        kept = run_dir / receipt['retained_as']
+        self.assertEqual(run_executor.sha256_path(kept), receipt['actual_sha256'], 'the bytes themselves are kept, under their own hash')
+        self.assertTrue(kept.read_bytes().endswith(b'corrupted in transfer'))
+        self.assertEqual(run_executor.sha256_path(run_dir / 'bot' / 'seal.json'), receipt['expected_sha256'], 'the good seal on this disk is what the expected hash names')
+        return fact
+
+    def test_a_committed_outcome_stops_the_session_keeps_its_files_and_has_the_report_disagree(self):
+        sim, run_dir = self.fixture()
+        before = {path.name: path.read_bytes() for path in (run_dir / 'classification.json', run_dir / 'score.json')}
+        (run_dir / 'bot' / 'seal.json').chmod(0o644)
+        sim.guests.corrupt_export.add('seal.json')
+        starts = len(sim.guests.runner_steps('game', 'start'))
+        executor, control = sim.controller()
+        result = executor.resume('operator', control)
+        self.assertEqual((result['resumed'], result['code']), (False, 'terminal_failure'), result)
+        self.assertEqual(sim.status_now()['terminal_failure'], INFRASTRUCTURE_FAILURE)
+        self.assertEqual(len(sim.guests.runner_steps('game', 'start')), starts)
+        self.assertEqual(sim.outcomes(), [('coarse', 25, PASS)], 'the outcome stays what was committed')
+        self.assertEqual(before, {path.name: path.read_bytes() for path in (run_dir / 'classification.json', run_dir / 'score.json')})
+        self.assertKept(run_dir)
+        report = capacity_report.build(sim.stack.root)
+        self.assertEqual(report['claim']['kind'], 'evidence_disagreement')
+        self.assertEqual(report['journal_claim']['kind'], 'in_progress')
+        self.assertTrue(any('hash mismatch' in str(fact['details']) for fact in report['trials'][0]['hard_facts']))
+        self.assertTrue(report['trials'][0]['hard_facts'][-1]['receipts'])
+        self.assertIn('Stop fact', capacity_report.render_search(report))
+
+    def test_a_crash_after_the_fact_and_a_restored_transport_do_not_unsay_it(self):
+        sim, run_dir = self.fixture()
+        sim.guests.corrupt_export.add('seal.json')
+        starts = len(sim.guests.runner_steps('game', 'start'))
+        executor, control = sim.controller(failpoint=rf.crash_at('after_terminal_fact'))
+        with self.assertRaises(rf.SimulatedCrash):
+            executor.resume('operator', control)
+        self.assertIsNone(sim.status_now()['terminal_failure'], 'only written down so far')
+        sim.guests.corrupt_export.clear()
+        executor, control = sim.controller(name='controller-c')
+        result = executor.resume('operator', control)
+        self.assertEqual((result['resumed'], result['code']), (False, 'terminal_failure'), result)
+        self.assertEqual(sim.status_now()['terminal_failure'], INFRASTRUCTURE_FAILURE)
+        self.assertEqual(len(sim.guests.runner_steps('game', 'start')), starts)
+        self.assertKept(run_dir)
+        self.assertEqual(run_executor.sha256_path(run_dir / 'bot' / 'bot.stdout.log'), json.loads((run_dir / 'bot' / 'seal.json').read_text())['files'][[item['path'] for item in json.loads((run_dir / 'bot' / 'seal.json').read_text())['files']].index('bot.stdout.log')]['sha256'], 'what a working transfer can still bring back, it does')
+
+    def test_at_wrap_up_it_stops_the_session_and_cleanup_still_happens(self):
+        sim = self.sim_of(self.RULES)
+        executor = sim.executor()
+        result = executor.execute()
+        self.assertEqual(result.search_status, 'confirmed')
+        run_dir = sim.run_dir(sim.records()[0]['run_id'])
+        for name in ('bot/seal.json', 'bot/bot.stdout.log'):
+            path = run_dir / name
+            path.chmod(0o644)
+            path.unlink()
+        sim.guests.corrupt_export.add('seal.json')
+        executor.wrap_up(result)
+        self.assertEqual(sim.status_now()['terminal_failure'], INFRASTRUCTURE_FAILURE)
+        self.assertIsNotNone(sim.status_now()['cleanup']['requested_at'])
+        self.assertEqual(len(list(run_dir.glob('terminal-fact-*.json'))), 1, 'one fact, however many sweeps saw it')
+        self.assertEqual(executor._role_inventory(sim.records()[0]['run_id'], 'bot')['status'], 'corrupt', 'not merely absent')
+        report = capacity_report.build(sim.stack.root)
+        self.assertEqual(report['claim']['kind'], 'evidence_disagreement')
+        self.assertEqual(report['journal_claim']['kind'], 'confirmed_observation', 'the journal\'s history stays')
+
+    def test_a_host_only_failing_to_answer_stays_no_fact(self):
+        cases = dict(the_transfer_failed=lambda sim: sim.guests.copy_failures.update({('bot', 'get')}))
+        for name, arrange in cases.items():
+            with self.subTest(name):
+                sim, run_dir = self.fixture()
+                arrange(sim)
+                executor, control = sim.controller()
+                result = executor.resume('operator', control)
+                self.assertTrue(result['resumed'], result)
+                self.assertIsNone(sim.status_now()['terminal_failure'])
+                self.assertEqual(list(run_dir.glob('terminal-fact-*.json')), [])
+
+    def test_a_transfer_claiming_success_with_no_file_says_nothing_about_the_seal(self):
+        sim, run_dir = self.fixture()
+        executor, control = sim.controller()
+        real = executor.guests.get
+
+        def get(role, remote, local, timeout_s, on_wait=None):
+            if remote.endswith('/seal.json') and role == 'bot':
+                return rf.ssh_access.CommandResult(0, '', '')
+            return real(role, remote, local, timeout_s, on_wait)
+        with mock.patch.object(executor.guests, 'get', get):
+            result = executor.resume('operator', control)
+        self.assertTrue(result['resumed'], result)
+        self.assertEqual(list(run_dir.glob('terminal-fact-*.json')), [])
+
+    def test_a_status_naming_no_seal_hash_says_nothing_either(self):
+        sim, run_dir = self.fixture()
+        sim.guests.corrupt_export.add('seal.json')
+        executor, control = sim.controller()
+        real = executor._runner
+
+        def runner(role, step, *arguments, **options):
+            answer = real(role, step, *arguments, **options)
+            return dict(answer, seal_sha256=None) if step == 'status' else answer
+        with mock.patch.object(executor, '_runner', runner):
+            result = executor.resume('operator', control)
+        self.assertTrue(result['resumed'], result)
+        self.assertEqual(list(run_dir.glob('terminal-fact-*.json')), [])
+
+    def test_any_other_corrupt_file_keeps_its_bytes_even_after_a_later_good_transfer(self):
+        sim, run_dir = self.fixture()
+        sim.guests.corrupt_export.add('bot.stdout.log')
+        executor, control = sim.controller()
+        self.assertEqual(executor.resume('operator', control)['code'], 'terminal_failure')
+        fact = json.loads(next(run_dir.glob('terminal-fact-*.json')).read_text())
+        receipt = fact['receipts'][0]
+        self.assertEqual(receipt['path'], 'bot.stdout.log')
+        sim.guests.corrupt_export.clear()
+        self.assertTrue(executor._recover_role(sim.records()[0]['run_id'], 'bot', lambda: None), 'recovery at wrap-up, with the transfer working')
+        self.assertEqual(run_executor.sha256_path(run_dir / 'bot' / 'bot.stdout.log'), receipt['expected_sha256'], 'the good copy arrived')
+        self.assertEqual(run_executor.sha256_path(run_dir / receipt['retained_as']), receipt['actual_sha256'], 'and the corrupt one is still here')
+
+
+def _terminal_fact_file(sim, directory, token, name=None, **changes):
+    """The file the executor writes into run ``directory``, with one thing changed. A change to None removes that key."""
+    document = dict(schema=cs.TERMINAL_FACT_SCHEMA, session_id=sim.session_id, manifest_sha256=sim.sha, run_id=directory, role='bot', outcome=INFRASTRUCTURE_FAILURE, details=['bot evidence was not fully exported'], fencing_token=token, found_at='2026-10-30T00:00:00Z')
+    document.update(changes)
+    document = {key: value for key, value in document.items() if value is not None}
+    path = sim.run_dir(directory) / (name or 'terminal-fact-%04d-0.json' % token)
+    path.write_text(json.dumps(document))
+    return path
+
+
+class ForeignStopRecords(Base):
+    """A file in this directory that says a run stopped is believed only as this run's own. Otherwise it stops this controller without an irreversible word to the registry, and no claim stands beside it."""
+    RULES = {50: sf.slow, 30: sf.slow}
+    OWN_TOKEN = 2      # the controller that returned
+
+    def committed(self):
+        sim = self.sim_of(self.RULES)
+        self.crash(sim, 'after_outcome_commit')
+        row = sim.records()[0]
+        return sim, row['run_id'], row['fencing_token']
+
+    def malformed(self):
+        return (('another_session', dict(session_id='foreign-session')),
+                ('another_manifest', dict(manifest_sha256='f' * 64)),
+                ('another_run', dict(run_id='foreign-run')),
+                ('no_session', dict(session_id=None)),
+                ('no_manifest', dict(manifest_sha256=None)),
+                ('no_run', dict(run_id=None)),
+                ('no_role', dict(role=None)),
+                ('another_role', dict(role='watchdog')),
+                ('no_reason', dict(details=[])),
+                ('a_reason_of_no_shape', dict(details='bytes failed')),
+                ('no_time', dict(found_at=None)),
+                ('no_token', dict(fencing_token=None)),
+                ('a_token_of_no_shape', dict(fencing_token='two')),
+                ('a_token_of_true', dict(fencing_token=True)),
+                ('an_outcome_that_stops_nothing', dict(outcome=PASS)),
+                ('another_schema', dict(schema='omega.other/1')),
+                ('a_receipt_of_no_shape', dict(receipts='bad')),
+                ('a_receipt_with_equal_hashes', dict(receipts=[dict(path='seal.json', expected_sha256='a' * 64, actual_sha256='a' * 64)])),
+                ('a_receipt_naming_bytes_that_are_not_there', dict(receipts=[dict(path='seal.json', expected_sha256='a' * 64, actual_sha256='b' * 64, retained_as='corrupt-evidence/bot/seal.json.none')])),
+                ('a_receipt_naming_a_path_outside', dict(receipts=[dict(path='seal.json', expected_sha256='a' * 64, actual_sha256='b' * 64, retained_as='../../manifest.json')])))
+
+    def assertUnverifiedStop(self, sim, run_id, result, record):
+        self.assertFalse(result['resumed'], result)
+        self.assertEqual(result['code'], run_executor.STOP_RECORD_UNVERIFIED, result)
+        self.assertIsNone(sim.status_now()['terminal_failure'], 'nothing irreversible on a word that is not this session\'s')
+        report = capacity_report.build(sim.stack.root)
+        self.assertEqual(report['claim']['kind'], 'evidence_disagreement', 'and no claim stands beside it')
+        row = next(item for item in report['trials'] if item['run_id'] == run_id)
+        self.assertEqual(row['hard_facts'], [], 'it is not reported as this run\'s fact')
+        self.assertEqual([item['record'] for item in row['unverified_stop_records']], [record])
+        self.assertIn(run_id, report['evidence']['trials_with_unverified_stop_records'])
+        self.assertIn('Unverified stop record', capacity_report.render_search(report))
+
+    def test_each_wrong_file_stops_the_resume_as_unverified_and_is_no_fact(self):
+        for name, change in self.malformed():
+            with self.subTest(name):
+                sim, run_id, token = self.committed()
+                path = _terminal_fact_file(sim, run_id, 2, **change)
+                executor, control = sim.controller()
+                self.assertEqual(control['fencing_token'], self.OWN_TOKEN)
+                self.assertUnverifiedStop(sim, run_id, executor.resume('operator', control), path.name)
+
+    def test_unparseable_bytes_are_the_same(self):
+        sim, run_id, _ = self.committed()
+        path = sim.run_dir(run_id) / 'terminal-fact-0002-0.json'
+        path.write_text('{ "schema": "half a')
+        executor, control = sim.controller()
+        self.assertUnverifiedStop(sim, run_id, executor.resume('operator', control), path.name)
+        path.write_bytes(b'\xff\xfe not text')
+        executor, control = sim.controller(name='controller-c')
+        self.assertUnverifiedStop(sim, run_id, executor.resume('operator', control), path.name)
+
+    def test_a_stale_fact_is_older_than_the_run_it_names(self):
+        sim, run_id, token = self.committed()
+        self.assertGreater(token, 0)
+        path = _terminal_fact_file(sim, run_id, 0, name='terminal-fact-0000-0.json', fencing_token=0)
+        executor, control = sim.controller()
+        self.assertUnverifiedStop(sim, run_id, executor.resume('operator', control), path.name)
+
+    def test_a_fact_older_than_the_dispatch_token_is_refused_by_what_the_grant_says(self):
+        sim, run_id, _ = self.committed()
+        grant = sim.run_dir(run_id) / 'grant.json'
+        document = json.loads(grant.read_text())
+        document['fencing_token'] = 2
+        grant.chmod(0o644)
+        grant.write_text(json.dumps(document))
+        path = _terminal_fact_file(sim, run_id, 1)
+        _, problems = cs.stop_records(sim.run_dir(run_id), dict(session_id=sim.session_id, manifest_sha256=sim.sha, run_id=run_id))
+        self.assertEqual([item['record'] for item in problems], [path.name])
+        self.assertIn('older than the token', str(problems))
+
+    def test_a_token_newer_than_the_controller_reading_it_is_refused(self):
+        """Only a controller knows the current token. A report, pure over files, cannot tell, and withholds its claim all the same."""
+        sim, run_id, _ = self.committed()
+        _terminal_fact_file(sim, run_id, 99)
+        executor, control = sim.controller()
+        result = executor.resume('operator', control)
+        self.assertEqual((result['resumed'], result['code']), (False, run_executor.STOP_RECORD_UNVERIFIED), result)
+        self.assertIsNone(sim.status_now()['terminal_failure'])
+        self.assertEqual(capacity_report.build(sim.stack.root)['claim']['kind'], 'evidence_disagreement')
+
+    def test_a_copied_fact_whose_name_does_not_carry_its_token_is_refused(self):
+        sim, run_id, _ = self.committed()
+        path = _terminal_fact_file(sim, run_id, 2, name='terminal-fact-0001-0.json')
+        executor, control = sim.controller()
+        self.assertUnverifiedStop(sim, run_id, executor.resume('operator', control), path.name)
+
+    def test_a_foreign_execution_record_carrying_a_stop_is_refused_too(self):
+        sim, run_id, _ = self.committed()
+        run_dir = sim.run_dir(run_id)
+        record = json.loads((run_dir / 'execution.json').read_text())
+        name = 'execution-reconciled-0002-9.json'
+        (run_dir / name).write_text(json.dumps(dict(record, session_id='foreign-session', writer='reconcile', demonstrated_problems=dict(infrastructure=['foreign bytes']), demonstrated_outcome=None, uncertain=[])))
+        executor, control = sim.controller()
+        self.assertUnverifiedStop(sim, run_id, executor.resume('operator', control), name)
+
+    def test_a_real_fact_of_this_run_stands_beside_a_foreign_one_and_is_final(self):
+        sim, run_id, token = self.committed()
+        own = _terminal_fact_file(sim, run_id, token, name='terminal-fact-%04d-0.json' % token)
+        foreign = _terminal_fact_file(sim, run_id, 2, name='terminal-fact-0002-7.json', run_id='foreign-run')
+        executor, control = sim.controller()
+        result = executor.resume('operator', control)
+        self.assertEqual((result['resumed'], result['code']), (False, 'terminal_failure'), result)
+        self.assertEqual(sim.status_now()['terminal_failure'], INFRASTRUCTURE_FAILURE, 'a known fact is still final')
+        row = capacity_report.build(sim.stack.root)['trials'][0]
+        self.assertEqual([item['record'] for item in row['hard_facts']], [own.name])
+        self.assertEqual([item['record'] for item in row['unverified_stop_records']], [foreign.name])
+
+    def test_removing_the_stray_file_is_all_it_takes_because_nothing_was_said_to_the_registry(self):
+        sim, run_id, _ = self.committed()
+        path = _terminal_fact_file(sim, run_id, 2, session_id='foreign-session')
+        executor, control = sim.controller()
+        self.assertEqual(executor.resume('operator', control)['code'], run_executor.STOP_RECORD_UNVERIFIED)
+        path.unlink()
+        executor, control = sim.controller(name='controller-c')
+        self.assertTrue(executor.resume('operator', control)['resumed'])
+
+    def test_a_dispatch_stops_on_a_foreign_file_beside_a_run_it_just_committed(self):
+        sim = self.sim_of(self.RULES)
+
+        def leave_a_file(point):
+            if point == 'after_outcome_commit' and not leave_a_file.done:
+                leave_a_file.done = True
+                row = sim.records()[0]
+                _terminal_fact_file(sim, row['run_id'], row['fencing_token'], session_id='foreign-session')
+        leave_a_file.done = False
+        result = sim.executor(failpoint=leave_a_file).execute()
+        self.assertEqual((result.status, result.code, result.search_status), (run_executor.STOPPED, run_executor.STOP_RECORD_UNVERIFIED, 'stopped_inconclusive_evidence'), result)
+        self.assertEqual(len(sim.guests.runner_steps('game', 'start')), 1)
+        self.assertIsNone(sim.status_now()['terminal_failure'])
+
+    def test_every_generation_of_a_runs_own_facts_is_read_and_each_is_hashed(self):
+        sim, run_id, token = self.committed()
+        first = _terminal_fact_file(sim, run_id, token, name='terminal-fact-%04d-0.json' % token)
+        executor, control = sim.controller()
+        executor.resume('operator', control)
+        second = _terminal_fact_file(sim, run_id, control['fencing_token'], name='terminal-fact-%04d-1.json' % control['fencing_token'])
+        facts, unverified = cs.stop_records(sim.run_dir(run_id), dict(session_id=sim.session_id, manifest_sha256=sim.sha, run_id=run_id))
+        self.assertEqual(unverified, [])
+        self.assertEqual({fact['record']: fact['sha256'] for fact in facts}, {path.name: run_executor.sha256_path(path) for path in (first, second)})
+
+    def test_the_registry_is_told_which_bytes_stopped_it(self):
+        sim, run_id, token = self.committed()
+        path = _terminal_fact_file(sim, run_id, token)
+        executor, control = sim.controller()
+        sent = []
+        real = executor.client.mutate
+
+        def mutate(method, *arguments, **parameters):
+            if method == 'record_batch_stop':
+                sent.append(parameters['evidence_ref'])
+            return real(method, *arguments, **parameters)
+        executor.client.mutate = mutate
+        executor.resume('operator', control)
+        self.assertEqual(sent, ['runs/%s/%s#sha256:%s' % (run_id, path.name, run_executor.sha256_path(path))])
 
 
 class RetainedClassifications(Base):

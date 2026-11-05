@@ -50,6 +50,7 @@ SCORER = 'omega.do-session.capacity-scorer/1'
 SCORE_FILE = 'score.json'
 TERMINAL_FACT_SCHEMA = 'omega.do-session.run-terminal-fact/1'
 TERMINAL_FACT_GLOB = 'terminal-fact-*.json'
+TERMINAL_FACT_NAME = re.compile(r'terminal-fact-(\d{4,})-\d+\.json')
 GATE_NAMES = ('continuity', 'bot_errors', 'tick_budget', 'game_socket_drops', 'rtt_p95', 'enet_loss')
 PASS, FAIL, UNKNOWN = 'pass', 'fail', 'unknown'
 VALID, INVALID, NOT_PROVEN = 'valid', 'invalid', 'not_proven'
@@ -1043,28 +1044,111 @@ def _binding_problems(document, expected):
     return problems
 
 
-def hard_facts(run_dir):
-    """Every stop fact any generation of controllers wrote down for this run, whichever decision it sits beside. Pure over retained files.
+def is_digest(value):
+    return isinstance(value, str) and re.fullmatch('[0-9a-f]{64}', value) is not None
 
-    What a host only failed to answer is kept under ``uncertain`` and is no fact of this kind. An immutable decision stays what it was when it was made, so a fact found later is read from here and never from the decision.
+
+def _terminal_fact_problems(path, record, expected):
+    """Why a terminal-fact file cannot be this run's own. It is only ever believed for this session, this manifest, this run and a role of it, with the shape its writer gives it."""
+    if not isinstance(record, dict) or record.get('schema') != TERMINAL_FACT_SCHEMA:
+        return ['it is not a terminal fact of schema %s' % TERMINAL_FACT_SCHEMA]
+    problems = []
+    for key in ('session_id', 'manifest_sha256', 'run_id'):
+        if record.get(key) != expected[key]:
+            problems.append('its %s is %r, and this run\'s is %r' % (key, record.get(key), expected[key]))
+    if record.get('role') not in ('game', 'bot'):
+        problems.append('it names role %r' % (record.get('role'),))
+    if record.get('outcome') not in search.STOPPING:
+        problems.append('it names outcome %r, which stops nothing' % (record.get('outcome'),))
+    details = record.get('details')
+    if not isinstance(details, list) or not details or not all(isinstance(item, str) and item.strip() for item in details):
+        problems.append('it states no reason')
+    if not isinstance(record.get('found_at'), str) or not record['found_at'].strip():
+        problems.append('it does not say when it was found')
+    token = record.get('fencing_token')
+    named = TERMINAL_FACT_NAME.fullmatch(path.name)
+    if isinstance(token, bool) or not isinstance(token, int) or token < 1:
+        problems.append('its fencing token is %r' % (token,))
+    else:
+        if named is None or int(named.group(1)) != token:
+            problems.append('its name %s does not carry its fencing token %d' % (path.name, token))
+        if expected.get('dispatch_token') is not None and token < expected['dispatch_token']:
+            problems.append('its fencing token %d is older than the token %d this run was dispatched under' % (token, expected['dispatch_token']))
+        if expected.get('current_token') is not None and token > expected['current_token']:
+            problems.append('its fencing token %d is newer than this session\'s %d' % (token, expected['current_token']))
+    problems += _receipt_problems(path.parent, record.get('receipts'))
+    return problems
+
+
+def _receipt_problems(run_dir, receipts):
+    """A receipt is what a digest mismatch left. Optional for a fact with no bytes to name, and when present every hash in it has to hold."""
+    if receipts is None:
+        return []
+    if not isinstance(receipts, list) or not all(isinstance(item, dict) for item in receipts):
+        return ['its receipts are malformed']
+    problems = []
+    for item in receipts:
+        expected_digest, actual_digest = item.get('expected_sha256'), item.get('actual_sha256')
+        if not is_digest(expected_digest) or not is_digest(actual_digest) or expected_digest == actual_digest:
+            problems.append('its receipt for %r does not hold two different hashes' % (item.get('path'),))
+            continue
+        retained = item.get('retained_as')
+        if retained is None:
+            continue
+        target = run_dir / retained if isinstance(retained, str) else None
+        if target is None or pathlib.PurePosixPath(retained).is_absolute() or '..' in pathlib.PurePosixPath(retained).parts or file_sha256(target) != actual_digest:
+            problems.append('the bytes its receipt names at %r are not the bytes it hashed' % (retained,))
+    return problems
+
+
+def stop_records(run_dir, expected):
+    """(facts, unverified) over this run's retained stop records, of every generation of controllers, whichever decision they sit beside. Pure over retained files.
+
+    ``facts`` are this run's own and can stop a session for good. ``unverified`` are files that say a run stopped and cannot be held to this session, manifest, run or shape: they prove nothing about this session, and neither does anything
+    else in them, so nothing irreversible may be done on their word and no claim can stand beside them. What a host only failed to answer is kept under ``uncertain`` and is neither. An immutable decision stays what it was when it was made,
+    so a fact found later is read from here and never from the decision.
+
+    ``expected`` holds ``session_id``, ``manifest_sha256`` and ``run_id``, and may hold ``current_token``.
     """
     run_dir = pathlib.Path(run_dir)
-    facts = []
+    expected = dict(expected, dispatch_token=_dispatch_token(run_dir))
+    facts, unverified = [], []
     for path in sorted(run_dir.glob('execution*.json'), key=lambda item: (item.name != 'execution.json', item.name)):
         record, problem = mw.load_json(path)
         if problem or not isinstance(record, dict):
             continue
         demonstrated = record.get('demonstrated_outcome') if isinstance(record.get('demonstrated_outcome'), dict) else None
         details = list((record.get('demonstrated_problems') or {}).get('infrastructure') or ()) if isinstance(record.get('demonstrated_problems'), dict) else []
+        found = []
         if demonstrated is not None and demonstrated.get('outcome') in search.STOPPING:
-            facts.append(dict(record=path.name, sha256=file_sha256(path), outcome=demonstrated['outcome'], details=list(demonstrated.get('reasons') or ())))
+            found.append(dict(record=path.name, sha256=file_sha256(path), outcome=demonstrated['outcome'], details=list(demonstrated.get('reasons') or ())))
         if details:
-            facts.append(dict(record=path.name, sha256=file_sha256(path), outcome=search.INFRASTRUCTURE_FAILURE, details=details))
+            found.append(dict(record=path.name, sha256=file_sha256(path), outcome=search.INFRASTRUCTURE_FAILURE, details=details))
+        foreign = ['its %s is %r, and this run\'s is %r' % (key, record.get(key), expected[key]) for key in ('session_id', 'manifest_sha256', 'run_id') if record.get(key) != expected[key]]
+        if found and foreign:
+            unverified.append(dict(record=path.name, sha256=file_sha256(path), problems=foreign))
+        else:
+            facts += found
     for path in sorted(run_dir.glob(TERMINAL_FACT_GLOB)):
         record, problem = mw.load_json(path)
-        if not problem and isinstance(record, dict) and record.get('schema') == TERMINAL_FACT_SCHEMA and record.get('outcome') in search.STOPPING:
-            facts.append(dict(record=path.name, sha256=file_sha256(path), outcome=record['outcome'], details=list(record.get('details') or ())))
-    return facts
+        problems = [problem] if problem else _terminal_fact_problems(path, record, expected)
+        if problems:
+            unverified.append(dict(record=path.name, sha256=file_sha256(path), problems=problems))
+        else:
+            facts.append(dict(record=path.name, sha256=file_sha256(path), outcome=record['outcome'], details=list(record['details']), role=record['role'], fencing_token=record['fencing_token'], **({'receipts': record['receipts']} if record.get('receipts') else {})))
+    return facts, unverified
+
+
+def _dispatch_token(run_dir):
+    """The fencing token this run was dispatched under, when its grant is on record. No fact about a run can come from a controller older than that."""
+    grant, problem = mw.load_json(pathlib.Path(run_dir) / 'grant.json')
+    token = None if problem or not isinstance(grant, dict) else grant.get('fencing_token')
+    return token if isinstance(token, int) and not isinstance(token, bool) else None
+
+
+def hard_facts(run_dir, expected):
+    """Only this run's own stop facts. See ``stop_records``."""
+    return stop_records(run_dir, expected)[0]
 
 
 def load_retained(path):
