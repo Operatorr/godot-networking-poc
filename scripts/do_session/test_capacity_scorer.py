@@ -607,15 +607,54 @@ class GameProcess(Base):
         document = self.assertClassified(scenario.score(execution_record=record), cs.INCONCLUSIVE, 'nothing on record says why')
         self.assertFalse(document['attribution']['game_exit']['demonstrated'])
 
-    def test_a_kill_beside_the_kernels_oom_count_is_out_of_memory(self):
+    def test_the_hosts_oom_count_never_explains_a_kill(self):
+        """Host-wide, so it cannot say who was killed or when, whichever way it moves. No producer here names a victim, so nothing can support the attribution."""
+        cases = dict(increment_long_before_the_kill=lambda index: dict(oom_kill=0 if index < 2 else 1), increment_just_before_the_kill=lambda index: dict(oom_kill=0 if index < 40 else 1), increment_right_at_the_end=lambda index: dict(oom_kill=0 if index < 49 else 7),
+                     counter_reset=lambda index: dict(oom_kill=5 if index < 10 else 1), no_change=lambda index: dict(oom_kill=3), missing=lambda index: dict(),
+                     a_row_naming_some_other_victim=lambda index: dict(oom_kill=0 if index < 10 else 1, victim=dict(pid=999, start_id='ticks:1')))
+        for name, memory in cases.items():
+            with self.subTest(name):
+                scenario, record = self.crashed(None, 9)
+                scenario.tree.edit_sampler('game', lambda index, row: row.update(memory=memory(index)))
+                document = self.assertClassified(scenario.score(execution_record=record), cs.INCONCLUSIVE, 'nothing on record says why')
+                exit_facts = document['attribution']['game_exit']
+                self.assertEqual(exit_facts['kind'], 'killed_with_no_cause_on_record')
+                self.assertIs(exit_facts['demonstrated'], False)
+
+    def test_the_hosts_oom_count_stays_on_record_as_a_diagnostic(self):
         scenario, record = self.crashed(None, 9)
 
         def memory(index, row):
             row['memory'] = dict(oom_kill=0 if index < 10 else 1, MemAvailable=100_000 - index, pgmajfault=index, pswpout=0)
         scenario.tree.edit_sampler('game', memory)
-        document = self.assertClassified(scenario.score(execution_record=record), cs.CAPACITY_FAILURE, 'out_of_memory')
-        self.assertEqual(document['attribution']['game_exit']['oom_kills'], 1)
-        self.assertEqual(document['diagnostics']['game_memory']['oom_kill_delta'], 1)
+        document = scenario.score(execution_record=record)
+        self.assertEqual(document['attribution']['game_exit']['host_oom_kill_delta'], 1)
+        self.assertEqual(document['diagnostics']['game_memory']['host_oom_kill_delta'], 1)
+
+    def test_a_counter_that_was_reset_has_no_delta(self):
+        scenario, record = self.crashed(None, 9)
+        scenario.tree.edit_sampler('game', lambda index, row: row.update(memory=dict(oom_kill=5 if index < 10 else 1)))
+        self.assertIsNone(scenario.score(execution_record=record)['attribution']['game_exit']['host_oom_kill_delta'])
+
+    def test_a_gate_proven_failed_beside_an_unexplained_kill_stays_on_record_and_decides_nothing(self):
+        scenario, record = self.crashed(None, 9)
+        sf.set_rtt(scenario.tree, lambda bot, second: 500)
+        document = self.assertClassified(scenario.score(execution_record=record), cs.INCONCLUSIVE, 'nothing on record says why')
+        self.assertEqual(document['gates']['rtt_p95']['verdict'], cs.FAIL)
+        self.assertIn('RTT p95', ' '.join(document['reasons']))
+
+    def test_a_gate_proven_failed_with_no_kill_still_fails_whatever_the_oom_count_says(self):
+        scenario = self.scenario()
+        sf.slow(scenario.tree)
+        scenario.tree.edit_sampler('game', lambda index, row: row.update(memory=dict(oom_kill=0 if index < 10 else 1)))
+        self.assertClassified(scenario.score(), cs.CAPACITY_FAILURE, '33.3 ms')
+
+    def test_a_ramp_kill_beside_the_oom_count_is_no_failure_either(self):
+        scenario = self.scenario()
+        sf.ramp_failure(scenario.tree, 'readiness_timeout', 5)
+        scenario.tree.path('game/telemetry/final.json').unlink()
+        scenario.tree.edit_sampler('game', lambda index, row: row.update(memory=dict(oom_kill=0 if index < 10 else 1)))
+        self.assertClassified(scenario.score(execution_record=sf.execution(game_exit=(None, 9))), cs.INCONCLUSIVE, 'nothing on record says why')
 
     def test_an_exit_that_looks_tidy_mid_run_is_not_capacity(self):
         for code, signal in ((0, None), (1, None), (None, 15)):
@@ -641,6 +680,84 @@ class GameProcess(Base):
         scenario = self.scenario()
         document = self.assertClassified(scenario.score(execution_record=sf.execution(infrastructure=['game still has processes after the run'])), cs.INFRASTRUCTURE_FAILURE, 'still has processes')
         self.assertEqual(document['gates']['tick_budget']['verdict'], cs.PASS, 'the numbers stay on record')
+
+
+class GeneratorEvidenceBesideAServerFailure(Base):
+    """Missing proof of the generator is not excused by what the server did. Missing data from the server can be, when its crash is demonstrated."""
+
+    def assertNotProven(self, document, code):
+        self.assertEqual(document['classification'], cs.INCONCLUSIVE, document['reasons'])
+        self.assertEqual(document['outcome'], search.INCONCLUSIVE)
+        self.assertNotEqual(document['validity']['verdict'], cs.VALID)
+        self.assertIn(code, document['inputs']['proof_reasons'])
+
+    def test_beside_a_failed_tick_gate(self):
+        for name, code, change in sf.GENERATOR_OMISSIONS:
+            with self.subTest(name):
+                scenario = self.scenario()
+                sf.slow(scenario.tree)
+                change(scenario.tree)
+                self.assertNotProven(scenario.score(), code)
+
+    def test_beside_a_demonstrated_crash(self):
+        for name, code, change in sf.GENERATOR_OMISSIONS:
+            with self.subTest(name):
+                scenario = self.scenario()
+                sf.game_died(scenario.tree, 30)
+                sf.bots_time_out_after_game_died(scenario.tree, [1, 2], 35)
+                change(scenario.tree)
+                self.assertNotProven(scenario.score(execution_record=sf.execution(game_exit=(101, None))), code)
+
+    def test_beside_a_kick(self):
+        for name, code, change in sf.GENERATOR_OMISSIONS:
+            with self.subTest(name):
+                scenario = self.scenario()
+                sf.lose_bot(scenario.tree, 5, 30, cs.REASON_KICKED)
+                change(scenario.tree)
+                self.assertNotProven(scenario.score(), code)
+
+    def test_a_crash_leaving_only_the_servers_data_missing_still_stands_on_its_own_generator_proof(self):
+        scenario = self.scenario()
+        sf.game_died(scenario.tree, 30)
+        sf.bots_time_out_after_game_died(scenario.tree, [1, 2], 35)
+        document = self.assertClassified(scenario.score(execution_record=sf.execution(game_exit=(101, None))), cs.CAPACITY_FAILURE, 'server_panic')
+        self.assertEqual(document['validity']['verdict'], cs.VALID)
+        self.assertEqual(document['validity']['unproven'], [])
+        self.assertNotEqual(document['inputs']['proof_status'], mw.COMPLETE, 'a full window was never required of a failure that came first')
+        self.assertIn('recorder_truncated', document['inputs']['proof_reasons'], 'the server\'s own truncation, explained by its crash')
+
+    def test_a_truncation_is_judged_by_whose_file_it_is(self):
+        server = self.scenario()
+        sf.slow(server.tree)
+        server.tree.edit_json('game/telemetry/final.json', lambda d: d.update(tick_rows=1))
+        scored = server.score()
+        self.assertIn('recorder_truncated', scored['inputs']['proof_reasons'])
+        self.assertEqual(scored['validity']['unproven'], [], 'the server\'s file says nothing about the generator')
+        generator = self.scenario()
+        sf.slow(generator.tree)
+        generator.tree.path('bot/swarm/coordinator.ndjson').write_text('{"cut')
+        self.assertIn('recorder_truncated', generator.score()['inputs']['proof_reasons'])
+        self.assertNotEqual(generator.score()['validity']['verdict'], cs.VALID)
+
+    def test_a_bot_host_wall_clock_step_leaves_its_counter_reads_unplaced(self):
+        scenario = self.scenario()
+        sf.lose_bot(scenario.tree, 5, 30, cs.REASON_KICKED)
+        sf._swarm_wall_step(scenario.tree)
+        document = scenario.score()
+        self.assertEqual(document['classification'], cs.INCONCLUSIVE, document['reasons'])
+        self.assertIn('wall clock stepped', ' '.join(document['validity']['unproven']))
+
+    def test_a_proof_silent_on_the_swarm_proves_nothing(self):
+        scenario = self.scenario()
+        sf.slow(scenario.tree)
+        proof = scenario.proof()
+        proof['facts'].pop('swarm_problems')
+        self.assertNotEqual(scenario.score(proof=proof)['validity']['verdict'], cs.VALID)
+
+    def test_another_runs_proof_is_refused(self):
+        scenario = self.scenario()
+        proof = dict(scenario.proof(), run_id='another-run')
+        self.assertClassified(scenario.score(proof=proof), cs.INCONCLUSIVE, 'proof_is_of_another_trial')
 
 
 class Ramp(Base):
@@ -761,6 +878,160 @@ class Ramp(Base):
         evidence = scenario.evidence()
         verdict = run_checks.apply_scorer(run_checks.disposition(evidence['execution']['problems']), cs.score(evidence), evidence['window_proof'])
         self.assertEqual(verdict['outcome'], search.FAIL)
+
+
+class RampIdentity(Base):
+    """A ramp cannot lean on the hold prover's identity checks, because no hold happened. Everything it claims must be the supervised processes' own."""
+
+    def failing_ramp(self, **options):
+        scenario = self.scenario(**options)
+        sf.ramp_failure(scenario.tree, 'readiness_timeout', scenario.tree.timeline.target - 1)
+        sf.ramp_slow_ticks(scenario.tree, 2)
+        return scenario
+
+    def test_the_valid_ramp_overrun_these_all_start_from_is_a_failure(self):
+        document = self.assertClassified(self.failing_ramp().score(), cs.CAPACITY_FAILURE, '33.3 ms')
+        self.assertEqual(document['validity']['verdict'], cs.VALID)
+        self.assertEqual(document['validity']['generator_socket_drops'], 0)
+
+    def test_evidence_that_is_not_the_supervised_processes_establishes_nothing(self):
+        for name, code, change in sf.RAMP_NOT_PROVEN:
+            with self.subTest(name):
+                scenario = self.failing_ramp()
+                change(scenario.tree)
+                document = scenario.score()
+                self.assertNotEqual(document['outcome'], search.FAIL, document['reasons'])
+                self.assertEqual(document['classification'], cs.INCONCLUSIVE, document['reasons'])
+                self.assertIn(code, document['inputs']['proof_reasons'])
+
+    def test_a_collector_on_another_boot_is_a_reboot(self):
+        scenario = self.failing_ramp()
+        scenario.tree.edit_sampler('bot', lambda index, row: row.update(boot_id='another-boot'))
+        self.assertClassified(scenario.score(), cs.INFRASTRUCTURE_FAILURE, 'rebooted')
+
+    def test_identities_an_earlier_run_used(self):
+        scenario = self.failing_ramp()
+        swarm, game = scenario.tree.identities['bot']['bot'], scenario.tree.identities['game']['game']
+        for name, prior, code in (('swarm', dict(bot=dict(processes={(swarm['pid'], swarm['start_id'], swarm['boot_id'])}, inodes=set())), 'process_identity_reused'),
+                                  ('game', dict(game=dict(processes={(game['pid'], game['start_id'], game['boot_id'])}, inodes=set())), 'process_identity_reused'),
+                                  ('socket', dict(bot=dict(processes=set(), inodes={'bot-socket-40003'})), 'socket_identity_reused')):
+            with self.subTest(name):
+                document = scenario.score(proof=scenario.proof(prior=prior))
+                self.assertClassified(document, cs.INCONCLUSIVE, code)
+
+    def test_a_record_the_supervisor_cannot_vouch_for(self):
+        scenario = self.failing_ramp()
+        for role in ('bot', 'game'):
+            with self.subTest(role):
+                identities = {key: dict(value) for key, value in scenario.tree.identities.items()}
+                identities[role] = {}
+                self.assertClassified(scenario.score(proof=scenario.proof(identities=identities)), cs.INCONCLUSIVE, 'identity_missing')
+
+    def test_a_proof_with_no_account_of_the_ramp_proves_nothing(self):
+        scenario = self.failing_ramp()
+        proof = scenario.proof()
+        proof['facts'].pop('ramp')
+        self.assertClassified(scenario.score(proof=proof), cs.INCONCLUSIVE, 'no account of this ramp')
+
+    def aborted_early(self, abort_s, reads):
+        """A swarm that gave up ``abort_s`` into its joins, with the collector having read only ``reads`` times. Bot n's slot is (n - 1) / 10 s, and a read comes every second."""
+        scenario = self.scenario(target=25)
+        tree = scenario.tree
+        sf.ramp_failure(tree, 'bot_failed_before_window', 5)
+        sf.ramp_slow_ticks(tree, 2)
+        abort = int(abort_s * NS)
+        sf._set_abort(tree, lambda row: row.update(mono_ns=abort))
+        unjoined = [bot for bot in range(1, 26) if tree.timeline.joins[bot] >= abort]
+        for shard in range(tree.timeline.threads):
+            def change(rows):
+                rows[:] = [row for row in rows if not (row.get('k') in ('join', 'connected', 'auth') and row['bot'] in unjoined)]
+                for row in rows:
+                    if row.get('k') == 'sample':
+                        row['bots'] = [item for item in row['bots'] if item[0] not in unjoined]
+                for index, row in enumerate(rows):
+                    row['seq'] = index
+            tree.edit_rows('bot/swarm/shard-%d.ndjson' % shard, change)
+
+        def sockets(index, row):
+            opened = [40000 + bot for bot in range(1, 26) if tree.timeline.joins[bot] + 500_000 < index * NS]
+            row['procs']['bot']['sockets'] = [item for item in row['procs']['bot']['sockets'] if item['local_port'] in opened]
+        tree.edit_sampler('bot', sockets)
+        sf._keep_bot_reads(tree, reads)
+        return scenario
+
+    def test_a_last_read_inside_the_tail_is_enough_and_a_socket_opened_after_it_was_owed_none(self):
+        scenario = self.aborted_early(1.5, 2)
+        document = self.assertClassified(scenario.score(), cs.CAPACITY_FAILURE, '33.3 ms')
+        host = scenario.proof()['facts']['ramp']['bot_host']
+        self.assertLessEqual(host['last_read_before_abort_ns'], mw.RAMP_READ_TAIL_NS)
+        self.assertEqual((host['sockets_with_counters'], host['sockets_opened_after_the_last_read'], host['sockets_without_counters']), (10, 5, 0))
+        self.assertEqual(document['validity']['generator_socket_drops'], 0)
+
+    def test_a_socket_that_a_read_owed_and_did_not_see_is_not_excused_by_the_tail(self):
+        scenario = self.aborted_early(1.5, 2)
+        sf._drop_bot_socket(scenario.tree, 40005)
+        self.assertClassified(scenario.score(), cs.INCONCLUSIVE, 'not proven valid')
+
+    def test_a_last_read_past_the_tail_leaves_the_end_of_the_ramp_unobserved(self):
+        document = self.assertClassified(self.aborted_early(3.5, 2).score(), cs.INCONCLUSIVE, 'not proven valid')
+        self.assertIn('collector_boundary_missing', document['inputs']['proof_reasons'])
+
+    def test_a_slot_after_the_abort_was_never_owed_and_one_long_before_it_was(self):
+        scenario = self.aborted_early(1.5, 2)
+        self.assertEqual(scenario.proof()['facts']['ramp']['bots_started'], 15)
+        sf._forget_bot_join(scenario.tree, 2)
+        self.assertClassified(scenario.score(), cs.INCONCLUSIVE, 'not proven valid')
+
+    def test_a_drop_before_the_first_read_still_counts(self):
+        scenario = self.failing_ramp()
+        sf._bot_socket(scenario.tree, lambda item: item.update(drops=1 if item['local_port'] == 40002 else 0))
+        document = scenario.score()
+        self.assertIn('generator_socket_drops', document['inputs']['proof_reasons'])
+        self.assertEqual(document['validity']['verdict'], cs.INVALID)
+
+    def test_a_kick_needs_a_bot_both_sides_recorded_as_authenticated(self):
+        """The server sends the same reason to a join it refuses, so the reason alone is not a kick."""
+        kicked = dict(at_ns=2 * NS, reason=cs.REASON_KICKED, expected=False)
+        for name, bot, expected in (('authenticated', 3, cs.CAPACITY_FAILURE), ('never_authenticated', 7, cs.INCONCLUSIVE)):
+            with self.subTest(name):
+                scenario = self.scenario()
+                sf.ramp_failure(scenario.tree, 'bot_failed_before_window', 5)
+                sf.add_bot_end(scenario.tree, bot, 'server disconnected (reason 2)', kicked)
+                document = self.assertClassified(scenario.score(), expected)
+                self.assertEqual(document['attribution']['server_kicks'], [bot] if expected == cs.CAPACITY_FAILURE else [])
+
+    def test_a_kick_the_server_never_authenticated_is_no_kick(self):
+        scenario = self.scenario()
+        sf.ramp_failure(scenario.tree, 'bot_failed_before_window', 5)
+
+        def forget(rows):
+            rows[:] = [row for row in rows if not (row.get('k') == 'auth' and row.get('name') == 'LoadBot003')]
+            for index, row in enumerate(rows):
+                row['seq'] = index
+        scenario.tree.edit_rows('game/telemetry/population.ndjson', forget)
+        scenario.tree.edit_json('game/telemetry/final.json', lambda d: d.update(population_rows=d['population_rows'] - 1))
+        sf.add_bot_end(scenario.tree, 3, 'server disconnected (reason 2)', dict(at_ns=2 * NS, reason=cs.REASON_KICKED, expected=False))
+        self.assertClassified(scenario.score(), cs.INCONCLUSIVE, 'a timeout alone')
+
+    def test_a_kick_with_a_broken_generator_proof_establishes_nothing(self):
+        for name, code, change in sf.RAMP_NOT_PROVEN:
+            with self.subTest(name):
+                scenario = self.scenario()
+                sf.ramp_failure(scenario.tree, 'bot_failed_before_window', 5)
+                sf.add_bot_end(scenario.tree, 3, 'server disconnected (reason 2)', dict(at_ns=2 * NS, reason=cs.REASON_KICKED, expected=False))
+                change(scenario.tree)
+                self.assertNotEqual(scenario.score()['outcome'], search.FAIL, name)
+
+    def test_a_crash_in_the_ramp_needs_the_generator_proof_too(self):
+        for name, code, change in sf.RAMP_NOT_PROVEN:
+            if name.startswith('foreign_game'):
+                continue
+            with self.subTest(name):
+                scenario = self.scenario()
+                sf.ramp_failure(scenario.tree, 'readiness_timeout', 5)
+                scenario.tree.path('game/telemetry/final.json').unlink()
+                change(scenario.tree)
+                self.assertNotEqual(scenario.score(execution_record=sf.execution(game_exit=(101, None)))['outcome'], search.FAIL, name)
 
 
 class WhatMayBeScoredAtAll(Base):

@@ -17,7 +17,7 @@ grant is resolved, acknowledged by the guest's fence or conclusively expired; on
 Workload processes stop by themselves, through the guest's supervisor, by ``launch_by + estimate`` less the time export
 needs. This controller only ends them sooner. ``measurement_window`` proves or refuses the common scored interval from the sealed files, and
 ``capacity_scorer`` decides gates and validity from those same files. Both are retained with the run, each create-only and hash-bound, and held against the
-execution facts by ``run_checks.apply_scorer``. A returning controller reuses what is retained, so a crash can move no verdict.
+execution facts by ``run_checks.apply_scorer``. A returning controller reuses what is retained once it is shown to be this run's own, so a crash can move no verdict, and only the frozen revision can make a new one.
 """
 import dataclasses
 import hashlib
@@ -722,12 +722,16 @@ class RunExecutor:
             # A defect or a full disk here must not hide behind a clean-looking return. C still arrives.
             return self._batch_failed('controller_failure', type(error).__name__)
 
-    def _require_frozen_source(self):
-        """Before any guest is touched, on the first run as on a resume. No check supplied means no proof, so nothing runs."""
+    def _frozen_source_problems(self):
+        """Whether this code is the frozen controller. No check supplied means no proof, and so does a check that fails. On the path to cleanup, it must answer rather than raise."""
         try:
-            problems = self.source_problems() if self.source_problems is not None else ['no controller source check was supplied']
-        except OSError as error:
-            problems = ['the controller source could not be checked: ' + type(error).__name__]
+            return list(self.source_problems()) if self.source_problems is not None else ['no controller source check was supplied']
+        except Exception as error:     # whatever it was, nothing here can be shown to be frozen
+            return ['the controller source could not be checked: ' + type(error).__name__]
+
+    def _require_frozen_source(self):
+        """Before any guest is touched, on the first run as on a resume. Stopping and collecting what is already running needs no such proof: making a new decision from it does, and ``_score`` enforces that."""
+        problems = self._frozen_source_problems()
         if problems:
             raise BatchStop(REFUSED, SOURCE_CHANGED, '; '.join(problems))
 
@@ -1090,7 +1094,7 @@ class RunExecutor:
         text = json.dumps(document, indent=2, sort_keys=True) + '\n'
         if manifest_mod.scan_for_secrets(document):
             raise RunAborted(run_checks.INFRASTRUCTURE, 'the execution record held a credential value and was not written')
-        do_session.write_new(path, text)
+        do_session.write_new_durable(path, text)
         digest = hashlib.sha256(text.encode('utf-8')).hexdigest()
         return dict(document=document, sha256=digest, ref='runs/%s/%s#sha256:%s' % (context.trial.run_id, name, digest), path=path)
 
@@ -1125,10 +1129,14 @@ class RunExecutor:
         run_id = context.trial.run_id
         path = self._run_dir(run_id) / 'window-proof.json'
         retained = guest_runner.read_json(path)
-        if isinstance(retained, dict):
+        if isinstance(retained, dict) and retained.get('run_id') == run_id:
             return retained
         if path.exists():
-            return dict(schema=measurement_window.PROOF_SCHEMA, status=measurement_window.INCONCLUSIVE, reasons=[dict(code='proof_unreadable', category=measurement_window.EVIDENCE, detail='window-proof.json')])
+            return dict(schema=measurement_window.PROOF_SCHEMA, run_id=run_id, status=measurement_window.INCONCLUSIVE, reasons=[dict(code='proof_unreadable', category=measurement_window.EVIDENCE, detail='window-proof.json')])
+        problems = self._frozen_source_problems()
+        if problems:
+            # Not retained: a proof made by code nobody froze must not be there for the frozen controller to reuse.
+            return dict(schema=measurement_window.PROOF_SCHEMA, run_id=run_id, status=measurement_window.INCONCLUSIVE, reasons=[dict(code='prover_failed', category=measurement_window.EVIDENCE, detail='; '.join(problems))])
         roles = execution['document'].get('roles') or {}
         identities = {role: (view.get('identity') or {}).get('processes') or {} for role, view in roles.items()}
         brackets = {label: guest_runner.read_json(self._run_dir(run_id) / ('clock-%s.json' % label)) for label in ('before', 'after')}
@@ -1142,9 +1150,9 @@ class RunExecutor:
             if manifest_mod.scan_for_secrets(proof):
                 raise ValueError('the proof held a credential value')
         except Exception as error:     # a defect in a parser or a surprising file: the run still needs its outcome committed
-            proof = dict(schema=measurement_window.PROOF_SCHEMA, status=measurement_window.INCONCLUSIVE, reasons=[dict(code='prover_failed', category=measurement_window.EVIDENCE, detail=type(error).__name__)])
+            proof = dict(schema=measurement_window.PROOF_SCHEMA, run_id=run_id, status=measurement_window.INCONCLUSIVE, reasons=[dict(code='prover_failed', category=measurement_window.EVIDENCE, detail=type(error).__name__)])
         try:
-            do_session.write_new(path, json.dumps(proof, indent=2, sort_keys=True, default=sorted) + '\n')
+            do_session.write_new_durable(path, json.dumps(proof, indent=2, sort_keys=True, default=sorted) + '\n')
         except OSError as error:
             self._note('window_proof_not_retained', run_id=run_id, detail=type(error).__name__)
         return proof
@@ -1152,21 +1160,26 @@ class RunExecutor:
     def _evidence_for_scorer(self, context, execution, proof=None):
         """Everything a scorer may read: verified local files, the sealed execution facts and the window proof. Nothing live."""
         path = self._run_dir(context.trial.run_id) / 'window-proof.json'
-        return dict(run_id=context.trial.run_id, trial=context.trial.to_dict(), root=str(self._run_dir(context.trial.run_id)), execution=execution['document'],
+        return dict(run_id=context.trial.run_id, session_id=self.session_id, manifest_sha256=self.sha, controller_sha=self._controller_sha(), trial=context.trial.to_dict(), root=str(self._run_dir(context.trial.run_id)), execution=execution['document'],
                     execution_sha256=execution['sha256'], execution_ref=execution['ref'], window_proof=proof, window_proof_sha256=sha256_path(path) if path.exists() else None,
                     workload=self.manifest.get('workload'), telemetry_schema=self.manifest.get('telemetry_schema'))
 
     def _score(self, context, execution, proof):
         """The scorer's answer, retained before anything acts on it. Create-only and computed once, so a returning controller reads the verdict this one reached.
 
-        Without a scorer a run establishes nothing. A scorer that breaks is inconclusive, like a prover that breaks, and never stops the path to the outcome commit.
+        Every new decision is made here, by whichever path got here, so here is where the frozen revision is enforced. A retained score was made under it and is only read. Without a scorer
+        a run establishes nothing. A scorer that breaks is inconclusive, like a prover that breaks, and never stops the path to the outcome commit.
         """
         if self.scorer is None:
             return None
         run_id = context.trial.run_id
-        retained = self._retained_score(run_id)
+        retained = self._retained_score(context, execution)
         if retained is not None:
             return retained
+        problems = self._frozen_source_problems()
+        if problems:
+            self._note('scoring_refused', run_id=run_id, detail='; '.join(problems))
+            return dict(outcome=search.INCONCLUSIVE, evidence_ref=execution['ref'], scorer='capacity_scorer', reasons=['nothing was scored, because this controller is not the frozen revision: ' + '; '.join(problems)], source_refused=True)
         try:
             answer = self.scorer(self._evidence_for_scorer(context, execution, proof))
         except Exception as error:     # a defect in a parser or a surprising file: the run still needs its outcome committed
@@ -1178,12 +1191,13 @@ class RunExecutor:
         answer = {key: value for key, value in answer.items() if key != 'score'}
         if manifest_mod.scan_for_secrets(document):
             return dict(answer, outcome=search.INCONCLUSIVE, generator_failure_attributed_to_server=False, reasons=['the score held a credential value and was not retained'])
+        document = capacity_scorer.seal(document)
         text = capacity_scorer.canonical(document)
         run_dir = self._run_dir(run_id)
         try:
-            do_session.write_new(run_dir / capacity_report.SCORE_FILE, text)
+            do_session.write_new_durable(run_dir / capacity_report.SCORE_FILE, text)
         except FileExistsError:
-            return self._retained_score(run_id) or dict(answer, outcome=search.INCONCLUSIVE, generator_failure_attributed_to_server=False, reasons=['a retained score could not be read back'])
+            return self._retained_score(context, execution) or dict(answer, outcome=search.INCONCLUSIVE, generator_failure_attributed_to_server=False, reasons=['a retained score could not be read back'])
         except OSError as error:
             self._note('score_not_retained', run_id=run_id, detail=type(error).__name__)
             return dict(answer, outcome=search.INCONCLUSIVE, generator_failure_attributed_to_server=False, reasons=['the score could not be retained: ' + type(error).__name__])
@@ -1203,17 +1217,40 @@ class RunExecutor:
     def _score_ref(run_id, text):
         return 'runs/%s/%s#sha256:%s' % (run_id, capacity_report.SCORE_FILE, hashlib.sha256(text.encode('utf-8')).hexdigest())
 
-    def _retained_score(self, run_id):
-        """The answer a retained score stands for. Same scorer and same bytes, so it is the same answer. A file that no longer reads proves nothing."""
+    def _controller_sha(self):
+        return (self.manifest.get('source') or {}).get('controller_sha')
+
+    def _retained_expectation(self, context):
+        return capacity_scorer.retained_expectation(self._run_dir(context.trial.run_id), context.trial.to_dict(), self.session_id, self.sha, self._controller_sha())
+
+    def _retained_score(self, context, execution):
+        """The answer a retained score stands for, once it is shown to be this run's own. Read and never recomputed, so it survives a host going away and a controller other than the frozen one.
+
+        A score that cannot be shown to be this run's own is refused, with the hash of the refused bytes on record, and never replaced. It proves nothing either way, so it is inconclusive.
+        """
+        run_id = context.trial.run_id
         path = self._run_dir(run_id) / capacity_report.SCORE_FILE
         if not path.exists():
             return None
-        document = capacity_scorer.load_retained(path)
-        if document is None or document.get('outcome') not in run_checks.SCORER_OUTCOMES:
-            return dict(outcome=search.INCONCLUSIVE, evidence_ref=self._score_ref(run_id, path.read_text(errors='replace')), scorer='capacity_scorer', reasons=['the retained score could not be read'])
+        document, problems = capacity_scorer.bound_score(path, self._retained_expectation(context))
+        if problems or document.get('outcome') not in run_checks.SCORER_OUTCOMES:
+            self._note('retained_score_refused', run_id=run_id, sha256=sha256_path(path), problems=problems[:5])
+            return dict(outcome=search.INCONCLUSIVE, evidence_ref=execution['ref'], scorer='capacity_scorer', reasons=['the retained score was refused and nothing was recomputed: ' + '; '.join(problems[:5] or ['its outcome is unknown']), 'the refused file has sha256 %s' % sha256_path(path)], retained_refused=True)
         self._retain_run_report(run_id, document)
         return dict(outcome=document['outcome'], evidence_ref=self._score_ref(run_id, path.read_text()), scorer=document.get('scorer'), reasons=list(document.get('reasons') or ()),
                     generator_failure_attributed_to_server=document['outcome'] == search.FAIL)
+
+    def _retained_classification(self, context):
+        """(verdict, refused reasons). A classification is the last thing written before the commit, so it is reused rather than reached again, once it is shown to be this run's own."""
+        path = self._run_dir(context.trial.run_id) / 'classification.json'
+        if not path.exists():
+            return None, None
+        document = guest_runner.read_json(path)
+        problems = capacity_scorer.classification_problems(document, self._retained_expectation(context), require_score=self.scorer is capacity_scorer.score)
+        if problems:
+            self._note('retained_classification_refused', run_id=context.trial.run_id, sha256=sha256_path(path), problems=problems[:5])
+            return None, ['the retained classification was refused and nothing was recomputed: ' + '; '.join(problems[:5]), 'the refused file has sha256 %s' % sha256_path(path)]
+        return document['verdict'], None
 
     def _commit_outcome(self, context, verdict):
         run_id = context.trial.run_id
@@ -1222,9 +1259,13 @@ class RunExecutor:
             document = dict(document, verdict=dict(outcome=search.INCONCLUSIVE, reasons=['the classification held a credential value and was replaced'], scored=False))
             verdict = document['verdict']
         text = json.dumps(document, indent=2, sort_keys=True) + '\n'
-        path = self._run_dir(run_id) / 'classification.json'
-        do_session.write_new(path, text)
-        reference = 'runs/%s/classification.json#sha256:%s' % (run_id, hashlib.sha256(text.encode('utf-8')).hexdigest())
+        name = 'classification.json'
+        attempt = 0
+        while (self._run_dir(run_id) / name).exists():      # only ever a refused one: it stays as it is, and the outcome's hash says which file decided
+            attempt += 1
+            name = 'classification-reconciled-%04d-%d.json' % (self.token, attempt)
+        do_session.write_new_durable(self._run_dir(run_id) / name, text)
+        reference = 'runs/%s/%s#sha256:%s' % (run_id, name, hashlib.sha256(text.encode('utf-8')).hexdigest())
         self.failpoint('before_outcome_commit')
         self._record_outcome(run_id, verdict['outcome'], reference)
         self.failpoint('after_outcome_commit')
@@ -1364,10 +1405,9 @@ class RunExecutor:
         INCOMPLETE is for what really is unknown: a run that was cut short, or that could not be reached. It never replaces
         a failure that was demonstrated, with or without a scorer.
         """
-        path = self._run_dir(context.trial.run_id) / 'classification.json'
-        if path.exists():
-            document = json.loads(path.read_text())
-            return dict(document['verdict'], reused=True)
+        retained, refused = self._retained_classification(context)
+        if retained is not None:
+            return dict(retained, reused=True)
         if context.demonstrated is not None:
             return dict(context.demonstrated, scored=False)
         if context.retained_record is not None:
@@ -1375,11 +1415,15 @@ class RunExecutor:
             verdict = self._settled_verdict(context.retained_record.get('problems') or {}, context.retained_record.get('interrupted'))
             if verdict is not None:
                 return verdict
-            # The score was retained from verified local files, so losing a host now cannot unsay it.
-            answer = self._retained_score(context.trial.run_id)
-            if answer is not None:
-                return run_checks.apply_scorer(run_checks.disposition(context.retained_record.get('problems') or {}), answer, self._window_proof(context, execution))
         definite = [p for p in context.problems[run_checks.INFRASTRUCTURE] if p not in context.uncertain]
+        if refused and not definite:
+            # Short of a terminal fact, what this run decided is not known, and it must not be decided again from files that already disagree.
+            return dict(outcome=search.INCONCLUSIVE, reasons=refused, scored=False)
+        if context.retained_record is not None and not refused:
+            # The score was retained from verified local files, so losing a host now cannot unsay it. A score that cannot be read back says nothing, so it cannot outrank a terminal fact.
+            answer = self._retained_score(context, execution)
+            if answer is not None and not (definite and answer.get('retained_refused')):
+                return run_checks.apply_scorer(run_checks.disposition(context.retained_record.get('problems') or {}), answer, self._window_proof(context, execution))
         if definite:
             return dict(outcome=search.INFRASTRUCTURE_FAILURE, reasons=definite, scored=False)
         problems = execution['document']['problems']
@@ -1391,7 +1435,11 @@ class RunExecutor:
         proof = self._window_proof(context, execution)
         if self.scorer is None:
             return dict(outcome=search.INCOMPLETE, reasons=['the run ended by itself, but nothing has scored it: ' + '; '.join(settled['reasons'])] + run_checks.window_reasons(proof), scored=False)
-        verdict = run_checks.apply_scorer(settled, self._score(context, execution, proof), proof)
+        answer = self._score(context, execution, proof)
+        if isinstance(answer, dict) and answer.get('source_refused'):
+            # The measurement is whole and preserved. This controller may stop and collect it, and may not be the one that decides it.
+            return dict(outcome=search.INCOMPLETE, reasons=list(answer['reasons']) + list(settled['reasons']) + run_checks.window_reasons(proof), scored=False)
+        verdict = run_checks.apply_scorer(settled, answer, proof)
         if not verdict.get('scored'):
             return dict(outcome=search.INCOMPLETE, reasons=verdict['reasons'], scored=False)
         return verdict

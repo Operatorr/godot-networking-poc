@@ -16,6 +16,7 @@ write is create-only or append-only.
 """
 import argparse
 import json
+import os
 import pathlib
 import sys
 
@@ -36,6 +37,35 @@ def write_new(path, text):
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open('x', encoding='utf-8') as handle:
         handle.write(text)
+
+
+def write_new_durable(path, text):
+    """Create-only and all-or-nothing: the bytes reach the disk under another name, and only a whole file can take the final one.
+
+    An interrupted write leaves a ``.writing`` file that nothing reads or promotes, and is kept like any other refused artifact. FileExistsError means the final name was already taken.
+    """
+    path = pathlib.Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    for attempt in range(1000):
+        temporary = path.with_name('%s.writing-%d-%d' % (path.name, os.getpid(), attempt))
+        try:
+            handle = temporary.open('x', encoding='utf-8')
+        except FileExistsError:
+            continue
+        break
+    else:
+        raise OSError('no free temporary name beside ' + path.name)
+    with handle:
+        handle.write(text)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.link(str(temporary), str(path))
+    temporary.unlink()
+    directory = os.open(str(path.parent), os.O_RDONLY)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
 
 
 def append_journal(session_dir, record):

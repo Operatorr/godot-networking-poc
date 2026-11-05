@@ -21,6 +21,7 @@ import capacity_report
 import capacity_scorer as cs
 import measurement_local as ml
 import measurement_window as mw
+import run_cli
 import run_executor
 import run_fixtures as rf
 import scoring_fixtures as sf
@@ -92,6 +93,10 @@ def _pool_slow(count):
     return change
 
 
+def _host_oom(tree, count_at):
+    tree.edit_sampler('game', lambda index, row: row.update(memory=dict(oom_kill=count_at(index))))
+
+
 # name, Tree options, how to change it, what the executor's sealed record says
 SCENARIOS = (
     ('valid_pass_60s', {}, None, None),
@@ -152,7 +157,17 @@ SCENARIOS = (
     ('foreign_swarm_schema_with_slow_ticks', {}, lambda t: (t.edit_json('bot/swarm/swarm.json', lambda d: d.update(schema='omega.measurement/2')), sf.set_slow_ticks(t, 180, 40_000_000)), None),
     ('fault_build_with_nothing_injected', {}, lambda t: t.edit_json('bot/swarm/swarm.json', lambda d: d.update(build=dict(fault_injection=True))), None),
     ('swarm_told_to_stop_in_the_window', {}, lambda t: t.edit_json('bot/swarm/window.json', lambda d: d.update(status='window_incomplete', reason='interrupted')), None),
-)
+    # the host's OOM count is a diagnostic, and it explains no kill whichever way it moves
+    ('game_sigkill_beside_an_earlier_host_oom_increment', {}, lambda t: (_crash(t), _host_oom(t, lambda index: 0 if index < 2 else 1)), sf.execution(game_exit=(None, 9))),
+    ('game_sigkill_beside_a_later_host_oom_increment', {}, lambda t: (_crash(t), _host_oom(t, lambda index: 0 if index < 40 else 1)), sf.execution(game_exit=(None, 9))),
+    ('game_sigkill_beside_a_host_oom_counter_reset', {}, lambda t: (_crash(t), _host_oom(t, lambda index: 5 if index < 10 else 1)), sf.execution(game_exit=(None, 9))),
+    ('game_sigkill_beside_a_failed_rtt_gate', {}, lambda t: (_crash(t), sf.set_rtt(t, lambda bot, second: 500)), sf.execution(game_exit=(None, 9))),
+    ('tick_overrun_beside_a_host_oom_increment', {}, lambda t: (sf.slow(t), _host_oom(t, lambda index: 0 if index < 10 else 1)), None),
+    # a kick means an authenticated bot
+    ('ramp_kick_of_a_bot_never_authenticated', {}, _ramp('bot_failed_before_window', then=lambda t: sf.add_bot_end(t, 7, 'server disconnected (reason 2)', dict(at_ns=2 * NS, reason=cs.REASON_KICKED, expected=False))), None),
+) + tuple(('generator_%s_beside_a_tick_overrun' % name, {}, (lambda change: lambda t: (sf.slow(t), change(t)))(change), None) for name, _, change in sf.GENERATOR_OMISSIONS) \
+  + tuple(('generator_%s_beside_a_demonstrated_crash' % name, {}, (lambda change: lambda t: (_crash(t), change(t)))(change), sf.execution(game_exit=(101, None))) for name, _, change in sf.GENERATOR_OMISSIONS) \
+  + tuple(('ramp_%s_beside_a_proven_overrun' % name, {}, _ramp(then=(lambda change: lambda t: (sf.ramp_slow_ticks(t, 2), change(t)))(change)), None) for name, _, change in sf.RAMP_NOT_PROVEN)
 BYPASSES = (
     ('local_counter_bypass', dict(require_counters=False)),
     ('prover_never_given_the_schema', dict(prove=dict(telemetry_schema=None))),
@@ -196,8 +211,8 @@ class _Case(unittest.TestCase):
 def _search_summary(sim, result, extra=None):
     report = capacity_report.build(sim.stack.root)
     starts = len([call for call in sim.guests.calls if call['command'] == 'start' and call['role'] == 'game'])
-    return dict(status=report['status'], claim=report['claim'], batch=result.status if result is not None else None, observations=report['observations'], counts=report['counts'], game_starts=starts, no_hidden_retry=starts == len(sim.records()),
-                trials=[{key: row.get(key) for key in ('ordinal', 'phase', 'target', 'repetition', 'hold_s', 'outcome', 'classification', 'gates', 'offered_load')} for row in report['trials']], **(extra or {}))
+    return dict(status=report['status'], claim=report['claim'], journal_claim=report['journal_claim'], evidence=report['evidence'], batch=result.status if result is not None else None, observations=report['observations'], counts=report['counts'], game_starts=starts, no_hidden_retry=starts == len(sim.records()),
+                trials=[{key: row.get(key) for key in ('ordinal', 'phase', 'target', 'repetition', 'hold_s', 'outcome', 'classification', 'gates', 'offered_load', 'evidence_problems')} for row in report['trials']], **(extra or {}))
 
 
 def _plain(rules, **options):
@@ -290,6 +305,92 @@ def _ramp_overrun_at_50():
     return _plain({50: ramp, 30: sf.slow})
 
 
+def _crash_then_collect(point, rules, change=None, source_problems=None):
+    """A controller dies at ``point``, the retained files are as ``change`` leaves them, and another controller stops, collects and hands over."""
+    def play(case):
+        sim = sf.ScoredSim(case, sf.by_target(rules))
+        case.addCleanup(rf.make_writable, sim.stack.root)
+        sim.ready()
+        try:
+            sim.executor(failpoint=rf.crash_at(point)).execute()
+        except rf.SimulatedCrash:
+            pass
+        run_dir = sim.run_dir(sim.records()[0]['run_id'])
+        if change is not None:
+            change(run_dir)
+
+        def build(token):
+            return sim.executor(token=token, source_problems=source_problems)
+        result, problems = run_cli.collect_and_stop(sim.client, sim.session_id, build, 'operator collect', takeover=True)
+        return sim, result, dict(crashed_at=point, retained_files_changed=change is not None, collected_by_a_frozen_controller=source_problems is None, problems=problems, cleanup_requested=sim.status_now()['cleanup']['requested_at'] is not None)
+    return play
+
+
+def _overwrite(path, text):
+    path.chmod(0o644)
+    path.write_text(text)
+
+
+def _foreign_score(run_dir):
+    document = cs.load_retained(run_dir / 'score.json')
+    _overwrite(run_dir / 'score.json', cs.canonical(cs.seal(dict(document, run_id='another-session-another-run', inputs=dict(document['inputs'], session_id='another-session', execution_sha256='e' * 64, window_proof_sha256='d' * 64)))))
+
+
+def _edited_score(run_dir):
+    _overwrite(run_dir / 'score.json', (run_dir / 'score.json').read_text().replace('"outcome": "FAIL"', '"outcome": "PASS"'))
+
+
+def _foreign_classification(run_dir):
+    document = json.loads((run_dir / 'classification.json').read_text())
+    _overwrite(run_dir / 'classification.json', json.dumps(dict(document, run_id='another-run'), indent=2, sort_keys=True))
+
+
+def _unfrozen():
+    return ['the controller checkout is not the frozen controller revision']
+
+
+def _kick_in_the_ramp_at_50():
+    def ramp(tree):
+        sf.ramp_failure(tree, 'bot_failed_before_window', 5)
+        sf.add_bot_end(tree, 3, 'server disconnected (reason 2)', dict(at_ns=2 * NS, reason=cs.REASON_KICKED, expected=False))
+    return _plain({50: ramp, 30: sf.slow})
+
+
+def _crash_with_generator_gap(change):
+    def play(case):
+        sim = sf.ScoredSim(case, sf.by_target({25: lambda tree: (_crash(tree), change(tree)), 5: sf.slow}))
+        case.addCleanup(rf.make_writable, sim.stack.root)
+        sim.ready()
+        sim.guests.game_crash_after_s = 20
+        sim.guests.game_exit = (101, None)
+        return sim, sim.executor().execute(), None
+    return play
+
+
+def _early_crash_with_generator_proven():
+    return _crash_with_generator_gap(lambda tree: None)
+
+
+def _report_after_a_score_is_replaced(case):
+    sim, result, extra = _plain({50: sf.slow, 30: sf.slow})(case)
+    _edited_score(sim.run_dir(sim.records()[1]['run_id']))
+    return sim, result, dict(retained_files_changed=True)
+
+
+def _omission(name):
+    return next(change for item, _, change in sf.GENERATOR_OMISSIONS if item == name)
+
+
+def _ramp_broken(name):
+    change = next(change for item, _, change in sf.RAMP_NOT_PROVEN if item == name)
+
+    def ramp(tree):
+        sf.ramp_failure(tree, 'readiness_timeout', tree.timeline.target - 1)
+        sf.ramp_slow_ticks(tree, 2)
+        change(tree)
+    return _plain({25: ramp, 5: sf.slow})
+
+
 SEARCHES = (
     ('confirmed', _plain({50: sf.slow, 30: sf.slow})),
     ('refinement_all_pass_confirms_top_of_bracket', _plain({50: sf.slow})),
@@ -317,6 +418,28 @@ SEARCHES = (
     ('verdict_before_outcome_commit_is_kept', _crash_in_coarse('before_outcome_commit', rules={25: sf.slow, 5: sf.slow})),
     ('terminal_fact_committed_before_crash_refuses_resume', _crash_in_coarse('after_outcome_commit', rules={25: sf.starved})),
     ('time_exhausted_keeps_partial_results', _time_exhausted),
+    # necessary generator evidence stands whatever the server did, and a server failure with it still advances
+    ('tick_overrun_with_no_poll_liveness_stops_with_no_successor', _plain({25: lambda tree: (sf.slow(tree), _omission('footer_without_poll_liveness')(tree)), 5: sf.slow})),
+    ('tick_overrun_with_no_freeze_time_stops_with_no_successor', _plain({25: lambda tree: (sf.slow(tree), _omission('freeze_without_a_time')(tree)), 5: sf.slow})),
+    ('server_crash_with_no_poll_liveness_stops_with_no_successor', _crash_with_generator_gap(_omission('footer_without_poll_liveness'))),
+    ('early_server_crash_with_the_generator_proven_opens_the_bracket', _early_crash_with_generator_proven()),
+    # a ramp's evidence must be the supervised processes'
+    ('ramp_kick_opens_the_bracket', _kick_in_the_ramp_at_50()),
+    ('ramp_overrun_over_a_foreign_swarm_stops_with_no_refinement', _ramp_broken('foreign_swarm_pid')),
+    ('ramp_overrun_over_a_foreign_game_stops_with_no_refinement', _ramp_broken('foreign_game_pid')),
+    ('ramp_overrun_over_a_foreign_collector_stops_with_no_refinement', _ramp_broken('foreign_bot_collector_pid')),
+    ('ramp_overrun_with_a_socket_never_read_stops_with_no_refinement', _ramp_broken('socket_never_read')),
+    # a retained decision must be this run's own, and only that can be recovered
+    ('retained_score_recovered_by_collect_with_no_recomputation', _crash_then_collect('after_score_retained', {25: sf.slow})),
+    ('foreign_retained_score_is_refused_on_return', _crash_then_collect('after_score_retained', {25: sf.slow}, _foreign_score)),
+    ('edited_retained_score_is_refused_on_return', _crash_then_collect('after_score_retained', {25: sf.slow}, _edited_score)),
+    ('foreign_retained_classification_is_refused_on_return', _crash_then_collect('before_outcome_commit', {25: sf.slow}, _foreign_classification)),
+    ('report_withholds_the_claim_when_a_retained_score_changed', _report_after_a_score_is_replaced),
+    # no new decision from a controller that cannot show it is the frozen one, and cleanup is never its to block
+    ('frozen_controller_collects_and_scores_a_natural_end', _crash_then_collect('after_execution_record', {})),
+    ('unfrozen_controller_collects_and_decides_nothing', _crash_then_collect('after_execution_record', {}, source_problems=_unfrozen)),
+    ('unfrozen_controller_recovers_a_validated_retained_score', _crash_then_collect('after_score_retained', {25: sf.slow}, source_problems=_unfrozen)),
+    ('unfrozen_controller_refuses_a_foreign_retained_score', _crash_then_collect('after_score_retained', {25: sf.slow}, _foreign_score, source_problems=_unfrozen)),
 )
 
 

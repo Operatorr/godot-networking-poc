@@ -12,9 +12,15 @@
    "limit_strictly_below": "2/100",
    "scale": 65536
   },
+  "generator_evidence": "A failed gate or a crash establishes nothing over a generator not proven valid. Every reason the prover draws from the swarm's own files stands: a server's missing data can be the consequence of its demonstrated crash, and a generator's cannot.",
   "input": {
    "definition": "per bot: sent over its own scheduled grid slots in the window, in integers. Exactly 99 percent is valid. A disconnected bot is held to the part it was connected for, less the one slot the disconnect can interrupt.",
    "min_percent": 99
+  },
+  "oom": "The kernel OOM count is host-wide, so it is a diagnostic and never explains a process exit. No producer here names an OOM victim, so a SIGKILL stays killed_with_no_cause_on_record.",
+  "ramp": {
+   "definition": "A ramp can fail and can never pass. Its failure needs the supervised swarm and game identities, every opened socket read while open, and a kick only of a bot both sides recorded as authenticated.",
+   "last_read_before_abort_limit_ns": 2000000000
   },
   "rtt_limit_ms_strictly_below": 150,
   "rtt_quantile": {
@@ -25,7 +31,7 @@
   "tick_budget_ns": 33300000,
   "tick_over_percent_strictly_below": 1
  },
- "policy_sha256": "c7466422b1175b96fde5844ee703742926f9588efb2f8bf6a177dcc5c559817f",
+ "policy_sha256": "29c024c22e2478cce0f65a77cd9f3e40a54827d35b68f471680f0018acc897fa",
  "scenarios": {
   "all_coarse_pass_search_cap_at_500": {
    "batch": "search_finished",
@@ -43,7 +49,19 @@
     "refine": 0,
     "total": 23
    },
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
    "game_starts": 23,
+   "journal_claim": {
+    "confirmed": true,
+    "kind": "at_least_search_cap",
+    "lower_bound": 500,
+    "players": null,
+    "search_cap_reached": true,
+    "statement": "At least 500 players under this condition; search cap reached, not a discovered ceiling."
+   },
    "no_hidden_retry": true,
    "observations": {
     "confirmations": {
@@ -64,6 +82,7 @@
    "trials": [
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -82,6 +101,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -100,6 +120,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -118,6 +139,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -136,6 +158,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -154,6 +177,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -172,6 +196,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -190,6 +215,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -208,6 +234,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -226,6 +253,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -244,6 +272,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -262,6 +291,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -280,6 +310,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -298,6 +329,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -316,6 +348,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -334,6 +367,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -352,6 +386,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -370,6 +405,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -388,6 +424,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -406,6 +443,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -424,6 +462,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -442,6 +481,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -460,6 +500,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -494,7 +535,19 @@
     "refine": 0,
     "total": 2
    },
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
    "game_starts": 2,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence). The highest one-minute pass was 25; it stays an exploratory observation."
+   },
    "no_hidden_retry": true,
    "observations": {
     "confirmations": {
@@ -515,6 +568,7 @@
    "trials": [
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -533,6 +587,7 @@
     },
     {
      "classification": "inconclusive_evidence",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -567,7 +622,19 @@
     "refine": 0,
     "total": 2
    },
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
    "game_starts": 2,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_infrastructure_failure",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_infrastructure_failure). The highest one-minute pass was 25; it stays an exploratory observation."
+   },
    "no_hidden_retry": true,
    "observations": {
     "confirmations": {
@@ -588,6 +655,7 @@
    "trials": [
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -606,6 +674,7 @@
     },
     {
      "classification": "infrastructure_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -640,7 +709,19 @@
     "refine": 0,
     "total": 2
    },
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
    "game_starts": 2,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_invalid_load",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_invalid_load). The highest one-minute pass was 25; it stays an exploratory observation."
+   },
    "no_hidden_retry": true,
    "observations": {
     "confirmations": {
@@ -661,6 +742,7 @@
    "trials": [
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -679,6 +761,7 @@
     },
     {
      "classification": "invalid_offered_load",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -714,7 +797,20 @@
     "refine": 1,
     "total": 4
    },
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
    "game_starts": 4,
+   "journal_claim": {
+    "candidate": 25,
+    "confirmed": false,
+    "kind": "unconfirmed_variable",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "Candidate 25 is unconfirmed and variable: a valid confirmation failed. The bracket and every result are kept, with no replacement trial."
+   },
    "no_hidden_retry": true,
    "observations": {
     "confirmations": {
@@ -738,6 +834,7 @@
    "trials": [
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -756,6 +853,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -774,6 +872,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -792,6 +891,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -828,7 +928,20 @@
     "total": 6
    },
    "crashed_at": "after_running_commit in the first confirmation",
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
    "game_starts": 6,
+   "journal_claim": {
+    "candidate": 25,
+    "confirmed": false,
+    "kind": "unconfirmed_partial",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "Candidate 25 is unconfirmed: the confirmation set is partial, 2 of 3 passed. Repeating it needs a separately bounded batch."
+   },
    "no_hidden_retry": true,
    "observations": {
     "confirmations": {
@@ -854,6 +967,7 @@
    "trials": [
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -872,6 +986,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -890,6 +1005,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -908,6 +1024,7 @@
     },
     {
      "classification": null,
+     "evidence_problems": [],
      "gates": {},
      "hold_s": 300,
      "offered_load": null,
@@ -919,6 +1036,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -937,6 +1055,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -972,7 +1091,20 @@
     "refine": 1,
     "total": 5
    },
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
    "game_starts": 5,
+   "journal_claim": {
+    "candidate": 25,
+    "confirmed": false,
+    "kind": "unconfirmed_variable",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "Candidate 25 is unconfirmed and variable: a valid confirmation failed. The bracket and every result are kept, with no replacement trial."
+   },
    "no_hidden_retry": true,
    "observations": {
     "confirmations": {
@@ -996,6 +1128,7 @@
    "trials": [
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1014,6 +1147,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1032,6 +1166,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1050,6 +1185,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1068,6 +1204,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1102,7 +1239,19 @@
     "refine": 1,
     "total": 5
    },
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
    "game_starts": 5,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_invalid_load",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_invalid_load). The highest one-minute pass was 25, with 30 failing above it; it stays an exploratory observation."
+   },
    "no_hidden_retry": true,
    "observations": {
     "confirmations": {
@@ -1126,6 +1275,7 @@
    "trials": [
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1144,6 +1294,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1162,6 +1313,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1180,6 +1332,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1198,6 +1351,7 @@
     },
     {
      "classification": "invalid_offered_load",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1233,7 +1387,20 @@
     "refine": 1,
     "total": 6
    },
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
    "game_starts": 6,
+   "journal_claim": {
+    "candidate": 25,
+    "confirmed": false,
+    "kind": "unconfirmed_variable",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "Candidate 25 is unconfirmed and variable: a valid confirmation failed. The bracket and every result are kept, with no replacement trial."
+   },
    "no_hidden_retry": true,
    "observations": {
     "confirmations": {
@@ -1257,6 +1424,7 @@
    "trials": [
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1275,6 +1443,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1293,6 +1462,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1311,6 +1481,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1329,6 +1500,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1347,6 +1519,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1381,7 +1554,19 @@
     "refine": 1,
     "total": 6
    },
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
    "game_starts": 6,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence). The highest one-minute pass was 25, with 30 failing above it; it stays an exploratory observation."
+   },
    "no_hidden_retry": true,
    "observations": {
     "confirmations": {
@@ -1405,6 +1590,7 @@
    "trials": [
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1423,6 +1609,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1441,6 +1628,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1459,6 +1647,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1477,6 +1666,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1495,6 +1685,7 @@
     },
     {
      "classification": "inconclusive_evidence",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1529,7 +1720,19 @@
     "refine": 1,
     "total": 6
    },
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
    "game_starts": 6,
+   "journal_claim": {
+    "confirmed": true,
+    "kind": "confirmed_observation",
+    "lower_bound": 25,
+    "players": 25,
+    "search_cap_reached": false,
+    "statement": "Confirmed 25 players on this rented pair: three valid five-minute passes. An observed candidate, not provider-wide capacity."
+   },
    "no_hidden_retry": true,
    "observations": {
     "confirmations": {
@@ -1553,6 +1756,7 @@
    "trials": [
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1571,6 +1775,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1589,6 +1794,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1607,6 +1813,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1625,6 +1832,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1643,6 +1851,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1657,6 +1866,168 @@
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 3,
+     "target": 25
+    }
+   ]
+  },
+  "early_server_crash_with_the_generator_proven_opens_the_bracket": {
+   "batch": "search_finished",
+   "claim": {
+    "confirmed": false,
+    "kind": "no_passing_target_at_resolution",
+    "lower_bound": null,
+    "players": null,
+    "resolution": 5,
+    "search_cap_reached": false,
+    "statement": "No passing target at the search resolution: 5 players failed. Not proof that no smaller population could work, and not a capacity of zero."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 1,
+    "total": 2
+   },
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
+   "game_starts": 2,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "no_passing_target_at_resolution",
+    "lower_bound": null,
+    "players": null,
+    "resolution": 5,
+    "search_cap_reached": false,
+    "statement": "No passing target at the search resolution: 5 players failed. Not proof that no smaller population could work, and not a capacity of zero."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [
+     5,
+     25
+    ],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": 5,
+    "retries": 0,
+    "trials": 2
+   },
+   "status": "no_passing_target",
+   "trials": [
+    {
+     "classification": "capacity_failure",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "fail",
+      "continuity": "fail",
+      "enet_loss": "pass",
+      "game_socket_drops": "unknown",
+      "rtt_p95": "pass",
+      "tick_budget": "unknown"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "FAIL",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "capacity_failure",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "fail",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 2,
+     "outcome": "FAIL",
+     "phase": "refine",
+     "repetition": 1,
+     "target": 5
+    }
+   ]
+  },
+  "edited_retained_score_is_refused_on_return": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "evidence_disagreement",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No evidence-backed claim: the retained files of 1 of 1 trials disagree with the journal or cannot be verified. What the journal says is kept apart as history, and is not verified here."
+   },
+   "cleanup_requested": true,
+   "collected_by_a_frozen_controller": true,
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "crashed_at": "after_score_retained",
+   "evidence": {
+    "disputed_trials": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "verified": false
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "problems": [],
+   "retained_files_changed": true,
+   "status": "stopped_inconclusive_evidence",
+   "trials": [
+    {
+     "classification": null,
+     "evidence_problems": [
+      "score.json: it does not read as a whole score, or its content was changed after it was written"
+     ],
+     "gates": {},
+     "hold_s": 60,
+     "offered_load": null,
+     "ordinal": 1,
+     "outcome": "INCONCLUSIVE",
+     "phase": "coarse",
+     "repetition": 1,
      "target": 25
     }
    ]
@@ -1677,7 +2048,19 @@
     "refine": 4,
     "total": 8
    },
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
    "game_starts": 8,
+   "journal_claim": {
+    "confirmed": true,
+    "kind": "confirmed_observation",
+    "lower_bound": 20,
+    "players": 20,
+    "search_cap_reached": false,
+    "statement": "Confirmed 20 players on this rented pair: three valid five-minute passes. An observed candidate, not provider-wide capacity."
+   },
    "no_hidden_retry": true,
    "observations": {
     "confirmations": {
@@ -1700,6 +2083,7 @@
    "trials": [
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1718,6 +2102,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1736,6 +2121,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1754,6 +2140,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1772,6 +2159,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1790,6 +2178,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1808,6 +2197,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1826,6 +2216,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1860,7 +2251,19 @@
     "refine": 2,
     "total": 6
    },
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
    "game_starts": 6,
+   "journal_claim": {
+    "confirmed": true,
+    "kind": "confirmed_observation",
+    "lower_bound": 5,
+    "players": 5,
+    "search_cap_reached": false,
+    "statement": "Confirmed 5 players on this rented pair: three valid five-minute passes. An observed candidate, not provider-wide capacity."
+   },
    "no_hidden_retry": true,
    "observations": {
     "confirmations": {
@@ -1884,6 +2287,7 @@
    "trials": [
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1902,6 +2306,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1920,6 +2325,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1938,6 +2344,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1956,6 +2363,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -1974,6 +2382,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2009,7 +2418,20 @@
     "refine": 1,
     "total": 2
    },
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
    "game_starts": 2,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "no_passing_target_at_resolution",
+    "lower_bound": null,
+    "players": null,
+    "resolution": 5,
+    "search_cap_reached": false,
+    "statement": "No passing target at the search resolution: 5 players failed. Not proof that no smaller population could work, and not a capacity of zero."
+   },
    "no_hidden_retry": true,
    "observations": {
     "confirmations": {
@@ -2033,6 +2455,7 @@
    "trials": [
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2051,6 +2474,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2085,7 +2509,19 @@
     "refine": 0,
     "total": 1
    },
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
    "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_invalid_load",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_invalid_load)."
+   },
    "no_hidden_retry": true,
    "observations": {
     "confirmations": {
@@ -2106,6 +2542,7 @@
    "trials": [
     {
      "classification": "invalid_offered_load",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2118,6 +2555,229 @@
      "offered_load": "invalid",
      "ordinal": 1,
      "outcome": "INVALID_LOAD",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    }
+   ]
+  },
+  "foreign_retained_classification_is_refused_on_return": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "evidence_disagreement",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No evidence-backed claim: the retained files of 1 of 1 trials disagree with the journal or cannot be verified. What the journal says is kept apart as history, and is not verified here."
+   },
+   "cleanup_requested": true,
+   "collected_by_a_frozen_controller": true,
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "crashed_at": "before_outcome_commit",
+   "evidence": {
+    "disputed_trials": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "verified": false
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "problems": [],
+   "retained_files_changed": true,
+   "status": "stopped_inconclusive_evidence",
+   "trials": [
+    {
+     "classification": "capacity_failure",
+     "evidence_problems": [
+      "classification.json: it classifies run 'another-run'"
+     ],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "INCONCLUSIVE",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    }
+   ]
+  },
+  "foreign_retained_score_is_refused_on_return": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "evidence_disagreement",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No evidence-backed claim: the retained files of 1 of 1 trials disagree with the journal or cannot be verified. What the journal says is kept apart as history, and is not verified here."
+   },
+   "cleanup_requested": true,
+   "collected_by_a_frozen_controller": true,
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "crashed_at": "after_score_retained",
+   "evidence": {
+    "disputed_trials": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "verified": false
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "problems": [],
+   "retained_files_changed": true,
+   "status": "stopped_inconclusive_evidence",
+   "trials": [
+    {
+     "classification": null,
+     "evidence_problems": [
+      "score.json: it is of run 'another-session-another-run'",
+      "score.json: its execution record 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee' is not one retained for this run",
+      "score.json: its session_id is 'another-session', and this session has 'do-cap-1v1g-20261030a'",
+      "score.json: its window proof 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd' is not the retained one"
+     ],
+     "gates": {},
+     "hold_s": 60,
+     "offered_load": null,
+     "ordinal": 1,
+     "outcome": "INCONCLUSIVE",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    }
+   ]
+  },
+  "frozen_controller_collects_and_scores_a_natural_end": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "in_progress",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the search is not finished (in_progress). The highest one-minute pass was 25; it stays an exploratory observation."
+   },
+   "cleanup_requested": true,
+   "collected_by_a_frozen_controller": true,
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "crashed_at": "after_execution_record",
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "in_progress",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the search is not finished (in_progress). The highest one-minute pass was 25; it stays an exploratory observation."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "problems": [],
+   "retained_files_changed": false,
+   "status": "in_progress",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
      "phase": "coarse",
      "repetition": 1,
      "target": 25
@@ -2141,7 +2801,19 @@
     "total": 1
    },
    "crashed_at": "after_running_commit",
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
    "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "undecidable_incomplete_predecessor",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: an interrupted trial left the next branch undecidable, and it is neither inferred nor replayed."
+   },
    "no_hidden_retry": true,
    "observations": {
     "confirmations": {
@@ -2164,6 +2836,7 @@
    "trials": [
     {
      "classification": null,
+     "evidence_problems": [],
      "gates": {},
      "hold_s": 60,
      "offered_load": null,
@@ -2192,7 +2865,19 @@
     "total": 6
    },
    "crashed_at": "after_execution_record",
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
    "game_starts": 6,
+   "journal_claim": {
+    "confirmed": true,
+    "kind": "confirmed_observation",
+    "lower_bound": 25,
+    "players": 25,
+    "search_cap_reached": false,
+    "statement": "Confirmed 25 players on this rented pair: three valid five-minute passes. An observed candidate, not provider-wide capacity."
+   },
    "no_hidden_retry": true,
    "observations": {
     "confirmations": {
@@ -2218,6 +2903,7 @@
    "trials": [
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2236,6 +2922,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2254,6 +2941,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2272,6 +2960,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2290,6 +2979,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2308,6 +2998,173 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 6,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 3,
+     "target": 25
+    }
+   ]
+  },
+  "ramp_kick_opens_the_bracket": {
+   "batch": "search_finished",
+   "claim": {
+    "confirmed": true,
+    "kind": "confirmed_observation",
+    "lower_bound": 25,
+    "players": 25,
+    "search_cap_reached": false,
+    "statement": "Confirmed 25 players on this rented pair: three valid five-minute passes. An observed candidate, not provider-wide capacity."
+   },
+   "counts": {
+    "coarse": 2,
+    "confirm": 3,
+    "refine": 1,
+    "total": 6
+   },
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
+   "game_starts": 6,
+   "journal_claim": {
+    "confirmed": true,
+    "kind": "confirmed_observation",
+    "lower_bound": 25,
+    "players": 25,
+    "search_cap_reached": false,
+    "statement": "Confirmed 25 players on this rented pair: three valid five-minute passes. An observed candidate, not provider-wide capacity."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 3,
+     "pending": 0,
+     "stopped": 0,
+     "target": 25
+    },
+    "failed_targets": [
+     30,
+     50
+    ],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": 30,
+    "retries": 0,
+    "trials": 6
+   },
+   "status": "confirmed",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "capacity_failure",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "unknown",
+      "continuity": "fail",
+      "enet_loss": "unknown",
+      "game_socket_drops": "unknown",
+      "rtt_p95": "unknown",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 2,
+     "outcome": "FAIL",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 50
+    },
+    {
+     "classification": "capacity_failure",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 3,
+     "outcome": "FAIL",
+     "phase": "refine",
+     "repetition": 1,
+     "target": 30
+    },
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 4,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 5,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 2,
+     "target": 25
+    },
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2342,7 +3199,19 @@
     "refine": 1,
     "total": 6
    },
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
    "game_starts": 6,
+   "journal_claim": {
+    "confirmed": true,
+    "kind": "confirmed_observation",
+    "lower_bound": 25,
+    "players": 25,
+    "search_cap_reached": false,
+    "statement": "Confirmed 25 players on this rented pair: three valid five-minute passes. An observed candidate, not provider-wide capacity."
+   },
    "no_hidden_retry": true,
    "observations": {
     "confirmations": {
@@ -2366,6 +3235,7 @@
    "trials": [
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2384,6 +3254,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "unknown",
       "continuity": "unknown",
@@ -2402,6 +3273,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2420,6 +3292,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2438,6 +3311,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2456,6 +3330,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2470,6 +3345,278 @@
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 3,
+     "target": 25
+    }
+   ]
+  },
+  "ramp_overrun_over_a_foreign_collector_stops_with_no_refinement": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "status": "stopped_inconclusive_evidence",
+   "trials": [
+    {
+     "classification": "inconclusive_evidence",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "unknown",
+      "continuity": "unknown",
+      "enet_loss": "unknown",
+      "game_socket_drops": "unknown",
+      "rtt_p95": "unknown",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "not_proven",
+     "ordinal": 1,
+     "outcome": "INCONCLUSIVE",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    }
+   ]
+  },
+  "ramp_overrun_over_a_foreign_game_stops_with_no_refinement": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "status": "stopped_inconclusive_evidence",
+   "trials": [
+    {
+     "classification": "inconclusive_evidence",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "unknown",
+      "continuity": "unknown",
+      "enet_loss": "unknown",
+      "game_socket_drops": "unknown",
+      "rtt_p95": "unknown",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "not_proven",
+     "ordinal": 1,
+     "outcome": "INCONCLUSIVE",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    }
+   ]
+  },
+  "ramp_overrun_over_a_foreign_swarm_stops_with_no_refinement": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "status": "stopped_inconclusive_evidence",
+   "trials": [
+    {
+     "classification": "inconclusive_evidence",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "unknown",
+      "continuity": "unknown",
+      "enet_loss": "unknown",
+      "game_socket_drops": "unknown",
+      "rtt_p95": "unknown",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "not_proven",
+     "ordinal": 1,
+     "outcome": "INCONCLUSIVE",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    }
+   ]
+  },
+  "ramp_overrun_with_a_socket_never_read_stops_with_no_refinement": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "status": "stopped_inconclusive_evidence",
+   "trials": [
+    {
+     "classification": "inconclusive_evidence",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "unknown",
+      "continuity": "unknown",
+      "enet_loss": "unknown",
+      "game_socket_drops": "unknown",
+      "rtt_p95": "unknown",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "not_proven",
+     "ordinal": 1,
+     "outcome": "INCONCLUSIVE",
+     "phase": "coarse",
+     "repetition": 1,
      "target": 25
     }
    ]
@@ -2490,7 +3637,19 @@
     "refine": 1,
     "total": 3
    },
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
    "game_starts": 3,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence). The highest one-minute pass was 25, with 50 failing above it; it stays an exploratory observation."
+   },
    "no_hidden_retry": true,
    "observations": {
     "confirmations": {
@@ -2513,6 +3672,7 @@
    "trials": [
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2531,6 +3691,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2549,6 +3710,7 @@
     },
     {
      "classification": "inconclusive_evidence",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2583,7 +3745,19 @@
     "refine": 1,
     "total": 3
    },
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
    "game_starts": 3,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_invalid_load",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_invalid_load). The highest one-minute pass was 25, with 50 failing above it; it stays an exploratory observation."
+   },
    "no_hidden_retry": true,
    "observations": {
     "confirmations": {
@@ -2606,6 +3780,7 @@
    "trials": [
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2624,6 +3799,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2642,6 +3818,7 @@
     },
     {
      "classification": "invalid_offered_load",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2676,7 +3853,19 @@
     "refine": 4,
     "total": 9
    },
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
    "game_starts": 9,
+   "journal_claim": {
+    "confirmed": true,
+    "kind": "confirmed_observation",
+    "lower_bound": 45,
+    "players": 45,
+    "search_cap_reached": false,
+    "statement": "Confirmed 45 players on this rented pair: three valid five-minute passes. An observed candidate, not provider-wide capacity."
+   },
    "no_hidden_retry": true,
    "observations": {
     "confirmations": {
@@ -2699,6 +3888,7 @@
    "trials": [
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2717,6 +3907,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2735,6 +3926,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2753,6 +3945,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2771,6 +3964,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2789,6 +3983,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2807,6 +4002,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2825,6 +4021,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2843,6 +4040,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2858,6 +4056,171 @@
      "phase": "confirm",
      "repetition": 3,
      "target": 45
+    }
+   ]
+  },
+  "report_withholds_the_claim_when_a_retained_score_changed": {
+   "batch": "search_finished",
+   "claim": {
+    "confirmed": false,
+    "kind": "evidence_disagreement",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No evidence-backed claim: the retained files of 1 of 6 trials disagree with the journal or cannot be verified. What the journal says is kept apart as history, and is not verified here."
+   },
+   "counts": {
+    "coarse": 2,
+    "confirm": 3,
+    "refine": 1,
+    "total": 6
+   },
+   "evidence": {
+    "disputed_trials": [
+     "do-cap-1v1g-20261030a-t02-coarse-n050-r1"
+    ],
+    "verified": false
+   },
+   "game_starts": 6,
+   "journal_claim": {
+    "confirmed": true,
+    "kind": "confirmed_observation",
+    "lower_bound": 25,
+    "players": 25,
+    "search_cap_reached": false,
+    "statement": "Confirmed 25 players on this rented pair: three valid five-minute passes. An observed candidate, not provider-wide capacity."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 3,
+     "pending": 0,
+     "stopped": 0,
+     "target": 25
+    },
+    "failed_targets": [
+     30,
+     50
+    ],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": 30,
+    "retries": 0,
+    "trials": 6
+   },
+   "retained_files_changed": true,
+   "status": "confirmed",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": null,
+     "evidence_problems": [
+      "classification.json: score.json is no longer the file it recorded",
+      "score.json: it does not read as a whole score, or its content was changed after it was written"
+     ],
+     "gates": {},
+     "hold_s": 60,
+     "offered_load": null,
+     "ordinal": 2,
+     "outcome": "FAIL",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 50
+    },
+    {
+     "classification": "capacity_failure",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 3,
+     "outcome": "FAIL",
+     "phase": "refine",
+     "repetition": 1,
+     "target": 30
+    },
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 4,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 1,
+     "target": 25
+    },
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 5,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 2,
+     "target": 25
+    },
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hold_s": 300,
+     "offered_load": "valid",
+     "ordinal": 6,
+     "outcome": "PASS",
+     "phase": "confirm",
+     "repetition": 3,
+     "target": 25
     }
    ]
   },
@@ -2878,7 +4241,19 @@
     "total": 6
    },
    "crashed_at": "after_score_retained",
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
    "game_starts": 6,
+   "journal_claim": {
+    "confirmed": true,
+    "kind": "confirmed_observation",
+    "lower_bound": 25,
+    "players": 25,
+    "search_cap_reached": false,
+    "statement": "Confirmed 25 players on this rented pair: three valid five-minute passes. An observed candidate, not provider-wide capacity."
+   },
    "no_hidden_retry": true,
    "observations": {
     "confirmations": {
@@ -2904,6 +4279,7 @@
    "trials": [
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2922,6 +4298,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2940,6 +4317,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2958,6 +4336,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2976,6 +4355,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -2994,6 +4374,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -3008,6 +4389,149 @@
      "outcome": "PASS",
      "phase": "confirm",
      "repetition": 3,
+     "target": 25
+    }
+   ]
+  },
+  "retained_score_recovered_by_collect_with_no_recomputation": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "in_progress",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the search is not finished (in_progress)."
+   },
+   "cleanup_requested": true,
+   "collected_by_a_frozen_controller": true,
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "crashed_at": "after_score_retained",
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "in_progress",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the search is not finished (in_progress)."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [
+     25
+    ],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": 25,
+    "retries": 0,
+    "trials": 1
+   },
+   "problems": [],
+   "retained_files_changed": false,
+   "status": "in_progress",
+   "trials": [
+    {
+     "classification": "capacity_failure",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "FAIL",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    }
+   ]
+  },
+  "server_crash_with_no_poll_liveness_stops_with_no_successor": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "status": "stopped_inconclusive_evidence",
+   "trials": [
+    {
+     "classification": "inconclusive_evidence",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "fail",
+      "continuity": "fail",
+      "enet_loss": "pass",
+      "game_socket_drops": "unknown",
+      "rtt_p95": "pass",
+      "tick_budget": "unknown"
+     },
+     "hold_s": 60,
+     "offered_load": "not_proven",
+     "ordinal": 1,
+     "outcome": "INCONCLUSIVE",
+     "phase": "coarse",
+     "repetition": 1,
      "target": 25
     }
    ]
@@ -3028,7 +4552,19 @@
     "refine": 1,
     "total": 6
    },
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
    "game_starts": 6,
+   "journal_claim": {
+    "confirmed": true,
+    "kind": "confirmed_observation",
+    "lower_bound": 25,
+    "players": 25,
+    "search_cap_reached": false,
+    "statement": "Confirmed 25 players on this rented pair: three valid five-minute passes. An observed candidate, not provider-wide capacity."
+   },
    "no_hidden_retry": true,
    "observations": {
     "confirmations": {
@@ -3052,6 +4588,7 @@
    "trials": [
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -3070,6 +4607,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "fail",
       "continuity": "fail",
@@ -3088,6 +4626,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -3106,6 +4645,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -3124,6 +4664,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -3142,6 +4683,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -3177,7 +4719,19 @@
     "total": 1
    },
    "crashed_at": "after_outcome_commit",
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
    "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_invalid_load",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_invalid_load)."
+   },
    "no_hidden_retry": true,
    "observations": {
     "confirmations": {
@@ -3200,6 +4754,7 @@
    "trials": [
     {
      "classification": "invalid_offered_load",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -3212,6 +4767,142 @@
      "offered_load": "invalid",
      "ordinal": 1,
      "outcome": "INVALID_LOAD",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    }
+   ]
+  },
+  "tick_overrun_with_no_freeze_time_stops_with_no_successor": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "status": "stopped_inconclusive_evidence",
+   "trials": [
+    {
+     "classification": "inconclusive_evidence",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "not_proven",
+     "ordinal": 1,
+     "outcome": "INCONCLUSIVE",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    }
+   ]
+  },
+  "tick_overrun_with_no_poll_liveness_stops_with_no_successor": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "status": "stopped_inconclusive_evidence",
+   "trials": [
+    {
+     "classification": "inconclusive_evidence",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "not_proven",
+     "ordinal": 1,
+     "outcome": "INCONCLUSIVE",
      "phase": "coarse",
      "repetition": 1,
      "target": 25
@@ -3234,7 +4925,19 @@
     "refine": 0,
     "total": 2
    },
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
    "game_starts": 2,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "partial_time_exhausted",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the search stopped early (partial_time_exhausted) and its partial evidence is retained. The highest one-minute pass was 50; it stays an exploratory observation."
+   },
    "no_hidden_retry": true,
    "observations": {
     "confirmations": {
@@ -3255,6 +4958,7 @@
    "trials": [
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -3273,6 +4977,7 @@
     },
     {
      "classification": "valid_pass",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -3288,6 +4993,220 @@
      "phase": "coarse",
      "repetition": 1,
      "target": 50
+    }
+   ]
+  },
+  "unfrozen_controller_collects_and_decides_nothing": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "undecidable_incomplete_predecessor",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: an interrupted trial left the next branch undecidable, and it is neither inferred nor replayed."
+   },
+   "cleanup_requested": true,
+   "collected_by_a_frozen_controller": false,
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "crashed_at": "after_execution_record",
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "undecidable_incomplete_predecessor",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: an interrupted trial left the next branch undecidable, and it is neither inferred nor replayed."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "problems": [],
+   "retained_files_changed": false,
+   "status": "undecidable_incomplete_predecessor",
+   "trials": [
+    {
+     "classification": null,
+     "evidence_problems": [],
+     "gates": {},
+     "hold_s": 60,
+     "offered_load": null,
+     "ordinal": 1,
+     "outcome": "INCOMPLETE",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    }
+   ]
+  },
+  "unfrozen_controller_recovers_a_validated_retained_score": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "in_progress",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the search is not finished (in_progress)."
+   },
+   "cleanup_requested": true,
+   "collected_by_a_frozen_controller": false,
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "crashed_at": "after_score_retained",
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "in_progress",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the search is not finished (in_progress)."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [
+     25
+    ],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": 25,
+    "retries": 0,
+    "trials": 1
+   },
+   "problems": [],
+   "retained_files_changed": false,
+   "status": "in_progress",
+   "trials": [
+    {
+     "classification": "capacity_failure",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "fail"
+     },
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "FAIL",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
+    }
+   ]
+  },
+  "unfrozen_controller_refuses_a_foreign_retained_score": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "evidence_disagreement",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No evidence-backed claim: the retained files of 1 of 1 trials disagree with the journal or cannot be verified. What the journal says is kept apart as history, and is not verified here."
+   },
+   "cleanup_requested": true,
+   "collected_by_a_frozen_controller": false,
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "crashed_at": "after_score_retained",
+   "evidence": {
+    "disputed_trials": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "verified": false
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "problems": [],
+   "retained_files_changed": true,
+   "status": "stopped_inconclusive_evidence",
+   "trials": [
+    {
+     "classification": null,
+     "evidence_problems": [
+      "score.json: it is of run 'another-session-another-run'",
+      "score.json: its execution record 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee' is not one retained for this run",
+      "score.json: its session_id is 'another-session', and this session has 'do-cap-1v1g-20261030a'",
+      "score.json: its window proof 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd' is not the retained one"
+     ],
+     "gates": {},
+     "hold_s": 60,
+     "offered_load": null,
+     "ordinal": 1,
+     "outcome": "INCONCLUSIVE",
+     "phase": "coarse",
+     "repetition": 1,
+     "target": 25
     }
    ]
   },
@@ -3309,7 +5228,20 @@
     "total": 2
    },
    "crashed_at": "before_outcome_commit",
+   "evidence": {
+    "disputed_trials": [],
+    "verified": true
+   },
    "game_starts": 2,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "no_passing_target_at_resolution",
+    "lower_bound": null,
+    "players": null,
+    "resolution": 5,
+    "search_cap_reached": false,
+    "statement": "No passing target at the search resolution: 5 players failed. Not proof that no smaller population could work, and not a capacity of zero."
+   },
    "no_hidden_retry": true,
    "observations": {
     "confirmations": {
@@ -3335,6 +5267,7 @@
    "trials": [
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",
@@ -3353,6 +5286,7 @@
     },
     {
      "classification": "capacity_failure",
+     "evidence_problems": [],
      "gates": {
       "bot_errors": "pass",
       "continuity": "pass",

@@ -9,7 +9,8 @@
 ``resume``: returning under a new token pauses it, and only an explicit operator request with every revalidation passed
 un-pauses it. ``collect`` is the other exit, and it stops whatever was left, seals it and requests cleanup.
 
-``execute`` and ``resume`` refuse before touching any guest unless this checkout is the frozen controller and adapter revision.
+``execute`` and ``resume`` refuse before touching any guest unless this checkout is the frozen controller and adapter revision. ``collect`` may run from any checkout, because stopping and
+cleaning up must never depend on it, but only the frozen revision can make a new decision there. Anything else leaves an unscored run ``INCOMPLETE``, and can only read a retained score or classification that holds up.
 
 None of this has ever been run against a live account. Trials are scored by ``capacity_scorer``, the executor's default, and no argument here
 can replace it or relax the prover. Exit codes: 0 finished or resumed and finished, 2 refused, stopped, or a wrap-up that failed locally

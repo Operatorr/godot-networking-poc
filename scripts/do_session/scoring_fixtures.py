@@ -184,7 +184,7 @@ def bots_time_out_after_game_died(tree, bots, at_s):
 
 
 def ramp_failure(tree, reason, authenticated=None):
-    """The swarm gave up before publishing a window. Each shard is left as a real one leaves it: joined bots, a drain, a footer, and no window rows."""
+    """The swarm gave up before publishing a window. Each shard is left as a real one leaves it: joined bots, a drain, a footer, and no window rows, under the coordinator's own abort row."""
     timeline = tree.timeline
     authenticated = timeline.target if authenticated is None else authenticated
 
@@ -196,13 +196,14 @@ def ramp_failure(tree, reason, authenticated=None):
 
     def coordinator(rows):
         rows[:] = [row for row in rows if row.get('k') not in ('window_published', 'barrier', 'drain_requested')]
+        rows.insert(-1, dict(k='abort', nonce='fixture-nonce', mono_ns=timeline.drain, reason=reason, authenticated=authenticated))
         for index, row in enumerate(rows):
             row['seq'] = index
         rows[-1]['status'] = 'not_established'
     tree.edit_rows('bot/swarm/coordinator.ndjson', coordinator)
     for shard in range(timeline.threads):
         def change(rows):
-            rows[:] = [row for row in rows if row.get('k') not in ('window_observed', 'ack_start', 'ack_end', 'freeze', 'drain_start')]
+            rows[:] = [row for row in rows if row.get('k') not in ('window_observed', 'ack_start', 'ack_end', 'freeze') and not (row.get('k') == 'auth' and row['bot'] > authenticated)]
             for index, row in enumerate(rows):
                 row['seq'] = index
             rows[-1].update(start_acked=False, end_acked=False)
@@ -240,6 +241,175 @@ def ramp_slow_ticks(tree, fraction_percent):
     for index in held[:len(held) * fraction_percent // 100 + 1]:
         rows[index][3] = str(50_000_000)
     write_ticks(tree, rows)
+
+
+# ---- evidence a generator proof needs, and whose it is ---------------------------------------------------
+
+def _cut_file(tree, relative):
+    data = tree.path(relative).read_bytes()
+    tree.path(relative).write_bytes(data[:len(data) // 2])
+
+
+def _drop_coordinator_rows(tree, kind):
+    def change(rows):
+        rows[:] = [row for row in rows if row.get('k') != kind]
+        for index, row in enumerate(rows):
+            row['seq'] = index
+    tree.edit_rows('bot/swarm/coordinator.ndjson', change)
+
+
+def _drop_frozen_bot(tree, bot):
+    tree.edit_shard_row((bot - 1) % tree.timeline.threads, 'freeze', lambda row: row.update(bots=[item for item in row['bots'] if item['id'] != bot]))
+
+
+def _bot_socket(tree, edit, only_index=None):
+    def change(index, row):
+        if only_index is None or index == only_index:
+            for item in row['procs']['bot']['sockets']:
+                edit(item)
+    tree.edit_sampler('bot', change)
+
+
+def _drop_bot_socket(tree, port, only_index=None):
+    def change(index, row):
+        if only_index is None or index == only_index:
+            row['procs']['bot']['sockets'] = [item for item in row['procs']['bot']['sockets'] if item['local_port'] != port]
+    tree.edit_sampler('bot', change)
+
+
+def _swarm_wall_step(tree, at_s=20, jump_ns=NS):
+    def change(rows):
+        for row in rows:
+            if isinstance(row.get('clock'), dict) and row['clock']['mono_ns'] >= tree.timeline.start + at_s * NS:
+                row['clock'] = dict(row['clock'], wall_before_ns=row['clock']['wall_before_ns'] + jump_ns, wall_after_ns=row['clock']['wall_after_ns'] + jump_ns)
+    tree.edit_rows('bot/swarm/coordinator.ndjson', change)
+
+
+# Each leaves a tree that says nothing of whether the generator kept up, and none of them can be a consequence of anything the server did. (name, the prover's code, the change)
+GENERATOR_OMISSIONS = (
+    ('footer_without_poll_liveness', 'poll_liveness_missing', lambda t: t.edit_shard_row(0, 'footer', lambda row: row.pop('max_poll_gap_ns'))),
+    ('footer_silent_on_leaving_early', 'poll_liveness_missing', lambda t: t.edit_shard_row(0, 'footer', lambda row: row.pop('left_early'))),
+    ('sample_without_poll_liveness', 'poll_liveness_missing', lambda t: t.edit_shard_row(1, 'sample', lambda row: row.pop('max_poll_gap_ns'))),
+    ('freeze_without_a_time', 'freeze_time_missing', lambda t: t.edit_shard_row(0, 'freeze', lambda row: row.pop('mono_ns'))),
+    ('frozen_before_the_end', 'frozen_before_end', lambda t: t.edit_shard_row(0, 'freeze', lambda row: row.update(mono_ns=t.timeline.end - NS))),
+    ('frozen_before_acknowledging_the_end', 'frozen_before_end_acknowledgment', lambda t: t.edit_shard_row(0, 'freeze', lambda row: row.update(mono_ns=t.timeline.end + 500_000))),
+    ('no_drain_record', 'drain_missing', lambda t: t.drop_shard_rows(2, 'drain_start')),
+    ('drain_without_a_time', 'drain_time_missing', lambda t: t.edit_shard_row(2, 'drain_start', lambda row: row.pop('mono_ns'))),
+    ('join_without_times', 'join_missing', lambda t: t.edit_shard_row(3, 'join', lambda row: row.pop('actual_ns'))),
+    ('frozen_row_without_a_field', 'input_record_missing', lambda t: t.edit_frozen_bot(1, lambda row: row.pop('gap_buckets'))),
+    ('frozen_row_absent', 'input_record_missing', lambda t: _drop_frozen_bot(t, 2)),
+    ('no_window_publication', 'window_publish_missing', lambda t: _drop_coordinator_rows(t, 'window_published')),
+    ('coordinator_cut_short', 'recorder_truncated', lambda t: _cut_file(t, 'bot/swarm/coordinator.ndjson')),
+    ('no_final_authentication_time', 'window_boundaries_missing', lambda t: t.edit_json('bot/swarm/window.json', lambda d: d.update(final_auth_ns=None))),
+    ('no_readiness_bound', 'window_boundaries_missing', lambda t: t.edit_json('bot/swarm/swarm.json', lambda d: d['controls'].update(readiness_timeout_s=None))),
+    ('silent_on_which_shards_ended', 'swarm_evidence_missing', lambda t: t.edit_json('bot/swarm/window.json', lambda d: d.update(panicked_shards=None))),
+    ('shard_file_missing', 'shard_evidence_missing', lambda t: t.path('bot/swarm/shard-1.ndjson').unlink()),
+    ('shard_file_cut_short', 'recorder_truncated', lambda t: _cut_file(t, 'bot/swarm/shard-1.ndjson')),
+    ('no_bot_collector', 'collector_evidence_missing', lambda t: t.path('bot/sampler.ndjson').unlink()),
+    ('generator_socket_absent_from_one_read', 'socket_evidence_missing', lambda t: _drop_bot_socket(t, 40001, only_index=20)),
+    ('generator_counter_missing', 'socket_counters_missing', lambda t: _bot_socket(t, lambda item: item.update(drops=None))),
+)
+
+
+def _set_recorder(relative, **fields):
+    return lambda tree: tree.edit_json(relative, lambda document: document.update(fields))
+
+
+def _bot_proc(**fields):
+    return lambda tree: tree.edit_sampler('bot', lambda index, row: row['procs']['bot'].update(fields))
+
+
+def _game_proc(**fields):
+    return lambda tree: tree.edit_sampler('game', lambda index, row: row['procs']['game'].update(fields))
+
+
+def _inode_changes(tree):
+    def change(index, row):
+        if index > 10:
+            for item in row['procs']['bot']['sockets']:
+                if item['local_port'] == 40003:
+                    item['inode'] = 'another-socket'
+    tree.edit_sampler('bot', change)
+
+
+def _wrong_endpoint(tree):
+    def change(index, row):
+        for item in row['procs']['bot']['sockets']:
+            if item['local_port'] == 40003:
+                item['local_port'] = 40999
+    tree.edit_sampler('bot', change)
+
+
+def _unclaimed_socket(tree):
+    def change(index, row):
+        row['procs']['bot']['sockets'].append(dict(row['procs']['bot']['sockets'][0], inode='nobody', local_port=41999))
+    tree.edit_sampler('bot', change)
+
+
+def _set_abort(tree, edit):
+    def change(rows):
+        edit(next(row for row in rows if row.get('k') == 'abort'))
+    tree.edit_rows('bot/swarm/coordinator.ndjson', change)
+
+
+def _keep_bot_reads(tree, count):
+    def change(rows):
+        kept = [row for row in rows if row.get('kind') == 'meta']
+        rows[:] = kept + [row for row in rows if row.get('kind') != 'meta'][:count]
+    tree.edit_rows('bot/sampler.ndjson', change)
+
+
+def _forget_bot_join(tree, bot=3):
+    def change(rows):
+        rows[:] = [row for row in rows if not (row.get('k') in ('join', 'connected', 'auth') and row.get('bot') == bot)]
+        for row in rows:
+            if row.get('k') == 'sample':
+                row['bots'] = [item for item in row['bots'] if item[0] != bot]
+        for index, row in enumerate(rows):
+            row['seq'] = index
+    tree.edit_rows('bot/swarm/shard-%d.ndjson' % ((bot - 1) % tree.timeline.threads), change)
+    _drop_bot_socket(tree, 40000 + bot)
+
+
+def _forget_bot_counters(tree, bot=3):
+    def change(rows):
+        for row in rows:
+            if row.get('k') == 'sample':
+                row['bots'] = [item for item in row['bots'] if item[0] != bot]
+    tree.edit_rows('bot/swarm/shard-%d.ndjson' % ((bot - 1) % tree.timeline.threads), change)
+
+
+# Ramp evidence that is not the supervised processes', or does not cover what they did. (name, the prover's code, the change). A sealed hash is no help with any of these.
+RAMP_NOT_PROVEN = (
+    ('foreign_swarm_pid', 'recorder_overwritten', _set_recorder('bot/swarm/swarm.json', pid=123456)),
+    ('foreign_swarm_start', 'pid_reused', _set_recorder('bot/swarm/swarm.json', kernel_start_id='ticks:1')),
+    ('swarm_states_no_start', 'pid_reused', _set_recorder('bot/swarm/swarm.json', kernel_start_id=None)),
+    ('foreign_swarm_boot', 'recorder_overwritten', _set_recorder('bot/swarm/swarm.json', boot_id='another-boot')),
+    ('foreign_game_pid', 'recorder_overwritten', _set_recorder('game/telemetry/process.json', pid=123456)),
+    ('foreign_game_start', 'pid_reused', _set_recorder('game/telemetry/process.json', kernel_start_id='ticks:1')),
+    ('foreign_game_boot', 'recorder_overwritten', _set_recorder('game/telemetry/process.json', boot_id='another-boot')),
+    ('foreign_bot_collector_pid', 'process_identity_changed', _bot_proc(pid=123456)),
+    ('foreign_bot_collector_start', 'pid_reused', _bot_proc(start_id='ticks:1')),
+    ('foreign_game_collector_pid', 'process_identity_changed', _game_proc(pid=123456)),
+    ('foreign_game_collector_start', 'pid_reused', _game_proc(start_id='ticks:1')),
+    ('socket_changed_inode', 'socket_identity_changed', _inode_changes),
+    ('socket_on_the_wrong_endpoint', 'socket_evidence_missing', _wrong_endpoint),
+    ('socket_nobody_claims', 'socket_evidence_missing', _unclaimed_socket),
+    ('socket_absent_from_one_read', 'socket_evidence_missing', lambda t: _drop_bot_socket(t, 40001, only_index=20)),
+    ('socket_never_read', 'socket_evidence_missing', lambda t: _drop_bot_socket(t, 40002)),
+    ('socket_counter_missing', 'socket_counters_missing', lambda t: _bot_socket(t, lambda item: item.update(drops=None))),
+    ('join_names_no_port', 'socket_evidence_missing', lambda t: t.edit_shard_row(0, 'join', lambda row: row.pop('local_port'))),
+    ('no_join_row_for_a_slot_long_past', 'join_missing', _forget_bot_join),
+    ('no_counters_for_a_started_bot', 'input_record_missing', _forget_bot_counters),
+    ('no_abort_row', 'window_boundaries_missing', lambda t: _drop_coordinator_rows(t, 'abort')),
+    ('abort_says_something_else', 'boundary_contradiction', lambda t: _set_abort(t, lambda row: row.update(reason='interrupted'))),
+    ('last_read_long_before_the_abort', 'collector_boundary_missing', lambda t: _keep_bot_reads(t, 10)),
+    ('no_bot_collector', 'collector_evidence_missing', lambda t: t.path('bot/sampler.ndjson').unlink()),
+    ('footer_without_poll_liveness', 'poll_liveness_missing', lambda t: t.edit_shard_row(0, 'footer', lambda row: row.pop('max_poll_gap_ns'))),
+    ('no_drain_record', 'drain_missing', lambda t: t.drop_shard_rows(1, 'drain_start')),
+    ('shard_owning_someone_elses_bots', 'ownership_mismatch', lambda t: t.edit_shard_row(0, 'header', lambda row: row.update(bots=[2]))),
+    ('shard_file_missing', 'shard_evidence_missing', lambda t: t.path('bot/swarm/shard-1.ndjson').unlink()),
+)
 
 
 # ---- scoring one tree --------------------------------------------------------------------------------
@@ -394,4 +564,3 @@ def rebooted(tree):
         if row['clock']['mono_ns'] >= fx.to_game_mono(tree.timeline.start + 10 * NS):
             row['boot_id'] = 'another-boot'
     tree.edit_sampler('game', edit)
-

@@ -553,8 +553,8 @@ A crash leaves whatever the registry last committed. Returning under a new token
 | --- | --- | --- |
 | After selection, before `dispatch_run` committed | Untouched | Explicit resume dispatches that same trial |
 | After `dispatch_run`, through launch and watch | Touched for good; stopped, sealed, `INCOMPLETE` | Its dependent path stops, and resume refuses with `no_eligible_untouched_work` |
-| After seal, with the swarm having ended by itself | Scored from retained evidence, or read back if `score.json` was already retained (`INCOMPLETE` only for a fixture with no scorer) | Follows that outcome |
-| After `classification.json`, before the commit | The recorded verdict stands, is not scored again, and a terminal one stays terminal | Follows that outcome |
+| After seal, with the swarm having ended by itself | Scored from retained evidence by the frozen revision, or read back if `score.json` was already retained and holds up. `INCOMPLETE` from any other controller, or for a fixture with no scorer | Follows that outcome |
+| After `classification.json`, before the commit | The recorded verdict stands if it holds up, is not scored again, and a terminal one stays terminal. A refused one is `INCONCLUSIVE`, short of a terminal fact | Follows that outcome |
 | After the commit | Outcome stands; only the local mirror is repaired | Next untouched trial is eligible |
 
 An interruption does not hide a failure the evidence shows: a rebooted host or a sampler that died gives `INFRASTRUCTURE_FAILURE`, and a swarm that crashed by itself gives `INVALID_LOAD`.
@@ -578,7 +578,7 @@ the return. Corrupt bytes found during a return are a demonstrated failure. A sw
 
 `run_cli.py execute` makes check 3 as well, before touching any guest. The wrong checkout changes nothing and requests no cleanup: C still arrives, and the right checkout can run or `collect`.
 
-`run_cli.py collect --reason WHY` is the other exit. It stops and seals whatever is left and requests cleanup. Slice 7 owns the session export, so no session can read `clean` yet. C arrives regardless.
+`run_cli.py collect --reason WHY` is the other exit. It stops and seals whatever is left and requests cleanup, from any checkout: only a new decision needs the frozen revision. Slice 7 owns the session export, so no session can read `clean` yet. C arrives regardless.
 
 ### Collecting before the delete
 
@@ -748,9 +748,9 @@ Turns one run's common-window evidence into separate validity and gate decisions
 | File | Owns |
 | --- | --- |
 | `capacity_scorer.py` | The production scorer and its pinned policy. Pure over verified files, the sealed execution record and the window proof. The executor's default scorer. |
-| `capacity_report.py` | Renders a run's `score-report.md` and a session's search report, with nothing added. `capacity_report.py --session-dir D --out DIR` regenerates the same bytes offline. |
+| `capacity_report.py` | Renders a run's `score-report.md` and a session's search report, adding no judgement, and audits what it renders against the retained files. `capacity_report.py --session-dir D --out DIR` regenerates the same bytes offline. |
 | `search.py` | `observations` and `capacity_claim`: the facts that outlive a search's status, and the one sentence each ending may say. |
-| `scoring_fixtures.py`, `scoring_evidence.py` | Mocked trees with one thing changed, and `ScoredSim`, which runs the real executor, prover and scorer over a fake guest that exports those trees. |
+| `scoring_fixtures.py`, `scoring_evidence.py` | Mocked trees with one thing changed, the tables of generator and ramp evidence each must refuse, and `ScoredSim`, which runs the real executor, prover and scorer over a fake guest that exports those trees. |
 
 ### What each number really is
 
@@ -784,6 +784,8 @@ Every comparison is on exact integers or fractions. Floats appear only as labell
 
 **Offered load** is its own axis: `valid`, `invalid` or `not_proven`. Each bot needs `sent x 100 >= scheduled x 99`, so exactly 99% is valid. A disconnected bot is held to the part it was connected for, less the one interrupted slot. If it misses that floor only because it saw the disconnect late, the floor is recomputed up to the latest time the server's event could have happened, and `input_missing_only_after_the_server_event` records that this happened. If the clocks cannot place the server's event, nothing is excused. Generator socket drops are read per bot socket, never from a host counter. A missing counter, a missing frozen row, too few ENet samples or a decode failure (the server or the bot could have caused it) leave it `not_proven`.
 
+**Generator evidence is checked by whose it is, not by category.** The prover names every reason it draws from the swarm's own files (`facts.swarm_problems`). Poll liveness, freeze and drain times, join times, publication, a cut coordinator or shard: each is labelled `evidence`, and each leaves offered load `not_proven`, beside a failed gate or a crash just the same. None of it can be the server's doing. A server's missing data can be, so a demonstrated crash that cut off the server's own recorders still stands on a generator whose evidence is independently whole. No failure is required to have a whole window behind it. A wall clock step on the bot host also leaves it `not_proven`, because its counter reads can no longer be placed.
+
 ### Classification
 
 Decided in this order. Every gate is still computed, so a refused run shows what it measured.
@@ -793,13 +795,22 @@ Decided in this order. Every gate is still computed, so a refused run shows what
 3. **Independent generator failure.** Alone it is **invalid offered load**. Beside any server failure or unexplained loss it is **inconclusive**, because nothing separates them, and both stay visible. Generator trouble never produces a capacity failure.
 4. **Not a capacity signal → inconclusive.** A game exit with no cause on record, a `SERVER_SHUTDOWN` reason, a refused session.
 5. **Offered load not proven → inconclusive.** A server failure cannot stand on it.
-6. **Demonstrated server failure → capacity failure.** A panic or crash signal, a SIGKILL beside the kernel's OOM count, a kick, a Tick or game-socket gate proven failed, a failed RTT or loss gate, or a transport timeout beside proven server distress.
+6. **Demonstrated server failure → capacity failure.** A panic or crash signal, a kick, a Tick or game-socket gate proven failed, a failed RTT or loss gate, or a transport timeout beside proven server distress.
 7. **A transport timeout alone → inconclusive.** A server, a path and a stalled bot can each cause one, and nothing here says which.
 8. **Anything unknown, or a proof that is not `complete` → inconclusive.** Otherwise **valid pass**.
 
 **RTT and loss are measured on the path from the generator.** A failed one with a valid generator is a capacity failure, as the accepted gates say, but it does not isolate the server from the network. Reports show which gate failed.
 
-**A ramp that never held N** has no window, so it can never pass, and the prover labels it a generator reason. The scorer proves generator health itself from the shard files and every bot socket's counter, then needs something on the server's record: a crash, a kick of an authenticated bot, or at least 1% of Ticks above 33.3 ms among those with an authenticated player, read on the server's own clock. A timeout alone is inconclusive. A refused join is a limit or a ticket, and no capacity signal.
+**A SIGKILL proves nothing about memory.** `/proc/vmstat`'s `oom_kill` is host-wide, so an increment says neither who was killed nor when, and it stays a diagnostic (`host_oom_kill_delta`). No producer here names an OOM victim, so a SIGKILL stays `killed_with_no_cause_on_record`, inconclusive, whatever that count did. A gate proven failed before it stays on record beside it, and decides nothing, because the two cannot be separated.
+
+**A ramp that never held N** has no window, so it can never pass, and the prover labels it a generator reason. `prove_ramp` then holds it to the same evidence, on the same reason codes:
+
+- **The supervised processes.** `swarm.json`, `process.json` and the rows of both collectors must match the pid, kernel start and boot the supervisors sealed, and nothing an earlier run on that host used. A sealed hash says nothing here: it shows which bytes arrived, not whose they are.
+- **Every socket opened.** A shard holds its sockets until it exits, so each one must be in every collector read made between its opening and the abort, with one inode, on the endpoint its join row claims. A socket no bot claims is refused. Its counter counts from creation, so a drop before the first read still counts.
+- **Every bot started.** Each slot well before the coordinator's abort needs a join row with a port, and each started bot needs error counters. Ownership is round-robin. A slot after the abort was never owed.
+- **The end of the ramp.** No read after the abort is promised, because a swarm can drain within milliseconds of it. So the last read may be at most 2 s before the abort, with that gap kept in `last_read_before_abort_ns`, and a socket opened after the last read counts as unread. Any other gap leaves the generator `not_proven`.
+
+Then it needs something on the server's record: a crash, a kick, or at least 1% of Ticks above 33.3 ms among those with an authenticated player, read on the server's own clock. The server sends the same reason to a join it refuses, so a kick only counts for a bot both sides recorded as authenticated. A timeout alone is inconclusive. A refused join is a limit or a ticket, and no capacity signal.
 
 The whole-run `report.json` is carried as a labelled diagnostic and never read for a decision. CPU, memory, gaps, bandwidth and host kernel counters are diagnostics and add no gate.
 
@@ -807,7 +818,10 @@ The whole-run `report.json` is carried as a labelled diagnostic and never read f
 
 `RunExecutor`'s default scorer is `capacity_scorer.score`, beside the strict prover and `require_counters=True`, and `run_cli.py` takes no option that changes any of them.
 
-- **Retained once.** `score.json` and `score-report.md` are create-only and the verdict's `evidence_ref` is `score.json`'s hash. A returning controller reads a retained score and never recomputes it, even with a host unreachable. A score that no longer reads is inconclusive.
+- **Retained once.** `score.json` and `score-report.md` are create-only and the verdict's `evidence_ref` is `score.json`'s hash. A returning controller reads a retained score and never recomputes it, even with a host unreachable.
+- **Only this run's own decision is read back.** A score must carry the expected run, trial, session, manifest, frozen controller revision and policy, the exact retained proof and execution digests, and the sealed identities, and its own gates and offered load must support its outcome. A classification must name this run, and a PASS or FAIL must rest on a bound score by the hash it recorded when written. Anything else is refused and left exactly as found, nothing is recomputed, the refused file's hash goes on record, and the run is `INCONCLUSIVE`. A refused classification gets a `classification-reconciled-<token>-<n>.json` beside it, and the registry outcome names that file. A terminal fact from the execution record still takes precedence, so a refusal cannot mask one. No expected hash is ever replaced by the hash of whatever is there now.
+- **Whole or absent.** `score.json`, `classification.json`, `window-proof.json` and each execution record reach the disk under a `.writing-*` name and take their final name only when flushed and whole, without overwriting. An interrupted write leaves that file in place, and nothing reads or promotes it.
+- **Only the frozen revision makes a new decision.** `_score` enforces this for every path, so `collect` and a checkout that changes during a batch are both covered. A controller that cannot show it is the frozen revision, including one whose check fails or was never supplied, still stops, seals, exports and requests cleanup, and it keeps every terminal fact. It writes no new proof or score: a naturally finished run stays `INCOMPLETE`. It can only read back a retained score or classification that holds up.
 - **A scorer that fails is inconclusive,** like a prover that fails, and the outcome still commits. A credential value is refused before retention.
 - **`apply_scorer` still holds the answer** against the execution facts and the proof: no PASS over a failed process or an incomplete window.
 - **Terminal facts survive.** Every existing rule stands: nothing dispatched twice, no successor from an incomplete trial, no resume past a terminal failure, cleanup requested whatever happens. Failing to write a report never delays cleanup.
@@ -825,13 +839,15 @@ The whole-run `report.json` is carried as a labelled diagnostic and never read f
 | `unconfirmed_partial` | Part of the confirmation set is incomplete, and the rest may pass. Not a confirmed capacity |
 | `stopped_*`, `undecidable_incomplete_predecessor`, `partial_*` | No capacity established. The highest one-minute pass is named as an exploratory observation only |
 
+**A report checks what it renders.** Each trial's journal outcome is followed through the classification and score it names, by the hashes recorded when they were written, to the run's own proof and execution record. If any of that disagrees or cannot be verified, the row lists it under `evidence_problems`, its score's content is not rendered as this run's, `claim` becomes `evidence_disagreement` and `establishes` is false. The journal's own outcomes stay in the rows and in `journal_claim`, labelled history. A report still renders whatever is there, and it stays deterministic over contradictory bytes.
+
 The search graph and admission are unchanged from slice 1. `test_capacity_search.EveryLegalPath` walks all 401 leaves and checks each claim against its history. `Trial`s that were selected but never dispatched are not trials of the report.
 
 ### Running it
 
 ```bash
 cd scripts/do_session
-python3 -m unittest test_capacity_scorer test_capacity_search test_scoring_evidence
+python3 -m unittest test_capacity_scorer test_capacity_search test_capacity_integrity test_scoring_evidence
 OMEGA_LOCAL_RELEASE_DIR=<dir with omega-server and omega-load-test> sandbox-exec -f measurement_offline.sb python3 -m unittest test_capacity_real
 python3 scoring_evidence.py synthetic --out ../../docs/netcode/perf-notes/digitalocean-capacity/offline-faults/slice6
 python3 capacity_report.py --session-dir loadtest-runs/digitalocean/<session_id> --out <new dir>
@@ -840,7 +856,10 @@ python3 capacity_report.py --session-dir loadtest-runs/digitalocean/<session_id>
 ### Limits
 
 - **No real pass exists.** macOS has no per-socket counters, so a real local run is refused at step 1. Linux `/proc` counters, independent-host clocks, public routes and generator headroom remain unverified, and the fixtures' mocked sampler rows stand in for all of them.
-- **The kernel's OOM count is host-wide.** It is read only beside a SIGKILL that already happened on a host running one load, and that is not process-attributed proof.
+- **No process-attributed OOM evidence exists.** Issue #60 asks to capture it. The collector reads only the host-wide counter, so a real OOM kill of the game process stays inconclusive and stops the batch until a producer names its victim by process and start identity. No consumer for such evidence exists yet, on purpose.
+- **A retained file's digest and bindings catch wrong, stale, cut or edited files. They do not stop someone deliberately rewriting a session directory and recomputing the digest.** Nothing here claims to.
+- **A report can only check policy against its own checkout.** The manifest pins the controller revision and not a policy hash, so a report regenerated from another revision with a different policy withholds its claim rather than vouch for it.
+- **The last 2 s before a ramp's abort may go unread.** It is a declared allowance for a collector reading once a second, and it is not calibrated. A generator socket drop inside it, after the last read, would not be seen.
 - **Declared limits are declarations.** The 2 s borrow bound and the prover's clock limits are chosen, not calibrated.
 - **Distress is coarse.** A transport timeout is attributed only beside a proven Tick or game-socket failure or a lost process. Server stalls that show up in neither stay inconclusive. A long stall outside `world.tick` counts as one Tick at most, and the accepted gate has no cadence term, so it is a diagnostic.
 - **Compact findings, cost and full run reports are slice 7.** `score-report.md` covers the decision only.

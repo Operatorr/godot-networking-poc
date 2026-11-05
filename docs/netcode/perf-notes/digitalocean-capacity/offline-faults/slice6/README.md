@@ -4,8 +4,8 @@ Offline evidence for [issue #69](https://github.com/Operatorr/godot-networking-p
 
 | File | What it is | Reproducible |
 | --- | --- | --- |
-| [`synthetic-scores.json`](synthetic-scores.json) | The real prover and scorer over 58 mocked recorder trees, each with one thing changed. Nothing ran, and each "60 s window" is arithmetic | Yes: `test_scoring_evidence` regenerates it and compares the hash |
-| [`synthetic-searches.json`](synthetic-searches.json) | 26 whole searches through the real executor, registry, prover and scorer over a fake guest that exports those trees. No outcome is scripted: each comes from the bytes | Yes, likewise |
+| [`synthetic-scores.json`](synthetic-scores.json) | The real prover and scorer over 134 mocked recorder trees, each with one thing changed. Nothing ran, and each "60 s window" is arithmetic | Yes: `test_scoring_evidence` regenerates it and compares the hash |
+| [`synthetic-searches.json`](synthetic-searches.json) | 44 whole searches through the real executor, registry, prover and scorer over a fake guest that exports those trees. No outcome is scripted: each comes from the bytes | Yes, likewise |
 | [`real-local-scores.json`](real-local-scores.json) | The real scorer over real `omega-server` and `omega-load-test` bytes on one machine | No: timings are real. `SHA256SUMS` only says these are the bytes retained |
 
 Raw recorder files are not retained here. The real generator deletes its temporary run directories, so its rows are summaries that cannot be replayed from this directory.
@@ -25,8 +25,13 @@ Each boundary is tested on both sides, and every comparison keeps its exact coun
 | A kick with a healthy generator; a kick seen late with frames missing only after it; a transport timeout beside a Tick overrun; a panic or segfault | `capacity_failure` |
 | A kick after independent starvation, or starvation before a late-seen kick; a stall beside an overrun | `inconclusive_evidence`, with both failures still listed |
 | A transport timeout alone; a server row the bot never saw; N lost with no account of who; SIGKILL or exit 0 with no cause on record; a `SERVER_SHUTDOWN` or duplicate-session reason | `inconclusive_evidence` |
+| A SIGKILL beside an earlier or later host OOM increment, a reset counter, or an RTT gate proven failed | `inconclusive_evidence`: the host's count is a diagnostic, and no producer names a victim |
+| A Tick overrun beside a host OOM increment | `capacity_failure`, from the Ticks alone |
+| Each of 21 kinds of missing generator evidence, beside a Tick overrun and beside a demonstrated panic: poll liveness, freeze and drain times, join times, frozen rows, publication, final authentication, a cut or missing coordinator or shard, the bot collector, one socket read, a socket counter | `inconclusive_evidence`, 42 scenarios |
 | A ramp: timeout alone, or transport timeout alone; generator counters unproven | `inconclusive_evidence` |
-| A ramp: timeout beside a proven overrun, or a kick | `capacity_failure` |
+| A ramp: timeout beside a proven overrun, or a kick of an authenticated bot | `capacity_failure` |
+| A ramp: a kick of a bot never authenticated, which the server sends to a refused join too | `inconclusive_evidence` |
+| A ramp beside a proven overrun, in each of 28 ways that are not the supervised processes or do not cover what they did: foreign swarm, game or collector pid, start or boot; a changed inode, a wrong endpoint, an unclaimed socket; a socket absent from a read or never read; no join row, port or counters for a started bot; no abort row or one that disagrees; a last read long before the abort; broken ownership | `inconclusive_evidence`, 28 scenarios |
 | A ramp: poll starvation alone | `invalid_offered_load` |
 | A local counter bypass; a prover never given the schema; the historical `/2` placeholder manifest; a short hold the prover was allowed; a foreign schema; a fault build | `inconclusive_evidence`, whatever the gates say |
 | A host rebooted | `infrastructure_failure` |
@@ -35,16 +40,31 @@ Each boundary is tested on both sides, and every comparison keeps its exact coun
 
 | Ending | Scenarios | Claim |
 | --- | ---: | --- |
-| `confirmed` | 8 | The candidate on this pair, three valid passes, not provider-wide |
+| `confirmed` | 9, and a 10th whose report withholds the claim below | The candidate on this pair, three valid passes, not provider-wide |
 | `confirmed_search_cap_reached` | 1 | At least 500; not a discovered ceiling |
-| `no_passing_target` | 2 | No passing target at 5-player resolution; not zero, `players` and `lower_bound` null |
+| `no_passing_target` | 3 | No passing target at 5-player resolution; not zero, `players` and `lower_bound` null |
 | `unconfirmed_variable` | 3 | Failed at repetition 1, 2 or 3; no replacement, nothing after it |
 | `unconfirmed_partial` | 1 | An interrupted confirmation; its untouched siblings ran; never confirmed |
-| `stopped_*` | 9 | Invalid load, inconclusive evidence or infrastructure, across coarse, refinement and confirmation; earlier passes named as exploratory only |
-| `undecidable_incomplete_predecessor` | 1 | A cut trial, neither inferred nor replayed; resume refused |
+| `stopped_*` | 20 | Invalid load, inconclusive evidence or infrastructure, across coarse, refinement and confirmation; earlier passes named as exploratory only |
+| `undecidable_incomplete_predecessor` | 2 | A cut trial or one an unfrozen controller could not score, neither inferred nor replayed |
 | `partial_time_exhausted` | 1 | Results kept; nothing dispatched that cannot fit |
+| `in_progress` | 3 | A session collected after one decided trial, with nothing more run |
 
 Every scenario records `no_hidden_retry`: one game start per trial. The search also covers crashes at `after_execution_record`, `after_score_retained`, `before_outcome_commit` and `after_outcome_commit`. `test_capacity_search.EveryLegalPath` walks all 401 leaves of the graph with no files.
+
+These also pin what a search may not do with evidence it cannot trust, with each outcome coming from the real path:
+
+| Scenario | Trials | Claim |
+| --- | --- | --- |
+| A Tick overrun or a panic with no poll liveness or freeze time | `INCONCLUSIVE`, no successor | Stopped |
+| A panic with the generator independently proven | `FAIL`, then refinement | The search goes on, with no whole window demanded of it |
+| A ramp overrun over a foreign swarm, game or collector, or a socket never read | `INCONCLUSIVE`, no refinement | Stopped |
+| A foreign or edited retained score, or a foreign classification, on return | `INCONCLUSIVE`, the file left as found | `evidence_disagreement` |
+| An unchanged retained score, collected with the hosts as they are | The retained outcome, not recomputed | As the journal says |
+| A retained score replaced after a search had confirmed | Unchanged in the journal | `evidence_disagreement`, with `confirmed_observation` kept as `journal_claim` |
+| Collect from the frozen controller, a natural end | `PASS` | As the journal says |
+| Collect from an unfrozen controller, a natural end | `INCOMPLETE`, and no proof or score written | Undecidable; cleanup still requested |
+| Collect from an unfrozen controller, with a retained score that holds up, or one that does not | The retained outcome, or `INCONCLUSIVE` | As the journal says, or `evidence_disagreement` |
 
 ## Real binaries, one machine
 
@@ -83,4 +103,4 @@ The real controller path also ran one 60 s window through `test_run_local_integr
 
 ## Not shown anywhere here
 
-A real pass; Linux `/proc` socket and OOM counters; independent-host clocks; public routes; SSH or systemd; generator headroom under real load; a real server kick, since nothing in the real workload triggers one, so that case rests on the traced source and the mocked trees; and any host's capacity.
+A real pass; Linux `/proc` socket and OOM counters; any process-attributed OOM evidence, which no producer writes yet; independent-host clocks; public routes; SSH or systemd; generator headroom under real load; a real server kick, since nothing in the real workload triggers one, so that case rests on the traced source and the mocked trees; and any host's capacity.

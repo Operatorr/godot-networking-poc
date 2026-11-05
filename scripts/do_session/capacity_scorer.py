@@ -23,6 +23,11 @@ What each number really is, traced to its producer (``rust/load_test/src/measure
                   its face: ``USER_QUIT`` is also 0, and a server row with reason 0 may be a bot quitting or a server-side timeout.
   Bot ``errors``  ``Bot::fail`` raises it once, so a disconnect the bot did not ask for counts one error. That error is the disconnect, not a second failure.
 
+Whose evidence. A hash shows which bytes arrived, not whose they are. ``measurement_window`` holds every recorder to the identities the supervisors sealed, including for a ramp that never produced a window, and it names which
+reasons come from the swarm's own files. All of those stand beside any server failure, because none of them can be the server's doing. A server's missing data can be the consequence of its demonstrated crash.
+
+An exit. Only the supervisor's record of the exit proves anything. The kernel's OOM count is host-wide, so it cannot say who was killed or when: it stays a diagnostic. No producer here names an OOM victim, so a SIGKILL stays unexplained.
+
 Boundaries. A Tick or a counter read near an edge of a mapped interval may or may not belong to the window, so a verdict must hold for every position the clocks allow. Tick counts
 and socket drops are evaluated at both extremes of that uncertainty, and anything that depends on where the window really was stays unknown.
 """
@@ -38,7 +43,10 @@ import measurement_window as mw
 import search
 
 SCORE_SCHEMA = 'omega.do-session.run-score/1'
+CLASSIFICATION_SCHEMA = 'omega.do-session.run-classification/1'
 SCORER = 'omega.do-session.capacity-scorer/1'
+SCORE_FILE = 'score.json'
+GATE_NAMES = ('continuity', 'bot_errors', 'tick_budget', 'game_socket_drops', 'rtt_p95', 'enet_loss')
 PASS, FAIL, UNKNOWN = 'pass', 'fail', 'unknown'
 VALID, INVALID, NOT_PROVEN = 'valid', 'invalid', 'not_proven'
 VALID_PASS, CAPACITY_FAILURE, INVALID_LOAD, INFRASTRUCTURE_FAILURE, INCONCLUSIVE = ('valid_pass', 'capacity_failure', 'invalid_offered_load', 'infrastructure_failure', 'inconclusive_evidence')
@@ -86,6 +94,9 @@ POLICY = dict(
     input=dict(min_percent=mw.schema()['limits']['input_min_percent'],
                definition='per bot: sent over its own scheduled grid slots in the window, in integers. Exactly 99 percent is valid. A disconnected bot is held to the part it was connected for, less the one slot the disconnect can interrupt.'),
     boundaries='Tick counts and socket drops are evaluated over the widest and the narrowest interval the clocks allow. A verdict must hold for both, or it stays unknown.',
+    generator_evidence='A failed gate or a crash establishes nothing over a generator not proven valid. Every reason the prover draws from the swarm\'s own files stands: a server\'s missing data can be the consequence of its demonstrated crash, and a generator\'s cannot.',
+    ramp=dict(definition='A ramp can fail and can never pass. Its failure needs the supervised swarm and game identities, every opened socket read while open, and a kick only of a bot both sides recorded as authenticated.', last_read_before_abort_limit_ns=mw.RAMP_READ_TAIL_NS),
+    oom='The kernel OOM count is host-wide, so it is a diagnostic and never explains a process exit. No producer here names an OOM victim, so a SIGKILL stays killed_with_no_cause_on_record.',
 )
 POLICY_SHA256 = hashlib.sha256(json.dumps(POLICY, sort_keys=True).encode('utf-8')).hexdigest()
 
@@ -171,30 +182,27 @@ def game_exit(execution, sampler_rows):
     if signal in SELF_INFLICTED_SIGNALS:
         return dict(facts, kind='server_crash_signal', demonstrated=True)
     if signal == SIGKILL:
-        oom = _oom_kills(sampler_rows)
-        if oom:
-            return dict(facts, kind='out_of_memory', demonstrated=True, oom_kills=oom)
-        return dict(facts, kind='killed_with_no_cause_on_record', demonstrated=False, oom_kills=oom)
+        return dict(facts, kind='killed_with_no_cause_on_record', demonstrated=False, host_oom_kill_delta=_counter_delta(_memory_values(sampler_rows, 'oom_kill')))
     return dict(facts, kind='ended_with_no_cause_on_record', demonstrated=False)
 
 
-def _oom_kills(rows):
-    """The host's kernel OOM count across the run. Host-wide, so it only ever supports a SIGKILL that already happened, on a host with one load."""
-    counts = [row['memory']['oom_kill'] for row in rows if isinstance(row.get('memory'), dict) and mw.is_count(row['memory'].get('oom_kill'))]
-    return counts[-1] - counts[0] if len(counts) >= 2 else None
+def _memory_values(rows, key):
+    return [row['memory'][key] for row in rows if isinstance(row.get('memory'), dict) and mw.is_count(row['memory'].get(key))]
+
+
+def _counter_delta(values):
+    """First to last of a cumulative counter. One that moved backward was reset, so it says nothing."""
+    if len(values) < 2 or any(right < left for left, right in zip(values, values[1:])):
+        return None
+    return values[-1] - values[0]
 
 
 def memory_diagnostics(rows):
     """Memory pressure, which selects a conditional RAM tier and is no gate. Absent on a platform without it."""
-    readings = [row['memory'] for row in rows if isinstance(row.get('memory'), dict)]
-    if not readings:
+    if not any(isinstance(row.get('memory'), dict) for row in rows):
         return None
-
-    def spread(key):
-        values = [item[key] for item in readings if mw.is_count(item.get(key))]
-        return values[-1] - values[0] if len(values) >= 2 else None
-    available = [item['MemAvailable'] for item in readings if mw.is_count(item.get('MemAvailable'))]
-    return dict(mem_available_min_bytes=min(available) if available else None, oom_kill_delta=spread('oom_kill'), pgmajfault_delta=spread('pgmajfault'), pswpout_delta=spread('pswpout'))
+    available = _memory_values(rows, 'MemAvailable')
+    return dict(mem_available_min_bytes=min(available) if available else None, host_oom_kill_delta=_counter_delta(_memory_values(rows, 'oom_kill')), pgmajfault_delta=_counter_delta(_memory_values(rows, 'pgmajfault')), pswpout_delta=_counter_delta(_memory_values(rows, 'pswpout')))
 
 
 # ---- the common window's gates -----------------------------------------------------------------------
@@ -458,6 +466,8 @@ def _admissible(evidence, proof):
     if facts.get('contract_hold') is not True:
         problems.append(dict(code='non_contract_hold', detail='a %r s hold is not an accepted window' % (facts.get('hold_s'),)))
     trial = evidence.get('trial') or {}
+    if proof.get('run_id') != evidence.get('run_id'):
+        problems.append(dict(code='proof_is_of_another_trial', detail='the proof is of run %r' % (proof.get('run_id'),)))
     if facts.get('target') != trial.get('target') or facts.get('hold_s') != trial.get('hold_s'):
         problems.append(dict(code='proof_is_of_another_trial', detail='the proof says target %r hold %r' % (facts.get('target'), facts.get('hold_s'))))
     if not evidence.get('window_proof_sha256'):
@@ -491,6 +501,15 @@ def _generator_reasons(proof):
     return sorted({item.get('code') for item in (proof or {}).get('reasons') or () if isinstance(item, dict) and item.get('category') == mw.GENERATOR})
 
 
+def execution_identities(execution):
+    """Every process the supervisors named for this run, as the sealed record has them."""
+    found = {}
+    for role, view in ((execution or {}).get('roles') or {}).items():
+        processes = ((view or {}).get('identity') or {}).get('processes') or {}
+        found[role] = {name: {key: (item or {}).get(key) for key in ('pid', 'start_id', 'boot_id')} for name, item in sorted(processes.items())}
+    return found
+
+
 def evaluate(evidence):
     """The whole score document for one run. Every gate is computed even when the run cannot count, so a refused run still shows what it measured."""
     proof = evidence.get('window_proof')
@@ -503,7 +522,8 @@ def evaluate(evidence):
     facts = dict(proof.get('facts') or {}) if isinstance(proof, dict) else {}
     document = dict(schema=SCORE_SCHEMA, scorer=SCORER, policy=POLICY, policy_sha256=POLICY_SHA256, run_id=evidence.get('run_id'), establishes_capacity=False,
                     trial={key: trial.get(key) for key in ('ordinal', 'phase', 'target', 'repetition', 'hold_s')},
-                    inputs=dict(execution_sha256=evidence.get('execution_sha256'), window_proof_sha256=evidence.get('window_proof_sha256'), measurement_schema=(proof or {}).get('measurement_schema') if isinstance(proof, dict) else None,
+                    inputs=dict(session_id=evidence.get('session_id'), manifest_sha256=evidence.get('manifest_sha256'), controller_sha=evidence.get('controller_sha'), identities=execution_identities(execution),
+                                execution_sha256=evidence.get('execution_sha256'), window_proof_sha256=evidence.get('window_proof_sha256'), measurement_schema=(proof or {}).get('measurement_schema') if isinstance(proof, dict) else None,
                                 measurement_schema_sha256=(proof or {}).get('measurement_schema_sha256') if isinstance(proof, dict) else None, proof_status=(proof or {}).get('status') if isinstance(proof, dict) else None, proof_reasons=_codes(proof), inadmissible=refused),
                     legacy_report=_legacy(root))
     infrastructure = list((execution.get('problems') or {}).get('infrastructure') or ())
@@ -608,6 +628,18 @@ def _error_gate(rows, missing):
     return _gate(verdict, **facts), independent
 
 
+def _generator_evidence_missing(facts):
+    """What the swarm's own files fail to show. No failed gate or crash can excuse any of it, because none of it can be the server's doing."""
+    problems = facts.get('swarm_problems')
+    if not isinstance(problems, list):
+        return ['the proof does not say what the swarm\'s own files show']
+    codes = sorted({item.get('code') for item in problems if isinstance(item, dict) and item.get('category') != mw.GENERATOR and item.get('code') not in INTEGRITY_CODES})
+    found = ['necessary generator evidence is missing: ' + ', '.join(codes)] if codes else []
+    if facts.get('swarm_wall_clock_steps'):
+        found.append('the bot host\'s wall clock stepped, so its counter reads cannot be placed against the window')
+    return found
+
+
 def _validity(proof, execution, facts, rows, missing, independent, shards_short):
     """Offered load, on its own axis from the gates. Valid means proven; a value that is absent leaves it unproven and never valid."""
     codes = [code for code in _generator_reasons(proof) if code not in REDERIVED_GENERATOR_CODES]
@@ -617,7 +649,7 @@ def _validity(proof, execution, facts, rows, missing, independent, shards_short)
     below = [row['bot'] for row in rows if not row['input_floor_met']]
     failures += [dict(code='offered_input_below_minimum', source='frozen_row', bot=bot) for bot in below]
     decode = [row['bot'] for row in rows if row['decode_failures']]
-    unproven = []
+    unproven = _generator_evidence_missing(facts)
     if 'peer_sample_coverage' in _generator_reasons(proof):
         unproven.append('a bot has too few in-window ENet samples')
     if decode:
@@ -684,7 +716,7 @@ def _decide(gates, validity, departures, exit_facts, codes, proof, execution, tr
             return INCONCLUSIVE, ['both the generator and the server failed, and nothing separates them: ' + ', '.join(codes_seen) + '; ' + '; '.join(demonstrated + ['bots %s lost their connection' % (unattributed + stop_requested)[:10]])]
         return INVALID_LOAD, ['the generator failed on its own: ' + ', '.join(codes_seen)]
     if exit_facts.get('lost') and not exit_facts.get('demonstrated'):
-        return INCONCLUSIVE, ['the game process ended and nothing on record says why: %s' % exit_facts.get('kind')]
+        return INCONCLUSIVE, ['the game process ended and nothing on record says why: %s' % exit_facts.get('kind')] + (['on record beside it, and not separable from it: ' + '; '.join(demonstrated)] if demonstrated else [])
     if stop_requested:
         return INCONCLUSIVE, ['the server was told to shut down inside the window, which is no capacity signal: bots %s' % stop_requested[:10]]
     if other:
@@ -716,99 +748,24 @@ def _diagnostics(facts, game_rows, game, swarm):
 
 # ---- a window that was never established --------------------------------------------------------------
 
-def ramp_generator(root, trial, workload, limits):
-    """Whether the swarm is shown healthy through a ramp that produced no window. A ramp failure can establish a failing bracket only over a generator proven valid."""
-    invalid, unproven, integrity = [], [], []
-    directory = root / 'bot' / 'swarm'
-    swarm, problem = mw.load_json(directory / 'swarm.json')
-    window, window_problem = mw.load_json(directory / 'window.json')
-    if problem or window_problem:
-        return dict(verdict=NOT_PROVEN, invalid=invalid, unproven=['swarm.json %s, window.json %s' % (problem, window_problem)], integrity=integrity, ports={})
-    reasons = _sink()
-    mw.check_producer(swarm, 'swarm.json', 'swarm.json', reasons)
-    mw.check_producer(window, 'window.json', 'window.json', reasons)
-    mw.check_build(swarm, reasons)
-    controls = swarm.get('controls') or {}
-    mw.check_controls(controls, trial, workload, reasons)
-    integrity += [item['code'] for item in reasons.items]
-    nonce = swarm.get('nonce')
-    if window.get('nonce') != nonce:
-        integrity.append('recorder_overwritten')
-    if window.get('panicked_shards') or window.get('unjoined_shards'):
-        invalid.append('a shard panicked or never finished: %s %s' % (window.get('panicked_shards'), window.get('unjoined_shards')))
-    elif not isinstance(window.get('panicked_shards'), list) or not isinstance(window.get('unjoined_shards'), list):
-        unproven.append('window.json does not say which shards ended')
-    shards = controls.get('threads')
-    if not mw.is_count(shards) or not shards:
-        return dict(verdict=NOT_PROVEN, invalid=invalid, unproven=unproven + ['no shard count'], integrity=integrity, ports={})
-    ports, ends, starvation = {}, [], limits['poll_starvation_ms'] * 1_000_000
-    stagger = limits['stagger_tolerance_ms'] * 1_000_000
-    for shard in range(shards):
-        rows, problem = mw.load_ndjson(directory / ('shard-%d.ndjson' % shard))
-        name = 'shard-%d' % shard
-        if problem:
-            unproven.append('%s %s' % (name, problem))
-            continue
-        local = _sink()
-        if not mw.check_stream(rows, nonce, name, local) or not mw.check_producer(rows[0], name, 'shard-<k>.ndjson', local):
-            bad = [item['code'] for item in local.items]
-            (integrity if set(bad) & INTEGRITY_CODES else unproven).extend(bad)
-            continue
-        if ((rows[0].get('geometry') or {}).get('initialized_on_thread')) is not True:
-            invalid.append(name + ' has no geometry')
-        footer = rows[-1]
-        if footer.get('left_early') is True:
-            invalid.append(name + ' left early')
-        elif footer.get('left_early') is not False:
-            unproven.append(name + ' does not say whether it left early')
-        gap = footer.get('max_poll_gap_ns')
-        if not mw.is_count(gap):
-            unproven.append(name + ' has no poll liveness')
-        elif gap > starvation:
-            invalid.append('%s did not poll for %.0f ms' % (name, gap / 1e6))
-        fields = rows[0].get('bot_fields') or []
-        latest = {}
-        for row in rows:
-            kind = row.get('k')
-            if kind == 'join':
-                if row.get('error'):
-                    invalid.append('bot %s could not open its socket: %s' % (row.get('bot'), row.get('error')))
-                elif not mw.is_int(row.get('scheduled_ns')) or not mw.is_int(row.get('actual_ns')):
-                    unproven.append('bot %s has no join times' % row.get('bot'))
-                elif row['actual_ns'] - row['scheduled_ns'] > stagger:
-                    invalid.append('bot %s joined %.1f ms after its slot' % (row.get('bot'), (row['actual_ns'] - row['scheduled_ns']) / 1e6))
-                if row.get('local_port') is not None:
-                    ports[row.get('bot')] = row['local_port']
-            elif kind == 'bot_end':
-                ends.append(row)
-                if row.get('panics'):
-                    invalid.append('bot %s panicked' % row.get('bot'))
-            elif kind in ('sample', 'drain_end'):
-                for item in row.get('bots') or ():
-                    if isinstance(item, list) and len(item) == len(fields):
-                        latest[item[fields.index('id')]] = dict(zip(fields, item))
-        for bot, item in latest.items():
-            bad = {key: item.get(key) for key in ('send_errors', 'panics', 'socket_send_errors', 'socket_zero_sends', 'socket_receive_errors')}
-            if any(not mw.is_count(value) for value in bad.values()):
-                unproven.append('bot %s has no error counters' % bot)
-            elif any(bad.values()):
-                invalid.append('bot %s: %s' % (bot, {key: value for key, value in bad.items() if value}))
-    bot_rows = mw.load_sampler(root, 'bot', _sink())
-    series = mw.socket_series(bot_rows, 'bot')
-    drops = 0
-    for bot, port in sorted(ports.items()):
-        readings = series.get(port) or []
-        values = [item.get('drops') for item in readings]
-        if len(values) < 2 or any(not mw.is_count(value) for value in values) or any(right < left for left, right in zip(values, values[1:])) or len({item.get('inode') for item in readings}) != 1:
-            unproven.append('bot %s has no proven socket counter' % bot)
-        else:
-            drops += values[-1] - values[0]
-    if not ports:
-        unproven.append('no bot ever opened a socket')
-    if drops:
-        invalid.append('generator sockets dropped %d datagrams in the ramp' % drops)
+def ramp_generator(proof):
+    """Whether the proof shows the swarm healthy through a ramp that produced no window. A ramp failure can establish a failing bracket only over a generator proven valid."""
+    facts = (proof.get('facts') if isinstance(proof, dict) else None) or {}
+    ramp = facts.get('ramp')
+    integrity = sorted(set(_codes(proof)) & INTEGRITY_CODES)
+    if not isinstance(ramp, dict):
+        return dict(verdict=NOT_PROVEN, invalid=[], unproven=['the proof holds no account of this ramp'], integrity=integrity, ends=[], reason=None, generator_socket_drops=None)
+    problems = [item for item in facts.get('swarm_problems') or () if isinstance(item, dict)]
+    invalid = [item.get('detail') or item.get('code') for item in problems if item.get('category') == mw.GENERATOR and item.get('code') != 'window_not_established']
+    unproven = [item.get('detail') or item.get('code') for item in problems if item.get('category') != mw.GENERATOR and item.get('code') not in INTEGRITY_CODES]
+    host = ramp.get('bot_host') if isinstance(ramp.get('bot_host'), dict) else None
+    if host is None:
+        unproven.append('no bot collector rows cover this ramp')
+    elif host.get('sockets_without_counters') or not mw.is_count(host.get('socket_drops_total')):
+        unproven.append('generator socket counters are not proven: %d of the opened sockets have one, none for bots %s' % (host.get('sockets_with_counters') or 0, host.get('bots_without_counters')))
+    drops = host.get('socket_drops_total') if host else None
     verdict = INVALID if invalid else (NOT_PROVEN if unproven or integrity else VALID)
-    return dict(verdict=verdict, invalid=invalid[:20], unproven=unproven[:20], integrity=sorted(set(integrity)), ports=ports, ends=ends, reason=window.get('reason'), generator_socket_drops=drops if not unproven else None)
+    return dict(verdict=verdict, invalid=invalid[:20], unproven=unproven[:20], integrity=integrity, ends=ramp.get('ends') or [], reason=ramp.get('reason'), generator_socket_drops=drops if not unproven else None)
 
 
 def ramp_overrun(game):
@@ -825,13 +782,16 @@ def ramp_overrun(game):
 
 def _score_ramp(evidence, proof, root, trial, workload, limits, execution, window):
     """No common window exists, so nothing here can pass. It can still be a demonstrated failure, and it must not be called one from a timeout alone."""
-    health = ramp_generator(root, trial, workload, limits)
+    health = ramp_generator(proof)
     game = mw.load_game(root, _sink(), limits)
     game_rows = mw.load_sampler(root, 'game', _sink())
     exit_facts = game_exit(execution, game_rows)
     overrun = ramp_overrun(game)
     refused = [row for row in (game or {}).get('population') or () if row.get('k') in ('connect_rejected', 'auth_rejected')]
-    kicks = sorted(row.get('bot') for row in health.get('ends') or () if isinstance(row.get('disconnected'), dict) and row['disconnected'].get('reason') == REASON_KICKED and row['disconnected'].get('expected') is False)
+    # The server also sends this reason to a join it refuses, so a kick needs a bot both sides recorded as authenticated.
+    authenticated = {row.get('name') for row in game['population'] if row.get('k') == 'auth'} if game is not None else None
+    kicks = sorted(row['bot'] for row in health.get('ends') or () if isinstance(row.get('disconnected'), dict) and row['disconnected'].get('reason') == REASON_KICKED and row['disconnected'].get('expected') is False
+                   and row.get('authenticated') is True and (authenticated is None or 'LoadBot%03d' % row['bot'] in authenticated))
     reason = health.get('reason') or (window or {}).get('reason')
     unknown = _gate(UNKNOWN, why='no common window was established', swarm_reason=reason)
     gates = dict(continuity=_gate(FAIL if exit_facts.get('lost') or kicks else UNKNOWN, why='N never held: %s' % reason, target=trial['target']), bot_errors=unknown, tick_budget=dict(overrun, scope='every Tick with at least one authenticated player, the ramp and any drain'),
@@ -849,13 +809,16 @@ def _score_ramp(evidence, proof, root, trial, workload, limits, execution, windo
     if overrun['verdict'] == FAIL:
         demonstrated.append('Ticks over the literal 33.3 ms budget at 1 percent or more while the server held players')
     attribution = dict(game_exit=exit_facts, swarm_reason=reason, departures=[], refused_joins=len(refused), server_kicks=kicks)
-    classification, reasons = _decide_ramp(health, validity, demonstrated, exit_facts, refused, reason)
-    return dict(gates=gates, validity=validity, attribution=attribution, diagnostics=_diagnostics({}, game_rows, game, None), classification=classification, reasons=reasons)
+    classification, reasons = _decide_ramp(health, validity, demonstrated, exit_facts, refused, reason, _codes(proof))
+    ramp_facts = (proof.get('facts') if isinstance(proof, dict) else None) or {}
+    return dict(gates=gates, validity=validity, attribution=attribution, diagnostics=_diagnostics(dict(bot_host=(ramp_facts.get('ramp') or {}).get('bot_host')), game_rows, game, None), classification=classification, reasons=reasons)
 
 
-def _decide_ramp(health, validity, demonstrated, exit_facts, refused, reason):
+def _decide_ramp(health, validity, demonstrated, exit_facts, refused, reason, codes):
     if health.get('integrity'):
         return INCONCLUSIVE, ['the evidence cannot be trusted: ' + ', '.join(health['integrity'])]
+    if 'host_rebooted' in codes:
+        return INFRASTRUCTURE_FAILURE, ['a host rebooted during the run']
     if reason == 'interrupted':
         return INCONCLUSIVE, ['the swarm was stopped before a window was established']
     if validity['verdict'] == INVALID or reason == 'shard_exited_before_window':
@@ -866,7 +829,7 @@ def _decide_ramp(health, validity, demonstrated, exit_facts, refused, reason):
     if validity['verdict'] != VALID:
         return INCONCLUSIVE, ['the ramp failed over a generator not proven valid: ' + '; '.join(validity['unproven'])]
     if exit_facts.get('lost') and not exit_facts.get('demonstrated'):
-        return INCONCLUSIVE, ['the game process ended in the ramp and nothing on record says why: %s' % exit_facts.get('kind')]
+        return INCONCLUSIVE, ['the game process ended in the ramp and nothing on record says why: %s' % exit_facts.get('kind')] + (['on record beside it, and not separable from it: ' + '; '.join(demonstrated)] if demonstrated else [])
     if refused:
         return INCONCLUSIVE, ['the server refused %d joins: a configured limit or a rejected ticket, which is no capacity signal' % len(refused)]
     if demonstrated:
@@ -886,9 +849,155 @@ def canonical(document):
     return json.dumps(document, indent=2, sort_keys=True) + '\n'
 
 
+# ---- what a retained decision must be bound to ---------------------------------------------------------
+
+# A file's own hash says what its bytes are, not whose they are. These hold a retained score and classification to the run, session, policy, proof and execution they claim. They read files and
+# recompute nothing, and a mismatch is refused: no expected hash is ever replaced by the hash of whatever is there now.
+
+_REFERENCE = re.compile(r'^runs/(?P<run_id>[^/#]+)/(?P<name>[^/#]+)#sha256:(?P<sha256>[0-9a-f]{64})$')
+
+
+def parse_reference(reference):
+    """(run_id, file name, sha256) of a retained-file reference, or None."""
+    match = _REFERENCE.match(reference) if isinstance(reference, str) else None
+    return match.groups() if match else None
+
+
+def file_sha256(path):
+    try:
+        return hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def seal(document):
+    """The document with a digest of its own content. It catches a score changed in place or cut short. It is no defence against someone deliberately rewriting session files, which is no threat these files answer."""
+    body = {key: value for key, value in document.items() if key != 'document_sha256'}
+    return dict(body, document_sha256=hashlib.sha256(canonical(body).encode('utf-8')).hexdigest())
+
+
+def retained_expectation(run_dir, trial, session_id, manifest_sha256, controller_sha):
+    """What this run's retained files must agree with, from what is already on record."""
+    run_dir = pathlib.Path(run_dir)
+    executions = {}
+    for path in sorted(run_dir.glob('execution*.json')):
+        record, problem = mw.load_json(path)
+        if not problem:
+            executions[file_sha256(path)] = record
+    proof, problem = mw.load_json(run_dir / 'window-proof.json')
+    return dict(run_dir=run_dir, run_id=trial['run_id'], trial={key: trial.get(key) for key in ('ordinal', 'phase', 'target', 'repetition', 'hold_s')}, session_id=session_id, manifest_sha256=manifest_sha256, controller_sha=controller_sha,
+                executions=executions, proof=None if problem else proof, proof_sha256=None if problem else file_sha256(run_dir / 'window-proof.json'))
+
+
+def _result_problems(document):
+    """Whether this document's own result can be what it says. No decision is recomputed here: each classification simply needs the facts it stands on to be in the document."""
+    problems = []
+    classification, gates, validity = document.get('classification'), document.get('gates'), document.get('validity')
+    if classification not in OUTCOME_OF:
+        return ['it has the classification %r' % (classification,)]
+    if document.get('outcome') != OUTCOME_OF[classification]:
+        problems.append('its outcome %r is not what %s means' % (document.get('outcome'), classification))
+    if document.get('establishes_capacity') is not False:
+        problems.append('one run claims to establish capacity')
+    if not isinstance(gates, dict) or set(gates) != set(GATE_NAMES) or any(not isinstance(gate, dict) or gate.get('verdict') not in (PASS, FAIL, UNKNOWN) for gate in gates.values()):
+        return problems + ['its gates are not the six accepted gates']
+    if not isinstance(validity, dict) or validity.get('verdict') not in (VALID, INVALID, NOT_PROVEN):
+        return problems + ['it has no offered-load verdict']
+    if not isinstance(document.get('reasons'), list) or not document['reasons'] or not all(isinstance(reason, str) for reason in document['reasons']):
+        problems.append('it gives no reasons')
+    inputs = document.get('inputs') if isinstance(document.get('inputs'), dict) else {}
+    attribution = document.get('attribution') if isinstance(document.get('attribution'), dict) else {}
+    if classification == VALID_PASS:
+        if {gate['verdict'] for gate in gates.values()} != {PASS} or validity['verdict'] != VALID or document.get('established') is not True or inputs.get('proof_status') != mw.COMPLETE or inputs.get('proof_reasons') or inputs.get('inadmissible'):
+            problems.append('it says valid_pass and its gates, offered load or proof do not')
+    elif classification == CAPACITY_FAILURE:
+        exit_facts = attribution.get('game_exit') if isinstance(attribution.get('game_exit'), dict) else {}
+        shown = any(gate['verdict'] == FAIL for gate in gates.values()) or exit_facts.get('demonstrated') is True or attribution.get('server_kicks') or any(isinstance(item, dict) and item.get('cause') == 'server_kick' for item in attribution.get('departures') or ())
+        if not shown or validity['verdict'] != VALID or inputs.get('inadmissible'):
+            problems.append('it says capacity_failure and shows no demonstrated failure over a proven generator')
+    elif classification == INVALID_LOAD:
+        if validity['verdict'] != INVALID or inputs.get('inadmissible'):
+            problems.append('it says invalid_offered_load and its offered load does not')
+    return problems
+
+
+def _binding_problems(document, expected):
+    problems = []
+    inputs = document.get('inputs') if isinstance(document.get('inputs'), dict) else {}
+    if document.get('schema') != SCORE_SCHEMA or document.get('scorer') != SCORER:
+        problems.append('it is schema %r from scorer %r' % (document.get('schema'), document.get('scorer')))
+    if document.get('policy_sha256') != POLICY_SHA256 or document.get('policy') != POLICY:
+        problems.append('it was made under policy %r, and this controller holds %s' % (document.get('policy_sha256'), POLICY_SHA256))
+    if document.get('run_id') != expected['run_id']:
+        problems.append('it is of run %r' % (document.get('run_id'),))
+    if document.get('trial') != expected['trial']:
+        problems.append('it is of trial %r' % (document.get('trial'),))
+    for key in ('session_id', 'manifest_sha256', 'controller_sha'):
+        if inputs.get(key) != expected[key]:
+            problems.append('its %s is %r, and this session has %r' % (key, inputs.get(key), expected[key]))
+    frozen = mw.schema()['id'], mw.schema_sha256()
+    if (inputs.get('measurement_schema'), inputs.get('measurement_schema_sha256')) != frozen:
+        problems.append('it was made under measurement schema %r' % (inputs.get('measurement_schema'),))
+    proof = expected['proof']
+    if proof is None or inputs.get('window_proof_sha256') != expected['proof_sha256']:
+        problems.append('its window proof %r is not the retained one' % (inputs.get('window_proof_sha256'),))
+    elif proof.get('run_id') != expected['run_id'] or inputs.get('proof_status') != proof.get('status') or inputs.get('proof_reasons') != _codes(proof):
+        problems.append('what it says of the proof disagrees with the retained proof')
+    execution = expected['executions'].get(inputs.get('execution_sha256'))
+    if execution is None:
+        problems.append('its execution record %r is not one retained for this run' % (inputs.get('execution_sha256'),))
+    else:
+        if execution.get('run_id') != expected['run_id'] or execution.get('session_id') != expected['session_id'] or execution.get('manifest_sha256') != expected['manifest_sha256']:
+            problems.append('its execution record belongs to another run')
+        if inputs.get('identities') != execution_identities(execution):
+            problems.append('the process identities it names are not the sealed ones')
+        if (execution.get('problems') or {}).get('infrastructure') and document.get('classification') != INFRASTRUCTURE_FAILURE:
+            problems.append('its execution record shows an infrastructure failure, and it says %s' % document.get('classification'))
+    return problems
+
+
 def load_retained(path):
-    with contextlib.suppress(OSError, ValueError):
-        document = json.loads(pathlib.Path(path).read_text())
-        if isinstance(document, dict) and document.get('schema') == SCORE_SCHEMA:
+    """The document, if the file is a whole score of this schema with its own content intact. Says nothing of whose it is."""
+    with contextlib.suppress(OSError, ValueError, UnicodeDecodeError):
+        text = pathlib.Path(path).read_text()
+        document = json.loads(text)
+        if isinstance(document, dict) and document.get('schema') == SCORE_SCHEMA and text == canonical(document) and seal(document) == document:
             return document
     return None
+
+
+def bound_score(path, expected):
+    """(document, problems) for a retained score. Empty problems is the only thing that lets anyone act on it, or on a claim resting on it."""
+    document = load_retained(path)
+    if document is None:
+        return None, ['it does not read as a whole score, or its content was changed after it was written']
+    return document, _binding_problems(document, expected) + _result_problems(document)
+
+
+def classification_problems(document, expected, require_score=True):
+    """Why a retained classification cannot stand for this run. A PASS or FAIL must rest on a bound score by the hash it recorded when it was written. ``require_score`` is False only for a fixture's scripted scorer."""
+    if not isinstance(document, dict) or document.get('schema') != CLASSIFICATION_SCHEMA:
+        return ['it is not a classification of the expected schema']
+    if document.get('run_id') != expected['run_id']:
+        return ['it classifies run %r' % (document.get('run_id'),)]
+    verdict = document.get('verdict')
+    if not isinstance(verdict, dict) or verdict.get('outcome') not in search.OUTCOMES:
+        return ['it holds no verdict with a known outcome']
+    if not require_score:
+        return []
+    reference = parse_reference(verdict.get('evidence_ref'))
+    problems = []
+    if verdict['outcome'] in search.ADVANCING and (verdict.get('scored') is not True or reference is None or reference[1] != SCORE_FILE):
+        return ['it says %s and rests on no retained score' % verdict['outcome']]
+    if reference is not None:
+        run_id, name, digest = reference
+        if run_id != expected['run_id']:
+            problems.append('its evidence is of run %r' % run_id)
+        elif file_sha256(expected['run_dir'] / name) != digest:
+            problems.append('%s is no longer the file it recorded' % name)
+        elif name == SCORE_FILE:
+            score, more = bound_score(expected['run_dir'] / name, expected)
+            problems += ['the score it rests on: ' + item for item in more]
+            if score is not None and score.get('outcome') != verdict['outcome']:
+                problems.append('it says %s and the score it rests on says %s' % (verdict['outcome'], score.get('outcome')))
+    return problems

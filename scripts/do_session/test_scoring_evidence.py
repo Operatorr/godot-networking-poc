@@ -48,6 +48,35 @@ class RetainedEvidence(unittest.TestCase):
         for name, row in searches.items():
             self.assertTrue(row['no_hidden_retry'], name)
 
+    def test_nothing_earlier_was_dropped_and_each_new_scenario_lands_where_it_must(self):
+        scores = json.loads((RETAINED / 'synthetic-scores.json').read_text())['scenarios']
+        for name, row in scores.items():
+            if name.startswith('generator_') and ('_beside_a_tick_overrun' in name or '_beside_a_demonstrated_crash' in name):
+                self.assertEqual(row['classification'], cs.INCONCLUSIVE, name)
+            if name.startswith('ramp_') and name.endswith('_beside_a_proven_overrun') and name != 'ramp_timeout_beside_a_proven_overrun':
+                self.assertEqual(row['classification'], cs.INCONCLUSIVE, name)
+        self.assertEqual(sum(name.startswith('generator_') and name.endswith('_beside_a_tick_overrun') for name in scores), 21)
+        self.assertEqual(sum(name.startswith('generator_') and name.endswith('_beside_a_demonstrated_crash') for name in scores), 21)
+        self.assertEqual(sum(name.endswith('_beside_a_proven_overrun') and name != 'ramp_timeout_beside_a_proven_overrun' for name in scores), 28)
+        for name in ('game_sigkill_beside_an_earlier_host_oom_increment', 'game_sigkill_beside_a_later_host_oom_increment', 'game_sigkill_beside_a_host_oom_counter_reset', 'game_sigkill_beside_a_failed_rtt_gate', 'ramp_kick_of_a_bot_never_authenticated'):
+            self.assertEqual(scores[name]['classification'], cs.INCONCLUSIVE, name)
+        self.assertEqual(scores['game_panic_mid_window']['classification'], cs.CAPACITY_FAILURE, 'an early failure over a proven generator still stands')
+        self.assertEqual(scores['tick_overrun_beside_a_host_oom_increment']['classification'], cs.CAPACITY_FAILURE)
+        searches = json.loads((RETAINED / 'synthetic-searches.json').read_text())['scenarios']
+        for name in ('tick_overrun_with_no_poll_liveness_stops_with_no_successor', 'tick_overrun_with_no_freeze_time_stops_with_no_successor', 'server_crash_with_no_poll_liveness_stops_with_no_successor', 'ramp_overrun_over_a_foreign_swarm_stops_with_no_refinement', 'ramp_overrun_over_a_foreign_game_stops_with_no_refinement', 'ramp_overrun_over_a_foreign_collector_stops_with_no_refinement', 'ramp_overrun_with_a_socket_never_read_stops_with_no_refinement'):
+            self.assertEqual([row['outcome'] for row in searches[name]['trials']], ['INCONCLUSIVE'], name)
+        for name in ('foreign_retained_score_is_refused_on_return', 'edited_retained_score_is_refused_on_return', 'foreign_retained_classification_is_refused_on_return', 'unfrozen_controller_refuses_a_foreign_retained_score'):
+            self.assertEqual([row['outcome'] for row in searches[name]['trials']], ['INCONCLUSIVE'], name)
+            self.assertEqual(searches[name]['claim']['kind'], 'evidence_disagreement', name)
+            self.assertTrue(searches[name]['cleanup_requested'], name)
+        withheld = searches['report_withholds_the_claim_when_a_retained_score_changed']
+        self.assertEqual((withheld['claim']['kind'], withheld['journal_claim']['kind'], withheld['status']), ('evidence_disagreement', 'confirmed_observation', 'confirmed'))
+        self.assertEqual([row['outcome'] for row in searches['unfrozen_controller_collects_and_decides_nothing']['trials']], ['INCOMPLETE'])
+        self.assertEqual([row['outcome'] for row in searches['unfrozen_controller_recovers_a_validated_retained_score']['trials']], ['FAIL'])
+        self.assertEqual([row['outcome'] for row in searches['frozen_controller_collects_and_scores_a_natural_end']['trials']], ['PASS'])
+        disputed = {'foreign_retained_score_is_refused_on_return', 'edited_retained_score_is_refused_on_return', 'foreign_retained_classification_is_refused_on_return', 'unfrozen_controller_refuses_a_foreign_retained_score', 'report_withholds_the_claim_when_a_retained_score_changed'}
+        self.assertEqual({name for name, row in searches.items() if not row['evidence']['verified']}, disputed)
+
     def test_real_summaries_are_labelled_and_never_pass(self):
         for path in RETAINED.glob('real-*.json'):
             document = json.loads(path.read_text())

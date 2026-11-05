@@ -61,7 +61,7 @@ class RealBytes(unittest.TestCase):
         self.assertEqual(document['classification'], cs.INCONCLUSIVE)
         self.assertNotIn('offered_input_below_minimum', [failure.get('code') for failure in document['validity']['independent_failures']], 'it kept sending until it saw the disconnect')
 
-    def test_a_real_sigkill_with_no_oom_on_record_proves_nothing(self):
+    def test_a_real_sigkill_proves_nothing(self):
         document, _ = self.scored(8, 20, schedule=[ml.FaultSchedule.kill_game_in_window(2.0)])
         self.assertEqual(document['attribution']['game_exit']['kind'], 'killed_with_no_cause_on_record')
         self.assertEqual(document['classification'], cs.INCONCLUSIVE)
@@ -78,6 +78,17 @@ class RealBytes(unittest.TestCase):
         self.assertEqual(document['classification'], cs.INCONCLUSIVE)
         self.assertNotEqual(document['classification'], cs.CAPACITY_FAILURE)
         self.assertEqual(document['gates']['tick_budget']['scope'], 'every Tick with at least one authenticated player, the ramp and any drain')
+        # The identities and coverage a ramp is now held to, on what the real producers actually write.
+        self.assertEqual(sorted(set(document['inputs']['proof_reasons']) & cs.INTEGRITY_CODES), [], 'the supervised processes are recognized as themselves')
+        ramp = proof['facts']['ramp']
+        self.assertEqual(ramp['reason'], 'readiness_timeout')
+        self.assertEqual(ramp['bots_started'], 8, 'every slot came before the abort')
+        self.assertIsNotNone(ramp['abort_bot_mono_ns'], 'the real coordinator row is read')
+        host = ramp['bot_host']
+        self.assertEqual(host['sockets_with_counters'], 0, 'this platform has none')
+        self.assertGreaterEqual(host['sockets_without_counters'], 1)
+        self.assertLessEqual(host['last_read_before_abort_ns'], mw.RAMP_READ_TAIL_NS)
+        self.assertEqual(document['validity']['verdict'], cs.NOT_PROVEN, 'the missing counters leave it unproven, on this platform')
 
 
 if __name__ == '__main__':
