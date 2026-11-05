@@ -1186,6 +1186,10 @@ class Schema(Base):
             tree.edit_shard_row(1, 'header', change)
             self.assert_reason(tree, 'ownership_mismatch', mw.INCONCLUSIVE)
 
+    def test_a_manifest_without_a_frozen_schema_cannot_prove_a_window(self):
+        """The executor passes what the manifest froze, or nothing at all: ``None`` is only the local harness saying there is no manifest."""
+        self.assert_reason(self.tree(), 'schema_mismatch', mw.INCONCLUSIVE, telemetry_schema={})
+
     def test_a_foreign_document_is_not_read_for_anything_else(self):
         tree = self.tree()
         tree.edit_json('bot/swarm/swarm.json', lambda d: d.update(schema='omega.measurement/999', controls=dict(seed=99)))
