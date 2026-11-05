@@ -17,7 +17,7 @@
    "definition": "per bot: sent over its own scheduled grid slots in the window, in integers. Exactly 99 percent is valid. A disconnected bot is held to the part it was connected for, less the one slot the disconnect can interrupt.",
    "min_percent": 99
   },
-  "oom": "The host-wide kernel OOM count is a diagnostic and never explains a process exit. A game SIGKILL is out_of_memory only when the kernel counted exactly one OOM kill in the cgroup of the run's own unit between a baseline before any process started and a read right after the reap, every member of that cgroup is a supervised identity, and every other member was still alive after that read. Anything less stays killed_with_no_cause_on_record.",
+  "oom": "The host-wide kernel OOM count is a diagnostic and never explains a process exit. A count for the run's unit names no process, because the kernel raises it before the SIGKILL and another member can be counted and still alive at any read, so it never explains a process exit either. A game SIGKILL is out_of_memory only when the kernel counted exactly one OOM kill local to a leaf cgroup of the run's unit, made fresh for the game before it started, holding the sealed game and nobody else at every read, between a baseline of zero and a read right after the reap. Anything less stays killed_with_no_cause_on_record.",
   "ramp": {
    "definition": "A ramp can fail and can never pass. Its failure needs the supervised swarm and game identities, a kick only of a bot both sides recorded as authenticated, and zero generator socket drops proven on every opened socket by a counter read certainly after the abort. A read that may precede the abort, or a socket no such read saw, leaves the generator not proven."
   },
@@ -30,7 +30,7 @@
   "tick_budget_ns": 33300000,
   "tick_over_percent_strictly_below": 1
  },
- "policy_sha256": "042bdbbd8a2ca1639c694750abc33f70a286273d864d5623a26ecf476edbadbb",
+ "policy_sha256": "1d97e30dc85e3df3cf64361e5d8a62561f4cbc17b94e99741d892b529e3b62b7",
  "scenarios": {
   "a_transfer_that_cannot_run_costs_a_committed_outcome_nothing": {
    "batch": null,
@@ -53,6 +53,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 1,
@@ -104,7 +105,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -129,6 +131,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 1,
@@ -180,7 +183,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -204,6 +208,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 23,
@@ -252,7 +257,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -273,7 +279,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 50
+     "target": 50,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -294,7 +301,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 75
+     "target": 75,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -315,7 +323,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 100
+     "target": 100,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -336,7 +345,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 125
+     "target": 125,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -357,7 +367,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 150
+     "target": 150,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -378,7 +389,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 175
+     "target": 175,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -399,7 +411,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 200
+     "target": 200,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -420,7 +433,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 225
+     "target": 225,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -441,7 +455,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 250
+     "target": 250,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -462,7 +477,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 275
+     "target": 275,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -483,7 +499,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 300
+     "target": 300,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -504,7 +521,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 325
+     "target": 325,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -525,7 +543,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 350
+     "target": 350,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -546,7 +565,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 375
+     "target": 375,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -567,7 +587,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 400
+     "target": 400,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -588,7 +609,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 425
+     "target": 425,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -609,7 +631,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 450
+     "target": 450,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -630,7 +653,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 475
+     "target": 475,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -651,7 +675,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 500
+     "target": 500,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -672,7 +697,8 @@
      "phase": "confirm",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 500
+     "target": 500,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -693,7 +719,8 @@
      "phase": "confirm",
      "repetition": 2,
      "superseded_decisions": [],
-     "target": 500
+     "target": 500,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -714,7 +741,8 @@
      "phase": "confirm",
      "repetition": 3,
      "superseded_decisions": [],
-     "target": 500
+     "target": 500,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -738,6 +766,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 2,
@@ -786,7 +815,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "inconclusive_evidence",
@@ -807,7 +837,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 50
+     "target": 50,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -831,6 +862,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 2,
@@ -879,7 +911,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "infrastructure_failure",
@@ -900,7 +933,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 50
+     "target": 50,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -924,6 +958,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 2,
@@ -972,7 +1007,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "invalid_offered_load",
@@ -993,7 +1029,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 50
+     "target": 50,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -1018,6 +1055,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 4,
@@ -1070,7 +1108,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -1091,7 +1130,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 50
+     "target": 50,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -1112,7 +1152,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 30
+     "target": 30,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -1133,7 +1174,8 @@
      "phase": "confirm",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -1159,6 +1201,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 6,
@@ -1213,7 +1256,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -1234,7 +1278,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 50
+     "target": 50,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -1255,7 +1300,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 30
+     "target": 30,
+     "unverified_stop_records": []
     },
     {
      "classification": null,
@@ -1269,7 +1315,8 @@
      "phase": "confirm",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -1290,7 +1337,8 @@
      "phase": "confirm",
      "repetition": 2,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -1311,7 +1359,8 @@
      "phase": "confirm",
      "repetition": 3,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -1336,6 +1385,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 5,
@@ -1388,7 +1438,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -1409,7 +1460,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 50
+     "target": 50,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -1430,7 +1482,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 30
+     "target": 30,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -1451,7 +1504,8 @@
      "phase": "confirm",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -1472,7 +1526,8 @@
      "phase": "confirm",
      "repetition": 2,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -1496,6 +1551,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 5,
@@ -1547,7 +1603,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -1568,7 +1625,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 50
+     "target": 50,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -1589,7 +1647,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 30
+     "target": 30,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -1610,7 +1669,8 @@
      "phase": "confirm",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "invalid_offered_load",
@@ -1631,7 +1691,8 @@
      "phase": "confirm",
      "repetition": 2,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -1656,6 +1717,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 6,
@@ -1708,7 +1770,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -1729,7 +1792,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 50
+     "target": 50,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -1750,7 +1814,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 30
+     "target": 30,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -1771,7 +1836,8 @@
      "phase": "confirm",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -1792,7 +1858,8 @@
      "phase": "confirm",
      "repetition": 2,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -1813,7 +1880,8 @@
      "phase": "confirm",
      "repetition": 3,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -1837,6 +1905,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 6,
@@ -1888,7 +1957,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -1909,7 +1979,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 50
+     "target": 50,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -1930,7 +2001,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 30
+     "target": 30,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -1951,7 +2023,8 @@
      "phase": "confirm",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -1972,7 +2045,8 @@
      "phase": "confirm",
      "repetition": 2,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "inconclusive_evidence",
@@ -1993,7 +2067,8 @@
      "phase": "confirm",
      "repetition": 3,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -2017,6 +2092,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 6,
@@ -2068,7 +2144,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -2089,7 +2166,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 50
+     "target": 50,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -2110,7 +2188,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 30
+     "target": 30,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -2131,7 +2210,8 @@
      "phase": "confirm",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -2152,7 +2232,8 @@
      "phase": "confirm",
      "repetition": 2,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -2173,7 +2254,8 @@
      "phase": "confirm",
      "repetition": 3,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -2202,6 +2284,7 @@
     "trials_with_stop_facts": [
      "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
     ],
+    "trials_with_unverified_stop_records": [],
     "verified": false
    },
    "game_starts": 1,
@@ -2237,7 +2320,7 @@
     {
      "classification": "valid_pass",
      "evidence_problems": [
-      "the journal says PASS, and terminal-fact-0002-0.json records a stop fact: bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch'}]"
+      "the journal says PASS, and terminal-fact-0002-0.json records a stop fact: bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch', 'expected_sha256': 'baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593', 'actual_sha256': '8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d', 'retained_as': 'corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d'}]"
      ],
      "gates": {
       "bot_errors": "pass",
@@ -2250,11 +2333,23 @@
      "hard_facts": [
       {
        "details": [
-        "bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch'}]"
+        "bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch', 'expected_sha256': 'baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593', 'actual_sha256': '8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d', 'retained_as': 'corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d'}]"
        ],
+       "fencing_token": 2,
        "outcome": "INFRASTRUCTURE_FAILURE",
+       "receipts": [
+        {
+         "actual_sha256": "8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d",
+         "expected_sha256": "baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593",
+         "kind": "corrupt",
+         "path": "bot.stdout.log",
+         "reason": "hash mismatch",
+         "retained_as": "corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d"
+        }
+       ],
        "record": "terminal-fact-0002-0.json",
-       "sha256": "0a14e9d5b03989ff64d9bd61c3bf2f1e61f821521931f817ce72dcb91afba4e6"
+       "role": "bot",
+       "sha256": "cfc17b5502e47e0eab99cf89794f17ed091022e50976190588003372d6370cb7"
       }
      ],
      "hold_s": 60,
@@ -2264,7 +2359,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -2292,6 +2388,7 @@
     "trials_with_stop_facts": [
      "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
     ],
+    "trials_with_unverified_stop_records": [],
     "verified": false
    },
    "game_starts": 6,
@@ -2328,7 +2425,7 @@
     {
      "classification": "valid_pass",
      "evidence_problems": [
-      "the journal says PASS, and terminal-fact-0001-0.json records a stop fact: bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch'}]"
+      "the journal says PASS, and terminal-fact-0001-0.json records a stop fact: bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch', 'expected_sha256': 'baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593', 'actual_sha256': '8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d', 'retained_as': 'corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d'}]"
      ],
      "gates": {
       "bot_errors": "pass",
@@ -2341,11 +2438,23 @@
      "hard_facts": [
       {
        "details": [
-        "bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch'}]"
+        "bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch', 'expected_sha256': 'baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593', 'actual_sha256': '8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d', 'retained_as': 'corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d'}]"
        ],
+       "fencing_token": 1,
        "outcome": "INFRASTRUCTURE_FAILURE",
+       "receipts": [
+        {
+         "actual_sha256": "8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d",
+         "expected_sha256": "baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593",
+         "kind": "corrupt",
+         "path": "bot.stdout.log",
+         "reason": "hash mismatch",
+         "retained_as": "corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d"
+        }
+       ],
        "record": "terminal-fact-0001-0.json",
-       "sha256": "77f3347e9d175eb44591eb5d0bd0e3bc249dd6a0e6b1b18125d67672cdac885f"
+       "role": "bot",
+       "sha256": "c4c56298d37f0ed0f0a629768f318055e3aab9abff6fbd8616f939ba34f20ebd"
       }
      ],
      "hold_s": 60,
@@ -2355,7 +2464,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -2376,7 +2486,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 50
+     "target": 50,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -2397,7 +2508,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 30
+     "target": 30,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -2418,7 +2530,8 @@
      "phase": "confirm",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -2439,7 +2552,8 @@
      "phase": "confirm",
      "repetition": 2,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -2460,7 +2574,8 @@
      "phase": "confirm",
      "repetition": 3,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -2489,6 +2604,7 @@
     "trials_with_stop_facts": [
      "do-cap-1v1g-20261030a-t04-confirm-n025-r1"
     ],
+    "trials_with_unverified_stop_records": [],
     "verified": false
    },
    "game_starts": 4,
@@ -2543,7 +2659,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -2564,7 +2681,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 50
+     "target": 50,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -2585,7 +2703,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 30
+     "target": 30,
+     "unverified_stop_records": []
     },
     {
      "classification": null,
@@ -2601,11 +2720,11 @@
      "hard_facts": [
       {
        "details": [
-        "bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch'}]"
+        "bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch', 'expected_sha256': 'baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593', 'actual_sha256': '8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d', 'retained_as': 'corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d'}]"
        ],
        "outcome": "INFRASTRUCTURE_FAILURE",
        "record": "execution-reconciled-0002-1.json",
-       "sha256": "826551bed24be2cef144355c481c769d32e2d32b2aff7d371c23741baf66c3ca"
+       "sha256": "77547d387a8e14ea4a8e10688e15f47890cfc795e4f2e7bbafd2a8d7791ad486"
       }
      ],
      "hold_s": 300,
@@ -2618,15 +2737,16 @@
       {
        "file": "classification.json",
        "outcome": "PASS",
-       "sha256": "24c08f53b5662e17c52072952fa596353a61f08880e46bc22657897a0646fdd0"
+       "sha256": "87bda8828f8607c6bfd14033db11873d7ef7aaba8af070c6c35e1328989cb2a4"
       },
       {
        "file": "score.json",
        "outcome": "PASS",
-       "sha256": "478ec031d817fc8c35ed775bf783e74b0f044d544a6d18b539c242d993ec2a3e"
+       "sha256": "5e0f9c0d171acc01aa1ad8394cfa5ada9912e9dfd6d68d9a576976ae4102d305"
       }
      ],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -2655,6 +2775,7 @@
     "trials_with_stop_facts": [
      "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
     ],
+    "trials_with_unverified_stop_records": [],
     "verified": false
    },
    "game_starts": 1,
@@ -2701,11 +2822,11 @@
      "hard_facts": [
       {
        "details": [
-        "bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch'}]"
+        "bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch', 'expected_sha256': 'baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593', 'actual_sha256': '8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d', 'retained_as': 'corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d'}]"
        ],
        "outcome": "INFRASTRUCTURE_FAILURE",
        "record": "execution-reconciled-0002-1.json",
-       "sha256": "6eebeca0099535c5161787d60234d2f3cfdb618b117e4dd85b154fa3ea2f2abc"
+       "sha256": "d694d823b786456f875f6c24bf719c328d89ca5f1cbdda1762a628bc5d38fddb"
       }
      ],
      "hold_s": 60,
@@ -2718,15 +2839,16 @@
       {
        "file": "classification.json",
        "outcome": "PASS",
-       "sha256": "fce5161a34e853bd10a52e77db7c8293ae68a1bb638f930d0899098fc4030b5f"
+       "sha256": "c49e9c48a90b87f80557001deec0296a1209725fa31f2d6cd400eb12f911cd54"
       },
       {
        "file": "score.json",
        "outcome": "PASS",
-       "sha256": "405867e5f5874e0f9281830e9e10a76efdfe39195af538f2dce7f27b91f9166c"
+       "sha256": "502d15e207d6288d9bed21e78fd4b8ee7c566009dad15802e27a8cc3fa2c79dd"
       }
      ],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -2755,6 +2877,7 @@
     "trials_with_stop_facts": [
      "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
     ],
+    "trials_with_unverified_stop_records": [],
     "verified": false
    },
    "game_starts": 1,
@@ -2801,11 +2924,11 @@
      "hard_facts": [
       {
        "details": [
-        "bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch'}]"
+        "bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch', 'expected_sha256': 'baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593', 'actual_sha256': '8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d', 'retained_as': 'corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d'}]"
        ],
        "outcome": "INFRASTRUCTURE_FAILURE",
        "record": "execution-reconciled-0002-1.json",
-       "sha256": "6eebeca0099535c5161787d60234d2f3cfdb618b117e4dd85b154fa3ea2f2abc"
+       "sha256": "d694d823b786456f875f6c24bf719c328d89ca5f1cbdda1762a628bc5d38fddb"
       }
      ],
      "hold_s": 60,
@@ -2818,10 +2941,11 @@
       {
        "file": "score.json",
        "outcome": "PASS",
-       "sha256": "405867e5f5874e0f9281830e9e10a76efdfe39195af538f2dce7f27b91f9166c"
+       "sha256": "502d15e207d6288d9bed21e78fd4b8ee7c566009dad15802e27a8cc3fa2c79dd"
       }
      ],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -2850,6 +2974,7 @@
     "trials_with_stop_facts": [
      "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
     ],
+    "trials_with_unverified_stop_records": [],
     "verified": false
    },
    "game_starts": 1,
@@ -2896,19 +3021,19 @@
      "hard_facts": [
       {
        "details": [
-        "bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch'}]"
+        "bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch', 'expected_sha256': 'baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593', 'actual_sha256': '8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d', 'retained_as': 'corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d'}]"
        ],
        "outcome": "INFRASTRUCTURE_FAILURE",
        "record": "execution-reconciled-0002-1.json",
-       "sha256": "6eebeca0099535c5161787d60234d2f3cfdb618b117e4dd85b154fa3ea2f2abc"
+       "sha256": "d694d823b786456f875f6c24bf719c328d89ca5f1cbdda1762a628bc5d38fddb"
       },
       {
        "details": [
-        "bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch'}]"
+        "bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch', 'expected_sha256': 'baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593', 'actual_sha256': '8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d', 'retained_as': 'corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d'}]"
        ],
        "outcome": "INFRASTRUCTURE_FAILURE",
        "record": "execution-reconciled-0003-1.json",
-       "sha256": "65628422c82295c9483e3d4d27aab37bc1a44078cfc53785f72a056bd67986be"
+       "sha256": "dca75174711722b1f0c4c5c4cae5d13b0a6c8c5d12edc8e6991f3648eb78474c"
       }
      ],
      "hold_s": 60,
@@ -2921,15 +3046,16 @@
       {
        "file": "classification.json",
        "outcome": "PASS",
-       "sha256": "fce5161a34e853bd10a52e77db7c8293ae68a1bb638f930d0899098fc4030b5f"
+       "sha256": "c49e9c48a90b87f80557001deec0296a1209725fa31f2d6cd400eb12f911cd54"
       },
       {
        "file": "score.json",
        "outcome": "PASS",
-       "sha256": "405867e5f5874e0f9281830e9e10a76efdfe39195af538f2dce7f27b91f9166c"
+       "sha256": "502d15e207d6288d9bed21e78fd4b8ee7c566009dad15802e27a8cc3fa2c79dd"
       }
      ],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -2958,6 +3084,7 @@
     "trials_with_stop_facts": [
      "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
     ],
+    "trials_with_unverified_stop_records": [],
     "verified": false
    },
    "game_starts": 1,
@@ -3004,19 +3131,19 @@
      "hard_facts": [
       {
        "details": [
-        "bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch'}]"
+        "bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch', 'expected_sha256': 'baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593', 'actual_sha256': '8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d', 'retained_as': 'corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d'}]"
        ],
        "outcome": "INFRASTRUCTURE_FAILURE",
        "record": "execution-reconciled-0002-1.json",
-       "sha256": "6eebeca0099535c5161787d60234d2f3cfdb618b117e4dd85b154fa3ea2f2abc"
+       "sha256": "d694d823b786456f875f6c24bf719c328d89ca5f1cbdda1762a628bc5d38fddb"
       },
       {
        "details": [
-        "bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch'}]"
+        "bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch', 'expected_sha256': 'baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593', 'actual_sha256': '8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d', 'retained_as': 'corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d'}]"
        ],
        "outcome": "INFRASTRUCTURE_FAILURE",
        "record": "execution-reconciled-0003-1.json",
-       "sha256": "65628422c82295c9483e3d4d27aab37bc1a44078cfc53785f72a056bd67986be"
+       "sha256": "dca75174711722b1f0c4c5c4cae5d13b0a6c8c5d12edc8e6991f3648eb78474c"
       }
      ],
      "hold_s": 60,
@@ -3029,10 +3156,221 @@
       {
        "file": "score.json",
        "outcome": "PASS",
-       "sha256": "405867e5f5874e0f9281830e9e10a76efdfe39195af538f2dce7f27b91f9166c"
+       "sha256": "502d15e207d6288d9bed21e78fd4b8ee7c566009dad15802e27a8cc3fa2c79dd"
       }
      ],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
+    }
+   ]
+  },
+  "corrupt_seal_after_the_commit_refuses_resume": {
+   "batch": null,
+   "claim": {
+    "confirmed": false,
+    "kind": "evidence_disagreement",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No evidence-backed claim: the retained files of 1 of 1 trials disagree with the journal or cannot be verified. What the journal says is kept apart as history, and is not verified here."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "dispatch_code": null,
+   "evidence": {
+    "disputed_trials": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "trials_with_unverified_stop_records": [],
+    "verified": false
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "in_progress",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the search is not finished (in_progress). The highest one-minute pass was 25; it stays an exploratory observation."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "resume_code": "terminal_failure",
+   "resumed": false,
+   "status": "in_progress",
+   "terminal_failure": "INFRASTRUCTURE_FAILURE",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [
+      "the journal says PASS, and terminal-fact-0002-0.json records a stop fact: bot evidence was not fully exported: [{'path': 'seal.json', 'kind': 'corrupt', 'reason': 'hash mismatch', 'expected_sha256': '6e7a7234e67f4ca682fbb38684a400fd00d46e0069875ba3db7e596c7f28f2ef', 'actual_sha256': '48f91b59d325887eb83207369a7f6341c55e080ab088d59a7d6bc3426625e72d', 'retained_as': 'corrupt-evidence/bot/seal.json.48f91b59d325887eb83207369a7f6341c55e080ab088d59a7d6bc3426625e72d'}]"
+     ],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hard_facts": [
+      {
+       "details": [
+        "bot evidence was not fully exported: [{'path': 'seal.json', 'kind': 'corrupt', 'reason': 'hash mismatch', 'expected_sha256': '6e7a7234e67f4ca682fbb38684a400fd00d46e0069875ba3db7e596c7f28f2ef', 'actual_sha256': '48f91b59d325887eb83207369a7f6341c55e080ab088d59a7d6bc3426625e72d', 'retained_as': 'corrupt-evidence/bot/seal.json.48f91b59d325887eb83207369a7f6341c55e080ab088d59a7d6bc3426625e72d'}]"
+       ],
+       "fencing_token": 2,
+       "outcome": "INFRASTRUCTURE_FAILURE",
+       "receipts": [
+        {
+         "actual_sha256": "48f91b59d325887eb83207369a7f6341c55e080ab088d59a7d6bc3426625e72d",
+         "expected_sha256": "6e7a7234e67f4ca682fbb38684a400fd00d46e0069875ba3db7e596c7f28f2ef",
+         "kind": "corrupt",
+         "path": "seal.json",
+         "reason": "hash mismatch",
+         "retained_as": "corrupt-evidence/bot/seal.json.48f91b59d325887eb83207369a7f6341c55e080ab088d59a7d6bc3426625e72d"
+        }
+       ],
+       "record": "terminal-fact-0002-0.json",
+       "role": "bot",
+       "sha256": "535c4b143bce3a5ac0bae6443492d48ac7622b690d977fc33470c008e2a71aa8"
+      }
+     ],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 25,
+     "unverified_stop_records": []
+    }
+   ]
+  },
+  "corrupt_seal_with_a_crash_after_the_fact_and_a_restored_transfer_refuses_resume": {
+   "batch": null,
+   "claim": {
+    "confirmed": false,
+    "kind": "evidence_disagreement",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No evidence-backed claim: the retained files of 1 of 1 trials disagree with the journal or cannot be verified. What the journal says is kept apart as history, and is not verified here."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "dispatch_code": null,
+   "evidence": {
+    "disputed_trials": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "trials_with_unverified_stop_records": [],
+    "verified": false
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "in_progress",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the search is not finished (in_progress). The highest one-minute pass was 25; it stays an exploratory observation."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "resume_code": "terminal_failure",
+   "resumed": false,
+   "status": "in_progress",
+   "terminal_failure": "INFRASTRUCTURE_FAILURE",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [
+      "the journal says PASS, and terminal-fact-0002-0.json records a stop fact: bot evidence was not fully exported: [{'path': 'seal.json', 'kind': 'corrupt', 'reason': 'hash mismatch', 'expected_sha256': '6e7a7234e67f4ca682fbb38684a400fd00d46e0069875ba3db7e596c7f28f2ef', 'actual_sha256': '48f91b59d325887eb83207369a7f6341c55e080ab088d59a7d6bc3426625e72d', 'retained_as': 'corrupt-evidence/bot/seal.json.48f91b59d325887eb83207369a7f6341c55e080ab088d59a7d6bc3426625e72d'}]"
+     ],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hard_facts": [
+      {
+       "details": [
+        "bot evidence was not fully exported: [{'path': 'seal.json', 'kind': 'corrupt', 'reason': 'hash mismatch', 'expected_sha256': '6e7a7234e67f4ca682fbb38684a400fd00d46e0069875ba3db7e596c7f28f2ef', 'actual_sha256': '48f91b59d325887eb83207369a7f6341c55e080ab088d59a7d6bc3426625e72d', 'retained_as': 'corrupt-evidence/bot/seal.json.48f91b59d325887eb83207369a7f6341c55e080ab088d59a7d6bc3426625e72d'}]"
+       ],
+       "fencing_token": 2,
+       "outcome": "INFRASTRUCTURE_FAILURE",
+       "receipts": [
+        {
+         "actual_sha256": "48f91b59d325887eb83207369a7f6341c55e080ab088d59a7d6bc3426625e72d",
+         "expected_sha256": "6e7a7234e67f4ca682fbb38684a400fd00d46e0069875ba3db7e596c7f28f2ef",
+         "kind": "corrupt",
+         "path": "seal.json",
+         "reason": "hash mismatch",
+         "retained_as": "corrupt-evidence/bot/seal.json.48f91b59d325887eb83207369a7f6341c55e080ab088d59a7d6bc3426625e72d"
+        }
+       ],
+       "record": "terminal-fact-0002-0.json",
+       "role": "bot",
+       "sha256": "535c4b143bce3a5ac0bae6443492d48ac7622b690d977fc33470c008e2a71aa8"
+      }
+     ],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -3057,6 +3395,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 2,
@@ -3109,7 +3448,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -3130,7 +3470,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 5
+     "target": 5,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -3159,6 +3500,7 @@
     ],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": false
    },
    "game_starts": 1,
@@ -3204,7 +3546,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -3228,6 +3571,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 8,
@@ -3278,7 +3622,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -3299,7 +3644,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 5
+     "target": 5,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -3320,7 +3666,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 10
+     "target": 10,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -3341,7 +3688,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 15
+     "target": 15,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -3362,7 +3710,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 20
+     "target": 20,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -3383,7 +3732,8 @@
      "phase": "confirm",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 20
+     "target": 20,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -3404,7 +3754,8 @@
      "phase": "confirm",
      "repetition": 2,
      "superseded_decisions": [],
-     "target": 20
+     "target": 20,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -3425,7 +3776,8 @@
      "phase": "confirm",
      "repetition": 3,
      "superseded_decisions": [],
-     "target": 20
+     "target": 20,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -3449,6 +3801,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 6,
@@ -3500,7 +3853,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -3521,7 +3875,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 5
+     "target": 5,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -3542,7 +3897,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 10
+     "target": 10,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -3563,7 +3919,8 @@
      "phase": "confirm",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 5
+     "target": 5,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -3584,7 +3941,8 @@
      "phase": "confirm",
      "repetition": 2,
      "superseded_decisions": [],
-     "target": 5
+     "target": 5,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -3605,7 +3963,8 @@
      "phase": "confirm",
      "repetition": 3,
      "superseded_decisions": [],
-     "target": 5
+     "target": 5,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -3630,6 +3989,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 2,
@@ -3682,7 +4042,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -3703,7 +4064,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 5
+     "target": 5,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -3727,6 +4089,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 1,
@@ -3775,7 +4138,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -3804,6 +4168,7 @@
     ],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": false
    },
    "game_starts": 1,
@@ -3856,7 +4221,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -3885,6 +4251,7 @@
     ],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": false
    },
    "game_starts": 1,
@@ -3933,7 +4300,102 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
+    }
+   ]
+  },
+  "foreign_terminal_fact_refuses_resume_with_nothing_final_said": {
+   "batch": null,
+   "claim": {
+    "confirmed": false,
+    "kind": "evidence_disagreement",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No evidence-backed claim: the retained files of 1 of 1 trials disagree with the journal or cannot be verified. What the journal says is kept apart as history, and is not verified here."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "dispatch_code": null,
+   "evidence": {
+    "disputed_trials": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "verified": false
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "in_progress",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the search is not finished (in_progress). The highest one-minute pass was 25; it stays an exploratory observation."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "resume_code": "stop_record_unverified",
+   "resumed": false,
+   "status": "in_progress",
+   "terminal_failure": null,
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [
+      "terminal-fact-0002-0.json says a run stopped, and cannot be held to this run: its session_id is 'foreign-session', and this run's is 'do-cap-1v1g-20261030a'; its manifest_sha256 is 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', and this run's is '56a89866d965aef1b62524c9bbf12a8f496dd6cc911908c84e2feca9391d472b'; its run_id is 'foreign-run', and this run's is 'do-cap-1v1g-20261030a-t01-coarse-n025-r1'"
+     ],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hard_facts": [],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 25,
+     "unverified_stop_records": [
+      {
+       "problems": [
+        "its session_id is 'foreign-session', and this run's is 'do-cap-1v1g-20261030a'",
+        "its manifest_sha256 is 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', and this run's is '56a89866d965aef1b62524c9bbf12a8f496dd6cc911908c84e2feca9391d472b'",
+        "its run_id is 'foreign-run', and this run's is 'do-cap-1v1g-20261030a-t01-coarse-n025-r1'"
+       ],
+       "record": "terminal-fact-0002-0.json",
+       "sha256": "53b8fd59bdaf99cb88dfb7a17451c92884ffb3711ae24962770ff157178898fb"
+      }
+     ]
     }
    ]
   },
@@ -3960,6 +4422,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 1,
@@ -4010,7 +4473,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -4035,6 +4499,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 1,
@@ -4078,7 +4543,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -4103,6 +4569,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 6,
@@ -4156,7 +4623,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -4177,7 +4645,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 50
+     "target": 50,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -4198,7 +4667,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 30
+     "target": 30,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -4219,7 +4689,8 @@
      "phase": "confirm",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -4240,7 +4711,8 @@
      "phase": "confirm",
      "repetition": 2,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -4261,11 +4733,12 @@
      "phase": "confirm",
      "repetition": 3,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
-  "oom_kill_in_a_shared_cgroup_stops_with_no_refinement": {
+  "oom_kill_counted_only_elsewhere_in_the_unit_stops_with_no_refinement": {
    "batch": "stopped",
    "claim": {
     "confirmed": false,
@@ -4285,6 +4758,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 1,
@@ -4333,7 +4807,82 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
+    }
+   ]
+  },
+  "oom_kill_in_a_shared_cgroup_stops_with_no_refinement": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "evidence": {
+    "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
+    "verified": true
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_inconclusive_evidence",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_inconclusive_evidence)."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "status": "stopped_inconclusive_evidence",
+   "trials": [
+    {
+     "classification": "inconclusive_evidence",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "fail",
+      "continuity": "fail",
+      "enet_loss": "pass",
+      "game_socket_drops": "unknown",
+      "rtt_p95": "pass",
+      "tick_budget": "unknown"
+     },
+     "hard_facts": [],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "INCONCLUSIVE",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -4358,6 +4907,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 2,
@@ -4410,7 +4960,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -4431,7 +4982,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 5
+     "target": 5,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -4455,6 +5007,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 1,
@@ -4503,7 +5056,109 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
+    }
+   ]
+  },
+  "oom_kill_of_the_game_beside_the_samplers_opens_the_bracket": {
+   "batch": "search_finished",
+   "claim": {
+    "confirmed": false,
+    "kind": "no_passing_target_at_resolution",
+    "lower_bound": null,
+    "players": null,
+    "resolution": 5,
+    "search_cap_reached": false,
+    "statement": "No passing target at the search resolution: 5 players failed. Not proof that no smaller population could work, and not a capacity of zero."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 1,
+    "total": 2
+   },
+   "evidence": {
+    "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
+    "verified": true
+   },
+   "game_starts": 2,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "no_passing_target_at_resolution",
+    "lower_bound": null,
+    "players": null,
+    "resolution": 5,
+    "search_cap_reached": false,
+    "statement": "No passing target at the search resolution: 5 players failed. Not proof that no smaller population could work, and not a capacity of zero."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [
+     5,
+     25
+    ],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": 5,
+    "retries": 0,
+    "trials": 2
+   },
+   "status": "no_passing_target",
+   "trials": [
+    {
+     "classification": "capacity_failure",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "fail",
+      "continuity": "fail",
+      "enet_loss": "pass",
+      "game_socket_drops": "unknown",
+      "rtt_p95": "pass",
+      "tick_budget": "unknown"
+     },
+     "hard_facts": [],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "FAIL",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 25,
+     "unverified_stop_records": []
+    },
+    {
+     "classification": "capacity_failure",
+     "evidence_problems": [],
+     "gates": {
+      "bot_errors": "fail",
+      "continuity": "fail",
+      "enet_loss": "pass",
+      "game_socket_drops": "unknown",
+      "rtt_p95": "pass",
+      "tick_budget": "unknown"
+     },
+     "hard_facts": [],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 2,
+     "outcome": "FAIL",
+     "phase": "refine",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 5,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -4527,6 +5182,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 6,
@@ -4578,7 +5234,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -4599,7 +5256,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 50
+     "target": 50,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -4620,7 +5278,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 30
+     "target": 30,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -4641,7 +5300,8 @@
      "phase": "confirm",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -4662,7 +5322,8 @@
      "phase": "confirm",
      "repetition": 2,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -4683,7 +5344,8 @@
      "phase": "confirm",
      "repetition": 3,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -4707,6 +5369,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 1,
@@ -4755,7 +5418,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -4779,6 +5443,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 6,
@@ -4830,7 +5495,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -4851,7 +5517,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 50
+     "target": 50,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -4872,7 +5539,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 30
+     "target": 30,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -4893,7 +5561,8 @@
      "phase": "confirm",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -4914,7 +5583,8 @@
      "phase": "confirm",
      "repetition": 2,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -4935,7 +5605,8 @@
      "phase": "confirm",
      "repetition": 3,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -4959,6 +5630,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 1,
@@ -5007,7 +5679,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -5031,6 +5704,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 1,
@@ -5079,7 +5753,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -5103,6 +5778,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 1,
@@ -5151,7 +5827,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -5175,6 +5852,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 1,
@@ -5223,7 +5901,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -5247,6 +5926,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 1,
@@ -5295,7 +5975,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -5319,6 +6000,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 1,
@@ -5367,7 +6049,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -5391,6 +6074,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 1,
@@ -5439,7 +6123,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -5463,6 +6148,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 1,
@@ -5511,7 +6197,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -5535,6 +6222,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 3,
@@ -5585,7 +6273,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -5606,7 +6295,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 50
+     "target": 50,
+     "unverified_stop_records": []
     },
     {
      "classification": "inconclusive_evidence",
@@ -5627,7 +6317,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 30
+     "target": 30,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -5651,6 +6342,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 3,
@@ -5701,7 +6393,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -5722,7 +6415,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 50
+     "target": 50,
+     "unverified_stop_records": []
     },
     {
      "classification": "invalid_offered_load",
@@ -5743,7 +6437,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 30
+     "target": 30,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -5767,6 +6462,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 9,
@@ -5817,7 +6513,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -5838,7 +6535,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 50
+     "target": 50,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -5859,7 +6557,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 30
+     "target": 30,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -5880,7 +6579,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 35
+     "target": 35,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -5901,7 +6601,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 40
+     "target": 40,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -5922,7 +6623,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 45
+     "target": 45,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -5943,7 +6645,8 @@
      "phase": "confirm",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 45
+     "target": 45,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -5964,7 +6667,8 @@
      "phase": "confirm",
      "repetition": 2,
      "superseded_decisions": [],
-     "target": 45
+     "target": 45,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -5985,7 +6689,8 @@
      "phase": "confirm",
      "repetition": 3,
      "superseded_decisions": [],
-     "target": 45
+     "target": 45,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -6011,6 +6716,7 @@
     ],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": false
    },
    "game_starts": 6,
@@ -6063,7 +6769,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": null,
@@ -6080,7 +6787,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 50
+     "target": 50,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -6101,7 +6809,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 30
+     "target": 30,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -6122,7 +6831,8 @@
      "phase": "confirm",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -6143,7 +6853,8 @@
      "phase": "confirm",
      "repetition": 2,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -6164,7 +6875,8 @@
      "phase": "confirm",
      "repetition": 3,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -6189,6 +6901,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 6,
@@ -6242,7 +6955,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -6263,7 +6977,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 50
+     "target": 50,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -6284,7 +6999,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 30
+     "target": 30,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -6305,7 +7021,8 @@
      "phase": "confirm",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -6326,7 +7043,8 @@
      "phase": "confirm",
      "repetition": 2,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -6347,7 +7065,8 @@
      "phase": "confirm",
      "repetition": 3,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -6374,6 +7093,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 1,
@@ -6426,7 +7146,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -6450,6 +7171,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 1,
@@ -6498,7 +7220,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -6522,6 +7245,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 6,
@@ -6573,7 +7297,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -6594,7 +7319,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 50
+     "target": 50,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -6615,7 +7341,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 30
+     "target": 30,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -6636,7 +7363,8 @@
      "phase": "confirm",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -6657,7 +7385,8 @@
      "phase": "confirm",
      "repetition": 2,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -6678,7 +7407,113 @@
      "phase": "confirm",
      "repetition": 3,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
+    }
+   ]
+  },
+  "stop_request_failing_refuses_resume_and_dispatch": {
+   "batch": null,
+   "claim": {
+    "confirmed": false,
+    "kind": "evidence_disagreement",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No evidence-backed claim: the retained files of 1 of 1 trials disagree with the journal or cannot be verified. What the journal says is kept apart as history, and is not verified here."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "dispatch_code": "terminal_fact_unacknowledged",
+   "evidence": {
+    "disputed_trials": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "trials_with_unverified_stop_records": [],
+    "verified": false
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "in_progress",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the search is not finished (in_progress). The highest one-minute pass was 25; it stays an exploratory observation."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "resume_code": "terminal_fact_unacknowledged",
+   "resumed": false,
+   "status": "in_progress",
+   "terminal_failure": null,
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [
+      "the journal says PASS, and terminal-fact-0002-0.json records a stop fact: bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch', 'expected_sha256': 'baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593', 'actual_sha256': '8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d', 'retained_as': 'corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d'}]"
+     ],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hard_facts": [
+      {
+       "details": [
+        "bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch', 'expected_sha256': 'baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593', 'actual_sha256': '8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d', 'retained_as': 'corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d'}]"
+       ],
+       "fencing_token": 2,
+       "outcome": "INFRASTRUCTURE_FAILURE",
+       "receipts": [
+        {
+         "actual_sha256": "8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d",
+         "expected_sha256": "baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593",
+         "kind": "corrupt",
+         "path": "bot.stdout.log",
+         "reason": "hash mismatch",
+         "retained_as": "corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d"
+        }
+       ],
+       "record": "terminal-fact-0002-0.json",
+       "role": "bot",
+       "sha256": "cfc17b5502e47e0eab99cf89794f17ed091022e50976190588003372d6370cb7"
+      }
+     ],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -6703,6 +7538,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 1,
@@ -6753,7 +7589,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -6777,6 +7614,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 1,
@@ -6825,7 +7663,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -6849,6 +7688,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 1,
@@ -6897,7 +7737,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -6921,6 +7762,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 2,
@@ -6969,7 +7811,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "valid_pass",
@@ -6990,7 +7833,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 50
+     "target": 50,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -7017,6 +7861,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 1,
@@ -7060,7 +7905,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -7087,6 +7933,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 1,
@@ -7139,7 +7986,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -7168,6 +8016,7 @@
     ],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": false
    },
    "game_starts": 1,
@@ -7216,7 +8065,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     }
    ]
   },
@@ -7242,6 +8092,7 @@
     "disputed_trials": [],
     "superseded_trials": [],
     "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [],
     "verified": true
    },
    "game_starts": 2,
@@ -7296,7 +8147,8 @@
      "phase": "coarse",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 25
+     "target": 25,
+     "unverified_stop_records": []
     },
     {
      "classification": "capacity_failure",
@@ -7317,7 +8169,8 @@
      "phase": "refine",
      "repetition": 1,
      "superseded_decisions": [],
-     "target": 5
+     "target": 5,
+     "unverified_stop_records": []
     }
    ]
   }

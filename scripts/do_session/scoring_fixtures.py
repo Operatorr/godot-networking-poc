@@ -442,16 +442,16 @@ def _oom_reading(at_ns, oom_kill, procs, **more):
 
 
 def process_oom_document(game, supervisor=None, sampler=None, invocation=OOM_INVOCATION, unit=OOM_UNIT):
-    """The file ``guest_runner.OomWatch`` leaves when the kernel takes the game: a baseline with the supervisor alone, all three in the unit, one kill, the reap, the other two alive."""
+    """The file ``guest_runner.OomWatch`` leaves when the kernel takes the game: a fresh empty leaf, the game alone in it, one kill counted local to it, the reap, and the leaf empty."""
     supervisor, sampler = supervisor or OOM_SUPERVISOR, sampler or OOM_SAMPLER
     cgroup = '/system.slice/' + unit
-    all_three = [supervisor['pid'], game['pid'], sampler['pid']]
+    leaf, supervision = cgroup + '/' + guest_runner.WORKLOAD_LEAF, cgroup + '/' + guest_runner.SUPERVISION_LEAF
     keep = lambda item: {key: item[key] for key in ('pid', 'start_id', 'boot_id')}
-    return dict(schema=guest_runner.OOM_SCHEMA, source='cgroup v2 memory.events of the run unit', run_id='fixture-run', role='game', unit=unit, unit_mode='systemd', available=True, unavailable=None, cgroup=cgroup, invocation_id=invocation,
-                supervisor=keep(supervisor), processes=dict(game=keep(game), sampler=keep(sampler)), member_cgroups=dict(game=cgroup, sampler=cgroup, supervisor=cgroup),
-                baseline=_oom_reading(1_000, 0, [supervisor['pid']]), bound=_oom_reading(2_000, 0, all_three),
-                primary_exit=_oom_reading(3_000, 1, [supervisor['pid'], sampler['pid']], primary='game', returncode=None, signal=9, alive=['sampler']),
-                final=_oom_reading(4_000, 1, [supervisor['pid']]))
+    return dict(schema=guest_runner.OOM_SCHEMA, source='cgroup v2 memory.events.local of a leaf holding only the primary process', run_id='fixture-run', role='game', unit=unit, unit_mode='systemd', available=True, unavailable=None, cgroup=cgroup, leaf=leaf, supervision=supervision, invocation_id=invocation,
+                supervisor=keep(supervisor), processes=dict(game=keep(game), sampler=keep(sampler)), member_cgroups=dict(game=leaf, sampler=supervision, supervisor=supervision),
+                baseline=_oom_reading(1_000, 0, [], unit_oom_kill=0), bound=_oom_reading(2_000, 0, [game['pid']], unit_oom_kill=0),
+                primary_exit=_oom_reading(3_000, 1, [], primary='game', returncode=None, signal=9, alive=['sampler'], unit_oom_kill=1),
+                final=_oom_reading(4_000, 1, [], unit_oom_kill=1))
 
 
 def oom_killed(tree, change=None, identity=None):
@@ -477,7 +477,8 @@ def _oom_reading_set(name, **fields):
 
 def _oom_cgroup(cgroup):
     """Everything agrees on a cgroup that is not the unit's, so that nothing but its name can refuse it."""
-    return lambda document: document.update(cgroup=cgroup, member_cgroups={name: cgroup for name in document['member_cgroups']})
+    leaf, supervision = cgroup + '/' + guest_runner.WORKLOAD_LEAF, cgroup + '/' + guest_runner.SUPERVISION_LEAF
+    return lambda document: document.update(cgroup=cgroup, leaf=leaf, supervision=supervision, member_cgroups=dict(game=leaf, sampler=supervision, supervisor=supervision))
 
 
 def _oom_process(name, **fields):
@@ -493,17 +494,25 @@ OOM_NOT_ATTRIBUTED = (
     ('another_supervisor', 'not_attributable', lambda d: d['supervisor'].update(pid=123456)),
     ('another_invocation_of_the_unit', 'not_attributable', _oom_set(invocation_id='other-invocation')),
     ('another_units_cgroup', 'not_attributable', _oom_cgroup('/system.slice/ssh.service')),
-    ('another_unit_named', 'not_attributable', _oom_set(unit='omega-run-other-game.service', cgroup='/system.slice/omega-run-other-game.service')),
+    ('another_unit_named', 'not_attributable', lambda d: (_oom_cgroup('/system.slice/omega-run-other-game.service')(d), d.update(unit='omega-run-other-game.service'))),
     ('a_shared_cgroup', 'not_attributable', _oom_cgroup('/user.slice/user-1000.slice/session-1.scope')),
     ('a_member_in_another_cgroup', 'not_attributable', lambda d: d['member_cgroups'].update(game='/system.slice/ssh.service')),
+    ('the_sampler_in_the_games_leaf', 'not_attributable', lambda d: d['member_cgroups'].update(sampler=d['leaf'])),
+    ('the_supervisor_in_the_games_leaf', 'not_attributable', lambda d: d['member_cgroups'].update(supervisor=d['leaf'])),
+    ('the_game_still_in_the_unit_itself', 'not_attributable', lambda d: d['member_cgroups'].update(game=d['cgroup'])),
+    ('a_leaf_that_is_not_the_units', 'not_attributable', _oom_set(leaf='/system.slice/ssh.service/workload')),
+    ('the_sampler_itself_in_the_leaf_at_a_read', 'not_attributable', lambda d: d['bound']['procs'].append(3002)),
     ('a_stranger_in_the_cgroup', 'not_attributable', lambda d: d['bound']['procs'].append(777)),
     ('a_stranger_at_the_reap', 'not_attributable', lambda d: d['primary_exit']['procs'].append(777)),
     ('a_stranger_before_anything_started', 'not_attributable', lambda d: d['baseline']['procs'].append(777)),
-    ('no_kill_counted', 'not_attributable', _oom_reading_set('primary_exit', oom_kill=0)),
+    ('a_leaf_that_was_not_fresh', 'not_attributable', lambda d: (d['baseline'].update(oom_kill=1), d['bound'].update(oom_kill=1), d['primary_exit'].update(oom_kill=2), d['final'].update(oom_kill=2))),
+    ('a_kill_counted_only_elsewhere_in_the_unit', 'not_attributable', lambda d: (d['primary_exit'].update(oom_kill=0), d['final'].update(oom_kill=0))),
+    ('no_kill_counted', 'not_attributable', _oom_reading_set('primary_exit', oom_kill=0, unit_oom_kill=0)),
     ('two_kills_counted', 'not_attributable', lambda d: (d['primary_exit'].update(oom_kill=2), d['final'].update(oom_kill=2))),
     ('a_kill_only_after_the_reap', 'not_attributable', lambda d: (d['primary_exit'].update(oom_kill=0), d['final'].update(oom_kill=1))),
+    ('a_second_kill_after_the_reap', 'not_attributable', lambda d: d['final'].update(oom_kill=2)),
+    ('a_stranger_left_in_the_leaf', 'not_attributable', lambda d: d['final']['procs'].append(777)),
     ('a_group_kill', 'not_attributable', _oom_reading_set('primary_exit', oom_group_kill=1)),
-    ('the_sampler_died_too', 'not_attributable', lambda d: d['primary_exit'].update(alive=[], procs=[d['supervisor']['pid']])),
     ('the_counter_restarted', 'not_attributable', lambda d: (d['baseline'].update(oom_kill=5), d['bound'].update(oom_kill=5))),
     ('the_counter_went_back_before_the_reap', 'not_attributable', lambda d: (d['baseline'].update(oom_kill=3), d['bound'].update(oom_kill=0), d['primary_exit'].update(oom_kill=4), d['final'].update(oom_kill=4))),
     ('the_counter_went_back_after_the_reap', 'not_attributable', _oom_reading_set('final', oom_kill=0)),
@@ -513,6 +522,13 @@ OOM_NOT_ATTRIBUTED = (
     ('the_exit_it_read_was_something_else', 'not_attributable', _oom_reading_set('primary_exit', signal=15)),
     ('no_unit_of_its_own', 'unavailable', _oom_set(available=False, unavailable='this run has no unit of its own, so no cgroup boundary is its alone')),
     ('another_schema', 'refused', _oom_set(schema='omega.other/1')),
+    ('the_unit_wide_schema_that_could_not_name_a_victim', 'refused', _oom_set(schema='omega.do-session.process-oom/1')),
+)
+
+# The leaf names the game whatever happened to the others, so these are the game's. (name, the change to the supervisor's file.)
+OOM_STILL_THE_GAMES = (
+    ('the_sampler_died_too', lambda d: d['primary_exit'].update(alive=[], unit_oom_kill=2)),
+    ('the_sampler_was_counted_at_the_same_read', lambda d: (d['primary_exit'].update(unit_oom_kill=2), d['final'].update(unit_oom_kill=2))),
 )
 
 

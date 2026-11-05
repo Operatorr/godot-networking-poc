@@ -27,7 +27,7 @@ Whose evidence. A hash shows which bytes arrived, not whose they are. ``measurem
 reasons come from the swarm's own files. All of those stand beside any server failure, because none of them can be the server's doing. A server's missing data can be the consequence of its demonstrated crash.
 
 An exit. Only the supervisor's record of the exit proves anything. The host's OOM count cannot say who was killed or when: it stays a diagnostic. A SIGKILL is an out-of-memory kill of the game only with ``process_oom``'s proof, from the kernel's
-count for the run's own unit, bound to the supervised processes. Without all of that it stays unexplained.
+count local to a cgroup leaf that holds only the supervised game. A count for the whole unit names nobody. Without all of that it stays unexplained.
 
 Boundaries. A Tick or a counter read near an edge of a mapped interval may or may not belong to the window, so a verdict must hold for every position the clocks allow. Tick counts
 and socket drops are evaluated at both extremes of that uncertainty, and anything that depends on where the window really was stays unknown.
@@ -101,7 +101,7 @@ POLICY = dict(
     boundaries='Tick counts and socket drops are evaluated over the widest and the narrowest interval the clocks allow. A verdict must hold for both, or it stays unknown.',
     generator_evidence='A failed gate or a crash establishes nothing over a generator not proven valid. Every reason the prover draws from the swarm\'s own files stands: a server\'s missing data can be the consequence of its demonstrated crash, and a generator\'s cannot.',
     ramp=dict(definition='A ramp can fail and can never pass. Its failure needs the supervised swarm and game identities, a kick only of a bot both sides recorded as authenticated, and zero generator socket drops proven on every opened socket by a counter read certainly after the abort. A read that may precede the abort, or a socket no such read saw, leaves the generator not proven.'),
-    oom='The host-wide kernel OOM count is a diagnostic and never explains a process exit. A game SIGKILL is out_of_memory only when the kernel counted exactly one OOM kill in the cgroup of the run\'s own unit between a baseline before any process started and a read right after the reap, every member of that cgroup is a supervised identity, and every other member was still alive after that read. Anything less stays killed_with_no_cause_on_record.',
+    oom='The host-wide kernel OOM count is a diagnostic and never explains a process exit. A count for the run\'s unit names no process, because the kernel raises it before the SIGKILL and another member can be counted and still alive at any read, so it never explains a process exit either. A game SIGKILL is out_of_memory only when the kernel counted exactly one OOM kill local to a leaf cgroup of the run\'s unit, made fresh for the game before it started, holding the sealed game and nobody else at every read, between a baseline of zero and a read right after the reap. Anything less stays killed_with_no_cause_on_record.',
 )
 POLICY_SHA256 = hashlib.sha256(json.dumps(POLICY, sort_keys=True).encode('utf-8')).hexdigest()
 
@@ -179,15 +179,15 @@ def _oom_reading(document, name):
 
 
 def process_oom(root, execution):
-    """Whether the sealed evidence shows the kernel's OOM killer took the game process. Returns (shown, facts), where ``facts`` always says why, and a host-wide count never enters into it.
+    """Whether the sealed evidence shows the kernel's OOM killer chose the game process. Returns (shown, facts), where ``facts`` always says why, and neither a host-wide count nor a count for the whole unit ever enters into it.
 
-    The kernel's count for the run's own unit names no victim. So it is held to the sealed identities, and every other way to read one kill is excluded: another process in the cgroup, a member elsewhere, a member that
-    died too, a counter that restarted or a group kill. A file of this schema is what ``guest_runner.OomWatch`` writes, read after the same sealed hashes as every other run file.
+    The kernel raises its count against the cgroup of the process it chose, before it sends SIGKILL. In the unit's cgroup that names nobody, because another member can be counted and still be alive at any read. In a leaf holding only the game it names the game. So the proof
+    is that leaf: made fresh by the supervisor, of the plan's own unit, holding the sealed game and nobody else at every read, with the supervisor and sampler in a leaf of their own, and the leaf's count rising by exactly one by the time the game was reaped.
+    A file of this schema is what ``guest_runner.OomWatch`` writes, read after the same sealed hashes as every other run file.
     """
     root = pathlib.Path(root)
     role = ((execution or {}).get('roles') or {}).get('game') or {}
     identity = role.get('identity') or {}
-    result = role.get('result') or {}
     document, problem = mw.load_json(root / 'game' / guest_runner.OOM_EVIDENCE)
     if problem:
         return False, dict(status='missing', problems=['%s %s' % (guest_runner.OOM_EVIDENCE, problem)])
@@ -218,39 +218,40 @@ def process_oom(root, execution):
         problems.append('it names members %s' % sorted(named))
     if not identity.get('invocation_id') or document.get('invocation_id') != identity.get('invocation_id'):
         problems.append('it is of invocation %r, and the sealed one is %r' % (document.get('invocation_id'), identity.get('invocation_id')))
-    if (document.get('member_cgroups') or {}) != {name: cgroup for name in ('game', 'sampler', 'supervisor')}:
-        problems.append('not every member is in that cgroup: %s' % (document.get('member_cgroups'),))
+    leaf, supervision = document.get('leaf'), document.get('supervision')
+    if not isinstance(cgroup, str) or leaf != cgroup + '/' + guest_runner.WORKLOAD_LEAF or supervision != cgroup + '/' + guest_runner.SUPERVISION_LEAF:
+        problems.append('leaf %r and supervision %r are not the two leaves of that unit' % (leaf, supervision))
+    if (document.get('member_cgroups') or {}) != dict(game=leaf, sampler=supervision, supervisor=supervision):
+        problems.append('the game is not alone in its leaf: %s' % (document.get('member_cgroups'),))
     readings = [_oom_reading(document, name) for name in ('baseline', 'bound', 'primary_exit')]
     if any(reading is None for reading in readings):
-        problems.append('a read of the unit\'s counters is missing')
+        problems.append('a read of the leaf\'s counters is missing')
         return False, dict(status='not_attributable', problems=problems)
     baseline, bound, at_exit = readings
     final = _oom_reading(document, 'final')
     pid_of = lambda name: (named.get(name) or {}).get('pid')
-    known = {pid_of(name) for name in ('game', 'sampler', 'supervisor')}
-    for name, reading, allowed in (('baseline', baseline, {pid_of('supervisor')}), ('bound', bound, known), ('primary_exit', at_exit, known)):
+    for name, reading, allowed in (('baseline', baseline, set()), ('bound', bound, {pid_of('game')}), ('primary_exit', at_exit, set())):
         if not set(reading['procs']) <= allowed:
-            problems.append('at %s the cgroup held %s, which are not all this run\'s' % (name, sorted(set(reading['procs']) - allowed)))
+            problems.append('at %s the leaf held %s, and may hold only the game while it lives' % (name, sorted(set(reading['procs']) - allowed)))
     if any(right['mono_ns'] <= left['mono_ns'] for left, right in zip(readings, readings[1:])):
         problems.append('its reads are out of order')
     series = [reading['oom_kill'] for reading in readings + ([final] if final else [])]
     if any(right < left for left, right in zip(series, series[1:])):
         return False, dict(status='not_attributable', problems=problems + ['the counter moved backward: %s' % series], counts=series)
+    if baseline['oom_kill'] != 0:
+        problems.append('a leaf made fresh for this run counts from zero, and this one began at %d' % baseline['oom_kill'])
     if document.get('final') is not None and final is None:
         problems.append('the last read is malformed')
+    if final is not None and (final['oom_kill'] != at_exit['oom_kill'] or final['procs']):
+        problems.append('with the game gone the leaf still changed: %d kills and %s by the last read' % (final['oom_kill'], final['procs']))
     delta = at_exit['oom_kill'] - baseline['oom_kill']
-    facts = dict(source=document.get('source'), cgroup=cgroup, oom_kill_in_unit=delta, read_after_reap_ns=at_exit['mono_ns'])
+    facts = dict(source=document.get('source'), cgroup=cgroup, leaf=leaf, oom_kill_in_leaf=delta, unit_oom_kill_at_reap=at_exit.get('unit_oom_kill'), read_after_reap_ns=at_exit['mono_ns'])
     if delta != 1:
-        problems.append('the kernel counted %d OOM kills in this unit before the reap, and one kill of one process is what this can attribute' % delta)
+        problems.append('the kernel counted %d OOM kills in the game\'s own leaf before the reap, and one kill of the one process in it is what this can attribute' % delta)
     if (at_exit.get('oom_group_kill') or 0) != (baseline.get('oom_group_kill') or 0):
-        problems.append('a group OOM kill took more than one process')
+        problems.append('a group OOM kill is on record in the leaf')
     if at_exit.get('primary') != 'game' or at_exit.get('signal') != SIGKILL or at_exit.get('returncode') is not None:
         problems.append('what it read followed the exit %r signal %r of %r' % (at_exit.get('returncode'), at_exit.get('signal'), at_exit.get('primary')))
-    survivor = pid_of('sampler')
-    if at_exit.get('alive') != ['sampler'] or survivor not in at_exit['procs'] or pid_of('supervisor') not in at_exit['procs']:
-        problems.append('the other members were not all alive right after the reap: %s, %s' % (at_exit.get('alive'), at_exit['procs']))
-    if result.get('sampler_exited_early'):
-        problems.append('the sampler is on record as dying during the run')
     return not problems, dict(facts, status='victim_matched' if not problems else 'not_attributable', problems=problems)
 
 

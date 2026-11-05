@@ -78,7 +78,7 @@ class RetainedEvidence(unittest.TestCase):
         disputed = {'foreign_retained_score_is_refused_on_return', 'edited_retained_score_is_refused_on_return', 'foreign_retained_classification_is_refused_on_return', 'unfrozen_controller_refuses_a_foreign_retained_score', 'report_withholds_the_claim_when_a_retained_score_changed'}
         stopped_by_a_fact = {'corrupt_bytes_on_return_outrank_a_retained_score', 'corrupt_bytes_on_return_outrank_a_retained_classification', 'corrupt_bytes_survive_a_second_crash_and_a_restored_transfer_after_a_retained_score',
                              'corrupt_bytes_survive_a_second_crash_and_a_restored_transfer_after_a_retained_classification', 'corrupt_bytes_in_a_confirmation_keep_its_siblings_untouched'}
-        found_after_the_commit = {'corrupt_bytes_found_after_the_commit_stop_the_session_and_keep_the_outcome', 'corrupt_bytes_found_by_recovery_at_wrap_up_withhold_the_claim'}
+        found_after_the_commit = {'corrupt_bytes_found_after_the_commit_stop_the_session_and_keep_the_outcome', 'corrupt_bytes_found_by_recovery_at_wrap_up_withhold_the_claim', 'corrupt_seal_after_the_commit_refuses_resume', 'corrupt_seal_with_a_crash_after_the_fact_and_a_restored_transfer_refuses_resume', 'stop_request_failing_refuses_resume_and_dispatch', 'foreign_terminal_fact_refuses_resume_with_nothing_final_said'}
         self.assertEqual({name for name, row in searches.items() if not row['evidence']['verified']}, disputed | stopped_by_a_fact | found_after_the_commit)
         for name in stopped_by_a_fact:
             row = searches[name]
@@ -107,6 +107,22 @@ class RetainedEvidence(unittest.TestCase):
         self.assertEqual(scores['ramp_overflow_on_a_read_after_the_abort_beside_an_overrun']['classification'], cs.INCONCLUSIVE)
         for name, _, _ in sf.OOM_NOT_ATTRIBUTED:
             self.assertEqual((scores['game_oom_' + name]['classification'], scores['game_oom_' + name]['game_exit']['kind']), (cs.INCONCLUSIVE, 'killed_with_no_cause_on_record'), name)
+        for name, _ in sf.OOM_STILL_THE_GAMES:
+            self.assertEqual((scores['game_oom_' + name]['classification'], scores['game_oom_' + name]['game_exit']['kind']), (cs.CAPACITY_FAILURE, 'out_of_memory'), name)
+
+    def test_the_new_stop_paths_are_retained_with_no_successor(self):
+        searches = json.loads((RETAINED / 'synthetic-searches.json').read_text())['scenarios']
+        for name, code, terminal in (('corrupt_seal_after_the_commit_refuses_resume', 'terminal_failure', 'INFRASTRUCTURE_FAILURE'), ('corrupt_seal_with_a_crash_after_the_fact_and_a_restored_transfer_refuses_resume', 'terminal_failure', 'INFRASTRUCTURE_FAILURE'),
+                                     ('stop_request_failing_refuses_resume_and_dispatch', 'terminal_fact_unacknowledged', None), ('foreign_terminal_fact_refuses_resume_with_nothing_final_said', 'stop_record_unverified', None)):
+            row = searches[name]
+            self.assertEqual((row['resumed'], row['resume_code'], row['terminal_failure'], row['game_starts']), (False, code, terminal, 1), name)
+            self.assertEqual(row['claim']['kind'], 'evidence_disagreement', name)
+        self.assertEqual(searches['stop_request_failing_refuses_resume_and_dispatch']['dispatch_code'], 'terminal_fact_unacknowledged')
+        self.assertEqual(searches['foreign_terminal_fact_refuses_resume_with_nothing_final_said']['trials'][0]['hard_facts'], [])
+        self.assertTrue(searches['foreign_terminal_fact_refuses_resume_with_nothing_final_said']['trials'][0]['unverified_stop_records'])
+        self.assertTrue(searches['corrupt_seal_after_the_commit_refuses_resume']['trials'][0]['hard_facts'][-1]['receipts'])
+        self.assertEqual([row['outcome'] for row in searches['oom_kill_counted_only_elsewhere_in_the_unit_stops_with_no_refinement']['trials']], ['INCONCLUSIVE'])
+        self.assertEqual(searches['oom_kill_of_the_game_beside_the_samplers_opens_the_bracket']['status'], 'no_passing_target')
 
     def test_real_summaries_are_labelled_and_never_pass(self):
         for path in RETAINED.glob('real-*.json'):

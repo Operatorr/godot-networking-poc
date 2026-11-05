@@ -4,8 +4,8 @@ Offline evidence for [issue #69](https://github.com/Operatorr/godot-networking-p
 
 | File | What it is | Reproducible |
 | --- | --- | --- |
-| [`synthetic-scores.json`](synthetic-scores.json) | The real prover and scorer over 168 mocked recorder trees, each with one thing changed. Nothing ran, and each "60 s window" is arithmetic | Yes: `test_scoring_evidence` regenerates it and compares the hash |
-| [`synthetic-searches.json`](synthetic-searches.json) | 61 whole searches through the real executor, registry, prover and scorer over a fake guest that exports those trees. No outcome is scripted: each comes from the bytes | Yes, likewise |
+| [`synthetic-scores.json`](synthetic-scores.json) | The real prover and scorer over 179 mocked recorder trees, each with one thing changed. Nothing ran, and each "60 s window" is arithmetic | Yes: `test_scoring_evidence` regenerates it and compares the hash |
+| [`synthetic-searches.json`](synthetic-searches.json) | 67 whole searches through the real executor, registry, prover and scorer over a fake guest that exports those trees. No outcome is scripted: each comes from the bytes | Yes, likewise |
 | [`real-local-scores.json`](real-local-scores.json) | The real scorer over real `omega-server` and `omega-load-test` bytes on one machine | No: timings are real. `SHA256SUMS` only says these are the bytes retained |
 
 Raw recorder files are not retained here. The real generator deletes its temporary run directories, so its rows are summaries that cannot be replayed from this directory.
@@ -26,8 +26,8 @@ Each boundary is tested on both sides, and every comparison keeps its exact coun
 | A kick after independent starvation, or starvation before a late-seen kick; a stall beside an overrun | `inconclusive_evidence`, with both failures still listed |
 | A transport timeout alone; a server row the bot never saw; N lost with no account of who; SIGKILL or exit 0 with no cause on record; a `SERVER_SHUTDOWN` or duplicate-session reason | `inconclusive_evidence` |
 | A SIGKILL beside an earlier or later host OOM increment, a reset counter, or an RTT gate proven failed | `inconclusive_evidence`: the host's count is a diagnostic |
-| A SIGKILL with the kernel's count for the run's own unit bound to the sealed processes: one kill, every other member still alive after the reap | `capacity_failure`, `out_of_memory`, mid-window or in a proven ramp |
-| The same kill, in each of 27 ways it is less than that: another process, pid or boot; another supervisor, invocation or unit; a shared cgroup; a member elsewhere; a stranger in the cgroup at any read; no kill, two kills, or a kill only after the reap; a group kill; the sampler dead too; a counter that restarted or went back; a read that failed; reads out of order; another exit; no unit of its own; another schema | `inconclusive_evidence`, `killed_with_no_cause_on_record`, 27 scenarios |
+| A SIGKILL with one kill counted local to the game's own cgroup leaf, bound to the sealed processes. Whatever became of the sampler: dead too, or counted at the same read (`game_oom_the_sampler_died_too`, `game_oom_the_sampler_was_counted_at_the_same_read`) | `capacity_failure`, `out_of_memory`, mid-window or in a proven ramp |
+| The same kill, in each of 36 ways it is less than that: another process, pid or boot; another supervisor, invocation or unit; a shared cgroup; a member elsewhere; the sampler or supervisor in the game's leaf, or the game left in the unit; a leaf not of the unit, or not fresh; a stranger in the leaf at any read; a kill counted only elsewhere in the unit, which is the one the sampler leaves; no kill, two kills, a kill only after the reap, or another after it; a group kill; a counter that restarted or went back; a read that failed; reads out of order; another exit; no unit of its own; another schema, or the old unit-wide one | `inconclusive_evidence`, `killed_with_no_cause_on_record`, 36 scenarios |
 | A matched OOM kill in a ramp whose last read came before the abort | `inconclusive_evidence`: the generator stays unproven |
 | A ramp overflow on a read after the abort, beside an overrun | `inconclusive_evidence`, with both failures still listed |
 | A Tick overrun beside a host OOM increment | `capacity_failure`, from the Ticks alone |
@@ -46,13 +46,13 @@ Each boundary is tested on both sides, and every comparison keeps its exact coun
 | --- | ---: | --- |
 | `confirmed` | 9, and 2 more whose reports withhold the claim below | The candidate on this pair, three valid passes, not provider-wide |
 | `confirmed_search_cap_reached` | 1 | At least 500; not a discovered ceiling |
-| `no_passing_target` | 4 | No passing target at 5-player resolution; not zero, `players` and `lower_bound` null |
+| `no_passing_target` | 5 | No passing target at 5-player resolution; not zero, `players` and `lower_bound` null |
 | `unconfirmed_variable` | 3 | Failed at repetition 1, 2 or 3; no replacement, nothing after it |
 | `unconfirmed_partial` | 1 | An interrupted confirmation; its untouched siblings ran; never confirmed |
-| `stopped_*` | 32 | Invalid load, inconclusive evidence or infrastructure, across coarse, refinement and confirmation; earlier passes named as exploratory only |
+| `stopped_*` | 33 | Invalid load, inconclusive evidence or infrastructure, across coarse, refinement and confirmation; earlier passes named as exploratory only |
 | `undecidable_incomplete_predecessor` | 2 | A cut trial or one an unfrozen controller could not score, neither inferred nor replayed |
 | `partial_time_exhausted` | 1 | Results kept; nothing dispatched that cannot fit |
-| `in_progress` | 6 | A session collected or resumed after one decided trial, with nothing more run |
+| `in_progress` | 10 | A session collected or resumed after one decided trial, with nothing more run |
 
 Every scenario records `no_hidden_retry`: one game start per trial. The search also covers crashes at `after_execution_record`, `after_score_retained`, `before_outcome_commit` and `after_outcome_commit`. `test_capacity_search.EveryLegalPath` walks all 401 leaves of the graph with no files.
 
@@ -67,8 +67,11 @@ These also pin what a search may not do with evidence it cannot trust, with each
 | Corrupt bytes on a return, beside an intact retained score or classification, with or without a second crash and a transfer that works again; in a confirmation too | `INFRASTRUCTURE_FAILURE`, resume refused, the siblings never dispatched. The earlier files stay as written and the verdict names them | The stop, with `evidence.verified` false, `hard_facts` and `superseded_decisions` in the row |
 | Corrupt bytes found after the outcome was committed, on a return or by recovery at wrap-up | The outcome stays; the session is terminal, and resume refuses | `evidence_disagreement`, with what the journal claimed kept apart |
 | A transfer that cannot run, beside an intact retained score or a committed outcome | The decision stands | As the journal says, and no terminal failure |
-| An OOM kill matched to the game | `FAIL`, then refinement | The search goes on |
-| An OOM kill of a reused pid, or in a shared cgroup | `INCONCLUSIVE`, no refinement | Stopped |
+| An OOM kill counted in the game's own leaf, with or without the sampler's beside it | `FAIL`, then refinement | The search goes on |
+| An OOM kill of a reused pid, or in a shared cgroup, or counted only elsewhere in the unit | `INCONCLUSIVE`, no refinement | Stopped |
+| A seal that comes back with the wrong hash after the commit, with or without a crash after the fact is written and a transfer that works again | The outcome stays; the session is terminal, resume refused, one game start, receipt and bytes kept | `evidence_disagreement` |
+| A `record_batch_stop` that fails beside that fact | `terminal_fact_unacknowledged` from both resume and dispatch, one game start, registry not terminal, and the next controller replays it first | `evidence_disagreement` |
+| A terminal fact naming another session, manifest and run | `stop_record_unverified`, resume refused, one game start, registry **not** terminal | `evidence_disagreement`, listed under `unverified_stop_records` and not `hard_facts` |
 | A foreign or edited retained score, or a foreign classification, on return | `INCONCLUSIVE`, the file left as found | `evidence_disagreement` |
 | An unchanged retained score, collected with the hosts as they are | The retained outcome, not recomputed | As the journal says |
 | A retained score replaced after a search had confirmed | Unchanged in the journal | `evidence_disagreement`, with `confirmed_observation` kept as `journal_claim` |
@@ -90,7 +93,9 @@ These also pin what a search may not do with evidence it cannot trust, with each
 | Scorer policy | `omega.do-session.capacity-scorer/1` `042bdbbd8a2ca1639c694750abc33f70a286273d864d5623a26ecf476edbadbb` |
 | Sandbox | All of it under `scripts/do_session/measurement_offline.sb`. That profile was probed for the earlier summaries: a sent UDP datagram and a TCP connect to `192.0.2.1` and a resolver lookup were refused, and loopback UDP and `/bin/ps` worked. The probe was not repeated for this rerun |
 
-Commits after that revision change only this directory, and no commit changed `scripts/` or `rust/` since. Every row is a real run again, so each number moved from the last refresh. **This refresh ran while unrelated work loaded the machine, at a load average of about 40.** That is why the clock intervals are wider and RTT is higher than before, and none of it is a measurement of anything. No classification moved. The prover ran with `require_counters=False`, because macOS has no per-socket drop counter, and the scorer refuses that. **So every row is `inconclusive_evidence` by construction.** These runs check the producers' real units and reasons. They cannot show a pass.
+**These summaries are historical for the scorer and controller that followed them.** They were made at that revision, under policy `042bdbb…`, and were not rerun for the later fixes to recovery and OOM attribution. No Rust changed, so the binaries are still these. The later fixes do not reach them: these runs use a process group and no unit, so they have no leaf and no OOM evidence at all, and none is a committed-run recovery. Their `scorer` and `policy_sha256` say what made them. The current policy is in `synthetic-scores.json`.
+
+Commits straight after that revision changed only this directory. Every row is a real run again, so each number moved from the last refresh. **This refresh ran while unrelated work loaded the machine, at a load average of about 40.** That is why the clock intervals are wider and RTT is higher than before, and none of it is a measurement of anything. No classification moved. The prover ran with `require_counters=False`, because macOS has no per-socket drop counter, and the scorer refuses that. **So every row is `inconclusive_evidence` by construction.** These runs check the producers' real units and reasons. They cannot show a pass.
 
 | Scenario | Proof | Continuity | Errors | Ticks over / narrow..wide | RTT p95 (samples) | ENet loss peak | Sent / scheduled, worst bot |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -114,3 +119,13 @@ The real controller path also runs one 60 s window through `test_run_local_integ
 ## Not shown anywhere here
 
 A real pass; Linux `/proc` socket and OOM counters; real cgroup files, a real kernel's OOM kill or real `systemd-run` properties, since every process-attributed OOM row here is a mocked file of the shape the real supervisor writes, and a test drives that supervisor over a stand-in directory; independent-host clocks; public routes; SSH or systemd; generator headroom under real load; a real server kick, since nothing in the real workload triggers one, so that case rests on the traced source and the mocked trees; and any host's capacity.
+
+## What changed when OOM evidence moved to a leaf
+
+Earlier versions of these files accepted one kill counted for the whole unit, with the other members seen alive after the reap. That could not name a victim: the kernel counts before it signals, so a sampler chosen and not yet dead looks exactly like a survivor. Regenerating moved these, and nothing else. No scenario was removed.
+
+- `game_oom_the_sampler_died_too` went from `inconclusive_evidence` to `capacity_failure`, `out_of_memory`. It used to mean a kill the unit count could not place. In this file the count is local to the game's leaf, so the sampler's death no longer casts doubt on it.
+- `game_oom_kill_matched_to_the_game`, `ramp_oom_kill_matched_to_the_game` and `oom_kill_matched_to_the_game_opens_the_bracket` keep their classification, over evidence of schema `/2`.
+- New score scenarios: `game_oom_a_kill_counted_only_elsewhere_in_the_unit`, which is the case that used to be accepted, `game_oom_the_unit_wide_schema_that_could_not_name_a_victim` and nine others. New search scenarios cover the leaf, the corrupt seal, the failed stop request and the foreign fact.
+
+All of this is synthetic. No kernel counted anything, and a real kill has never produced one of these files.

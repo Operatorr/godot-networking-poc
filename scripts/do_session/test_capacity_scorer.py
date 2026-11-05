@@ -896,7 +896,7 @@ class ProcessOom(Base):
         exit_facts = document['attribution']['game_exit']
         self.assertEqual((exit_facts['kind'], exit_facts['demonstrated']), ('out_of_memory', True))
         self.assertEqual(exit_facts['process_oom']['status'], 'victim_matched')
-        self.assertEqual(exit_facts['process_oom']['oom_kill_in_unit'], 1)
+        self.assertEqual(exit_facts['process_oom']['oom_kill_in_leaf'], 1)
         self.assertEqual(exit_facts['process_oom']['problems'], [])
         self.assertEqual(document['validity']['verdict'], cs.VALID)
 
@@ -938,11 +938,26 @@ class ProcessOom(Base):
                     record['roles']['game']['identity'] = {}
                 self.assertClassified(scenario.score(execution_record=record), cs.INCONCLUSIVE, 'nothing on record says why')
 
-    def test_a_sealed_record_of_the_sampler_dying_outranks_a_file_that_says_it_lived(self):
+    def test_what_became_of_the_sampler_changes_nothing_about_a_count_local_to_the_games_leaf(self):
+        """The sampler dying used to void this, when the only count was the unit's. Its own death is its own problem: it is in another leaf, and the kernel named the game."""
         scenario, record = self.killed()
         record['roles']['game']['result']['sampler_exited_early'] = True
-        document = self.assertClassified(scenario.score(execution_record=record), cs.INCONCLUSIVE, 'nothing on record says why')
-        self.assertEqual(document['attribution']['game_exit']['process_oom']['status'], 'not_attributable')
+        self.assertClassified(scenario.score(execution_record=record), cs.CAPACITY_FAILURE, 'out_of_memory')
+        for name, change in sf.OOM_STILL_THE_GAMES:
+            with self.subTest(name):
+                scenario, record = self.killed(change)
+                self.assertClassified(scenario.score(execution_record=record), cs.CAPACITY_FAILURE, 'out_of_memory')
+
+    def test_a_kill_of_the_game_still_needs_a_proven_generator_however_well_it_is_named(self):
+        """A true victim-bound kill advances only over a generator proven valid: naming the victim is not what makes an offered load valid."""
+        for name, _, change in sf.GENERATOR_OMISSIONS:
+            with self.subTest(name):
+                scenario, record = self.killed()
+                change(scenario.tree)
+                document = scenario.score(execution_record=record)
+                self.assertEqual(document['attribution']['game_exit']['kind'], 'out_of_memory', 'still the kernel\'s, and on record')
+                self.assertEqual(document['classification'], cs.INCONCLUSIVE, document['validity'])
+                self.assertEqual(document['outcome'], 'INCONCLUSIVE')
 
     def test_the_host_wide_count_alone_never_explains_a_kill(self):
         scenario = self.scenario()

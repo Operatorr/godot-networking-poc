@@ -54,7 +54,8 @@ SAFE_NAME = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,180}$')
 GRANT_ID = re.compile(r'^[0-9a-f]{32}$')
 SEAL = 'seal.json'
 OOM_EVIDENCE = 'process-oom.json'
-OOM_SCHEMA = 'omega.do-session.process-oom/1'
+OOM_SCHEMA = 'omega.do-session.process-oom/2'
+WORKLOAD_LEAF, SUPERVISION_LEAF = 'workload', 'supervision'     # names cgroup-v2.rst promises no interface file will start or end with, or does not use
 CGROUP_ROOT = '/sys/fs/cgroup'
 
 
@@ -618,10 +619,10 @@ def cgroup_of(pid, proc_root='/proc'):
 
 
 def cgroup_reading(cgroup):
-    """The kernel's own OOM counters for one cgroup and who is in it now. Zombies are not listed in cgroup.procs. None if either file cannot be read: a missing value is never zero."""
+    """The kernel's OOM counters for one cgroup's own processes, and who is in it now. Zombies are not listed in cgroup.procs. None if either file cannot be read: a missing value is never zero."""
     root = CGROUP_ROOT + cgroup
     try:
-        with open(root + '/memory.events', encoding='utf-8') as handle:
+        with open(root + '/memory.events.local', encoding='utf-8') as handle:
             events = {key: int(value) for key, value in (line.split() for line in handle if line.strip())}
         with open(root + '/cgroup.procs', encoding='utf-8') as handle:
             procs = sorted(int(line) for line in handle if line.strip())
@@ -632,29 +633,75 @@ def cgroup_reading(cgroup):
     return dict(mono_ns=time.monotonic_ns(), wall_ns=time.time_ns(), oom_kill=events['oom_kill'], oom_group_kill=events.get('oom_group_kill'), oom=events.get('oom'), procs=procs)
 
 
-class OomWatch:
-    """What the kernel counted against this run's own unit, read by the supervisor inside that unit, while the unit still exists.
+def _unit_oom_kill(cgroup):
+    """The unit's whole count, for a report to say a kill happened elsewhere in it. It attributes nothing: it names no process, and that is what the leaf is for."""
+    try:
+        with open(CGROUP_ROOT + cgroup + '/memory.events', encoding='utf-8') as handle:
+            events = {key: int(value) for key, value in (line.split() for line in handle if line.strip())}
+    except (OSError, ValueError):
+        return None
+    return events.get('oom_kill')
 
-    ``memory.events`` ``oom_kill`` is 'the number of processes belonging to this cgroup killed by any kind of OOM killer' (cgroup-v2.rst), including for a host-wide OOM, and the kernel raises it before it sends the
-    SIGKILL (``__oom_kill_process``, 'task reaper must see this'), so a read after reaping cannot miss it. It names no victim. This run's unit holds only the supervisor, the primary and the sampler, so one kill, with the
-    other two still alive right after the reap, can only have been the primary's. This names nothing more than that, and ``capacity_scorer`` decides what it proves. Outside a unit of the run's own there is
-    no such boundary, so the record says unavailable. Collecting this can never stop a run from stopping: it records what went wrong and carries on.
+
+def _cgroup_mkdir(cgroup):
+    """Create-only: a leaf this supervisor did not just make has a count nobody here can vouch for."""
+    os.mkdir(CGROUP_ROOT + cgroup)
+
+
+def _cgroup_write(cgroup, name, text):
+    descriptor = os.open(CGROUP_ROOT + cgroup + '/' + name, os.O_WRONLY)
+    try:
+        os.write(descriptor, text.encode('ascii'))
+    finally:
+        os.close(descriptor)
+
+
+def isolate_workload(unit_cgroup):
+    """Inside the run's own delegated unit: the supervisor moves to a leaf of its own, the memory controller opens for the subtree, and a new empty leaf waits for the workload. Returns (workload, supervision). Raises OSError.
+
+    The order is the kernel's: a cgroup with processes of its own cannot enable a domain controller for its children (cgroup-v2.rst, 'No Internal Process Constraint'). The supervisor is the only process in the unit at this point,
+    nothing has been spawned, and the unit runs no ExecStartPost and the like, so systemd puts no ``.control`` here (CGROUP_DELEGATION.md).
+    """
+    workload, supervision = unit_cgroup + '/' + WORKLOAD_LEAF, unit_cgroup + '/' + SUPERVISION_LEAF
+    _cgroup_mkdir(supervision)
+    _cgroup_write(supervision, 'cgroup.procs', str(os.getpid()))
+    _cgroup_write(unit_cgroup, 'cgroup.subtree_control', '+memory')
+    _cgroup_mkdir(workload)
+    return workload, supervision
+
+
+def _enter_cgroup(cgroup):
+    """In the forked child, before exec, so the workload has never been anywhere else. A failure leaves it where it was, and ``OomWatch.bind`` writes down where that was: a run does not stand or fall on its evidence."""
+    with contextlib.suppress(OSError):
+        _cgroup_write(cgroup, 'cgroup.procs', str(os.getpid()))
+
+
+class OomWatch:
+    """What the kernel counted against the workload's own cgroup, and nobody else's. Read by the supervisor, which owns that cgroup, while the unit still exists.
+
+    ``__oom_kill_process`` raises ``MEMCG_OOM_KILL`` on the memory cgroup of the victim's mm owner and only then sends SIGKILL ('task reaper must see this'), so a read after reaping cannot miss the workload's own kill. The same ordering means a
+    kill counted for the whole unit says nothing about who was chosen: the sampler can be counted and not yet dead at any read, and no membership sample or later signal can undo that. So the unit's count names nobody, and this does not use it.
+
+    ``memory.events.local`` of a leaf holding one process does name it. ``isolate_workload`` makes that leaf, through the ``Delegate=memory`` on the unit, under the uid the unit already runs as. No write to cgroupfs happens outside the unit's own subtree, and no new
+    privilege is involved. Where any of it is refused, the workload runs anyway, in the supervisor's leaf or the unit, and the record says unavailable. Outside a unit of the run's own there is no boundary to delegate, and it says that too. ``capacity_scorer`` decides what the record proves.
+    Collecting this can never stop a run from stopping: it records what went wrong and carries on.
     """
 
     def __init__(self, plan):
-        self.cgroup = None
-        self.document = dict(schema=OOM_SCHEMA, source='cgroup v2 memory.events of the run unit', run_id=plan.get('run_id'), role=plan.get('role'), unit=plan.get('unit'), unit_mode=plan.get('unit_mode'), available=False, unavailable=None)
+        self.unit_cgroup = None
+        self.workload = None
+        self.document = dict(schema=OOM_SCHEMA, source='cgroup v2 memory.events.local of a leaf holding only the primary process', run_id=plan.get('run_id'), role=plan.get('role'), unit=plan.get('unit'), unit_mode=plan.get('unit_mode'), available=False, unavailable=None)
         self._guarded(self._begin, plan)
 
     def _guarded(self, step, *arguments):
         try:
             step(*arguments)
         except Exception as error:     # evidence must not stand between a run and its stop
-            self.cgroup = None
+            self.workload = None
             self.document.update(available=False, unavailable='%s failed: %s' % (step.__name__.strip('_'), type(error).__name__))
 
     def _unavailable(self, why):
-        self.cgroup = None
+        self.workload = None
         self.document.update(available=False, unavailable=why)
 
     def _begin(self, plan):
@@ -665,34 +712,42 @@ class OomWatch:
             return self._unavailable('no cgroup v2 membership')
         if pathlib.PurePosixPath(cgroup).name != plan['unit']:
             return self._unavailable('the supervisor is in %s, not in the run unit' % cgroup)
-        baseline = cgroup_reading(cgroup)
+        try:
+            workload, supervision = isolate_workload(cgroup)
+        except OSError as error:
+            return self._unavailable('the unit gave no leaf of the workload\'s own under %s: %s errno %s' % (cgroup, type(error).__name__, error.errno))
+        baseline = cgroup_reading(workload)
         if baseline is None:
-            return self._unavailable('memory.events or cgroup.procs cannot be read for %s' % cgroup)
-        self.cgroup = cgroup
-        self.document.update(available=True, cgroup=cgroup, baseline=baseline)
+            return self._unavailable('memory.events.local or cgroup.procs cannot be read for %s' % workload)
+        self.unit_cgroup, self.workload = cgroup, workload
+        self.document.update(available=True, cgroup=cgroup, leaf=workload, supervision=supervision, baseline=self._reading(workload, baseline))
         return None
 
+    def _reading(self, workload, reading=None):
+        reading = reading if reading is not None else cgroup_reading(workload)
+        return None if reading is None else dict(reading, unit_oom_kill=_unit_oom_kill(self.unit_cgroup))
+
     def bind(self, supervisor, processes, invocation_id):
-        """Who is in the unit, once they all are. A process of this run in another cgroup leaves the kernel's count saying nothing of it."""
+        """Who is where, once they all exist. Named by the kernel's own /proc, after the fact, so a workload that did not reach its leaf is on record as elsewhere."""
         def step():
-            if self.cgroup is None:
+            if self.workload is None:
                 return
             identity = lambda item: {key: item.get(key) for key in ('pid', 'start_id', 'boot_id')}
             self.document.update(supervisor=identity(supervisor), invocation_id=invocation_id, processes={name: identity(item) for name, item in processes.items()},
-                                 member_cgroups=dict({name: cgroup_of(item['pid']) for name, item in processes.items()}, supervisor=self.cgroup), bound=cgroup_reading(self.cgroup))
+                                 member_cgroups=dict({name: cgroup_of(item['pid']) for name, item in processes.items()}, supervisor=cgroup_of(os.getpid())), bound=self._reading(self.workload))
         self._guarded(step)
 
     def primary_exited(self, primary, facts, alive):
-        """Right after the reap and before any signal from here, so that everything still alive was certainly not this kill's victim."""
+        """Right after the reap and before any signal from here. The workload's kill, if there was one, is already counted."""
         def step():
-            if self.cgroup is not None:
-                self.document['primary_exit'] = dict(cgroup_reading(self.cgroup) or dict(unreadable=True), primary=primary, returncode=facts.get('returncode'), signal=facts.get('signal'), alive=sorted(alive))
+            if self.workload is not None:
+                self.document['primary_exit'] = dict(self._reading(self.workload) or dict(unreadable=True), primary=primary, returncode=facts.get('returncode'), signal=facts.get('signal'), alive=sorted(alive))
         self._guarded(step)
 
     def finish(self, path):
         def step():
-            if self.cgroup is not None:
-                self.document['final'] = cgroup_reading(self.cgroup)
+            if self.workload is not None:
+                self.document['final'] = self._reading(self.workload)
         self._guarded(step)
         with contextlib.suppress(OSError):
             atomic_json(path, self.document)
@@ -703,11 +758,12 @@ def launch_supervisor(host, run_dir, plan):
     if plan['unit_mode'] == SYSTEMD:
         # The unit is the second bound, for a supervisor that dies. KillMode takes everything in its cgroup with it.
         # OOMPolicy=continue: the default stops the whole unit when one process is OOM-killed, which would stop the supervisor before it has reaped the victim and read the kernel's count.
+        # Delegate=memory: the supervisor may put the workload in a leaf of its own, the one place the kernel's OOM count names a process. KillMode and RuntimeMaxSec still cover the whole subtree, and systemd trims it when the unit ends.
         limit = plan['bound_s'] + plan['stop_grace_s'] + 5
         code, _ = run_command(['sudo', '-n', 'systemd-run', '--quiet', '--collect', '--unit=' + plan['unit'], '--uid=' + str(os.getuid()),
                                '--property=RuntimeMaxSec=%d' % max(1, int(limit)), '--property=KillMode=control-group', '--property=TimeoutStopSec=15',
                                '--property=Restart=no', '--property=LimitCORE=0', '--property=LimitNOFILE=65536', '--property=CPUAccounting=yes',
-                               '--property=MemoryAccounting=yes', '--property=OOMPolicy=continue'] + command, timeout=20)
+                               '--property=MemoryAccounting=yes', '--property=OOMPolicy=continue', '--property=Delegate=memory'] + command, timeout=20)
         if code != 0:
             raise Refused('unit_start_failed', 'systemd-run exited %s' % code)
         return
@@ -845,16 +901,21 @@ def _child_limits():
         resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_FILE_BYTES, MAX_FILE_BYTES))
 
 
-def _spawn(spec, run_dir, placeholder):
+def _spawn(spec, run_dir, placeholder, cgroup=None):
     argv = [part.replace('{run_dir}', placeholder) for part in spec['argv']]
     env = dict(os.environ, **{k: v.replace('{run_dir}', placeholder) for k, v in spec.get('env', {}).items()})
     for directory in spec.get('make_dirs', ()):
         pathlib.Path(directory.replace('{run_dir}', placeholder)).mkdir(parents=True, exist_ok=True)
     out = (run_dir / (spec['name'] + '.stdout.log')).open('ab')
     err = (run_dir / (spec['name'] + '.stderr.log')).open('ab')
+
+    def before_exec():
+        _child_limits()
+        if cgroup is not None:
+            _enter_cgroup(cgroup)
     try:
         return subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=out, stderr=err, env=env, cwd=str(run_dir), start_new_session=True,
-                                close_fds=True, preexec_fn=_child_limits)
+                                close_fds=True, preexec_fn=before_exec)
     finally:
         out.close()
         err.close()
@@ -937,7 +998,7 @@ def cmd_supervise(args, host):
     oom_watch = OomWatch(plan)      # before any child exists, so its count covers their whole lives
     try:
         for spec in plan['processes']:
-            child = _spawn(spec, run_dir, str(run_dir))
+            child = _spawn(spec, run_dir, str(run_dir), cgroup=oom_watch.workload if spec.get('primary') else None)
             children[spec['name']] = child
             processes[spec['name']] = dict(identity_of(child.pid), path=spec['argv'][0], primary=bool(spec.get('primary')))
         if plan.get('sampler'):

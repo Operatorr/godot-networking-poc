@@ -21,6 +21,7 @@ import capacity_report
 import capacity_scorer as cs
 import measurement_local as ml
 import measurement_window as mw
+import registry_client
 import run_cli
 import run_executor
 import run_fixtures as rf
@@ -172,7 +173,8 @@ OOM_SCENARIOS = (('game_oom_kill_matched_to_the_game', {}, _crash, sf.oom_killed
                  ('ramp_oom_kill_matched_to_the_game', {}, _ramp('bot_failed_before_window'), sf.oom_killed),
                  ('ramp_oom_kill_with_the_last_read_before_the_abort', {}, lambda t: (_ramp('bot_failed_before_window')(t), sf._keep_bot_reads(t, sf._last_read_before_abort(t))), sf.oom_killed),
                  ('ramp_overflow_on_a_read_after_the_abort_beside_an_overrun', {}, _ramp(then=lambda t: (sf.ramp_slow_ticks(t, 2), sf._bot_socket(t, lambda item: item.update(drops=1 if item['local_port'] == 40003 else 0)))), None)
-                 ) + tuple(('game_oom_%s' % name, {}, _crash, (lambda change: lambda t: sf.oom_killed(t, change))(change)) for name, _, change in sf.OOM_NOT_ATTRIBUTED)
+                 ) + tuple(('game_oom_%s' % name, {}, _crash, (lambda change: lambda t: sf.oom_killed(t, change))(change)) for name, _, change in sf.OOM_NOT_ATTRIBUTED) \
+    + tuple(('game_oom_%s' % name, {}, _crash, (lambda change: lambda t: sf.oom_killed(t, change))(change)) for name, change in sf.OOM_STILL_THE_GAMES)
 SCENARIOS = SCENARIOS + OOM_SCENARIOS
 BYPASSES = (
     ('local_counter_bypass', dict(require_counters=False)),
@@ -310,6 +312,57 @@ def _corrupt_at_wrap_up(case):
     _lose_a_file(sim)
     executor.wrap_up(result)
     return sim, result, dict(terminal_failure=sim.status_now()['terminal_failure'])
+
+
+def _committed_then_returned(arrange, retained_fact=False):
+    """A controller dies right after committing a PASS, one required raw file is gone on the return, and ``arrange`` says what else that return meets. Its resume and everything after it are the real ones."""
+    def play(case):
+        sim = sf.ScoredSim(case, sf.by_target({50: sf.slow, 30: sf.slow}))
+        case.addCleanup(rf.make_writable, sim.stack.root)
+        sim.ready()
+        try:
+            sim.executor(failpoint=_nth('after_outcome_commit', 1)).execute()
+        except rf.SimulatedCrash:
+            pass
+        _lose_a_file(sim, 0, False)
+        before = dict(arrange(sim) or {})
+        if retained_fact:
+            executor, control = sim.controller(name='controller-b', failpoint=rf.crash_at('after_terminal_fact'))
+            try:
+                executor.resume('operator: resume remaining runs', control)
+            except rf.SimulatedCrash:
+                pass
+            sim.guests.corrupt_export.clear()
+        executor, control = sim.controller(name='controller-c')
+        if before.get('stop_fails'):
+            real = executor.client.mutate
+
+            def mutate(method, *arguments, **parameters):
+                if method == 'record_batch_stop':
+                    raise registry_client.RegistryUnavailable('scripted: this registry request fails')
+                return real(method, *arguments, **parameters)
+            executor.client.mutate = mutate
+        outcome = executor.resume('operator: resume remaining runs', control)
+        dispatched = executor.execute() if before.get('stop_fails') else None
+        return sim, None, dict(resumed=outcome['resumed'], resume_code=outcome.get('code'), dispatch_code=dispatched.code if dispatched is not None else None, terminal_failure=sim.status_now()['terminal_failure'])
+    return play
+
+
+def _corrupt(name):
+    return lambda sim: sim.guests.corrupt_export.add(name)
+
+
+def _foreign_terminal_fact(sim):
+    run_id = sim.records()[0]['run_id']
+    sim.guests.corrupt_export.clear()
+    sim.guests.copy_failures.add(('bot', 'get'))
+    fact = dict(schema=cs.TERMINAL_FACT_SCHEMA, session_id='foreign-session', manifest_sha256='f' * 64, run_id='foreign-run', role='bot', outcome='INFRASTRUCTURE_FAILURE', details=['foreign bytes failed their hash'], fencing_token=2, found_at='2026-10-30T00:00:00Z')
+    (sim.run_dir(run_id) / 'terminal-fact-0002-0.json').write_text(json.dumps(fact, indent=2, sort_keys=True) + '\n')
+
+
+def _stop_request_fails(sim):
+    sim.guests.corrupt_export.add('bot.stdout.log')
+    return dict(stop_fails=True)
 
 
 def _oom_kills(rules, change=None):
@@ -569,6 +622,13 @@ SEARCHES = (
     ('oom_kill_matched_to_the_game_opens_the_bracket', _oom_kills((25, 5))),
     ('oom_kill_of_a_reused_pid_stops_with_no_refinement', _oom_kills((25, 5), _oom_change('a_reused_pid'))),
     ('oom_kill_in_a_shared_cgroup_stops_with_no_refinement', _oom_kills((25, 5), _oom_change('a_shared_cgroup'))),
+    ('oom_kill_counted_only_elsewhere_in_the_unit_stops_with_no_refinement', _oom_kills((25, 5), _oom_change('a_kill_counted_only_elsewhere_in_the_unit'))),
+    ('oom_kill_of_the_game_beside_the_samplers_opens_the_bracket', _oom_kills((25, 5), dict(sf.OOM_STILL_THE_GAMES)['the_sampler_died_too'])),
+    # a stop fact found after the commit: told to the registry or not, it stands, and only what is this run's is a fact at all
+    ('corrupt_seal_after_the_commit_refuses_resume', _committed_then_returned(_corrupt('seal.json'))),
+    ('corrupt_seal_with_a_crash_after_the_fact_and_a_restored_transfer_refuses_resume', _committed_then_returned(_corrupt('seal.json'), retained_fact=True)),
+    ('stop_request_failing_refuses_resume_and_dispatch', _committed_then_returned(_stop_request_fails)),
+    ('foreign_terminal_fact_refuses_resume_with_nothing_final_said', _committed_then_returned(_foreign_terminal_fact)),
 )
 
 

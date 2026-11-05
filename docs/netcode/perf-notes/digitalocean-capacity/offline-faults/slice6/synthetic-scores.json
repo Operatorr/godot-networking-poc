@@ -17,7 +17,7 @@
    "definition": "per bot: sent over its own scheduled grid slots in the window, in integers. Exactly 99 percent is valid. A disconnected bot is held to the part it was connected for, less the one slot the disconnect can interrupt.",
    "min_percent": 99
   },
-  "oom": "The host-wide kernel OOM count is a diagnostic and never explains a process exit. A game SIGKILL is out_of_memory only when the kernel counted exactly one OOM kill in the cgroup of the run's own unit between a baseline before any process started and a read right after the reap, every member of that cgroup is a supervised identity, and every other member was still alive after that read. Anything less stays killed_with_no_cause_on_record.",
+  "oom": "The host-wide kernel OOM count is a diagnostic and never explains a process exit. A count for the run's unit names no process, because the kernel raises it before the SIGKILL and another member can be counted and still alive at any read, so it never explains a process exit either. A game SIGKILL is out_of_memory only when the kernel counted exactly one OOM kill local to a leaf cgroup of the run's unit, made fresh for the game before it started, holding the sealed game and nobody else at every read, between a baseline of zero and a read right after the reap. Anything less stays killed_with_no_cause_on_record.",
   "ramp": {
    "definition": "A ramp can fail and can never pass. Its failure needs the supervised swarm and game identities, a kick only of a bot both sides recorded as authenticated, and zero generator socket drops proven on every opened socket by a counter read certainly after the abort. A read that may precede the abort, or a socket no such read saw, leaves the generator not proven."
   },
@@ -30,7 +30,7 @@
   "tick_budget_ns": 33300000,
   "tick_over_percent_strictly_below": 1
  },
- "policy_sha256": "042bdbbd8a2ca1639c694750abc33f70a286273d864d5623a26ecf476edbadbb",
+ "policy_sha256": "1d97e30dc85e3df3cf64361e5d8a62561f4cbc17b94e99741d892b529e3b62b7",
  "scenarios": {
   "bot_panic_invalid": {
    "classification": "invalid_offered_load",
@@ -658,13 +658,127 @@
     "lost": true,
     "process_oom": {
      "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
-     "oom_kill_in_unit": 1,
+     "leaf": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload",
+     "oom_kill_in_leaf": 1,
      "problems": [
-      "a group OOM kill took more than one process"
+      "a group OOM kill is on record in the leaf"
      ],
      "read_after_reap_ns": 3000,
-     "source": "cgroup v2 memory.events of the run unit",
-     "status": "not_attributable"
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "not_attributable",
+     "unit_oom_kill_at_reap": 1
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_a_kill_counted_only_elsewhere_in_the_unit": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
+     "leaf": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload",
+     "oom_kill_in_leaf": 0,
+     "problems": [
+      "the kernel counted 0 OOM kills in the game's own leaf before the reap, and one kill of the one process in it is what this can attribute"
+     ],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "not_attributable",
+     "unit_oom_kill_at_reap": 1
     },
     "returncode": null,
     "signal": 9
@@ -768,13 +882,241 @@
     "lost": true,
     "process_oom": {
      "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
-     "oom_kill_in_unit": 0,
+     "leaf": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload",
+     "oom_kill_in_leaf": 0,
      "problems": [
-      "the kernel counted 0 OOM kills in this unit before the reap, and one kill of one process is what this can attribute"
+      "with the game gone the leaf still changed: 1 kills and [] by the last read",
+      "the kernel counted 0 OOM kills in the game's own leaf before the reap, and one kill of the one process in it is what this can attribute"
      ],
      "read_after_reap_ns": 3000,
-     "source": "cgroup v2 memory.events of the run unit",
-     "status": "not_attributable"
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "not_attributable",
+     "unit_oom_kill_at_reap": 1
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_a_leaf_that_is_not_the_units": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
+     "leaf": "/system.slice/ssh.service/workload",
+     "oom_kill_in_leaf": 1,
+     "problems": [
+      "leaf '/system.slice/ssh.service/workload' and supervision '/system.slice/omega-run-55cd2cdf438a5f4f-game.service/supervision' are not the two leaves of that unit",
+      "the game is not alone in its leaf: {'game': '/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload', 'sampler': '/system.slice/omega-run-55cd2cdf438a5f4f-game.service/supervision', 'supervisor': '/system.slice/omega-run-55cd2cdf438a5f4f-game.service/supervision'}"
+     ],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "not_attributable",
+     "unit_oom_kill_at_reap": 1
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_a_leaf_that_was_not_fresh": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
+     "leaf": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload",
+     "oom_kill_in_leaf": 1,
+     "problems": [
+      "a leaf made fresh for this run counts from zero, and this one began at 1"
+     ],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "not_attributable",
+     "unit_oom_kill_at_reap": 1
     },
     "returncode": null,
     "signal": 9
@@ -878,13 +1220,15 @@
     "lost": true,
     "process_oom": {
      "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
-     "oom_kill_in_unit": 1,
+     "leaf": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload",
+     "oom_kill_in_leaf": 1,
      "problems": [
-      "not every member is in that cgroup: {'game': '/system.slice/ssh.service', 'sampler': '/system.slice/omega-run-55cd2cdf438a5f4f-game.service', 'supervisor': '/system.slice/omega-run-55cd2cdf438a5f4f-game.service'}"
+      "the game is not alone in its leaf: {'game': '/system.slice/ssh.service', 'sampler': '/system.slice/omega-run-55cd2cdf438a5f4f-game.service/supervision', 'supervisor': '/system.slice/omega-run-55cd2cdf438a5f4f-game.service/supervision'}"
      ],
      "read_after_reap_ns": 3000,
-     "source": "cgroup v2 memory.events of the run unit",
-     "status": "not_attributable"
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "not_attributable",
+     "unit_oom_kill_at_reap": 1
     },
     "returncode": null,
     "signal": 9
@@ -988,7 +1332,7 @@
     "lost": true,
     "process_oom": {
      "problems": [
-      "a read of the unit's counters is missing"
+      "a read of the leaf's counters is missing"
      ],
      "status": "not_attributable"
     },
@@ -1094,13 +1438,127 @@
     "lost": true,
     "process_oom": {
      "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
-     "oom_kill_in_unit": 1,
+     "leaf": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload",
+     "oom_kill_in_leaf": 1,
      "problems": [
       "game is not the supervised process: {'pid': 3001, 'start_id': 'ticks:1', 'boot_id': 'boot-game'}, sealed {'pid': 3001, 'start_id': 'ticks:8001', 'boot_id': 'boot-game', 'primary': True}"
      ],
      "read_after_reap_ns": 3000,
-     "source": "cgroup v2 memory.events of the run unit",
-     "status": "not_attributable"
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "not_attributable",
+     "unit_oom_kill_at_reap": 1
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_a_second_kill_after_the_reap": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
+     "leaf": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload",
+     "oom_kill_in_leaf": 1,
+     "problems": [
+      "with the game gone the leaf still changed: 2 kills and [] by the last read"
+     ],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "not_attributable",
+     "unit_oom_kill_at_reap": 1
     },
     "returncode": null,
     "signal": 9
@@ -1204,13 +1662,15 @@
     "lost": true,
     "process_oom": {
      "cgroup": "/user.slice/user-1000.slice/session-1.scope",
-     "oom_kill_in_unit": 1,
+     "leaf": "/user.slice/user-1000.slice/session-1.scope/workload",
+     "oom_kill_in_leaf": 1,
      "problems": [
       "cgroup '/user.slice/user-1000.slice/session-1.scope' is not that unit's own"
      ],
      "read_after_reap_ns": 3000,
-     "source": "cgroup v2 memory.events of the run unit",
-     "status": "not_attributable"
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "not_attributable",
+     "unit_oom_kill_at_reap": 1
     },
     "returncode": null,
     "signal": 9
@@ -1314,13 +1774,15 @@
     "lost": true,
     "process_oom": {
      "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
-     "oom_kill_in_unit": 1,
+     "leaf": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload",
+     "oom_kill_in_leaf": 1,
      "problems": [
-      "at primary_exit the cgroup held [777], which are not all this run's"
+      "at primary_exit the leaf held [777], and may hold only the game while it lives"
      ],
      "read_after_reap_ns": 3000,
-     "source": "cgroup v2 memory.events of the run unit",
-     "status": "not_attributable"
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "not_attributable",
+     "unit_oom_kill_at_reap": 1
     },
     "returncode": null,
     "signal": 9
@@ -1424,13 +1886,15 @@
     "lost": true,
     "process_oom": {
      "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
-     "oom_kill_in_unit": 1,
+     "leaf": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload",
+     "oom_kill_in_leaf": 1,
      "problems": [
-      "at baseline the cgroup held [777], which are not all this run's"
+      "at baseline the leaf held [777], and may hold only the game while it lives"
      ],
      "read_after_reap_ns": 3000,
-     "source": "cgroup v2 memory.events of the run unit",
-     "status": "not_attributable"
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "not_attributable",
+     "unit_oom_kill_at_reap": 1
     },
     "returncode": null,
     "signal": 9
@@ -1534,13 +1998,127 @@
     "lost": true,
     "process_oom": {
      "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
-     "oom_kill_in_unit": 1,
+     "leaf": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload",
+     "oom_kill_in_leaf": 1,
      "problems": [
-      "at bound the cgroup held [777], which are not all this run's"
+      "at bound the leaf held [777], and may hold only the game while it lives"
      ],
      "read_after_reap_ns": 3000,
-     "source": "cgroup v2 memory.events of the run unit",
-     "status": "not_attributable"
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "not_attributable",
+     "unit_oom_kill_at_reap": 1
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_a_stranger_left_in_the_leaf": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
+     "leaf": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload",
+     "oom_kill_in_leaf": 1,
+     "problems": [
+      "with the game gone the leaf still changed: 1 kills and [777] by the last read"
+     ],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "not_attributable",
+     "unit_oom_kill_at_reap": 1
     },
     "returncode": null,
     "signal": 9
@@ -1644,13 +2222,15 @@
     "lost": true,
     "process_oom": {
      "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
-     "oom_kill_in_unit": 1,
+     "leaf": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload",
+     "oom_kill_in_leaf": 1,
      "problems": [
       "game is not the supervised process: {'pid': 3001, 'start_id': None, 'boot_id': 'boot-game'}, sealed {'pid': 3001, 'start_id': 'ticks:8001', 'boot_id': 'boot-game', 'primary': True}"
      ],
      "read_after_reap_ns": 3000,
-     "source": "cgroup v2 memory.events of the run unit",
-     "status": "not_attributable"
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "not_attributable",
+     "unit_oom_kill_at_reap": 1
     },
     "returncode": null,
     "signal": 9
@@ -1754,13 +2334,15 @@
     "lost": true,
     "process_oom": {
      "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
-     "oom_kill_in_unit": 1,
+     "leaf": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload",
+     "oom_kill_in_leaf": 1,
      "problems": [
       "game is not the supervised process: {'pid': 3001, 'start_id': 'ticks:8001', 'boot_id': 'another-boot'}, sealed {'pid': 3001, 'start_id': 'ticks:8001', 'boot_id': 'boot-game', 'primary': True}"
      ],
      "read_after_reap_ns": 3000,
-     "source": "cgroup v2 memory.events of the run unit",
-     "status": "not_attributable"
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "not_attributable",
+     "unit_oom_kill_at_reap": 1
     },
     "returncode": null,
     "signal": 9
@@ -1864,13 +2446,15 @@
     "lost": true,
     "process_oom": {
      "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
-     "oom_kill_in_unit": 1,
+     "leaf": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload",
+     "oom_kill_in_leaf": 1,
      "problems": [
       "it is of invocation 'other-invocation', and the sealed one is 'fixture-invocation-oom'"
      ],
      "read_after_reap_ns": 3000,
-     "source": "cgroup v2 memory.events of the run unit",
-     "status": "not_attributable"
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "not_attributable",
+     "unit_oom_kill_at_reap": 1
     },
     "returncode": null,
     "signal": 9
@@ -1974,14 +2558,16 @@
     "lost": true,
     "process_oom": {
      "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
-     "oom_kill_in_unit": 1,
+     "leaf": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload",
+     "oom_kill_in_leaf": 1,
      "problems": [
       "game is not the supervised process: {'pid': 123456, 'start_id': 'ticks:8001', 'boot_id': 'boot-game'}, sealed {'pid': 3001, 'start_id': 'ticks:8001', 'boot_id': 'boot-game', 'primary': True}",
-      "at bound the cgroup held [3001], which are not all this run's"
+      "at bound the leaf held [3001], and may hold only the game while it lives"
      ],
      "read_after_reap_ns": 3000,
-     "source": "cgroup v2 memory.events of the run unit",
-     "status": "not_attributable"
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "not_attributable",
+     "unit_oom_kill_at_reap": 1
     },
     "returncode": null,
     "signal": 9
@@ -2191,17 +2777,15 @@
     "lost": true,
     "process_oom": {
      "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
-     "oom_kill_in_unit": 1,
+     "leaf": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload",
+     "oom_kill_in_leaf": 1,
      "problems": [
-      "supervisor is not the supervised process: {'pid': 123456, 'start_id': 'ticks:7999', 'boot_id': 'boot-game'}, sealed {'pid': 2999, 'start_id': 'ticks:7999', 'boot_id': 'boot-game'}",
-      "at baseline the cgroup held [2999], which are not all this run's",
-      "at bound the cgroup held [2999], which are not all this run's",
-      "at primary_exit the cgroup held [2999], which are not all this run's",
-      "the other members were not all alive right after the reap: ['sampler'], [2999, 3002]"
+      "supervisor is not the supervised process: {'pid': 123456, 'start_id': 'ticks:7999', 'boot_id': 'boot-game'}, sealed {'pid': 2999, 'start_id': 'ticks:7999', 'boot_id': 'boot-game'}"
      ],
      "read_after_reap_ns": 3000,
-     "source": "cgroup v2 memory.events of the run unit",
-     "status": "not_attributable"
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "not_attributable",
+     "unit_oom_kill_at_reap": 1
     },
     "returncode": null,
     "signal": 9
@@ -2305,14 +2889,15 @@
     "lost": true,
     "process_oom": {
      "cgroup": "/system.slice/omega-run-other-game.service",
-     "oom_kill_in_unit": 1,
+     "leaf": "/system.slice/omega-run-other-game.service/workload",
+     "oom_kill_in_leaf": 1,
      "problems": [
-      "it is of unit 'omega-run-other-game.service', and the plan says 'omega-run-55cd2cdf438a5f4f-game.service' in mode 'systemd'",
-      "not every member is in that cgroup: {'game': '/system.slice/omega-run-55cd2cdf438a5f4f-game.service', 'sampler': '/system.slice/omega-run-55cd2cdf438a5f4f-game.service', 'supervisor': '/system.slice/omega-run-55cd2cdf438a5f4f-game.service'}"
+      "it is of unit 'omega-run-other-game.service', and the plan says 'omega-run-55cd2cdf438a5f4f-game.service' in mode 'systemd'"
      ],
      "read_after_reap_ns": 3000,
-     "source": "cgroup v2 memory.events of the run unit",
-     "status": "not_attributable"
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "not_attributable",
+     "unit_oom_kill_at_reap": 1
     },
     "returncode": null,
     "signal": 9
@@ -2416,13 +3001,15 @@
     "lost": true,
     "process_oom": {
      "cgroup": "/system.slice/ssh.service",
-     "oom_kill_in_unit": 1,
+     "leaf": "/system.slice/ssh.service/workload",
+     "oom_kill_in_leaf": 1,
      "problems": [
       "cgroup '/system.slice/ssh.service' is not that unit's own"
      ],
      "read_after_reap_ns": 3000,
-     "source": "cgroup v2 memory.events of the run unit",
-     "status": "not_attributable"
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "not_attributable",
+     "unit_oom_kill_at_reap": 1
     },
     "returncode": null,
     "signal": 9
@@ -2526,11 +3113,13 @@
     "lost": true,
     "process_oom": {
      "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
-     "oom_kill_in_unit": 1,
+     "leaf": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload",
+     "oom_kill_in_leaf": 1,
      "problems": [],
      "read_after_reap_ns": 3000,
-     "source": "cgroup v2 memory.events of the run unit",
-     "status": "victim_matched"
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "victim_matched",
+     "unit_oom_kill_at_reap": 1
     },
     "returncode": null,
     "signal": 9
@@ -2635,7 +3224,7 @@
     "lost": true,
     "process_oom": {
      "problems": [
-      "a read of the unit's counters is missing"
+      "a read of the leaf's counters is missing"
      ],
      "status": "not_attributable"
     },
@@ -2741,13 +3330,16 @@
     "lost": true,
     "process_oom": {
      "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
-     "oom_kill_in_unit": 0,
+     "leaf": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload",
+     "oom_kill_in_leaf": 0,
      "problems": [
-      "the kernel counted 0 OOM kills in this unit before the reap, and one kill of one process is what this can attribute"
+      "with the game gone the leaf still changed: 1 kills and [] by the last read",
+      "the kernel counted 0 OOM kills in the game's own leaf before the reap, and one kill of the one process in it is what this can attribute"
      ],
      "read_after_reap_ns": 3000,
-     "source": "cgroup v2 memory.events of the run unit",
-     "status": "not_attributable"
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "not_attributable",
+     "unit_oom_kill_at_reap": 0
     },
     "returncode": null,
     "signal": 9
@@ -2957,13 +3549,15 @@
     "lost": true,
     "process_oom": {
      "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
-     "oom_kill_in_unit": 1,
+     "leaf": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload",
+     "oom_kill_in_leaf": 1,
      "problems": [
       "its reads are out of order"
      ],
      "read_after_reap_ns": 3000,
-     "source": "cgroup v2 memory.events of the run unit",
-     "status": "not_attributable"
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "not_attributable",
+     "unit_oom_kill_at_reap": 1
     },
     "returncode": null,
     "signal": 9
@@ -3403,13 +3997,127 @@
     "lost": true,
     "process_oom": {
      "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
-     "oom_kill_in_unit": 1,
+     "leaf": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload",
+     "oom_kill_in_leaf": 1,
      "problems": [
       "what it read followed the exit None signal 15 of 'game'"
      ],
      "read_after_reap_ns": 3000,
-     "source": "cgroup v2 memory.events of the run unit",
-     "status": "not_attributable"
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "not_attributable",
+     "unit_oom_kill_at_reap": 1
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_the_game_still_in_the_unit_itself": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
+     "leaf": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload",
+     "oom_kill_in_leaf": 1,
+     "problems": [
+      "the game is not alone in its leaf: {'game': '/system.slice/omega-run-55cd2cdf438a5f4f-game.service', 'sampler': '/system.slice/omega-run-55cd2cdf438a5f4f-game.service/supervision', 'supervisor': '/system.slice/omega-run-55cd2cdf438a5f4f-game.service/supervision'}"
+     ],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "not_attributable",
+     "unit_oom_kill_at_reap": 1
     },
     "returncode": null,
     "signal": 9
@@ -3483,6 +4191,117 @@
    ]
   },
   "game_oom_the_sampler_died_too": {
+   "classification": "capacity_failure",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_with_server_distress",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_with_server_distress",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": true,
+    "host_oom_kill_delta": null,
+    "kind": "out_of_memory",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
+     "leaf": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload",
+     "oom_kill_in_leaf": 1,
+     "problems": [],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "victim_matched",
+     "unit_oom_kill_at_reap": 2
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "FAIL",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "game process lost: out_of_memory (exit None signal 9)",
+    "bots [1, 2] timed out while the server was failing"
+   ]
+  },
+  "game_oom_the_sampler_in_the_games_leaf": {
    "classification": "inconclusive_evidence",
    "departures": [
     {
@@ -3513,13 +4332,456 @@
     "lost": true,
     "process_oom": {
      "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
-     "oom_kill_in_unit": 1,
+     "leaf": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload",
+     "oom_kill_in_leaf": 1,
      "problems": [
-      "the other members were not all alive right after the reap: [], [2999]"
+      "the game is not alone in its leaf: {'game': '/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload', 'sampler': '/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload', 'supervisor': '/system.slice/omega-run-55cd2cdf438a5f4f-game.service/supervision'}"
      ],
      "read_after_reap_ns": 3000,
-     "source": "cgroup v2 memory.events of the run unit",
-     "status": "not_attributable"
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "not_attributable",
+     "unit_oom_kill_at_reap": 1
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_the_sampler_itself_in_the_leaf_at_a_read": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
+     "leaf": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload",
+     "oom_kill_in_leaf": 1,
+     "problems": [
+      "at bound the leaf held [3002], and may hold only the game while it lives"
+     ],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "not_attributable",
+     "unit_oom_kill_at_reap": 1
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_the_sampler_was_counted_at_the_same_read": {
+   "classification": "capacity_failure",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_with_server_distress",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_with_server_distress",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": true,
+    "host_oom_kill_delta": null,
+    "kind": "out_of_memory",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
+     "leaf": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload",
+     "oom_kill_in_leaf": 1,
+     "problems": [],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "victim_matched",
+     "unit_oom_kill_at_reap": 2
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "FAIL",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "game process lost: out_of_memory (exit None signal 9)",
+    "bots [1, 2] timed out while the server was failing"
+   ]
+  },
+  "game_oom_the_supervisor_in_the_games_leaf": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
+     "leaf": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload",
+     "oom_kill_in_leaf": 1,
+     "problems": [
+      "the game is not alone in its leaf: {'game': '/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload', 'sampler': '/system.slice/omega-run-55cd2cdf438a5f4f-game.service/supervision', 'supervisor': '/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload'}"
+     ],
+     "read_after_reap_ns": 3000,
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "not_attributable",
+     "unit_oom_kill_at_reap": 1
+    },
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 2,
+     "errors_that_are_the_disconnect_itself": 2,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 2,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 2,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 12.5,
+     "rank": 409,
+     "samples": 430,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 14400,
+    "sent": 12900,
+    "sockets": "valid",
+    "unproven": [],
+    "verdict": "valid",
+    "worst_ratio": {
+     "approximate": 0.5833333333333334,
+     "exact": "7/12"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "game_oom_the_unit_wide_schema_that_could_not_name_a_victim": {
+   "classification": "inconclusive_evidence",
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "game_exit": {
+    "demonstrated": false,
+    "host_oom_kill_delta": null,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "process_oom": {
+     "problems": [
+      "it is schema 'omega.do-session.process-oom/1'"
+     ],
+     "status": "refused"
     },
     "returncode": null,
     "signal": 9
@@ -3623,13 +4885,15 @@
     "lost": true,
     "process_oom": {
      "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
-     "oom_kill_in_unit": 2,
+     "leaf": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload",
+     "oom_kill_in_leaf": 2,
      "problems": [
-      "the kernel counted 2 OOM kills in this unit before the reap, and one kill of one process is what this can attribute"
+      "the kernel counted 2 OOM kills in the game's own leaf before the reap, and one kill of the one process in it is what this can attribute"
      ],
      "read_after_reap_ns": 3000,
-     "source": "cgroup v2 memory.events of the run unit",
-     "status": "not_attributable"
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "not_attributable",
+     "unit_oom_kill_at_reap": 1
     },
     "returncode": null,
     "signal": 9
@@ -11538,11 +12802,13 @@
     "lost": true,
     "process_oom": {
      "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
-     "oom_kill_in_unit": 1,
+     "leaf": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload",
+     "oom_kill_in_leaf": 1,
      "problems": [],
      "read_after_reap_ns": 3000,
-     "source": "cgroup v2 memory.events of the run unit",
-     "status": "victim_matched"
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "victim_matched",
+     "unit_oom_kill_at_reap": 1
     },
     "returncode": null,
     "signal": 9
@@ -11610,11 +12876,13 @@
     "lost": true,
     "process_oom": {
      "cgroup": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service",
-     "oom_kill_in_unit": 1,
+     "leaf": "/system.slice/omega-run-55cd2cdf438a5f4f-game.service/workload",
+     "oom_kill_in_leaf": 1,
      "problems": [],
      "read_after_reap_ns": 3000,
-     "source": "cgroup v2 memory.events of the run unit",
-     "status": "victim_matched"
+     "source": "cgroup v2 memory.events.local of a leaf holding only the primary process",
+     "status": "victim_matched",
+     "unit_oom_kill_at_reap": 1
     },
     "returncode": null,
     "signal": 9
