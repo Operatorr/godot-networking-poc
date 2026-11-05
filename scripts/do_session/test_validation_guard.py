@@ -391,6 +391,81 @@ class AProcessCrashInTheComparison(Fixture):
         self.assertEqual([item['file'] for item in verdict['supersedes']], ['classification.json', 'score.json'])
 
 
+class GuardDirectoryFailures(Fixture):
+    def pending(self):
+        sim = self.sim_of(life.RULES)
+        real = pathlib.Path.unlink
+
+        def unlink(path, *args, **kwargs):
+            if is_guard(path) and path.suffix == '.json' and '--game-' in path.name and len(sim.records()) == 4:
+                raise OSError('guard removal failed')
+            return real(path, *args, **kwargs)
+        with mock.patch.object(pathlib.Path, 'unlink', unlink):
+            self.confirmation_with(sim, 'before_outcome_commit')
+        return sim, sim.stack.root / cs.VALIDATION_GUARD_DIR
+
+    @contextlib.contextmanager
+    def unreadable(self, directory):
+        directory.chmod(0)
+        try:
+            with self.assertRaises(PermissionError):
+                os.listdir(directory)
+            yield
+        finally:
+            directory.chmod(0o700)
+
+    def test_unreadable_directory_preserves_pending_run_and_guard(self):
+        sim, directory = self.pending()
+        guards = self.guards(sim)
+        with self.unreadable(directory):
+            self.assertHeldBack(sim, *self.come_back(sim))
+        self.assertEqual(self.guards(sim), guards)
+        self.assertHeldBack(sim, *self.come_back(sim))
+
+    def test_enumeration_error_preserves_pending_outcome_not_just_dispatch(self):
+        sim, _ = self.pending()
+        with mock.patch.object(cs, 'validation_guards', side_effect=OSError('scan failed')):
+            self.assertHeldBack(sim, *self.come_back(sim))
+
+    def test_non_directory_is_uncertainty_and_absent_legacy_directory_is_empty(self):
+        sim, directory = self.pending()
+        held = directory.with_name('held-guards')
+        directory.rename(held)
+        run_dir = sim.run_dir(sim.records()[-1]['run_id'])
+        self.assertEqual(cs.validation_guards(run_dir), [])
+        directory.write_text('not a directory')
+        try:
+            self.assertHeldBack(sim, *self.come_back(sim))
+        finally:
+            directory.unlink()
+            held.rename(directory)
+
+    def test_independent_stop_wins_and_cleanup_runs_with_unreadable_guards(self):
+        sim, directory = self.pending()
+        run_dir = sim.run_dir(sim.records()[-1]['run_id'])
+        (run_dir / 'terminal-fact-0002-0.json').write_text(json.dumps(dict(
+            schema=cs.TERMINAL_FACT_SCHEMA, session_id=sim.session_id,
+            manifest_sha256=sim.sha, run_id=run_dir.name, role='bot',
+            outcome=INFRASTRUCTURE_FAILURE, details=['bot host rebooted'],
+            fencing_token=2, found_at='2026-10-30T00:00:00Z')))
+        with self.unreadable(directory):
+            executor, control = sim.controller(name='returning')
+            self.assertFalse(executor.resume('operator', control)['resumed'])
+            self.assertEqual(sim.records()[-1]['outcome'], INFRASTRUCTURE_FAILURE)
+            executor.wrap_up(run_executor.BatchResult(run_executor.STOPPED, code='operator_collect', detail='fixture', runs=executor.outcomes))
+            self.assertIsNotNone(sim.status_now()['cleanup']['requested_at'])
+            self.assertEqual(len(sim.guests.runner_steps('game', 'start')), 4)
+
+    def test_collect_reaches_cleanup_without_deciding_pass(self):
+        sim, directory = self.pending()
+        with self.unreadable(directory):
+            executor = self.collect(sim)
+            executor.wrap_up(run_executor.BatchResult(run_executor.STOPPED, code='operator_collect', detail='fixture', runs=executor.outcomes))
+            self.assertEqual(sim.records()[-1]['outcome'], INCOMPLETE)
+            self.assertIsNotNone(sim.status_now()['cleanup']['requested_at'])
+            self.assertNoClaim(sim)
+
+
 class WhenItEnds(Fixture):
     def test_a_healthy_search_leaves_none(self):
         sim = self.sim_of(life.RULES)

@@ -1215,7 +1215,12 @@ class RunExecutor:
 
     def _clear_guards_of(self, run_id):
         """The registry has acknowledged a stop for this run, which says more than any comparison could have, and it cannot be walked past."""
-        for path in capacity_scorer.validation_guards(self._run_dir(run_id)):
+        try:
+            paths = capacity_scorer.validation_guards(self._run_dir(run_id))
+        except OSError as error:
+            self._note('validation_guard_not_cleared', run_id=run_id, detail=type(error).__name__)
+            return
+        for path in paths:
             self._clear_guard(path)
 
     def _retain_seal_receipt(self, run_id, role, seal_sha256, seal=None):

@@ -1503,7 +1503,18 @@ def validation_guard(session_id, manifest_sha256, run_id, role, token, opened_at
 def validation_guards(run_dir):
     """Every guard of this run, by path. They sit beside ``runs/``: a guard inside the run directory would share the fate of the very writes it has to outlast."""
     run_dir = pathlib.Path(run_dir)
-    return sorted((run_dir.parent.parent / VALIDATION_GUARD_DIR).glob(run_dir.name + '--*.json'))
+    directory = run_dir.parent.parent / VALIDATION_GUARD_DIR
+    try:
+        # glob suppresses directory read errors on supported Python versions.
+        paths = list(directory.iterdir())
+    except FileNotFoundError:
+        # A legacy session may have no directory. A dangling link is an error.
+        try:
+            directory.lstat()
+        except FileNotFoundError:
+            return []
+        raise
+    return sorted(path for path in paths if path.name.startswith(run_dir.name + '--') and path.name.endswith('.json'))
 
 
 def _unresolved_validations(run_dir, facts, expected):
@@ -1522,7 +1533,7 @@ def _unresolved_validations(run_dir, facts, expected):
 
 def is_validation_guard(item):
     """Whether an unverified record is an unresolved comparison, rather than a file that cannot be held to this run."""
-    return item['record'].startswith(VALIDATION_GUARD_DIR + '/')
+    return item['record'] == VALIDATION_GUARD_DIR or item['record'].startswith(VALIDATION_GUARD_DIR + '/')
 
 
 def _covered_by_a_fact(record, facts):
