@@ -10,13 +10,13 @@
   "measurement_schema": "omega.measurement/3",
   "measurement_schema_sha256": "dac9395161b89090cf71315e52250cd22efba19f5680beed47fc6ca70a32e0be",
   "platform": "macOS-26.7.2-arm64-arm-64bit",
-  "policy_sha256": "c7466422b1175b96fde5844ee703742926f9588efb2f8bf6a177dcc5c559817f",
+  "policy_sha256": "29c024c22e2478cce0f65a77cd9f3e40a54827d35b68f471680f0018acc897fa",
   "python": "3.9.6",
   "scorer": "omega.do-session.capacity-scorer/1",
   "server_config_sha256": "631e90552c786a8ca34357b8db6825d4a9fdd3b323db2020f1797f5ff28e98f6",
   "source_clean": true,
-  "source_revision": "e0d9b29dde12394db63221548b5b4c1f92328d04",
-  "source_tree": "a595426d82555e29ad0362ce56a25820c6cd44e5"
+  "source_revision": "673e17a1adcef151cafaab970dc7d17bba02fc56",
+  "source_tree": "429e4ec194e3838bbb6e38d88b1297e2d355321b"
  },
  "scenarios": {
   "authentication_never_arrives": {
@@ -29,24 +29,24 @@
    "exits": {
     "bot": {
      "bot": {
-      "elapsed_s": 6.341925375,
+      "elapsed_s": 6.344467666000001,
       "returncode": 1,
       "signal": null
      },
      "sampler": {
-      "elapsed_s": 6.402667167,
+      "elapsed_s": 6.399951958,
       "returncode": null,
       "signal": 15
      }
     },
     "game": {
      "game": {
-      "elapsed_s": 7.987757709,
+      "elapsed_s": 8.012454750000002,
       "returncode": 0,
       "signal": null
      },
      "sampler": {
-      "elapsed_s": 7.515819124999999,
+      "elapsed_s": 7.499193917,
       "returncode": null,
       "signal": 15
      }
@@ -94,14 +94,7 @@
     "sent": null,
     "sockets": "not_proven",
     "unproven": [
-     "bot 1 has no proven socket counter",
-     "bot 2 has no proven socket counter",
-     "bot 3 has no proven socket counter",
-     "bot 4 has no proven socket counter",
-     "bot 5 has no proven socket counter",
-     "bot 6 has no proven socket counter",
-     "bot 7 has no proven socket counter",
-     "bot 8 has no proven socket counter"
+     "generator socket counters are not proven: 0 of the opened sockets have one, none for bots [1, 2, 3, 4, 5, 6, 7, 8]"
     ],
     "verdict": "not_proven",
     "worst_ratio": null
@@ -115,12 +108,12 @@
    "reasons": [
     "socket_counter_bypass: the prover was told that kernel socket counters are optional: a local allowance, never a scored run",
     "non_contract_hold: a 6 s hold is not an accepted window",
-    "the ramp failed over a generator not proven valid: bot 1 has no proven socket counter; bot 2 has no proven socket counter; bot 3 has no proven socket counter; bot 4 has no proven socket counter; bot 5 has no proven socket counter; bot 6 has no proven socket counter; bot 7 has no proven socket counter; bot 8 has no proven socket counter"
+    "the ramp failed over a generator not proven valid: generator socket counters are not proven: 0 of the opened sockets have one, none for bots [1, 2, 3, 4, 5, 6, 7, 8]"
    ]
   },
   "contract_60s_25_bots": {
    "classification": "inconclusive_evidence",
-   "clock_half_width_ms": 34.71983,
+   "clock_half_width_ms": 34.570162,
    "departures": [],
    "established": true,
    "establishes_capacity": false,
@@ -128,24 +121,24 @@
    "exits": {
     "bot": {
      "bot": {
-      "elapsed_s": 67.706054708,
+      "elapsed_s": 67.745242791,
       "returncode": 0,
       "signal": null
      },
      "sampler": {
-      "elapsed_s": 67.767017708,
+      "elapsed_s": 67.799136291,
       "returncode": null,
       "signal": 15
      }
     },
     "game": {
      "game": {
-      "elapsed_s": 69.33589387500001,
+      "elapsed_s": 69.295157958,
       "returncode": 0,
       "signal": null
      },
      "sampler": {
-      "elapsed_s": 68.812599542,
+      "elapsed_s": 68.794395875,
       "returncode": null,
       "signal": 15
      }
@@ -166,7 +159,7 @@
      "verdict": "pass"
     },
     "enet_loss": {
-     "borrowed_readings": 0,
+     "borrowed_readings": 1,
      "per_second_mean_peak": {
       "bots": 25,
       "ratio": {
@@ -190,7 +183,7 @@
     "rtt_p95": {
      "p95_ms": 3.0,
      "rank": 1425,
-     "samples": 1500,
+     "samples": 1499,
      "verdict": "pass"
     },
     "tick_budget": {
@@ -213,15 +206,15 @@
     "independent": [],
     "input": "valid",
     "scheduled": 45000,
-    "sent": 44991,
+    "sent": 45000,
     "sockets": "not_proven",
     "unproven": [
      "generator socket counters are not proven: 0 of 25 sockets have one, problems []"
     ],
     "verdict": "not_proven",
     "worst_ratio": {
-     "approximate": 0.9994444444444445,
-     "exact": "1799/1800"
+     "approximate": 1.0,
+     "exact": "1/1"
     }
    },
    "outcome": "INCONCLUSIVE",
@@ -321,24 +314,24 @@
    "exits": {
     "bot": {
      "bot": {
-      "elapsed_s": 26.034849708,
+      "elapsed_s": 26.0049625,
       "returncode": 0,
       "signal": null
      },
      "sampler": {
-      "elapsed_s": 26.095807666,
+      "elapsed_s": 26.065628875,
       "returncode": null,
       "signal": 15
      }
     },
     "game": {
      "game": {
-      "elapsed_s": 6.80666125,
+      "elapsed_s": 6.784446334,
       "returncode": null,
       "signal": 9
      },
      "sampler": {
-      "elapsed_s": 6.859005625,
+      "elapsed_s": 6.8354105,
       "returncode": null,
       "signal": 15
      }
@@ -346,9 +339,9 @@
    },
    "game_exit": {
     "demonstrated": false,
+    "host_oom_kill_delta": null,
     "kind": "killed_with_no_cause_on_record",
     "lost": true,
-    "oom_kills": null,
     "returncode": null,
     "signal": 9
    },
@@ -364,12 +357,12 @@
      "verdict": "fail"
     },
     "enet_loss": {
-     "borrowed_readings": 5,
+     "borrowed_readings": 6,
      "per_second_mean_peak": {
       "bots": 8,
       "ratio": {
-       "approximate": 0.0032711029052734375,
-       "exact": "1715/524288"
+       "approximate": 0.0033512115478515625,
+       "exact": "1757/524288"
       },
       "second": 7
      },
@@ -390,8 +383,8 @@
      "verdict": "unknown",
      "why": "a second has a bot with no reading near it",
      "window_mean_of_seconds": {
-      "approximate": 0.0010212792290581597,
-      "exact": "4819/4718592"
+      "approximate": 0.001064724392361111,
+      "exact": "157/147456"
      }
     },
     "game_socket_drops": {
@@ -413,15 +406,15 @@
     "independent": [],
     "input": "valid",
     "scheduled": 4800,
-    "sent": 1831,
+    "sent": 1873,
     "sockets": "not_proven",
     "unproven": [
      "generator socket counters are not proven: 0 of 8 sockets have one, problems []"
     ],
     "verdict": "not_proven",
     "worst_ratio": {
-     "approximate": 0.36333333333333334,
-     "exact": "109/300"
+     "approximate": 0.365,
+     "exact": "73/200"
     }
    },
    "outcome": "INCONCLUSIVE",
@@ -440,16 +433,16 @@
   },
   "one_bot_path_blocked_mid_window": {
    "classification": "inconclusive_evidence",
-   "clock_half_width_ms": 35.824056,
+   "clock_half_width_ms": 34.955276,
    "departures": [
     {
      "bot": 3,
      "cause": "transport_timeout_unattributed",
      "observation_lag_ns": [
-      -20842651,
-      50876755
+      484382628,
+      554387800
      ],
-     "order": "unresolved",
+     "order": "server_first",
      "reason": 0,
      "server_reason": 0,
      "source": "bot"
@@ -461,24 +454,24 @@
    "exits": {
     "bot": {
      "bot": {
-      "elapsed_s": 26.011361500000003,
+      "elapsed_s": 25.934455458,
       "returncode": 0,
       "signal": null
      },
      "sampler": {
-      "elapsed_s": 26.071888625000003,
+      "elapsed_s": 25.986273042,
       "returncode": null,
       "signal": 15
      }
     },
     "game": {
      "game": {
-      "elapsed_s": 27.65668275,
+      "elapsed_s": 27.48306025,
       "returncode": 0,
       "signal": null
      },
      "sampler": {
-      "elapsed_s": 27.141403084,
+      "elapsed_s": 26.969763458000003,
       "returncode": null,
       "signal": 15
      }
@@ -521,7 +514,7 @@
      "why": "no proven baseline and final read of the game socket"
     },
     "rtt_p95": {
-     "p95_ms": 3.0,
+     "p95_ms": 4.0,
      "rank": 141,
      "samples": 148,
      "verdict": "pass"
@@ -546,15 +539,15 @@
     "independent": [],
     "input": "valid",
     "scheduled": 4800,
-    "sent": 4440,
+    "sent": 4438,
     "sockets": "not_proven",
     "unproven": [
      "generator socket counters are not proven: 0 of 8 sockets have one, problems []"
     ],
     "verdict": "not_proven",
     "worst_ratio": {
-     "approximate": 0.4,
-     "exact": "2/5"
+     "approximate": 0.3983333333333333,
+     "exact": "239/600"
     }
    },
    "outcome": "INCONCLUSIVE",
@@ -572,7 +565,7 @@
   },
   "short_complete_8_bots": {
    "classification": "inconclusive_evidence",
-   "clock_half_width_ms": 34.40772,
+   "clock_half_width_ms": 34.710326,
    "departures": [],
    "established": true,
    "establishes_capacity": false,
@@ -580,24 +573,24 @@
    "exits": {
     "bot": {
      "bot": {
-      "elapsed_s": 12.061956334000001,
+      "elapsed_s": 12.065595208,
       "returncode": 0,
       "signal": null
      },
      "sampler": {
-      "elapsed_s": 12.122700625,
+      "elapsed_s": 12.12460325,
       "returncode": null,
       "signal": 15
      }
     },
     "game": {
      "game": {
-      "elapsed_s": 13.670691999999999,
+      "elapsed_s": 13.659244916999999,
       "returncode": 0,
       "signal": null
      },
      "sampler": {
-      "elapsed_s": 13.166224167,
+      "elapsed_s": 13.134054584,
       "returncode": null,
       "signal": 15
      }
@@ -665,7 +658,7 @@
     "independent": [],
     "input": "valid",
     "scheduled": 1440,
-    "sent": 1439,
+    "sent": 1438,
     "sockets": "not_proven",
     "unproven": [
      "generator socket counters are not proven: 0 of 8 sockets have one, problems []"
@@ -688,7 +681,7 @@
   },
   "swarm_paused_mid_window": {
    "classification": "inconclusive_evidence",
-   "clock_half_width_ms": 34.87441,
+   "clock_half_width_ms": 34.615281,
    "departures": [],
    "established": true,
    "establishes_capacity": false,
@@ -702,24 +695,24 @@
    "exits": {
     "bot": {
      "bot": {
-      "elapsed_s": 12.104159083,
+      "elapsed_s": 12.103265292,
       "returncode": 0,
       "signal": null
      },
      "sampler": {
-      "elapsed_s": 12.154910625000001,
+      "elapsed_s": 12.160305917,
       "returncode": null,
       "signal": 15
      }
     },
     "game": {
      "game": {
-      "elapsed_s": 13.664122375,
+      "elapsed_s": 13.68528025,
       "returncode": 0,
       "signal": null
      },
      "sampler": {
-      "elapsed_s": 13.199274542,
+      "elapsed_s": 13.220305125,
       "returncode": null,
       "signal": 15
      }
@@ -790,15 +783,15 @@
     ],
     "input": "invalid",
     "scheduled": 1440,
-    "sent": 1081,
+    "sent": 1087,
     "sockets": "not_proven",
     "unproven": [
      "generator socket counters are not proven: 0 of 8 sockets have one, problems []"
     ],
     "verdict": "invalid",
     "worst_ratio": {
-     "approximate": 0.7444444444444445,
-     "exact": "67/90"
+     "approximate": 0.75,
+     "exact": "3/4"
     }
    },
    "outcome": "INCONCLUSIVE",
