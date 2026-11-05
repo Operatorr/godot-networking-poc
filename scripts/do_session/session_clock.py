@@ -55,6 +55,27 @@ def suspend_aware_monotonic():
     return time.monotonic()
 
 
+def controller_boot_id(libc=None):
+    """This machine's boot, where it will say: Linux's ``boot_id``, or the boot session UUID macOS keeps. Otherwise ``UNKNOWN_BOOT``, and then no monotonic reading an earlier process took can be held to this one.
+
+    For the controller only, which keeps a monotonic reading with a durable record for whichever process reads it next. The registry's clock keeps its own ``SystemClock.boot_id``.
+    """
+    try:
+        text = BOOT_ID_PATH.read_text().strip()
+        if text:
+            return text
+    except OSError:
+        pass
+    try:
+        libc = libc or ctypes.CDLL(None)
+        buffer, size = ctypes.create_string_buffer(64), ctypes.c_size_t(64)
+        if libc.sysctlbyname(b'kern.bootsessionuuid', buffer, ctypes.byref(size), None, ctypes.c_size_t(0)) == 0 and buffer.value:
+            return 'macos-' + buffer.value.decode('ascii', 'replace')
+    except (OSError, AttributeError):
+        pass
+    return UNKNOWN_BOOT
+
+
 def kernel_time_synced(libc=None):
     """True only when the kernel says a time-sync daemon disciplines the clock (adjtimex, read-only)."""
     try:

@@ -15,6 +15,7 @@ Time always comes from the registry's own effective clock (``session_clock``), n
 import contextlib
 import hashlib
 import json
+import math
 import os
 import pathlib
 import sqlite3
@@ -964,6 +965,10 @@ class Registry:
                             (session_id, run_id, now_text, fencing_token, session['controller_id'], launch_text,
                              canonical(trial) if trial is not None else None, estimated_duration_s, must_stop_by))
             self.db.execute('UPDATE sessions SET state=? WHERE session_id=?', (RUNNING, session_id))
+            if session['recovery_first_failure_at'] is not None and session['recovery_deadline_utc'] is None:
+                # The batch went on past that failure with no recovery begun, so there was no episode to end: admission reserved the recovery allowance for the end of this work. A deadline already fixed stays fixed.
+                self.db.execute('UPDATE sessions SET recovery_first_failure_at=NULL WHERE session_id=?', (session_id,))
+                self.event(now_text, session_id, 'evidence_failure_passed', dict(first_failure=session['recovery_first_failure_at'], run_id=run_id))
             self.event(now_text, session_id, 'run_dispatch_intent',
                        dict(run_id=run_id, fencing_token=fencing_token, launch_by=launch_text))
             granted = dict(session_id=session_id, run_id=run_id, authorized=True, launch_by=launch_text, fencing_token=fencing_token)
@@ -1319,8 +1324,9 @@ class Registry:
             deadline_text = session['recovery_deadline_utc']
             first = session['recovery_first_failure_at']
             if deadline_text is None:
-                first = now_text
-                deadline = min(effective + session['grace_s'], session_clock.parse(session['cleanup_c_utc']))
+                failed_at = session_clock.parse(first) if first is not None else effective     # the first failure, wherever it happened, and not the moment someone came to recover from it
+                first = first if first is not None else now_text
+                deadline = min(failed_at + session['grace_s'], session_clock.parse(session['cleanup_c_utc']))
                 deadline_text = session_clock.iso(deadline)
             self._require_recovery_open(session, effective)
             self.db.execute('UPDATE sessions SET state=?, recovery_first_failure_at=?, recovery_deadline_utc=? '
@@ -1329,6 +1335,25 @@ class Registry:
             return dict(session_id=session_id, state=EVIDENCE_RECOVERY, first_failure_at=first, recovery_deadline_utc=deadline_text)
         return self._mutate('begin_evidence_recovery', dict(session_id=session_id, fencing_token=fencing_token), request_id,
                             session_id, body, gate=self._authority_gate(fencing_token))
+
+    def record_evidence_failure(self, session_id, fencing_token, detail=None, observed_age_s=0.0, request_id=None):
+        """When a transfer first failed, on this registry's clock. Only ever the first: a later failure, a retry or a reconnect cannot move the episode this starts.
+
+        ``observed_age_s`` is how long before this report the controller saw it, for a report that was lost or interrupted. It is a difference on one machine's clock, so that clock's offset from this one drops out, and it can only make an episode earlier, so no clock anywhere can make one longer.
+        """
+        if not isinstance(observed_age_s, (int, float)) or isinstance(observed_age_s, bool) or not math.isfinite(observed_age_s) or observed_age_s < 0:
+            raise Rejection('bad_request', 'observed_age_s must be a finite, non-negative number of seconds')
+
+        def body(effective, now_text, session):
+            self._require_token(session, fencing_token)
+            first = session['recovery_first_failure_at']
+            if first is None:
+                first = session_clock.iso(effective - observed_age_s)
+                self.db.execute('UPDATE sessions SET recovery_first_failure_at=? WHERE session_id=?', (first, session_id))
+                self.event(now_text, session_id, 'evidence_failure', dict(detail=detail, first_failure=first))
+            deadline = session['recovery_deadline_utc'] or session_clock.iso(min(session_clock.parse(first) + session['grace_s'], session_clock.parse(session['cleanup_c_utc'])))
+            return dict(session_id=session_id, first_failure_at=first, recovery_deadline_utc=deadline, evaluated_at=now_text)
+        return self._mutate('record_evidence_failure', dict(session_id=session_id, fencing_token=fencing_token, detail=detail, observed_age_s=observed_age_s), request_id, session_id, body)
 
     def record_measurement(self, session_id, fencing_token, outcome, ref=None, request_id=None):
         if not isinstance(outcome, str) or not outcome:
@@ -1602,7 +1627,7 @@ class Registry:
                    'record_create_result', 'record_create_settlement', 'dispose_create', 'record_resource', 'report_ownership_conflict',
                    'mark_ready',
                    'dispatch_run', 'authorize_guest_action', 'resolve_guest_grant', 'report_guest_fence', 'record_run_outcome', 'record_run_progress', 'record_batch_stop', 'run_records', 'ready_record',
-                   'record_resume', 'begin_collection', 'begin_evidence_recovery', 'record_measurement',
+                   'record_resume', 'begin_collection', 'record_evidence_failure', 'begin_evidence_recovery', 'record_measurement',
                    'record_evidence', 'request_cleanup', 'operator_abort', 'disown_resource', 'health', 'status',
                    'incidents', 'incident_report', 'journal', 'list_sessions', 'verify_journal')
 
