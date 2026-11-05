@@ -43,13 +43,24 @@ import session_clock
 import ssh_access
 
 
+TELEMETRY_SCHEMA_PATH = 'scripts/do_session/measurement_schema.json'
+
+
 def source_digests(repo, sha):
     """The frozen digests of an exact commit, read from git objects. A dirty or moving checkout cannot affect them."""
     def git(*arguments):
         return subprocess.run(['git', '-C', str(repo)] + list(arguments), stdout=subprocess.PIPE, check=True).stdout
 
+    def telemetry_schema():
+        """What this commit's recorders mean. A commit from before that schema has none to freeze, which admission reports."""
+        try:
+            data = subprocess.run(['git', '-C', str(repo), 'show', sha + ':' + TELEMETRY_SCHEMA_PATH], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=True).stdout
+        except subprocess.CalledProcessError:
+            return None
+        return dict(id=json.loads(data)['id'], sha256=hashlib.sha256(data).hexdigest())
+
     tree = git('ls-tree', '-r', '--full-tree', sha, *guest_agent.CONTENT_PATHS).decode('utf-8')
-    return dict(benchmark_sha=git('rev-parse', sha + '^{commit}').decode('utf-8').strip(),
+    return dict(telemetry_schema=telemetry_schema(), benchmark_sha=git('rev-parse', sha + '^{commit}').decode('utf-8').strip(),
                 cargo_lock_sha256=hashlib.sha256(git('show', sha + ':rust/Cargo.lock')).hexdigest(),
                 server_config_sha256=hashlib.sha256(git('show', sha + ':' + guest_agent.SERVER_CONFIG)).hexdigest(),
                 content_sha256=guest_agent.content_digest(tree))

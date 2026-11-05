@@ -1,0 +1,19 @@
+;; Offline sandbox for the real local measurement battery (macOS sandbox-exec).
+;;
+;;   sandbox-exec -f scripts/do_session/measurement_offline.sb python3 -m unittest test_measurement_integration
+;;
+;; Refuses every non-loopback send and connection, and the system resolver's socket so a name cannot
+;; be looked up on this process's behalf. Loopback and other Unix sockets stay open, because the battery
+;; runs real omega-server and omega-load-test processes against each other on this machine.
+;;
+;; /bin/ps is setuid, and a sandboxed process may not exec a setuid binary, so without the last rule
+;; the macOS collector reports every process as gone and every real proof is correctly inconclusive.
+;; ps opens no network socket, so running that one binary outside the sandbox does not reopen the
+;; external network. Nothing in the proof changes under this profile.
+(version 1)
+(allow default)
+(deny network-outbound)
+(allow network-outbound (remote ip "localhost:*"))
+(allow network-outbound (remote unix-socket))
+(deny network-outbound (remote unix-socket (path-literal "/private/var/run/mDNSResponder")))
+(allow process-exec (literal "/bin/ps") (with no-sandbox))

@@ -97,7 +97,7 @@ class FreshRuns(Base):
         first = self.sim.records()[0]['run_id']
         bot = json.loads((self.sim.run_dir(first) / 'plan-bot.json').read_text())
         argv = bot['processes'][0]['argv']
-        for flag, value in (('--bots', '25'), ('--duration', '60'), ('--behavior', 'strategy'), ('--difficulty', '1.0'), ('--input-hz', '30'), ('--seed', '1'), ('--threads', '4'), ('--stagger', '100')):
+        for flag, value in (('--bots', '25'), ('--hold-s', '60'), ('--behavior', 'strategy'), ('--difficulty', '1.0'), ('--input-hz', '30'), ('--seed', '1'), ('--threads', '4'), ('--stagger', '100')):
             self.assertEqual(argv[argv.index(flag) + 1], value)
         game = json.loads((self.sim.run_dir(first) / 'plan-game.json').read_text())
         self.assertEqual(game['verify_files'][0]['sha256'], self.sim.manifest['source']['binary_sha256']['game'])

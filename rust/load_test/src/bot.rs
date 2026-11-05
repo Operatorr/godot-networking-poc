@@ -10,6 +10,7 @@
 //! (rate-limited like the real client), `RespawnRequest` 3.2 s after death.
 
 use crate::behavior::{BehaviorKind, BehaviorState, KnownEntity, View};
+use crate::measured::{BotRecord, BotSocket, EventClock, InputSchedule};
 use crate::metrics::BotMetrics;
 use crate::rng::Pcg32;
 use protocol::types::{delta_mask, disconnect_reason, entity_flags, MONSTER_ID_START};
@@ -48,11 +49,13 @@ pub enum Phase {
 
 pub struct Bot {
     observation: Option<crate::measurement::BotObservation>,
+    /// Common-window evidence; `None` on every legacy run, which then behaves exactly as before.
+    record: Option<BotRecord>,
     pub id: u32,
     pub phase: Phase,
     pub metrics: BotMetrics,
     pub entity_id: u16,
-    host: enet::Host<UdpSocket>,
+    host: enet::Host<BotSocket>,
     peer_key: usize,
     behavior: BehaviorState,
     rng: Pcg32,
@@ -112,7 +115,7 @@ impl Bot {
         ticket: Option<Ticket>,
         now: f64,
     ) -> std::io::Result<Self> {
-        let socket = UdpSocket::bind(("0.0.0.0", 0))?;
+        let socket = BotSocket::new(UdpSocket::bind(("0.0.0.0", 0))?);
         let mut host = enet::Host::new(
             socket,
             enet::HostSettings {
@@ -151,6 +154,7 @@ impl Bot {
         Ok(Self {
             observation: std::env::var_os("OMEGA_MEASURE_DIR")
                 .map(|_| crate::measurement::BotObservation::default()),
+            record: None,
             id,
             phase: Phase::Connecting,
             metrics,
@@ -190,6 +194,44 @@ impl Bot {
         })
     }
 
+    /// Turn on common-window recording. Called once, right after `connect`, on the owning shard.
+    pub fn enable_record(&mut self, now_ns: u64, interval_ns: u64, clock: EventClock) {
+        self.record = Some(BotRecord::new(
+            now_ns,
+            InputSchedule::new(interval_ns),
+            clock,
+        ));
+    }
+
+    /// When this poll began, in the swarm's monotonic domain. It decides which input slot is due;
+    /// the record times each enqueue and observation itself.
+    pub fn set_record_clock(&mut self, now_ns: u64, window: Option<(u64, u64)>) {
+        if let Some(record) = &mut self.record {
+            record.set_clock(now_ns, window);
+        }
+    }
+
+    pub fn record(&self) -> Option<&BotRecord> {
+        self.record.as_ref()
+    }
+
+    pub fn record_mut(&mut self) -> Option<&mut BotRecord> {
+        self.record.as_mut()
+    }
+
+    /// The local endpoint of this bot's own socket: its identity on the generator host.
+    pub fn local_port(&self) -> Option<u16> {
+        self.host.socket().local_port()
+    }
+
+    pub fn socket_counters(&self) -> crate::measured::SocketCounters {
+        self.host.socket().counters()
+    }
+
+    pub fn is_dead(&self) -> bool {
+        self.dead_since.is_some()
+    }
+
     pub fn is_settled(&self) -> bool {
         !matches!(self.phase, Phase::Connecting | Phase::Authing)
     }
@@ -212,7 +254,11 @@ impl Bot {
         self.drain_events(now);
         match self.phase {
             Phase::Running => {
-                if now >= self.next_input_at {
+                let due = match &self.record {
+                    Some(record) => record.input_due(),
+                    None => now >= self.next_input_at,
+                };
+                if due {
                     self.input_step(now);
                 }
                 if now >= self.next_stats_at {
@@ -281,6 +327,9 @@ impl Bot {
             match event {
                 enet::EventNoRef::Connect { .. } => {
                     if self.phase == Phase::Connecting {
+                        if let Some(record) = &mut self.record {
+                            record.connected();
+                        }
                         // Authenticated run: present the signed ticket (its character_id is
                         // authoritative server-side). Ticket-less run: None + id 0 (dev path).
                         let character_id =
@@ -298,6 +347,9 @@ impl Bot {
                     }
                 }
                 enet::EventNoRef::Disconnect { data, .. } => {
+                    if let Some(record) = &mut self.record {
+                        record.disconnected(data, self.phase == Phase::Closing);
+                    }
                     if self.phase == Phase::Closing {
                         self.phase = Phase::Closed;
                     } else {
@@ -338,6 +390,9 @@ impl Bot {
                     self.running_since = now;
                     self.next_input_at = now;
                     self.next_stats_at = now + 1.0;
+                    if let Some(record) = &mut self.record {
+                        record.authenticated(ok.entity_id);
+                    }
                     debug!("bot {} authenticated as entity {}", self.id, ok.entity_id);
                 }
                 _ => self.fail(format!("auth rejected (code {})", a.result)),
@@ -599,10 +654,17 @@ impl Bot {
                 .max(0.0)
                 .floor() as u64;
         }
-        self.next_input_at += self.input_interval;
-        if self.next_input_at < now {
-            // Fell behind (host stall); don't burst-send to catch up.
-            self.next_input_at = now + self.input_interval;
+        match &mut self.record {
+            // A fixed grid from the moment of authentication. Missed slots are counted and never
+            // burst-sent, and what a window was owed can be computed without trusting the polls.
+            Some(record) => record.take_due_slot(),
+            None => {
+                self.next_input_at += self.input_interval;
+                if self.next_input_at < now {
+                    // Fell behind (host stall); don't burst-send to catch up.
+                    self.next_input_at = now + self.input_interval;
+                }
+            }
         }
 
         let mut flags: u16 = 0;
@@ -664,6 +726,11 @@ impl Bot {
             client_rtt_ms: self.last_rtt_ms.clamp(0.0, u16::MAX as f64) as u16,
         });
         self.seq = self.seq.wrapping_add(1);
+        if let Some(record) = &mut self.record {
+            if record.input_muted() {
+                return;
+            }
+        }
         self.send(&input);
     }
 
@@ -719,11 +786,16 @@ impl Bot {
                 self.metrics.latencies_ms.push(rtt);
             }
             // ENET_PEER_PACKET_LOSS_SCALE = 1 << 16.
-            self.metrics.enet_packet_loss = peer.packet_loss() as f64 / 65536.0;
+            let loss = peer.packet_loss();
+            self.metrics.enet_packet_loss = loss as f64 / 65536.0;
+            if let Some(record) = &mut self.record {
+                record.peer_sample(rtt, loss);
+            }
         }
     }
 
     fn send(&mut self, packet: &ClientPacket) {
+        let dead = self.dead_since.is_some();
         let bytes = packet.encode();
         let enet_packet = if packet.reliable() {
             enet::Packet::reliable(bytes.as_slice())
@@ -750,8 +822,14 @@ impl Bot {
                 }
                 self.metrics.packets_sent += 1;
                 self.metrics.bytes_sent += bytes.len() as u64;
+                if let (Some(record), ClientPacket::PlayerInput(_)) = (&mut self.record, packet) {
+                    record.input_sent(dead);
+                }
             }
             Err(e) => {
+                if let (Some(record), ClientPacket::PlayerInput(_)) = (&mut self.record, packet) {
+                    record.input_failed();
+                }
                 // A swallowed send failure hides lost handshakes (ConnectAuth/BaselineAck) and
                 // inputs. Count and log it so the failure is observable in the report rather than
                 // vanishing.

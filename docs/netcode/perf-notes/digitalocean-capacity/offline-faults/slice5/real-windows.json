@@ -1,0 +1,1419 @@
+{
+ "kind": "real_local",
+ "note": "Real processes on one machine in real time. Short holds are labelled short. Not a live-host validation and not a capacity observation.",
+ "provenance": {
+  "binaries": {
+   "omega_load_test": "12f1b36c75963fbda790a99218977c2b97210835069c95c9ff840a4ba8352e81",
+   "omega_load_test_fault_build": "a5ba66d9ed3d19feabb90e80a1319229ebccf1bc31a705af204fe2166e27cb3a",
+   "omega_server": "d574418be9edfec3f3a34e7bd363bcd5e4f80e146a4fc03056db35760a85ef19"
+  },
+  "cargo_lock_sha256": "904a78967ed19cb3403c3f498b16e90f4c171daa3ea0c2311dc9d793f90e148b",
+  "fault_build": "cargo build --release --locked -p omega-load-test --features omega-load-test/fault-injection --target-dir <scratch>",
+  "measurement_schema": "omega.measurement/3",
+  "measurement_schema_sha256": "dac9395161b89090cf71315e52250cd22efba19f5680beed47fc6ca70a32e0be",
+  "platform": "macOS-26.7.2-arm64-arm-64bit",
+  "python": "3.9.6",
+  "release_build": "cargo build --release --locked -p omega-server -p omega-load-test",
+  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2",
+  "server_config_sha256": "631e90552c786a8ca34357b8db6825d4a9fdd3b323db2020f1797f5ff28e98f6",
+  "source_clean": true,
+  "source_revision": "f1f6188f87b7787fbe3cb196b81cc554b8eb92de",
+  "source_tree": "6fc25bbb48ae03d745813321050632e5b804516b"
+ },
+ "scenarios": {
+  "contract_300s_25_bots": {
+   "bot_host": {
+    "collector_cost_ns_max": 53044041,
+    "rows": 302,
+    "socket_drops_total": null,
+    "sockets_with_counters": 0,
+    "sockets_without_counters": 25
+   },
+   "clock": {
+    "bot_offset_ns": [
+     -5003001,
+     29956897
+    ],
+    "boundary_half_width_ms": 35.040682,
+    "game_offset_ns": [
+     -4954985,
+     30007993
+    ]
+   },
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "events": [],
+   "exits": {
+    "bot": {
+     "bot": {
+      "elapsed_s": 307.7617725,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 307.82281475,
+      "returncode": null,
+      "signal": 15
+     }
+    },
+    "game": {
+     "game": {
+      "elapsed_s": 309.608985708,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 309.08970762499996,
+      "returncode": null,
+      "signal": 15
+     }
+    }
+   },
+   "game_host": {
+    "collector_cost_ns_max": 32585417,
+    "rows": 302,
+    "socket_drops": null
+   },
+   "hold_s": 300,
+   "input": {
+    "below_minimum": [],
+    "bots": 25,
+    "dead_frames_total": 28347,
+    "peer_samples_min": 299,
+    "peer_samples_total": 7494,
+    "scheduled_total": 225000,
+    "sent_total": 224998,
+    "worst_bot": 9,
+    "worst_ratio": 0.9998888888888889
+   },
+   "population": {
+    "authenticated_transitions": 25,
+    "disconnect_transitions": 25,
+    "max_tick_gap_ns": 35057458,
+    "tick_numbers_contiguous": true,
+    "ticks_in_interval": 9002
+   },
+   "reasons": [],
+   "shard_max_poll_gap_ns": [
+    2672166,
+    2750916,
+    2759166,
+    2631000
+   ],
+   "socket_counters_required": false,
+   "status": "complete",
+   "target": 25,
+   "window_length_ns": 300000000000
+  },
+  "contract_60s_25_bots": {
+   "bot_host": {
+    "collector_cost_ns_max": 50623083,
+    "rows": 62,
+    "socket_drops_total": null,
+    "sockets_with_counters": 0,
+    "sockets_without_counters": 25
+   },
+   "clock": {
+    "bot_offset_ns": [
+     -4958929,
+     29879089
+    ],
+    "boundary_half_width_ms": 34.954713,
+    "game_offset_ns": [
+     -4994105,
+     29921113
+    ]
+   },
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "events": [],
+   "exits": {
+    "bot": {
+     "bot": {
+      "elapsed_s": 67.696369042,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 67.75735325,
+      "returncode": null,
+      "signal": 15
+     }
+    },
+    "game": {
+     "game": {
+      "elapsed_s": 69.560215458,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 69.04274195800001,
+      "returncode": null,
+      "signal": 15
+     }
+    }
+   },
+   "game_host": {
+    "collector_cost_ns_max": 49558750,
+    "rows": 62,
+    "socket_drops": null
+   },
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 25,
+    "dead_frames_total": 5456,
+    "peer_samples_min": 60,
+    "peer_samples_total": 1500,
+    "scheduled_total": 45000,
+    "sent_total": 45000,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "population": {
+    "authenticated_transitions": 25,
+    "disconnect_transitions": 25,
+    "max_tick_gap_ns": 34867666,
+    "tick_numbers_contiguous": true,
+    "ticks_in_interval": 1802
+   },
+   "reasons": [],
+   "shard_max_poll_gap_ns": [
+    1921416,
+    2043541,
+    1878375,
+    1819250
+   ],
+   "socket_counters_required": false,
+   "status": "complete",
+   "target": 25,
+   "window_length_ns": 60000000000
+  },
+  "short_authentication_never_arrives": {
+   "bot_host": {},
+   "clock": null,
+   "contract_hold": false,
+   "establishes_capacity": false,
+   "events": [],
+   "exits": {
+    "bot": {
+     "bot": {
+      "elapsed_s": 6.3435731660000005,
+      "returncode": 1,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 6.4045645,
+      "returncode": null,
+      "signal": 15
+     }
+    },
+    "game": {
+     "game": {
+      "elapsed_s": 8.017730167,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 7.509443583,
+      "returncode": null,
+      "signal": 15
+     }
+    }
+   },
+   "game_host": {},
+   "hold_s": 6,
+   "input": null,
+   "population": {},
+   "reasons": [
+    "generator:window_not_established"
+   ],
+   "shard_max_poll_gap_ns": [],
+   "socket_counters_required": false,
+   "status": "invalid",
+   "target": 8,
+   "window_length_ns": null
+  },
+  "short_complete": {
+   "bot_host": {
+    "collector_cost_ns_max": 47000083,
+    "rows": 8,
+    "socket_drops_total": null,
+    "sockets_with_counters": 0,
+    "sockets_without_counters": 8
+   },
+   "clock": {
+    "bot_offset_ns": [
+     -4833977,
+     30410057
+    ],
+    "boundary_half_width_ms": 35.456009,
+    "game_offset_ns": [
+     -4912057,
+     30627913
+    ]
+   },
+   "contract_hold": false,
+   "establishes_capacity": false,
+   "events": [],
+   "exits": {
+    "bot": {
+     "bot": {
+      "elapsed_s": 12.323204083,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 12.383395375000001,
+      "returncode": null,
+      "signal": 15
+     }
+    },
+    "game": {
+     "game": {
+      "elapsed_s": 14.339945499999999,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 13.82858025,
+      "returncode": null,
+      "signal": 15
+     }
+    }
+   },
+   "game_host": {
+    "collector_cost_ns_max": 32665000,
+    "rows": 9,
+    "socket_drops": null
+   },
+   "hold_s": 6,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 94,
+    "peer_samples_min": 6,
+    "peer_samples_total": 48,
+    "scheduled_total": 1440,
+    "sent_total": 1440,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "population": {
+    "authenticated_transitions": 8,
+    "disconnect_transitions": 8,
+    "max_tick_gap_ns": 34760208,
+    "tick_numbers_contiguous": true,
+    "ticks_in_interval": 182
+   },
+   "reasons": [],
+   "shard_max_poll_gap_ns": [
+    1684167,
+    1684958,
+    1638083,
+    1682792
+   ],
+   "socket_counters_required": false,
+   "status": "complete",
+   "target": 8,
+   "window_length_ns": 6000000000
+  },
+  "short_delayed_authentication": {
+   "bot_host": {
+    "collector_cost_ns_max": 45976500,
+    "rows": 8,
+    "socket_drops_total": null,
+    "sockets_with_counters": 0,
+    "sockets_without_counters": 8
+   },
+   "clock": {
+    "bot_offset_ns": [
+     -4878057,
+     30250049
+    ],
+    "boundary_half_width_ms": 34.984001,
+    "game_offset_ns": [
+     -4982001,
+     29810977
+    ]
+   },
+   "contract_hold": false,
+   "establishes_capacity": false,
+   "events": [],
+   "exits": {
+    "bot": {
+     "bot": {
+      "elapsed_s": 15.120372916,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 15.180878916000001,
+      "returncode": null,
+      "signal": 15
+     }
+    },
+    "game": {
+     "game": {
+      "elapsed_s": 16.528916499999998,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 16.0642145,
+      "returncode": null,
+      "signal": 15
+     }
+    }
+   },
+   "game_host": {
+    "collector_cost_ns_max": 40679708,
+    "rows": 8,
+    "socket_drops": null
+   },
+   "hold_s": 6,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 42,
+    "peer_samples_min": 6,
+    "peer_samples_total": 48,
+    "scheduled_total": 1440,
+    "sent_total": 1439,
+    "worst_bot": 2,
+    "worst_ratio": 0.9944444444444445
+   },
+   "population": {
+    "authenticated_transitions": 8,
+    "disconnect_transitions": 8,
+    "max_tick_gap_ns": 34752000,
+    "tick_numbers_contiguous": true,
+    "ticks_in_interval": 182
+   },
+   "reasons": [],
+   "shard_max_poll_gap_ns": [
+    1676666,
+    1872500,
+    1890500,
+    1695791
+   ],
+   "socket_counters_required": false,
+   "status": "complete",
+   "target": 8,
+   "window_length_ns": 6000000000
+  },
+  "short_fault_build_with_nothing_injected": {
+   "bot_host": {
+    "collector_cost_ns_max": 49073000,
+    "rows": 8,
+    "socket_drops_total": null,
+    "sockets_with_counters": 0,
+    "sockets_without_counters": 8
+   },
+   "clock": {
+    "bot_offset_ns": [
+     -4903017,
+     30194113
+    ],
+    "boundary_half_width_ms": 35.051692,
+    "game_offset_ns": [
+     -4965961,
+     29911993
+    ]
+   },
+   "contract_hold": false,
+   "establishes_capacity": false,
+   "events": [],
+   "exits": {
+    "bot": {
+     "bot": {
+      "elapsed_s": 12.708303459,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 12.761065499999999,
+      "returncode": null,
+      "signal": 15
+     }
+    },
+    "game": {
+     "game": {
+      "elapsed_s": 14.317309417,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 13.786591750000001,
+      "returncode": null,
+      "signal": 15
+     }
+    }
+   },
+   "game_host": {
+    "collector_cost_ns_max": 47924250,
+    "rows": 8,
+    "socket_drops": null
+   },
+   "hold_s": 6,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 104,
+    "peer_samples_min": 6,
+    "peer_samples_total": 48,
+    "scheduled_total": 1440,
+    "sent_total": 1437,
+    "worst_bot": 6,
+    "worst_ratio": 0.9944444444444445
+   },
+   "population": {
+    "authenticated_transitions": 8,
+    "disconnect_transitions": 8,
+    "max_tick_gap_ns": 34830750,
+    "tick_numbers_contiguous": true,
+    "ticks_in_interval": 182
+   },
+   "reasons": [
+    "evidence:fault_injection_build"
+   ],
+   "shard_max_poll_gap_ns": [
+    1697250,
+    1672375,
+    1681917,
+    1793542
+   ],
+   "socket_counters_required": false,
+   "status": "inconclusive",
+   "target": 8,
+   "window_length_ns": 6000000000
+  },
+  "short_final_authentication_near_the_readiness_bound": {
+   "bot_host": {
+    "collector_cost_ns_max": 48438750,
+    "rows": 8,
+    "socket_drops_total": null,
+    "sockets_with_counters": 0,
+    "sockets_without_counters": 8
+   },
+   "clock": {
+    "bot_offset_ns": [
+     -4974937,
+     30044905
+    ],
+    "boundary_half_width_ms": 34.897396,
+    "game_offset_ns": [
+     -4811009,
+     29917953
+    ]
+   },
+   "contract_hold": false,
+   "establishes_capacity": false,
+   "events": [],
+   "exits": {
+    "bot": {
+     "bot": {
+      "elapsed_s": 15.314815083000001,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 15.375775125,
+      "returncode": null,
+      "signal": 15
+     }
+    },
+    "game": {
+     "game": {
+      "elapsed_s": 17.003768917,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 16.508719042,
+      "returncode": null,
+      "signal": 15
+     }
+    }
+   },
+   "game_host": {
+    "collector_cost_ns_max": 37726834,
+    "rows": 8,
+    "socket_drops": null
+   },
+   "hold_s": 6,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 41,
+    "peer_samples_min": 6,
+    "peer_samples_total": 48,
+    "scheduled_total": 1440,
+    "sent_total": 1440,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "population": {
+    "authenticated_transitions": 8,
+    "disconnect_transitions": 8,
+    "max_tick_gap_ns": 34757042,
+    "tick_numbers_contiguous": true,
+    "ticks_in_interval": 182
+   },
+   "reasons": [],
+   "shard_max_poll_gap_ns": [
+    5590083,
+    5575834,
+    5602750,
+    5596166
+   ],
+   "socket_counters_required": false,
+   "status": "complete",
+   "target": 8,
+   "window_length_ns": 6000000000
+  },
+  "short_game_killed_in_window": {
+   "bot_host": {
+    "collector_cost_ns_max": 50460458,
+    "rows": 8,
+    "socket_drops_total": null,
+    "sockets_with_counters": 0,
+    "sockets_without_counters": 8
+   },
+   "clock": null,
+   "contract_hold": false,
+   "establishes_capacity": false,
+   "events": [
+    {
+     "role": "game",
+     "what": "SIGKILL"
+    }
+   ],
+   "exits": {
+    "bot": {
+     "bot": {
+      "elapsed_s": 12.060965915999999,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 12.121742708,
+      "returncode": null,
+      "signal": 15
+     }
+    },
+    "game": {
+     "game": {
+      "elapsed_s": 5.724669542,
+      "returncode": null,
+      "signal": 9
+     },
+     "sampler": {
+      "elapsed_s": 5.7855852500000005,
+      "returncode": null,
+      "signal": 15
+     }
+    }
+   },
+   "game_host": {},
+   "hold_s": 6,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 6,
+    "peer_samples_total": 48,
+    "scheduled_total": 1440,
+    "sent_total": 1439,
+    "worst_bot": 7,
+    "worst_ratio": 0.9944444444444445
+   },
+   "population": {},
+   "reasons": [
+    "evidence:collector_boundary_missing",
+    "evidence:recorder_truncated"
+   ],
+   "shard_max_poll_gap_ns": [
+    1729458,
+    1849583,
+    1792916,
+    1635666
+   ],
+   "socket_counters_required": false,
+   "status": "inconclusive",
+   "target": 8,
+   "window_length_ns": 6000000000
+  },
+  "short_injected_dead_but_connected_input": {
+   "bot_host": {
+    "collector_cost_ns_max": 48945208,
+    "rows": 8,
+    "socket_drops_total": null,
+    "sockets_with_counters": 0,
+    "sockets_without_counters": 8
+   },
+   "clock": {
+    "bot_offset_ns": [
+     -4932105,
+     29996977
+    ],
+    "boundary_half_width_ms": 34.925317,
+    "game_offset_ns": [
+     -4962041,
+     29833041
+    ]
+   },
+   "contract_hold": false,
+   "establishes_capacity": false,
+   "events": [],
+   "exits": {
+    "bot": {
+     "bot": {
+      "elapsed_s": 12.097199083,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 12.1580395,
+      "returncode": null,
+      "signal": 15
+     }
+    },
+    "game": {
+     "game": {
+      "elapsed_s": 13.647026083,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 13.1713125,
+      "returncode": null,
+      "signal": 15
+     }
+    }
+   },
+   "game_host": {
+    "collector_cost_ns_max": 38537042,
+    "rows": 8,
+    "socket_drops": null
+   },
+   "hold_s": 6,
+   "input": {
+    "below_minimum": [
+     3
+    ],
+    "bots": 8,
+    "dead_frames_total": 17,
+    "peer_samples_min": 6,
+    "peer_samples_total": 48,
+    "scheduled_total": 1440,
+    "sent_total": 1257,
+    "worst_bot": 3,
+    "worst_ratio": 0.0
+   },
+   "population": {
+    "authenticated_transitions": 8,
+    "disconnect_transitions": 8,
+    "max_tick_gap_ns": 34729791,
+    "tick_numbers_contiguous": true,
+    "ticks_in_interval": 182
+   },
+   "reasons": [
+    "evidence:fault_injection_build",
+    "generator:offered_input_below_minimum"
+   ],
+   "shard_max_poll_gap_ns": [
+    1752792,
+    1747791,
+    1758959,
+    1627875
+   ],
+   "socket_counters_required": false,
+   "status": "invalid",
+   "target": 8,
+   "window_length_ns": 6000000000
+  },
+  "short_injected_early_shard_exit": {
+   "bot_host": {
+    "collector_cost_ns_max": 49587333,
+    "rows": 8,
+    "socket_drops_total": null,
+    "sockets_with_counters": 0,
+    "sockets_without_counters": 6
+   },
+   "clock": {
+    "bot_offset_ns": [
+     -4898073,
+     30070121
+    ],
+    "boundary_half_width_ms": 34.928272,
+    "game_offset_ns": [
+     -4866977,
+     29893985
+    ]
+   },
+   "contract_hold": false,
+   "establishes_capacity": false,
+   "events": [],
+   "exits": {
+    "bot": {
+     "bot": {
+      "elapsed_s": 12.104487375,
+      "returncode": 1,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 12.155735792,
+      "returncode": null,
+      "signal": 15
+     }
+    },
+    "game": {
+     "game": {
+      "elapsed_s": 13.693630666999999,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 13.173693875,
+      "returncode": null,
+      "signal": 15
+     }
+    }
+   },
+   "game_host": {
+    "collector_cost_ns_max": 38720917,
+    "rows": 8,
+    "socket_drops": null
+   },
+   "hold_s": 6,
+   "input": {
+    "below_minimum": [],
+    "bots": 6,
+    "dead_frames_total": 0,
+    "peer_samples_min": 6,
+    "peer_samples_total": 36,
+    "scheduled_total": 1080,
+    "sent_total": 1078,
+    "worst_bot": 7,
+    "worst_ratio": 0.9944444444444445
+   },
+   "population": {
+    "authenticated_transitions": 8,
+    "disconnect_transitions": 8,
+    "max_tick_gap_ns": 34823500,
+    "tick_numbers_contiguous": true,
+    "ticks_in_interval": 182
+   },
+   "reasons": [
+    "evidence:fault_injection_build",
+    "generator:counters_not_frozen",
+    "generator:early_shard_exit",
+    "generator:missing_acknowledgment",
+    "generator:window_incomplete"
+   ],
+   "shard_max_poll_gap_ns": [
+    1637875,
+    1846459,
+    1768583
+   ],
+   "socket_counters_required": false,
+   "status": "invalid",
+   "target": 8,
+   "window_length_ns": 6000000000
+  },
+  "short_injected_one_shard_starved": {
+   "bot_host": {
+    "collector_cost_ns_max": 52132417,
+    "rows": 8,
+    "socket_drops_total": null,
+    "sockets_with_counters": 0,
+    "sockets_without_counters": 8
+   },
+   "clock": {
+    "bot_offset_ns": [
+     -4901937,
+     29789929
+    ],
+    "boundary_half_width_ms": 34.731645,
+    "game_offset_ns": [
+     -4907041,
+     29738977
+    ]
+   },
+   "contract_hold": false,
+   "establishes_capacity": false,
+   "events": [],
+   "exits": {
+    "bot": {
+     "bot": {
+      "elapsed_s": 12.067028792,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 12.127701708,
+      "returncode": null,
+      "signal": 15
+     }
+    },
+    "game": {
+     "game": {
+      "elapsed_s": 13.663550082999999,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 13.148827583,
+      "returncode": null,
+      "signal": 15
+     }
+    }
+   },
+   "game_host": {
+    "collector_cost_ns_max": 36354667,
+    "rows": 8,
+    "socket_drops": null
+   },
+   "hold_s": 6,
+   "input": {
+    "below_minimum": [
+     3,
+     7
+    ],
+    "bots": 8,
+    "dead_frames_total": 88,
+    "peer_samples_min": 5,
+    "peer_samples_total": 46,
+    "scheduled_total": 1440,
+    "sent_total": 1367,
+    "worst_bot": 7,
+    "worst_ratio": 0.8
+   },
+   "population": {
+    "authenticated_transitions": 8,
+    "disconnect_transitions": 8,
+    "max_tick_gap_ns": 34791583,
+    "tick_numbers_contiguous": true,
+    "ticks_in_interval": 182
+   },
+   "reasons": [
+    "evidence:fault_injection_build",
+    "generator:offered_input_below_minimum",
+    "generator:poll_starvation"
+   ],
+   "shard_max_poll_gap_ns": [
+    1659375,
+    1656958,
+    1202770000,
+    1695541
+   ],
+   "socket_counters_required": false,
+   "status": "invalid",
+   "target": 8,
+   "window_length_ns": 6000000000
+  },
+  "short_injected_recorder_truncated": {
+   "bot_host": {
+    "collector_cost_ns_max": 50103167,
+    "rows": 8,
+    "socket_drops_total": null,
+    "sockets_with_counters": 0,
+    "sockets_without_counters": 6
+   },
+   "clock": {
+    "bot_offset_ns": [
+     -4851953,
+     29853033
+    ],
+    "boundary_half_width_ms": 34.680286,
+    "game_offset_ns": [
+     -4738049,
+     29790977
+    ]
+   },
+   "contract_hold": false,
+   "establishes_capacity": false,
+   "events": [],
+   "exits": {
+    "bot": {
+     "bot": {
+      "elapsed_s": 12.0806455,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 12.141388708,
+      "returncode": null,
+      "signal": 15
+     }
+    },
+    "game": {
+     "game": {
+      "elapsed_s": 13.740181292,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 13.211185292,
+      "returncode": null,
+      "signal": 15
+     }
+    }
+   },
+   "game_host": {
+    "collector_cost_ns_max": 36620375,
+    "rows": 8,
+    "socket_drops": null
+   },
+   "hold_s": 6,
+   "input": {
+    "below_minimum": [],
+    "bots": 6,
+    "dead_frames_total": 94,
+    "peer_samples_min": 5,
+    "peer_samples_total": 35,
+    "scheduled_total": 1080,
+    "sent_total": 1080,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "population": {
+    "authenticated_transitions": 8,
+    "disconnect_transitions": 8,
+    "max_tick_gap_ns": 34751166,
+    "tick_numbers_contiguous": true,
+    "ticks_in_interval": 182
+   },
+   "reasons": [
+    "evidence:fault_injection_build",
+    "evidence:recorder_truncated"
+   ],
+   "shard_max_poll_gap_ns": [
+    4642417,
+    4414583,
+    4447667
+   ],
+   "socket_counters_required": false,
+   "status": "inconclusive",
+   "target": 8,
+   "window_length_ns": 6000000000
+  },
+  "short_injected_shard_starved_through_barrier": {
+   "bot_host": {
+    "collector_cost_ns_max": 51915792,
+    "rows": 8,
+    "socket_drops_total": null,
+    "sockets_with_counters": 0,
+    "sockets_without_counters": 8
+   },
+   "clock": {
+    "bot_offset_ns": [
+     -4857969,
+     29986961
+    ],
+    "boundary_half_width_ms": 35.029886,
+    "game_offset_ns": [
+     -4906121,
+     30180041
+    ]
+   },
+   "contract_hold": false,
+   "establishes_capacity": false,
+   "events": [],
+   "exits": {
+    "bot": {
+     "bot": {
+      "elapsed_s": 12.092242582999999,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 12.152943833,
+      "returncode": null,
+      "signal": 15
+     }
+    },
+    "game": {
+     "game": {
+      "elapsed_s": 13.68325575,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 13.183105125,
+      "returncode": null,
+      "signal": 15
+     }
+    }
+   },
+   "game_host": {
+    "collector_cost_ns_max": 50153500,
+    "rows": 8,
+    "socket_drops": null
+   },
+   "hold_s": 6,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 194,
+    "peer_samples_min": 6,
+    "peer_samples_total": 48,
+    "scheduled_total": 1440,
+    "sent_total": 1439,
+    "worst_bot": 3,
+    "worst_ratio": 0.9944444444444445
+   },
+   "population": {
+    "authenticated_transitions": 8,
+    "disconnect_transitions": 8,
+    "max_tick_gap_ns": 34747083,
+    "tick_numbers_contiguous": true,
+    "ticks_in_interval": 182
+   },
+   "reasons": [
+    "evidence:fault_injection_build",
+    "generator:poll_starvation"
+   ],
+   "shard_max_poll_gap_ns": [
+    1681625,
+    1889209,
+    1863625,
+    901837917
+   ],
+   "socket_counters_required": false,
+   "status": "invalid",
+   "target": 8,
+   "window_length_ns": 6000000000
+  },
+  "short_poll_starvation_in_window": {
+   "bot_host": {
+    "collector_cost_ns_max": 51316000,
+    "rows": 8,
+    "socket_drops_total": null,
+    "sockets_with_counters": 0,
+    "sockets_without_counters": 8
+   },
+   "clock": {
+    "bot_offset_ns": [
+     -4788017,
+     29927121
+    ],
+    "boundary_half_width_ms": 34.888432,
+    "game_offset_ns": [
+     -4849041,
+     30088049
+    ]
+   },
+   "contract_hold": false,
+   "establishes_capacity": false,
+   "events": [
+    {
+     "role": "bot",
+     "seconds": 1.5,
+     "what": "SIGSTOP"
+    }
+   ],
+   "exits": {
+    "bot": {
+     "bot": {
+      "elapsed_s": 12.083189583000001,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 12.143931792,
+      "returncode": null,
+      "signal": 15
+     }
+    },
+    "game": {
+     "game": {
+      "elapsed_s": 13.675784958,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 13.149911915999999,
+      "returncode": null,
+      "signal": 15
+     }
+    }
+   },
+   "game_host": {
+    "collector_cost_ns_max": 38495500,
+    "rows": 8,
+    "socket_drops": null
+   },
+   "hold_s": 6,
+   "input": {
+    "below_minimum": [
+     1,
+     5,
+     2,
+     6,
+     3,
+     7,
+     4,
+     8
+    ],
+    "bots": 8,
+    "dead_frames_total": 161,
+    "peer_samples_min": 4,
+    "peer_samples_total": 36,
+    "scheduled_total": 1440,
+    "sent_total": 1086,
+    "worst_bot": 5,
+    "worst_ratio": 0.75
+   },
+   "population": {
+    "authenticated_transitions": 8,
+    "disconnect_transitions": 8,
+    "max_tick_gap_ns": 34751208,
+    "tick_numbers_contiguous": true,
+    "ticks_in_interval": 182
+   },
+   "reasons": [
+    "generator:offered_input_below_minimum",
+    "generator:poll_starvation"
+   ],
+   "shard_max_poll_gap_ns": [
+    1504153333,
+    1504098625,
+    1504136750,
+    1504156791
+   ],
+   "socket_counters_required": false,
+   "status": "invalid",
+   "target": 8,
+   "window_length_ns": 6000000000
+  },
+  "short_poll_starvation_through_barrier": {
+   "bot_host": {
+    "collector_cost_ns_max": 42980792,
+    "rows": 8,
+    "socket_drops_total": null,
+    "sockets_with_counters": 0,
+    "sockets_without_counters": 8
+   },
+   "clock": {
+    "bot_offset_ns": [
+     -4771961,
+     29969033
+    ],
+    "boundary_half_width_ms": 34.665232,
+    "game_offset_ns": [
+     -4873025,
+     29704897
+    ]
+   },
+   "contract_hold": false,
+   "establishes_capacity": false,
+   "events": [
+    {
+     "role": "bot",
+     "seconds": 1.0,
+     "what": "SIGSTOP"
+    }
+   ],
+   "exits": {
+    "bot": {
+     "bot": {
+      "elapsed_s": 12.0728655,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 12.13355875,
+      "returncode": null,
+      "signal": 15
+     }
+    },
+    "game": {
+     "game": {
+      "elapsed_s": 13.700324,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 13.179678834,
+      "returncode": null,
+      "signal": 15
+     }
+    }
+   },
+   "game_host": {
+    "collector_cost_ns_max": 50421792,
+    "rows": 8,
+    "socket_drops": null
+   },
+   "hold_s": 6,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 30,
+    "peer_samples_min": 6,
+    "peer_samples_total": 48,
+    "scheduled_total": 1440,
+    "sent_total": 1440,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "population": {
+    "authenticated_transitions": 8,
+    "disconnect_transitions": 8,
+    "max_tick_gap_ns": 34772375,
+    "tick_numbers_contiguous": true,
+    "ticks_in_interval": 182
+   },
+   "reasons": [
+    "generator:poll_starvation"
+   ],
+   "shard_max_poll_gap_ns": [
+    1010216208,
+    1010205083,
+    1011073541,
+    1010365292
+   ],
+   "socket_counters_required": false,
+   "status": "invalid",
+   "target": 8,
+   "window_length_ns": 6000000000
+  },
+  "short_swarm_killed_in_window": {
+   "bot_host": {},
+   "clock": null,
+   "contract_hold": false,
+   "establishes_capacity": false,
+   "events": [
+    {
+     "role": "bot",
+     "what": "SIGKILL"
+    }
+   ],
+   "exits": {
+    "bot": {
+     "bot": {
+      "elapsed_s": 4.92716575,
+      "returncode": null,
+      "signal": 9
+     },
+     "sampler": {
+      "elapsed_s": 4.9828283330000005,
+      "returncode": null,
+      "signal": 15
+     }
+    },
+    "game": {
+     "game": {
+      "elapsed_s": 6.608108083,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 6.083255583,
+      "returncode": null,
+      "signal": 15
+     }
+    }
+   },
+   "game_host": {},
+   "hold_s": 6,
+   "input": null,
+   "population": {},
+   "reasons": [
+    "evidence:swarm_evidence_missing"
+   ],
+   "shard_max_poll_gap_ns": [],
+   "socket_counters_required": false,
+   "status": "inconclusive",
+   "target": 8,
+   "window_length_ns": null
+  },
+  "short_warmup_runs_past_the_readiness_bound": {
+   "bot_host": {
+    "collector_cost_ns_max": 51467292,
+    "rows": 8,
+    "socket_drops_total": null,
+    "sockets_with_counters": 0,
+    "sockets_without_counters": 8
+   },
+   "clock": {
+    "bot_offset_ns": [
+     -5009881,
+     30290881
+    ],
+    "boundary_half_width_ms": 35.102818,
+    "game_offset_ns": [
+     -4890057,
+     29889081
+    ]
+   },
+   "contract_hold": false,
+   "establishes_capacity": false,
+   "events": [],
+   "exits": {
+    "bot": {
+     "bot": {
+      "elapsed_s": 12.058087417,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 12.118777417,
+      "returncode": null,
+      "signal": 15
+     }
+    },
+    "game": {
+     "game": {
+      "elapsed_s": 13.665336000000002,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 13.196749583,
+      "returncode": null,
+      "signal": 15
+     }
+    }
+   },
+   "game_host": {
+    "collector_cost_ns_max": 42640625,
+    "rows": 8,
+    "socket_drops": null
+   },
+   "hold_s": 6,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 34,
+    "peer_samples_min": 6,
+    "peer_samples_total": 48,
+    "scheduled_total": 1440,
+    "sent_total": 1440,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "population": {
+    "authenticated_transitions": 8,
+    "disconnect_transitions": 8,
+    "max_tick_gap_ns": 34755417,
+    "tick_numbers_contiguous": true,
+    "ticks_in_interval": 182
+   },
+   "reasons": [],
+   "shard_max_poll_gap_ns": [
+    1665625,
+    1876208,
+    1867041,
+    1688167
+   ],
+   "socket_counters_required": false,
+   "status": "complete",
+   "target": 8,
+   "window_length_ns": 6000000000
+  }
+ },
+ "schema": "omega.do-session.window-evidence/1"
+}

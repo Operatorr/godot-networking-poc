@@ -12,6 +12,7 @@
 mod assertions;
 mod behavior;
 mod bot;
+mod measured;
 mod measurement;
 mod metrics;
 mod rng;
@@ -132,6 +133,12 @@ OPTIONS:
                                ticket-less (server must allow unsigned). e.g. https://host
         --ticket-secret <TOK>  Load-test ticket-endpoint secret (env: OMEGA_LOAD_TEST_SECRET)
         --region <NAME>        Region the minted tickets pin (default: asia; must match server)
+        --measured-window      One common all-authenticated scored interval (see README). Needs
+                               explicit --bots --threads --stagger --behavior --difficulty
+                               --input-hz --seed --hold-s --evidence-dir --output; unsigned only
+        --hold-s <SECS>        Measured window length
+        --evidence-dir <DIR>   Where the measured run's create-only recorder files go
+        --readiness-timeout-s <S>  All-authenticated limit (default: max(60, ramp + 30))
     -v, --verbose              Debug logging
     -h, --help                 This help
 
@@ -176,6 +183,14 @@ struct Args {
     ticket_secret: Option<String>,
     /// Region the minted tickets pin; must match the target instance (else `WRONG_REGION`).
     region: String,
+    measured_window: bool,
+    hold_s: Option<u64>,
+    evidence_dir: Option<std::path::PathBuf>,
+    readiness_timeout_s: Option<f64>,
+    /// What was explicitly given: a measured run has no defaults to drift.
+    given: std::collections::HashSet<String>,
+    /// Stays empty unless built with the `fault-injection` feature.
+    faults: Vec<measured::Fault>,
 }
 
 #[derive(PartialEq, Clone, Copy)]
@@ -212,6 +227,12 @@ fn parse_args() -> Result<Args, String> {
             .ok()
             .filter(|s| !s.is_empty()),
         region: "asia".into(),
+        measured_window: false,
+        hold_s: None,
+        evidence_dir: None,
+        readiness_timeout_s: None,
+        given: std::collections::HashSet::new(),
+        faults: Vec::new(),
     };
     let argv: Vec<String> = std::env::args().collect();
     let mut i = 1;
@@ -222,7 +243,26 @@ fn parse_args() -> Result<Args, String> {
             .ok_or_else(|| format!("{} expects a value", argv[*i - 1]))
     };
     while i < argv.len() {
+        args.given.insert(argv[i].clone());
         match argv[i].as_str() {
+            "--measured-window" => args.measured_window = true,
+            "--hold-s" => {
+                args.hold_s = Some(
+                    value(&mut i)?
+                        .parse()
+                        .map_err(|e| format!("--hold-s: {e}"))?,
+                )
+            }
+            "--evidence-dir" => args.evidence_dir = Some(value(&mut i)?.into()),
+            "--readiness-timeout-s" => {
+                args.readiness_timeout_s = Some(
+                    value(&mut i)?
+                        .parse()
+                        .map_err(|e| format!("--readiness-timeout-s: {e}"))?,
+                )
+            }
+            #[cfg(feature = "fault-injection")]
+            "--fault" => args.faults.push(measured::parse_fault(&value(&mut i)?)?),
             "--server" | "-s" => args.server = value(&mut i)?,
             "--bots" | "-b" => {
                 args.bots = Some(value(&mut i)?.parse().map_err(|e| format!("--bots: {e}"))?)
@@ -338,6 +378,80 @@ fn resolve_server(server: &str) -> Result<SocketAddr, String> {
         .ok_or_else(|| format!("'{stripped}' resolved to no addresses"))
 }
 
+/// A measured run takes nothing on trust: every workload control is stated, none is defaulted, and
+/// anything that would block an ENet-owning thread or change the workload's meaning is refused.
+fn measured_controls(args: &Args, server: SocketAddr) -> Result<measured::Controls, String> {
+    for required in [
+        "--bots",
+        "--threads",
+        "--stagger",
+        "--behavior",
+        "--difficulty",
+        "--input-hz",
+        "--seed",
+        "--hold-s",
+        "--evidence-dir",
+        "--output",
+    ] {
+        if !args.given.contains(required) {
+            return Err(format!("--measured-window needs an explicit {required}"));
+        }
+    }
+    for refused in [
+        "--scenario",
+        "--duration",
+        "-d",
+        "--no-report",
+        "--ticket-api-url",
+        "--ticket-secret",
+    ] {
+        if args.given.contains(refused) {
+            return Err(format!(
+                "--measured-window cannot be combined with {refused}"
+            ));
+        }
+    }
+    if args.ticket_api_url.is_some() {
+        return Err(
+            "--measured-window is unsigned only: unset OMEGA_TICKET_API (a ticket fetch would block a shard)".into(),
+        );
+    }
+    let bots = args.bots.ok_or("--bots")?;
+    if bots == 0 || args.threads > bots {
+        return Err("--measured-window needs at least as many bots as threads".into());
+    }
+    let hold_s = args.hold_s.ok_or("--hold-s")?;
+    if hold_s == 0 {
+        return Err("--hold-s must be at least 1".into());
+    }
+    if !(args.stagger_ms.is_finite() && args.stagger_ms >= 0.0 && args.stagger_ms.fract() == 0.0) {
+        return Err("--stagger must be a whole number of milliseconds".into());
+    }
+    if !(args.input_hz.is_finite() && args.input_hz > 0.0) {
+        return Err("--input-hz must be positive".into());
+    }
+    let stagger_ms = args.stagger_ms as u64;
+    Ok(measured::Controls {
+        server_text: args.server.clone(),
+        server,
+        bots,
+        threads: args.threads,
+        stagger_ms,
+        behavior: args.behavior.ok_or("--behavior")?,
+        difficulty: args.difficulty,
+        input_hz: args.input_hz,
+        seed: args.seed.ok_or("--seed")?,
+        hold_s,
+        readiness_timeout_s: args
+            .readiness_timeout_s
+            .unwrap_or_else(|| measured::default_readiness_timeout_s(bots, stagger_ms)),
+        bandwidth_budget: args.bandwidth_budget,
+        evidence_dir: args.evidence_dir.clone().ok_or("--evidence-dir")?,
+        report_path: args.output.clone().ok_or("--output")?.into(),
+        faults: args.faults.clone(),
+    })
+}
+
 fn main() {
     let args = match parse_args() {
         Ok(a) => a,
@@ -376,6 +490,26 @@ fn main() {
             std::process::exit(2);
         }
     };
+
+    if args.measured_window {
+        let controls = match measured_controls(&args, server_addr) {
+            Ok(controls) => controls,
+            Err(e) => {
+                error!("{e}");
+                std::process::exit(2);
+            }
+        };
+        let stop = Arc::new(AtomicBool::new(false));
+        {
+            let stop = stop.clone();
+            if let Err(e) = ctrlc::set_handler(move || stop.store(true, Ordering::SeqCst)) {
+                // A run nothing can stop gracefully loses its footers to a kill, so refuse it.
+                error!("failed to install the stop handler: {e}");
+                std::process::exit(2);
+            }
+        }
+        std::process::exit(measured::run(controls, stop));
+    }
 
     // Initialize the sim's world geometry on this (single) thread before any bot steps
     // `sim_core`. The swarm is single-threaded — every bot's `step_movement` runs here on main —

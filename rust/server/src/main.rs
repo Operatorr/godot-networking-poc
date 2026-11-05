@@ -269,14 +269,41 @@ fn main() {
                                     connected.insert(key);
                                 }
                                 Err(reason) => {
+                                    if let Some(measure) = &mut collector.measurement {
+                                        measure.population_event(
+                                            &world,
+                                            "connect_rejected",
+                                            key,
+                                            None,
+                                            Some(reason),
+                                        );
+                                    }
                                     host.peer_mut(peer).disconnect(reason);
                                 }
                             }
                         }
-                        enet::EventNoRef::Disconnect { peer, .. } => {
+                        enet::EventNoRef::Disconnect { peer, data } => {
                             let key = peer.0;
                             if connected.remove(&key) {
+                                let leaving = world
+                                    .players
+                                    .get(key)
+                                    .filter(|state| state.authenticated)
+                                    .map(|state| (state.entity_id, state.character_name.clone()));
                                 world.on_peer_disconnected(key, &mut outbox);
+                                if let Some(measure) = &mut collector.measurement {
+                                    measure.population_event(
+                                        &world,
+                                        if leaving.is_some() {
+                                            "disconnect"
+                                        } else {
+                                            "disconnect_preauth"
+                                        },
+                                        key,
+                                        leaving.as_ref().map(|(id, name)| (*id, name.as_str())),
+                                        Some(data),
+                                    );
+                                }
                                 collector.remove_peer(key);
                             }
                         }
@@ -295,7 +322,43 @@ fn main() {
                             }
                             match ClientPacket::decode(packet.data()) {
                                 Ok(pkt) => {
-                                    world.on_packet(key, pkt, now_ms(start), unix_ms(), &mut outbox)
+                                    let auth_attempt = matches!(pkt, ClientPacket::ConnectAuth(_))
+                                        && collector.measurement.is_some()
+                                        && !world
+                                            .players
+                                            .get(key)
+                                            .is_some_and(|state| state.authenticated);
+                                    world.on_packet(
+                                        key,
+                                        pkt,
+                                        now_ms(start),
+                                        unix_ms(),
+                                        &mut outbox,
+                                    );
+                                    if auth_attempt {
+                                        let joined = world
+                                            .players
+                                            .get(key)
+                                            .filter(|state| state.authenticated)
+                                            .map(|state| {
+                                                (state.entity_id, state.character_name.clone())
+                                            });
+                                        if let Some(measure) = &mut collector.measurement {
+                                            measure.population_event(
+                                                &world,
+                                                if joined.is_some() {
+                                                    "auth"
+                                                } else {
+                                                    "auth_rejected"
+                                                },
+                                                key,
+                                                joined
+                                                    .as_ref()
+                                                    .map(|(id, name)| (*id, name.as_str())),
+                                                None,
+                                            );
+                                        }
+                                    }
                                 }
                                 Err(e) => {
                                     if let Some(measure) = &mut collector.measurement {
@@ -426,6 +489,9 @@ fn main() {
     // Reasoned disconnect to every connected peer, then a short service window so the
     // disconnect packets actually leave before the process exits.
     info!("shutting down: notifying {} peer(s)", connected.len());
+    if let Some(measure) = &mut collector.measurement {
+        measure.finish(&world, connected.len());
+    }
     for &key in &connected {
         host.peer_mut(enet::PeerID(key))
             .disconnect(protocol::types::disconnect_reason::SERVER_SHUTDOWN);

@@ -19,6 +19,7 @@ import pathlib
 import sys
 import time
 
+import measurement_window
 import registry_client
 import run_cli
 import run_executor
@@ -71,7 +72,7 @@ def main(argv=None):
     def build(token):
         return run_executor.RunExecutor(client, guests, provider, manifest, sha, description['session_dir'], token, time.sleep, session_clock.suspend_aware_monotonic, time.time,
                                         scorer=scorer, adapter=adapter, policy=FAST, failpoint=failpoint, source_problems=lambda: [], readiness_problems=lambda report: [],
-                                        require_counters=False)
+                                        require_counters=False, window_prover=measurement_window.prove if description.get('real_release') else None)
 
     if args.mode == 'execute':
         executor = build(args.fencing_token)

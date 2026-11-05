@@ -24,6 +24,13 @@ STANDINS = HERE / 'fixtures' / 'local_standins'
 FAST_POLICY = run_executor.Policy(poll_s=10.0)
 
 
+class ScriptedAdapter(run_plan.ReleaseAdapter):
+    """The real adapter's processes over a fake guest, which only ever writes the sampler file and the swarm's report."""
+
+    def required_on_clean_exit(self, role):
+        return ('sampler.ndjson', 'report.json') if role == 'bot' else ('sampler.ndjson',)
+
+
 class SimulatedCrash(BaseException):
     """Nothing catches this but the fixture, like a process that simply stopped existing at that line."""
 
@@ -65,10 +72,10 @@ class RunSim(pf.Sim):
             raise AssertionError('the fixture pair did not reach ready: %s %s' % (self.result.code, self.result.detail))
         return self.result
 
-    def executor(self, client=None, token=None, scorer=None, failpoint=None, policy=None, source_problems=None, guests=None, readiness_problems=None):
+    def executor(self, client=None, token=None, scorer=None, failpoint=None, policy=None, source_problems=None, guests=None, readiness_problems=None, adapter=None, window_prover=None):
         return run_executor.RunExecutor(client or self.client, guests or self.guests, self.provider, self.manifest, self.sha, self.stack.root, token if token is not None else self.result.fencing_token,
-                                        self.sleep, self.monotonic, self.clock.wall, scorer=scorer, policy=policy or FAST_POLICY, failpoint=failpoint,
-                                        source_problems=source_problems or (lambda: []), readiness_problems=readiness_problems)
+                                        self.sleep, self.monotonic, self.clock.wall, scorer=scorer, adapter=adapter or ScriptedAdapter(), policy=policy or FAST_POLICY, failpoint=failpoint,
+                                        source_problems=source_problems or (lambda: []), readiness_problems=readiness_problems, window_prover=window_prover)
 
     def controller(self, name='controller-b', takeover=True, **options):
         """Returning after a crash: a new client, a new token, a paused session."""
@@ -188,17 +195,19 @@ class LocalAdapter(run_plan.ReleaseAdapter):
     def sampler_process(self, role):
         return dict(name='sampler', argv=[sys.executable, self.sampler_path(role), '--out', '{run_dir}/sampler.ndjson', '--pids', '{run_dir}/sampler.pids', '--interval', '0.1'])
 
+    def required_on_clean_exit(self, role):
+        return ScriptedAdapter.required_on_clean_exit(self, role)
+
 
 class RealReleaseAdapter(LocalAdapter):
-    """The same layout with a real build in it. It answers whether the real binaries survive this path, and it measures nothing."""
+    """The same layout with a real build in it, running the production adapter's measured processes. Loopback and macOS, so no measurement is claimed."""
+    sampler_interval_s = run_plan.SAMPLER_INTERVAL_S
+    game_process = run_plan.ReleaseAdapter.game_process
+    bot_process = run_plan.ReleaseAdapter.bot_process
+    required_on_clean_exit = run_plan.ReleaseAdapter.required_on_clean_exit
 
-    def game_process(self, manifest, trial, addresses):
-        return dict(name='game', primary=True, argv=[self.program_paths()['game'], '--config', self.config_path(), '--mode', 'arena', '--port', str(self.game_port), '--allow-unsigned-tickets'],
-                    env=dict(OMEGA_MEASURE_DIR='{run_dir}/telemetry', RUST_LOG='info'), make_dirs=['{run_dir}/telemetry'])
-
-    def bot_process(self, manifest, trial, addresses):
-        return dict(name='bot', primary=True, argv=[self.program_paths()['bot'], '--server', '127.0.0.1:%d' % self.game_port, '--bots', '3', '--duration', str(int(self.workload_seconds)), '--behavior', 'strategy',
-                                                    '--difficulty', '1.0', '--input-hz', '30', '--seed', '1', '--threads', '2', '--stagger', '100', '--output', '{run_dir}/report.json'], env=dict(RUST_LOG='info'))
+    def sampler_process(self, role):
+        return dict(run_plan.ReleaseAdapter.sampler_process(self, role), argv=[sys.executable] + run_plan.ReleaseAdapter.sampler_process(self, role)['argv'][1:])
 
 
 def install_real_release(hosts, release_dir, metrics_port):
@@ -341,6 +350,9 @@ class LocalSession:
             self.hosts.adapter = RealReleaseAdapter(self.hosts.guests, self.game_port, self.metrics_port, **adapter_options)
         head = subprocess.run(['git', '-C', str(self.hosts.adapter.source_dir), 'rev-parse', 'HEAD'], stdout=subprocess.PIPE, check=True).stdout.decode().strip()
         conditions = local_conditions(self.SESSION, self.hosts, head, cap_s, recovery_grace_s)
+        if self.real_release:
+            import measurement_window
+            conditions['telemetry_schema'] = dict(id=measurement_window.schema()['id'], sha256=measurement_window.schema_sha256())
         self.manifest, self.sha = manifest_mod.freeze_manifest(conditions, fx.preflight(), fx.FROZEN_AT)
         (self.session_dir / 'manifest.json').write_text(manifest_mod.canonical_json(self.manifest))
         (self.session_dir / 'manifest.sha256').write_text(self.sha + '  manifest.json\n')

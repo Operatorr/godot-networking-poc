@@ -57,8 +57,8 @@ Don't re-derive what's already written there; read it, then go deep where needed
 - `scripts/` — build/deploy/run automation. `scripts/do_session/` is the DigitalOcean test-session
   control code: the offline planner (immutable manifest, legal search branches, time/spend admission)
   plus the durable session registry, fencing and independent cleanup watchdog, the authorization-gated
-  provider adapter, access control and cold bootstrap, and fresh-process test runs with explicit resume, so far
-  exercised only offline (fakes and local processes, no scorer yet) — see its README and issue #61 slices 1–4.
+  provider adapter, access control and cold bootstrap, fresh-process test runs with explicit resume, and the
+  measured two-host window and its proof, so far exercised only offline (fakes and local processes, no scorer yet) — see its README and issue #61 slices 1–5.
 - `docs/` — **system of record** (map below).
 
 ## Documentation map

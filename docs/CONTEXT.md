@@ -102,6 +102,14 @@ _Avoid_: handshake (that's the auth/login step), spawn.
 
 ## Networking concepts (as this project uses them)
 
+**Scored window**:
+The one common interval of a measured load-test run: every bot authenticated, every generator thread running, all of it counted. Ramp, warmup and drain are outside it.
+_Avoid_: steady state, and a bare "window" when other windows are in play.
+
+**Generator shard**:
+One thread of the load-test swarm, owning its bots end to end. Not a **Shard**, which is a server node.
+_Avoid_: a bare "shard" outside the load-test tools.
+
 **Authoritative server**:
 The single source of truth for all gameplay. Clients send intent; the server decides outcomes.
 The governing rule is "the client requests, the server decides."
