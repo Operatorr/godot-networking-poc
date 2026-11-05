@@ -633,7 +633,7 @@ def _validity(proof, execution, facts, rows, missing, independent, shards_short)
         sockets = INVALID
     elif not mw.is_count(host.get('socket_drops_total')) or host.get('sockets_without_counters') or problems:
         sockets = NOT_PROVEN
-        unproven.append('generator socket counters are not proven: %s' % problems)
+        unproven.append('generator socket counters are not proven: %d of %d sockets have one, problems %s' % (host.get('sockets_with_counters') or 0, (host.get('sockets_with_counters') or 0) + (host.get('sockets_without_counters') or 0), problems))
     else:
         sockets = VALID
     if 'host_rebooted' in problems:

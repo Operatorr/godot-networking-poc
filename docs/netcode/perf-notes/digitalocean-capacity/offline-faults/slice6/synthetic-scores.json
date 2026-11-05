@@ -1248,7 +1248,7 @@
     "sent": 14400,
     "sockets": "not_proven",
     "unproven": [
-     "generator socket counters are not proven: ['socket_counters_missing']"
+     "generator socket counters are not proven: 0 of 8 sockets have one, problems ['socket_counters_missing']"
     ],
     "verdict": "not_proven",
     "worst_ratio": {
@@ -1262,7 +1262,7 @@
    ],
    "proof_status": "inconclusive",
    "reasons": [
-    "offered load is not proven, so nothing about the server can stand on it: generator socket counters are not proven: ['socket_counters_missing']"
+    "offered load is not proven, so nothing about the server can stand on it: generator socket counters are not proven: 0 of 8 sockets have one, problems ['socket_counters_missing']"
    ]
   },
   "generator_socket_drop_invalid": {

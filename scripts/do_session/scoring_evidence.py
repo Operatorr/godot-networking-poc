@@ -343,11 +343,11 @@ def synthetic(out):
 # ---- real binaries --------------------------------------------------------------------------------
 
 def real_evidence(run, proof):
-    """What the executor would hand the scorer, from a real local run. The ``require_counters=False`` the local prover needs on this platform is exactly what the scorer refuses."""
+    """What the executor would hand the scorer, from a real local run. The ``require_counters=False`` the local prover needs on this platform is exactly what the scorer refuses, so no run here can pass."""
     results = run['results']
     execution = dict(problems=dict(infrastructure=[], generator=[], game=[]), roles={role: dict(result=(result or {}).get('result')) for role, result in results.items()},
                      exported={role: dict(complete=True, failed=[]) for role in results}, interrupted=None)
-    return dict(run_id=run['trial']['run_id'], trial=run['trial'], root=run['evidence'], execution=execution, execution_sha256=None, execution_ref='local', window_proof=proof, window_proof_sha256='local', workload=run['workload'], telemetry_schema=dict(id=mw.schema()['id'], sha256=mw.schema_sha256()))
+    return dict(run_id=run['trial']['run_id'], trial=run['trial'], root=run['evidence'], execution=execution, execution_sha256=None, execution_ref='local', window_proof=proof, window_proof_sha256='local', workload=run['workload'], telemetry_schema=sf.FROZEN_SCHEMA)
 
 
 def _block_one_bot_in_window(index, offset_s):
@@ -387,7 +387,7 @@ def real(out, release):
         for name, options, prove in REAL:
             options = dict(options)
             run = ml.LocalRun(release, root / name, options.pop('target'), options.pop('hold_s'), **options).execute()
-            proof = ml.prove(run, **prove)
+            proof = ml.prove(run, telemetry_schema=sf.FROZEN_SCHEMA, **prove)
             document = cs.evaluate(real_evidence(run, proof))
             row = sf.summary(document)
             row.update(events=run['events'], exits={role: (result.get('result') or {}).get('processes') for role, result in run['results'].items()}, proof_contract_hold=(proof.get('facts') or {}).get('contract_hold'), clock_half_width_ms=document['diagnostics']['clock_half_width_ms'])

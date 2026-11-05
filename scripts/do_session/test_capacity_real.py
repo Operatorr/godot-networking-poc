@@ -13,6 +13,7 @@ import capacity_scorer as cs
 import measurement_local as ml
 import measurement_window as mw
 import scoring_evidence as evidence
+import scoring_fixtures as sf
 
 RELEASE = os.environ.get('OMEGA_LOCAL_RELEASE_DIR')
 
@@ -23,7 +24,7 @@ class RealBytes(unittest.TestCase):
         root = tempfile.mkdtemp(prefix='omega-score-real-')
         self.addCleanup(shutil.rmtree, root, True)
         run = ml.LocalRun(RELEASE, pathlib.Path(root) / 'run', target, hold_s, **options).execute()
-        proof = ml.prove(run)
+        proof = ml.prove(run, telemetry_schema=sf.FROZEN_SCHEMA)
         return cs.evaluate(evidence.real_evidence(run, proof)), proof
 
     def test_a_healthy_short_window_measures_real_values_and_the_local_shortcut_is_refused(self):
@@ -32,6 +33,7 @@ class RealBytes(unittest.TestCase):
         self.assertEqual(document['classification'], cs.INCONCLUSIVE)
         self.assertIn('socket_counter_bypass', ' '.join(document['reasons']))
         self.assertIn('non_contract_hold', ' '.join(document['reasons']))
+        self.assertNotIn('schema_check_bypassed', ' '.join(document['reasons']), 'the frozen schema was checked, and only the local allowances are what is refused')
         self.assertEqual(document['gates']['continuity']['verdict'], cs.PASS)
         self.assertEqual(document['gates']['bot_errors']['verdict'], cs.PASS)
         ticks = document['gates']['tick_budget']
