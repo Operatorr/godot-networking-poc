@@ -11,6 +11,14 @@
    "measurement": "confirmed",
    "next_run": "coarse-n050-r1",
    "overall": "resources_verified_evidence_incomplete",
+   "provider_held_at_start": [
+    "droplets",
+    "droplets",
+    "firewalls",
+    "omega-role:bot:do-local-20261105a",
+    "omega-role:game:do-local-20261105a",
+    "omega-session:do-local-20261105a"
+   ],
    "provider_holds": [],
    "resumed": true,
    "run_ids_unique": true,
@@ -56,6 +64,14 @@
    "journal_valid": true,
    "measurement": "operator_collect",
    "overall": "resources_verified_evidence_incomplete",
+   "provider_held_at_start": [
+    "droplets",
+    "droplets",
+    "firewalls",
+    "omega-role:bot:do-local-20261105a",
+    "omega-role:game:do-local-20261105a",
+    "omega-session:do-local-20261105a"
+   ],
    "provider_holds": [],
    "resume_code": "no_eligible_untouched_work",
    "run_ids_unique": true,

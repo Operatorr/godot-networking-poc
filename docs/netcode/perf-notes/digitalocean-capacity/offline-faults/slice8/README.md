@@ -10,6 +10,18 @@ Offline evidence for [issue #71](https://github.com/Operatorr/godot-networking-p
 
 No raw recorder file, run tree, log or session directory is retained. Each scenario's trees are deleted with its temporary directories. No real `omega-server` or `omega-load-test` binary ran in this battery; the earlier real-binary local runs are slice 5 and slice 6 evidence, and they are compatibility checks, not capacity.
 
+## Provenance
+
+Both files were generated from the clean code commit `8f1a93cd9062741afd4c9e44636703de0361828f`, with nothing else in the working tree, on one macOS machine under `scripts/do_session/measurement_offline.sb` (external network and name lookup denied, loopback allowed):
+
+```bash
+cd scripts/do_session
+OMEGA_FAULT_BATTERY_RECORD=DIR sandbox-exec -f measurement_offline.sb python3 -m unittest -v test_fault_battery_process   # 3 tests, OK; writes DIR/real-process.json
+sandbox-exec -f measurement_offline.sb python3 fault_battery.py --out ../../docs/netcode/perf-notes/digitalocean-capacity/offline-faults/slice8 --real-process DIR/real-process.json
+```
+
+`synthetic-battery.json` came out byte-identical to the copy committed with that code. `real-process.json` was refreshed there because the code commit's copy predated two fields that commit added (`provider_held_at_start`); no other fact changed. The commit that adds this section changes only these two evidence files, `SHA256SUMS` and this README. No source, test or fixture changes after `8f1a93c`, so later revisions regenerate the same bytes while the code does; `test_fault_battery` checks that by hash.
+
 ## Requirements and where each is shown
 
 Every session also satisfies the same eight invariants: nothing unrelated mutated, one request per created resource, each run id started once, the trial ceiling, deadlines unchanged from what was armed, `clean` only with complete evidence and nothing owned left, `closed` only with nothing owned left, and a claim only from complete evidence of a confirmed search.
