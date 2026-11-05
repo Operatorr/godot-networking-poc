@@ -1,8 +1,15 @@
 {
-  "id": "omega.measurement/2",
+  "id": "omega.measurement/3",
   "description": "Frozen meaning of a measured DigitalOcean test run: what the recorders write and the limits measurement_window.py holds them to. A manifest freezes this file's SHA-256 as telemetry_schema.sha256.",
   "workload": {"behavior": "strategy", "difficulty": 1.0, "input_hz": 30, "seed": 1, "generator_threads": 4, "bot_id_assignment": "round-robin", "join_stagger_ms": 100},
   "contract_holds_s": [60, 300],
+  "producers": {"swarm.json": "bot", "window.json": "bot", "coordinator.ndjson": "bot", "shard-<k>.ndjson": "bot", "process.json": "game", "final.json": "game"},
+  "bracket_schema": "omega.do-session.clock-bracket/1",
+  "timing": {
+    "input_sent": "stamped when the enqueue succeeds; its grid slot stays separate and scores only if the enqueue came before the end",
+    "peer_sample": "stamped when the ENet values were read",
+    "sampler_counters": "a row's counters were read between its clock and clock_after, and collector_ns contains that span"
+  },
   "swarm_timing_ns": {"warmup": 2000000000, "publish_lead": 1000000000, "end_guard": 2000000000, "drain": 1500000000},
   "limits": {
     "input_min_percent": 99,

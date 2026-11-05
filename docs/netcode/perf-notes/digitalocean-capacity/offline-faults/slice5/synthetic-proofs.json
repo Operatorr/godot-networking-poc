@@ -1,7 +1,7 @@
 {
  "kind": "synthetic",
- "measurement_schema": "omega.measurement/2",
- "measurement_schema_sha256": "59d3d2b89a6fa356dfdf858e53fdbbcd625821546456d466c3845954afaee67a",
+ "measurement_schema": "omega.measurement/3",
+ "measurement_schema_sha256": "dac9395161b89090cf71315e52250cd22efba19f5680beed47fc6ca70a32e0be",
  "note": "The real prover over mocked recorder files. Nothing ran. Every window here is arithmetic.",
  "scenarios": {
   "below_99_percent_input_invalid": {
@@ -26,6 +26,28 @@
    ],
    "socket_counters_required": true,
    "status": "invalid",
+   "target": 8
+  },
+  "build_not_stated": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "evidence:build_unstated"
+   ],
+   "socket_counters_required": true,
+   "status": "inconclusive",
    "target": 8
   },
   "clock_bracket_missing": {
@@ -165,6 +187,72 @@
    "status": "invalid",
    "target": 8
   },
+  "counter_read_straddling_end_is_not_a_final_read": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "evidence:collector_boundary_missing"
+   ],
+   "socket_counters_required": true,
+   "status": "inconclusive",
+   "target": 8
+  },
+  "counter_read_straddling_start_counts_its_drop": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "generator:generator_socket_drops"
+   ],
+   "socket_counters_required": true,
+   "status": "invalid",
+   "target": 8
+  },
+  "counter_rows_without_a_read_bracket": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "evidence:collector_boundary_missing"
+   ],
+   "socket_counters_required": true,
+   "status": "inconclusive",
+   "target": 8
+  },
   "dead_in_game_still_sending_idle_frames_valid": {
    "contract_hold": true,
    "establishes_capacity": false,
@@ -222,6 +310,174 @@
     "sent_total": 14382,
     "worst_bot": 3,
     "worst_ratio": 0.99
+   },
+   "reasons": [],
+   "socket_counters_required": true,
+   "status": "complete",
+   "target": 8
+  },
+  "fault_build_with_nothing_injected": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "evidence:fault_injection_build"
+   ],
+   "socket_counters_required": true,
+   "status": "inconclusive",
+   "target": 8
+  },
+  "foreign_process_schema": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "evidence:collector_boundary_missing",
+    "evidence:schema_mismatch"
+   ],
+   "socket_counters_required": true,
+   "status": "inconclusive",
+   "target": 8
+  },
+  "foreign_shard_schema": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 6,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 360,
+    "scheduled_total": 10800,
+    "sent_total": 10800,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "evidence:schema_mismatch"
+   ],
+   "socket_counters_required": true,
+   "status": "inconclusive",
+   "target": 8
+  },
+  "foreign_swarm_schema": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": null,
+   "reasons": [
+    "evidence:schema_mismatch"
+   ],
+   "socket_counters_required": true,
+   "status": "inconclusive",
+   "target": 8
+  },
+  "frames_missing_only_after_a_disconnect": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [
+     2
+    ],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 13499,
+    "worst_bot": 2,
+    "worst_ratio": 0.49944444444444447
+   },
+   "reasons": [
+    "server:population_lost_in_window"
+   ],
+   "socket_counters_required": true,
+   "status": "invalid",
+   "target": 8
+  },
+  "freeze_with_no_time": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "evidence:freeze_time_missing"
+   ],
+   "socket_counters_required": true,
+   "status": "inconclusive",
+   "target": 8
+  },
+  "frozen_before_the_end": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "evidence:frozen_before_end",
+    "evidence:frozen_before_end_acknowledgment"
+   ],
+   "socket_counters_required": true,
+   "status": "inconclusive",
+   "target": 8
+  },
+  "game_counter_read_straddling_start_counts_its_drop": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
    },
    "reasons": [],
    "socket_counters_required": true,
@@ -332,6 +588,51 @@
    ],
    "socket_counters_required": true,
    "status": "invalid",
+   "target": 8
+  },
+  "missing_error_counters_are_not_zero": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 7,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 420,
+    "scheduled_total": 12600,
+    "sent_total": 12600,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "evidence:input_record_missing"
+   ],
+   "socket_counters_required": true,
+   "status": "inconclusive",
+   "target": 8
+  },
+  "missing_final_schema": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 14400,
+    "worst_bot": 1,
+    "worst_ratio": 1.0
+   },
+   "reasons": [
+    "evidence:collector_boundary_missing",
+    "evidence:schema_mismatch"
+   ],
+   "socket_counters_required": true,
+   "status": "inconclusive",
    "target": 8
   },
   "missing_input_counter_is_not_zero": {
@@ -760,6 +1061,31 @@
    },
    "reasons": [
     "generator:window_observed_late"
+   ],
+   "socket_counters_required": true,
+   "status": "invalid",
+   "target": 8
+  },
+  "zero_input_before_a_server_disconnect_stays_visible": {
+   "contract_hold": true,
+   "establishes_capacity": false,
+   "hold_s": 60,
+   "input": {
+    "below_minimum": [
+     2
+    ],
+    "bots": 8,
+    "dead_frames_total": 0,
+    "peer_samples_min": 60,
+    "peer_samples_total": 480,
+    "scheduled_total": 14400,
+    "sent_total": 12600,
+    "worst_bot": 2,
+    "worst_ratio": 0.0
+   },
+   "reasons": [
+    "generator:offered_input_below_minimum",
+    "server:population_lost_in_window"
    ],
    "socket_counters_required": true,
    "status": "invalid",

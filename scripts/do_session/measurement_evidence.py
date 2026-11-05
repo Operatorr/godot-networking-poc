@@ -67,10 +67,7 @@ def _step_clock(tree):
 
 
 def _sampler(tree, role, edit):
-    def change(rows):
-        for index, row in enumerate(rows):
-            edit(index, row)
-    tree.edit_rows(role + '/sampler.ndjson', change)
+    tree.edit_sampler(role, edit)
 
 
 def _cut(tree, relative):
@@ -111,6 +108,60 @@ def _game_socket_drop(index, row):
     row['procs']['game']['sockets'][0]['drops'] = 0 if index < 25 else 7
 
 
+def _place_read(tree, role, row, read_start, read_end):
+    """This row's counter read ran from one moment on the swarm's clock to another, and its cost says so."""
+    begin, finish = tree.role_mono(role, read_start), tree.role_mono(role, read_end)
+    row.update(clock=tree.sampler_pair(role, begin), clock_after=tree.sampler_pair(role, finish), collector_ns=finish - begin + 1000)
+
+
+def _straddle_start(tree, role):
+    """The last read before the start really finished after it, and a drop landed while it ran. Every later read shows that drop."""
+    start = tree.timeline.start
+    edge = tree.role_mono(role, start)
+
+    def change(rows):
+        straddling = max(index for index, row in enumerate(rows) if row.get('clock') and row['clock']['mono_ns'] < edge)
+        began = rows[straddling]['clock']['mono_ns']
+        began_on_swarm = start - (edge - began)
+        _place_read(tree, role, rows[straddling], began_on_swarm, start + 100_000_000)
+        for index, row in enumerate(rows):
+            if row.get('clock'):
+                row['procs'][role]['sockets'][0]['drops'] = 1 if index >= straddling else 0
+    tree.edit_rows(role + '/sampler.ndjson', change)
+
+
+def _straddle_end_with_no_later_read(tree, role):
+    """The only read near the end began before it, so nothing has seen the last of the hold."""
+    end = tree.timeline.end
+    edge = tree.role_mono(role, end)
+
+    def change(rows):
+        straddling = min(index for index, row in enumerate(rows) if row.get('clock') and row['clock']['mono_ns'] >= edge)
+        del rows[straddling + 1:]
+        _place_read(tree, role, rows[straddling], end - 100_000_000, end + 100_000_000)
+    tree.edit_rows(role + '/sampler.ndjson', change)
+
+
+def _server_disconnect(tree, bot, at_bot):
+    def edit(rows):
+        target = next(row for row in rows if row.get('k') == 'disconnect' and row.get('name') == 'LoadBot%03d' % bot)
+        target['mono_ns'] = fx.to_game_mono(at_bot)
+        target['reason'] = 7
+    tree.edit_rows('game/telemetry/population.ndjson', edit)
+
+
+def _starved_before_disconnect(tree):
+    at = tree.timeline.start + 30 * NS
+    _server_disconnect(tree, 2, at)
+    tree.edit_frozen_bot(2, lambda b: b.update(sent=0, last_input_ns=None, phase='Failed', scheduled_before_disconnect=900, disconnected=dict(at_ns=at, reason=7, expected=False)))
+
+
+def _sent_until_disconnect(tree):
+    at = tree.timeline.start + 30 * NS
+    _server_disconnect(tree, 2, at)
+    tree.edit_frozen_bot(2, lambda b: b.update(sent=899, last_input_ns=at - 1000, phase='Failed', scheduled_before_disconnect=900, disconnected=dict(at_ns=at, reason=7, expected=False)))
+
+
 # name, (options for Tree), how to break it, options for prove
 SYNTHETIC = (
     ('complete_60s', dict(hold_s=60), None, {}),
@@ -127,7 +178,22 @@ SYNTHETIC = (
     ('exactly_99_percent_input_valid', {}, lambda t: t.edit_frozen_bot(3, lambda b: b.update(scheduled=1800, sent=1782)), {}),
     ('below_99_percent_input_invalid', {}, lambda t: t.edit_frozen_bot(3, lambda b: b.update(scheduled=1800, sent=1781)), {}),
     ('dead_in_game_still_sending_idle_frames_valid', {}, lambda t: t.edit_frozen_bot(2, lambda b: b.update(alive=False, dead_frames=900)), {}),
-    ('connected_but_not_sending_invalid', {}, lambda t: t.edit_frozen_bot(2, lambda b: b.update(sent=0)), {}),
+    ('connected_but_not_sending_invalid', {}, lambda t: t.edit_frozen_bot(2, lambda b: b.update(sent=0, last_input_ns=None)), {}),
+    ('counter_read_straddling_start_counts_its_drop', {}, lambda t: _straddle_start(t, 'bot'), {}),
+    ('game_counter_read_straddling_start_counts_its_drop', {}, lambda t: _straddle_start(t, 'game'), {}),
+    ('counter_read_straddling_end_is_not_a_final_read', {}, lambda t: _straddle_end_with_no_later_read(t, 'bot'), {}),
+    ('counter_rows_without_a_read_bracket', {}, lambda t: _sampler(t, 'bot', lambda index, row: row.pop('clock_after', None)), {}),
+    ('missing_error_counters_are_not_zero', {}, lambda t: t.edit_frozen_bot(2, lambda b: [b.pop(key) for key in ('errors', 'panics', 'decode_failures')]), {}),
+    ('foreign_swarm_schema', {}, lambda t: t.edit_json('bot/swarm/swarm.json', lambda d: d.update(schema='omega.measurement/999')), dict(telemetry_schema=dict(id=mw.schema()['id'], sha256=mw.schema_sha256()))),
+    ('foreign_shard_schema', {}, lambda t: t.edit_shard_row(1, 'header', lambda r: r.update(schema='omega.measurement/999')), dict(telemetry_schema=dict(id=mw.schema()['id'], sha256=mw.schema_sha256()))),
+    ('foreign_process_schema', {}, lambda t: t.edit_json('game/telemetry/process.json', lambda d: d.update(schema='omega.measurement/999')), dict(telemetry_schema=dict(id=mw.schema()['id'], sha256=mw.schema_sha256()))),
+    ('missing_final_schema', {}, lambda t: t.edit_json('game/telemetry/final.json', lambda d: d.pop('schema')), dict(telemetry_schema=dict(id=mw.schema()['id'], sha256=mw.schema_sha256()))),
+    ('frozen_before_the_end', {}, lambda t: t.edit_shard_row(0, 'freeze', lambda r: r.update(mono_ns=t.timeline.end - NS)), {}),
+    ('freeze_with_no_time', {}, lambda t: t.edit_shard_row(0, 'freeze', lambda r: r.pop('mono_ns')), {}),
+    ('fault_build_with_nothing_injected', {}, lambda t: t.edit_json('bot/swarm/swarm.json', lambda d: d.update(build=dict(fault_injection=True))), {}),
+    ('build_not_stated', {}, lambda t: t.edit_json('bot/swarm/swarm.json', lambda d: d.pop('build')), {}),
+    ('zero_input_before_a_server_disconnect_stays_visible', {}, _starved_before_disconnect, {}),
+    ('frames_missing_only_after_a_disconnect', {}, _sent_until_disconnect, {}),
     ('missing_input_counter_is_not_zero', {}, lambda t: t.edit_frozen_bot(2, lambda b: b.update(sent=None)), {}),
     ('recorder_cut_inside_a_line', {}, lambda t: _cut(t, 'bot/swarm/shard-1.ndjson'), {}),
     ('recorder_lost_its_footer', {}, lambda t: t.edit_rows('bot/swarm/shard-1.ndjson', lambda rows: rows.pop()), {}),
@@ -147,7 +213,7 @@ SYNTHETIC = (
     ('socket_counter_missing_is_not_zero', {}, lambda t: _sampler(t, 'bot', _drop_bot_counter), {}),
     ('generator_socket_drop_invalid', {}, lambda t: _sampler(t, 'bot', _bot_socket_drop), {}),
     ('game_socket_drop_is_a_fact_not_a_broken_window', {}, lambda t: _sampler(t, 'game', _game_socket_drop), {}),
-    ('schema_not_the_frozen_one', {}, None, dict(telemetry_schema=dict(id='omega.measurement/2', sha256='6' * 64))),
+    ('schema_not_the_frozen_one', {}, None, dict(telemetry_schema=dict(id=mw.schema()['id'], sha256='6' * 64))),
 )
 
 
@@ -178,6 +244,8 @@ REAL_SHORT = (
     ('short_complete', dict(target=8, hold_s=6), {}),
     ('short_delayed_authentication', dict(target=8, hold_s=6, use_relay=True, schedule=[ml.FaultSchedule.hold_one_bot(4, 4.0)]), {}),
     ('short_authentication_never_arrives', dict(target=8, hold_s=6, use_relay=True, schedule=[ml.FaultSchedule.hold_one_bot(2, None)], readiness_timeout_s=4.0), {}),
+    ('short_warmup_runs_past_the_readiness_bound', dict(target=8, hold_s=6, readiness_timeout_s=2.0), {}),
+    ('short_final_authentication_near_the_readiness_bound', dict(target=8, hold_s=6, use_relay=True, schedule=[ml.FaultSchedule.hold_one_bot(4, 3.0)], readiness_timeout_s=4.0), {}),
     ('short_poll_starvation_in_window', dict(target=8, hold_s=6, schedule=[ml.FaultSchedule.pause_swarm_in_window(1.5)]), {}),
     ('short_poll_starvation_through_barrier', dict(target=8, hold_s=6, schedule=[ml.FaultSchedule.pause_swarm_in_barrier(1.0)]), {}),
     ('short_swarm_killed_in_window', dict(target=8, hold_s=6, schedule=[ml.FaultSchedule.kill_swarm_in_window()]), {}),
@@ -199,7 +267,7 @@ REAL_LONG = (
 def provenance(release, fault_release):
     def run(*argv):
         return subprocess.run(argv, stdout=subprocess.PIPE, check=True, cwd=str(REPO)).stdout.decode().strip()
-    return dict(source_revision=run('git', 'rev-parse', 'HEAD'), source_clean=not run('git', 'status', '--porcelain'), cargo_lock_sha256=hashlib.sha256((REPO / 'rust/Cargo.lock').read_bytes()).hexdigest(),
+    return dict(source_revision=run('git', 'rev-parse', 'HEAD'), source_clean=not run('git', 'status', '--porcelain'), source_tree=run('git', 'rev-parse', 'HEAD^{tree}'), cargo_lock_sha256=hashlib.sha256((REPO / 'rust/Cargo.lock').read_bytes()).hexdigest(),
                 rustc=run('rustc', '-Vv'), python=platform.python_version(), platform=platform.platform(), server_config_sha256=hashlib.sha256((REPO / 'deployment/server_config.loadtest.json').read_bytes()).hexdigest(),
                 measurement_schema=mw.schema()['id'], measurement_schema_sha256=mw.schema_sha256(), release_build='cargo build --release --locked -p omega-server -p omega-load-test',
                 fault_build='cargo build --release --locked -p omega-load-test --features omega-load-test/fault-injection --target-dir <scratch>',
@@ -229,6 +297,9 @@ def real(out, release, fault_release, long_windows):
             scenarios[name] = real_summary(run, ml.prove(run))
             print(name, scenarios[name]['status'], scenarios[name]['reasons'], flush=True)
         if fault_release:
+            run = ml.LocalRun(release, root / 'short_fault_build_with_nothing_injected', 8, 6, bot_release=fault_release).execute()
+            scenarios['short_fault_build_with_nothing_injected'] = real_summary(run, ml.prove(run))
+            print('short_fault_build_with_nothing_injected', scenarios['short_fault_build_with_nothing_injected']['status'], scenarios['short_fault_build_with_nothing_injected']['reasons'], flush=True)
             for name, options, faults in REAL_INJECTED:
                 extra = [item for fault in faults for item in ('--fault', fault)]
                 run = ml.LocalRun(release, root / name, options['target'], options['hold_s'], bot_release=fault_release, bot_extra=extra).execute()

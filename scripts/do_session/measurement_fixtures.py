@@ -67,8 +67,8 @@ def swarm_files(root, timeline):
     nonce = 'fixture-nonce'
     controls = dict(server='203.0.113.10:8081', bots=timeline.target, threads=timeline.threads, bot_id_assignment='round-robin', join_stagger_ms=100, behavior='strategy', difficulty=1.0, input_hz=30, input_interval_ns=33_333_333,
                     seed=1, hold_s=timeline.hold_s, readiness_timeout_s=60.0, bandwidth_budget_bps=0, warmup_ns=2 * NS, publish_lead_ns=NS, end_guard_ns=2 * NS, drain_ns=1_500_000_000, ticket_auth=False, faults=[])
-    (directory / 'swarm.json').write_text(json.dumps(dict(schema=mw.schema()['id'], nonce=nonce, role='bot', pid=4001, kernel_start_id='ticks:9001', boot_id='boot-bot', version='0.1.0', clock=bot_pair(0), controls=controls)) + '\n')
-    rows = [dict(k='header', nonce=nonce, schema=mw.schema()['id'], clock=bot_pair(0), pid=4001)]
+    (directory / 'swarm.json').write_text(json.dumps(dict(schema=mw.schema()['id'], nonce=nonce, role='bot', pid=4001, kernel_start_id='ticks:9001', boot_id='boot-bot', version='0.1.0', clock=bot_pair(0), build=dict(fault_injection=False), controls=controls)) + '\n')
+    rows = [dict(k='header', nonce=nonce, schema=mw.schema()['id'], role='bot', clock=bot_pair(0), pid=4001)]
     for second in range(0, int(timeline.finish // NS) + 1):
         rows.append(dict(k='clock', nonce=nonce, mono_ns=second * NS, clock=bot_pair(second * NS), authenticated=timeline.target, lost_after_auth=0))
     rows.append(dict(k='barrier', nonce=nonce, mono_ns=timeline.barrier, final_auth_ns=timeline.final_auth, authenticated=timeline.target))
@@ -79,7 +79,7 @@ def swarm_files(root, timeline):
     acks = []
     for shard in range(timeline.threads):
         owned = timeline.owned(shard)
-        rows = [dict(k='header', nonce=nonce, schema=mw.schema()['id'], shard=shard, shards=timeline.threads, thread='swarm-%d' % shard, bots=owned, bot_fields=FIELDS, gap_bounds_ms=[10, 20, 30, 35, 40, 50, 100],
+        rows = [dict(k='header', nonce=nonce, schema=mw.schema()['id'], role='bot', shard=shard, shards=timeline.threads, thread='swarm-%d' % shard, bots=owned, bot_fields=FIELDS, gap_bounds_ms=[10, 20, 30, 35, 40, 50, 100],
                      geometry=dict(min=[-1000, -1000], max=[1000, 1000], obstacles_enabled=True, initialized_on_thread=True), clock=bot_pair(0))]
         for bot in owned:
             rows.append(dict(k='join', nonce=nonce, bot=bot, scheduled_ns=timeline.joins[bot], actual_ns=timeline.joins[bot] + 500_000, local_port=40000 + bot))
@@ -94,13 +94,13 @@ def swarm_files(root, timeline):
         rows.append(dict(k='ack_end', nonce=nonce, mono_ns=timeline.end + 1_000_000, end_ns=timeline.end, lateness_ns=1_000_000, running=len(owned)))
         rows.append(dict(k='freeze', nonce=nonce, mono_ns=timeline.end + 1_100_000, start_ns=timeline.start, end_ns=timeline.end, stillborn=[],
                          bots=[dict(id=bot, phase='Running', alive=True, scheduled=scheduled(timeline), sent=scheduled(timeline), send_errors=0, dead_frames=0, gap_buckets=[0, 0, 0, scheduled(timeline) - 1, 0, 0, 0, 0],
-                                    gap_max_ns=34_000_000, last_input_ns=timeline.end - 20_000_000, decode_failures=0, errors=0, panics=0, socket_send_errors=0, socket_zero_sends=0, socket_receive_errors=0, disconnected=None) for bot in owned]))
+                                    gap_max_ns=34_000_000, last_input_ns=timeline.end - 20_000_000, decode_failures=0, errors=0, panics=0, socket_send_errors=0, socket_zero_sends=0, socket_receive_errors=0, disconnected=None, scheduled_before_disconnect=None) for bot in owned]))
         rows.append(dict(k='drain_start', nonce=nonce, mono_ns=timeline.drain + 1_000_000, clock=bot_pair(timeline.drain)))
         rows.append(dict(k='drain_end', nonce=nonce, mono_ns=timeline.drain + 100_000_000, unconfirmed_disconnects=0, bots=[]))
         rows.append(dict(k='footer', nonce=nonce, mono_ns=timeline.finish, clock=bot_pair(timeline.finish), shard=shard, left_early=False, start_acked=True, end_acked=True, polls=60000, max_poll_gap_ns=3_000_000, observer_ns=1000, recorder_failure=None))
         write_ndjson(directory / ('shard-%d.ndjson' % shard), rows)
         acks.append(dict(shard=shard, observed_ns=timeline.published + 2_000_000, start_ack_ns=timeline.start + 1_000_000, end_ack_ns=timeline.end + 1_000_000, finished=True, recorder_failed=False))
-    (directory / 'window.json').write_text(json.dumps(dict(schema=mw.schema()['id'], nonce=nonce, status='window_recorded', reason=None, bots=timeline.target, shards=timeline.threads, hold_s=timeline.hold_s, final_auth_ns=timeline.final_auth,
+    (directory / 'window.json').write_text(json.dumps(dict(schema=mw.schema()['id'], role='bot', nonce=nonce, status='window_recorded', reason=None, bots=timeline.target, shards=timeline.threads, hold_s=timeline.hold_s, final_auth_ns=timeline.final_auth,
                                                            barrier_ns=timeline.final_auth, start_ns=timeline.start, end_ns=timeline.end, acks=acks, unjoined_shards=[], panicked_shards=[], lost_after_auth=0, lost_rows=[],
                                                            authenticated_at_end=0, clock=bot_pair(timeline.finish))) + '\n')
 
@@ -143,18 +143,21 @@ def game_files(root, timeline, game_wall_offset=0):
             tick += 1
             mono += interval
     (directory / 'server.ndjson').write_text('{"mono_ns": 0}\n')
-    (directory / 'final.json').write_text(json.dumps(dict(schema=mw.schema()['id'], tick_rows=count, last_tick=tick - 1, world_tick=tick - 1, population_rows=len(rows), peers_at_shutdown=0, clock=game_pair(end, game_wall_offset))) + '\n')
+    (directory / 'final.json').write_text(json.dumps(dict(schema=mw.schema()['id'], role='game', tick_rows=count, last_tick=tick - 1, world_tick=tick - 1, population_rows=len(rows), peers_at_shutdown=0, clock=game_pair(end, game_wall_offset))) + '\n')
     return start
 
 
+READ_NS = 200_000     # how long a fixture collector takes to read its counters
+
+
 def sampler_rows(role, timeline, port_map, pid, start_id, boot, pair_of, first_mono, last_mono, counters=True):
-    rows = []
+    rows = [dict(kind='meta', platform='fixture', cpus=4, ts=0.0, schema=mw.schema()['id'])]
     mono = first_mono
     seq = 0
     while mono <= last_mono:
         drops = 0 if counters else None
         sockets = [dict(inode='%s-socket-%d' % (role, port), local='00000000:%04X' % port, local_port=port, drops=drops, rx_queue=0, tx_queue=0) for port in port_map]
-        rows.append(dict(ts=1.0, mono_s=seq, clock=pair_of(mono), seq=seq, boot_id=boot, system={}, udp=dict(snmp=dict(InDatagrams=seq * 100, InErrors=0, RcvbufErrors=0)), collector_ns=250_000,
+        rows.append(dict(ts=1.0, mono_s=seq, clock=pair_of(mono), clock_after=pair_of(mono + READ_NS), seq=seq, boot_id=boot, system={}, udp=dict(snmp=dict(InDatagrams=seq * 100, InErrors=0, RcvbufErrors=0)), collector_ns=250_000,
                          procs={role: dict(pid=pid, alive=True, start_id=start_id, sockets=sockets, cpu_s=seq * 0.2)}))
         mono += NS
         seq += 1
@@ -236,6 +239,21 @@ class Tree:
                 row['seq'] = index
             rows[:] = kept
         self.edit_rows('bot/swarm/shard-%d.ndjson' % shard, change)
+
+    def edit_sampler(self, role, edit):
+        """``edit(index, row)`` over one collector's measured rows, without its header row."""
+        def change(rows):
+            for index, row in enumerate(row for row in rows if row.get('kind') != 'meta'):
+                edit(index, row)
+        self.edit_rows(role + '/sampler.ndjson', change)
+
+    def sampler_pair(self, role, mono):
+        """A wall/monotonic pair in this role's own collector domain, for placing a counter read exactly."""
+        return bot_pair(mono) if role == 'bot' else game_pair(mono, self.game_wall_offset)
+
+    def role_mono(self, role, mono_bot):
+        """A moment on the swarm's clock, on this role's own monotonic clock."""
+        return mono_bot if role == 'bot' else to_game_mono(mono_bot)
 
     def edit_frozen_bot(self, bot, edit):
         shard = (bot - 1) % self.timeline.threads

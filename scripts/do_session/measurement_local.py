@@ -212,8 +212,16 @@ class FaultSchedule:
         return step
 
 
+class CleanupFailed(RuntimeError):
+    """The run itself was fine and at least one stop was not. ``failures`` names each of them."""
+
+    def __init__(self, failures):
+        super().__init__('local run cleanup failed: %s' % '; '.join(failures))
+        self.failures = list(failures)
+
+
 class LocalRun:
-    def __init__(self, release, out, target, hold_s, bot_release=None, bot_extra=(), use_relay=False, readiness_timeout_s=None, schedule=(), config_overrides=None):
+    def __init__(self, release, out, target, hold_s, bot_release=None, bot_extra=(), use_relay=False, readiness_timeout_s=None, schedule=(), config_overrides=None, runner_factory=Runner):
         self.release = pathlib.Path(release)
         self.bot_release = pathlib.Path(bot_release or release)
         self.root = pathlib.Path(out)
@@ -224,6 +232,7 @@ class LocalRun:
         self.use_relay = use_relay
         self.readiness_timeout_s = readiness_timeout_s
         self.config_overrides = config_overrides or {}
+        self.runner_factory = runner_factory
         self.relay = None
         self.identity = {}
         self.events = []
@@ -290,6 +299,22 @@ class LocalRun:
         shutil.copy2(str(HERE / 'guest_runner.py'), str(tools / 'guest_runner.py'))
         return tools / 'guest_runner.py'
 
+    def _cleanup(self, runners, attempted, started, results):
+        """Every role's stop and the relay, each whatever happened to the others. Returns what failed: one failure must not leave the rest running, or hide the failure before it."""
+        failures = []
+        for role in reversed(attempted):
+            try:
+                # A start that raised may or may not have left a process: try, and accept that there may be nothing to stop.
+                results[role] = runners[role]('stop', '--run-id', SESSION_RUN, '--role', role, '--token', TOKEN, '--reason', 'workload_finished', '--wait-s', 20, check=role in started)
+            except Exception as error:
+                failures.append('stop %s: %s: %s' % (role, type(error).__name__, error))
+        if self.relay is not None:
+            try:
+                self.relay.stop()
+            except Exception as error:
+                failures.append('stop relay: %s: %s' % (type(error).__name__, error))
+        return failures
+
     def execute(self):
         game_port, metrics_port = free_udp_tcp_port(), free_udp_tcp_port()
         connect_port = game_port
@@ -297,51 +322,67 @@ class LocalRun:
             self.relay = Relay(game_port)
             self.relay.start()
             connect_port = self.relay.port
+        runners, results, attempted, started = {}, {}, [], []
+        primary = None
+        try:
+            context = self._run_workload(game_port, metrics_port, connect_port, runners, attempted, started)
+        except BaseException as error:
+            primary = error
+            raise
+        finally:
+            failures = self._cleanup(runners, attempted, started, results)
+            if failures and primary is not None:
+                # The first failure stays the one raised. The rest travel with it, and are said out loud in case nothing reads them.
+                primary.cleanup_failures = failures
+                print('local run cleanup also failed: %s' % '; '.join(failures), file=sys.stderr)
+            elif failures:
+                raise CleanupFailed(failures)
+        return self._collect(context, runners, started, results)
+
+    def _run_workload(self, game_port, metrics_port, connect_port, runners, attempted, started):
+        """Setup, both starts and the wait for the swarm. ``runners``, ``attempted`` and ``started`` fill in as it goes, because whatever it leaves behind is the caller's to stop."""
         adapter = LocalAdapter(self.root, game_port, metrics_port, connect_port, self.bot_extra)
         runner_path = self._install(adapter)
-        runners = {role: Runner(self.root, role, runner_path) for role in ('game', 'bot')}
+        runners.update({role: self.runner_factory(self.root, role, runner_path) for role in ('game', 'bot')})
         hashes = dict(game=guest_runner.sha256_file(adapter.program_paths()['game']), bot=guest_runner.sha256_file(adapter.program_paths()['bot']))
         manifest = dict(session=dict(id=SESSION), workload=dict(manifest_mod.WORKLOAD_SCHEMA), source=dict(binary_sha256=hashes, server_config_sha256=guest_runner.sha256_file(adapter.config_path())))
         trial = search.Trial(run_id=SESSION_RUN, ordinal=1, phase='confirm' if self.hold_s == 300 else 'coarse', target=self.target, repetition=1, hold_s=self.hold_s, predecessors=())
         sampler = guest_runner.sha256_file(adapter.sampler_path('game'))
         for runner in runners.values():
             runner('fence', '--session', SESSION, '--token', TOKEN)
-        brackets = dict(before=bracket(runners, 'before'))
+        before = bracket(runners, 'before')
         whole = run_plan.swarm_bound_s(trial)
         if self.readiness_timeout_s is not None:
             whole = self.readiness_timeout_s + search.POST_AUTH_WARMUP_S + self.hold_s + run_plan.SWARM_TAIL_S
         now = time.time()
-        results = {}
-        started = []
         schedule_threads = []
-        try:
-            for role, extra in (('game', 20), ('bot', 0)):
-                grant = runners[role]('grant_prepare', '--session', SESSION, '--token', TOKEN)['grant_id']
-                plan = run_plan.role_plan(adapter, manifest, 'local', trial, role, dict(game='127.0.0.1', bot='127.0.0.1'), sampler, TOKEN, guest_runner.PROCESS_GROUP, time.time() + 30.0,
-                                          whole + 60 + extra, now + whole + 300 + extra, 5.0, minimum_bound_s=whole)
-                if role == 'bot' and self.readiness_timeout_s is not None:
-                    argv = plan['processes'][0]['argv']
-                    argv[argv.index('--readiness-timeout-s') + 1] = str(self.readiness_timeout_s)
-                plan = dict(plan, grant=dict(id=grant, ttl_s=60.0))
-                (self.root / ('plan-%s.json' % role)).write_text(json.dumps(plan, indent=2, sort_keys=True))
-                document = runners[role]('start', '--plan-json', json.dumps(plan, sort_keys=True))
-                self.identity[role] = dict(processes=document['processes'], supervisor=document['supervisor'])
-                started.append(role)
-                if role == 'game':
-                    self._await_socket(runners['game'])
-            for step in self.schedule:
-                thread = threading.Thread(target=step, args=(self,), daemon=True)
-                thread.start()
-                schedule_threads.append(thread)
-            self._await_result(runners['bot'], whole + 120)
-            for thread in schedule_threads:
-                thread.join(timeout=5)
-        finally:
-            for role in reversed(started):
-                results[role] = runners[role]('stop', '--run-id', SESSION_RUN, '--role', role, '--token', TOKEN, '--reason', 'workload_finished', '--wait-s', 20)
-            if self.relay is not None:
-                self.relay.stop()
-        brackets['after'] = bracket(runners, 'after')
+        for role, extra in (('game', 20), ('bot', 0)):
+            grant = runners[role]('grant_prepare', '--session', SESSION, '--token', TOKEN)['grant_id']
+            plan = run_plan.role_plan(adapter, manifest, 'local', trial, role, dict(game='127.0.0.1', bot='127.0.0.1'), sampler, TOKEN, guest_runner.PROCESS_GROUP, time.time() + 30.0,
+                                      whole + 60 + extra, now + whole + 300 + extra, 5.0, minimum_bound_s=whole)
+            if role == 'bot' and self.readiness_timeout_s is not None:
+                argv = plan['processes'][0]['argv']
+                argv[argv.index('--readiness-timeout-s') + 1] = str(self.readiness_timeout_s)
+            plan = dict(plan, grant=dict(id=grant, ttl_s=60.0))
+            (self.root / ('plan-%s.json' % role)).write_text(json.dumps(plan, indent=2, sort_keys=True))
+            attempted.append(role)
+            document = runners[role]('start', '--plan-json', json.dumps(plan, sort_keys=True))
+            self.identity[role] = dict(processes=document['processes'], supervisor=document['supervisor'])
+            started.append(role)
+            if role == 'game':
+                self._await_socket(runners['game'])
+        for step in self.schedule:
+            thread = threading.Thread(target=step, args=(self,), daemon=True)
+            thread.start()
+            schedule_threads.append(thread)
+        self._await_result(runners['bot'], whole + 120)
+        for thread in schedule_threads:
+            thread.join(timeout=5)
+        return dict(trial=trial, workload=manifest['workload'], hashes=hashes, before=before)
+
+    def _collect(self, context, runners, started, results):
+        """After every stop succeeded: the closing bracket, the seals and the evidence tree."""
+        brackets = dict(before=context['before'], after=bracket(runners, 'after'))
         for role in started:
             results[role] = runners[role]('seal', '--run-id', SESSION_RUN, '--role', role, '--token', TOKEN)
         evidence = self.root / 'evidence'
@@ -351,8 +392,8 @@ class LocalRun:
         (evidence / 'clock-after.json').write_text(json.dumps(brackets['after']))
         identities = {role: self.identity[role]['processes'] for role in started}
         (evidence / 'identities.json').write_text(json.dumps(identities))
-        return dict(evidence=str(evidence), trial=trial.to_dict(), identities=identities, brackets=brackets, workload=manifest['workload'], results=results, events=self.events,
-                    binaries=hashes)
+        return dict(evidence=str(evidence), trial=context['trial'].to_dict(), identities=identities, brackets=brackets, workload=context['workload'], results=results, events=self.events,
+                    binaries=context['hashes'])
 
     def _await_socket(self, runner):
         deadline = time.monotonic() + START_TIMEOUT_S

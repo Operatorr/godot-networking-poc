@@ -10,7 +10,7 @@
 //! (rate-limited like the real client), `RespawnRequest` 3.2 s after death.
 
 use crate::behavior::{BehaviorKind, BehaviorState, KnownEntity, View};
-use crate::measured::{BotRecord, BotSocket, InputSchedule};
+use crate::measured::{BotRecord, BotSocket, EventClock, InputSchedule};
 use crate::metrics::BotMetrics;
 use crate::rng::Pcg32;
 use protocol::types::{delta_mask, disconnect_reason, entity_flags, MONSTER_ID_START};
@@ -195,11 +195,16 @@ impl Bot {
     }
 
     /// Turn on common-window recording. Called once, right after `connect`, on the owning shard.
-    pub fn enable_record(&mut self, now_ns: u64, interval_ns: u64) {
-        self.record = Some(BotRecord::new(now_ns, InputSchedule::new(interval_ns)));
+    pub fn enable_record(&mut self, now_ns: u64, interval_ns: u64, clock: EventClock) {
+        self.record = Some(BotRecord::new(
+            now_ns,
+            InputSchedule::new(interval_ns),
+            clock,
+        ));
     }
 
-    /// Each poll's single time reading, in the swarm's monotonic domain.
+    /// When this poll began, in the swarm's monotonic domain. It decides which input slot is due;
+    /// the record times each enqueue and observation itself.
     pub fn set_record_clock(&mut self, now_ns: u64, window: Option<(u64, u64)>) {
         if let Some(record) = &mut self.record {
             record.set_clock(now_ns, window);
@@ -725,7 +730,6 @@ impl Bot {
             if record.input_muted() {
                 return;
             }
-            record.note_dead_frame(self.dead_since.is_some());
         }
         self.send(&input);
     }
@@ -791,6 +795,7 @@ impl Bot {
     }
 
     fn send(&mut self, packet: &ClientPacket) {
+        let dead = self.dead_since.is_some();
         let bytes = packet.encode();
         let enet_packet = if packet.reliable() {
             enet::Packet::reliable(bytes.as_slice())
@@ -818,7 +823,7 @@ impl Bot {
                 self.metrics.packets_sent += 1;
                 self.metrics.bytes_sent += bytes.len() as u64;
                 if let (Some(record), ClientPacket::PlayerInput(_)) = (&mut self.record, packet) {
-                    record.input_sent();
+                    record.input_sent(dead);
                 }
             }
             Err(e) => {

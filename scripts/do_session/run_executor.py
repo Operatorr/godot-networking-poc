@@ -1136,7 +1136,7 @@ class RunExecutor:
             processes, inodes, _ = run_checks.prior_identities(self._ledger_without(ledger, run_id))
             prior[role] = dict(processes=processes, inodes=inodes)
         try:
-            proof = self.window_prover(self._run_dir(run_id), context.trial.to_dict(), self.manifest['workload'], identities, brackets, telemetry_schema=self.manifest.get('telemetry_schema'),
+            proof = self.window_prover(self._run_dir(run_id), context.trial.to_dict(), self.manifest['workload'], identities, brackets, telemetry_schema=self.manifest.get('telemetry_schema') or {},
                                        require_counters=self.require_counters, prior=prior)
             if manifest_mod.scan_for_secrets(proof):
                 raise ValueError('the proof held a credential value')

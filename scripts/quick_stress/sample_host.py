@@ -6,11 +6,13 @@ sampler that dies mid-run still leaves a usable prefix. Linux reads procfs direc
 back to `ps`/`netstat -s`. Processes to watch come from a pid file (`name=pid` per line) that is
 re-read every tick, so the bot swarm can be added after the server has started.
 
-With --identity (the DigitalOcean common-window recorder, omega.measurement/2) each row also keeps
-this sampler's own wall/monotonic pair, the boot id, each watched process's kernel start identity and
-per-thread CPU, every UDP socket that exact process owns (inode, local endpoint, drops, queues), raw
-memory/OOM counters, raw interface counters and what the sample itself cost. Host-wide kernel counters
-stay in `udp.snmp`, never merged with a socket's. Missing values are absent, never zero.
+With --identity (the DigitalOcean common-window recorder, omega.measurement/3) the first row names that
+schema and each row also keeps the boot id, each watched process's kernel start identity and per-thread
+CPU, every UDP socket that exact process owns (inode, local endpoint, drops, queues), raw memory/OOM
+counters, raw interface counters and what the sample itself cost. `clock` and `clock_after` are this
+sampler's tight wall/monotonic pairs on either side of every counter read in the row, so a reader knows
+when those counters can have been taken, not just when the row began. Host-wide kernel counters stay in
+`udp.snmp`, never merged with a socket's. Missing values are absent, never zero.
 
 Usage: sample_host.py --out host.ndjson --pids pids.txt [--udp-port 8081] [--interval 1.0] [--identity]
 """
@@ -27,6 +29,7 @@ import time
 
 IS_LINUX = platform.system() == "Linux"
 IS_DARWIN = platform.system() == "Darwin"
+MEASUREMENT_SCHEMA = "omega.measurement/3"
 
 
 def read_pids(path):
@@ -285,24 +288,30 @@ def interface_counters(proc_root="/proc"):
     return facts
 
 
-def identity_row(row, seq, began_ns):
-    """The extra fields of one --identity row. The wall/monotonic pair is the tightest thing here."""
+def clock_pair():
+    """One tight wall/monotonic pair, the tightest thing here."""
     wall_before = time.time_ns()
     mono = time.monotonic_ns()
     wall_after = time.time_ns()
-    row["clock"] = {"wall_before_ns": wall_before, "mono_ns": mono, "wall_after_ns": wall_after}
+    return {"wall_before_ns": wall_before, "mono_ns": mono, "wall_after_ns": wall_after}
+
+
+def identity_row(row, seq, began_ns, read_before, proc_root="/proc", linux=IS_LINUX):
+    """The extra fields of one --identity row. ``read_before`` was taken before any counter in the row was read, and ``clock_after`` is taken only once they all have been."""
+    row["clock"] = read_before
     row["seq"] = seq
     row["boot_id"] = boot_id()
-    table = udp_table() if IS_LINUX else None
+    table = udp_table(proc_root) if linux else None
     for name, facts in row["procs"].items():
         pid = facts["pid"]
         facts["start_id"] = start_id(pid)
-        facts["sockets"] = owned_sockets(pid, table) if IS_LINUX else lsof_sockets(pid)
-        if IS_LINUX:
-            facts["thread_cpu_s"] = thread_cpu(pid)
-    if IS_LINUX:
-        row["memory"] = memory_facts()
-        row["interfaces"] = interface_counters()
+        facts["sockets"] = owned_sockets(pid, table, proc_root) if linux else lsof_sockets(pid)
+        if linux:
+            facts["thread_cpu_s"] = thread_cpu(pid, proc_root)
+    if linux:
+        row["memory"] = memory_facts(proc_root)
+        row["interfaces"] = interface_counters(proc_root)
+    row["clock_after"] = clock_pair()
     row["collector_ns"] = time.monotonic_ns() - began_ns
 
 
@@ -316,11 +325,15 @@ def main():
     args = ap.parse_args()
     start = time.monotonic()
     with open(args.out, "a") as out:
-        out.write(json.dumps({"kind": "meta", "platform": platform.platform(), "cpus": os.cpu_count(), "ts": time.time()}) + "\n")
+        meta = {"kind": "meta", "platform": platform.platform(), "cpus": os.cpu_count(), "ts": time.time()}
+        if args.identity:
+            meta["schema"] = MEASUREMENT_SCHEMA
+        out.write(json.dumps(meta) + "\n")
         out.flush()
         n = 0
         while True:
             began_ns = time.monotonic_ns()
+            read_before = clock_pair() if args.identity else None
             row = {"ts": time.time(), "mono_s": round(time.monotonic() - start, 3), "procs": {}, "system": system_cpu()}
             for name, pid in read_pids(args.pids).items():
                 row["procs"][name] = dict(proc_linux(pid) if IS_LINUX else proc_ps(pid), pid=pid) if args.identity else (proc_linux(pid) if IS_LINUX else proc_ps(pid))
@@ -330,7 +343,7 @@ def main():
                 pass
             row["udp"] = udp_linux(args.udp_port) if IS_LINUX else (udp_darwin() if IS_DARWIN else {})
             if args.identity:
-                identity_row(row, n, began_ns)
+                identity_row(row, n, began_ns, read_before)
             out.write(json.dumps(row) + "\n")
             out.flush()
             n += 1

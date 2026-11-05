@@ -7,6 +7,9 @@
 Without those it skips, because the deterministic version of every proof rule is in ``test_measurement_window``. Short holds here are clearly short: they
 prove the machinery in real time, each carries ``contract_hold`` false, and the prover refuses them without ``allow_short_hold``.
 Endpoints share this host, so counters and clock offsets are limited as ``measurement_local`` says. Nothing here is a capacity observation.
+
+Under the offline sandbox, ``sandbox-exec -f measurement_offline.sb python3 -m unittest test_measurement_integration``: every non-loopback send is refused and the
+collector's ``ps`` still runs. A sandbox without that allowance makes the collector report every process as gone, and the proofs are then rightly inconclusive.
 """
 import json
 import os
@@ -28,6 +31,10 @@ def codes(proof):
 
 
 class Real(unittest.TestCase):
+    @staticmethod
+    def proof_status(proof):
+        return proof['status']
+
     def run_local(self, target=TARGET, hold_s=HOLD, **options):
         root = tempfile.mkdtemp(prefix='omega-real-')
         self.addCleanup(shutil.rmtree, root, True)
@@ -95,6 +102,30 @@ class CompleteWindow(Real):
             self.assertTrue(rows[0]['geometry']['initialized_on_thread'])
         process = json.loads((evidence / 'game/telemetry/process.json').read_text())
         self.assertEqual(process['pid'], self.run_data['identities']['game']['game']['pid'])
+
+    def test_a_real_frozen_schema_and_build_are_stated_by_every_recorder(self):
+        evidence = pathlib.Path(self.run_data['evidence'])
+        frozen = mw.schema()['id']
+        swarm = json.loads((evidence / 'bot/swarm/swarm.json').read_text())
+        self.assertEqual((swarm['schema'], swarm['role']), (frozen, 'bot'))
+        self.assertIs(swarm['build']['fault_injection'], False, 'this is a frozen release build')
+        for relative, role in (('bot/swarm/window.json', 'bot'), ('game/telemetry/process.json', 'game'), ('game/telemetry/final.json', 'game')):
+            document = json.loads((evidence / relative).read_text())
+            self.assertEqual((document['schema'], document['role']), (frozen, role), relative)
+        for relative in ['bot/swarm/coordinator.ndjson'] + ['bot/swarm/shard-%d.ndjson' % shard for shard in range(4)]:
+            header = json.loads((evidence / relative).read_text().splitlines()[0])
+            self.assertEqual((header['schema'], header['role']), (frozen, 'bot'), relative)
+        for role in ('bot', 'game'):
+            self.assertEqual(json.loads((evidence / role / 'sampler.ndjson').read_text().splitlines()[0])['schema'], frozen)
+
+    def test_a_real_collector_brackets_every_counter_read(self):
+        evidence = pathlib.Path(self.run_data['evidence'])
+        limits = mw.schema()['limits']
+        for role in ('bot', 'game'):
+            rows = [json.loads(line) for line in (evidence / role / 'sampler.ndjson').read_text().splitlines()[1:]]
+            for row in rows:
+                self.assertIsNotNone(mw.counter_read_bounds(row, limits), row.get('seq'))
+                self.assertLessEqual(row['clock']['mono_ns'], row['clock_after']['mono_ns'])
 
     def test_the_game_and_bot_monotonic_domains_really_differ(self):
         evidence = pathlib.Path(self.run_data['evidence'])
@@ -207,6 +238,23 @@ class OutsideFaults(Real):
         for shard in proof['facts']['shards']:
             self.assertLess(shard['max_poll_gap_ns'], 500_000_000)
 
+    def test_a_warmup_runs_past_the_readiness_bound(self):
+        """The review's reproduction: all eight were in by about 0.7 s against a 2 s bound, and the barrier used to give up at 2 s, inside the warmup."""
+        run = self.run_local(readiness_timeout_s=2.0)
+        proof = ml.prove(run)
+        self.assertEqual(proof['status'], mw.COMPLETE, proof['reasons'])
+        self.assertLess(proof['facts']['final_auth_bot_mono_ns'], 2 * mw.NS)
+        self.assertGreater(proof['facts']['window_bot_mono_ns'][0], 2 * mw.NS, 'the window opened after the bound had passed')
+
+    def test_a_final_authentication_near_the_readiness_bound_reaches_a_window(self):
+        run = self.run_local(use_relay=True, schedule=[ml.FaultSchedule.hold_one_bot(4, 3.0)], readiness_timeout_s=4.0)
+        proof = ml.prove(run)
+        self.assertEqual(proof['status'], mw.COMPLETE, proof['reasons'])
+        final_auth = proof['facts']['final_auth_bot_mono_ns']
+        self.assertGreater(final_auth, 2.5 * mw.NS)
+        self.assertLessEqual(final_auth, 4 * mw.NS)
+        self.assertGreaterEqual(proof['facts']['window_bot_mono_ns'][0], final_auth + 3 * mw.NS, 'the whole warmup and the lead, past the bound')
+
     def test_an_authentication_that_never_arrives_establishes_nothing(self):
         run = self.run_local(use_relay=True, schedule=[ml.FaultSchedule.hold_one_bot(2, None)], readiness_timeout_s=4.0)
         proof = ml.prove(run)
@@ -274,6 +322,15 @@ class InjectedFaults(Real):
         row = next(item for item in proof['facts']['per_bot_input'] if item['bot'] == 3)
         self.assertEqual(row['sent'], 0)
         self.assertIsNone(row['disconnected'], 'connected the whole time, on real sockets')
+
+    def test_a_fault_build_with_nothing_injected_still_cannot_prove_a_window(self):
+        run = self.fault()
+        proof = ml.prove(run)
+        self.assertEqual(self.proof_status(proof), mw.INCONCLUSIVE, proof['reasons'])
+        self.assertEqual(codes(proof), {'fault_injection_build'}, 'it ran a clean window and is refused only for being that binary')
+        swarm = json.loads(pathlib.Path(run['evidence'], 'bot/swarm/swarm.json').read_text())
+        self.assertEqual(swarm['controls']['faults'], [])
+        self.assertIs(swarm['build']['fault_injection'], True)
 
     def test_a_recorder_that_stops_writing_is_truncation(self):
         proof = ml.prove(self.fault('truncate:1:window:1'))

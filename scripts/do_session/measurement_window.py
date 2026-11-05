@@ -16,7 +16,9 @@ allowance), to the controller's clock and on to the other host (the before and a
 process's monotonic reading. The result is an interval, and the server must prove N across all of it. A disconnect that
 falls only in the uncertain part is ambiguous, which is inconclusive, and never a pass.
 
-Missing is never zero: an absent counter, schedule, sample or row produces a reason.
+Missing is never zero: an absent counter, schedule, sample or row produces a reason. So does a document whose producer is not the one
+this file understands. A hash proves the bytes arrived, not what they mean, so every versioned recorder is held to the frozen schema
+before any of its fields are read.
 """
 import csv
 import hashlib
@@ -67,6 +69,8 @@ def load_ndjson(path):
             rows.append(json.loads(line))
         except ValueError:
             return [], 'corrupt: line %d does not parse' % number
+        if not isinstance(rows[-1], dict):
+            return [], 'corrupt: line %d is not a row' % number
     return rows, None if rows else 'empty'
 
 
@@ -82,6 +86,22 @@ def load_json(path):
 
 def is_int(value):
     return isinstance(value, int) and not isinstance(value, bool)
+
+
+def is_count(value):
+    """A counter or a monotonic reading: a real non-negative integer, so that absent, null, text, a boolean or a negative are all no reading at all."""
+    return is_int(value) and value >= 0
+
+
+def check_producer(document, name, kind, reasons):
+    """Whether this recorder's own schema and role are the frozen ones. Nothing else in it means anything until this is true."""
+    frozen = schema()
+    role = frozen['producers'][kind]
+    found = (document.get('schema'), document.get('role')) if isinstance(document, dict) else (None, None)
+    if found != (frozen['id'], role):
+        reasons.add('schema_mismatch', EVIDENCE, '%s is schema %r role %r, this prover understands %s role %s' % (name, found[0], found[1], frozen['id'], role))
+        return False
+    return True
 
 
 # ---- clocks ---------------------------------------------------------------------------------------
@@ -133,7 +153,9 @@ class Domain:
 
 def bracket_offset(bracket, role):
     """(low, high, boot_id) of ``role wall minus controller wall``, from the bracket's raw attempts. The controller's own summary is not trusted."""
-    attempts = ((bracket or {}).get('roles') or {}).get(role) or []
+    if not isinstance(bracket, dict) or bracket.get('schema') != schema()['bracket_schema']:
+        return None
+    attempts = (bracket.get('roles') or {}).get(role) or []
     best = None
     for attempt in attempts if isinstance(attempts, list) else ():
         if not isinstance(attempt, dict) or not all(is_int(attempt.get(k)) for k in ('before_ns', 'guest_wall_ns', 'after_ns')) or attempt['after_ns'] < attempt['before_ns']:
@@ -177,8 +199,9 @@ def check_stream(rows, nonce, name, reasons):
     if rows[-1].get('k') != 'footer':
         reasons.add('recorder_truncated', EVIDENCE, '%s has no footer' % name)
         return False
-    if rows[-1].get('recorder_failure'):
-        reasons.add('recorder_failed', EVIDENCE, '%s: %s' % (name, rows[-1]['recorder_failure']))
+    failure = rows[-1].get('recorder_failure', 'its footer does not say')
+    if failure is not None:
+        reasons.add('recorder_failed', EVIDENCE, '%s: %s' % (name, failure))
         return False
     return True
 
@@ -194,8 +217,63 @@ def check_controls(controls, trial, workload, reasons):
     for key, value in (('warmup_ns', timing['warmup']), ('publish_lead_ns', timing['publish_lead']), ('end_guard_ns', timing['end_guard']), ('drain_ns', timing['drain'])):
         if controls.get(key) != value:
             reasons.add('workload_mismatch', EVIDENCE, '%s is %r, the schema says %r' % (key, controls.get(key), value))
-    if controls.get('faults'):
-        reasons.add('fault_injection_build', EVIDENCE, 'this run was deliberately broken: %s' % controls['faults'])
+    faults = controls.get('faults')
+    if not isinstance(faults, list):
+        reasons.add('workload_mismatch', EVIDENCE, 'the swarm does not state its faults: %r' % (faults,))
+    elif faults:
+        reasons.add('fault_injection_build', EVIDENCE, 'this run was deliberately broken: %s' % faults)
+
+
+def check_build(swarm, reasons):
+    """A fault build can never prove a window, even with nothing injected: its binary is not the frozen one. Only the build itself can say, so an unstated build is no build."""
+    stated = (swarm.get('build') or {}).get('fault_injection') if isinstance(swarm.get('build'), dict) else None
+    if stated is True:
+        reasons.add('fault_injection_build', EVIDENCE, 'this binary was built with fault injection')
+    elif stated is not False:
+        reasons.add('build_unstated', EVIDENCE, 'swarm.json does not state its build: %r' % (stated,))
+
+
+def check_boundaries(rows, name, start, end, footer, reasons):
+    """The boundary rows of one shard, in the only order a real shard can write them, each with a real time. Returns freeze, or None when there is none.
+
+    A counter snapshot proves only what came before it. One taken before the end, or one that carries the right boundary labels but no time of its own, cannot prove the rest of the hold.
+    """
+    found = {}
+    for kind in ('window_observed', 'ack_start', 'ack_end', 'freeze', 'drain_start'):
+        matching = [row for row in rows if row.get('k') == kind]
+        if len(matching) > 1:
+            reasons.add('boundary_contradiction', EVIDENCE, '%s has %d %s rows' % (name, len(matching), kind))
+        if matching:
+            found[kind] = matching[0]
+    freeze, drain, ack_end = found.get('freeze'), found.get('drain_start'), found.get('ack_end')
+    if freeze is None:
+        reasons.add('counters_not_frozen', GENERATOR, name)
+        return None
+    if freeze.get('start_ns') != start or freeze.get('end_ns') != end:
+        reasons.add('freeze_mismatch', EVIDENCE, '%s froze another window' % name)
+    frozen_at = freeze.get('mono_ns')
+    if not is_count(frozen_at):
+        reasons.add('freeze_time_missing', EVIDENCE, '%s froze at %r' % (name, frozen_at))
+    elif frozen_at < end:
+        reasons.add('frozen_before_end', EVIDENCE, '%s froze %.3f s before the end' % (name, (end - frozen_at) / NS))
+    if ack_end is not None and is_count(ack_end.get('mono_ns')) and (ack_end['seq'] > freeze['seq'] or (is_count(frozen_at) and frozen_at < ack_end['mono_ns'])):
+        reasons.add('frozen_before_end_acknowledgment', EVIDENCE, '%s froze at %r before acknowledging the end at %r' % (name, frozen_at, ack_end['mono_ns']))
+    if drain is None:
+        if footer.get('left_early') is False:
+            reasons.add('drain_missing', EVIDENCE, '%s finished with no drain record' % name)
+    else:
+        if drain['seq'] < freeze['seq'] or (is_count(frozen_at) and is_count(drain.get('mono_ns')) and drain['mono_ns'] < frozen_at):
+            reasons.add('drained_before_freeze', GENERATOR, name)
+        if not is_count(drain.get('mono_ns')):
+            reasons.add('drain_time_missing', EVIDENCE, '%s drained at %r' % (name, drain.get('mono_ns')))
+        elif drain['mono_ns'] < end:
+            reasons.add('drained_before_end', GENERATOR, name)
+    ordered = [found[kind] for kind in ('window_observed', 'ack_start', 'ack_end', 'freeze', 'drain_start') if kind in found] + [footer]
+    for left, right in zip(ordered, ordered[1:]):
+        out_of_order = left['seq'] > right['seq'] or (is_count(left.get('mono_ns')) and is_count(right.get('mono_ns')) and left['mono_ns'] > right['mono_ns'])
+        if out_of_order and {left['k'], right['k']} not in ({'ack_end', 'freeze'}, {'freeze', 'drain_start'}):
+            reasons.add('boundary_contradiction', EVIDENCE, '%s: %s comes before %s' % (name, right['k'], left['k']))
+    return freeze
 
 
 def check_shard(shard, shards, nonce, rows, bots, start, end, limits, reasons):
@@ -204,6 +282,10 @@ def check_shard(shard, shards, nonce, rows, bots, start, end, limits, reasons):
     if not check_stream(rows, nonce, name, reasons):
         return None
     header = rows[0]
+    if not check_producer(header, name, 'shard-<k>.ndjson', reasons):
+        return None
+    if header.get('shard') != shard or header.get('shards') != shards:
+        reasons.add('ownership_mismatch', EVIDENCE, '%s says it is shard %r of %r' % (name, header.get('shard'), header.get('shards')))
     owned = header.get('bots') or []
     expected = [bot for bot in range(1, bots + 1) if (bot - 1) % shards == shard]
     if owned != expected:
@@ -228,12 +310,15 @@ def check_shard(shard, shards, nonce, rows, bots, start, end, limits, reasons):
     starvation_ns = limits['poll_starvation_ms'] * 1_000_000
     footer = rows[-1]
     gaps = [row.get('max_poll_gap_ns') for row in rows if row.get('k') == 'sample']
-    if not is_int(footer.get('max_poll_gap_ns')) or not gaps:
+    if not is_count(footer.get('max_poll_gap_ns')) or not gaps or not all(is_count(gap) for gap in gaps):
         reasons.add('poll_liveness_missing', EVIDENCE, name)
     elif footer['max_poll_gap_ns'] > starvation_ns:
         reasons.add('poll_starvation', GENERATOR, '%s did not poll for %.0f ms' % (name, footer['max_poll_gap_ns'] / 1e6))
-    if footer.get('left_early'):
-        reasons.add('early_shard_exit', GENERATOR, name)
+    if footer.get('left_early') is not False:
+        if footer.get('left_early') is True:
+            reasons.add('early_shard_exit', GENERATOR, name)
+        else:
+            reasons.add('poll_liveness_missing', EVIDENCE, '%s does not say whether it left early: %r' % (name, footer.get('left_early')))
     observed = next((row for row in rows if row.get('k') == 'window_observed'), None)
     if observed is None:
         reasons.add('window_not_observed', GENERATOR, name)
@@ -248,20 +333,16 @@ def check_shard(shard, shards, nonce, rows, bots, start, end, limits, reasons):
             reasons.add('acknowledged_early', EVIDENCE, '%s %s precedes its boundary' % (name, kind))
         elif ack['mono_ns'] - boundary > late:
             reasons.add('poll_starvation', GENERATOR, '%s %s was %.0f ms late' % (name, kind, (ack['mono_ns'] - boundary) / 1e6))
-    freeze = next((row for row in rows if row.get('k') == 'freeze'), None)
-    drain = next((row for row in rows if row.get('k') == 'drain_start'), None)
+    freeze = check_boundaries(rows, name, start, end, footer, reasons)
     if freeze is None:
-        reasons.add('counters_not_frozen', GENERATOR, name)
         return None
-    if freeze.get('start_ns') != start or freeze.get('end_ns') != end:
-        reasons.add('freeze_mismatch', EVIDENCE, '%s froze another window' % name)
-    if drain is not None and drain.get('seq', 0) < freeze.get('seq', 0):
-        reasons.add('drained_before_freeze', GENERATOR, name)
-    if drain is not None and is_int(drain.get('mono_ns')) and drain['mono_ns'] < end:
-        reasons.add('drained_before_end', GENERATOR, name)
     frozen = {row.get('id'): row for row in freeze.get('bots') or [] if isinstance(row, dict)}
     samples = peer_coverage(rows, start, end)
     return dict(frozen=frozen, auths=auths, joins=joins, samples=samples, max_poll_gap_ns=footer.get('max_poll_gap_ns'), observer_ns=footer.get('observer_ns'), polls=footer.get('polls'), expected=expected)
+
+
+def is_number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
 def peer_coverage(rows, start, end):
@@ -277,47 +358,98 @@ def peer_coverage(rows, start, end):
             for item in row.get('bots') or []:
                 if isinstance(item, list) and len(item) > max(index_id, index_peer):
                     for sample in item[index_peer] or []:
-                        if isinstance(sample, list) and len(sample) == 3 and is_int(sample[0]) and start <= sample[0] < end:
+                        # A sample with no RTT or loss in it is no sample, however well timed.
+                        if isinstance(sample, list) and len(sample) == 3 and is_count(sample[0]) and start <= sample[0] < end and is_number(sample[1]) and sample[1] >= 0 and is_count(sample[2]):
                             found.setdefault(item[index_id], []).append(sample)
     return found
 
 
-def check_offered_load(shard_facts, hold_s, input_hz, limits, reasons):
-    """Per bot, exact and in integers: at least 99% of its own scheduled frames. Exactly 99% is valid. Missing is not zero."""
+# Every one of these must be a real count on every frozen row. Any other value is no observation.
+FROZEN_COUNTS = ('scheduled', 'sent', 'send_errors', 'dead_frames', 'gap_max_ns', 'decode_failures', 'errors', 'panics', 'socket_send_errors', 'socket_zero_sends', 'socket_receive_errors')
+GAP_BUCKETS = 8
+
+
+def frozen_problems(row, start, end):
+    """What makes this frozen row unusable as evidence, before any value on it is judged. Empty when every required field is an honest observation."""
+    problems = ['%s is %r' % (field, row.get(field)) for field in FROZEN_COUNTS if not is_count(row.get(field))]
+    if row.get('scheduled') == 0:
+        problems.append('scheduled is 0')
+    if not isinstance(row.get('phase'), str) or not row['phase']:
+        problems.append('phase is %r' % (row.get('phase'),))
+    if not isinstance(row.get('alive'), bool):
+        problems.append('alive is %r' % (row.get('alive'),))
+    buckets = row.get('gap_buckets')
+    if not isinstance(buckets, list) or len(buckets) != GAP_BUCKETS or not all(is_count(value) for value in buckets):
+        problems.append('gap_buckets is %r' % (buckets,))
+    last = row.get('last_input_ns')
+    if last is not None and not is_count(last):
+        problems.append('last_input_ns is %r' % (last,))
+    if 'disconnected' not in row:
+        problems.append('disconnected is absent')
+    disconnected = row.get('disconnected')
+    if disconnected is not None:
+        if not isinstance(disconnected, dict) or not is_count(disconnected.get('at_ns')) or not is_count(disconnected.get('reason')) or not isinstance(disconnected.get('expected'), bool):
+            problems.append('disconnected is %r' % (disconnected,))
+        elif not is_count(row.get('scheduled_before_disconnect')) or (is_count(row.get('scheduled')) and row['scheduled_before_disconnect'] > row['scheduled']):
+            problems.append('scheduled_before_disconnect is %r' % (row.get('scheduled_before_disconnect'),))
+    if not problems:
+        if row['dead_frames'] > row['sent']:
+            problems.append('%d dead frames of %d sent' % (row['dead_frames'], row['sent']))
+        if row['sent'] and last is None:
+            problems.append('sent %d with no last input' % row['sent'])
+        if last is not None and not start <= last < end:
+            problems.append('its last scored input at %d is outside the window' % last)
+    return problems
+
+
+def check_offered_load(shard_facts, start, end, hold_s, input_hz, limits, reasons):
+    """Per bot, exact and in integers: at least 99% of its own scheduled frames. Exactly 99% is valid. Missing is not zero.
+
+    A disconnected bot is held to the same floor over the part of the window it was connected for, less the one slot the disconnect can interrupt. Its frames after the
+    disconnect are not owed, and this says nothing of who caused it: raw counters stay in the facts for the scorer to attribute.
+    """
     facts = []
     percent = limits['input_min_percent']
-    coverage_floor = max(1, int(limits['rtt_min_coverage'] * hold_s) - 1)   # samples are about 1 Hz and drift later with each poll, and one can fall just outside either edge
+
+    def coverage_floor(seconds):    # samples are about 1 Hz and drift later with each poll, and one can fall just outside either edge
+        return int(limits['rtt_min_coverage'] * seconds) - 1
+
     for shard in shard_facts:
         for bot in shard['expected']:
             row = shard['frozen'].get(bot)
             if row is None:
                 reasons.add('input_record_missing', EVIDENCE, 'bot %d has no frozen row' % bot)
                 continue
-            scheduled, sent, errors = row.get('scheduled'), row.get('sent'), row.get('send_errors')
-            if not is_int(scheduled) or not is_int(sent) or not is_int(errors) or scheduled <= 0:
-                reasons.add('input_record_missing', EVIDENCE, 'bot %d: scheduled %r sent %r' % (bot, scheduled, sent))
+            problems = frozen_problems(row, start, end)
+            if problems:
+                reasons.add('input_record_missing', EVIDENCE, 'bot %d: %s' % (bot, '; '.join(problems)))
                 continue
-            disconnected = row.get('disconnected') or None
+            scheduled, sent, errors = row['scheduled'], row['sent'], row['send_errors']
+            disconnected = row['disconnected']
             samples = shard['samples'].get(bot) or []
-            facts.append(dict(bot=bot, scheduled=scheduled, sent=sent, send_errors=errors, gap_max_ns=row.get('gap_max_ns'), dead_frames=row.get('dead_frames'), peer_samples=len(samples),
-                              ratio=sent / scheduled, disconnected=disconnected))
+            facts.append(dict(bot=bot, scheduled=scheduled, sent=sent, send_errors=errors, gap_max_ns=row['gap_max_ns'], dead_frames=row['dead_frames'], peer_samples=len(samples),
+                              ratio=sent / scheduled, disconnected=disconnected, scheduled_before_disconnect=row.get('scheduled_before_disconnect')))
             if abs(scheduled - hold_s * input_hz) > 1:
                 reasons.add('schedule_mismatch', EVIDENCE, 'bot %d was owed %d frames in %d s at %s Hz' % (bot, scheduled, hold_s, input_hz))
             if sent > scheduled:
                 reasons.add('schedule_mismatch', EVIDENCE, 'bot %d sent %d of %d' % (bot, sent, scheduled))
-            if errors or row.get('errors') or row.get('panics') or row.get('decode_failures'):
-                reasons.add('bot_errors', GENERATOR, 'bot %d: send %s errors %s panics %s decode %s' % (bot, errors, row.get('errors'), row.get('panics'), row.get('decode_failures')))
-            sockets = [row.get(field) for field in ('socket_send_errors', 'socket_zero_sends', 'socket_receive_errors')]
-            if not all(is_int(value) for value in sockets):
-                reasons.add('input_record_missing', EVIDENCE, 'bot %d has no socket error counts' % bot)
-            elif any(sockets):
+            if errors or row['errors'] or row['panics'] or row['decode_failures']:
+                reasons.add('bot_errors', GENERATOR, 'bot %d: send %s errors %s panics %s decode %s' % (bot, errors, row['errors'], row['panics'], row['decode_failures']))
+            sockets = [row[field] for field in ('socket_send_errors', 'socket_zero_sends', 'socket_receive_errors')]
+            if any(sockets):
                 # Counted from the socket's creation, so a failure in the ramp stops the claim too: conservative, and it can only refuse.
                 reasons.add('generator_socket_errors', GENERATOR, 'bot %d: send errors %d, unsent datagrams %d, receive errors %d' % (bot, sockets[0], sockets[1], sockets[2]))
             if disconnected is not None:
-                continue    # its missing frames follow from the disconnect, which is judged on its own
+                owed = row['scheduled_before_disconnect']
+                connected_s = (min(max(disconnected['at_ns'], start), end) - start) // NS
+                if (sent + 1) * 100 < owed * percent:
+                    reasons.add('offered_input_below_minimum', GENERATOR, 'bot %d sent %d of the %d frames scheduled before it disconnected' % (bot, sent, owed))
+                if len(samples) < coverage_floor(connected_s):
+                    reasons.add('peer_sample_coverage', GENERATOR, 'bot %d has %d ENet samples in the %d s before it disconnected' % (bot, len(samples), connected_s))
+                continue
             if sent * 100 < scheduled * percent:
                 reasons.add('offered_input_below_minimum', GENERATOR, 'bot %d sent %d of %d scheduled frames while connected' % (bot, sent, scheduled))
-            if len(samples) < coverage_floor:
+            if len(samples) < max(1, coverage_floor(hold_s)):
                 reasons.add('peer_sample_coverage', GENERATOR, 'bot %d has %d ENet samples in a %d s window' % (bot, len(samples), hold_s))
     return facts
 
@@ -330,9 +462,12 @@ def load_swarm(root, trial, workload, limits, reasons):
     if problem or window_problem:
         reasons.add('swarm_evidence_missing', EVIDENCE, 'swarm.json %s, window.json %s' % (problem, window_problem))
         return None
+    if not check_producer(swarm, 'swarm.json', 'swarm.json', reasons) or not check_producer(window, 'window.json', 'window.json', reasons):
+        return None
     nonce = swarm.get('nonce')
     if window.get('nonce') != nonce:
         reasons.add('recorder_overwritten', EVIDENCE, 'window.json belongs to another process')
+    check_build(swarm, reasons)
     controls = swarm.get('controls') or {}
     check_controls(controls, trial, workload, reasons)
     if window.get('status') == 'not_established':
@@ -353,12 +488,17 @@ def load_swarm(root, trial, workload, limits, reasons):
         reasons.add('window_boundaries_missing', EVIDENCE, 'final authentication or warmup')
     elif start < final_auth + warmup:
         reasons.add('warmup_violated', GENERATOR, 'the window starts %.3f s after the final authentication' % ((start - final_auth) / NS))
+    bound_s = controls.get('readiness_timeout_s')
+    if not is_number(bound_s):
+        reasons.add('window_boundaries_missing', EVIDENCE, 'no readiness bound')
+    elif is_int(final_auth) and final_auth > bound_s * NS:
+        reasons.add('readiness_bound_exceeded', GENERATOR, 'the final authentication came %.3f s after the start, the bound is %s s' % (final_auth / NS, bound_s))
     coordinator, problem = load_ndjson(swarm_dir / 'coordinator.ndjson')
     pairs = []
     published = None
     if problem:
         reasons.add('recorder_truncated', EVIDENCE, 'coordinator.ndjson %s' % problem)
-    elif check_stream(coordinator, nonce, 'coordinator', reasons):
+    elif check_stream(coordinator, nonce, 'coordinator', reasons) and check_producer(coordinator[0], 'coordinator.ndjson', 'coordinator.ndjson', reasons):
         published = next((row for row in coordinator if row.get('k') == 'window_published'), None)
         for row in coordinator:
             if valid_pair(row.get('clock')):
@@ -373,8 +513,11 @@ def load_swarm(root, trial, workload, limits, reasons):
     if not is_int(shards) or shards <= 0:
         reasons.add('swarm_evidence_missing', EVIDENCE, 'no shard count')
         return None
-    if window.get('panicked_shards') or window.get('unjoined_shards'):
-        reasons.add('early_shard_exit', GENERATOR, 'panicked %s, unjoined %s' % (window.get('panicked_shards'), window.get('unjoined_shards')))
+    panicked, unjoined = window.get('panicked_shards'), window.get('unjoined_shards')
+    if not isinstance(panicked, list) or not isinstance(unjoined, list):
+        reasons.add('swarm_evidence_missing', EVIDENCE, 'window.json does not say which shards ended: panicked %r, unjoined %r' % (panicked, unjoined))
+    elif panicked or unjoined:
+        reasons.add('early_shard_exit', GENERATOR, 'panicked %s, unjoined %s' % (panicked, unjoined))
     facts = []
     for shard in range(shards):
         rows, problem = load_ndjson(swarm_dir / ('shard-%d.ndjson' % shard))
@@ -384,7 +527,7 @@ def load_swarm(root, trial, workload, limits, reasons):
         fact = check_shard(shard, shards, nonce, rows, trial['target'], start, end, limits, reasons)
         if fact is not None:
             facts.append(fact)
-    offered = check_offered_load(facts, trial['hold_s'], controls.get('input_hz') or 0, limits, reasons) if facts else []
+    offered = check_offered_load(facts, start, end, trial['hold_s'], controls.get('input_hz') or 0, limits, reasons) if facts else []
     domain = Domain('swarm', pairs, limits)
     entity_by_bot = {}
     ports = {}
@@ -409,6 +552,8 @@ def load_game(root, reasons, limits):
         return None
     if final_problem:
         reasons.add('recorder_truncated', EVIDENCE, 'telemetry/final.json %s: the server never finished its recorders' % final_problem)
+        return None
+    if not check_producer(process, 'process.json', 'process.json', reasons) or not check_producer(final, 'final.json', 'final.json', reasons):
         return None
     for index, row in enumerate(population):
         if row.get('seq') != index:
@@ -501,6 +646,7 @@ def check_population(game, swarm, interval, core, trial, reasons):
 # ---- role collectors and sockets ------------------------------------------------------------------
 
 def load_sampler(root, role, reasons):
+    """The collector's rows, once its own header says it is the frozen collector."""
     path = root / role / 'sampler.ndjson'
     try:
         data = path.read_bytes()
@@ -509,24 +655,58 @@ def load_sampler(root, role, reasons):
         return []
     if data and not data.endswith(b'\n'):
         data = data[:data.rfind(b'\n') + 1]     # the collector dies by signal, so a cut last row is expected, and bracketing below decides whether it mattered
-    rows = []
+    rows, metas = [], []
     for line in data.decode('utf-8', 'replace').splitlines():
         try:
             row = json.loads(line)
         except ValueError:
             reasons.add('recorder_truncated', EVIDENCE, '%s sampler.ndjson has a corrupt row' % role)
             return []
-        if valid_pair(row.get('clock')):
+        if isinstance(row, dict) and row.get('kind') == 'meta':
+            metas.append(row)
+        elif isinstance(row, dict) and valid_pair(row.get('clock')):
             rows.append(row)
+    versions = {row.get('schema') for row in metas}
+    if versions != {schema()['id']}:
+        reasons.add('schema_mismatch', EVIDENCE, '%s sampler.ndjson is schema %s, this prover understands %s' % (role, sorted(str(version) for version in versions), schema()['id']))
+        return []
     return rows
 
 
+def counter_read_bounds(row, limits):
+    """(earliest, latest) host wall time at which this row's counters can have been read, or None when the row cannot say.
+
+    The read happened somewhere between ``clock`` and ``clock_after``. ``collector_ns`` is the row's whole cost, so it must contain that span, and it widens both ends: a collector
+    descheduled around either reading could have read that much further out. A wall clock that moved differently from the monotonic one inside the read leaves no bound at all.
+    """
+    before, after, cost = row.get('clock'), row.get('clock_after'), row.get('collector_ns')
+    if not valid_pair(before) or not valid_pair(after) or not is_count(cost):
+        return None
+    span = after['mono_ns'] - before['mono_ns']
+    if span < 0 or span > cost or after['wall_after_ns'] < before['wall_before_ns']:
+        return None
+    wall_span = (after['wall_before_ns'] + after['wall_after_ns']) // 2 - (before['wall_before_ns'] + before['wall_after_ns']) // 2
+    if abs(wall_span - span) > limits['clock_step_ms'] * 1_000_000:
+        return None
+    slack = int(cost * limits['clock_drift_ppm'] / 1e6) + 1
+    return min(before['wall_before_ns'], after['wall_after_ns'] - cost) - slack, max(after['wall_after_ns'], before['wall_before_ns'] + cost) + slack
+
+
 def role_window(rows, wall_low, wall_high, role, limits, reasons):
-    """The rows from the last one before the interval to the first one after it. Their baseline and final counters can only widen the interval."""
-    before = [index for index, row in enumerate(rows) if row['clock']['wall_after_ns'] <= wall_low]
-    after = [index for index, row in enumerate(rows) if row['clock']['wall_before_ns'] >= wall_high]
+    """The rows whose counters bracket the interval, baseline and final included.
+
+    The baseline's read must have finished before the earliest possible start, and the final read must have begun after the latest possible end. A read that straddles a boundary may or
+    may not hold what happened during it, so it is neither. Whatever these rows then count can only be a wider interval than the real one, so a drop is counted and never hidden.
+    """
+    monos = [row['clock']['mono_ns'] for row in rows]
+    if any(right <= left for left, right in zip(monos, monos[1:])):
+        reasons.add('collector_boundary_missing', EVIDENCE, '%s collector rows are out of order' % role)
+        return None
+    bounds = [counter_read_bounds(row, limits) for row in rows]
+    before = [index for index, bound in enumerate(bounds) if bound is not None and bound[1] <= wall_low]
+    after = [index for index, bound in enumerate(bounds) if bound is not None and bound[0] >= wall_high]
     if not before or not after:
-        reasons.add('collector_boundary_missing', EVIDENCE, '%s collector has no sample %s the interval' % (role, 'before' if not before else 'after'))
+        reasons.add('collector_boundary_missing', EVIDENCE, '%s collector has no counter read wholly %s the interval' % (role, 'before' if not before else 'after'))
         return None
     chosen = rows[before[-1]:after[0] + 1]
     gap = max((right['clock']['mono_ns'] - left['clock']['mono_ns'] for left, right in zip(chosen, chosen[1:])), default=0)
@@ -545,7 +725,7 @@ def check_process_identity(rows, role, name, expected, prior, reasons):
         reasons.add('process_identity_reused', EVIDENCE, '%s %s was used by an earlier run' % (role, pid))
     for row in rows:
         facts = (row.get('procs') or {}).get(name)
-        if not isinstance(facts, dict) or facts.get('alive') is False:
+        if not isinstance(facts, dict) or facts.get('alive') is not True:
             reasons.add('process_lost_in_window', EVIDENCE, '%s %s absent from a collector row' % (role, name))
             return
         if facts.get('pid') != pid:
@@ -585,12 +765,15 @@ def check_socket(series, port, label, counters_required, prior_inodes, reasons, 
         reasons.add('socket_identity_reused', EVIDENCE, '%s: inode %s was used by an earlier run' % (label, rows[0]['inode']))
         return None
     first, last = rows[0].get('drops'), rows[-1].get('drops')
-    if not is_int(first) or not is_int(last):
+    if first is None and last is None and all(row.get('drops') is None for row in rows):
         if counters_required:
             reasons.add('socket_counters_missing', EVIDENCE, '%s has no kernel drop counter' % label)
         return None
+    if not is_count(first) or not is_count(last):
+        reasons.add('socket_counters_missing', EVIDENCE, '%s: baseline %r, final %r' % (label, first, last))
+        return None
     values = [row.get('drops') for row in rows]
-    if any(not is_int(value) for value in values) or any(right < left for left, right in zip(values, values[1:])):
+    if any(not is_count(value) for value in values) or any(right < left for left, right in zip(values, values[1:])):
         reasons.add('socket_counter_reset', EVIDENCE, '%s: the drop counter moved backward or vanished' % label)
         return None
     delta = last - first

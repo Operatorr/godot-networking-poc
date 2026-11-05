@@ -12,6 +12,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 HERE = pathlib.Path(__file__).parent
 sys.path.insert(0, str(HERE.parent / 'quick_stress'))
@@ -81,6 +82,65 @@ class ProcTree(unittest.TestCase):
         self.assertEqual(sample_host.parse_proc_net_udp(UDP.splitlines()[0] + '\n  100: 00000000:1F91 trailing\n'), {})
 
 
+class CounterReadBracket(unittest.TestCase):
+    """The clocks stand on either side of the actual read, so a collector delayed between them shows that delay instead of hiding it."""
+
+    def test_the_counter_read_lies_between_the_two_clocks_even_when_the_read_is_delayed(self):
+        root = pathlib.Path(tempfile.mkdtemp(prefix='omega-proc-'))
+        self.addCleanup(shutil.rmtree, root, True)
+        (root / 'net').mkdir()
+        fd = root / '77/fd'
+        fd.mkdir(parents=True)
+        os.symlink('socket:[555001]', str(fd / '3'))
+        read_at = {}
+        real_table = sample_host.udp_table
+
+        def delayed(proc_root='/proc'):
+            time.sleep(0.05)
+            # A drop lands here, between the clock before and the read.
+            (root / 'net/udp').write_text(UDP)
+            (root / 'net/udp6').write_text(UDP.splitlines()[0] + '\n')
+            read_at['wall'] = time.time_ns()
+            read_at['mono'] = time.monotonic_ns()
+            return real_table(proc_root)
+
+        began = time.monotonic_ns()
+        before = sample_host.clock_pair()
+        row = dict(procs=dict(game=dict(pid=77, alive=True)), udp={})
+        with mock.patch.object(sample_host, 'udp_table', delayed):
+            sample_host.identity_row(row, 0, began, before, proc_root=str(root), linux=True)
+        self.assertEqual(row['procs']['game']['sockets'][0]['drops'], 7)
+        self.assertIs(row['clock'], before)
+        self.assertLess(row['clock']['wall_after_ns'], read_at['wall'], 'the first clock came before the read')
+        self.assertLess(read_at['wall'], row['clock_after']['wall_before_ns'], 'the second came only after it')
+        self.assertLess(read_at['mono'], row['clock_after']['mono_ns'])
+        self.assertGreaterEqual(row['collector_ns'], row['clock_after']['mono_ns'] - row['clock']['mono_ns'], 'the cost contains the span')
+        self.assertGreaterEqual(row['clock_after']['mono_ns'] - row['clock']['mono_ns'], 50_000_000, 'the delay is visible in the bracket')
+
+    def test_every_counter_in_the_row_is_inside_the_bracket(self):
+        root = pathlib.Path(tempfile.mkdtemp(prefix='omega-proc-'))
+        self.addCleanup(shutil.rmtree, root, True)
+        (root / 'net').mkdir()
+        (root / 'net/udp').write_text(UDP)
+        order = []
+        real_pair, real_memory, real_interfaces = sample_host.clock_pair, sample_host.memory_facts, sample_host.interface_counters
+
+        def pair():
+            order.append('clock_after')
+            return real_pair()
+
+        def memory(proc_root):
+            order.append('memory')
+            return real_memory(proc_root)
+
+        def interfaces(proc_root):
+            order.append('interfaces')
+            return real_interfaces(proc_root)
+        with mock.patch.object(sample_host, 'clock_pair', pair), mock.patch.object(sample_host, 'memory_facts', memory), mock.patch.object(sample_host, 'interface_counters', interfaces):
+            sample_host.identity_row(dict(procs={}, udp={}), 0, time.monotonic_ns(), real_pair(), proc_root=str(root), linux=True)
+        self.assertEqual(order, ['memory', 'interfaces', 'clock_after'])
+
+
 class RealSampler(unittest.TestCase):
     def test_identity_rows_from_a_real_process(self):
         root = pathlib.Path(tempfile.mkdtemp(prefix='omega-sampler-'))
@@ -105,6 +165,11 @@ class RealSampler(unittest.TestCase):
         self.assertEqual(facts['start_id'], guest_runner.process_start_id(holder.pid), 'the same identity the supervisor records')
         self.assertIn(port, [item['local_port'] for item in facts['sockets']])
         self.assertLessEqual(rows[-1]['clock']['wall_before_ns'], rows[-1]['clock']['wall_after_ns'])
+        self.assertLessEqual(rows[-1]['clock']['mono_ns'], rows[-1]['clock_after']['mono_ns'])
+        self.assertGreaterEqual(rows[-1]['collector_ns'], rows[-1]['clock_after']['mono_ns'] - rows[-1]['clock']['mono_ns'], 'a real row cannot fail the prover\'s own check')
+        header = json.loads((root / 'out.ndjson').read_text().splitlines()[0])
+        self.assertEqual(header['kind'], 'meta')
+        self.assertEqual(header['schema'], 'omega.measurement/3')
         self.assertEqual(rows[-1]['seq'], rows[-2]['seq'] + 1)
         self.assertGreater(rows[-1]['collector_ns'], 0)
 

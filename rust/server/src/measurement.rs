@@ -5,7 +5,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Write};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-pub const WINDOW_EVIDENCE_SCHEMA: &str = "omega.measurement/2";
+pub const WINDOW_EVIDENCE_SCHEMA: &str = "omega.measurement/3";
 
 /// One tight wall/monotonic pair in this process's own monotonic domain.
 fn clock_pair(origin: Instant) -> serde_json::Value {
@@ -424,7 +424,7 @@ impl Measurement {
             file,
             "{}",
             serde_json::json!({
-                "schema": WINDOW_EVIDENCE_SCHEMA, "tick_rows": self.tick_rows, "last_tick": self.last_tick,
+                "schema": WINDOW_EVIDENCE_SCHEMA, "role": "game", "tick_rows": self.tick_rows, "last_tick": self.last_tick,
                 "world_tick": world.tick_count, "population_rows": self.population_rows,
                 "peers_at_shutdown": peers_at_shutdown, "clock": clock,
             })

@@ -1,7 +1,7 @@
 """What one trial means on each host: pure, from the frozen manifest and the grant. Nothing here touches anything.
 
 ``ReleaseAdapter`` maps a trial to the release binaries in their measured mode: the four-thread common-window swarm and a game
-server with window evidence on (handoff slice 5, omega.measurement/2). Every workload control is passed explicitly, so nothing
+server with window evidence on (handoff slice 5, omega.measurement/3). Every workload control is passed explicitly, so nothing
 depends on a binary default. Budget terms come from the same place as admission, so the process bound and the admitted estimate
 cannot drift apart.
 """

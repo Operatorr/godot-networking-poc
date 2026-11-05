@@ -30,7 +30,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tracing::{error, info, warn};
 
-pub const SCHEMA: &str = "omega.measurement/2";
+pub const SCHEMA: &str = "omega.measurement/3";
 /// The accepted RTT warmup after the final authentication.
 pub const WARMUP_NS: u64 = 2_000_000_000;
 /// How far ahead the shared start is published, so every shard can see it before it arrives.
@@ -44,6 +44,10 @@ pub const GAP_BOUNDS_MS: [u64; 7] = [10, 20, 30, 35, 40, 50, 100];
 /// A shard that has not polled for this long is logged by the coordinator, independently of the
 /// shard, because a wedged thread cannot report itself. Evidence only; the proof applies the limit.
 const STALL_REPORT_NS: u64 = 500_000_000;
+/// How long past the readiness bound the coordinator listens for an authentication stamped inside
+/// it. A shard surfaces one on its next poll, so a shard within the poll limit has done so by then.
+/// It decides nothing about lateness, which is the authentication's own timestamp.
+const READINESS_VISIBILITY_NS: u64 = STALL_REPORT_NS;
 const SAMPLE_INTERVAL_NS: u64 = 1_000_000_000;
 const COORDINATOR_POLL: Duration = Duration::from_millis(2);
 const JOIN_MARGIN_NS: u64 = 2_000_000_000;
@@ -207,6 +211,27 @@ impl InputSchedule {
 
 // ---- per-bot record -----------------------------------------------------------------------------
 
+/// Reads this process's monotonic domain when something actually happens. A poll's own reading is
+/// older: draining packets and stepping behavior come between it and the enqueue or the observation.
+#[derive(Debug, Clone)]
+pub enum EventClock {
+    /// Nanoseconds since this process's origin, the same domain every recorder row uses.
+    Process(Instant),
+    /// A test's own clock, so a pause inside a poll can be placed exactly.
+    #[cfg(test)]
+    Scripted(Arc<AtomicU64>),
+}
+
+impl EventClock {
+    fn now_ns(&self) -> u64 {
+        match self {
+            Self::Process(origin) => origin.elapsed().as_nanos() as u64,
+            #[cfg(test)]
+            Self::Scripted(value) => value.load(Ordering::SeqCst),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Disconnected {
     pub at_ns: u64,
@@ -217,7 +242,9 @@ pub struct Disconnected {
 /// One bot's evidence. Plain data that stays on the owning shard.
 #[derive(Debug)]
 pub struct BotRecord {
-    now_ns: u64,
+    /// When this poll began. It only decides which grid slot is due; events take their own time.
+    poll_ns: u64,
+    clock: EventClock,
     window: Option<(u64, u64)>,
     pub connected_ns: Option<u64>,
     pub authenticated_ns: Option<u64>,
@@ -242,9 +269,10 @@ pub struct BotRecord {
 }
 
 impl BotRecord {
-    pub fn new(now_ns: u64, schedule: InputSchedule) -> Self {
+    pub fn new(poll_ns: u64, schedule: InputSchedule, clock: EventClock) -> Self {
         Self {
-            now_ns,
+            poll_ns,
+            clock,
             window: None,
             connected_ns: None,
             authenticated_ns: None,
@@ -269,34 +297,37 @@ impl BotRecord {
         }
     }
 
-    pub fn set_clock(&mut self, now_ns: u64, window: Option<(u64, u64)>) {
-        self.now_ns = now_ns;
+    pub fn set_clock(&mut self, poll_ns: u64, window: Option<(u64, u64)>) {
+        self.poll_ns = poll_ns;
         self.window = window;
     }
 
     pub fn input_due(&self) -> bool {
-        self.schedule.due(self.now_ns)
+        self.schedule.due(self.poll_ns)
     }
 
     pub fn take_due_slot(&mut self) {
-        let (slot_ns, missed) = self.schedule.take(self.now_ns);
+        let (slot_ns, missed) = self.schedule.take(self.poll_ns);
         self.current_slot_ns = slot_ns;
         self.missed_slots += missed;
     }
 
     pub fn connected(&mut self) {
-        self.connected_ns.get_or_insert(self.now_ns);
+        let at = self.clock.now_ns();
+        self.connected_ns.get_or_insert(at);
     }
 
     pub fn authenticated(&mut self, entity_id: u16) {
-        self.authenticated_ns = Some(self.now_ns);
+        let at = self.clock.now_ns();
+        self.authenticated_ns = Some(at);
         self.entity_id = Some(entity_id);
-        self.schedule.anchor(self.now_ns);
+        self.schedule.anchor(at);
     }
 
     pub fn disconnected(&mut self, reason: u32, expected: bool) {
+        let at_ns = self.clock.now_ns();
         self.disconnected.get_or_insert(Disconnected {
-            at_ns: self.now_ns,
+            at_ns,
             reason,
             expected,
         });
@@ -310,35 +341,34 @@ impl BotRecord {
         self.muted = true;
     }
 
-    /// A frame scores for the window only if its slot is inside and it left before the end.
-    fn slot_in_window(&self) -> bool {
+    /// A frame scores for the window only if its slot is inside and the event itself came before
+    /// the end. The slot alone cannot say that: it was chosen when the poll began.
+    fn scores(&self, event_ns: u64) -> bool {
         self.window.is_some_and(|(start, end)| {
-            self.current_slot_ns >= start && self.current_slot_ns < end && self.now_ns < end
+            self.current_slot_ns >= start && self.current_slot_ns < end && event_ns < end
         })
     }
 
-    pub fn note_dead_frame(&mut self, dead: bool) {
+    /// One input successfully enqueued, timed here rather than at the poll. `dead` says the frame
+    /// was an idle one sent while dead in the game.
+    pub fn input_sent(&mut self, dead: bool) {
+        let sent_ns = self.clock.now_ns();
+        self.sent += 1;
         if dead {
             self.dead_frames += 1;
-            if self.slot_in_window() {
-                self.window_dead_frames += 1;
-            }
         }
-    }
-
-    pub fn input_sent(&mut self) {
-        self.sent += 1;
-        let gap = self
-            .last_input_ns
-            .map(|last| self.now_ns.saturating_sub(last));
+        let gap = self.last_input_ns.map(|last| sent_ns.saturating_sub(last));
         if let Some(gap) = gap {
             self.gap_max_ns = self.gap_max_ns.max(gap);
         }
-        self.last_input_ns = Some(self.now_ns);
-        if self.slot_in_window() {
+        self.last_input_ns = Some(sent_ns);
+        if self.scores(sent_ns) {
             self.window_sent += 1;
+            if dead {
+                self.window_dead_frames += 1;
+            }
             if let Some(last) = self.last_window_input_ns {
-                let gap = self.now_ns.saturating_sub(last);
+                let gap = sent_ns.saturating_sub(last);
                 self.window_gap_max_ns = self.window_gap_max_ns.max(gap);
                 let bucket = GAP_BOUNDS_MS
                     .iter()
@@ -346,19 +376,21 @@ impl BotRecord {
                     .unwrap_or(7);
                 self.window_gap_buckets[bucket] += 1;
             }
-            self.last_window_input_ns = Some(self.now_ns);
+            self.last_window_input_ns = Some(sent_ns);
         }
     }
 
     pub fn input_failed(&mut self) {
         self.send_errors += 1;
-        if self.slot_in_window() {
+        if self.scores(self.clock.now_ns()) {
             self.window_send_errors += 1;
         }
     }
 
+    /// One ENet RTT and loss reading, timed when it was read.
     pub fn peer_sample(&mut self, rtt_ms: f64, loss_raw: u32) {
-        self.peer_samples.push((self.now_ns, rtt_ms, loss_raw));
+        self.peer_samples
+            .push((self.clock.now_ns(), rtt_ms, loss_raw));
     }
 
     pub fn take_peer_samples(&mut self) -> Vec<(u64, f64, u32)> {
@@ -683,6 +715,11 @@ fn freeze_row(bot: &Bot, start_ns: u64, end_ns: u64) -> Value {
         "phase": format!("{:?}", bot.phase),
         "alive": !bot.is_dead(),
         "scheduled": record.schedule.scheduled_between(start_ns, end_ns),
+        // What this bot was owed before it lost its connection, so a floor can still be held over
+        // the part it was connected for. Null without a disconnect, never zero.
+        "scheduled_before_disconnect": record.disconnected.and_then(|d| {
+            record.schedule.scheduled_between(start_ns, d.at_ns.clamp(start_ns, end_ns))
+        }),
         "sent": record.window_sent,
         "send_errors": record.window_send_errors,
         "dead_frames": record.window_dead_frames,
@@ -725,7 +762,7 @@ fn run_shard(shard: usize, controls: &Controls, co: &Coordinator, nonce: &str) -
     stream.row(
         "header",
         json!({
-            "schema": SCHEMA, "shard": shard, "shards": shards, "thread": std::thread::current().name(),
+            "schema": SCHEMA, "role": "bot", "shard": shard, "shards": shards, "thread": std::thread::current().name(),
             "bots": ids.iter().map(|i| i + 1).collect::<Vec<_>>(), "bot_fields": BOT_FIELDS, "gap_bounds_ms": GAP_BOUNDS_MS,
             "geometry": {"min": [sim_core::ARENA_GEOMETRY.min.x, sim_core::ARENA_GEOMETRY.min.y], "max": [sim_core::ARENA_GEOMETRY.max.x, sim_core::ARENA_GEOMETRY.max.y],
                          "obstacles_enabled": sim_core::ARENA_GEOMETRY.obstacles_enabled, "initialized_on_thread": true},
@@ -797,7 +834,7 @@ fn run_shard(shard: usize, controls: &Controls, co: &Coordinator, nonce: &str) -
                 actual as f64 / 1e9,
             ) {
                 Ok(mut bot) => {
-                    bot.enable_record(actual, interval_ns);
+                    bot.enable_record(actual, interval_ns, EventClock::Process(co.origin));
                     stream.row("join", json!({"bot": id, "scheduled_ns": index as u64 * stagger_ns, "actual_ns": actual, "local_port": bot.local_port()}));
                     last_phase.push(bot.phase);
                     bots.push(bot);
@@ -1033,6 +1070,8 @@ pub fn run(controls: Controls, stop: Arc<AtomicBool>) -> i32 {
     let swarm = json!({
         "schema": SCHEMA, "nonce": nonce, "role": "bot", "pid": std::process::id(), "kernel_start_id": kernel_start_id(), "boot_id": boot_id(),
         "version": env!("CARGO_PKG_VERSION"), "clock": co.clock_pair(),
+        // Written by every build, so a fault-injection binary says so with no --fault given.
+        "build": {"fault_injection": cfg!(feature = "fault-injection")},
         "controls": {
             "server": controls.server_text, "bots": controls.bots, "threads": controls.threads, "bot_id_assignment": "round-robin", "join_stagger_ms": controls.stagger_ms,
             "behavior": controls.behavior.name(), "difficulty": controls.difficulty, "input_hz": controls.input_hz, "input_interval_ns": (1e9 / controls.input_hz.max(1.0)).round() as u64,
@@ -1058,7 +1097,7 @@ pub fn run(controls: Controls, stop: Arc<AtomicBool>) -> i32 {
     };
     log.row(
         "header",
-        json!({"schema": SCHEMA, "clock": co.clock_pair(), "pid": std::process::id()}),
+        json!({"schema": SCHEMA, "role": "bot", "clock": co.clock_pair(), "pid": std::process::id()}),
     );
     log.sync();
 
@@ -1144,7 +1183,7 @@ pub fn run(controls: Controls, stop: Arc<AtomicBool>) -> i32 {
         .map(|rows| rows.clone())
         .unwrap_or_default();
     let document = json!({
-        "schema": SCHEMA, "nonce": nonce, "status": status, "reason": abort,
+        "schema": SCHEMA, "role": "bot", "nonce": nonce, "status": status, "reason": abort,
         "bots": controls.bots, "shards": shards, "hold_s": controls.hold_s,
         "final_auth_ns": co.barrier_ns.get().map(|_| co.final_auth_ns.load(Ordering::SeqCst)),
         "barrier_ns": co.barrier_ns.get(), "start_ns": window.map(|w| w.0), "end_ns": window.map(|w| w.1),
@@ -1183,6 +1222,45 @@ pub fn run(controls: Controls, stop: Arc<AtomicBool>) -> i32 {
         0
     } else {
         1
+    }
+}
+
+/// Where the readiness bound stands. It bounds authentication and nothing after it: once all N have
+/// authenticated on time it is finished, and the warmup may run past it. The warmup is still watched
+/// for lost bots and shards, which the coordinator checks before asking this.
+#[derive(Debug, PartialEq, Clone, Copy)]
+enum Readiness {
+    Waiting,
+    AllAuthenticated { final_auth_ns: u64 },
+    TimedOut,
+}
+
+fn readiness(
+    now_ns: u64,
+    bound_ns: u64,
+    authenticated: usize,
+    bots: usize,
+    final_auth_ns: u64,
+    barrier_ns: Option<u64>,
+) -> Readiness {
+    if let Some(final_auth_ns) = barrier_ns {
+        return if authenticated == bots {
+            Readiness::AllAuthenticated { final_auth_ns }
+        } else {
+            Readiness::Waiting
+        };
+    }
+    if authenticated == bots {
+        return if final_auth_ns <= bound_ns {
+            Readiness::AllAuthenticated { final_auth_ns }
+        } else {
+            Readiness::TimedOut
+        };
+    }
+    if now_ns >= bound_ns.saturating_add(READINESS_VISIBILITY_NS) {
+        Readiness::TimedOut
+    } else {
+        Readiness::Waiting
     }
 }
 
@@ -1249,8 +1327,6 @@ fn coordinate(
                     Some("shard_exited_before_window")
                 } else if co.terminal_before_window.load(Ordering::SeqCst) > 0 {
                     Some("bot_failed_before_window")
-                } else if now >= readiness_ns {
-                    Some("readiness_timeout")
                 } else {
                     None
                 };
@@ -1258,21 +1334,39 @@ fn coordinate(
                     finish(co, log, reason);
                     return Some(reason.to_string());
                 }
+                // Count first: every authentication raises the final time before the count.
                 let authenticated = co.authenticated.load(Ordering::SeqCst);
-                if authenticated == controls.bots {
-                    let barrier = co.final_auth_ns.load(Ordering::SeqCst);
-                    if co.barrier_ns.get().is_none() {
-                        let _ = co.barrier_ns.set(barrier);
-                        log.row("barrier", json!({"mono_ns": now, "final_auth_ns": barrier, "authenticated": authenticated}));
-                        log.sync();
+                let final_auth = co.final_auth_ns.load(Ordering::SeqCst);
+                match readiness(
+                    now,
+                    readiness_ns,
+                    authenticated,
+                    controls.bots,
+                    final_auth,
+                    co.barrier_ns.get().copied(),
+                ) {
+                    Readiness::Waiting => {}
+                    Readiness::TimedOut => {
+                        log.row("readiness_bound", json!({"mono_ns": now, "bound_ns": readiness_ns, "authenticated": authenticated, "final_auth_ns": final_auth}));
+                        finish(co, log, "readiness_timeout");
+                        return Some("readiness_timeout".to_string());
                     }
-                    if now >= barrier + WARMUP_NS {
-                        let start = co.now_ns() + PUBLISH_LEAD_NS;
-                        let published = (start, start + hold_ns);
-                        // Durable before any shard can act on it.
-                        log.row("window_published", json!({"mono_ns": co.now_ns(), "start_ns": published.0, "end_ns": published.1, "hold_ns": hold_ns, "final_auth_ns": barrier, "clock": co.clock_pair()}));
-                        log.sync();
-                        let _ = co.window.set(published);
+                    Readiness::AllAuthenticated {
+                        final_auth_ns: barrier,
+                    } => {
+                        if co.barrier_ns.get().is_none() {
+                            let _ = co.barrier_ns.set(barrier);
+                            log.row("barrier", json!({"mono_ns": now, "final_auth_ns": barrier, "authenticated": authenticated}));
+                            log.sync();
+                        }
+                        if now >= barrier + WARMUP_NS {
+                            let start = co.now_ns() + PUBLISH_LEAD_NS;
+                            let published = (start, start + hold_ns);
+                            // Durable before any shard can act on it.
+                            log.row("window_published", json!({"mono_ns": co.now_ns(), "start_ns": published.0, "end_ns": published.1, "hold_ns": hold_ns, "final_auth_ns": barrier, "clock": co.clock_pair()}));
+                            log.sync();
+                            let _ = co.window.set(published);
+                        }
                     }
                 }
             }
@@ -1354,25 +1448,196 @@ mod tests {
         assert!(schedule.due(1000));
     }
 
+    fn scripted_record(interval: u64) -> (BotRecord, Arc<AtomicU64>) {
+        let clock = Arc::new(AtomicU64::new(0));
+        let record = BotRecord::new(
+            0,
+            InputSchedule::new(interval),
+            EventClock::Scripted(clock.clone()),
+        );
+        (record, clock)
+    }
+
     #[test]
     fn frames_score_only_inside_the_window() {
-        let mut record = BotRecord::new(0, InputSchedule::new(100));
+        let (mut record, clock) = scripted_record(100);
         record.set_clock(0, Some((100, 300)));
         record.authenticated(7);
         for at in [0u64, 100, 200, 300] {
+            clock.store(at, Ordering::SeqCst);
             record.set_clock(at, Some((100, 300)));
             record.take_due_slot();
-            record.input_sent();
+            record.input_sent(false);
         }
         assert_eq!(record.sent, 4);
         assert_eq!(record.window_sent, 2);
         assert_eq!(record.schedule.scheduled_between(100, 300), Some(2));
-        // A slot inside the window that only got out after its end does not score.
-        record.set_clock(310, Some((100, 400)));
-        record.current_slot_ns = 300;
-        record.window = Some((100, 305));
-        record.input_sent();
-        assert_eq!(record.window_sent, 2);
+    }
+
+    /// The review's numbers: a poll clock of 92 ms, an enqueue at 132 ms and an end at 100 ms.
+    #[test]
+    fn an_enqueue_after_the_end_never_scores_whatever_the_poll_clock_said() {
+        const MS: u64 = 1_000_000;
+        let (mut record, clock) = scripted_record(33 * MS);
+        let window = Some((0, 100 * MS));
+        record.set_clock(0, window);
+        record.authenticated(7);
+        record.set_clock(92 * MS, window);
+        record.take_due_slot();
+        assert!(record.current_slot_ns < 100 * MS, "the due slot is inside");
+        clock.store(132 * MS, Ordering::SeqCst);
+        record.input_sent(true);
+        assert_eq!(record.sent, 1, "it really was sent");
+        assert_eq!(record.dead_frames, 1);
+        assert_eq!(record.window_sent, 0, "after the end it does not score");
+        assert_eq!(record.window_dead_frames, 0);
+        assert_eq!(record.last_window_input_ns, None);
+        // A failure on the far side of the end stays out of the window too.
+        record.input_failed();
+        assert_eq!(record.send_errors, 1);
+        assert_eq!(record.window_send_errors, 0);
+        // One nanosecond inside still scores, and the gap runs between the actual events.
+        clock.store(100 * MS - 1, Ordering::SeqCst);
+        record.input_sent(false);
+        assert_eq!(record.window_sent, 1);
+        assert_eq!(record.last_window_input_ns, Some(100 * MS - 1));
+        clock.store(100 * MS, Ordering::SeqCst);
+        record.input_sent(false);
+        assert_eq!(record.window_sent, 1, "the end is exclusive");
+    }
+
+    #[test]
+    fn window_gaps_measure_the_events_and_not_the_polls() {
+        const MS: u64 = 1_000_000;
+        let (mut record, clock) = scripted_record(33 * MS);
+        let window = Some((0, 500 * MS));
+        record.set_clock(0, window);
+        record.authenticated(7);
+        for (poll, event) in [(10u64, 10u64), (60, 240)] {
+            record.set_clock(poll * MS, window);
+            record.take_due_slot();
+            clock.store(event * MS, Ordering::SeqCst);
+            record.input_sent(false);
+        }
+        assert_eq!(
+            record.window_gap_max_ns,
+            230 * MS,
+            "not the 50 ms between polls"
+        );
+        assert_eq!(record.window_gap_buckets[7], 1, "above the last bound");
+    }
+
+    #[test]
+    fn a_disconnect_keeps_what_the_bot_was_owed_before_it() {
+        let (mut record, clock) = scripted_record(100);
+        record.set_clock(0, None);
+        record.authenticated(7);
+        clock.store(450, Ordering::SeqCst);
+        record.disconnected(77, false);
+        let at = record.disconnected.unwrap().at_ns;
+        assert_eq!(at, 450, "stamped when it was observed");
+        assert_eq!(record.schedule.scheduled_between(200, at), Some(3));
+    }
+
+    /// A real bot on a real socket, with the pause placed between the poll's reading and the event.
+    #[test]
+    fn a_real_bot_stamps_its_enqueue_and_its_rtt_sample_at_the_event() {
+        const MS: u64 = 1_000_000;
+        sim_core::set_world_geometry(
+            sim_core::ARENA_GEOMETRY.min,
+            sim_core::ARENA_GEOMETRY.max,
+            sim_core::ARENA_GEOMETRY.obstacles_enabled,
+        );
+        let server = MiniServer::start(Script::default());
+        let clock = Arc::new(AtomicU64::new(0));
+        let mut bot = Bot::connect(
+            1,
+            server.address,
+            BehaviorKind::Idle,
+            1.0,
+            30.0,
+            0,
+            Some(1),
+            None,
+            0.0,
+        )
+        .unwrap();
+        bot.enable_record(0, 33 * MS, EventClock::Scripted(clock.clone()));
+        let started = Instant::now();
+        while bot.phase != Phase::Running && started.elapsed() < Duration::from_secs(5) {
+            bot.set_record_clock(0, None);
+            bot.poll(started.elapsed().as_secs_f64());
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert_eq!(bot.phase, Phase::Running);
+        let window = Some((0, 100 * MS));
+        let sent_before = bot.record().unwrap().sent;
+
+        // The poll began at 92 ms, inside. Everything it does happens at 132 ms, past the 100 ms end.
+        clock.store(132 * MS, Ordering::SeqCst);
+        bot.set_record_clock(92 * MS, window);
+        bot.poll(started.elapsed().as_secs_f64() + 2.0);
+        let record = bot.record_mut().unwrap();
+        assert_eq!(record.sent, sent_before + 1, "the input went out");
+        assert_eq!(record.window_sent, 0, "after the end, it does not score");
+        assert_eq!(record.last_window_input_ns, None);
+        let samples = record.take_peer_samples();
+        assert_eq!(samples.len(), 1, "the stats clock was due too");
+        assert_eq!(samples[0].0, 132 * MS, "a sample carries when it was read");
+
+        // The same two events a little earlier both land inside.
+        let inside = 99 * MS + MS / 2;
+        clock.store(inside, Ordering::SeqCst);
+        bot.set_record_clock(99 * MS, window);
+        bot.poll(started.elapsed().as_secs_f64() + 4.0);
+        let record = bot.record_mut().unwrap();
+        assert_eq!(record.window_sent, 1);
+        assert_eq!(record.last_window_input_ns, Some(inside));
+        assert_eq!(record.take_peer_samples()[0].0, inside);
+        server.finish();
+    }
+
+    #[test]
+    fn the_readiness_bound_is_about_authentication_and_ends_when_all_n_are_in() {
+        const S: u64 = 1_000_000_000;
+        let bound = 60 * S;
+        let margin = READINESS_VISIBILITY_NS;
+        let all = |final_auth_ns| Readiness::AllAuthenticated { final_auth_ns };
+        // Just before, exactly on and just after the bound, seen at any later moment.
+        for now in [60 * S, 61 * S, 62 * S] {
+            assert_eq!(readiness(now, bound, 8, 8, bound - 1, None), all(bound - 1));
+            assert_eq!(readiness(now, bound, 8, 8, bound, None), all(bound));
+            assert_eq!(
+                readiness(now, bound, 8, 8, bound + 1, None),
+                Readiness::TimedOut
+            );
+        }
+        // One bot short.
+        assert_eq!(readiness(59 * S, bound, 7, 8, 1, None), Readiness::Waiting);
+        assert_eq!(
+            readiness(bound + margin - 1, bound, 7, 8, 1, None),
+            Readiness::Waiting,
+            "an authentication stamped inside the bound can still be on its way"
+        );
+        assert_eq!(
+            readiness(bound + margin, bound, 7, 8, 1, None),
+            Readiness::TimedOut
+        );
+        // After the barrier the bound has finished, for the whole warmup and however late.
+        let barrier = Some(59 * S);
+        assert_eq!(readiness(90 * S, bound, 8, 8, 59 * S, barrier), all(59 * S));
+        assert_eq!(
+            readiness(90 * S, bound, 7, 8, 59 * S, barrier),
+            Readiness::Waiting,
+            "no window while a bot is missing; the lost bot itself is what ends the run"
+        );
+    }
+
+    #[test]
+    fn the_accepted_default_bound_is_unchanged() {
+        assert_eq!(default_readiness_timeout_s(25, 100), 60.0);
+        assert_eq!(default_readiness_timeout_s(300, 100), 60.0);
+        assert_eq!(default_readiness_timeout_s(500, 100), 80.0);
     }
 
     #[test]
@@ -1706,6 +1971,164 @@ mod tests {
         assert_eq!(document["status"], "not_established");
         assert_eq!(document["reason"], "readiness_timeout");
         assert!(document["start_ns"].is_null());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// The review's reproduction: all N are in early, and the bound falls inside the warmup.
+    #[test]
+    fn a_warmup_may_run_past_the_readiness_bound() {
+        let dir = temp_dir("warmup-past-bound");
+        let server = MiniServer::start(Script::default());
+        let mut config = controls(&server, &dir, 8, 1);
+        config.readiness_timeout_s = 1.0;
+        let code = run(config, Arc::new(AtomicBool::new(false)));
+        server.finish();
+        assert_eq!(code, 0);
+        let document = window(&dir);
+        assert_eq!(document["status"], "window_recorded", "{document}");
+        let final_auth = document["final_auth_ns"].as_u64().unwrap();
+        let start = document["start_ns"].as_u64().unwrap();
+        assert!(final_auth <= 1_000_000_000, "{final_auth}");
+        assert!(start >= final_auth + WARMUP_NS + PUBLISH_LEAD_NS);
+        assert!(start > 1_000_000_000, "the whole warmup ran past the bound");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_final_authentication_just_inside_the_bound_reaches_a_future_window() {
+        let dir = temp_dir("just-inside");
+        let mut script = Script::default();
+        script
+            .auth_delay
+            .insert(name(5), Duration::from_millis(900));
+        let server = MiniServer::start(script);
+        let mut config = controls(&server, &dir, 8, 1);
+        config.readiness_timeout_s = 1.5;
+        let code = run(config, Arc::new(AtomicBool::new(false)));
+        server.finish();
+        assert_eq!(code, 0);
+        let document = window(&dir);
+        assert_eq!(document["status"], "window_recorded", "{document}");
+        let final_auth = document["final_auth_ns"].as_u64().unwrap();
+        assert!(
+            (900_000_000..=1_500_000_000).contains(&final_auth),
+            "{final_auth}"
+        );
+        assert!(document["start_ns"].as_u64().unwrap() >= final_auth + WARMUP_NS);
+        for shard in 0..4 {
+            let shard_rows = rows(&dir, shard);
+            assert!(shard_rows.iter().any(|row| row["k"] == "ack_end"));
+            assert!(
+                shard_rows.last().unwrap()["max_poll_gap_ns"]
+                    .as_u64()
+                    .unwrap()
+                    < 400_000_000,
+                "every shard kept polling through the warmup"
+            );
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_final_authentication_after_the_bound_establishes_nothing() {
+        let dir = temp_dir("just-after");
+        let mut script = Script::default();
+        // Past the 1 s bound but inside the time it keeps listening, so this bot does arrive.
+        script
+            .auth_delay
+            .insert(name(1), Duration::from_millis(1200));
+        let server = MiniServer::start(script);
+        let mut config = controls(&server, &dir, 4, 1);
+        config.readiness_timeout_s = 1.0;
+        let code = run(config, Arc::new(AtomicBool::new(false)));
+        server.finish();
+        assert_eq!(code, 1);
+        let document = window(&dir);
+        assert_eq!(document["status"], "not_established");
+        assert_eq!(document["reason"], "readiness_timeout");
+        assert!(document["start_ns"].is_null());
+        assert!(document["barrier_ns"].is_null());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn population_loss_in_a_warmup_past_the_bound_still_ends_the_run() {
+        let dir = temp_dir("loss-in-warmup");
+        let script = Script {
+            kick_after: Some((name(2), Duration::from_millis(1600))),
+            ..Default::default()
+        };
+        let server = MiniServer::start(script);
+        let mut config = controls(&server, &dir, 4, 1);
+        config.readiness_timeout_s = 1.0;
+        let code = run(config, Arc::new(AtomicBool::new(false)));
+        server.finish();
+        assert_eq!(code, 1);
+        let document = window(&dir);
+        assert_eq!(document["status"], "not_established");
+        assert_eq!(document["reason"], "bot_failed_before_window");
+        assert!(document["start_ns"].is_null());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_shard_lost_in_a_warmup_past_the_bound_still_ends_the_run() {
+        let dir = temp_dir("shard-in-warmup");
+        let server = MiniServer::start(Script::default());
+        let mut config = controls(&server, &dir, 4, 1);
+        config.readiness_timeout_s = 0.5;
+        config.faults = vec![Fault::ExitShard {
+            shard: 1,
+            anchor: Anchor::Barrier,
+            offset_s: 1.0,
+        }];
+        let code = run(config, Arc::new(AtomicBool::new(false)));
+        server.finish();
+        assert_eq!(code, 1);
+        let document = window(&dir);
+        assert_eq!(document["reason"], "shard_exited_before_window");
+        assert!(document["start_ns"].is_null());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn every_recorder_names_its_schema_role_and_build() {
+        let dir = temp_dir("versions");
+        let server = MiniServer::start(Script::default());
+        let code = run(
+            controls(&server, &dir, 4, 1),
+            Arc::new(AtomicBool::new(false)),
+        );
+        server.finish();
+        assert_eq!(code, 0);
+        let swarm: Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.join("swarm/swarm.json")).unwrap())
+                .unwrap();
+        assert_eq!(swarm["schema"], SCHEMA);
+        assert_eq!(swarm["role"], "bot");
+        // Stated by the binary whether or not any --fault was given.
+        assert_eq!(
+            swarm["build"]["fault_injection"],
+            cfg!(feature = "fault-injection")
+        );
+        let document = window(&dir);
+        assert_eq!(document["schema"], SCHEMA);
+        assert_eq!(document["role"], "bot");
+        for shard in 0..4 {
+            let header = rows(&dir, shard)[0].clone();
+            assert_eq!(header["schema"], SCHEMA);
+            assert_eq!(header["role"], "bot");
+        }
+        let coordinator: Value = serde_json::from_str(
+            std::fs::read_to_string(dir.join("swarm/coordinator.ndjson"))
+                .unwrap()
+                .lines()
+                .next()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(coordinator["schema"], SCHEMA);
+        assert_eq!(coordinator["role"], "bot");
         std::fs::remove_dir_all(dir).unwrap();
     }
 
