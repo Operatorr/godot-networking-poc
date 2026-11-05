@@ -882,7 +882,7 @@ python3 capacity_report.py --session-dir loadtest-runs/digitalocean/<session_id>
 
 Issue [#70](https://github.com/Operatorr/godot-networking-poc/issues/70), under the [amendment in #63](https://github.com/Operatorr/godot-networking-poc/issues/63#issuecomment-6541716482). `session_export.py` turns finalized role artifacts and journals into an immutable, hash-verified inventory and reports, in the real controller's wrap-up and from the command line. `session_report.py` is the pure report, and `evidence_publication.py` is the only way text leaves the laptop.
 
-It has only run over a fake account and fake guests, and over real processes and one real 60 s window on one macOS machine. Nothing has been published. No real session exists and no real run can pass on this platform, so **no capacity observation exists here**.
+It has only run over a fake account and fake guests, and over real processes on one macOS machine (with one real 60 s window at an earlier revision of this slice). Nothing has been published. No real session exists and no real run can pass on this platform, so **no capacity observation exists here**.
 
 ### What the session directory holds
 
@@ -900,14 +900,18 @@ A generation is written under a `.writing-` name and renamed whole, so a crash o
 
 ### What each word means
 
-Each planned role is held to its seal, and the seal to what is on record: it must be this run and role, of the schema this controller reads, the bytes the retained seal receipts and execution records name, and every file it lists must be here with the hash it gives. A recorder of another schema is stale whatever its hash. A file not in the seal is not vouched for.
+Which roles count comes from durable records kept apart from the plan file: the registry's start grants, retained execution records, seal receipts and the role's own tree. A plan that has gone is uncertainty about a role that went, never proof that it did not, and the host's own `unknown_run` stands only where nothing on record says the role started. Each such role is held to its seal, and the seal to what is on record: it must be this run and role, of the schema this controller reads, the bytes the retained seal receipts and execution records name, and every file it lists must be here with the hash it gives. A recorder of another schema is stale whatever its hash. A file not in the seal is not vouched for.
 
 | Evidence status | Means |
 | --- | --- |
-| `complete` | Every planned role of every dispatched run is verified, every file its plan and the frozen schema require is among them, the session's own records are present, and a whole generation was written |
-| `partial` | Nothing bad was found, and something is short: a required file absent, no dispatched run, an open comparison guard, a disputed trial, an unlisted file, or a report that could not be written |
-| `missing` | A seal, a sealed file or one of the session's own records is not here |
-| `corrupt` | Bytes failed their hash, a seal disagrees with what is on record, a recorder's schema is stale, or the manifest does not hold up |
+| `complete` | Every role meant for a host is verified, every file its plan and the frozen schema require is among them, the controller's own inputs and what readiness pinned are present with their recorded hashes, the session's own records are present, every path under the session could be listed and read, and a whole generation was written |
+| `partial` | Nothing bad was found, and something is short: a required file absent, no dispatched run, an open comparison guard, a disputed trial, an unlisted file, a directory that could not be listed or a file that could not be read, or a report that could not be written |
+| `missing` | A seal, a sealed file, a required controller or provisioning input, or one of the session's own records is not here |
+| `corrupt` | Bytes failed their hash, a plan, a provisioning artifact or the readiness report is not what was recorded of it, a seal disagrees with what is on record, a recorder's schema is stale, or the manifest does not hold up |
+
+A score that still verifies does not stand in for any of this. For each dispatched run the controller's inputs are `selected.json`, `grant.json`, `clock-before.json` and, once a role went to a host, `clock-after.json`, each role's plan (held to the digest an execution record bound) and a seal receipt naming its seal, and `window-proof.json` for a scored run. For the session they are each path in `readiness.json`'s `required_artifacts` at its recorded hash, that report at the hash the registry was given, and the admission each selection names. These follow what the current producers write, not the manifest's free-form artifact names, and a file a producer never reached on that run's path is not asked for. Derived files (`summary.json`, `REPORT.md`, the capacity report, a run-level inventory) can be regenerated and are not required. Each gap is listed in the inventory and the private report, counted in `summary.json` and named as a gap in `summary.md`. What a run decided stays what it decided.
+
+An inventory can only cover what it could read. A directory that cannot be listed, or fails part way, stays under `not_inventoried` with its relative path and never reads as empty, whatever it gave before failing stays, and the published text says the hash inventory cannot be said to cover every raw file. Only the count leaves the laptop, so a hostile directory name cannot.
 
 Measurement, evidence and cleanup stay separate. A confirmed search over incomplete evidence stays `confirmed` as what the search recorded, and its report says `No claim stands` and keeps the journal's sentence apart as history. The registry's `overall` reads `clean` only with `complete` evidence and verified absence, and a valid capacity failure with whole evidence and verified absence reads `clean` too, because that word is about evidence and resources and not about a result.
 
@@ -915,13 +919,15 @@ Measurement, evidence and cleanup stay separate. A confirmed search over incompl
 
 Files go through `.partial`, are compared with the sealed hash under the existing durable guard, and are promoted by a link that cannot overwrite. A new attempt never overwrites an earlier one: an earlier `.partial` keeps a name of its own unless those bytes are already kept, so a transfer that keeps failing the same way inside one episode does not fill the disk. Each attempt is journaled in `execution/journal.ndjson`. Both roles' available files stay when one transfer fails.
 
-The first failed transfer is reported to the registry as `record_evidence_failure`, on the registry's clock, first answer kept. `begin_evidence_recovery` ends the episode at `min(first_failure + grace, C)` from that moment and not from when recovery began, and no retry, reconnect or new controller moves it. If that report is lost, the episode starts when recovery does, which costs only the difference and still ends by C. A failure older than the grace fetches nothing.
+The first failed transfer or local failure fixes the episode at the moment it is seen, before another transfer starts. It goes durably into `execution/evidence-failure-NNNN.json` first and then to the registry as `record_evidence_failure`, first answer kept. A report that is lost, an acknowledgement that is lost or a controller that dies leaves that record, and the next controller reads it before its first transfer and reports it with how old it is. That age is a difference on one machine's clock, so that clock's offset from the registry's drops out, and it can only make an episode earlier. `begin_evidence_recovery` ends the episode at `min(first_failure + grace, C)`, and no retry, reconnect or new controller moves it. Past that end no transfer starts, whichever path would have started it, and each one's own limit stops at it. Stopping, sealing and cleanup are not transfers and go on. If neither the disk nor the registry got the observation, the most that is lost is the time until the next one, which still ends by C.
+
+Dispatching another run ends a failure that no recovery was begun for. The batch went on past it, so later transfers are not retries of it, and the registry lets go of it at that dispatch, because admission reserved the recovery allowance for the end of the admitted work. A later controller knows the old record no longer binds because it names how many runs were on record when it was written. A recovery deadline already fixed stays fixed. Looking again at committed runs on the way back into a batch starts nothing, because a file that cannot be fetched there says nothing about a committed decision.
 
 No failure here holds up cleanup. Nothing in this module deletes or extends anything, and `wrap_up` asks for cleanup in its `finally`. With the exporter broken, the disk full, the rename refused or the registry gone, the batch still reaches the request, and only a whole written generation can say `complete`. Run `session_export.py export --registry-command C` again after the watchdog finishes, to get a generation that can say the resources are gone.
 
 ### What the reports say
 
-Every trial stays in, with its gates and individual outcome. Each diagnostic names its interval and `None` means unknown, never zero: requested and achieved population, game CPU (100% is one core), per-thread generator CPU, host utilization and steal, memory, swap and OOM counts, Tick p95, max, over-budget range, cadence and lag, Snapshot-build time, reliable and unreliable event sends and average recipients, ENet RTT and the labelled loss estimate, identified socket drops and, separately, host kernel receive errors.
+Every trial stays in, with its gates and individual outcome. Each diagnostic names its interval and `None` means unknown, never zero: requested and achieved population, game CPU (100% is one core), per-thread generator CPU, host utilization and steal, memory, swap and OOM counts, Tick p95, max, over-budget range, cadence and lag, Snapshot-build time, reliable and unreliable event sends and average recipients, ENet RTT and the labelled smoothed loss estimate (its per-second equal-bot mean peak, its window mean and its single-peer peak, with which bot and when, in every report), identified socket drops and, separately, host kernel receive errors.
 
 Traffic has two columns that are never mixed: the scored window and each run's collector span. Bytes are bytes and a bit rate is named as one. Loopback does not count as transfer.
 
@@ -933,9 +939,19 @@ The report is pure over files and has no clock. `reproduce` rebuilds every repor
 
 Raw evidence is never published. `published/` is built field by field, so a field nobody named, on any socket or collector, cannot reach it, and free text from a host stays private: reason codes stand in for it. A final guard refuses the bytes outright, naming a file and a kind of thing and never the value, for credentials, IPv4 and IPv6 addresses, kernel socket endpoints, private paths, SSH fingerprints, assignments of secrets, this session's registered addresses and credential references, binary data and anything over 1 MiB. A raw path that is not plainly a file name is published as a hash of itself, and the private `SHA256SUMS` keeps the real one.
 
-`publish` writes the canonical copy to `docs/netcode/perf-notes/digitalocean-capacity/sessions/<session_id>/gen-NNNN/`, and refuses every other directory, including `hill-climb` and the CAX11 reports. It reads the bytes back before writing a receipt. It writes the working tree and commits nothing. A manifest must name `text-summary:docs/netcode/perf-notes/digitalocean-capacity`, and `provision_cli.py` refuses a capacity session before reading any token if it names anything else.
+`prepare-publication` writes the canonical copy to `docs/netcode/perf-notes/digitalocean-capacity/sessions/<session_id>/gen-NNNN/`, and refuses every other directory, including `hill-climb` and the CAX11 reports. It reads the bytes back before writing a receipt. It writes the working tree and commits nothing, so that receipt says `verified_local`, with publication `unverified`: a directory with the right name, even one that is no repository at all, is not published evidence.
 
-The marrowtech.app Journal mirror is an adapter seam with no real implementation: this code posts nowhere and opens no connection. A destination implementing `put` and `read_back` gets the same read-back and receipt. Until then the mirror reads `not_published`, or `operator_recorded` once `record-journal` holds the operator's URL to the hash of this generation's text. That word says what the operator stated, and nothing here checked it.
+| Publication status | Means |
+| --- | --- |
+| `not_published` | Nothing is on record |
+| `verified_local` | Written under the canonical path and read back on this machine. Nothing shows anyone else can read it |
+| `operator_recorded` | `record-publication` holds the operator's name, the https location at a full commit and the hash of this generation's text. Their statement: nothing here fetched it |
+| `published` | A publication adapter (`publishes = True`) read the bytes back from an accessible https reference. None is implemented here, and only a fake one has run |
+| `failed` | The last attempt failed, and its receipt says how |
+
+A manifest must name `text-summary:docs/netcode/perf-notes/digitalocean-capacity`, and `provision_cli.py` refuses a capacity session before reading any token if it names anything else.
+
+The marrowtech.app Journal mirror is an adapter seam with no real implementation: this code posts nowhere and opens no connection. A destination implementing `put` and `read_back` gets the same read-back and receipt, and says `published` only under the same terms. Until then the mirror reads `not_published`, or `operator_recorded` once `record-journal` holds the operator's URL to the hash of this generation's text. That word says what the operator stated, and nothing here checked it.
 
 The historical CAX11 gate and every historical report are untouched, and every report says this evidence is not CAX11's. A management host holds no evidence and needs nothing new for any of this: the export runs on the controller and only reads the registry's `status` and `journal`.
 
@@ -945,11 +961,12 @@ The historical CAX11 gate and every historical report are untouched, and every r
 python3 session_export.py export    --session-dir D --registry-command 'ssh mgmt omega-do-registry rpc'
 python3 session_export.py verify    --session-dir D [--generation gen-0002]
 python3 session_export.py reproduce --session-dir D [--generation gen-0002]
-python3 session_export.py publish   --session-dir D --now 2026-11-05T00:00:00+00:00            # writes the canonical docs directory only
+python3 session_export.py prepare-publication --session-dir D --now 2026-11-05T00:00:00+00:00   # writes the canonical docs directory only. Local placement, not publication
+python3 session_export.py record-publication --session-dir D --generation gen-0002 --reference https://github.com/OWNER/REPO/tree/COMMIT/docs/netcode/perf-notes/digitalocean-capacity/sessions/SESSION/gen-0002 --summary-sha256 S --operator NAME --now T   # after a commit and push the operator made
 python3 session_export.py record-journal --session-dir D --generation gen-0002 --url https://marrowtech.app/... --summary-sha256 S --now T
 python3 session_export.py record-invoice --session-dir D --period 2026-11 --amount-usd 1.23 --source 'provider invoice' --now T
 
-sandbox-exec -f measurement_offline.sb python3 -m unittest test_session_export test_export_evidence
+sandbox-exec -f measurement_offline.sb python3 -m unittest test_session_export test_evidence_completeness test_export_evidence
 OMEGA_LOCAL_RELEASE_DIR=<dir with omega-server and omega-load-test> sandbox-exec -f measurement_offline.sb python3 -m unittest test_run_local_integration.WholeRuns.test_real_binaries_leave_every_file_the_export_requires_and_it_says_the_rest
 python3 export_evidence.py --out ../../docs/netcode/perf-notes/digitalocean-capacity/offline-faults/slice7   # regenerates the retained evidence, which test_export_evidence compares by hash
 ```

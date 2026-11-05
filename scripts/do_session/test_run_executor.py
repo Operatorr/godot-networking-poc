@@ -1412,7 +1412,8 @@ class EvidenceRecovery(Base):
         self.guests.copy_failures.add(('game', 'get'))
         self.guests.copy_failures.add(('bot', 'get'))
         executor = self.sim.executor()
-        executor.evidence_failure_marked = failure_report_lost     # with no report on record, the episode's clock starts when recovery does
+        if failure_report_lost:     # no observation reached this disk or the registry, so the episode's clock starts when recovery does
+            executor._observe_evidence_failure = lambda *arguments: None
         executor.execute()
         self.guests.copy_failures.clear()
         self.sim.client.mutate('begin_collection', session_id=self.sim.session_id, fencing_token=executor.token)

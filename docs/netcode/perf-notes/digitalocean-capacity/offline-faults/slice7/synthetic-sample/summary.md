@@ -12,23 +12,23 @@ Source `0b0d18e0000000000000000000000000000000aa`, controller `0b0d18e0000000000
 | Result | Status |
 | --- | --- |
 | Measurement | `confirmed` |
-| Evidence | `complete` (292 files, 21315819 bytes) |
+| Evidence | `complete` (292 files, 21325542 bytes) |
 | Cleanup | `clean` |
 
 Every owned resource was verified absent through authenticated provider reads.
 
-| # | Phase | Target | Rep | Hold (s) | Outcome | Offered load | Verified | Tick p95 (ns) | RTT p95 (ms) | Loss est. peak | Game CPU %core | Game tx B/s/player |
-| ---: | --- | ---: | ---: | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| 1 | coarse | 25 | 1 | 60 | PASS | valid | yes | 2000000 | 12.5 | 0.0 | 20.0 | 1600.0 |
-| 2 | coarse | 50 | 1 | 60 | FAIL | valid | yes | 50000000 | 12.5 | 0.0 | 20.0 | 800.0 |
-| 3 | refine | 30 | 1 | 60 | PASS | valid | yes | 2000000 | 12.5 | 0.0 | 20.0 | 1333.333333 |
-| 4 | refine | 35 | 1 | 60 | FAIL | valid | yes | 50000000 | 12.5 | 0.0 | 20.0 | 1142.857143 |
-| 5 | confirm | 30 | 1 | 300 | PASS | valid | yes | 2000000 | 12.5 | 0.0 | 20.0 | 1333.333333 |
-| 6 | confirm | 30 | 2 | 300 | PASS | valid | yes | 2000000 | 12.5 | 0.0 | 20.0 | 1333.333333 |
-| 7 | confirm | 30 | 3 | 300 | PASS | valid | yes | 2000000 | 12.5 | 0.0 | 20.0 | 1333.333333 |
+| # | Phase | Target | Rep | Hold (s) | Outcome | Offered load | Verified | Tick p95 (ns) | RTT p95 (ms) | Loss est. per-second mean peak | Loss est. peer peak (bot) | Game CPU %core | Game tx B/s/player |
+| ---: | --- | ---: | ---: | ---: | --- | --- | --- | ---: | ---: | ---: | --- | ---: | ---: |
+| 1 | coarse | 25 | 1 | 60 | PASS | valid | yes | 2000000 | 12.5 | 0.0 | 0.0 (bot 25) | 20.0 | 1600.0 |
+| 2 | coarse | 50 | 1 | 60 | FAIL | valid | yes | 50000000 | 12.5 | 0.0 | 0.0 (bot 50) | 20.0 | 800.0 |
+| 3 | refine | 30 | 1 | 60 | PASS | valid | yes | 2000000 | 12.5 | 0.0 | 0.0 (bot 30) | 20.0 | 1333.333333 |
+| 4 | refine | 35 | 1 | 60 | FAIL | valid | yes | 50000000 | 12.5 | 0.0 | 0.0 (bot 35) | 20.0 | 1142.857143 |
+| 5 | confirm | 30 | 1 | 300 | PASS | valid | yes | 2000000 | 12.5 | 0.0 | 0.0 (bot 30) | 20.0 | 1333.333333 |
+| 6 | confirm | 30 | 2 | 300 | PASS | valid | yes | 2000000 | 12.5 | 0.0 | 0.0 (bot 30) | 20.0 | 1333.333333 |
+| 7 | confirm | 30 | 3 | 300 | PASS | valid | yes | 2000000 | 12.5 | 0.0 | 0.0 (bot 30) | 20.0 | 1333.333333 |
 
 **Cost.** Nominal game tier $7.0/month, 4.286 confirmed players per monthly game-host dollar. Both-host session estimate, not an invoice: 0.09375 USD over 2090.0 s. Admission reserved 0.51889 USD. Management host $6.0/month, disclosed separately and in none of these. No provider invoice is on record. Nothing in this report is an invoice.
 
-**Raw evidence.** Raw evidence is never published. The author keeps it privately on one laptop disk (a single copy, by accepted risk) indefinitely, and it is available on request, verifiable against this SHA256 inventory. If that disk is lost, these hashes point at evidence that no longer exists. Inventory: `SHA256SUMS` (sha256 `6dd74f8edd3a4eff71f24354ceb13d4a7a7c5507764fea6554d7949938596d6c`, 292 files, 21315819 bytes).
+**Raw evidence.** Raw evidence is never published. The author keeps it privately on one laptop disk (a single copy, by accepted risk) indefinitely, and it is available on request, verifiable against this SHA256 inventory. If that disk is lost, these hashes point at evidence that no longer exists. Inventory: `SHA256SUMS` (sha256 `902391c5aed00b00e93f5128f224831e3c8d2c2ac66ff05cd4ee479af867cb56`, 292 files, 21325542 bytes).
 
 CPU, memory, gaps, bandwidth and cost are diagnostics and add no gate. ENet loss is a smoothed estimate, not a measured fraction of datagrams dropped.

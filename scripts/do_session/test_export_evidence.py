@@ -101,8 +101,54 @@ class WhatTheRowsSay(unittest.TestCase):
         self.assertFalse(rows['new_socket_fields_stay_private']['reached_anything_derived'])
         self.assertEqual(rows['manifest_changed_after_the_session']['export_status'], 'corrupt')
         self.assertFalse(rows['manifest_changed_after_the_session']['report_written'])
-        self.assertEqual(rows['published_to_the_canonical_directory_only']['published_files'], sorted(ep.PUBLISHED_FILES))
-        self.assertEqual(rows['published_to_the_canonical_directory_only']['journal_mirror'], 'not_published')
+        prepared = rows['prepared_in_the_canonical_directory_only']
+        self.assertEqual(prepared['published_files'], sorted(ep.PUBLISHED_FILES))
+        self.assertEqual(prepared['receipt_status'], ['verified_local'])
+        self.assertEqual((prepared['publication'], prepared['publication_detail']), ('verified_local', 'unverified'))
+        self.assertEqual(prepared['journal_mirror'], 'not_published')
+
+    def test_what_a_current_producer_wrote_cannot_be_missing_from_complete_evidence(self):
+        rows = scenarios()
+        for name in ('plan_lost_withholds_completeness', 'clock_bracket_lost_withholds_completeness', 'provisioning_provenance_lost_withholds_completeness'):
+            row = rows[name]
+            self.assertEqual((row['evidence_registry'], row['evidence_latest_export']), ('missing', 'missing'), name)
+            self.assertFalse(row['establishes'], name)
+            self.assertEqual(row['overall'], 'resources_verified_evidence_incomplete', name)
+            self.assertEqual(row['search_status'], 'confirmed', 'what was measured stays what it was')
+            self.assertTrue(row['controller_inputs_missing'], name)
+
+    def test_an_unlistable_directory_is_unknown_and_not_empty(self):
+        row = scenarios()['unlistable_directory_stays_unknown']
+        self.assertEqual((row['evidence_registry'], row['evidence_latest_export'], row['overall']), ('partial', 'partial', 'resources_verified_evidence_incomplete'))
+        self.assertFalse(row['establishes'])
+        self.assertEqual(row['not_inventoried'], [dict(path='provider-diagnostics', kind='directory', reason='PermissionError')])
+        self.assertTrue(row['readable_sibling_kept'])
+        self.assertEqual(row['public_says_paths_not_inventoried'], 1)
+
+    def test_the_first_failure_fixes_the_episode_through_a_delay_a_crash_and_a_lost_report(self):
+        rows = scenarios()
+        for name in ('first_failure_holds_past_a_slow_later_file', 'crash_between_files_keeps_the_first_failure', 'lost_report_then_crash_keeps_the_first_failure'):
+            self.assertTrue(rows[name]['recovery_deadline_is_first_failure_plus_grace'], name)
+            self.assertTrue(rows[name]['cleanup_requested'], name)
+            self.assertNotEqual(rows[name]['evidence_latest_export'], 'complete', name)
+
+    def test_a_failure_recovered_before_the_batch_went_on_ends_there(self):
+        row = scenarios()['recovered_failure_then_the_batch_went_on']
+        self.assertTrue(row['resumed'])
+        self.assertEqual(row['evidence_latest_export'], 'complete')
+        self.assertEqual(row['recovery_deadline_s'], None)
+        self.assertIn('evidence_failure_passed', [item['kind'] for item in row['timeline']])
+
+    def test_publication_says_only_what_was_shown(self):
+        row = scenarios()['publication_needs_more_than_a_local_copy']
+        self.assertEqual(row['status_after_each_step'], ['verified_local', 'operator_recorded', 'published'])
+        self.assertEqual(row['adapter_received'], sorted(ep.PUBLISHED_FILES))
+
+    def test_the_peer_peak_reaches_published_text_beside_the_mean_the_gate_reads(self):
+        peers = scenarios()['one_bad_peer_beside_a_passing_mean']['published_first_run_peers']
+        self.assertGreater(peers['loss_estimate_peer_peak'], 0.19)
+        self.assertLess(peers['loss_estimate_peak_per_second_mean'], 0.01)
+        self.assertEqual(peers['loss_estimate_peer_peak_bot'], 1)
 
 
 if __name__ == '__main__':

@@ -1017,7 +1017,7 @@ class Publication(unittest.TestCase):
         sim = self.session()
         root = self.canonical()
         receipts = ep.publish(sim.root, 'gen-0001', [ep.RepositoryDocs(root)], '2026-11-05T00:00:00+00:00', ep.sensitive_values(sim.root, sim.manifest))
-        self.assertEqual([item['status'] for item in receipts], ['published'])
+        self.assertEqual([item['status'] for item in receipts], ['verified_local'], 'a working tree read back on this machine shows placement and nothing else')
         directory = root / ep.SESSIONS_DIR / sim.session_id / 'gen-0001'
         self.assertEqual(sorted(path.name for path in directory.iterdir()), sorted(ep.PUBLISHED_FILES))
         total = 0
@@ -1028,8 +1028,9 @@ class Publication(unittest.TestCase):
         for path in directory.iterdir():
             self.assertEqual(sha(path.read_bytes()), receipts[0]['files'][path.name])
         status = ep.publication_status(sim.root)
-        self.assertEqual(status['repository']['status'], 'published')
-        self.assertEqual(status['repository']['reference'], '%s/sessions/%s/gen-0001' % (ep.CANONICAL_ROOT, sim.session_id))
+        self.assertEqual(status['repository']['status'], 'verified_local')
+        self.assertEqual(status['repository']['local_reference'], '%s/sessions/%s/gen-0001' % (ep.CANONICAL_ROOT, sim.session_id))
+        self.assertEqual(status['publication']['status'], 'unverified')
         self.assertEqual(status['journal_mirror']['status'], 'not_published')
         self.assertIn('never published', status['raw_evidence'])
 
@@ -1096,6 +1097,7 @@ class Publication(unittest.TestCase):
 
         class Honest(Lying):
             name = ep.MIRROR_NAME
+            publishes = True
 
             def __init__(self):
                 self.files = {}
@@ -1107,7 +1109,7 @@ class Publication(unittest.TestCase):
                 return self.files[name]
         sim = self.session()
         receipts = ep.publish(sim.root, 'gen-0001', [Failing(), ep.RepositoryDocs(self.canonical())], 'now')
-        self.assertEqual([item['status'] for item in receipts], ['failed', 'published'])
+        self.assertEqual([item['status'] for item in receipts], ['failed', 'verified_local'])
         self.assertEqual(ep.publication_status(sim.root)['journal_mirror']['status'], 'failed')
         receipts = ep.publish(sim.root, 'gen-0001', [Lying()], 'now')
         self.assertEqual((receipts[0]['status'], receipts[0]['code']), ('failed', 'read_back_mismatch'))
@@ -1133,7 +1135,7 @@ class Publication(unittest.TestCase):
         before = tree_bytes(sim.generation('gen-0001'))
         ep.publish(sim.root, 'gen-0001', [ep.RepositoryDocs(self.canonical())], '2026-11-05T00:00:00+00:00')
         later = se.export_session(sim.root, client=sim.client)
-        self.assertEqual(sim.document(later.generation, 'session-report.json')['publication']['status'], 'published')
+        self.assertEqual(sim.document(later.generation, 'session-report.json')['publication']['status'], 'verified_local')
         self.assertEqual(tree_bytes(sim.generation('gen-0001')), before)
         self.assertEqual(se.reproduce(sim.root, 'gen-0001'), [])
         self.assertEqual(se.reproduce(sim.root, later.generation), [])
@@ -1175,7 +1177,7 @@ class CommandLine(unittest.TestCase):
         self.assertFalse(sim.document('gen-0002', 'session-report.json')['results']['cleanup']['known'], 'with no registry, nothing is said about the resources')
         self.assertEqual(self.out('verify', '--session-dir', root)[0], 0)
         self.assertEqual(self.out('reproduce', '--session-dir', root)[0], 0)
-        code, _, err = self.out('publish', '--session-dir', root, '--now', 'now', '--docs-root', '/tmp/not-canonical')
+        code, _, err = self.out('prepare-publication', '--session-dir', root, '--now', 'now', '--docs-root', '/tmp/not-canonical')
         self.assertEqual(code, 2)
         self.assertEqual(json.loads(err)['code'], 'destination_not_canonical')
 
@@ -1183,11 +1185,14 @@ class CommandLine(unittest.TestCase):
         sim, _ = confirmed_session(self)
         directory = pathlib.Path(tempfile.mkdtemp(prefix='omega-publication-'))
         self.addCleanup(shutil.rmtree, directory, True)
-        code, out, _ = self.out('publish', '--session-dir', str(sim.root), '--now', 'now', '--repository', str(directory))
+        code, out, _ = self.out('prepare-publication', '--session-dir', str(sim.root), '--now', 'now', '--repository', str(directory))
         self.assertEqual(code, 0)
-        self.assertEqual(json.loads(out)['status']['status'], 'published')
+        self.assertEqual(json.loads(out)['status']['status'], 'verified_local', 'no commit and no remote: this is placement')
         self.assertTrue((directory / ep.CANONICAL_ROOT / 'sessions' / sim.session_id / 'gen-0001' / 'summary.md').exists())
         digest = sha((sim.generation('gen-0001') / 'published' / 'summary.md').read_bytes())
+        reference = 'https://github.com/example/repository/tree/%s/%s/sessions/%s/gen-0001' % ('a' * 40, ep.CANONICAL_ROOT, sim.session_id)
+        self.assertEqual(self.out('record-publication', '--session-dir', str(sim.root), '--generation', 'gen-0001', '--reference', reference, '--summary-sha256', digest, '--operator', 'the operator', '--now', 'now')[0], 0)
+        self.assertEqual(ep.publication_status(sim.root)['status'], 'operator_recorded')
         self.assertEqual(self.out('record-journal', '--session-dir', str(sim.root), '--generation', 'gen-0001', '--url', 'https://marrowtech.app/journal/x', '--summary-sha256', digest, '--now', 'now')[0], 0)
         self.assertEqual(self.out('record-invoice', '--session-dir', str(sim.root), '--period', '2026-11', '--amount-usd', '1', '--source', 'hand', '--now', 'now')[0], 0)
 

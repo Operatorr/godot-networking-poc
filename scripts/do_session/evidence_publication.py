@@ -4,13 +4,14 @@ Raw evidence is never published. It stays private under ``loadtest-runs/digitalo
 JSON and a SHA256 inventory of the raw files. The canonical copy is ``docs/netcode/perf-notes/digitalocean-capacity/`` in this repository, and the reader-facing copy is a Journal page on marrowtech.app derived from the same text.
 
     guard_problems(files, sensitive)                 whether these bytes may leave at all, without saying what was found
-    RepositoryDocs(root)                             the canonical destination: create-only files read back by hash
+    RepositoryDocs(root)                             the canonical path in a working tree: create-only files read back by hash. Local placement, and never publication
     publish(session_dir, generation, destinations)   one receipt per destination. A failure at one costs only that one
-    record_mirror(...)                               what the operator says they did by hand. Recorded as that, and nothing more
+    record_publication(...)                          the operator's statement that they committed and pushed it, with who, where and which bytes. Recorded as that, and nothing more
+    record_mirror(...)                               the same for the Journal page they derived by hand
     publication_status(session_dir)                  what is on record, with "not published" as the honest default
 
-Nothing here posts to any site, opens a connection or reads an account. The Journal mirror is a seam: a destination may implement it, and until one does, or the operator records doing it, the mirror reads ``not_published``.
-A local path is never called published evidence, and a receipt only exists once the bytes were read back and matched.
+Nothing here posts to any site, opens a connection or reads an account. Publication is a seam: a destination with ``publishes = True`` is one whose ``read_back`` reads what anyone can read at an accessible ``reference``, and only its receipt can say ``published``. None is implemented here. Until one is, the operator's attributed record is the most this can hold, and it reads ``operator_recorded``, unchecked.
+A local path is never called published evidence: bytes read back from this machine's own disk are ``verified_local``, with publication ``unverified``, and that is all they show.
 """
 import hashlib
 import ipaddress
@@ -23,11 +24,23 @@ import manifest as manifest_mod
 
 CANONICAL_ROOT = 'docs/netcode/perf-notes/digitalocean-capacity'
 SESSIONS_DIR = 'sessions'
+PUBLICATION_NAME = 'repository-publication'
 DESTINATION_PREFIX = 'text-summary:'
 AMENDED_DESTINATION = DESTINATION_PREFIX + CANONICAL_ROOT
 MIRROR_NAME = 'marrowtech.app-journal'
 RECEIPT_SCHEMA = 'omega.do-session.publication-receipt/1'
 PUBLICATION_DIR = 'publication'
+# What a receipt can say. Only the first says anyone else can read it, and only an adapter's read-back from an accessible reference can make it.
+PUBLISHED, OPERATOR_RECORDED, VERIFIED_LOCAL, FAILED, NOT_PUBLISHED, UNVERIFIED = 'published', 'operator_recorded', 'verified_local', 'failed', 'not_published', 'unverified'
+STATEMENTS = {
+    PUBLISHED: 'Read back from an accessible reference by a publication adapter.',
+    OPERATOR_RECORDED: 'Recorded by the operator as committed and pushed, with its reference and hashes. This tool did not fetch it.',
+    VERIFIED_LOCAL: 'Written under the canonical path and read back on this machine only. Nothing here shows anyone else can read it.',
+    FAILED: 'The last attempt failed. See its receipt.',
+    NOT_PUBLISHED: 'Nothing is on record as published.',
+}
+ACCESSIBLE_REFERENCE = re.compile(r'^https://[^\s/]+/\S+$')
+COMMIT_IN_REFERENCE = re.compile(r'/[0-9a-f]{40}/')
 PUBLISHED_FILES = ('summary.md', 'summary.json', 'SHA256SUMS')
 MAX_PUBLISHED_BYTES = 1024 * 1024       # the accepted model is "well under 1 MB" of prose and tables
 SAFE_NAME = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,180}$')
@@ -113,9 +126,10 @@ def published_path(relative):
 class RepositoryDocs:
     """The canonical copy: ``<root>/sessions/<session_id>/<generation>/``. Create-only, and read back by hash before anyone is told it landed.
 
-    ``root`` must be the canonical directory, so nothing can land beside a historical series such as ``hill-climb`` or the CAX11 reports. It writes the working tree and commits nothing: a commit stays the operator's or a pull request's.
+    ``root`` must be the canonical directory, so nothing can land beside a historical series such as ``hill-climb`` or the CAX11 reports. It writes the working tree and commits nothing: a commit stays the operator's or a pull request's, so a matching read-back here shows local placement and nothing about any reader.
     """
     name = 'repository-docs'
+    publishes = False
 
     def __init__(self, root):
         self.root = pathlib.Path(root)
@@ -192,12 +206,42 @@ def publish(session_dir, generation, destinations, now, sensitive=()):
             for name, digest in hashes.items():
                 if sha256_bytes(destination.read_back(session_id, generation, name)) != digest:
                     raise PublicationRefused('read_back_mismatch', name)
-            document.update(status='published', reference=destination.reference(session_id, generation))
+            document.update(_settled(destination, session_id, generation))
         except (OSError, PublicationRefused) as error:
-            document.update(status='failed', reference=None, code=getattr(error, 'code', type(error).__name__))
+            document.update(status=FAILED, reference=None, code=getattr(error, 'code', type(error).__name__))
         _write_receipt(session_dir, document)
         receipts.append(document)
     return receipts
+
+
+def _settled(destination, session_id, generation):
+    """What a read-back that matched shows. From this machine's own disk that is placement. Only an adapter that says it reads what others read, at a reference others can reach, can say more."""
+    reference = destination.reference(session_id, generation)
+    if not getattr(destination, 'publishes', False):
+        return dict(status=VERIFIED_LOCAL, publication=UNVERIFIED, reference=None, local_reference=reference)
+    if not isinstance(reference, str) or not ACCESSIBLE_REFERENCE.match(reference):
+        raise PublicationRefused('reference_not_accessible', 'a published copy has an https reference')
+    return dict(status=PUBLISHED, reference=reference, checked_by_this_tool=True)
+
+
+def record_publication(session_dir, generation, reference, now, summary_sha256, operator):
+    """The operator committed and pushed this generation's text, and says who they are, where it is and at which commit. It is recorded as their statement, with the hashes of the bytes it is about: nothing here fetched it, so it never reads as checked."""
+    session_dir = pathlib.Path(session_dir)
+    manifest = json.loads((session_dir / 'manifest.json').read_text())
+    session_id = manifest['session']['id']
+    files = _generation_files(session_dir, generation)
+    if summary_sha256 != sha256_bytes(files['summary.md']):
+        raise PublicationRefused('publication_of_other_text', 'this is not the hash of the %s summary' % generation)
+    if guard_problems(files, sensitive_values(session_dir, manifest)):
+        raise PublicationRefused('guard_refused', 'this generation\'s text may not leave')
+    suffix = '%s/%s/%s/%s' % (CANONICAL_ROOT, SESSIONS_DIR, session_id, generation)
+    if not isinstance(reference, str) or not ACCESSIBLE_REFERENCE.match(reference) or not COMMIT_IN_REFERENCE.search(reference) or suffix not in reference:
+        raise PublicationRefused('reference_not_accessible', 'name the https location of %s at a full commit' % suffix)
+    if not isinstance(operator, str) or not operator.strip():
+        raise PublicationRefused('publication_not_attributed', 'an operator record says who made it')
+    document = dict(schema=RECEIPT_SCHEMA, session_id=session_id, generation=generation, destination=PUBLICATION_NAME, at=now, files={name: sha256_bytes(data) for name, data in files.items()}, status=OPERATOR_RECORDED, reference=reference, recorded_by=operator, checked_by_this_tool=False)
+    _write_receipt(session_dir, document)
+    return document
 
 
 def record_mirror(session_dir, generation, url, now, derived_from_sha256):
@@ -209,7 +253,7 @@ def record_mirror(session_dir, generation, url, now, derived_from_sha256):
         raise PublicationRefused('mirror_of_other_text', 'this is not the hash of the %s summary' % generation)
     if not isinstance(url, str) or not url.startswith('https://marrowtech.app/'):
         raise PublicationRefused('mirror_not_the_accepted_site', 'the reader-facing copy is a marrowtech.app Journal page')
-    document = dict(schema=RECEIPT_SCHEMA, session_id=manifest['session']['id'], generation=generation, destination=MIRROR_NAME, at=now, files=dict(derived_from=derived_from_sha256), status='operator_recorded', reference=url, checked_by_this_tool=False)
+    document = dict(schema=RECEIPT_SCHEMA, session_id=manifest['session']['id'], generation=generation, destination=MIRROR_NAME, at=now, files=dict(derived_from=derived_from_sha256), status=OPERATOR_RECORDED, reference=url, checked_by_this_tool=False)
     _write_receipt(session_dir, document)
     return document
 
@@ -233,10 +277,14 @@ def publication_status(session_dir):
     for item in receipts:
         if isinstance(item, dict) and isinstance(item.get('destination'), str):
             latest[item['destination']] = item
-    repository = latest.get(RepositoryDocs.name) or {}
-    mirror = latest.get(MIRROR_NAME) or {}
-    status = 'published' if repository.get('status') == 'published' else ('failed' if repository else 'not_published')
-    return dict(status=status, repository=dict(status=repository.get('status', 'not_published'), reference=repository.get('reference'), generation=repository.get('generation')), journal_mirror=dict(status=mirror.get('status', 'not_published'), reference=mirror.get('reference'), checked_by_this_tool=False), receipts=len(receipts), problems=problems, raw_evidence='private on the operator\'s laptop, never published')
+    local, public, mirror = latest.get(RepositoryDocs.name) or {}, latest.get(PUBLICATION_NAME) or {}, latest.get(MIRROR_NAME) or {}
+    local_status = {VERIFIED_LOCAL: VERIFIED_LOCAL, None: NOT_PUBLISHED}.get(local.get('status'), FAILED)     # this destination can place bytes on a disk and nothing more, whatever a receipt of it says
+    public_status = public.get('status') if public.get('status') in (PUBLISHED, OPERATOR_RECORDED, FAILED) else UNVERIFIED
+    status = public_status if public_status != UNVERIFIED else local_status
+    return dict(status=status, statement=STATEMENTS[status],
+                repository=dict(status=local_status, local_reference=local.get('local_reference'), generation=local.get('generation')),
+                publication=dict(status=public_status, reference=public.get('reference'), generation=public.get('generation'), recorded_by=public.get('recorded_by'), checked_by_this_tool=public.get('checked_by_this_tool') is True),
+                journal_mirror=dict(status=mirror.get('status', NOT_PUBLISHED), reference=mirror.get('reference'), checked_by_this_tool=mirror.get('checked_by_this_tool') is True), receipts=len(receipts), problems=problems, raw_evidence='private on the operator\'s laptop, never published')
 
 
 def sensitive_values(session_dir, manifest, registry=None):

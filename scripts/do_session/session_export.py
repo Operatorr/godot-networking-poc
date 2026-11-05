@@ -4,7 +4,8 @@
     session_export.py export          --session-dir D [--registry-command C]   a new generation, with the registry's word on cleanup when it can be read
     session_export.py verify          --session-dir D [--generation G]         every recorded hash against the disk
     session_export.py reproduce       --session-dir D [--generation G]         every report again from the same retained inputs, byte for byte
-    session_export.py publish         --session-dir D [--generation G] --now T [--docs-root R] [--repository P]   the text only, past the guard, to the repository's docs directory
+    session_export.py prepare-publication  --session-dir D [--generation G] --now T [--docs-root R] [--repository P]   the text only, past the guard, into the repository's docs directory on this machine. That is placement, not publication
+    session_export.py record-publication   --session-dir D --generation G --reference U --summary-sha256 S --operator O --now T   what the operator committed and pushed, in their name and at its commit
     session_export.py record-journal  --session-dir D --generation G --url U --summary-sha256 S --now T           what the operator mirrored by hand
     session_export.py record-invoice  --session-dir D --period P --amount-usd A --source S --now T                a later provider charge, kept apart from every estimate
 
@@ -18,7 +19,7 @@ and ``export/gen-NNNN/`` for each export. A generation is written whole under an
     export/gen-NNNN/session-report.json, REPORT.md    the private reports
     export/gen-NNNN/published/         the only text that may leave the laptop. Absent when the guard refused it
 
-Evidence is ``complete`` only when every planned role of every dispatched run has a seal that holds up, every file it lists verified, and every file its plan requires among them, with the session's own records present. Anything else says what it is:
+Evidence is ``complete`` only when every role the durable records say was meant for a host has a seal that holds up, every file it lists verified, and every file its plan and the frozen schema require among them, with the controller's own inputs for each run, what readiness pinned by hash and the session's own records present, and when every path under the session could be listed and read. Anything else says what it is:
 ``corrupt`` over ``missing`` over ``partial``. Each is independent of what was measured and of whether the resources are gone. This module deletes nothing, extends nothing and holds nothing up: cleanup is requested whatever happens here, and the watchdog deletes by C regardless.
 
 Pure over retained files, except that ``export`` asks a registry for its status when given one. Runs with no provider, SSH or network access of its own, and the checkout it runs from decides nothing.
@@ -34,6 +35,7 @@ import stat
 import sys
 import tempfile
 
+import admission
 import capacity_report
 import capacity_scorer
 import cleanup_provider
@@ -43,6 +45,7 @@ import guest_runner
 import manifest as manifest_mod
 import measurement_window as mw
 import registry_client
+import run_plan
 import session_report
 
 INVENTORY_SCHEMA = 'omega.do-session.evidence-inventory/2'
@@ -177,22 +180,39 @@ def _schema_problems(target, role, manifest, names):
 
 # ---- what the whole session left ------------------------------------------------------------------------
 
+def _listing(directory):
+    """(the names this directory gave, the error that stopped it, if one did). What it gave before failing stays: an error part way through a listing says nothing about the names already seen, and a directory that could not be listed is not an empty one."""
+    names = []
+    try:
+        with os.scandir(str(directory)) as scan:
+            for entry in scan:
+                names.append(entry.name)
+    except OSError as error:
+        return names, error
+    return names, None
+
+
 def _walk(session_dir):
-    """(every regular file by relative path with its hash, what could not be held). A file that moved while it was read cannot be vouched for by this reading."""
+    """(every regular file by relative path with its hash, what could not be held, what is not a plain file, every path this cannot vouch for). A file that moved while it was read cannot be vouched for by this reading, and what an unlistable directory holds is unknown."""
     session_dir = pathlib.Path(session_dir)
-    files, problems, odd = [], [], []
-    for directory, names, filenames in os.walk(str(session_dir), followlinks=False):
-        current = pathlib.Path(directory)
+    files, problems, odd, absent = [], [], [], []
+    pending = [session_dir]
+    while pending:
+        current = pending.pop()
         relative_dir = current.relative_to(session_dir)
-        for name in list(names):
-            if (current / name).is_symlink():
-                odd.append(str(relative_dir / name))
-        names[:] = sorted(name for name in names if not (current / name).is_symlink())
-        for name in sorted(filenames):
+        names, failure = _listing(current)
+        if failure is not None:
+            shown = str(relative_dir) if relative_dir.parts else '.'
+            problems.append('directory %s could not be listed in full (%s), so what it holds is not all in this inventory' % (shown, type(failure).__name__))
+            absent.append(dict(path=shown, kind='directory', reason=type(failure).__name__))
+        for name in sorted(names):
             path = current / name
             relative = str(relative_dir / name) if relative_dir.parts else name
             try:
                 before = os.lstat(str(path))
+                if stat.S_ISDIR(before.st_mode):
+                    pending.append(path)
+                    continue
                 if not stat.S_ISREG(before.st_mode):
                     odd.append(relative)
                     continue
@@ -200,13 +220,16 @@ def _walk(session_dir):
                 after = os.lstat(str(path))
             except OSError as error:
                 problems.append('%s could not be read: %s' % (relative, type(error).__name__))
+                absent.append(dict(path=relative, kind='file', reason=type(error).__name__))
                 continue
             if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
                 problems.append('%s changed while it was being read' % relative)
+                absent.append(dict(path=relative, kind='file', reason='changed while it was read'))
                 continue
             files.append(dict(path=relative, sha256=digest, size=after.st_size, kind=_file_kind(relative)))
     files.sort(key=lambda item: item['path'])
-    return files, problems, sorted(odd)
+    absent.sort(key=lambda item: item['path'])
+    return files, problems, sorted(odd), absent
 
 
 def _file_kind(relative):
@@ -219,15 +242,70 @@ def _file_kind(relative):
     return 'immutable'
 
 
+def _exists(path):
+    """Whether a name is there. A disk that will not say keeps it from reading as gone: only a real absence is one."""
+    try:
+        return pathlib.Path(path).exists()
+    except OSError:
+        return True
+
+
+def _execution_records(run_dir):
+    found = (_read_json(path) for path in sorted(pathlib.Path(run_dir).glob('execution*.json')))
+    return [document for document in found if isinstance(document, dict)]
+
+
 def _dispatched_runs(session_dir, runs):
-    """Every run the registry or the search says was dispatched, and any directory beside them that a plan went out for."""
+    """Every run the registry or the search says was dispatched, and any directory beside them that shows one was: a grant, an execution record, a plan or a role's own tree. A plan that has gone does not take its run with it."""
     known = list(runs or ())
     root = pathlib.Path(session_dir) / 'runs'
     try:
         names = sorted(item.name for item in root.iterdir() if item.is_dir())
     except OSError:
         names = []
-    return known + [name for name in names if name not in known and any((root / name / ('plan-%s.json' % role)).exists() for role in ROLES)]
+
+    def shows_dispatch(run_dir):
+        return _exists(run_dir / 'grant.json') or bool(_execution_records(run_dir)) or any(_exists(run_dir / ('plan-%s.json' % role)) or _exists(run_dir / role) for role in ROLES)
+    return known + [name for name in names if name not in known and shows_dispatch(root / name)]
+
+
+def grant_facts(snapshot):
+    """(run_id, role) to ``issued`` or ``started``, from the registry's own journal: durable, kept apart from this disk, and written before any plan was. An authorized start with no plan behind it is not proof that no process ever ran."""
+    issued, facts = {}, {}
+    for event in (snapshot or {}).get('journal') or ():
+        data = event.get('data') if isinstance(event, dict) else None
+        if not isinstance(data, dict):
+            continue
+        if event.get('kind') == 'guest_grant_issued' and data.get('run_id') is not None:
+            issued[data.get('grant_id')] = (data['run_id'], data.get('role'))
+            facts.setdefault((data['run_id'], data.get('role')), 'issued')
+        elif event.get('kind') == 'guest_grant_started' and data.get('grant_id') in issued:
+            facts[issued[data['grant_id']]] = 'started'
+    return facts
+
+
+def role_reach(run_dir, run_id, role, grants=None):
+    """(what shows this role was meant for a host, what shows it got there), each a list of reasons. A plan that has gone proves nothing, so only the records kept apart from it can say a role never went."""
+    run_dir = pathlib.Path(run_dir)
+    meant, reached = [], []
+    if _exists(run_dir / ('plan-%s.json' % role)):
+        meant.append('its plan')
+    fact = (grants or {}).get((run_id, role))
+    if fact == 'issued':
+        meant.append('its start grant')
+    elif fact == 'started':
+        reached.append('its started grant')
+    for record in _execution_records(run_dir):
+        for key, into in (('plan_digests', meant), ('roles', reached), ('exported', reached)):
+            if isinstance(record.get(key), dict) and role in record[key]:
+                into.append('its %s in an execution record' % key)
+    if list(run_dir.glob('seal-receipt-*-%s-*.json' % role)):
+        reached.append('a seal receipt')
+    if _exists(run_dir / role):
+        reached.append('its directory')
+    if _exists(run_dir / capacity_scorer.CORRUPT_EVIDENCE_DIR / role):
+        reached.append('corrupt bytes kept of it')
+    return meant, reached
 
 
 def required_session_files(session_dir, any_runs):
@@ -236,43 +314,193 @@ def required_session_files(session_dir, any_runs):
     required = ['manifest.json', 'manifest.sha256']
     if any_runs:
         required += [do_session.JOURNAL, 'provisioning/journal.ndjson', 'provisioning/readiness.json', 'execution/journal.ndjson']
-    missing = [name for name in required if not (session_dir / name).is_file()]
+
+    def there(name):
+        try:
+            return (session_dir / name).is_file()
+        except OSError:
+            return False
+    missing = [name for name in required if not there(name)]
     if any_runs and not any((session_dir / 'admissions').glob('*.json')):
         missing.append('admissions/')
     return missing
 
 
-def role_entries(session_dir, runs, manifest, sha, token=ANY_TOKEN, never_created=()):
-    """(every planned role of every dispatched run, with its file list; what is gone). A role with no plan never reached a host."""
+def _admissions_on_record(session_dir):
+    """Each admission the search journal says decided a selection, by the time it names. A journal line is what makes one expected, and only that."""
+    session_dir = pathlib.Path(session_dir)
+    try:
+        lines = (session_dir / do_session.JOURNAL).read_text().splitlines()
+        names = [item.name for item in (session_dir / 'admissions').iterdir()]
+    except OSError:
+        return []
+    missing = set()
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict) and row.get('kind') == 'selected' and row.get('admission_decision') == admission.ADMITTED and isinstance(row.get('selected_at'), str):
+            stamp = row['selected_at'].replace(':', '').replace('+0000', 'Z')
+            if not any(name.startswith(stamp + '-') for name in names):
+                missing.add('admissions/%s-*.json' % stamp)
+    return sorted(missing)
+
+
+def _frozen_controller_files(manifest):
+    """The controller's own inputs, from the pinned measurement schema, when this session froze the schema this revision reads. Otherwise there is no list to hold it to, and ``_schema_problems`` answers for the difference."""
+    frozen = (manifest or {}).get('telemetry_schema') or {}
+    if frozen.get('id') != mw.schema()['id'] or frozen.get('sha256') != mw.schema_sha256():
+        return ()
+    return tuple(mw.schema()['files'].get('controller') or ())
+
+
+def controller_inputs(session_dir, entries, runs, manifest, snapshot=None):
+    """What the controller itself has to have kept of each dispatched run, and what provisioning pinned, as the current producers write them. A score or a rendered report that still verifies stands in for none of it.
+
+    Returns dict(missing, corrupt, by_run, problems): relative paths, what keeps each run from being vouched for, and what is the session's own. Each file named here is one a producer writes on the path that run took, so nothing is asked of a run that never got there.
+    """
+    session_dir = pathlib.Path(session_dir)
+    missing, corrupt, by_run = [], [], {}
+    frozen = _frozen_controller_files(manifest)
+    by_role = {(entry['run_id'], entry['role']): entry for entry in entries}
+    for run_id in runs:
+        run_dir = session_dir / 'runs' / run_id
+        notes = []
+
+        def absent(name, why):
+            missing.append('runs/%s/%s' % (run_id, name))
+            notes.append('%s is missing, and %s' % (name, why))
+        try:
+            if not run_dir.is_dir():
+                continue
+            went = [role for role in ROLES if (run_id, role) in by_role and by_role[run_id, role]['status'] != 'never_created']
+            for name in ('selected.json', 'grant.json'):
+                if not _exists(run_dir / name):
+                    absent(name, 'it is written when a run is selected and dispatched')
+            if 'clock-before.json' in frozen and not _exists(run_dir / 'clock-before.json'):
+                absent('clock-before.json', 'the frozen measurement schema requires it of a dispatched run')
+            if 'clock-after.json' in frozen and went and not _exists(run_dir / 'clock-after.json'):
+                absent('clock-after.json', 'the frozen measurement schema requires it once a role went to a host')
+            if 'window-proof.json' in frozen and _exists(run_dir / capacity_scorer.SCORE_FILE) and not _exists(run_dir / 'window-proof.json'):
+                absent('window-proof.json', 'the score of this run stands on it')
+            records = _execution_records(run_dir)
+            for role in went:
+                _held_to_plan_and_receipt(run_dir, run_id, role, by_role[run_id, role], records, absent, corrupt, notes)
+        except OSError as error:
+            notes.append('the records of this run could not be read: %s' % type(error).__name__)
+        if notes:
+            by_run[run_id] = notes
+    found = _provenance(session_dir, snapshot) if runs else dict(missing=[], corrupt=[], problems=[])
+    return dict(missing=sorted(set(missing + found['missing'])), corrupt=sorted(set(corrupt + found['corrupt'])), by_run=by_run, problems=found['problems'])
+
+
+def _held_to_plan_and_receipt(run_dir, run_id, role, entry, records, absent, corrupt, notes):
+    """A role's plan against the digest an execution record bound, and its seal against a receipt written before any of its bytes were judged. A plan that has gone is on the role's own entry already, as a required file."""
+    plan = run_dir / ('plan-%s.json' % role)
+    if _exists(plan):
+        document = _read_json(plan)
+        recorded = {record['plan_digests'][role] for record in records if isinstance(record.get('plan_digests'), dict) and role in record['plan_digests']}
+        if not isinstance(document, dict):
+            corrupt.append('runs/%s/%s' % (run_id, plan.name))
+            notes.append('%s cannot be read as a plan' % plan.name)
+        elif recorded and run_plan.plan_digest(document) not in recorded:
+            corrupt.append('runs/%s/%s' % (run_id, plan.name))
+            notes.append('%s is not the plan the execution record bound' % plan.name)
+    else:
+        absent(plan.name, 'the records show this role was meant for a host')
+    sealed = next((item.get('sha256') for item in entry.get('files') or () if item.get('path') == guest_runner.SEAL and item.get('status') == 'verified'), None)
+    if sealed is not None:
+        receipts = (_read_json(path) for path in run_dir.glob('seal-receipt-*-%s-*.json' % role))
+        if not any(isinstance(item, dict) and item.get('seal_sha256') == sealed for item in receipts):
+            absent('seal-receipt of %s' % role, 'every seal is held to one written before any of its bytes were judged')
+
+
+def _provenance(session_dir, snapshot):
+    """What the readiness report says provisioning left, each by path and the hash taken then, and that report against the hash the registry was given. Being in the inventory says a file is here, and only this says it is that file."""
+    missing, corrupt, problems = [], [], []
+    path = session_dir / 'provisioning' / 'readiness.json'
+    for event in (snapshot or {}).get('journal') or ():
+        reference = (event.get('data') or {}).get('evidence_ref') if isinstance(event, dict) and event.get('kind') == 'pair_ready' else None
+        if isinstance(reference, str) and '#sha256:' in reference and _exists(path):
+            try:
+                if sha256_path(path) != reference.split('#sha256:')[1]:
+                    corrupt.append('provisioning/readiness.json')
+                    problems.append('provisioning/readiness.json is not the report the registry was given')
+            except OSError as error:
+                problems.append('provisioning/readiness.json could not be read: ' + type(error).__name__)
+    readiness = _read_json(path)
+    if not isinstance(readiness, dict):
+        if _exists(path):
+            corrupt.append('provisioning/readiness.json')
+            problems.append('provisioning/readiness.json cannot be read')
+        return dict(missing=missing, corrupt=corrupt, problems=problems)
+    required = readiness.get('required_artifacts') if isinstance(readiness.get('required_artifacts'), list) else []
+    if {item.get('role') for item in required if isinstance(item, dict)} != set(ROLES):
+        problems.append('the readiness report does not name the required provisioning artifacts of both roles')
+    for item in required:
+        name = item.get('path') if isinstance(item, dict) else None
+        pure = pathlib.PurePosixPath(name) if isinstance(name, str) and name else None
+        if pure is None or pure.is_absolute() or '..' in pure.parts or not isinstance(item.get('sha256'), str):
+            problems.append('the readiness report names a required artifact that cannot be held to a file of this session')
+            continue
+        try:
+            if not (session_dir / name).is_file():
+                missing.append(name)
+                problems.append('%s is missing, and the readiness report requires it' % name)
+            elif sha256_path(session_dir / name) != item['sha256']:
+                corrupt.append(name)
+                problems.append('%s is not the file the readiness report recorded' % name)
+        except OSError as error:
+            problems.append('%s could not be read: %s' % (name, type(error).__name__))
+    return dict(missing=missing, corrupt=corrupt, problems=problems)
+
+
+def role_entries(session_dir, runs, manifest, sha, token=ANY_TOKEN, never_created=(), snapshot=None):
+    """(every role the durable records say was meant for a host, of every dispatched run, with its file list; what is gone). A plan that has gone proves nothing: the records around it decide, and a role they say nothing of never went. The host's own "no such run" stands only where nothing on record says it got there."""
     session_dir = pathlib.Path(session_dir)
     session_id = manifest['session']['id'] if isinstance(manifest, dict) else None
+    grants = grant_facts(snapshot)
     entries, problems = [], []
     for run_id in runs:
         run_dir = session_dir / 'runs' / run_id
-        if not run_dir.is_dir():
+        try:
+            there = run_dir.is_dir()
+        except OSError as error:
+            problems.append('the directory of dispatched run %s could not be read: %s' % (run_id, type(error).__name__))
+            continue
+        if not there:
             problems.append('the directory of dispatched run %s is gone' % run_id)
             continue
         for role in ROLES:
-            if (run_id, role) in never_created:
-                entries.append(dict(run_id=run_id, role=role, status='never_created', files=[], required_absent=[], partial_retained=[], problems=[]))
-            elif (run_dir / ('plan-%s.json' % role)).exists():
-                try:
-                    entries.append(role_inventory(run_dir, run_id, role, session_id, sha, manifest, token))
-                except READ_FAILURES + (AttributeError,) as error:     # whatever a directory turned out to hold, it costs that role and nothing else
-                    entries.append(dict(run_id=run_id, role=role, status='corrupt', files=[dict(path=guest_runner.SEAL, status='unreadable', reason=type(error).__name__)], required_absent=[], partial_retained=[], problems=['this role could not be read: ' + type(error).__name__]))
+            try:
+                meant, reached = role_reach(run_dir, run_id, role, grants)
+                if (run_id, role) in never_created and not reached:
+                    entries.append(dict(run_id=run_id, role=role, status='never_created', files=[], required_absent=[], partial_retained=[], problems=[]))
+                elif meant or reached:
+                    entry = role_inventory(run_dir, run_id, role, session_id, sha, manifest, token)
+                    if (run_id, role) in never_created:
+                        entry['problems'] = list(entry.get('problems') or ()) + ['the host says this role never existed, and %s say it did' % ', '.join(reached)]
+                    if not _exists(run_dir / ('plan-%s.json' % role)):
+                        entry['required_absent'] = sorted(set(entry.get('required_absent') or ()) | {'plan-%s.json' % role})
+                        entry['problems'] = list(entry.get('problems') or ()) + ['plan-%s.json is gone, and %s say this role was meant for a host' % (role, ', '.join(meant + reached))]
+                    entries.append(entry)
+            except READ_FAILURES + (AttributeError,) as error:     # whatever a directory turned out to hold, it costs that role and nothing else
+                entries.append(dict(run_id=run_id, role=role, status='corrupt', files=[dict(path=guest_runner.SEAL, status='unreadable', reason=type(error).__name__)], required_absent=[], partial_retained=[], problems=['this role could not be read: ' + type(error).__name__]))
     return entries, problems
 
 
-def inventory(session_dir, runs, entries, manifest, sha, problems=()):
+def inventory(session_dir, runs, entries, manifest, sha, problems=(), controller=None):
     """Statuses and hashes. Nothing in here is read from a host, and nothing in here can raise for what a file turns out to hold."""
     session_dir = pathlib.Path(session_dir)
-    problems = list(problems)
-    files, read_problems, odd = _walk(session_dir)
-    problems += read_problems
+    controller = controller or dict(missing=[], corrupt=[], by_run={}, problems=[])
+    files, read_problems, odd, not_inventoried = _walk(session_dir)
+    problems = list(problems) + read_problems + list(controller['problems']) + ['%s: %s' % (run_id, note) for run_id, notes in sorted(controller['by_run'].items()) for note in notes]
     if odd:
         problems.append('%d path(s) here are not plain files, and are not vouched for: %s' % (len(odd), ', '.join(odd[:5])))
     session_id = (manifest or {}).get('session', {}).get('id') if isinstance(manifest, dict) else None
-    missing_records = required_session_files(session_dir, bool(runs))
+    missing_records = required_session_files(session_dir, bool(runs)) + (_admissions_on_record(session_dir) if runs else [])
+    problems += ['session record %s is missing' % name for name in missing_records]
     statuses = {entry['status'] for entry in entries}
     if not runs and sha is not None:
         problems.append('no run was dispatched, so there is no measurement evidence to call complete')
@@ -285,16 +513,16 @@ def inventory(session_dir, runs, entries, manifest, sha, problems=()):
     if guards:
         problems.append('%d comparison(s) of transferred bytes never reported an end' % len(guards))
     status = 'complete'
-    if 'corrupt' in statuses or any(item['status'] == 'corrupt' for item in entries):
+    if 'corrupt' in statuses or controller['corrupt']:
         status = 'corrupt'
-    elif 'missing' in statuses or missing_records:
+    elif 'missing' in statuses or missing_records or controller['missing']:
         status = 'missing'
     elif problems or any(entry.get('required_absent') or entry.get('problems') for entry in entries):
         status = 'partial'     # an earlier failed attempt kept beside a file that later verified costs nothing: it is what happened, and it is on the list
     if any(entry.get('stale_schema') for entry in entries) or not _manifest_on_record(session_dir, sha):
         status = 'corrupt'
     sums = _sums_text(files)
-    return dict(schema=INVENTORY_SCHEMA, session_id=session_id, manifest_sha256=sha, status=status, problems=sorted(set(problems + [item for entry in entries for item in entry.get('problems') or ()])), required_session_missing=missing_records,
+    return dict(schema=INVENTORY_SCHEMA, session_id=session_id, manifest_sha256=sha, status=status, problems=sorted(set(problems + [item for entry in entries for item in entry.get('problems') or ()])), required_session_missing=missing_records, controller_inputs=dict(missing=controller['missing'], corrupt=controller['corrupt'], by_run=controller['by_run']), not_inventoried=not_inventoried,
                 roles=[{key: value for key, value in entry.items() if key != 'files'} | dict(files=len(entry.get('files') or ()), not_verified=[item for item in entry.get('files') or () if item['status'] != 'verified']) for entry in entries],
                 file_count=len(files), total_bytes=sum(item['size'] for item in files), sums_sha256=evidence_publication.sha256_bytes(sums.encode('utf-8')), files=files, partial_files=[item['path'] for item in files if item['kind'] == 'partial'], corrupt_files=[item['path'] for item in files if item['kind'] == 'corrupt_retained'], not_plain_files=odd,
                 admissions=len([item for item in files if item['path'].startswith('admissions/')]), attempts_retained=len([item for item in files if item['kind'] == 'partial']))
@@ -363,7 +591,7 @@ def _next_generation(session_dir):
     return GENERATION_NAME % (highest + 1)
 
 
-def _retain_run_summaries(session_dir, capacity, role_entries, generation, sensitive):
+def _retain_run_summaries(session_dir, capacity, role_entries, generation, sensitive, by_run=None):
     """``runs/<run_id>/summary.json`` and ``REPORT.md``, create-only. A later export that sees something new keeps its own copy beside them and never rewrites the first."""
     session_dir = pathlib.Path(session_dir)
     problems = []
@@ -372,10 +600,10 @@ def _retain_run_summaries(session_dir, capacity, role_entries, generation, sensi
         roles.setdefault(entry['run_id'], {})[entry['role']] = {key: entry.get(key) for key in ('status', 'required_absent', 'partial_retained', 'problems')}
     for row in capacity['trials']:
         run_dir = session_dir / 'runs' / row['run_id']
-        if not run_dir.is_dir():
-            continue
         try:
-            summary = session_report.scrub(session_report.run_summary(session_dir, row, roles.get(row['run_id'], {})), sensitive)
+            if not run_dir.is_dir():
+                continue
+            summary = session_report.scrub(session_report.run_summary(session_dir, row, roles.get(row['run_id'], {}), (by_run or {}).get(row['run_id'], ())), sensitive)
             if manifest_mod.scan_for_secrets(summary):
                 raise ValueError('it held a credential value')
             for name, text in (('summary.json', session_report.canonical(summary)), ('REPORT.md', session_report.render_run(summary))):
@@ -448,8 +676,9 @@ def export_session(session_dir, client=None, runs=None, token=ANY_TOKEN, never_c
     if runs is None:
         runs = [row['run_id'] for row in capacity['trials']] if capacity else []
     runs = _dispatched_runs(session_dir, runs)
-    entries, gone = role_entries(session_dir, runs, manifest, sha, token, never_created)
+    entries, gone = role_entries(session_dir, runs, manifest, sha, token, never_created, snapshot)
     problems += gone
+    controller = controller_inputs(session_dir, entries, runs, manifest, snapshot)
     try:
         generation = _next_generation(session_dir)
     except OSError as error:
@@ -457,8 +686,8 @@ def export_session(session_dir, client=None, runs=None, token=ANY_TOKEN, never_c
     if capacity is not None:
         if capacity['evidence']['disputed_trials']:
             problems.append('%d trial(s) disagree with their retained files' % len(capacity['evidence']['disputed_trials']))
-        problems += _retain_run_summaries(session_dir, capacity, entries, generation, sensitive)
-    document = inventory(session_dir, runs, entries, manifest, sha, problems)
+        problems += _retain_run_summaries(session_dir, capacity, entries, generation, sensitive, controller['by_run'])
+    document = inventory(session_dir, runs, entries, manifest, sha, problems, controller)
     return _write_generation(session_dir, document, snapshot, capacity, _load_invoices(session_dir), evidence_publication.publication_status(session_dir), manifest, sensitive, failpoint, generation)
 
 
@@ -632,7 +861,12 @@ def cmd_publish(args):
     destination = evidence_publication.destination_for(args.docs_root, args.repository)
     receipts = evidence_publication.publish(session_dir, generation, [destination], args.now, evidence_publication.sensitive_values(session_dir, manifest))
     print(json.dumps(dict(receipts=receipts, status=evidence_publication.publication_status(session_dir)), indent=2, sort_keys=True))
-    return 0 if all(item['status'] == 'published' for item in receipts) else 2
+    return 0 if all(item['status'] != evidence_publication.FAILED for item in receipts) else 2
+
+
+def cmd_record_publication(args):
+    print(json.dumps(evidence_publication.record_publication(args.session_dir, args.generation, args.reference, args.now, args.summary_sha256, args.operator), indent=2, sort_keys=True))
+    return 0
 
 
 def cmd_record_journal(args):
@@ -658,11 +892,17 @@ def build_parser():
     command('export', cmd_export).add_argument('--registry-command')
     command('verify', cmd_verify).add_argument('--generation')
     command('reproduce', cmd_reproduce).add_argument('--generation')
-    publish = command('publish', cmd_publish)
+    publish = command('prepare-publication', cmd_publish)
     publish.add_argument('--generation')
     publish.add_argument('--now', required=True)
     publish.add_argument('--docs-root')
     publish.add_argument('--repository', default=str(pathlib.Path(__file__).parents[2]))
+    recorded = command('record-publication', cmd_record_publication)
+    recorded.add_argument('--generation', required=True)
+    recorded.add_argument('--reference', required=True)
+    recorded.add_argument('--summary-sha256', required=True)
+    recorded.add_argument('--operator', required=True)
+    recorded.add_argument('--now', required=True)
     journal = command('record-journal', cmd_record_journal)
     journal.add_argument('--generation', required=True)
     journal.add_argument('--url', required=True)

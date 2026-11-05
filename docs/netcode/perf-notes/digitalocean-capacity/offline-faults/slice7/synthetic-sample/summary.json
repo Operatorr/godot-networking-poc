@@ -45,6 +45,7 @@
     "runs": [
       {
         "loss_estimate_peak": 0.0,
+        "loss_estimate_peer_peak": 0.0,
         "outcome": "PASS",
         "rtt_p95_ms": 12.5,
         "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
@@ -53,6 +54,7 @@
       },
       {
         "loss_estimate_peak": 0.0,
+        "loss_estimate_peer_peak": 0.0,
         "outcome": "PASS",
         "rtt_p95_ms": 12.5,
         "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
@@ -61,6 +63,7 @@
       },
       {
         "loss_estimate_peak": 0.0,
+        "loss_estimate_peer_peak": 0.0,
         "outcome": "PASS",
         "rtt_p95_ms": 12.5,
         "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
@@ -70,6 +73,11 @@
     ],
     "spread": {
       "loss_estimate_peak": {
+        "high": 0.0,
+        "low": 0.0,
+        "of": 3
+      },
+      "loss_estimate_peer_peak": {
         "high": 0.0,
         "low": 0.0,
         "of": 3
@@ -138,10 +146,10 @@
   "manifest_sha256": "68f5c43ba24147f9e4656ed934ac8f42c70be0236a1fa96a4de4da42a08562fd",
   "provider": "DigitalOcean",
   "raw_evidence": {
-    "bytes": 21315819,
+    "bytes": 21325542,
     "files": 292,
     "inventory_file": "SHA256SUMS",
-    "inventory_sha256": "6dd74f8edd3a4eff71f24354ceb13d4a7a7c5507764fea6554d7949938596d6c",
+    "inventory_sha256": "902391c5aed00b00e93f5128f224831e3c8d2c2ac66ff05cd4ee479af867cb56",
     "policy": "Raw evidence is never published. The author keeps it privately on one laptop disk (a single copy, by accepted risk) indefinitely, and it is available on request, verifiable against this SHA256 inventory. If that disk is lost, these hashes point at evidence that no longer exists."
   },
   "reads_as": "CPU, memory, gaps, bandwidth and cost are diagnostics and add no gate. ENet loss is a smoothed estimate, not a measured fraction of datagrams dropped.",
@@ -197,10 +205,13 @@
       "verified_at": "2026-10-30T12:34:51+00:00"
     },
     "evidence": {
-      "bytes": 21315819,
+      "bytes": 21325542,
+      "controller_inputs_corrupt": 0,
+      "controller_inputs_missing": 0,
       "corrupt_files": 0,
       "files": 292,
       "partial_files": 0,
+      "paths_not_inventoried": 0,
       "required_session_missing": 0,
       "status": "complete"
     },
@@ -254,7 +265,12 @@
       "outcome": "PASS",
       "peers": {
         "loss_estimate_peak_per_second_mean": 0.0,
+        "loss_estimate_peer_peak": 0.0,
+        "loss_estimate_peer_peak_at_bot_mono_ns": 64457500000,
+        "loss_estimate_peer_peak_bot": 25,
+        "loss_estimate_peer_peak_scope": "the highest single smoothed reading of any one bot in the window, a diagnostic that decides nothing: the gate reads the per-second mean over bots",
         "loss_estimate_window_mean": 0.0,
+        "loss_estimator": "ENet smoothed estimate of reliable commands lost",
         "rtt_max_ms": 12.5,
         "rtt_p95_ms": 12.5,
         "rtt_samples": 1500
@@ -327,7 +343,12 @@
       "outcome": "FAIL",
       "peers": {
         "loss_estimate_peak_per_second_mean": 0.0,
+        "loss_estimate_peer_peak": 0.0,
+        "loss_estimate_peer_peak_at_bot_mono_ns": 66960000000,
+        "loss_estimate_peer_peak_bot": 50,
+        "loss_estimate_peer_peak_scope": "the highest single smoothed reading of any one bot in the window, a diagnostic that decides nothing: the gate reads the per-second mean over bots",
         "loss_estimate_window_mean": 0.0,
+        "loss_estimator": "ENet smoothed estimate of reliable commands lost",
         "rtt_max_ms": 12.5,
         "rtt_p95_ms": 12.5,
         "rtt_samples": 3000
@@ -400,7 +421,12 @@
       "outcome": "PASS",
       "peers": {
         "loss_estimate_peak_per_second_mean": 0.0,
+        "loss_estimate_peer_peak": 0.0,
+        "loss_estimate_peer_peak_at_bot_mono_ns": 64958000000,
+        "loss_estimate_peer_peak_bot": 30,
+        "loss_estimate_peer_peak_scope": "the highest single smoothed reading of any one bot in the window, a diagnostic that decides nothing: the gate reads the per-second mean over bots",
         "loss_estimate_window_mean": 0.0,
+        "loss_estimator": "ENet smoothed estimate of reliable commands lost",
         "rtt_max_ms": 12.5,
         "rtt_p95_ms": 12.5,
         "rtt_samples": 1800
@@ -473,7 +499,12 @@
       "outcome": "FAIL",
       "peers": {
         "loss_estimate_peak_per_second_mean": 0.0,
+        "loss_estimate_peer_peak": 0.0,
+        "loss_estimate_peer_peak_at_bot_mono_ns": 65458500000,
+        "loss_estimate_peer_peak_bot": 35,
+        "loss_estimate_peer_peak_scope": "the highest single smoothed reading of any one bot in the window, a diagnostic that decides nothing: the gate reads the per-second mean over bots",
         "loss_estimate_window_mean": 0.0,
+        "loss_estimator": "ENet smoothed estimate of reliable commands lost",
         "rtt_max_ms": 12.5,
         "rtt_p95_ms": 12.5,
         "rtt_samples": 2100
@@ -546,7 +577,12 @@
       "outcome": "PASS",
       "peers": {
         "loss_estimate_peak_per_second_mean": 0.0,
+        "loss_estimate_peer_peak": 0.0,
+        "loss_estimate_peer_peak_at_bot_mono_ns": 304958000000,
+        "loss_estimate_peer_peak_bot": 30,
+        "loss_estimate_peer_peak_scope": "the highest single smoothed reading of any one bot in the window, a diagnostic that decides nothing: the gate reads the per-second mean over bots",
         "loss_estimate_window_mean": 0.0,
+        "loss_estimator": "ENet smoothed estimate of reliable commands lost",
         "rtt_max_ms": 12.5,
         "rtt_p95_ms": 12.5,
         "rtt_samples": 9000
@@ -619,7 +655,12 @@
       "outcome": "PASS",
       "peers": {
         "loss_estimate_peak_per_second_mean": 0.0,
+        "loss_estimate_peer_peak": 0.0,
+        "loss_estimate_peer_peak_at_bot_mono_ns": 304958000000,
+        "loss_estimate_peer_peak_bot": 30,
+        "loss_estimate_peer_peak_scope": "the highest single smoothed reading of any one bot in the window, a diagnostic that decides nothing: the gate reads the per-second mean over bots",
         "loss_estimate_window_mean": 0.0,
+        "loss_estimator": "ENet smoothed estimate of reliable commands lost",
         "rtt_max_ms": 12.5,
         "rtt_p95_ms": 12.5,
         "rtt_samples": 9000
@@ -692,7 +733,12 @@
       "outcome": "PASS",
       "peers": {
         "loss_estimate_peak_per_second_mean": 0.0,
+        "loss_estimate_peer_peak": 0.0,
+        "loss_estimate_peer_peak_at_bot_mono_ns": 304958000000,
+        "loss_estimate_peer_peak_bot": 30,
+        "loss_estimate_peer_peak_scope": "the highest single smoothed reading of any one bot in the window, a diagnostic that decides nothing: the gate reads the per-second mean over bots",
         "loss_estimate_window_mean": 0.0,
+        "loss_estimator": "ENet smoothed estimate of reliable commands lost",
         "rtt_max_ms": 12.5,
         "rtt_p95_ms": 12.5,
         "rtt_samples": 9000

@@ -2,6 +2,238 @@
  "kind": "synthetic",
  "note": "Synthetic. Nothing ran: every number is arithmetic from fixture recorder files, on a scripted clock, against a fake provider and fake guests. It shows what the controller and exporter do with those bytes and nothing about any host, capacity or cost.",
  "scenarios": {
+  "clock_bracket_lost_withholds_completeness": {
+   "attempts_retained": 0,
+   "claim_confirmed": false,
+   "claim_kind": "evidence_incomplete",
+   "claim_players": null,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [
+    "runs/do-cap-1v1g-20261030a-t01-coarse-n025-r1/clock-after.json"
+   ],
+   "corrupt_retained": 0,
+   "establishes": false,
+   "evidence_latest_export": "missing",
+   "evidence_problems": [
+    "do-cap-1v1g-20261030a-t01-coarse-n025-r1: clock-after.json is missing, and the frozen measurement schema requires it once a role went to a host"
+   ],
+   "evidence_registry": "missing",
+   "generations": [
+    "gen-0001"
+   ],
+   "history_withheld": true,
+   "incidents": [],
+   "lost": "<first-run>/clock-after.json",
+   "not_inventoried": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "PASS"
+    ],
+    [
+     "coarse",
+     50,
+     "FAIL"
+    ],
+    [
+     "refine",
+     30,
+     "PASS"
+    ],
+    [
+     "refine",
+     35,
+     "FAIL"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ]
+   ],
+   "overall": "resources_verified_evidence_incomplete",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "publication_detail": "unverified",
+   "published_text": true,
+   "recovery_deadline_s": null,
+   "reproduces": true,
+   "required_absent": [],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {
+    "t01-coarse-n025-r1/bot": "verified",
+    "t01-coarse-n025-r1/game": "verified",
+    "t02-coarse-n050-r1/bot": "verified",
+    "t02-coarse-n050-r1/game": "verified",
+    "t03-refine-n030-r1/bot": "verified",
+    "t03-refine-n030-r1/game": "verified",
+    "t04-refine-n035-r1/bot": "verified",
+    "t04-refine-n035-r1/game": "verified",
+    "t05-confirm-n030-r1/bot": "verified",
+    "t05-confirm-n030-r1/game": "verified",
+    "t06-confirm-n030-r2/bot": "verified",
+    "t06-confirm-n030-r2/game": "verified",
+    "t07-confirm-n030-r3/bot": "verified",
+    "t07-confirm-n030-r3/game": "verified"
+   },
+   "search_status": "confirmed",
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 580.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 588.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 701.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 709.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 822.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 830.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 943.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 951.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 1304.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1312.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1665.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 1673.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 2026.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "confirmed",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "missing",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "batch ended: confirmed",
+     "t_s": 2028.0
+    }
+   ],
+   "transfers": 157
+  },
   "confirmation_failed_no_replacement": {
    "attempts_retained": 0,
    "claim_confirmed": false,
@@ -9,6 +241,8 @@
    "claim_players": null,
    "cleanup_requested": true,
    "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [],
    "corrupt_retained": 0,
    "establishes": false,
    "evidence_latest_export": "complete",
@@ -20,6 +254,7 @@
    ],
    "history_withheld": false,
    "incidents": [],
+   "not_inventoried": [],
    "outcomes": [
     [
      "coarse",
@@ -56,6 +291,7 @@
    "overdue": false,
    "overrun_s": 0.0,
    "publication": "not_published",
+   "publication_detail": "unverified",
    "published_text": true,
    "recovery_deadline_s": null,
    "reproduces": true,
@@ -215,6 +451,8 @@
    "claim_players": 30,
    "cleanup_requested": true,
    "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [],
    "corrupt_retained": 0,
    "establishes": true,
    "evidence_latest_export": "complete",
@@ -226,6 +464,7 @@
    ],
    "history_withheld": false,
    "incidents": [],
+   "not_inventoried": [],
    "outcomes": [
     [
      "coarse",
@@ -267,6 +506,7 @@
    "overdue": false,
    "overrun_s": 0.0,
    "publication": "not_published",
+   "publication_detail": "unverified",
    "published_text": true,
    "recovery_deadline_s": null,
    "reproduces": true,
@@ -439,6 +679,8 @@
    "claim_players": null,
    "cleanup_requested": true,
    "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [],
    "corrupt_retained": 0,
    "establishes": false,
    "evidence_latest_export": "partial",
@@ -449,6 +691,7 @@
    ],
    "history_withheld": false,
    "incidents": [],
+   "not_inventoried": [],
    "outcomes": [
     [
      "coarse",
@@ -460,6 +703,7 @@
    "overdue": false,
    "overrun_s": 0.0,
    "publication": "not_published",
+   "publication_detail": "unverified",
    "published_text": true,
    "recovery_deadline_s": null,
    "reproduces": true,
@@ -560,6 +804,8 @@
    "claim_players": null,
    "cleanup_requested": true,
    "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [],
    "corrupt_retained": 1,
    "establishes": false,
    "evidence_latest_export": "corrupt",
@@ -570,6 +816,7 @@
    ],
    "history_withheld": false,
    "incidents": [],
+   "not_inventoried": [],
    "outcomes": [
     [
      "coarse",
@@ -581,6 +828,7 @@
    "overdue": false,
    "overrun_s": 0.0,
    "publication": "not_published",
+   "publication_detail": "unverified",
    "published_text": true,
    "recovery_deadline_s": 880.0,
    "reproduces": true,
@@ -641,6 +889,7 @@
      "t_s": 467.0
     },
     {
+     "first_failure": "2026-10-30T12:09:41+00:00",
      "kind": "evidence_failure",
      "t_s": 580.0
     },
@@ -683,6 +932,142 @@
    ],
    "transfers": 63
   },
+  "crash_between_files_keeps_the_first_failure": {
+   "attempts_retained": 2,
+   "claim_confirmed": false,
+   "claim_kind": "undecidable_incomplete_predecessor",
+   "claim_players": null,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [],
+   "corrupt_retained": 0,
+   "establishes": false,
+   "evidence_latest_export": "corrupt",
+   "evidence_problems": [],
+   "evidence_registry": "corrupt",
+   "first_failure_s": 580.0,
+   "generations": [
+    "gen-0001"
+   ],
+   "history_withheld": false,
+   "incidents": [],
+   "not_inventoried": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "INCOMPLETE"
+    ]
+   ],
+   "overall": "resources_verified_evidence_incomplete",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "publication_detail": "unverified",
+   "published_text": true,
+   "recovery_deadline_is_first_failure_plus_grace": true,
+   "recovery_deadline_s": 880.0,
+   "reproduces": true,
+   "required_absent": [],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {
+    "t01-coarse-n025-r1/bot": "verified",
+    "t01-coarse-n025-r1/game": "corrupt"
+   },
+   "search_status": "undecidable_incomplete_predecessor",
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "first_failure": "2026-10-30T12:09:41+00:00",
+     "kind": "evidence_failure",
+     "t_s": 580.0
+    },
+    {
+     "kind": "control_acquired",
+     "t_s": 620.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "INCOMPLETE",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 630.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 632.0
+    },
+    {
+     "deadline": "2026-10-30T12:14:41+00:00",
+     "first_failure": "2026-10-30T12:09:41+00:00",
+     "kind": "evidence_recovery",
+     "t_s": 632.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "evidence_recovery_expired",
+     "t_s": 880.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "operator_collect",
+     "t_s": 880.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "corrupt",
+     "t_s": 880.0
+    }
+   ],
+   "transfers": 59
+  },
   "deletion_outage_past_d_stays_on_record": {
    "attempts_retained": 0,
    "claim_confirmed": true,
@@ -690,6 +1075,8 @@
    "claim_players": 30,
    "cleanup_requested": true,
    "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [],
    "corrupt_retained": 0,
    "establishes": true,
    "evidence_latest_export": "complete",
@@ -706,6 +1093,7 @@
      "status": "resolved"
     }
    ],
+   "not_inventoried": [],
    "outcomes": [
     [
      "coarse",
@@ -747,6 +1135,7 @@
    "overdue": true,
    "overrun_s": 185.0,
    "publication": "not_published",
+   "publication_detail": "unverified",
    "published_text": true,
    "recovery_deadline_s": null,
    "reproduces": true,
@@ -927,6 +1316,8 @@
    "claim_players": null,
    "cleanup_requested": true,
    "cleanup_verified": true,
+   "controller_inputs_corrupt": null,
+   "controller_inputs_missing": null,
    "corrupt_retained": 0,
    "establishes": null,
    "evidence_latest_export": null,
@@ -935,6 +1326,7 @@
    "generations": [],
    "history_withheld": false,
    "incidents": [],
+   "not_inventoried": null,
    "outcomes": [
     [
      "coarse",
@@ -976,6 +1368,7 @@
    "overdue": false,
    "overrun_s": 0.0,
    "publication": "not_published",
+   "publication_detail": "unverified",
    "published_text": false,
    "recovery_deadline_s": null,
    "reproduces": null,
@@ -1129,23 +1522,27 @@
     "no session export was written: RuntimeError"
    ]
   },
-  "first_failure_older_than_the_grace": {
-   "attempts_retained": 0,
+  "first_failure_holds_past_a_slow_later_file": {
+   "attempts_retained": 2,
    "claim_confirmed": false,
    "claim_kind": "stopped_infrastructure_failure",
    "claim_players": null,
    "cleanup_requested": true,
    "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [],
    "corrupt_retained": 0,
    "establishes": false,
-   "evidence_latest_export": "missing",
+   "evidence_latest_export": "corrupt",
    "evidence_problems": [],
-   "evidence_registry": "missing",
+   "evidence_registry": "corrupt",
+   "first_failure_s": 580.0,
    "generations": [
     "gen-0001"
    ],
    "history_withheld": false,
    "incidents": [],
+   "not_inventoried": [],
    "outcomes": [
     [
      "coarse",
@@ -1157,6 +1554,138 @@
    "overdue": false,
    "overrun_s": 0.0,
    "publication": "not_published",
+   "publication_detail": "unverified",
+   "published_text": true,
+   "recovery_deadline_is_first_failure_plus_grace": true,
+   "recovery_deadline_s": 880.0,
+   "reproduces": true,
+   "required_absent": [],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {
+    "t01-coarse-n025-r1/bot": "verified",
+    "t01-coarse-n025-r1/game": "corrupt"
+   },
+   "search_status": "stopped_infrastructure_failure",
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "first_failure": "2026-10-30T12:09:41+00:00",
+     "kind": "evidence_failure",
+     "t_s": 580.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "INFRASTRUCTURE_FAILURE",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 600.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 602.0
+    },
+    {
+     "deadline": "2026-10-30T12:14:41+00:00",
+     "first_failure": "2026-10-30T12:09:41+00:00",
+     "kind": "evidence_recovery",
+     "t_s": 602.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "evidence_recovery_expired",
+     "t_s": 880.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "stopped_infrastructure_failure",
+     "t_s": 880.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "corrupt",
+     "t_s": 880.0
+    }
+   ],
+   "transfers": 61
+  },
+  "first_failure_older_than_the_grace": {
+   "attempts_retained": 0,
+   "claim_confirmed": false,
+   "claim_kind": "stopped_infrastructure_failure",
+   "claim_players": null,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [],
+   "corrupt_retained": 0,
+   "establishes": false,
+   "evidence_latest_export": "missing",
+   "evidence_problems": [],
+   "evidence_registry": "missing",
+   "generations": [
+    "gen-0001"
+   ],
+   "history_withheld": false,
+   "incidents": [],
+   "not_inventoried": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "INFRASTRUCTURE_FAILURE"
+    ]
+   ],
+   "overall": "resources_verified_evidence_incomplete",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "publication_detail": "unverified",
    "published_text": true,
    "recovery_deadline_s": null,
    "reproduces": true,
@@ -1233,6 +1762,7 @@
      "t_s": 467.0
     },
     {
+     "first_failure": "2026-10-30T12:09:41+00:00",
      "kind": "evidence_failure",
      "t_s": 580.0
     },
@@ -1268,6 +1798,8 @@
    "claim_players": null,
    "cleanup_requested": true,
    "cleanup_verified": true,
+   "controller_inputs_corrupt": null,
+   "controller_inputs_missing": null,
    "corrupt_retained": 0,
    "establishes": null,
    "evidence_latest_export": null,
@@ -1276,6 +1808,7 @@
    "generations": [],
    "history_withheld": false,
    "incidents": [],
+   "not_inventoried": null,
    "outcomes": [
     [
      "coarse",
@@ -1317,6 +1850,7 @@
    "overdue": false,
    "overrun_s": 0.0,
    "publication": "not_published",
+   "publication_detail": "unverified",
    "published_text": false,
    "recovery_deadline_s": null,
    "reproduces": null,
@@ -1474,6 +2008,8 @@
    "claim_players": null,
    "cleanup_requested": true,
    "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [],
    "corrupt_retained": 0,
    "establishes": false,
    "evidence_latest_export": "complete",
@@ -1485,6 +2021,7 @@
    ],
    "history_withheld": false,
    "incidents": [],
+   "not_inventoried": [],
    "outcomes": [
     [
      "coarse",
@@ -1496,6 +2033,7 @@
    "overdue": false,
    "overrun_s": 0.0,
    "publication": "not_published",
+   "publication_detail": "unverified",
    "published_text": true,
    "recovery_deadline_s": null,
    "reproduces": true,
@@ -1590,6 +2128,8 @@
    "claim_players": null,
    "cleanup_requested": true,
    "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [],
    "corrupt_retained": 0,
    "establishes": false,
    "evidence_latest_export": "complete",
@@ -1601,6 +2141,7 @@
    ],
    "history_withheld": false,
    "incidents": [],
+   "not_inventoried": [],
    "outcomes": [
     [
      "coarse",
@@ -1612,6 +2153,7 @@
    "overdue": false,
    "overrun_s": 0.0,
    "publication": "not_published",
+   "publication_detail": "unverified",
    "published_text": true,
    "recovery_deadline_s": null,
    "reproduces": true,
@@ -1706,6 +2248,8 @@
    "claim_players": null,
    "cleanup_requested": true,
    "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [],
    "corrupt_retained": 0,
    "establishes": false,
    "evidence_latest_export": "complete",
@@ -1717,6 +2261,7 @@
    ],
    "history_withheld": false,
    "incidents": [],
+   "not_inventoried": [],
    "outcomes": [
     [
      "coarse",
@@ -1728,6 +2273,7 @@
    "overdue": false,
    "overrun_s": 0.0,
    "publication": "not_published",
+   "publication_detail": "unverified",
    "published_text": true,
    "recovery_deadline_s": null,
    "reproduces": true,
@@ -1815,6 +2361,142 @@
    ],
    "transfers": 25
   },
+  "lost_report_then_crash_keeps_the_first_failure": {
+   "attempts_retained": 2,
+   "claim_confirmed": false,
+   "claim_kind": "undecidable_incomplete_predecessor",
+   "claim_players": null,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [],
+   "corrupt_retained": 0,
+   "establishes": false,
+   "evidence_latest_export": "corrupt",
+   "evidence_problems": [],
+   "evidence_registry": "corrupt",
+   "first_failure_s": 580.0,
+   "generations": [
+    "gen-0001"
+   ],
+   "history_withheld": false,
+   "incidents": [],
+   "not_inventoried": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "INCOMPLETE"
+    ]
+   ],
+   "overall": "resources_verified_evidence_incomplete",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "publication_detail": "unverified",
+   "published_text": true,
+   "recovery_deadline_is_first_failure_plus_grace": true,
+   "recovery_deadline_s": 880.0,
+   "reproduces": true,
+   "required_absent": [],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {
+    "t01-coarse-n025-r1/bot": "verified",
+    "t01-coarse-n025-r1/game": "corrupt"
+   },
+   "search_status": "undecidable_incomplete_predecessor",
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "control_acquired",
+     "t_s": 620.0
+    },
+    {
+     "first_failure": "2026-10-30T12:09:41+00:00",
+     "kind": "evidence_failure",
+     "t_s": 622.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "INCOMPLETE",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 630.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 632.0
+    },
+    {
+     "deadline": "2026-10-30T12:14:41+00:00",
+     "first_failure": "2026-10-30T12:09:41+00:00",
+     "kind": "evidence_recovery",
+     "t_s": 632.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "evidence_recovery_expired",
+     "t_s": 880.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "operator_collect",
+     "t_s": 880.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "corrupt",
+     "t_s": 880.0
+    }
+   ],
+   "transfers": 59
+  },
   "manifest_changed_after_the_session": {
    "attempts_retained": 0,
    "claim_confirmed": null,
@@ -1822,6 +2504,8 @@
    "claim_players": null,
    "cleanup_requested": true,
    "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [],
    "corrupt_retained": 0,
    "establishes": null,
    "evidence_latest_export": "corrupt",
@@ -1836,6 +2520,7 @@
    ],
    "history_withheld": false,
    "incidents": [],
+   "not_inventoried": [],
    "outcomes": [
     [
      "coarse",
@@ -1877,6 +2562,7 @@
    "overdue": false,
    "overrun_s": 0.0,
    "publication": "not_published",
+   "publication_detail": "unverified",
    "published_text": false,
    "recovery_deadline_s": null,
    "report_written": false,
@@ -2035,6 +2721,8 @@
    "claim_players": 30,
    "cleanup_requested": true,
    "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [],
    "corrupt_retained": 0,
    "establishes": true,
    "evidence_latest_export": "complete",
@@ -2046,6 +2734,7 @@
    ],
    "history_withheld": false,
    "incidents": [],
+   "not_inventoried": [],
    "outcomes": [
     [
      "coarse",
@@ -2087,6 +2776,7 @@
    "overdue": false,
    "overrun_s": 0.0,
    "publication": "not_published",
+   "publication_detail": "unverified",
    "published_text": true,
    "reached_anything_derived": false,
    "recovery_deadline_s": null,
@@ -2260,6 +2950,8 @@
    "claim_players": null,
    "cleanup_requested": true,
    "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [],
    "corrupt_retained": 0,
    "establishes": false,
    "evidence_latest_export": "complete",
@@ -2271,6 +2963,7 @@
    ],
    "history_withheld": false,
    "incidents": [],
+   "not_inventoried": [],
    "outcomes": [
     [
      "coarse",
@@ -2287,6 +2980,7 @@
    "overdue": false,
    "overrun_s": 0.0,
    "publication": "not_published",
+   "publication_detail": "unverified",
    "published_text": true,
    "recovery_deadline_s": null,
    "reproduces": true,
@@ -2394,6 +3088,8 @@
    "claim_players": null,
    "cleanup_requested": true,
    "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [],
    "corrupt_retained": 0,
    "establishes": false,
    "evidence_latest_export": "missing",
@@ -2404,6 +3100,7 @@
    ],
    "history_withheld": false,
    "incidents": [],
+   "not_inventoried": [],
    "outcomes": [
     [
      "coarse",
@@ -2415,6 +3112,7 @@
    "overdue": false,
    "overrun_s": 0.0,
    "publication": "not_published",
+   "publication_detail": "unverified",
    "published_text": true,
    "recovery_deadline_s": 880.0,
    "reproduces": true,
@@ -2475,6 +3173,7 @@
      "t_s": 467.0
     },
     {
+     "first_failure": "2026-10-30T12:09:41+00:00",
      "kind": "evidence_failure",
      "t_s": 580.0
     },
@@ -2519,6 +3218,8 @@
    "claim_players": null,
    "cleanup_requested": true,
    "cleanup_verified": true,
+   "controller_inputs_corrupt": null,
+   "controller_inputs_missing": null,
    "corrupt_retained": 0,
    "establishes": null,
    "evidence_latest_export": null,
@@ -2527,6 +3228,7 @@
    "generations": [],
    "history_withheld": false,
    "incidents": [],
+   "not_inventoried": null,
    "outcomes": [
     [
      "coarse",
@@ -2568,6 +3270,7 @@
    "overdue": false,
    "overrun_s": 0.0,
    "publication": "not_published",
+   "publication_detail": "unverified",
    "published_text": false,
    "recovery_deadline_s": null,
    "reproduces": null,
@@ -2719,29 +3422,26 @@
    "transfers": 157,
    "writing_left": 1
   },
-  "published_to_the_canonical_directory_only": {
+  "one_bad_peer_beside_a_passing_mean": {
    "attempts_retained": 0,
    "claim_confirmed": true,
    "claim_kind": "confirmed_observation",
    "claim_players": 30,
    "cleanup_requested": true,
    "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [],
    "corrupt_retained": 0,
    "establishes": true,
    "evidence_latest_export": "complete",
    "evidence_problems": [],
    "evidence_registry": "complete",
    "generations": [
-    "gen-0001",
-    "gen-0002"
-   ],
-   "historical_destinations_refused": [
-    "destination_not_canonical",
-    "destination_not_canonical"
+    "gen-0001"
    ],
    "history_withheld": false,
    "incidents": [],
-   "journal_mirror": "not_published",
+   "not_inventoried": [],
    "outcomes": [
     [
      "coarse",
@@ -2782,7 +3482,482 @@
    "overall": "clean",
    "overdue": false,
    "overrun_s": 0.0,
-   "publication": "published",
+   "publication": "not_published",
+   "publication_detail": "unverified",
+   "published_first_run_peers": {
+    "loss_estimate_peak_per_second_mean": 0.008,
+    "loss_estimate_peer_peak": 0.199997,
+    "loss_estimate_peer_peak_at_bot_mono_ns": 64455100000,
+    "loss_estimate_peer_peak_bot": 1
+   },
+   "published_text": true,
+   "recovery_deadline_s": null,
+   "reproduces": true,
+   "required_absent": [],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {
+    "t01-coarse-n025-r1/bot": "verified",
+    "t01-coarse-n025-r1/game": "verified",
+    "t02-coarse-n050-r1/bot": "verified",
+    "t02-coarse-n050-r1/game": "verified",
+    "t03-refine-n030-r1/bot": "verified",
+    "t03-refine-n030-r1/game": "verified",
+    "t04-refine-n035-r1/bot": "verified",
+    "t04-refine-n035-r1/game": "verified",
+    "t05-confirm-n030-r1/bot": "verified",
+    "t05-confirm-n030-r1/game": "verified",
+    "t06-confirm-n030-r2/bot": "verified",
+    "t06-confirm-n030-r2/game": "verified",
+    "t07-confirm-n030-r3/bot": "verified",
+    "t07-confirm-n030-r3/game": "verified"
+   },
+   "search_status": "confirmed",
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 580.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 588.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 701.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 709.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 822.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 830.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 943.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 951.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 1304.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1312.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1665.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 1673.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 2026.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "confirmed",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "complete",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "batch ended: confirmed",
+     "t_s": 2028.0
+    }
+   ],
+   "transfers": 157
+  },
+  "plan_lost_withholds_completeness": {
+   "attempts_retained": 0,
+   "claim_confirmed": false,
+   "claim_kind": "evidence_incomplete",
+   "claim_players": null,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [
+    "runs/do-cap-1v1g-20261030a-t01-coarse-n025-r1/plan-bot.json"
+   ],
+   "corrupt_retained": 0,
+   "establishes": false,
+   "evidence_latest_export": "missing",
+   "evidence_problems": [
+    "do-cap-1v1g-20261030a-t01-coarse-n025-r1: plan-bot.json is missing, and the records show this role was meant for a host",
+    "plan-bot.json is gone, and its plan_digests in an execution record, its started grant, its roles in an execution record, its exported in an execution record, a seal receipt, its directory say this role was meant for a host"
+   ],
+   "evidence_registry": "missing",
+   "generations": [
+    "gen-0001"
+   ],
+   "history_withheld": true,
+   "incidents": [],
+   "lost": "<first-run>/plan-bot.json",
+   "not_inventoried": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "PASS"
+    ],
+    [
+     "coarse",
+     50,
+     "FAIL"
+    ],
+    [
+     "refine",
+     30,
+     "PASS"
+    ],
+    [
+     "refine",
+     35,
+     "FAIL"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ]
+   ],
+   "overall": "resources_verified_evidence_incomplete",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "publication_detail": "unverified",
+   "published_text": true,
+   "recovery_deadline_s": null,
+   "reproduces": true,
+   "required_absent": [
+    "plan-bot.json"
+   ],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {
+    "t01-coarse-n025-r1/bot": "verified",
+    "t01-coarse-n025-r1/game": "verified",
+    "t02-coarse-n050-r1/bot": "verified",
+    "t02-coarse-n050-r1/game": "verified",
+    "t03-refine-n030-r1/bot": "verified",
+    "t03-refine-n030-r1/game": "verified",
+    "t04-refine-n035-r1/bot": "verified",
+    "t04-refine-n035-r1/game": "verified",
+    "t05-confirm-n030-r1/bot": "verified",
+    "t05-confirm-n030-r1/game": "verified",
+    "t06-confirm-n030-r2/bot": "verified",
+    "t06-confirm-n030-r2/game": "verified",
+    "t07-confirm-n030-r3/bot": "verified",
+    "t07-confirm-n030-r3/game": "verified"
+   },
+   "search_status": "confirmed",
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 580.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 588.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 701.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 709.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 822.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 830.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 943.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 951.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 1304.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1312.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1665.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 1673.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 2026.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "confirmed",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "missing",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "batch ended: confirmed",
+     "t_s": 2028.0
+    }
+   ],
+   "transfers": 157
+  },
+  "prepared_in_the_canonical_directory_only": {
+   "attempts_retained": 0,
+   "claim_confirmed": true,
+   "claim_kind": "confirmed_observation",
+   "claim_players": 30,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [],
+   "corrupt_retained": 0,
+   "establishes": true,
+   "evidence_latest_export": "complete",
+   "evidence_problems": [],
+   "evidence_registry": "complete",
+   "generations": [
+    "gen-0001",
+    "gen-0002"
+   ],
+   "historical_destinations_refused": [
+    "destination_not_canonical",
+    "destination_not_canonical"
+   ],
+   "history_withheld": false,
+   "incidents": [],
+   "journal_mirror": "not_published",
+   "not_inventoried": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "PASS"
+    ],
+    [
+     "coarse",
+     50,
+     "FAIL"
+    ],
+    [
+     "refine",
+     30,
+     "PASS"
+    ],
+    [
+     "refine",
+     35,
+     "FAIL"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ]
+   ],
+   "overall": "clean",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "verified_local",
+   "publication_detail": "unverified",
    "published_files": [
     "SHA256SUMS",
     "summary.json",
@@ -2790,7 +3965,7 @@
    ],
    "published_text": true,
    "receipt_status": [
-    "published"
+    "verified_local"
    ],
    "recovery_deadline_s": null,
    "reproduces": true,
@@ -2956,6 +4131,475 @@
    ],
    "transfers": 157
   },
+  "provisioning_provenance_lost_withholds_completeness": {
+   "attempts_retained": 0,
+   "claim_confirmed": false,
+   "claim_kind": "evidence_incomplete",
+   "claim_players": null,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [
+    "provisioning/packages-game.json"
+   ],
+   "corrupt_retained": 0,
+   "establishes": false,
+   "evidence_latest_export": "missing",
+   "evidence_problems": [
+    "provisioning/packages-game.json is missing, and the readiness report requires it"
+   ],
+   "evidence_registry": "missing",
+   "generations": [
+    "gen-0001"
+   ],
+   "history_withheld": true,
+   "incidents": [],
+   "lost": "provisioning/packages-game.json",
+   "not_inventoried": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "PASS"
+    ],
+    [
+     "coarse",
+     50,
+     "FAIL"
+    ],
+    [
+     "refine",
+     30,
+     "PASS"
+    ],
+    [
+     "refine",
+     35,
+     "FAIL"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ]
+   ],
+   "overall": "resources_verified_evidence_incomplete",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "publication_detail": "unverified",
+   "published_text": true,
+   "recovery_deadline_s": null,
+   "reproduces": true,
+   "required_absent": [],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {
+    "t01-coarse-n025-r1/bot": "verified",
+    "t01-coarse-n025-r1/game": "verified",
+    "t02-coarse-n050-r1/bot": "verified",
+    "t02-coarse-n050-r1/game": "verified",
+    "t03-refine-n030-r1/bot": "verified",
+    "t03-refine-n030-r1/game": "verified",
+    "t04-refine-n035-r1/bot": "verified",
+    "t04-refine-n035-r1/game": "verified",
+    "t05-confirm-n030-r1/bot": "verified",
+    "t05-confirm-n030-r1/game": "verified",
+    "t06-confirm-n030-r2/bot": "verified",
+    "t06-confirm-n030-r2/game": "verified",
+    "t07-confirm-n030-r3/bot": "verified",
+    "t07-confirm-n030-r3/game": "verified"
+   },
+   "search_status": "confirmed",
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 580.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 588.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 701.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 709.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 822.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 830.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 943.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 951.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 1304.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1312.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1665.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 1673.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 2026.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "confirmed",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "missing",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "batch ended: confirmed",
+     "t_s": 2028.0
+    }
+   ],
+   "transfers": 157
+  },
+  "publication_needs_more_than_a_local_copy": {
+   "adapter_received": [
+    "SHA256SUMS",
+    "summary.json",
+    "summary.md"
+   ],
+   "attempts_retained": 0,
+   "claim_confirmed": true,
+   "claim_kind": "confirmed_observation",
+   "claim_players": 30,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [],
+   "corrupt_retained": 0,
+   "establishes": true,
+   "evidence_latest_export": "complete",
+   "evidence_problems": [],
+   "evidence_registry": "complete",
+   "generations": [
+    "gen-0001"
+   ],
+   "history_withheld": false,
+   "incidents": [],
+   "not_inventoried": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "PASS"
+    ],
+    [
+     "coarse",
+     50,
+     "FAIL"
+    ],
+    [
+     "refine",
+     30,
+     "PASS"
+    ],
+    [
+     "refine",
+     35,
+     "FAIL"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ]
+   ],
+   "overall": "clean",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "published",
+   "publication_detail": "published",
+   "published_text": true,
+   "recovery_deadline_s": null,
+   "reproduces": true,
+   "required_absent": [],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {
+    "t01-coarse-n025-r1/bot": "verified",
+    "t01-coarse-n025-r1/game": "verified",
+    "t02-coarse-n050-r1/bot": "verified",
+    "t02-coarse-n050-r1/game": "verified",
+    "t03-refine-n030-r1/bot": "verified",
+    "t03-refine-n030-r1/game": "verified",
+    "t04-refine-n035-r1/bot": "verified",
+    "t04-refine-n035-r1/game": "verified",
+    "t05-confirm-n030-r1/bot": "verified",
+    "t05-confirm-n030-r1/game": "verified",
+    "t06-confirm-n030-r2/bot": "verified",
+    "t06-confirm-n030-r2/game": "verified",
+    "t07-confirm-n030-r3/bot": "verified",
+    "t07-confirm-n030-r3/game": "verified"
+   },
+   "search_status": "confirmed",
+   "status_after_each_step": [
+    "verified_local",
+    "operator_recorded",
+    "published"
+   ],
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 580.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 588.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 701.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 709.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 822.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 830.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 943.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 951.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 1304.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1312.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1665.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 1673.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 2026.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "confirmed",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "complete",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "batch ended: confirmed",
+     "t_s": 2028.0
+    }
+   ],
+   "transfers": 157
+  },
   "reconnect_keeps_the_original_episode": {
    "attempts_retained": 0,
    "claim_confirmed": false,
@@ -2963,6 +4607,8 @@
    "claim_players": null,
    "cleanup_requested": true,
    "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [],
    "corrupt_retained": 0,
    "deadline_unchanged": true,
    "establishes": false,
@@ -2975,6 +4621,7 @@
    ],
    "history_withheld": false,
    "incidents": [],
+   "not_inventoried": [],
    "outcomes": [
     [
      "coarse",
@@ -2986,6 +4633,7 @@
    "overdue": false,
    "overrun_s": 0.0,
    "publication": "not_published",
+   "publication_detail": "unverified",
    "published_text": true,
    "recovery_deadline_s": 880.0,
    "reproduces": true,
@@ -3062,6 +4710,7 @@
      "t_s": 467.0
     },
     {
+     "first_failure": "2026-10-30T12:09:41+00:00",
      "kind": "evidence_failure",
      "t_s": 580.0
     },
@@ -3119,6 +4768,253 @@
    ],
    "transfers": 54
   },
+  "recovered_failure_then_the_batch_went_on": {
+   "attempts_retained": 1,
+   "claim_confirmed": true,
+   "claim_kind": "confirmed_observation",
+   "claim_players": 30,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [],
+   "corrupt_retained": 0,
+   "establishes": true,
+   "evidence_latest_export": "complete",
+   "evidence_problems": [],
+   "evidence_registry": "complete",
+   "generations": [
+    "gen-0001"
+   ],
+   "history_withheld": false,
+   "incidents": [],
+   "not_inventoried": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "PASS"
+    ],
+    [
+     "coarse",
+     50,
+     "FAIL"
+    ],
+    [
+     "refine",
+     30,
+     "PASS"
+    ],
+    [
+     "refine",
+     35,
+     "FAIL"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ]
+   ],
+   "overall": "clean",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "publication_detail": "unverified",
+   "published_text": true,
+   "recovery_deadline_s": null,
+   "reproduces": true,
+   "required_absent": [],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "resumed": true,
+   "roles": {
+    "t01-coarse-n025-r1/bot": "verified",
+    "t01-coarse-n025-r1/game": "verified",
+    "t02-coarse-n050-r1/bot": "verified",
+    "t02-coarse-n050-r1/game": "verified",
+    "t03-refine-n030-r1/bot": "verified",
+    "t03-refine-n030-r1/game": "verified",
+    "t04-refine-n035-r1/bot": "verified",
+    "t04-refine-n035-r1/game": "verified",
+    "t05-confirm-n030-r1/bot": "verified",
+    "t05-confirm-n030-r1/game": "verified",
+    "t06-confirm-n030-r2/bot": "verified",
+    "t06-confirm-n030-r2/game": "verified",
+    "t07-confirm-n030-r3/bot": "verified",
+    "t07-confirm-n030-r3/game": "verified"
+   },
+   "search_status": "confirmed",
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "first_failure": "2026-10-30T12:09:41+00:00",
+     "kind": "evidence_failure",
+     "t_s": 580.0
+    },
+    {
+     "kind": "control_acquired",
+     "t_s": 610.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 620.0
+    },
+    {
+     "kind": "resumed",
+     "t_s": 651.0
+    },
+    {
+     "first_failure": "2026-10-30T12:09:41+00:00",
+     "kind": "evidence_failure_passed",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 659.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 659.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 772.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 780.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 893.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 901.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 1014.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 1022.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 1375.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1383.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1736.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 1744.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 2097.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 2099.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "confirmed",
+     "t_s": 2099.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "complete",
+     "t_s": 2099.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "batch ended: confirmed",
+     "t_s": 2099.0
+    }
+   ],
+   "transfers": 159
+  },
   "remote_file_changing": {
    "attempts_retained": 20,
    "claim_confirmed": false,
@@ -3126,6 +5022,8 @@
    "claim_players": null,
    "cleanup_requested": true,
    "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [],
    "corrupt_retained": 20,
    "establishes": false,
    "evidence_latest_export": "corrupt",
@@ -3136,6 +5034,7 @@
    ],
    "history_withheld": false,
    "incidents": [],
+   "not_inventoried": [],
    "outcomes": [
     [
      "coarse",
@@ -3147,6 +5046,7 @@
    "overdue": false,
    "overrun_s": 0.0,
    "publication": "not_published",
+   "publication_detail": "unverified",
    "published_text": true,
    "recovery_deadline_s": 880.0,
    "reproduces": true,
@@ -3207,6 +5107,7 @@
      "t_s": 467.0
     },
     {
+     "first_failure": "2026-10-30T12:09:41+00:00",
      "kind": "evidence_failure",
      "t_s": 580.0
     },
@@ -3256,6 +5157,8 @@
    "claim_players": null,
    "cleanup_requested": true,
    "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [],
    "corrupt_retained": 0,
    "establishes": null,
    "evidence_latest_export": "partial",
@@ -3268,6 +5171,7 @@
    ],
    "history_withheld": false,
    "incidents": [],
+   "not_inventoried": [],
    "outcomes": [
     [
      "coarse",
@@ -3309,6 +5213,7 @@
    "overdue": false,
    "overrun_s": 0.0,
    "publication": "not_published",
+   "publication_detail": "unverified",
    "published_text": false,
    "recovery_deadline_s": null,
    "reproduces": true,
@@ -3481,6 +5386,8 @@
    "claim_players": null,
    "cleanup_requested": true,
    "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [],
    "corrupt_retained": 0,
    "establishes": false,
    "evidence_latest_export": "partial",
@@ -3492,6 +5399,7 @@
    ],
    "history_withheld": true,
    "incidents": [],
+   "not_inventoried": [],
    "outcomes": [
     [
      "coarse",
@@ -3533,6 +5441,7 @@
    "overdue": false,
    "overrun_s": 0.0,
    "publication": "not_published",
+   "publication_detail": "unverified",
    "published_text": true,
    "recovery_deadline_s": null,
    "reproduces": true,
@@ -3707,6 +5616,8 @@
    "claim_players": null,
    "cleanup_requested": true,
    "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [],
    "corrupt_retained": 0,
    "establishes": false,
    "evidence_latest_export": "corrupt",
@@ -3720,6 +5631,7 @@
    ],
    "history_withheld": false,
    "incidents": [],
+   "not_inventoried": [],
    "outcomes": [
     [
      "coarse",
@@ -3731,6 +5643,7 @@
    "overdue": false,
    "overrun_s": 0.0,
    "publication": "not_published",
+   "publication_detail": "unverified",
    "published_text": true,
    "recovery_deadline_s": null,
    "reproduces": true,
@@ -3825,6 +5738,8 @@
    "claim_players": null,
    "cleanup_requested": true,
    "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [],
    "corrupt_retained": 0,
    "establishes": false,
    "evidence_latest_export": "missing",
@@ -3835,6 +5750,7 @@
    ],
    "history_withheld": false,
    "incidents": [],
+   "not_inventoried": [],
    "outcomes": [
     [
      "coarse",
@@ -3846,6 +5762,7 @@
    "overdue": false,
    "overrun_s": 0.0,
    "publication": "not_published",
+   "publication_detail": "unverified",
    "published_text": true,
    "recovery_deadline_s": 880.0,
    "reproduces": true,
@@ -3906,6 +5823,7 @@
      "t_s": 467.0
     },
     {
+     "first_failure": "2026-10-30T12:09:41+00:00",
      "kind": "evidence_failure",
      "t_s": 580.0
     },
@@ -3950,6 +5868,8 @@
    "claim_players": null,
    "cleanup_requested": true,
    "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [],
    "corrupt_retained": 0,
    "establishes": false,
    "evidence_latest_export": "complete",
@@ -3960,6 +5880,7 @@
    ],
    "history_withheld": false,
    "incidents": [],
+   "not_inventoried": [],
    "outcomes": [
     [
      "coarse",
@@ -3971,6 +5892,7 @@
    "overdue": false,
    "overrun_s": 0.0,
    "publication": "not_published",
+   "publication_detail": "unverified",
    "published_text": true,
    "recovery_deadline_s": 880.0,
    "reproduces": true,
@@ -4031,6 +5953,7 @@
      "t_s": 467.0
     },
     {
+     "first_failure": "2026-10-30T12:09:41+00:00",
      "kind": "evidence_failure",
      "t_s": 580.0
     },
@@ -4072,6 +5995,243 @@
    ],
    "transfers": 27
   },
+  "unlistable_directory_stays_unknown": {
+   "attempts_retained": 0,
+   "claim_confirmed": false,
+   "claim_kind": "evidence_incomplete",
+   "claim_players": null,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [],
+   "corrupt_retained": 0,
+   "establishes": false,
+   "evidence_latest_export": "partial",
+   "evidence_problems": [
+    "directory provider-diagnostics could not be listed in full (PermissionError), so what it holds is not all in this inventory"
+   ],
+   "evidence_registry": "partial",
+   "generations": [
+    "gen-0001"
+   ],
+   "history_withheld": true,
+   "incidents": [],
+   "not_inventoried": [
+    {
+     "kind": "directory",
+     "path": "provider-diagnostics",
+     "reason": "PermissionError"
+    }
+   ],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "PASS"
+    ],
+    [
+     "coarse",
+     50,
+     "FAIL"
+    ],
+    [
+     "refine",
+     30,
+     "PASS"
+    ],
+    [
+     "refine",
+     35,
+     "FAIL"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ]
+   ],
+   "overall": "resources_verified_evidence_incomplete",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "public_says_paths_not_inventoried": 1,
+   "publication": "not_published",
+   "publication_detail": "unverified",
+   "published_text": true,
+   "readable_sibling_kept": true,
+   "recovery_deadline_s": null,
+   "reproduces": true,
+   "required_absent": [],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {
+    "t01-coarse-n025-r1/bot": "verified",
+    "t01-coarse-n025-r1/game": "verified",
+    "t02-coarse-n050-r1/bot": "verified",
+    "t02-coarse-n050-r1/game": "verified",
+    "t03-refine-n030-r1/bot": "verified",
+    "t03-refine-n030-r1/game": "verified",
+    "t04-refine-n035-r1/bot": "verified",
+    "t04-refine-n035-r1/game": "verified",
+    "t05-confirm-n030-r1/bot": "verified",
+    "t05-confirm-n030-r1/game": "verified",
+    "t06-confirm-n030-r2/bot": "verified",
+    "t06-confirm-n030-r2/game": "verified",
+    "t07-confirm-n030-r3/bot": "verified",
+    "t07-confirm-n030-r3/game": "verified"
+   },
+   "search_status": "confirmed",
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 580.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 588.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 701.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 709.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 822.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 830.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 943.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 951.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 1304.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1312.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1665.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 1673.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 2026.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "confirmed",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "partial",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "batch ended: confirmed",
+     "t_s": 2028.0
+    }
+   ],
+   "transfers": 157
+  },
   "watchdog_alone_with_no_controller": {
    "attempts_retained": null,
    "claim_confirmed": null,
@@ -4079,6 +6239,8 @@
    "claim_players": null,
    "cleanup_requested": true,
    "cleanup_verified": true,
+   "controller_inputs_corrupt": null,
+   "controller_inputs_missing": null,
    "corrupt_retained": 0,
    "establishes": null,
    "evidence_latest_export": null,
@@ -4087,11 +6249,13 @@
    "generations": [],
    "history_withheld": false,
    "incidents": [],
+   "not_inventoried": null,
    "outcomes": [],
    "overall": "resources_verified_evidence_incomplete",
    "overdue": false,
    "overrun_s": 0.0,
    "publication": "not_published",
+   "publication_detail": "unverified",
    "published_text": false,
    "recovery_deadline_s": null,
    "reproduces": null,
@@ -4158,6 +6322,8 @@
    "claim_players": null,
    "cleanup_requested": true,
    "cleanup_verified": true,
+   "controller_inputs_corrupt": [],
+   "controller_inputs_missing": [],
    "corrupt_retained": 1,
    "establishes": false,
    "evidence_latest_export": "corrupt",
@@ -4168,6 +6334,7 @@
    ],
    "history_withheld": false,
    "incidents": [],
+   "not_inventoried": [],
    "outcomes": [
     [
      "coarse",
@@ -4179,6 +6346,7 @@
    "overdue": false,
    "overrun_s": 0.0,
    "publication": "not_published",
+   "publication_detail": "unverified",
    "published_text": true,
    "recovery_deadline_s": 880.0,
    "reproduces": true,
@@ -4249,6 +6417,7 @@
      "t_s": 467.0
     },
     {
+     "first_failure": "2026-10-30T12:09:41+00:00",
      "kind": "evidence_failure",
      "t_s": 580.0
     },

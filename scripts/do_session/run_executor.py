@@ -50,6 +50,10 @@ import session_export
 import ssh_access
 
 ROLES = ('game', 'bot')
+EVIDENCE_FAILURE_SCHEMA = 'omega.do-session.evidence-failure/1'
+EVIDENCE_FAILURE_NAME = 'evidence-failure-%04d.json'
+EVIDENCE_FAILURE_GLOB = 'evidence-failure-*.json'
+EVIDENCE_REPORT_WINDOW_S = 10.0     # a registry that cannot be told in this long is asked again later: this is on disk, and the transfers must not wait for it
 RUNNER_SOURCE = pathlib.Path(guest_runner.__file__)
 FINISHED, STOPPED, PARTIAL, CONTROL_LOST, CLEANUP_STARTED, REFUSED = ('search_finished', 'stopped', 'partial_search', 'control_lost', 'cleanup_started', 'refused')
 NOT_LAUNCHED = 'not_launched'
@@ -272,7 +276,10 @@ class RunExecutor:
         self.smokes = 0
         self.fences_closed = False
         self.never_created = set()  # (run_id, role): a plan went out, and the host says no such run ever existed
-        self.evidence_failure_marked = False
+        self.evidence_episode = None        # the failed-transfer episode this controller is bound by: dict(ends=monotonic, observed=wall or None, where, heard)
+        self.episode_restored = False       # a returning controller reads what the last one left before its first transfer
+        self.settling = False               # looking again at committed runs on the way back into a batch: what fails here says nothing and ends nothing
+        self.dispatches_seen = None         # runs on record, as last read
         self.terminal_facts_found = set()   # (run_id, role): corrupt bytes this controller already wrote down, so a repeated sweep does not write them again
         self.stops_heard = set()            # (run_id, record): stop facts the registry acknowledged to this controller
         self.stops_unheard = {}             # (run_id, record): stop facts it did not, each kept until it does. Nothing more runs while one is here
@@ -342,7 +349,9 @@ class RunExecutor:
         return self.client.call('status', session_id=self.session_id)
 
     def _records(self):
-        return self.client.call('run_records', session_id=self.session_id)
+        rows = self.client.call('run_records', session_id=self.session_id)
+        self.dispatches_seen = len(rows)
+        return rows
 
     # ---- guests ------------------------------------------------------------------------------
 
@@ -360,6 +369,8 @@ class RunExecutor:
         asked = self.monotonic()
         now = session_clock.parse(self.client.call('health', session_id=self.session_id)['evaluated_at'])
         self.work_cutoff = asked + session_clock.parse(status['cleanup_c_utc']) - registry.DELETE_MARGIN_S - now
+        if status.get('recovery_deadline_utc') and self.evidence_episode is None:     # an episode already fixed binds every transfer from here, whatever this controller remembers
+            self.evidence_episode = dict(ends=asked + session_clock.parse(status['recovery_deadline_utc']) - now, observed=None, where='the recovery episode on record', heard=True)
 
     def _runner(self, role, command, *arguments, timeout_s=None, on_wait=None):
         argv = ['python3', self.runner_path, command] + [str(a) for a in arguments]
@@ -838,6 +849,8 @@ class RunExecutor:
         asked = self.monotonic()
         self.failpoint('before_dispatch_commit')
         grant = self._dispatch(trial, estimate)
+        self.dispatches_seen = None if self.dispatches_seen is None else self.dispatches_seen + 1
+        self.evidence_episode, self.episode_restored = None, True     # the registry heard this and let go of any open failure: the batch moved past it, and a later failure is its own
         self.failpoint('after_dispatch_commit')
         run_dir = self._run_dir(trial.run_id)
         self._write_durable(run_dir / 'grant.json', json.dumps(grant, indent=2, sort_keys=True) + '\n')
@@ -1095,7 +1108,6 @@ class RunExecutor:
         for role, sealed in context.sealed.items():
             exported = context.exported[role] = self._export_role(context.trial.run_id, role, sealed)
             if not exported['complete']:
-                self._mark_evidence_failure('%s of run %s' % (role, context.trial.run_id))
                 problem = '%s evidence was not fully exported: %s' % (role, exported['failed'])
                 # A failed transfer or this controller's own disk say nothing about the bytes on the host. Only a digest mismatch does, and only one that what is on record supports.
                 corrupt = [item for item in exported['failed'] if item['kind'] not in ('transfer', 'local')]
@@ -1107,15 +1119,95 @@ class RunExecutor:
                 else:
                     context.problems[run_checks.INFRASTRUCTURE].append(problem)
 
-    def _mark_evidence_failure(self, where):
-        """The moment a transfer first fails is what fixes the recovery episode, however long the rest of the run takes to reach it. The registry's clock, its first answer kept, and a report that gets lost only costs the difference."""
-        if self.evidence_failure_marked:
+    def _observe_evidence_failure(self, run_id, role, path, kind):
+        """A transfer or this disk just failed, and no other transfer starts until this is on record. That moment fixes the recovery episode, however long the rest of the work takes to reach its end.
+
+        On this disk first, so that a registry that cannot be told, or a controller that dies, leaves it for the next one. Then the registry, whose answer stands. A failure while settling committed runs on the way back into a batch says nothing and ends nothing, so it starts nothing.
+        """
+        if self.settling:
             return
+        self._restore_evidence_episode()
+        if self.evidence_episode is None:
+            where = '%s of run %s' % (role, run_id)
+            self._open_evidence_episode(self.wall(), where)
+            self._retain_evidence_failure(run_id, role, path, kind, where)
+        self._report_evidence_failure(self.client.within(EVIDENCE_REPORT_WINDOW_S))
+
+    def _open_evidence_episode(self, observed, where):
+        ends = self.monotonic() + observed + self.manifest['limits']['evidence_recovery_grace_s'] - self.wall()
+        self.evidence_episode = dict(ends=ends, observed=observed, where=where, heard=False)
+
+    def _retain_evidence_failure(self, run_id, role, path, kind, where):
+        document = dict(schema=EVIDENCE_FAILURE_SCHEMA, session_id=self.session_id, manifest_sha256=self.sha, run_id=run_id, role=role, path=cleanup_provider.redact(path), kind=kind, where=where, observed_at=session_clock.iso(self.evidence_episode['observed']), fencing_token=self.token, dispatches=self.dispatches_seen)
         try:
-            self.client.mutate('record_evidence_failure', session_id=self.session_id, fencing_token=self.token, detail=where)
-            self.evidence_failure_marked = True
+            for attempt in range(10000):
+                target = self.evidence.root / (EVIDENCE_FAILURE_NAME % attempt)
+                if not target.exists():
+                    self._write_durable(target, json.dumps(document, indent=2, sort_keys=True) + '\n')
+                    return
+        except OSError as error:     # this disk's trouble may be what failed. The registry can still be told, and the transfer loop still goes on
+            self._note('evidence_failure_not_retained', detail=type(error).__name__)
+
+    def _report_evidence_failure(self, client):
+        """The episode to the registry, as old as it really is, with the registry's own answer taken over if that is earlier. A lost acknowledgement only means asking again: only the first report counts there."""
+        episode = self.evidence_episode
+        if episode is None or episode['heard']:
+            return
+        asked = self.monotonic()
+        try:
+            answer = client.mutate('record_evidence_failure', session_id=self.session_id, fencing_token=self.token, detail=episode['where'], observed_age_s=max(0.0, self.wall() - episode['observed']))
         except (registry_client.RegistryRejected, registry_client.RegistryUnavailable) as error:
             self._note('evidence_failure_unreported', detail=cleanup_provider.redact(error))
+            return
+        episode['heard'] = True
+        episode['ends'] = min(episode['ends'], asked + session_clock.parse(answer['recovery_deadline_utc']) - session_clock.parse(answer['evaluated_at']))
+
+    def _restore_evidence_episode(self):
+        """What the last controller saw and may not have got to say. Before this controller's first transfer, so that a retry cannot read as a first failure.
+
+        A record stands until a run is dispatched after it. Then the batch moved past it, and the registry let go of it at that dispatch.
+        """
+        if self.episode_restored:
+            return
+        self.episode_restored = True
+        if self.evidence_episode is not None:
+            return
+        try:
+            paths = sorted(self.evidence.root.glob(EVIDENCE_FAILURE_GLOB))
+        except OSError as error:
+            self._note('evidence_failure_not_read', detail=type(error).__name__)
+            return
+        if not paths:
+            return
+        try:
+            count = len(self._records())
+        except (registry_client.RegistryRejected, registry_client.RegistryUnavailable) as error:
+            self._note('evidence_failure_not_compared', detail=cleanup_provider.redact(error))
+            count = None
+        for path in paths:
+            document = measurement_window.load_json(path)[0]
+            try:
+                if document['session_id'] != self.session_id or document['manifest_sha256'] != self.sha:
+                    raise ValueError('another session')
+                observed = session_clock.parse(document['observed_at'])
+            except (TypeError, KeyError, ValueError) as error:
+                self._note('evidence_failure_unreadable', path=path.name, detail=type(error).__name__)
+                continue
+            if count is None or not isinstance(document.get('dispatches'), int) or document['dispatches'] >= count:
+                self._open_evidence_episode(observed, str(document.get('where')))
+                self._report_evidence_failure(self.client)
+                return
+
+    def _transfer_timeout(self):
+        """No evidence transfer starts at or past the end of the episode a failure started, and none may outlast it. Stopping and sealing are not transfers, and keep to the work cutoff."""
+        self._restore_evidence_episode()
+        seconds = self._guest_timeout(self.policy.transfer_timeout_s)
+        if self.evidence_episode is None:
+            return seconds
+        remaining = self.evidence_episode['ends'] - self.monotonic()
+        if remaining <= 0:
+            raise GuestLost('the evidence recovery episode is over')
+        return min(seconds, remaining)
 
     def _set_aside(self, partial):
         """A new attempt never overwrites an earlier one's bytes. The ``.partial`` it would have replaced keeps a name of its own, and a failure to do that costs this attempt rather than that evidence.
@@ -1146,6 +1238,7 @@ class RunExecutor:
         refused = capacity_scorer.seal_reply_problems(self._run_dir(run_id), role, sealed['seal_sha256'], sealed['seal'], self.token, self._expected(run_id))
         if refused:
             self._note('seal_reply_refused', run_id=run_id, role=role, problems=refused)
+            self._observe_evidence_failure(run_id, role, guest_runner.SEAL, 'transfer')
             return dict(complete=False, failed=[dict(path=relative, kind='transfer', reason='the reply it would be held to contradicts what is on record') for relative, _ in wanted], files=len(wanted), copied=0)
         self._retain_seal_receipt(run_id, role, sealed['seal_sha256'], sealed['seal'])
         try:
@@ -1155,6 +1248,7 @@ class RunExecutor:
             try:
                 target.mkdir(parents=True, exist_ok=True)
             except OSError:
+                self._observe_evidence_failure(run_id, role, role, 'local')
                 return dict(complete=False, failed=[dict(path=relative, kind='local', reason=type(error).__name__) for relative, _ in wanted], files=len(wanted), copied=0)
         failed, received = [], []
         for relative, digest in wanted:
@@ -1164,19 +1258,25 @@ class RunExecutor:
                     continue
                 local.parent.mkdir(parents=True, exist_ok=True)
                 partial = local.with_name(local.name + '.partial')
+                seconds = self._transfer_timeout()
                 self._set_aside(partial)
-                result = self.guests.get(role, remote + relative, str(partial), self._guest_timeout(self.policy.transfer_timeout_s), self._wait_callback())
+                result = self.guests.get(role, remote + relative, str(partial), seconds, self._wait_callback())
                 self._note('evidence_transfer', run_id=run_id, role=role, path=relative, returncode=result.returncode, expected_sha256=digest)
                 if result.returncode != 0:
                     failed.append(dict(path=relative, kind='transfer', reason=cleanup_provider.redact(result.stderr)))
+                    self._observe_evidence_failure(run_id, role, relative, 'transfer')
                 else:
                     received.append((relative, digest, local, partial))
             except GuestLost as lost:
                 failed.append(dict(path=relative, kind='transfer', reason=cleanup_provider.redact(lost)))
+                self._observe_evidence_failure(run_id, role, relative, 'transfer')
             except OSError as error:
                 # One file's local failure costs that file. An existing file with other bytes is never overwritten.
                 failed.append(dict(path=relative, kind='local', reason=type(error).__name__))
+                self._observe_evidence_failure(run_id, role, relative, 'local')
         copied = self._compare_received(run_id, role, received, failed) if received else 0
+        if failed:     # a comparison is the first anyone can know of a digest mismatch, and of a guard that could not be had
+            self._observe_evidence_failure(run_id, role, failed[0]['path'], failed[0]['kind'])
         return dict(complete=not failed, failed=failed, files=len(wanted), copied=copied)
 
     def _compare_received(self, run_id, role, received, failed):
@@ -1543,6 +1643,7 @@ class RunExecutor:
         Returns the host problems found, for the caller to judge.
         """
         records = self._records()
+        self._restore_evidence_episode()
         lost = [row['run_id'] for row in records if not self._run_dir(row['run_id']).is_dir()]
         if lost and self.collecting:
             self._note('run_directories_lost', run_ids=lost)     # nothing more runs either way, and whatever is still running must still be stopped
@@ -1579,16 +1680,20 @@ class RunExecutor:
         A file that cannot be fetched now says nothing, so it stays a note and costs a committed decision nothing.
         """
         self._replay_retained_stops(records)
-        for row in records:
-            if row['outcome'] not in search.ADVANCING:
-                continue
-            run_id = row['run_id']
-            for role in inventories:
-                try:
-                    if self._role_inventory(run_id, role)['status'] not in ('verified', 'never_created') and not self._recover_role(run_id, role, self._quiet_keepalive):
-                        self._note('committed_evidence_unverified', run_id=run_id, role=role)
-                except LOCAL_FAILURES as error:     # a surprising seal on one committed run must not cost the return, and it proves nothing about what the run decided
-                    self._note('committed_evidence_unverified', run_id=run_id, role=role, detail=type(error).__name__)
+        self.settling = not self.collecting
+        try:
+            for row in records:
+                if row['outcome'] not in search.ADVANCING:
+                    continue
+                run_id = row['run_id']
+                for role in inventories:
+                    try:
+                        if self._role_inventory(run_id, role)['status'] not in ('verified', 'never_created') and not self._recover_role(run_id, role, self._quiet_keepalive):
+                            self._note('committed_evidence_unverified', run_id=run_id, role=role)
+                    except LOCAL_FAILURES as error:     # a surprising seal on one committed run must not cost the return, and it proves nothing about what the run decided
+                        self._note('committed_evidence_unverified', run_id=run_id, role=role, detail=type(error).__name__)
+        finally:
+            self.settling = False
 
     def _expected(self, run_id):
         return dict(session_id=self.session_id, manifest_sha256=self.sha, run_id=run_id, current_token=self.token)
@@ -2099,16 +2204,16 @@ class RunExecutor:
         return session_export.role_inventory(self._run_dir(run_id), run_id, role, self.session_id, self.sha, self.manifest, self.token)
 
     def _evidence_inventory(self):
-        """Every role of every run that a plan went out for. A role with no plan never reached a host."""
+        """Every role of every run that the records here say was meant for a host. A plan that has gone proves nothing by itself, so a role is only left out when nothing on record shows it went."""
         inventory = []
         for row in self._records():
             run_dir = self._run_dir(row['run_id'])
             for role in ROLES:
                 try:
-                    planned = (run_dir / ('plan-%s.json' % role)).exists()
+                    went = any(session_export.role_reach(run_dir, row['run_id'], role))
                 except OSError:
-                    planned = True
-                if planned:
+                    went = True
+                if went:
                     inventory.append(self._role_inventory(row['run_id'], role))
         return inventory
 
@@ -2149,7 +2254,9 @@ class RunExecutor:
         return [(entry['run_id'], entry['role']) for entry in self._evidence_inventory() if entry['status'] not in ('verified', 'never_created')]
 
     def _recover_evidence(self, missing):
-        """One bounded episode. It ends at the registry's own deadline, and a reconnect never reopens it."""
+        """One bounded episode. It ends at the registry's own deadline, and a reconnect never reopens it. What this controller or the last one saw is told first, so the deadline is the first failure's, and it binds this controller even if the registry never hears."""
+        self._restore_evidence_episode()
+        self._report_evidence_failure(self.client)
         try:
             episode = self.client.mutate('begin_evidence_recovery', session_id=self.session_id, fencing_token=self.token)
         except registry_client.RegistryRejected as rejection:
@@ -2158,6 +2265,8 @@ class RunExecutor:
         asked = self.monotonic()
         now = session_clock.parse(self.client.call('health', session_id=self.session_id)['evaluated_at'])
         self.recovery_ends = asked + session_clock.parse(episode['recovery_deadline_utc']) - now
+        if self.evidence_episode is not None:
+            self.recovery_ends = min(self.recovery_ends, self.evidence_episode['ends'])
         self.in_recovery = True
         try:
             missing = self._recovery_sweeps(missing)
@@ -2210,8 +2319,9 @@ class RunExecutor:
             remote_seal = guest_runner.DEFAULT_ROOT + '/runs/' + run_id + '/' + role + '/' + guest_runner.SEAL
             with tempfile.TemporaryDirectory() as temporary:
                 local = pathlib.Path(temporary) / guest_runner.SEAL
-                result = self.guests.get(role, remote_seal, str(local), self._guest_timeout(self.policy.transfer_timeout_s), on_wait)
+                result = self.guests.get(role, remote_seal, str(local), self._transfer_timeout(), on_wait)
                 if result.returncode != 0:
+                    self._observe_evidence_failure(run_id, role, guest_runner.SEAL, 'transfer')
                     return False     # no bytes: this says nothing about the host's seal
                 self._retain_seal_receipt(run_id, role, digest)
                 validation = self._begin_validation(run_id, role)

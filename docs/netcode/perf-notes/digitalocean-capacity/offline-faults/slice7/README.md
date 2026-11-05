@@ -4,7 +4,7 @@ Offline evidence for [issue #70](https://github.com/Operatorr/godot-networking-p
 
 | File | What it is | Reproducible |
 | --- | --- | --- |
-| [`synthetic-exports.json`](synthetic-exports.json) | 26 whole sessions through the real controller, registry, watchdog, prover, scorer and exporter, over a fake account and fake guests on a scripted clock. Each has its timeline, transfers, resources, incidents and how its three results ended | Yes: `test_export_evidence` regenerates it and compares the hash |
+| [`synthetic-exports.json`](synthetic-exports.json) | 36 whole sessions through the real controller, registry, watchdog, prover, scorer and exporter, over a fake account and fake guests on a scripted clock. Each has its timeline, transfers, resources, incidents and how its three results ended | Yes: `test_export_evidence` regenerates it and compares the hash |
 | [`synthetic-sample/`](synthetic-sample/) | One session's published text as an export writes it, under a banner saying it is a fixture. Its player count, prices and hashes are all fixture values | Yes, likewise |
 | [`SHA256SUMS`](SHA256SUMS) | Hashes of the above | |
 
@@ -27,6 +27,14 @@ No raw recorder file is retained. Each scenario's raw tree is deleted with its t
 | A deletion outage past D | `complete` | `resources_verified_after_overdue` | The fixture's candidate, with the incident kept on record |
 | New socket fields, one opaque, carried by the raw files | `complete` | `clean` | None of them reached anything derived |
 | The manifest changed afterward | `corrupt`, inventory only | Registry's earlier word kept apart | No report is written |
+| A confirmed search with a plan, a clock bracket or a recorded provisioning artifact lost before wrap-up | `missing` | `resources_verified_evidence_incomplete` | Nothing, though every score still verifies: the search's sentence stays as history |
+| A directory that cannot be listed, with a readable one beside it | `partial` | `resources_verified_evidence_incomplete` | Nothing: the sibling stays inventoried and the published text says how many paths it cannot cover |
+| A first failure followed by a slow file, by a crash, or by a crash with the report lost | `corrupt` | `resources_verified_evidence_incomplete` | Nothing, and the recovery deadline stays the first failure plus the grace. `corrupt` is the fixture's cut bytes kept under `.partial` |
+| A failure a new controller recovers inside the episode, and a resumed batch that goes on | `complete` | `clean` | The fixture's candidate: dispatching the next run ended that failure |
+| Text placed in the canonical directory, then an operator's record, then a fake publication adapter | `complete` | `clean` | Publication reads `verified_local`, `operator_recorded`, then `published`, one step each |
+| One bot at a 20% loss estimate beside a passing mean | `complete` | `clean` | The fixture's candidate: the peer peak reaches published text and decides nothing |
+
+The scenario once named `published_to_the_canonical_directory_only` is now `prepared_in_the_canonical_directory_only`, because a local copy is not published. Its evidence and overall results did not change, and its publication status now reads `verified_local`.
 
 A failed session's `overall` is about evidence and resources, not about what was measured. `clean` beside a failed search means every file arrived and every resource is gone.
 

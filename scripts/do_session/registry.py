@@ -15,6 +15,7 @@ Time always comes from the registry's own effective clock (``session_clock``), n
 import contextlib
 import hashlib
 import json
+import math
 import os
 import pathlib
 import sqlite3
@@ -964,6 +965,10 @@ class Registry:
                             (session_id, run_id, now_text, fencing_token, session['controller_id'], launch_text,
                              canonical(trial) if trial is not None else None, estimated_duration_s, must_stop_by))
             self.db.execute('UPDATE sessions SET state=? WHERE session_id=?', (RUNNING, session_id))
+            if session['recovery_first_failure_at'] is not None and session['recovery_deadline_utc'] is None:
+                # The batch went on past that failure with no recovery begun, so there was no episode to end: admission reserved the recovery allowance for the end of this work. A deadline already fixed stays fixed.
+                self.db.execute('UPDATE sessions SET recovery_first_failure_at=NULL WHERE session_id=?', (session_id,))
+                self.event(now_text, session_id, 'evidence_failure_passed', dict(first_failure=session['recovery_first_failure_at'], run_id=run_id))
             self.event(now_text, session_id, 'run_dispatch_intent',
                        dict(run_id=run_id, fencing_token=fencing_token, launch_by=launch_text))
             granted = dict(session_id=session_id, run_id=run_id, authorized=True, launch_by=launch_text, fencing_token=fencing_token)
@@ -1331,16 +1336,24 @@ class Registry:
         return self._mutate('begin_evidence_recovery', dict(session_id=session_id, fencing_token=fencing_token), request_id,
                             session_id, body, gate=self._authority_gate(fencing_token))
 
-    def record_evidence_failure(self, session_id, fencing_token, detail=None, request_id=None):
-        """When a transfer first failed, on this registry's clock. Only ever the first: a later failure, a retry or a reconnect cannot move the episode this starts."""
+    def record_evidence_failure(self, session_id, fencing_token, detail=None, observed_age_s=0.0, request_id=None):
+        """When a transfer first failed, on this registry's clock. Only ever the first: a later failure, a retry or a reconnect cannot move the episode this starts.
+
+        ``observed_age_s`` is how long before this report the controller saw it, for a report that was lost or interrupted. It is a difference on one machine's clock, so that clock's offset from this one drops out, and it can only make an episode earlier, so no clock anywhere can make one longer.
+        """
+        if not isinstance(observed_age_s, (int, float)) or isinstance(observed_age_s, bool) or not math.isfinite(observed_age_s) or observed_age_s < 0:
+            raise Rejection('bad_request', 'observed_age_s must be a finite, non-negative number of seconds')
+
         def body(effective, now_text, session):
             self._require_token(session, fencing_token)
-            if session['recovery_first_failure_at'] is not None:
-                return dict(session_id=session_id, first_failure_at=session['recovery_first_failure_at'])
-            self.db.execute('UPDATE sessions SET recovery_first_failure_at=? WHERE session_id=?', (now_text, session_id))
-            self.event(now_text, session_id, 'evidence_failure', dict(detail=detail))
-            return dict(session_id=session_id, first_failure_at=now_text)
-        return self._mutate('record_evidence_failure', dict(session_id=session_id, fencing_token=fencing_token, detail=detail), request_id, session_id, body)
+            first = session['recovery_first_failure_at']
+            if first is None:
+                first = session_clock.iso(effective - observed_age_s)
+                self.db.execute('UPDATE sessions SET recovery_first_failure_at=? WHERE session_id=?', (first, session_id))
+                self.event(now_text, session_id, 'evidence_failure', dict(detail=detail, first_failure=first))
+            deadline = session['recovery_deadline_utc'] or session_clock.iso(min(session_clock.parse(first) + session['grace_s'], session_clock.parse(session['cleanup_c_utc'])))
+            return dict(session_id=session_id, first_failure_at=first, recovery_deadline_utc=deadline, evaluated_at=now_text)
+        return self._mutate('record_evidence_failure', dict(session_id=session_id, fencing_token=fencing_token, detail=detail, observed_age_s=observed_age_s), request_id, session_id, body)
 
     def record_measurement(self, session_id, fencing_token, outcome, ref=None, request_id=None):
         if not isinstance(outcome, str) or not outcome:
