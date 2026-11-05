@@ -4,6 +4,8 @@ The registry cannot reach a guest, so the order of a start against a revocation 
 effect when no grant it found can still be used. These tests hold both sides of that line, with and without a controller.
 """
 import concurrent.futures
+import contextlib
+import io
 import json
 import time
 import types
@@ -15,6 +17,7 @@ import guest_agent
 import guest_runner
 import registry
 import registry_client
+import registry_cli
 import registry_fixtures as stacks
 import run_executor
 import run_fixtures as rf
@@ -79,6 +82,33 @@ class RegistrySide(unittest.TestCase):
         self.client.mutate('operator_abort', session_id=SESSION, reason='operator')
         self.assertEqual(self.status()['state'], registry.DELETING)
         self.assertNotIn('revocation_pending', self.kinds())
+
+    def test_cleanup_ack_rpc_and_cli_lists_share_pending_and_effective_state(self):
+        for method in ('operator_abort', 'request_cleanup'):
+            with self.subTest(method=method):
+                self.setUp()
+                token = self.paused()
+                grants = [self.grant(token, role=role) for role in ('game', 'bot')]
+                params = dict(session_id=SESSION, reason='done')
+                if method == 'request_cleanup':
+                    params['fencing_token'] = token
+                for count in (2, 1, 0):
+                    response = self.registry.rpc(dict(method=method, params=params))
+                    self.assertTrue(response['ok'], response)
+                    status = self.status()
+                    self.assertEqual(status['state'], registry.REVOCATION_PENDING if count else registry.DELETING)
+                    self.assertEqual(len(status['revocation']['grants']), count)
+                    output = io.StringIO()
+                    with mock.patch.object(registry_cli.registry_mod, 'Registry', return_value=self.registry), mock.patch.object(self.registry, 'close'), contextlib.redirect_stdout(output):
+                        registry_cli.read_command(types.SimpleNamespace(command='sessions', state_dir='unused'))
+                    views = [response['result'], self.registry.rpc(dict(method='list_sessions'))['result'][0],
+                             json.loads(output.getvalue())[0]]
+                    for view in views:
+                        self.assertEqual(view['state'], status['state'])
+                        self.assertEqual(view['revocation'], status['revocation'])
+                    if count:
+                        self.client.mutate('resolve_guest_grant', session_id=SESSION,
+                                           grant_id=grants[2 - count]['grant_id'], resolution='started')
 
     def test_a_takeover_is_pending_until_a_fence_acknowledgement_and_only_the_current_token_can_give_it(self):
         old = self.paused()

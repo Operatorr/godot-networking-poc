@@ -747,6 +747,24 @@ class RealCommandBounds(unittest.TestCase):
     """The real poller, a real child, the real clock and the real one second poll. Not a real-time promise: an overrun is bounded by these margins, not by a poll."""
     MARGIN_S = 0.2
 
+    def test_expensive_temporary_file_preparation_cannot_spawn_after_cutoff(self):
+        real_temporary_file = tempfile.TemporaryFile
+        clock = [0.0]
+        files = []
+        def delayed():
+            clock[0] += 0.2
+            stream = real_temporary_file()
+            files.append(stream)
+            return stream
+        popen = unittest.mock.Mock(side_effect=AssertionError('spawned after cutoff'))
+        with unittest.mock.patch.object(ssh_access.tempfile, 'TemporaryFile', side_effect=delayed):
+            result = ssh_access.bounded_command(popen, ['unused'], 0.25, None, lambda _: None,
+                                                lambda: clock[0], ssh_access.POLL_S)
+        popen.assert_not_called()
+        self.assertIsNone(result.returncode)
+        self.assertIn('timed out', result.stderr)
+        self.assertTrue(all(stream.closed for stream in files))
+
     def run_child(self, seconds, cutoff, on_wait=None, sleep=time.sleep):
         started = time.monotonic()
         result = ssh_access.bounded_command(subprocess.Popen, [sys.executable, '-c', 'import time; time.sleep(%s)' % seconds], cutoff, on_wait, sleep, time.monotonic, ssh_access.POLL_S)

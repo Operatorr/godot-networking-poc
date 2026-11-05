@@ -92,6 +92,8 @@ def bounded_command(popen, argv, timeout_s, on_wait, sleep, monotonic, poll_s):
     # Regular temporary files cannot fill a pipe and block the child before it exits.
     # They also keep output out of memory while lease callbacks continue to run.
     with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
+        if monotonic() >= deadline:
+            return CommandResult(None, '', 'timed out after %s s' % timeout_s)
         process = popen(argv, stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr)
 
         def oversized():

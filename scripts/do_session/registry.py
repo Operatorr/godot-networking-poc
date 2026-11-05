@@ -1369,7 +1369,7 @@ class Registry:
 
     def _cleanup_view(self, session_id):
         session = self.session_row(session_id)
-        return dict(session_id=session_id, state=session['state'], cleanup_requested_at=session['cleanup_requested_at'],
+        return dict(session_id=session_id, **self._public_state(session), cleanup_requested_at=session['cleanup_requested_at'],
                     cleanup_reason=session['cleanup_reason'], deadline_d_utc=session['deadline_d_utc'])
 
     def request_cleanup(self, session_id, fencing_token, reason, request_id=None):
@@ -1541,17 +1541,20 @@ class Registry:
     def manifest(self, session_id):
         return json.loads(self.session_row(session_id)['manifest_json'])
 
+    def _public_state(self, session):
+        """Expose revocation intent versus effect consistently on every lifecycle response."""
+        revocation = self.revocation_view(session)
+        return dict(state=REVOCATION_PENDING if revocation['pending'] else session['state'],
+                    **(dict(revocation=revocation) if self.guest_grants(session['session_id']) else {}))
+
     def status(self, session_id):
         """The three outcomes stay separate. ``overall`` only combines them, never overwrites them."""
         session = self.session_row(session_id)
         incidents = self.incidents(session_id)
         overdue = [i for i in incidents if i['kind'] == 'cleanup-overdue']
-        revocation = self.revocation_view(session)
         return dict(
             session_id=session_id, manifest_sha256=session['manifest_sha256'],
-            # Only a session that has issued a grant has anything to say here, so a lifecycle with no guest process reads as it always did.
-            **(dict(revocation=revocation) if self.guest_grants(session_id) else {}),
-            state=REVOCATION_PENDING if revocation['pending'] else session['state'],
+            **self._public_state(session),
             t0_utc=session['t0_utc'], deadline_d_utc=session['deadline_d_utc'], cleanup_c_utc=session['cleanup_c_utc'],
             controller_id=session['controller_id'], fencing_token=session['fencing_token'],
             lease_expires_at=session['lease_expires_at'], terminal_failure=session['terminal_failure'],
@@ -1589,7 +1592,7 @@ class Registry:
         return 'resources_verified_after_overdue' if overdue else 'clean'
 
     def list_sessions(self):
-        return [dict(session_id=r['session_id'], state=r['state'], deadline_d_utc=r['deadline_d_utc'],
+        return [dict(session_id=r['session_id'], **self._public_state(r), deadline_d_utc=r['deadline_d_utc'],
                      cleanup_outcome=r['cleanup_outcome'])
                 for r in self.db.execute('SELECT * FROM sessions ORDER BY session_id')]
 
