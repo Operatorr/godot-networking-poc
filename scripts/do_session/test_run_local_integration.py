@@ -25,6 +25,7 @@ import run_fault_harness
 import run_fixtures as rf
 import run_plan
 import search
+import session_export
 
 HERE = pathlib.Path(__file__).parent
 ENV = dict(os.environ, PYTHONDONTWRITEBYTECODE='1')
@@ -212,11 +213,46 @@ class WholeRuns(LocalFixture):
         self.document(self.execute(unscored, '--no-wrap-up'))
         self.assertEqual([r['outcome'] for r in self.records(unscored)], [search.INCONCLUSIVE])
 
+    def test_a_real_wrap_up_leaves_a_session_export_and_the_real_watchdog_still_closes(self):
+        session = self.session(workload_seconds=1.0)
+        self.document(self.execute(session, '--score', PASS_ALL))
+        exported = session.session_dir / 'export' / 'gen-0001'
+        self.assertTrue((exported / 'inventory.json').exists())
+        status = session.client_for('observer').call('status', session_id=session.SESSION)
+        self.assertTrue(status['evidence']['ref'].startswith('export/gen-0001/inventory.json#sha256:'), status['evidence'])
+        self.assertEqual(session_export.verify(session.session_dir, 'gen-0001'), [])
+        session._await(lambda: session.client_for('observer').call('status', session_id=session.SESSION)['state'] == registry.CLOSED)
+
     def test_a_swarm_that_reports_nothing_fails_the_required_evidence(self):
         session = self.session(workload_seconds=1.0, bot_extra=['--no-report'])
         result = self.document(self.execute(session, '--score', PASS_ALL, '--no-wrap-up'))['batch']
         self.assertEqual(result['search_status'], 'stopped_infrastructure_failure')
         self.assertTrue(any('report.json' in reason for reason in result['runs'][0]['reasons']))
+
+    @unittest.skipUnless(os.environ.get('OMEGA_LOCAL_RELEASE_DIR'), 'needs a real release build; see the module docstring')
+    def test_real_binaries_leave_every_file_the_export_requires_and_it_says_the_rest(self):
+        """A real 60 s window, a real seal and the real transfer path. If the frozen schema listed a file the real recorders do not write, every real session would read as incomplete, and only this can show that."""
+        release = pathlib.Path(os.environ['OMEGA_LOCAL_RELEASE_DIR'])
+        session = self.session(release_dir=release)
+        self.document(self.harness(session, 'execute', 'controller-real', '--fencing-token', str(session.token), timeout=300))
+        row = self.records(session)[0]
+        inventory = json.loads((session.session_dir / 'export' / 'gen-0001' / 'inventory.json').read_text())
+        roles = {item['role']: item for item in inventory['roles'] if item['run_id'] == row['run_id']}
+        self.assertEqual(sorted(roles), ['bot', 'game'])
+        for role, item in roles.items():
+            self.assertEqual(item['status'], 'verified', item)
+            self.assertEqual(item['required_absent'], [], role)
+            self.assertFalse(item['stale_schema'], role)
+        self.assertEqual(session_export.reproduce(session.session_dir, 'gen-0001'), [])
+        self.assertEqual(session_export.verify(session.session_dir, 'gen-0001'), [])
+        report = json.loads((session.session_dir / 'export' / 'gen-0001' / 'session-report.json').read_text())
+        run = report['runs'][0]
+        self.assertEqual(run['outcome'], search.INCONCLUSIVE, 'a real run on this platform has no counters, and nothing here can make it pass')
+        self.assertFalse(report['establishes'])
+        self.assertIsNotNone(run['diagnostics']['ticks']['p95_work_ns'])
+        self.assertIsNotNone(run['diagnostics']['server']['snapshot_build']['mean_ns'])
+        self.assertGreater(run['diagnostics']['server']['event_sends'] or 0, 0)
+        self.assertTrue((session.session_dir / 'export' / 'gen-0001' / 'published' / 'summary.md').exists(), inventory.get('publication_refused'))
 
     @unittest.skipUnless(os.environ.get('OMEGA_LOCAL_RELEASE_DIR'), 'needs a real release build; see the module docstring')
     def test_real_binaries_run_through_the_same_path(self):

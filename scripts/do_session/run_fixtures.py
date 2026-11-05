@@ -65,6 +65,8 @@ class RunSim(pf.Sim):
         super().__init__(case, **options)
         self.guests = fake_run_guest.FakeRunGuests(self)
         self.result = None
+        (self.stack.root / 'manifest.json').write_text(json.dumps(self.manifest))     # what ``do_session.py freeze`` leaves in a real session directory
+        (self.stack.root / 'manifest.sha256').write_text(self.sha + '\n')
 
     def ready(self):
         self.result = self.run()

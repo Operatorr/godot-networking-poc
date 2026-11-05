@@ -11,6 +11,7 @@ import unittest
 import unittest.mock
 
 import do_session
+import evidence_publication
 import provision_cli
 import provision_fixtures as pf
 import provisioner
@@ -22,7 +23,7 @@ REPO = pathlib.Path(__file__).parents[2]
 
 class Cli(unittest.TestCase):
     def setUp(self):
-        self.sim = pf.Sim(self)
+        self.sim = pf.Sim(self, durable_destination=evidence_publication.AMENDED_DESTINATION)
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         self.root = pathlib.Path(directory.name)
@@ -62,6 +63,18 @@ class Cli(unittest.TestCase):
         code, out = self.run_cli(*self.provision_args())
         self.assertEqual(code, 2)
         self.assertEqual(json.loads(out)['code'], 'authorization_refused')
+        self.assertEqual(self.token_reads, [])
+        self.assertEqual(self.sim.account.requests, [])
+
+    def test_a_capacity_session_with_no_accepted_evidence_destination_is_refused_before_anything_else(self):
+        sim = pf.Sim(self, session_id='do-cap-legacy-bucket')     # the object-store reference the operator rejected in issue 63
+        (self.session_dir / 'manifest.json').write_text(json.dumps(sim.manifest, sort_keys=True))
+        (self.session_dir / 'manifest.sha256').write_text(sim.sha + '  manifest.json\n')
+        self.authorization.write_text(json.dumps(sim.packet))
+        code, out = self.run_cli(*self.provision_args())
+        self.assertEqual(code, 2)
+        self.assertEqual(json.loads(out)['code'], 'authorization_refused')
+        self.assertTrue(any('text model' in reason for reason in json.loads(out)['reasons']), out)
         self.assertEqual(self.token_reads, [])
         self.assertEqual(self.sim.account.requests, [])
 

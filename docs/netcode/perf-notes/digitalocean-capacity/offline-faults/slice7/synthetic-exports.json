@@ -1,0 +1,4296 @@
+{
+ "kind": "synthetic",
+ "note": "Synthetic. Nothing ran: every number is arithmetic from fixture recorder files, on a scripted clock, against a fake provider and fake guests. It shows what the controller and exporter do with those bytes and nothing about any host, capacity or cost.",
+ "scenarios": {
+  "confirmation_failed_no_replacement": {
+   "attempts_retained": 0,
+   "claim_confirmed": false,
+   "claim_kind": "unconfirmed_variable",
+   "claim_players": null,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "corrupt_retained": 0,
+   "establishes": false,
+   "evidence_latest_export": "complete",
+   "evidence_problems": [],
+   "evidence_registry": "complete",
+   "generations": [
+    "gen-0001",
+    "gen-0002"
+   ],
+   "history_withheld": false,
+   "incidents": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "PASS"
+    ],
+    [
+     "coarse",
+     50,
+     "FAIL"
+    ],
+    [
+     "refine",
+     30,
+     "PASS"
+    ],
+    [
+     "refine",
+     35,
+     "FAIL"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "FAIL"
+    ]
+   ],
+   "overall": "clean",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "published_text": true,
+   "recovery_deadline_s": null,
+   "reproduces": true,
+   "required_absent": [],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {
+    "t01-coarse-n025-r1/bot": "verified",
+    "t01-coarse-n025-r1/game": "verified",
+    "t02-coarse-n050-r1/bot": "verified",
+    "t02-coarse-n050-r1/game": "verified",
+    "t03-refine-n030-r1/bot": "verified",
+    "t03-refine-n030-r1/game": "verified",
+    "t04-refine-n035-r1/bot": "verified",
+    "t04-refine-n035-r1/game": "verified",
+    "t05-confirm-n030-r1/bot": "verified",
+    "t05-confirm-n030-r1/game": "verified",
+    "t06-confirm-n030-r2/bot": "verified",
+    "t06-confirm-n030-r2/game": "verified"
+   },
+   "search_status": "unconfirmed_variable",
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 580.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 588.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 701.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 709.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 822.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 830.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 943.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 951.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 1304.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1312.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1665.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 1667.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "unconfirmed_variable",
+     "t_s": 1667.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "complete",
+     "t_s": 1667.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "batch ended: unconfirmed_variable",
+     "t_s": 1667.0
+    }
+   ],
+   "transfers": 135
+  },
+  "confirmed_then_verified_absent": {
+   "attempts_retained": 0,
+   "claim_confirmed": true,
+   "claim_kind": "confirmed_observation",
+   "claim_players": 30,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "corrupt_retained": 0,
+   "establishes": true,
+   "evidence_latest_export": "complete",
+   "evidence_problems": [],
+   "evidence_registry": "complete",
+   "generations": [
+    "gen-0001",
+    "gen-0002"
+   ],
+   "history_withheld": false,
+   "incidents": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "PASS"
+    ],
+    [
+     "coarse",
+     50,
+     "FAIL"
+    ],
+    [
+     "refine",
+     30,
+     "PASS"
+    ],
+    [
+     "refine",
+     35,
+     "FAIL"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ]
+   ],
+   "overall": "clean",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "published_text": true,
+   "recovery_deadline_s": null,
+   "reproduces": true,
+   "required_absent": [],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {
+    "t01-coarse-n025-r1/bot": "verified",
+    "t01-coarse-n025-r1/game": "verified",
+    "t02-coarse-n050-r1/bot": "verified",
+    "t02-coarse-n050-r1/game": "verified",
+    "t03-refine-n030-r1/bot": "verified",
+    "t03-refine-n030-r1/game": "verified",
+    "t04-refine-n035-r1/bot": "verified",
+    "t04-refine-n035-r1/game": "verified",
+    "t05-confirm-n030-r1/bot": "verified",
+    "t05-confirm-n030-r1/game": "verified",
+    "t06-confirm-n030-r2/bot": "verified",
+    "t06-confirm-n030-r2/game": "verified",
+    "t07-confirm-n030-r3/bot": "verified",
+    "t07-confirm-n030-r3/game": "verified"
+   },
+   "search_status": "confirmed",
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 580.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 588.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 701.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 709.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 822.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 830.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 943.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 951.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 1304.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1312.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1665.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 1673.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 2026.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "confirmed",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "complete",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "batch ended: confirmed",
+     "t_s": 2028.0
+    }
+   ],
+   "transfers": 157
+  },
+  "controller_crash_then_collect": {
+   "attempts_retained": 0,
+   "claim_confirmed": false,
+   "claim_kind": "undecidable_incomplete_predecessor",
+   "claim_players": null,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "corrupt_retained": 0,
+   "establishes": false,
+   "evidence_latest_export": "partial",
+   "evidence_problems": [],
+   "evidence_registry": "partial",
+   "generations": [
+    "gen-0001"
+   ],
+   "history_withheld": false,
+   "incidents": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "INCOMPLETE"
+    ]
+   ],
+   "overall": "resources_verified_evidence_incomplete",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "published_text": true,
+   "recovery_deadline_s": null,
+   "reproduces": true,
+   "required_absent": [
+    "report.json"
+   ],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {
+    "t01-coarse-n025-r1/bot": "verified",
+    "t01-coarse-n025-r1/game": "verified"
+   },
+   "search_status": "undecidable_incomplete_predecessor",
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "control_acquired",
+     "t_s": 472.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "INCOMPLETE",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 488.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 490.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "operator_collect",
+     "t_s": 490.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "partial",
+     "t_s": 490.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "batch ended: operator_collect",
+     "t_s": 490.0
+    }
+   ],
+   "transfers": 24
+  },
+  "corrupt_bytes_in_transfer": {
+   "attempts_retained": 2,
+   "claim_confirmed": false,
+   "claim_kind": "stopped_infrastructure_failure",
+   "claim_players": null,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "corrupt_retained": 1,
+   "establishes": false,
+   "evidence_latest_export": "corrupt",
+   "evidence_problems": [],
+   "evidence_registry": "corrupt",
+   "generations": [
+    "gen-0001"
+   ],
+   "history_withheld": false,
+   "incidents": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "INFRASTRUCTURE_FAILURE"
+    ]
+   ],
+   "overall": "resources_verified_evidence_incomplete",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "published_text": true,
+   "recovery_deadline_s": 880.0,
+   "reproduces": true,
+   "required_absent": [],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {
+    "t01-coarse-n025-r1/bot": "verified",
+    "t01-coarse-n025-r1/game": "corrupt"
+   },
+   "search_status": "stopped_infrastructure_failure",
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "evidence_failure",
+     "t_s": 580.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "INFRASTRUCTURE_FAILURE",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 580.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 582.0
+    },
+    {
+     "deadline": "2026-10-30T12:14:41+00:00",
+     "first_failure": "2026-10-30T12:09:41+00:00",
+     "kind": "evidence_recovery",
+     "t_s": 582.0
+    },
+    {
+     "kind": "batch_stopped",
+     "outcome": "INFRASTRUCTURE_FAILURE",
+     "t_s": 583.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "evidence_recovery_expired",
+     "t_s": 880.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "stopped_infrastructure_failure",
+     "t_s": 880.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "corrupt",
+     "t_s": 880.0
+    }
+   ],
+   "transfers": 63
+  },
+  "deletion_outage_past_d_stays_on_record": {
+   "attempts_retained": 0,
+   "claim_confirmed": true,
+   "claim_kind": "confirmed_observation",
+   "claim_players": 30,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "corrupt_retained": 0,
+   "establishes": true,
+   "evidence_latest_export": "complete",
+   "evidence_problems": [],
+   "evidence_registry": "complete",
+   "generations": [
+    "gen-0001",
+    "gen-0002"
+   ],
+   "history_withheld": false,
+   "incidents": [
+    {
+     "kind": "cleanup-overdue",
+     "status": "resolved"
+    }
+   ],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "PASS"
+    ],
+    [
+     "coarse",
+     50,
+     "FAIL"
+    ],
+    [
+     "refine",
+     30,
+     "PASS"
+    ],
+    [
+     "refine",
+     35,
+     "FAIL"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ]
+   ],
+   "overall": "resources_verified_after_overdue",
+   "overdue": true,
+   "overrun_s": 185.0,
+   "publication": "not_published",
+   "published_text": true,
+   "recovery_deadline_s": null,
+   "reproduces": true,
+   "required_absent": [],
+   "resources": [
+    {
+     "attempts": 1253,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 1253,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {
+    "t01-coarse-n025-r1/bot": "verified",
+    "t01-coarse-n025-r1/game": "verified",
+    "t02-coarse-n050-r1/bot": "verified",
+    "t02-coarse-n050-r1/game": "verified",
+    "t03-refine-n030-r1/bot": "verified",
+    "t03-refine-n030-r1/game": "verified",
+    "t04-refine-n035-r1/bot": "verified",
+    "t04-refine-n035-r1/game": "verified",
+    "t05-confirm-n030-r1/bot": "verified",
+    "t05-confirm-n030-r1/game": "verified",
+    "t06-confirm-n030-r2/bot": "verified",
+    "t06-confirm-n030-r2/game": "verified",
+    "t07-confirm-n030-r3/bot": "verified",
+    "t07-confirm-n030-r3/game": "verified"
+   },
+   "search_status": "confirmed",
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 580.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 588.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 701.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 709.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 822.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 830.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 943.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 951.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 1304.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1312.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1665.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 1673.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 2026.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "confirmed",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "complete",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "batch ended: confirmed",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "incident_opened",
+     "t_s": 14400.0
+    },
+    {
+     "kind": "incident_resolved",
+     "t_s": 14585.0
+    }
+   ],
+   "transfers": 157
+  },
+  "exporter_defect": {
+   "attempts_retained": null,
+   "claim_confirmed": null,
+   "claim_kind": null,
+   "claim_players": null,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "corrupt_retained": 0,
+   "establishes": null,
+   "evidence_latest_export": null,
+   "evidence_problems": null,
+   "evidence_registry": "partial",
+   "generations": [],
+   "history_withheld": false,
+   "incidents": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "PASS"
+    ],
+    [
+     "coarse",
+     50,
+     "FAIL"
+    ],
+    [
+     "refine",
+     30,
+     "PASS"
+    ],
+    [
+     "refine",
+     35,
+     "FAIL"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ]
+   ],
+   "overall": "resources_verified_evidence_incomplete",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "published_text": false,
+   "recovery_deadline_s": null,
+   "reproduces": null,
+   "required_absent": [],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {},
+   "search_status": null,
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 580.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 588.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 701.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 709.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 822.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 830.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 943.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 951.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 1304.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1312.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1665.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 1673.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 2026.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "confirmed",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "partial",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "batch ended: confirmed",
+     "t_s": 2028.0
+    }
+   ],
+   "transfers": 157,
+   "wrap_up_errors": [
+    "no session export was written: RuntimeError"
+   ]
+  },
+  "first_failure_older_than_the_grace": {
+   "attempts_retained": 0,
+   "claim_confirmed": false,
+   "claim_kind": "stopped_infrastructure_failure",
+   "claim_players": null,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "corrupt_retained": 0,
+   "establishes": false,
+   "evidence_latest_export": "missing",
+   "evidence_problems": [],
+   "evidence_registry": "missing",
+   "generations": [
+    "gen-0001"
+   ],
+   "history_withheld": false,
+   "incidents": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "INFRASTRUCTURE_FAILURE"
+    ]
+   ],
+   "overall": "resources_verified_evidence_incomplete",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "published_text": true,
+   "recovery_deadline_s": null,
+   "reproduces": true,
+   "required_absent": [
+    "report.json",
+    "sampler.ndjson",
+    "sockets.ndjson",
+    "swarm/coordinator.ndjson",
+    "swarm/shard-0.ndjson",
+    "swarm/shard-1.ndjson",
+    "swarm/shard-2.ndjson",
+    "swarm/shard-3.ndjson",
+    "swarm/swarm.json",
+    "swarm/window.json",
+    "telemetry/final.json",
+    "telemetry/population.ndjson",
+    "telemetry/process.json",
+    "telemetry/server.ndjson",
+    "telemetry/ticks.csv"
+   ],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {
+    "t01-coarse-n025-r1/bot": "missing",
+    "t01-coarse-n025-r1/game": "missing"
+   },
+   "search_status": "stopped_infrastructure_failure",
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "evidence_failure",
+     "t_s": 580.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "INFRASTRUCTURE_FAILURE",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 580.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "late",
+     "t_s": 892.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "missing",
+     "t_s": 892.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "batch ended: late",
+     "t_s": 892.0
+    }
+   ],
+   "transfers": 25,
+   "transfers_after_the_episode": 0
+  },
+  "generation_rename_refused": {
+   "attempts_retained": null,
+   "claim_confirmed": null,
+   "claim_kind": null,
+   "claim_players": null,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "corrupt_retained": 0,
+   "establishes": null,
+   "evidence_latest_export": null,
+   "evidence_problems": null,
+   "evidence_registry": "partial",
+   "generations": [],
+   "history_withheld": false,
+   "incidents": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "PASS"
+    ],
+    [
+     "coarse",
+     50,
+     "FAIL"
+    ],
+    [
+     "refine",
+     30,
+     "PASS"
+    ],
+    [
+     "refine",
+     35,
+     "FAIL"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ]
+   ],
+   "overall": "resources_verified_evidence_incomplete",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "published_text": false,
+   "recovery_deadline_s": null,
+   "reproduces": null,
+   "required_absent": [],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {},
+   "search_status": null,
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 580.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 588.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 701.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 709.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 822.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 830.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 943.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 951.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 1304.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1312.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1665.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 1673.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 2026.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "confirmed",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "partial",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "batch ended: confirmed",
+     "t_s": 2028.0
+    }
+   ],
+   "transfers": 157
+  },
+  "inconclusive_evidence": {
+   "attempts_retained": 0,
+   "claim_confirmed": false,
+   "claim_kind": "stopped_inconclusive_evidence",
+   "claim_players": null,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "corrupt_retained": 0,
+   "establishes": false,
+   "evidence_latest_export": "complete",
+   "evidence_problems": [],
+   "evidence_registry": "complete",
+   "generations": [
+    "gen-0001",
+    "gen-0002"
+   ],
+   "history_withheld": false,
+   "incidents": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "INCONCLUSIVE"
+    ]
+   ],
+   "overall": "clean",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "published_text": true,
+   "recovery_deadline_s": null,
+   "reproduces": true,
+   "required_absent": [],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {
+    "t01-coarse-n025-r1/bot": "verified",
+    "t01-coarse-n025-r1/game": "verified"
+   },
+   "search_status": "stopped_inconclusive_evidence",
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "INCONCLUSIVE",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 580.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 582.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "stopped_inconclusive_evidence",
+     "t_s": 582.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "complete",
+     "t_s": 582.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "batch ended: stopped_inconclusive_evidence",
+     "t_s": 582.0
+    }
+   ],
+   "transfers": 25
+  },
+  "infrastructure_failure": {
+   "attempts_retained": 0,
+   "claim_confirmed": false,
+   "claim_kind": "stopped_infrastructure_failure",
+   "claim_players": null,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "corrupt_retained": 0,
+   "establishes": false,
+   "evidence_latest_export": "complete",
+   "evidence_problems": [],
+   "evidence_registry": "complete",
+   "generations": [
+    "gen-0001",
+    "gen-0002"
+   ],
+   "history_withheld": false,
+   "incidents": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "INFRASTRUCTURE_FAILURE"
+    ]
+   ],
+   "overall": "clean",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "published_text": true,
+   "recovery_deadline_s": null,
+   "reproduces": true,
+   "required_absent": [],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {
+    "t01-coarse-n025-r1/bot": "verified",
+    "t01-coarse-n025-r1/game": "verified"
+   },
+   "search_status": "stopped_infrastructure_failure",
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "INFRASTRUCTURE_FAILURE",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 580.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 582.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "stopped_infrastructure_failure",
+     "t_s": 582.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "complete",
+     "t_s": 582.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "batch ended: stopped_infrastructure_failure",
+     "t_s": 582.0
+    }
+   ],
+   "transfers": 25
+  },
+  "invalid_offered_load": {
+   "attempts_retained": 0,
+   "claim_confirmed": false,
+   "claim_kind": "stopped_invalid_load",
+   "claim_players": null,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "corrupt_retained": 0,
+   "establishes": false,
+   "evidence_latest_export": "complete",
+   "evidence_problems": [],
+   "evidence_registry": "complete",
+   "generations": [
+    "gen-0001",
+    "gen-0002"
+   ],
+   "history_withheld": false,
+   "incidents": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "INVALID_LOAD"
+    ]
+   ],
+   "overall": "clean",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "published_text": true,
+   "recovery_deadline_s": null,
+   "reproduces": true,
+   "required_absent": [],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {
+    "t01-coarse-n025-r1/bot": "verified",
+    "t01-coarse-n025-r1/game": "verified"
+   },
+   "search_status": "stopped_invalid_load",
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "INVALID_LOAD",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 580.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 582.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "stopped_invalid_load",
+     "t_s": 582.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "complete",
+     "t_s": 582.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "batch ended: stopped_invalid_load",
+     "t_s": 582.0
+    }
+   ],
+   "transfers": 25
+  },
+  "manifest_changed_after_the_session": {
+   "attempts_retained": 0,
+   "claim_confirmed": null,
+   "claim_kind": null,
+   "claim_players": null,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "corrupt_retained": 0,
+   "establishes": null,
+   "evidence_latest_export": "corrupt",
+   "evidence_problems": [
+    "the manifest does not hold up: manifest sha256 8e66e2761d05403299648b79910c88921f1e74e948ef251db3feafa5ba610248 does not match recorded 68f5c43ba24147f9e4656ed934ac8f42c70be0236a1fa96a4de4da42a08562fd"
+   ],
+   "evidence_registry": "complete",
+   "export_status": "corrupt",
+   "generations": [
+    "gen-0001",
+    "gen-0002"
+   ],
+   "history_withheld": false,
+   "incidents": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "PASS"
+    ],
+    [
+     "coarse",
+     50,
+     "FAIL"
+    ],
+    [
+     "refine",
+     30,
+     "PASS"
+    ],
+    [
+     "refine",
+     35,
+     "FAIL"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ]
+   ],
+   "overall": "clean",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "published_text": false,
+   "recovery_deadline_s": null,
+   "report_written": false,
+   "reproduces": true,
+   "required_absent": [],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {},
+   "search_status": null,
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 580.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 588.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 701.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 709.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 822.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 830.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 943.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 951.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 1304.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1312.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1665.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 1673.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 2026.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "confirmed",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "complete",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "batch ended: confirmed",
+     "t_s": 2028.0
+    }
+   ],
+   "transfers": 157
+  },
+  "new_socket_fields_stay_private": {
+   "attempts_retained": 0,
+   "claim_confirmed": true,
+   "claim_kind": "confirmed_observation",
+   "claim_players": 30,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "corrupt_retained": 0,
+   "establishes": true,
+   "evidence_latest_export": "complete",
+   "evidence_problems": [],
+   "evidence_registry": "complete",
+   "fixture_carried_them": true,
+   "generations": [
+    "gen-0001"
+   ],
+   "history_withheld": false,
+   "incidents": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "PASS"
+    ],
+    [
+     "coarse",
+     50,
+     "FAIL"
+    ],
+    [
+     "refine",
+     30,
+     "PASS"
+    ],
+    [
+     "refine",
+     35,
+     "FAIL"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ]
+   ],
+   "overall": "clean",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "published_text": true,
+   "reached_anything_derived": false,
+   "recovery_deadline_s": null,
+   "reproduces": true,
+   "required_absent": [],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {
+    "t01-coarse-n025-r1/bot": "verified",
+    "t01-coarse-n025-r1/game": "verified",
+    "t02-coarse-n050-r1/bot": "verified",
+    "t02-coarse-n050-r1/game": "verified",
+    "t03-refine-n030-r1/bot": "verified",
+    "t03-refine-n030-r1/game": "verified",
+    "t04-refine-n035-r1/bot": "verified",
+    "t04-refine-n035-r1/game": "verified",
+    "t05-confirm-n030-r1/bot": "verified",
+    "t05-confirm-n030-r1/game": "verified",
+    "t06-confirm-n030-r2/bot": "verified",
+    "t06-confirm-n030-r2/game": "verified",
+    "t07-confirm-n030-r3/bot": "verified",
+    "t07-confirm-n030-r3/game": "verified"
+   },
+   "search_status": "confirmed",
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 580.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 588.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 701.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 709.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 822.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 830.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 943.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 951.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 1304.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1312.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1665.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 1673.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 2026.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "confirmed",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "complete",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "batch ended: confirmed",
+     "t_s": 2028.0
+    }
+   ],
+   "transfers": 157
+  },
+  "no_passing_target": {
+   "attempts_retained": 0,
+   "claim_confirmed": false,
+   "claim_kind": "no_passing_target_at_resolution",
+   "claim_players": null,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "corrupt_retained": 0,
+   "establishes": false,
+   "evidence_latest_export": "complete",
+   "evidence_problems": [],
+   "evidence_registry": "complete",
+   "generations": [
+    "gen-0001",
+    "gen-0002"
+   ],
+   "history_withheld": false,
+   "incidents": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "FAIL"
+    ],
+    [
+     "refine",
+     5,
+     "FAIL"
+    ]
+   ],
+   "overall": "clean",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "published_text": true,
+   "recovery_deadline_s": null,
+   "reproduces": true,
+   "required_absent": [],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {
+    "t01-coarse-n025-r1/bot": "verified",
+    "t01-coarse-n025-r1/game": "verified",
+    "t02-refine-n005-r1/bot": "verified",
+    "t02-refine-n005-r1/game": "verified"
+   },
+   "search_status": "no_passing_target",
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 580.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t02-refine-n005-r1",
+     "t_s": 588.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t02-refine-n005-r1",
+     "t_s": 701.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 703.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "no_passing_target",
+     "t_s": 703.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "complete",
+     "t_s": 703.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "batch ended: no_passing_target",
+     "t_s": 703.0
+    }
+   ],
+   "transfers": 47
+  },
+  "no_space_promoting_a_file": {
+   "attempts_retained": 2,
+   "claim_confirmed": false,
+   "claim_kind": "stopped_infrastructure_failure",
+   "claim_players": null,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "corrupt_retained": 0,
+   "establishes": false,
+   "evidence_latest_export": "missing",
+   "evidence_problems": [],
+   "evidence_registry": "missing",
+   "generations": [
+    "gen-0001"
+   ],
+   "history_withheld": false,
+   "incidents": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "INFRASTRUCTURE_FAILURE"
+    ]
+   ],
+   "overall": "resources_verified_evidence_incomplete",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "published_text": true,
+   "recovery_deadline_s": 880.0,
+   "reproduces": true,
+   "required_absent": [],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {
+    "t01-coarse-n025-r1/bot": "verified",
+    "t01-coarse-n025-r1/game": "missing"
+   },
+   "search_status": "stopped_infrastructure_failure",
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "evidence_failure",
+     "t_s": 580.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "INFRASTRUCTURE_FAILURE",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 580.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 582.0
+    },
+    {
+     "deadline": "2026-10-30T12:14:41+00:00",
+     "first_failure": "2026-10-30T12:09:41+00:00",
+     "kind": "evidence_recovery",
+     "t_s": 582.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "evidence_recovery_expired",
+     "t_s": 880.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "stopped_infrastructure_failure",
+     "t_s": 880.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "missing",
+     "t_s": 880.0
+    }
+   ],
+   "transfers": 63
+  },
+  "no_space_writing_the_generation": {
+   "attempts_retained": null,
+   "claim_confirmed": null,
+   "claim_kind": null,
+   "claim_players": null,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "corrupt_retained": 0,
+   "establishes": null,
+   "evidence_latest_export": null,
+   "evidence_problems": null,
+   "evidence_registry": "partial",
+   "generations": [],
+   "history_withheld": false,
+   "incidents": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "PASS"
+    ],
+    [
+     "coarse",
+     50,
+     "FAIL"
+    ],
+    [
+     "refine",
+     30,
+     "PASS"
+    ],
+    [
+     "refine",
+     35,
+     "FAIL"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ]
+   ],
+   "overall": "resources_verified_evidence_incomplete",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "published_text": false,
+   "recovery_deadline_s": null,
+   "reproduces": null,
+   "required_absent": [],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {},
+   "search_status": null,
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 580.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 588.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 701.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 709.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 822.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 830.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 943.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 951.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 1304.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1312.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1665.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 1673.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 2026.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "confirmed",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "partial",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "batch ended: confirmed",
+     "t_s": 2028.0
+    }
+   ],
+   "transfers": 157,
+   "writing_left": 1
+  },
+  "published_to_the_canonical_directory_only": {
+   "attempts_retained": 0,
+   "claim_confirmed": true,
+   "claim_kind": "confirmed_observation",
+   "claim_players": 30,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "corrupt_retained": 0,
+   "establishes": true,
+   "evidence_latest_export": "complete",
+   "evidence_problems": [],
+   "evidence_registry": "complete",
+   "generations": [
+    "gen-0001",
+    "gen-0002"
+   ],
+   "historical_destinations_refused": [
+    "destination_not_canonical",
+    "destination_not_canonical"
+   ],
+   "history_withheld": false,
+   "incidents": [],
+   "journal_mirror": "not_published",
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "PASS"
+    ],
+    [
+     "coarse",
+     50,
+     "FAIL"
+    ],
+    [
+     "refine",
+     30,
+     "PASS"
+    ],
+    [
+     "refine",
+     35,
+     "FAIL"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ]
+   ],
+   "overall": "clean",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "published",
+   "published_files": [
+    "SHA256SUMS",
+    "summary.json",
+    "summary.md"
+   ],
+   "published_text": true,
+   "receipt_status": [
+    "published"
+   ],
+   "recovery_deadline_s": null,
+   "reproduces": true,
+   "required_absent": [],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {
+    "t01-coarse-n025-r1/bot": "verified",
+    "t01-coarse-n025-r1/game": "verified",
+    "t02-coarse-n050-r1/bot": "verified",
+    "t02-coarse-n050-r1/game": "verified",
+    "t03-refine-n030-r1/bot": "verified",
+    "t03-refine-n030-r1/game": "verified",
+    "t04-refine-n035-r1/bot": "verified",
+    "t04-refine-n035-r1/game": "verified",
+    "t05-confirm-n030-r1/bot": "verified",
+    "t05-confirm-n030-r1/game": "verified",
+    "t06-confirm-n030-r2/bot": "verified",
+    "t06-confirm-n030-r2/game": "verified",
+    "t07-confirm-n030-r3/bot": "verified",
+    "t07-confirm-n030-r3/game": "verified"
+   },
+   "search_status": "confirmed",
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 580.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 588.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 701.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 709.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 822.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 830.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 943.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 951.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 1304.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1312.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1665.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 1673.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 2026.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "confirmed",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "complete",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "batch ended: confirmed",
+     "t_s": 2028.0
+    }
+   ],
+   "transfers": 157
+  },
+  "reconnect_keeps_the_original_episode": {
+   "attempts_retained": 0,
+   "claim_confirmed": false,
+   "claim_kind": "stopped_infrastructure_failure",
+   "claim_players": null,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "corrupt_retained": 0,
+   "deadline_unchanged": true,
+   "establishes": false,
+   "evidence_latest_export": "missing",
+   "evidence_problems": [],
+   "evidence_registry": "missing",
+   "first_failure_unchanged": true,
+   "generations": [
+    "gen-0001"
+   ],
+   "history_withheld": false,
+   "incidents": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "INFRASTRUCTURE_FAILURE"
+    ]
+   ],
+   "overall": "resources_verified_evidence_incomplete",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "published_text": true,
+   "recovery_deadline_s": 880.0,
+   "reproduces": true,
+   "required_absent": [
+    "report.json",
+    "sampler.ndjson",
+    "sockets.ndjson",
+    "swarm/coordinator.ndjson",
+    "swarm/shard-0.ndjson",
+    "swarm/shard-1.ndjson",
+    "swarm/shard-2.ndjson",
+    "swarm/shard-3.ndjson",
+    "swarm/swarm.json",
+    "swarm/window.json",
+    "telemetry/final.json",
+    "telemetry/population.ndjson",
+    "telemetry/process.json",
+    "telemetry/server.ndjson",
+    "telemetry/ticks.csv"
+   ],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {
+    "t01-coarse-n025-r1/bot": "missing",
+    "t01-coarse-n025-r1/game": "missing"
+   },
+   "search_status": "stopped_infrastructure_failure",
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "evidence_failure",
+     "t_s": 580.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "INFRASTRUCTURE_FAILURE",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 580.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 580.0
+    },
+    {
+     "deadline": "2026-10-30T12:14:41+00:00",
+     "first_failure": "2026-10-30T12:09:41+00:00",
+     "kind": "evidence_recovery",
+     "t_s": 580.0
+    },
+    {
+     "kind": "control_acquired",
+     "t_s": 640.0
+    },
+    {
+     "deadline": "2026-10-30T12:14:41+00:00",
+     "first_failure": "2026-10-30T12:09:41+00:00",
+     "kind": "evidence_recovery",
+     "t_s": 640.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 640.0
+    },
+    {
+     "deadline": "2026-10-30T12:14:41+00:00",
+     "first_failure": "2026-10-30T12:09:41+00:00",
+     "kind": "evidence_recovery",
+     "t_s": 640.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "evidence_recovery_expired",
+     "t_s": 880.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "reconnected",
+     "t_s": 880.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "missing",
+     "t_s": 880.0
+    }
+   ],
+   "transfers": 54
+  },
+  "remote_file_changing": {
+   "attempts_retained": 20,
+   "claim_confirmed": false,
+   "claim_kind": "stopped_infrastructure_failure",
+   "claim_players": null,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "corrupt_retained": 20,
+   "establishes": false,
+   "evidence_latest_export": "corrupt",
+   "evidence_problems": [],
+   "evidence_registry": "corrupt",
+   "generations": [
+    "gen-0001"
+   ],
+   "history_withheld": false,
+   "incidents": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "INFRASTRUCTURE_FAILURE"
+    ]
+   ],
+   "overall": "resources_verified_evidence_incomplete",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "published_text": true,
+   "recovery_deadline_s": 880.0,
+   "reproduces": true,
+   "required_absent": [],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {
+    "t01-coarse-n025-r1/bot": "corrupt",
+    "t01-coarse-n025-r1/game": "verified"
+   },
+   "search_status": "stopped_infrastructure_failure",
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "evidence_failure",
+     "t_s": 580.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "INFRASTRUCTURE_FAILURE",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 580.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 582.0
+    },
+    {
+     "deadline": "2026-10-30T12:14:41+00:00",
+     "first_failure": "2026-10-30T12:09:41+00:00",
+     "kind": "evidence_recovery",
+     "t_s": 582.0
+    },
+    {
+     "kind": "batch_stopped",
+     "outcome": "INFRASTRUCTURE_FAILURE",
+     "t_s": 583.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "evidence_recovery_expired",
+     "t_s": 880.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "stopped_infrastructure_failure",
+     "t_s": 880.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "corrupt",
+     "t_s": 880.0
+    }
+   ],
+   "transfers": 63
+  },
+  "report_defect": {
+   "attempts_retained": 0,
+   "claim_confirmed": null,
+   "claim_kind": null,
+   "claim_players": null,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "corrupt_retained": 0,
+   "establishes": null,
+   "evidence_latest_export": "partial",
+   "evidence_problems": [
+    "no report was written: KeyError"
+   ],
+   "evidence_registry": "partial",
+   "generations": [
+    "gen-0001"
+   ],
+   "history_withheld": false,
+   "incidents": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "PASS"
+    ],
+    [
+     "coarse",
+     50,
+     "FAIL"
+    ],
+    [
+     "refine",
+     30,
+     "PASS"
+    ],
+    [
+     "refine",
+     35,
+     "FAIL"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ]
+   ],
+   "overall": "resources_verified_evidence_incomplete",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "published_text": false,
+   "recovery_deadline_s": null,
+   "reproduces": true,
+   "required_absent": [],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {
+    "t01-coarse-n025-r1/bot": "verified",
+    "t01-coarse-n025-r1/game": "verified",
+    "t02-coarse-n050-r1/bot": "verified",
+    "t02-coarse-n050-r1/game": "verified",
+    "t03-refine-n030-r1/bot": "verified",
+    "t03-refine-n030-r1/game": "verified",
+    "t04-refine-n035-r1/bot": "verified",
+    "t04-refine-n035-r1/game": "verified",
+    "t05-confirm-n030-r1/bot": "verified",
+    "t05-confirm-n030-r1/game": "verified",
+    "t06-confirm-n030-r2/bot": "verified",
+    "t06-confirm-n030-r2/game": "verified",
+    "t07-confirm-n030-r3/bot": "verified",
+    "t07-confirm-n030-r3/game": "verified"
+   },
+   "search_status": null,
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 580.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 588.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 701.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 709.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 822.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 830.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 943.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 951.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 1304.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1312.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1665.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 1673.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 2026.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "confirmed",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "partial",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "batch ended: confirmed",
+     "t_s": 2028.0
+    }
+   ],
+   "transfers": 157
+  },
+  "required_file_absent_withholds_the_claim": {
+   "attempts_retained": 0,
+   "claim_confirmed": false,
+   "claim_kind": "evidence_incomplete",
+   "claim_players": null,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "corrupt_retained": 0,
+   "establishes": false,
+   "evidence_latest_export": "partial",
+   "evidence_problems": [],
+   "evidence_registry": "partial",
+   "generations": [
+    "gen-0001",
+    "gen-0002"
+   ],
+   "history_withheld": true,
+   "incidents": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "PASS"
+    ],
+    [
+     "coarse",
+     50,
+     "FAIL"
+    ],
+    [
+     "refine",
+     30,
+     "PASS"
+    ],
+    [
+     "refine",
+     35,
+     "FAIL"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ],
+    [
+     "confirm",
+     30,
+     "PASS"
+    ]
+   ],
+   "overall": "resources_verified_evidence_incomplete",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "published_text": true,
+   "recovery_deadline_s": null,
+   "reproduces": true,
+   "required_absent": [
+    "sockets.ndjson"
+   ],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {
+    "t01-coarse-n025-r1/bot": "verified",
+    "t01-coarse-n025-r1/game": "verified",
+    "t02-coarse-n050-r1/bot": "verified",
+    "t02-coarse-n050-r1/game": "verified",
+    "t03-refine-n030-r1/bot": "verified",
+    "t03-refine-n030-r1/game": "verified",
+    "t04-refine-n035-r1/bot": "verified",
+    "t04-refine-n035-r1/game": "verified",
+    "t05-confirm-n030-r1/bot": "verified",
+    "t05-confirm-n030-r1/game": "verified",
+    "t06-confirm-n030-r2/bot": "verified",
+    "t06-confirm-n030-r2/game": "verified",
+    "t07-confirm-n030-r3/bot": "verified",
+    "t07-confirm-n030-r3/game": "verified"
+   },
+   "search_status": "confirmed",
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 580.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 588.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+     "t_s": 701.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 709.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+     "t_s": 822.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 830.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "FAIL",
+     "run_id": "do-cap-1v1g-20261030a-t04-refine-n035-r1",
+     "t_s": 943.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 951.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t05-confirm-n030-r1",
+     "t_s": 1304.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1312.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t06-confirm-n030-r2",
+     "t_s": 1665.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 1673.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "PASS",
+     "run_id": "do-cap-1v1g-20261030a-t07-confirm-n030-r3",
+     "t_s": 2026.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "confirmed",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "partial",
+     "t_s": 2028.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "batch ended: confirmed",
+     "t_s": 2028.0
+    }
+   ],
+   "transfers": 154
+  },
+  "stale_recorder_schema": {
+   "attempts_retained": 0,
+   "claim_confirmed": false,
+   "claim_kind": "stopped_inconclusive_evidence",
+   "claim_players": null,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "corrupt_retained": 0,
+   "establishes": false,
+   "evidence_latest_export": "corrupt",
+   "evidence_problems": [
+    "bot swarm/swarm.json is schema 'omega.measurement/2', and this session froze 'omega.measurement/3'"
+   ],
+   "evidence_registry": "corrupt",
+   "generations": [
+    "gen-0001",
+    "gen-0002"
+   ],
+   "history_withheld": false,
+   "incidents": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "INCONCLUSIVE"
+    ]
+   ],
+   "overall": "resources_verified_evidence_incomplete",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "published_text": true,
+   "recovery_deadline_s": null,
+   "reproduces": true,
+   "required_absent": [],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {
+    "t01-coarse-n025-r1/bot": "verified",
+    "t01-coarse-n025-r1/game": "verified"
+   },
+   "search_status": "stopped_inconclusive_evidence",
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "INCONCLUSIVE",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 580.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 582.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "stopped_inconclusive_evidence",
+     "t_s": 582.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "corrupt",
+     "t_s": 582.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "batch ended: stopped_inconclusive_evidence",
+     "t_s": 582.0
+    }
+   ],
+   "transfers": 25
+  },
+  "transfer_keeps_failing_other_files_kept": {
+   "attempts_retained": 0,
+   "claim_confirmed": false,
+   "claim_kind": "stopped_infrastructure_failure",
+   "claim_players": null,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "corrupt_retained": 0,
+   "establishes": false,
+   "evidence_latest_export": "missing",
+   "evidence_problems": [],
+   "evidence_registry": "missing",
+   "generations": [
+    "gen-0001"
+   ],
+   "history_withheld": false,
+   "incidents": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "INFRASTRUCTURE_FAILURE"
+    ]
+   ],
+   "overall": "resources_verified_evidence_incomplete",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "published_text": true,
+   "recovery_deadline_s": 880.0,
+   "reproduces": true,
+   "required_absent": [],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {
+    "t01-coarse-n025-r1/bot": "verified",
+    "t01-coarse-n025-r1/game": "missing"
+   },
+   "search_status": "stopped_infrastructure_failure",
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "evidence_failure",
+     "t_s": 580.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "INFRASTRUCTURE_FAILURE",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 580.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 582.0
+    },
+    {
+     "deadline": "2026-10-30T12:14:41+00:00",
+     "first_failure": "2026-10-30T12:09:41+00:00",
+     "kind": "evidence_recovery",
+     "t_s": 582.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "evidence_recovery_expired",
+     "t_s": 880.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "stopped_infrastructure_failure",
+     "t_s": 880.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "missing",
+     "t_s": 880.0
+    }
+   ],
+   "transfers": 63
+  },
+  "truncated_transfer_then_recovered": {
+   "attempts_retained": 1,
+   "claim_confirmed": false,
+   "claim_kind": "stopped_infrastructure_failure",
+   "claim_players": null,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "corrupt_retained": 0,
+   "establishes": false,
+   "evidence_latest_export": "complete",
+   "evidence_problems": [],
+   "evidence_registry": "complete",
+   "generations": [
+    "gen-0001"
+   ],
+   "history_withheld": false,
+   "incidents": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "INFRASTRUCTURE_FAILURE"
+    ]
+   ],
+   "overall": "clean",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "published_text": true,
+   "recovery_deadline_s": 880.0,
+   "reproduces": true,
+   "required_absent": [],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {
+    "t01-coarse-n025-r1/bot": "verified",
+    "t01-coarse-n025-r1/game": "verified"
+   },
+   "search_status": "stopped_infrastructure_failure",
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "evidence_failure",
+     "t_s": 580.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "INFRASTRUCTURE_FAILURE",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 580.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 582.0
+    },
+    {
+     "deadline": "2026-10-30T12:14:41+00:00",
+     "first_failure": "2026-10-30T12:09:41+00:00",
+     "kind": "evidence_recovery",
+     "t_s": 582.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 583.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "stopped_infrastructure_failure",
+     "t_s": 583.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "complete",
+     "t_s": 583.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "batch ended: stopped_infrastructure_failure",
+     "t_s": 583.0
+    }
+   ],
+   "transfers": 27
+  },
+  "watchdog_alone_with_no_controller": {
+   "attempts_retained": null,
+   "claim_confirmed": null,
+   "claim_kind": null,
+   "claim_players": null,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "corrupt_retained": 0,
+   "establishes": null,
+   "evidence_latest_export": null,
+   "evidence_problems": null,
+   "evidence_registry": "unknown",
+   "generations": [],
+   "history_withheld": false,
+   "incidents": [],
+   "outcomes": [],
+   "overall": "resources_verified_evidence_incomplete",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "published_text": false,
+   "recovery_deadline_s": null,
+   "reproduces": null,
+   "required_absent": [],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {},
+   "search_status": null,
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "deadline_C",
+     "t_s": 14282.0
+    }
+   ],
+   "transfers": 3
+  },
+  "wrong_role_bytes_for_a_seal": {
+   "attempts_retained": 1,
+   "claim_confirmed": false,
+   "claim_kind": "stopped_infrastructure_failure",
+   "claim_players": null,
+   "cleanup_requested": true,
+   "cleanup_verified": true,
+   "corrupt_retained": 1,
+   "establishes": false,
+   "evidence_latest_export": "corrupt",
+   "evidence_problems": [],
+   "evidence_registry": "corrupt",
+   "generations": [
+    "gen-0001"
+   ],
+   "history_withheld": false,
+   "incidents": [],
+   "outcomes": [
+    [
+     "coarse",
+     25,
+     "INFRASTRUCTURE_FAILURE"
+    ]
+   ],
+   "overall": "resources_verified_evidence_incomplete",
+   "overdue": false,
+   "overrun_s": 0.0,
+   "publication": "not_published",
+   "published_text": true,
+   "recovery_deadline_s": 880.0,
+   "reproduces": true,
+   "required_absent": [
+    "report.json",
+    "sampler.ndjson",
+    "swarm/coordinator.ndjson",
+    "swarm/shard-0.ndjson",
+    "swarm/shard-1.ndjson",
+    "swarm/shard-2.ndjson",
+    "swarm/shard-3.ndjson",
+    "swarm/swarm.json",
+    "swarm/window.json"
+   ],
+   "resources": [
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "droplet",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "firewall",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    },
+    {
+     "attempts": 3,
+     "kind": "tag",
+     "status": "absent"
+    }
+   ],
+   "roles": {
+    "t01-coarse-n025-r1/bot": "corrupt",
+    "t01-coarse-n025-r1/game": "verified"
+   },
+   "search_status": "stopped_infrastructure_failure",
+   "timeline": [
+    {
+     "kind": "control_acquired",
+     "t_s": -1.0
+    },
+    {
+     "kind": "armed",
+     "t_s": 0.0
+    },
+    {
+     "kind": "pair_ready",
+     "t_s": 457.0
+    },
+    {
+     "kind": "run_dispatch_intent",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 467.0
+    },
+    {
+     "kind": "evidence_failure",
+     "t_s": 580.0
+    },
+    {
+     "kind": "run_outcome",
+     "outcome": "INFRASTRUCTURE_FAILURE",
+     "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+     "t_s": 580.0
+    },
+    {
+     "kind": "collecting",
+     "t_s": 582.0
+    },
+    {
+     "deadline": "2026-10-30T12:14:41+00:00",
+     "first_failure": "2026-10-30T12:09:41+00:00",
+     "kind": "evidence_recovery",
+     "t_s": 582.0
+    },
+    {
+     "kind": "batch_stopped",
+     "outcome": "INFRASTRUCTURE_FAILURE",
+     "t_s": 583.0
+    },
+    {
+     "kind": "cleanup_intent",
+     "reason": "evidence_recovery_expired",
+     "t_s": 880.0
+    },
+    {
+     "kind": "measurement_recorded",
+     "outcome": "stopped_infrastructure_failure",
+     "t_s": 880.0
+    },
+    {
+     "kind": "evidence_recorded",
+     "status": "corrupt",
+     "t_s": 880.0
+    }
+   ],
+   "transfers": 44
+  }
+ },
+ "schema": "omega.do-session.export-evidence/1"
+}

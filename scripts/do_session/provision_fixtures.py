@@ -30,9 +30,9 @@ def authorization(manifest, sha, wall, **changes):
     return packet
 
 
-def session_of_kind(session_id, cap_s, kind, retained=(), telemetry_schema=None):
+def session_of_kind(session_id, cap_s, kind, retained=(), telemetry_schema=None, durable_destination=None):
     if kind == 'capacity':
-        return fx.session_manifest(session_id, cap_s=cap_s, retained=retained, telemetry_schema=telemetry_schema)
+        return fx.session_manifest(session_id, cap_s=cap_s, retained=retained, telemetry_schema=telemetry_schema, durable_destination=durable_destination)
     conditions = fx.conditions()
     session = conditions['session']
     session.update(id=session_id, kind=kind, ownership_tags=dict(session='omega-session:' + session_id, game='omega-role:game:' + session_id,
@@ -45,7 +45,7 @@ def session_of_kind(session_id, cap_s, kind, retained=(), telemetry_schema=None)
 class Sim:
     TICK_S = 5.0
 
-    def __init__(self, case, session_id=SESSION, cap_s=CAP_S, account_options=None, policy=None, kind='capacity', retained=(), typed_runs=False, telemetry_schema=None):
+    def __init__(self, case, session_id=SESSION, cap_s=CAP_S, account_options=None, policy=None, kind='capacity', retained=(), typed_runs=False, telemetry_schema=None, durable_destination=None):
         self.stack = rf.Stack(case, typed_runs=typed_runs)
         self.clock = self.stack.clock
         self.case = case
@@ -56,7 +56,7 @@ class Sim:
         self.stack.watchdog = self.stack.new_watchdog()
         self.stack.watchdog.start(pid=1)
         self.stack.watchdog.tick()
-        self.manifest, self.sha = session_of_kind(session_id, cap_s, kind, retained, telemetry_schema)
+        self.manifest, self.sha = session_of_kind(session_id, cap_s, kind, retained, telemetry_schema, durable_destination)
         self.session_id = session_id
         self.packet = authorization(self.manifest, self.sha, self.clock.wall())
         self.gate = remote_authorization.MutationGate(self.packet, self.manifest, self.sha, self.clock.wall)

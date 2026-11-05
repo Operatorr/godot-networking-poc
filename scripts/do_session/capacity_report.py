@@ -6,7 +6,7 @@
 A report renders what the scorer and the search decided, and adds no judgement of its own: rendering one proves nothing, and a run the scorer did not pass reads as what it is.
 It does check what it renders. Each trial's journal outcome is followed through the classification and score it names, by the hashes recorded when they were written, to the run's own proof and
 execution record. Where those disagree or cannot be verified, the report says so and claims nothing, and keeps the journal's claim apart as history.
-The same files give the same bytes, which ``test_capacity_scorer`` checks. Compact findings and the raw evidence's inventory are slice 7's.
+The same files give the same bytes, which ``test_capacity_scorer`` checks. Compact findings, cost and the raw evidence's inventory are ``session_export``'s, over this.
 """
 import argparse
 import hashlib

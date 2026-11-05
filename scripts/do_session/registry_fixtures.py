@@ -31,7 +31,9 @@ class Stack:
         case.addCleanup(temporary.cleanup)
         self.case = case
         self.root = pathlib.Path(temporary.name)
-        self.state_dir = self.root / 'state'
+        state = tempfile.TemporaryDirectory()     # the registry's state is the management host's, never part of a session directory
+        case.addCleanup(state.cleanup)
+        self.state_dir = pathlib.Path(state.name) / 'state'
         self.clock = fx.ScriptedClock()
         registry.Registry.init(self.state_dir, fx.REGISTRY_ID, fx.WATCHDOG_IDENTITY)
         self.failpoint = None

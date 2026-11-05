@@ -141,7 +141,7 @@ class FreshRuns(Base):
         self.assertEqual(result.search_status, 'confirmed')
         final = self.sim.drive_cleanup()
         self.assertEqual(final['measurement']['outcome'], 'confirmed')
-        self.assertEqual(final['evidence']['status'], 'partial', 'the session-level export is slice 7, so nothing may read clean yet')
+        self.assertEqual(final['evidence']['status'], 'partial', 'these fixture runs leave no recorder files, so the schema-required ones are absent and nothing may read clean')
         self.assertEqual(final['overall'], 'resources_verified_evidence_incomplete')
 
 
@@ -1408,10 +1408,11 @@ class EvidenceRecovery(Base):
         names = sorted(executor.evidence.root.glob('evidence-inventory-*.json'))
         return json.loads(names[-1].read_text())
 
-    def failed_downloads(self):
+    def failed_downloads(self, failure_report_lost=False):
         self.guests.copy_failures.add(('game', 'get'))
         self.guests.copy_failures.add(('bot', 'get'))
         executor = self.sim.executor()
+        executor.evidence_failure_marked = failure_report_lost     # with no report on record, the episode's clock starts when recovery does
         executor.execute()
         self.guests.copy_failures.clear()
         self.sim.client.mutate('begin_collection', session_id=self.sim.session_id, fencing_token=executor.token)
@@ -1436,7 +1437,7 @@ class EvidenceRecovery(Base):
             executor._keepalive(force=True)
 
     def test_an_episode_begun_just_before_c_never_outlasts_c(self):
-        executor = self.failed_downloads()
+        executor = self.failed_downloads(failure_report_lost=True)
         self.walk_to_seconds_before_c(executor, 5)
         gets = self.timed_gets(2)
         executor._recover_evidence(executor._collect_missing())
@@ -1447,7 +1448,7 @@ class EvidenceRecovery(Base):
         self.assertGreaterEqual(self.seconds_before_c(), -1e-6)
 
     def test_a_slow_transfer_is_cut_at_the_cutoff_not_at_its_usual_timeout(self):
-        executor = self.failed_downloads()
+        executor = self.failed_downloads(failure_report_lost=True)
         self.walk_to_seconds_before_c(executor, 5)
         gets = self.timed_gets(60)
         executor._recover_evidence(executor._collect_missing())
@@ -1535,7 +1536,7 @@ class EvidenceRecovery(Base):
         self.assertFalse((run_dir / 'bot' / 'bot.stdout.log.partial').exists())
         roles = self.inventory(executor)['roles']
         self.assertEqual({entry['status'] for entry in roles}, {'verified'})
-        self.assertEqual(self.sim.status_now()['evidence']['status'], 'partial', 'the session export belongs to slice 7')
+        self.assertEqual(self.sim.status_now()['evidence']['status'], 'complete', 'recovery brought every file back, so the session export can say so')
         self.assertEqual(self.sim.records()[0]['outcome'], search.INFRASTRUCTURE_FAILURE, 'recovering the bytes does not unsay the failure')
 
     def test_bytes_that_stay_corrupt_are_reported_and_never_promoted(self):

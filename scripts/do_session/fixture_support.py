@@ -29,12 +29,14 @@ REGISTRY_ID = 'omega-registry-mgmt-1'
 WATCHDOG_IDENTITY = 'omega-watchdog@mgmt-1'
 
 
-def session_manifest(session_id='do-cap-1v1g-20261030a', cap_s=3600, reserve_s=120, grace_s=300, retained=(), telemetry_schema=None):
+def session_manifest(session_id='do-cap-1v1g-20261030a', cap_s=3600, reserve_s=120, grace_s=300, retained=(), telemetry_schema=None, durable_destination=None):
     """A frozen capacity manifest for any session id and deadline, as the planner would emit it. Its telemetry schema is a placeholder the real prover refuses, unless one is given."""
     import manifest as manifest_mod
     frozen_conditions = conditions()
     if telemetry_schema is not None:
         frozen_conditions['telemetry_schema'] = telemetry_schema
+    if durable_destination is not None:
+        frozen_conditions['evidence']['durable_destination'] = durable_destination
     session = frozen_conditions['session']
     session['id'] = session_id
     session['retained_resources'] = list(session['retained_resources']) + list(retained)
