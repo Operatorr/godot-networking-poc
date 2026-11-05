@@ -15,6 +15,7 @@ import export_fixtures as ef
 import guest_runner
 import registry_client
 import run_executor
+import run_cli
 import run_fixtures as rf
 import scoring_fixtures as sf
 import session_clock
@@ -147,6 +148,31 @@ class RequiredInputs(unittest.TestCase):
                 self.assert_corrupt_input(sim, run, 'runs/%s/%s' % (run, name), lambda data: b'{')
         restored = se.export_session(sim.root, client=sim.client)
         self.assertEqual((restored.status, restored.problems), ('complete', []))
+        self.assertTrue(sim.document(restored.generation, se.REPORT_JSON)['establishes'])
+
+    def test_contradictory_bracket_boot_ids_withhold_claim_and_preserve_history(self):
+        sim, run = confirmed(self)
+        outcomes = sim.outcomes()
+        for label in ('before', 'after'):
+            for role in ('game', 'bot'):
+                with self.subTest(label=label, role=role):
+                    path = sim.run_dir(run) / ('clock-%s.json' % label)
+                    original = path.read_bytes()
+                    path.chmod(0o640)
+                    changed = json.loads(original)
+                    for attempt in changed['roles'][role]:
+                        attempt['boot_id'] = 'different-boot'
+                    path.write_text(json.dumps(changed))
+                    try:
+                        exported = se.export_session(sim.root, client=sim.client)
+                        self.assert_withheld(sim, exported, 'corrupt')
+                        self.assertEqual(path.read_text(), json.dumps(changed))
+                        self.assertEqual(sim.outcomes(), outcomes)
+                        self.assertEqual(len([entry for entry in sim.document(exported.generation)['roles'] if entry['run_id'] == run]), 2)
+                    finally:
+                        path.write_bytes(original)
+        restored = se.export_session(sim.root, client=sim.client)
+        self.assertEqual(restored.status, 'complete')
         self.assertTrue(sim.document(restored.generation, se.REPORT_JSON)['establishes'])
 
     def test_a_required_input_of_another_shape_or_another_run_is_corrupt(self):
@@ -564,6 +590,29 @@ class FirstFailure(unittest.TestCase):
         before = len(self.starts)
         self.collect_after_crash(40)
         self.assert_taken_as_over(before)
+
+    def test_invalid_utf8_is_expired_through_cli_collection(self):
+        record = self.crash_with_the_report_lost()
+        record.chmod(0o640)
+        record.write_bytes(b'\xff')
+        self.collect_cli_with_unknown_record(record)
+        self.assertEqual(record.read_bytes(), b'\xff')
+
+    def test_failed_age_validation_cannot_leave_cli_wrap_up_without_a_bound(self):
+        record = self.crash_with_the_report_lost()
+        original = record.read_bytes()
+        with mock.patch.object(run_executor.RunExecutor, '_recorded_age', side_effect=OverflowError('unrepresentable age')):
+            self.collect_cli_with_unknown_record(record)
+        self.assertEqual(record.read_bytes(), original)
+
+    def collect_cli_with_unknown_record(self, record):
+        before = len(self.starts)
+        self.sim.guests.get_hook = lambda role, run, relative, data, attempt: (1, b'cut') if (role, relative) == self.faulty else (0, data)
+        self.sim.sleep(40)
+        run_cli.collect_and_stop(self.sim.client, self.sim.session_id,
+                                 lambda token: self.sim.executor(token=token), 'test', takeover=True)
+        self.assert_taken_as_over(before)
+        self.assertEqual(sorted(path.name for path in record.parent.glob('evidence-failure-*.json')), [record.name])
 
     def test_a_record_directory_that_cannot_be_listed_is_not_an_empty_one(self):
         """A real PermissionError from listing, while names in it can still be opened and written. ``glob`` would have answered with nothing."""

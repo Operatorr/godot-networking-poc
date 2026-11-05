@@ -423,16 +423,17 @@ def _bracket_problem(run_dir, document, label):
         return wrong
     proof = _read_json(run_dir / 'window-proof.json')
     recorded = (proof.get('facts') or {}).get('clock') if isinstance(proof, dict) and isinstance(proof.get('facts'), dict) else None
-    if not isinstance(recorded, dict):
-        return None
     other_label = 'after' if label == 'before' else 'before'
     other = _read_json(run_dir / ('clock-%s.json' % other_label))
     other = other if isinstance(other, dict) and _bracket_shape_problem(other, other_label) is None else None     # a bad one answers for itself
     for role in ROLES:
-        kept = recorded.get('%s_offset_ns' % role)
+        mine, theirs = mw.bracket_offset(document, role), mw.bracket_offset(other, role)
+        # Match host_offset's boot-continuity rule even without a retained mapping.
+        if mine and theirs and mine[2] and theirs[2] and mine[2] != theirs[2]:
+            return '%s boot id changed between the clock brackets' % role
+        kept = recorded.get('%s_offset_ns' % role) if isinstance(recorded, dict) else None
         if not (isinstance(kept, list) and len(kept) == 2):
             continue
-        mine, theirs = mw.bracket_offset(document, role), mw.bracket_offset(other, role)
         # The proof keeps the hull of both brackets' offsets. Each must lie inside it, and the two together must make it.
         if mine is None or not kept[0] <= mine[0] <= mine[1] <= kept[1]:
             return 'does not give the %s clock offset the window proof recorded from it' % role

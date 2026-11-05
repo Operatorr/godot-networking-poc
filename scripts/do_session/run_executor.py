@@ -1181,6 +1181,14 @@ class RunExecutor:
         if self.evidence_episode is not None:
             return
         try:
+            self._restore_evidence_records()
+        except LOCAL_FAILURES + (ArithmeticError,) as error:
+            # CLI collection may catch a local error and reuse this executor in
+            # wrap_up. Never leave its once-only restoration flag without a bound.
+            self._unknowable_episode('earlier failure records could not be restored (%s)' % type(error).__name__, None)
+
+    def _restore_evidence_records(self):
+        try:
             names = sorted((name for name in os.listdir(self.evidence.root) if EVIDENCE_FAILURE_PATTERN.fullmatch(name)), key=lambda name: int(EVIDENCE_FAILURE_PATTERN.fullmatch(name).group(1)))
         except FileNotFoundError:
             return
@@ -1216,7 +1224,7 @@ class RunExecutor:
         """(kind, what) for one record: ``current`` and its document, ``passed`` (a run was dispatched after it), ``foreign`` (whole, and another session's), or ``unknown`` and why."""
         try:
             text = (self.evidence.root / name).read_text()
-        except OSError as error:
+        except (OSError, UnicodeError) as error:
             self._note('evidence_failure_unreadable', path=name, detail=type(error).__name__)
             return 'unknown', type(error).__name__
         try:
