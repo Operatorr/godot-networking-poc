@@ -296,6 +296,12 @@ impl Bot {
         }
     }
 
+    /// Read and ignore whatever still arrives, so a socket held open after the end of a run cannot
+    /// overflow its receive buffer from a server that has not yet noticed the disconnect.
+    pub fn discard_incoming(&mut self) {
+        while let Ok(Some(_)) = self.host.service() {}
+    }
+
     /// Mark this bot crashed after a caught panic in `poll` (see `poll_all`). A single bad bot
     /// (e.g. a decode/sim edge case) must not take down the whole swarm, so the caller catches the
     /// unwind and routes it here: the bot goes terminal-Failed and is counted in the crash metric,

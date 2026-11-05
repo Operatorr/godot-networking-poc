@@ -245,6 +245,49 @@ def next_trial(state):
     return derive(state)['next']
 
 
+def observations(state):
+    """Terminal facts that outlive the status: what was tried, whichever way the search ended. A stop or an incomplete trial never erases a result already recorded."""
+    exploration = [r for r in state.records if r.trial.phase != CONFIRM]
+    confirm = [r for r in state.records if r.trial.phase == CONFIRM]
+    passing = [r.trial.target for r in exploration if r.outcome == PASS]
+    failing = [r.trial.target for r in exploration if r.outcome == FAIL]
+    highest = max(passing) if passing else None
+    above = [target for target in failing if highest is None or target > highest]
+    return dict(highest_exploration_pass=highest, lowest_failure_above_it=min(above) if above else None, confirmations=dict(target=confirm[0].trial.target if confirm else None, passed=sum(1 for r in confirm if r.outcome == PASS),
+                failed=sum(1 for r in confirm if r.outcome == FAIL), incomplete=sum(1 for r in confirm if r.outcome == INCOMPLETE), stopped=sum(1 for r in confirm if r.outcome in STOPPING), pending=sum(1 for r in confirm if r.outcome is None)),
+                trials=len(state.records), failed_targets=sorted(failing), retries=len(state.records) - len({r.trial.run_id for r in state.records}))
+
+
+def capacity_claim(state):
+    """The one sentence this search may say, and nothing stronger. Search resolution and the cap bound what is known; neither is a measured ceiling or a zero."""
+    derived, seen = derive(state), observations(state)
+    status, result = derived['status'], derived['result'] or {}
+    highest, above = seen['highest_exploration_pass'], seen['lowest_failure_above_it']
+    tried = '' if highest is None else ' The highest one-minute pass was %d%s; it stays an exploratory observation.' % (highest, '' if above is None else ', with %d failing above it' % above)
+    if status == 'confirmed':
+        return dict(kind='confirmed_observation', players=result['candidate'], lower_bound=result['candidate'], search_cap_reached=False, confirmed=True,
+                    statement='Confirmed %d players on this rented pair: three valid five-minute passes. An observed candidate, not provider-wide capacity.' % result['candidate'])
+    if status == 'confirmed_search_cap_reached':
+        return dict(kind='at_least_search_cap', players=None, lower_bound=result['candidate'], search_cap_reached=True, confirmed=True,
+                    statement='At least %d players under this condition; search cap reached, not a discovered ceiling.' % result['candidate'])
+    if status == 'no_passing_target':
+        return dict(kind='no_passing_target_at_resolution', players=None, lower_bound=None, search_cap_reached=False, confirmed=False, resolution=REFINE_STEP,
+                    statement='No passing target at the search resolution: %d players failed. Not proof that no smaller population could work, and not a capacity of zero.' % REFINE_STEP)
+    if status == 'unconfirmed_variable':
+        return dict(kind='unconfirmed_variable', players=None, lower_bound=None, search_cap_reached=False, confirmed=False, candidate=result['candidate'],
+                    statement='Candidate %d is unconfirmed and variable: a valid confirmation failed. The bracket and every result are kept, with no replacement trial.' % result['candidate'])
+    if status == 'unconfirmed_partial':
+        return dict(kind='unconfirmed_partial', players=None, lower_bound=None, search_cap_reached=False, confirmed=False, candidate=result['candidate'],
+                    statement='Candidate %d is unconfirmed: the confirmation set is partial, %d of %d passed. Repeating it needs a separately bounded batch.' % (result['candidate'], result['passes'], CONFIRMATIONS))
+    if status in STOPPING.values():
+        return dict(kind=status, players=None, lower_bound=None, search_cap_reached=False, confirmed=False, statement='No capacity established: the batch stopped (%s).%s' % (status, tried))
+    if status == 'undecidable_incomplete_predecessor':
+        return dict(kind=status, players=None, lower_bound=None, search_cap_reached=False, confirmed=False, statement='No capacity established: an interrupted trial left the next branch undecidable, and it is neither inferred nor replayed.' + tried)
+    if status.startswith('partial_'):
+        return dict(kind=status, players=None, lower_bound=None, search_cap_reached=False, confirmed=False, statement='No capacity established: the search stopped early (%s) and its partial evidence is retained.%s' % (status, tried))
+    return dict(kind=status, players=None, lower_bound=None, search_cap_reached=False, confirmed=False, statement='No capacity established: the search is not finished (%s).%s' % (status, tried))
+
+
 def record_outcome(state, trial_id, outcome, evidence_ref=None):
     """Return a new state with the outcome recorded; outcomes are append-only and final."""
     if outcome not in OUTCOMES:

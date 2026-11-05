@@ -3,10 +3,13 @@
 Stand-in workloads hold real sockets and take real signals. What cannot run here is named where it is faked: ``tc`` is a
 scripted program, and the systemd path runs through shims. Neither says anything about a real Droplet.
 """
+import argparse
+import errno
 import json
 import os
 import pathlib
 import secrets
+import shutil
 import signal
 import socket
 import subprocess
@@ -23,6 +26,7 @@ import run_checks
 import run_executor
 import run_fixtures as rf
 import run_plan
+import scoring_fixtures as sf
 import search
 
 SESSION = 'do-local-guest-a'
@@ -41,6 +45,11 @@ def wait_until(predicate, limit_s=10.0):
             return value
         time.sleep(0.02)
     raise AssertionError('the condition was not reached')
+
+
+def _alive(pid):
+    """A live process, as cgroup.procs lists one: a zombie is not listed, and a reaped pid is gone."""
+    return guest_runner.process_start_id(pid) is not None
 
 
 class GuestFixture(unittest.TestCase):
@@ -601,6 +610,353 @@ class Contract(GuestFixture):
         self.assertEqual(set(self.do('game', 'inspect')), set(fake_run_guest.CONTRACT_KEYS['inspect']))
 
 
+class FakeKernel:
+    """Plain directories standing where cgroupfs would be, keeping only what the supervisor relies on, and refusing what the real one refuses (cgroup-v2.rst):
+
+    a child's interface files appear when its parent enables the controller; a cgroup with processes of its own cannot; ``mkdir`` is create-only; writing a pid to ``cgroup.procs`` moves that process. Each write is to a file, so that it holds from a forked child. It counts OOM kills
+    only when a test says so, and no kernel counted anything here. ``forbid`` makes one step refuse, for a unit that was given no delegation.
+    """
+    EVENTS = 'low 0\nhigh 0\nmax 0\noom %d\noom_kill %d\noom_group_kill 0\n'
+
+    def __init__(self, root, cgroup):
+        self.root, self.cgroup = pathlib.Path(root), cgroup
+        self.unit = self.root / cgroup.lstrip('/')
+        self.unit.mkdir(parents=True)
+        (self.unit / 'cgroup.subtree_control').write_text('')
+        (self.unit / 'cgroup.procs').write_text('%d\n' % os.getpid())
+        (self.unit / 'memory.events').write_text(self.EVENTS % (0, 0))
+        self.forbid = set()
+
+    def path(self, cgroup):
+        return self.root / cgroup.lstrip('/')
+
+    def _refuse(self, step):
+        if step in self.forbid:
+            raise PermissionError(errno.EACCES, 'no delegation for ' + step)
+
+    def mkdir(self, cgroup):
+        self._refuse('mkdir')
+        directory = self.path(cgroup)
+        directory.mkdir()
+        (directory / 'cgroup.procs').write_text('')
+        if '+memory' in (directory.parent / 'cgroup.subtree_control').read_text():
+            (directory / 'memory.events.local').write_text(self.EVENTS % (0, 0))
+
+    def write(self, cgroup, name, text):
+        directory = self.path(cgroup)
+        if name == 'cgroup.subtree_control':
+            self._refuse('subtree_control')
+            if (directory / 'cgroup.procs').read_text().strip():
+                raise OSError(errno.EBUSY, 'no internal processes')
+            (directory / name).write_text(text)
+            for child in directory.iterdir():
+                if child.is_dir():
+                    (child / 'memory.events.local').write_text(self.EVENTS % (0, 0))
+            return
+        self._refuse('enter:' + directory.name)
+        for other in self.unit.rglob('cgroup.procs'):
+            kept = [line for line in other.read_text().splitlines() if line != text]
+            other.write_text(''.join(line + '\n' for line in kept))
+        with (directory / 'cgroup.procs').open('a') as handle:
+            handle.write(text + '\n')
+
+    def cgroup_of(self, pid, proc_root='/proc'):
+        for procs in sorted(self.unit.rglob('cgroup.procs')):
+            if str(pid) in procs.read_text().split():
+                return '/' + str(procs.parent.relative_to(self.root))
+        return None if pid == os.getpid() else self.cgroup_of(os.getpid())     # a child starts where its parent is, and stays there unless it moved
+
+    def count(self, leaf, kills=1):
+        """What ``__oom_kill_process`` does before it signals anyone: a count local to the victim's cgroup and in each one above it."""
+        (self.unit / leaf / 'memory.events.local').write_text(self.EVENTS % (kills, kills))
+        (self.unit / 'memory.events').write_text(self.EVENTS % (kills, kills))
+
+    def count_shell(self, leaf):
+        """The same, as a command the real game runs in its last moment, so the counter moves before the signal does."""
+        return "printf '%s' > '%s'; printf '%s' > '%s'" % ('oom 1\\noom_kill 1\\noom_group_kill 0\\n', self.unit / leaf / 'memory.events.local', 'oom 1\\noom_kill 1\\noom_group_kill 0\\n', self.unit / 'memory.events')
+
+
+class OomEvidence(unittest.TestCase):
+    """The real supervisor and real child processes, over a directory standing where the kernel's cgroup files would be. No kernel counted anything here, so what is proven is the seam: what the producer does with
+    those files, and what the consumer makes of what it wrote. Whether a real kill looks like this on a real Droplet is an operational check that no test here can make."""
+    UNIT = run_plan.unit_name('fixture-session', 'fixture-run', 'game')     # the name a real plan carries: systemd-run --unit takes it whole
+    CGROUP = '/system.slice/' + UNIT
+    LEAF, SUPERVISION = guest_runner.WORKLOAD_LEAF, guest_runner.SUPERVISION_LEAF
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = pathlib.Path(temporary.name)
+        self.kernel = FakeKernel(self.root / 'sys', self.CGROUP)
+        previous = signal.getsignal(signal.SIGTERM)
+        self.addCleanup(signal.signal, signal.SIGTERM, previous)
+
+    def supervise(self, game_script, sampler_argv=None, unit_mode=guest_runner.SYSTEMD, stop_grace_s=2.0, at_the_read=None):
+        """Runs the real ``cmd_supervise``. ``game_script`` runs in a real child, and can raise the counter the way the kernel does, before the signal. ``at_the_read(document)`` runs around the supervisor's read after the reap."""
+        run_dir = self.root / 'run'
+        run_dir.mkdir()
+        plan = dict(run_id='fixture-run', role='game', unit=self.UNIT, unit_mode=unit_mode, processes=[dict(name='game', argv=['/bin/sh', '-c', game_script], primary=True)], sampler=dict(name='sampler', argv=sampler_argv or ['/bin/sleep', '30']),
+                    stop_grace_s=stop_grace_s, stop_by_wall=time.time() + 60)
+        (run_dir / 'plan.json').write_text(json.dumps(plan))
+        real_reading, real_exited = guest_runner.cgroup_reading, guest_runner.OomWatch.primary_exited
+
+        def reading(cgroup):
+            # cgroup.procs on a real host lists the live members. This stands in for that, from the real children.
+            document = real_reading(cgroup)
+            if document is not None:
+                document['procs'] = [pid for pid in document['procs'] if _alive(pid)]
+            return document
+
+        def exited(watch, primary, facts, alive):
+            if at_the_read is None:
+                return real_exited(watch, primary, facts, alive)
+            return at_the_read(lambda: real_exited(watch, primary, facts, alive), watch.document)
+        args = argparse.Namespace(run_dir=str(run_dir))
+        with mock.patch.object(guest_runner, 'CGROUP_ROOT', str(self.root / 'sys')), mock.patch.object(guest_runner, 'cgroup_reading', reading), mock.patch.object(guest_runner, 'cgroup_of', self.kernel.cgroup_of), \
+                mock.patch.object(guest_runner, '_cgroup_mkdir', self.kernel.mkdir), mock.patch.object(guest_runner, '_cgroup_write', self.kernel.write), mock.patch.object(guest_runner.OomWatch, 'primary_exited', exited), \
+                mock.patch.object(guest_runner, '_launch_gate', lambda host, run_dir, plan: 30.0), mock.patch.object(guest_runner, '_spawned_too_late', lambda host, plan: None), mock.patch.dict(os.environ, {'INVOCATION_ID': 'fixture-invocation'}):
+            guest_runner.cmd_supervise(args, None)
+        return run_dir
+
+    def score(self, run_dir):
+        root = tempfile.mkdtemp(prefix='omega-oom-')
+        self.addCleanup(shutil.rmtree, root, True)
+        scenario = sf.Scenario(root)
+        sf.game_died(scenario.tree, 30)
+        sf.bots_time_out_after_game_died(scenario.tree, [1, 2], 35)
+        shutil.copy(str(run_dir / guest_runner.OOM_EVIDENCE), str(scenario.tree.path('game/' + guest_runner.OOM_EVIDENCE)))
+        shutil.copy(str(run_dir / 'plan.json'), str(scenario.tree.path('plan-game.json')))
+        identity = json.loads((run_dir / 'identity.json').read_text())
+        result = json.loads((run_dir / 'result.json').read_text())
+        record = sf.execution(game_exit=(None, 9))
+        record['roles']['game'].update(identity=dict(supervisor=identity['supervisor'], processes=identity['processes'], invocation_id=identity['invocation_id']), result=result)
+        return scenario.score(execution_record=record)
+
+    def evidence(self, run_dir):
+        return json.loads((run_dir / guest_runner.OOM_EVIDENCE).read_text())
+
+    def killed_by_the_kernel(self):
+        return '%s; kill -9 $$' % self.kernel.count_shell(self.LEAF)
+
+    def assertUnexplained(self, run_dir, status='not_attributable'):
+        document = self.score(run_dir)
+        game_exit = document['attribution']['game_exit']
+        self.assertEqual((game_exit['kind'], game_exit['demonstrated']), ('killed_with_no_cause_on_record', False), game_exit)
+        self.assertEqual(game_exit['process_oom']['status'], status, game_exit['process_oom'])
+        self.assertEqual(document['classification'], 'inconclusive_evidence')
+        self.assertEqual(document['outcome'], 'INCONCLUSIVE', 'nothing advances on it')
+        return game_exit['process_oom']
+
+    def test_the_game_is_alone_in_a_leaf_it_never_left_with_the_others_in_another(self):
+        run_dir = self.supervise('sleep 0.4; kill -9 $$')
+        evidence, identity = self.evidence(run_dir), json.loads((run_dir / 'identity.json').read_text())
+        self.assertEqual(evidence['schema'], guest_runner.OOM_SCHEMA)
+        self.assertEqual((evidence['cgroup'], evidence['leaf'], evidence['supervision']), (self.CGROUP, self.CGROUP + '/' + self.LEAF, self.CGROUP + '/' + self.SUPERVISION))
+        self.assertEqual(evidence['member_cgroups'], dict(game=evidence['leaf'], sampler=evidence['supervision'], supervisor=evidence['supervision']))
+        self.assertEqual(evidence['baseline']['procs'], [], 'before any child existed')
+        self.assertEqual(evidence['bound']['procs'], [identity['processes']['game']['pid']])
+        self.assertEqual(evidence['primary_exit']['procs'], [], 'a reaped game is gone')
+        self.assertEqual(self.kernel.path(self.CGROUP).joinpath('cgroup.procs').read_text(), '', 'the unit itself is an inner node, with no process of its own')
+
+    def test_a_kill_the_kernel_counted_in_the_games_leaf_reaches_the_consumer_as_the_games(self):
+        """The positive seam. Mocked: a shell standing for the kernel raises the count just before the real child dies by SIGKILL."""
+        run_dir = self.supervise('sleep 0.4; %s' % self.killed_by_the_kernel())
+        evidence = self.evidence(run_dir)
+        self.assertTrue(evidence['available'], evidence)
+        self.assertEqual((evidence['baseline']['oom_kill'], evidence['primary_exit']['oom_kill']), (0, 1))
+        self.assertEqual(evidence['primary_exit']['signal'], 9)
+        document = self.score(run_dir)
+        game_exit = document['attribution']['game_exit']
+        self.assertEqual((game_exit['kind'], game_exit['demonstrated']), ('out_of_memory', True), game_exit)
+        self.assertEqual((game_exit['process_oom']['status'], game_exit['process_oom']['oom_kill_in_leaf']), ('victim_matched', 1))
+        self.assertEqual(document['classification'], 'capacity_failure')
+
+    def test_a_sigkill_the_kernel_did_not_count_stays_unexplained(self):
+        run_dir = self.supervise('sleep 0.4; kill -9 $$')
+        self.assertEqual(self.evidence(run_dir)['primary_exit']['oom_kill'], 0)
+        self.assertUnexplained(run_dir)
+
+    def test_the_sampler_chosen_and_not_yet_dead_at_the_read_is_no_kill_of_the_games(self):
+        """The ordering that broke the unit-wide count: the game dies of something else, and in the same interval the kernel has counted the sampler and not yet delivered its SIGKILL. Membership shows it alive."""
+        def at_the_read(read, document):
+            self.kernel.count(self.SUPERVISION)
+            read()
+            os.kill(document['processes']['sampler']['pid'], signal.SIGKILL)
+        run_dir = self.supervise('sleep 0.4; kill -9 $$', at_the_read=at_the_read)
+        evidence, result = self.evidence(run_dir), json.loads((run_dir / 'result.json').read_text())
+        self.assertEqual(evidence['primary_exit']['alive'], ['sampler'])
+        self.assertEqual((evidence['primary_exit']['oom_kill'], evidence['primary_exit']['unit_oom_kill']), (0, 1), 'the unit counted one kill, and the game\'s leaf none')
+        self.assertEqual((result['processes']['game']['signal'], result['processes']['sampler']['signal'], result['sampler_exited_early']), (9, 9, False))
+        facts = self.assertUnexplained(run_dir)
+        self.assertEqual((facts['oom_kill_in_leaf'], facts['unit_oom_kill_at_reap']), (0, 1))
+        self.assertIn('0 OOM kills', str(facts['problems']))
+
+    def test_a_sampler_counted_long_before_the_games_delayed_exit_is_no_kill_of_the_games(self):
+        def at_the_read(read, document):
+            self.kernel.count(self.SUPERVISION)
+            time.sleep(0.2)
+            read()
+        self.assertUnexplained(self.supervise('sleep 0.4; kill -9 $$', at_the_read=at_the_read))
+
+    def test_a_final_sigkill_of_the_sampler_in_teardown_changes_nothing(self):
+        """The supervisor escalates on a sampler that will not stop, and the kernel counted that same sampler. Neither says a thing about the game."""
+        def at_the_read(read, document):
+            self.kernel.count(self.SUPERVISION)
+            read()
+        run_dir = self.supervise('sleep 0.2; kill -9 $$', sampler_argv=['/bin/sh', '-c', 'trap "" TERM; while :; do sleep 0.05; done'], stop_grace_s=0.3, at_the_read=at_the_read)
+        self.assertIn('sampler', json.loads((run_dir / 'result.json').read_text())['killed'], 'it had to be killed')
+        self.assertUnexplained(run_dir)
+
+    def test_a_sampler_that_died_early_by_itself_costs_a_kill_the_kernel_named_nothing(self):
+        run_dir = self.supervise('sleep 0.4; %s' % self.killed_by_the_kernel(), sampler_argv=['/bin/sh', '-c', 'kill -9 $$'])
+        self.assertTrue(json.loads((run_dir / 'result.json').read_text())['sampler_exited_early'])
+        self.assertEqual(self.score(run_dir)['attribution']['game_exit']['kind'], 'out_of_memory')
+
+    def test_the_kernel_counting_the_game_and_the_sampler_is_still_the_games(self):
+        def at_the_read(read, document):
+            (self.kernel.unit / 'memory.events').write_text(FakeKernel.EVENTS % (2, 2))
+            read()
+        run_dir = self.supervise('sleep 0.4; %s' % self.killed_by_the_kernel(), at_the_read=at_the_read)
+        game_exit = self.score(run_dir)['attribution']['game_exit']
+        self.assertEqual((game_exit['kind'], game_exit['process_oom']['oom_kill_in_leaf'], game_exit['process_oom']['unit_oom_kill_at_reap']), ('out_of_memory', 1, 2))
+
+    def test_a_game_that_could_not_enter_its_leaf_stays_unexplained_and_still_runs(self):
+        self.kernel.forbid.add('enter:' + self.LEAF)
+        run_dir = self.supervise('sleep 0.2; kill -9 $$')
+        evidence = self.evidence(run_dir)
+        self.assertTrue(evidence['available'], 'the leaf exists')
+        self.assertEqual(evidence['member_cgroups']['game'], evidence['supervision'], 'on record as where it stayed')
+        self.assertEqual(json.loads((run_dir / 'result.json').read_text())['stop_reason'], 'primary_exited')
+        self.assertUnexplained(run_dir)
+
+    def test_a_unit_with_no_delegation_says_unavailable_and_the_run_goes_on(self):
+        for step, why in (('mkdir', 'mkdir refused'), ('subtree_control', 'controller refused'), ('enter:' + self.SUPERVISION, 'move refused')):
+            with self.subTest(why):
+                self.setUp()
+                self.kernel.forbid.add(step)
+                run_dir = self.supervise('sleep 0.2; kill -9 $$')
+                evidence = self.evidence(run_dir)
+                self.assertFalse(evidence['available'])
+                self.assertIn('no leaf of the workload', evidence['unavailable'])
+                self.assertEqual(json.loads((run_dir / 'result.json').read_text())['stop_reason'], 'primary_exited')
+                self.assertEqual(json.loads((run_dir / 'result.json').read_text())['processes']['game']['signal'], 9)
+                self.assertUnexplained(run_dir, 'unavailable')
+
+    def test_a_leaf_that_already_exists_is_not_taken_for_a_fresh_one(self):
+        (self.kernel.unit / self.LEAF).mkdir()
+        self.assertIn('no leaf of the workload', self.evidence(self.supervise('kill -9 $$'))['unavailable'])
+
+    def test_a_game_that_a_cgroup_move_took_elsewhere_stays_unexplained(self):
+        def at_the_read(read, document):
+            document['member_cgroups']['game'] = '/system.slice/ssh.service'
+            read()
+        run_dir = self.supervise('sleep 0.4; %s' % self.killed_by_the_kernel(), at_the_read=at_the_read)
+        self.assertUnexplained(run_dir)
+
+    def test_a_stranger_in_the_leaf_at_the_reap_stays_unexplained(self):
+        def at_the_read(read, document):
+            with (self.kernel.unit / self.LEAF / 'cgroup.procs').open('a') as handle:
+                handle.write('%d\n' % document['processes']['sampler']['pid'])
+            read()
+        run_dir = self.supervise('sleep 0.4; %s' % self.killed_by_the_kernel(), at_the_read=at_the_read)
+        self.assertIn('may hold only the game', str(self.assertUnexplained(run_dir)['problems']))
+
+    def test_a_reused_pid_or_a_wrong_identity_stays_unexplained(self):
+        run_dir = self.supervise('sleep 0.4; %s' % self.killed_by_the_kernel())
+        evidence = self.evidence(run_dir)
+        evidence['processes']['game']['start_id'] = 'bsd:1.0'
+        (run_dir / guest_runner.OOM_EVIDENCE).write_text(json.dumps(evidence))
+        self.assertIn('not the supervised process', str(self.assertUnexplained(run_dir)['problems']))
+
+    def test_evidence_of_the_unit_wide_schema_could_never_name_a_victim(self):
+        run_dir = self.supervise('sleep 0.4; %s' % self.killed_by_the_kernel())
+        evidence = self.evidence(run_dir)
+        evidence['schema'] = 'omega.do-session.process-oom/1'
+        (run_dir / guest_runner.OOM_EVIDENCE).write_text(json.dumps(evidence))
+        self.assertUnexplained(run_dir, 'refused')
+
+    def test_a_missing_evidence_file_stays_unexplained(self):
+        run_dir = self.supervise('sleep 0.4; %s' % self.killed_by_the_kernel())
+        (run_dir / guest_runner.OOM_EVIDENCE).write_text('{"schema": ')
+        self.assertUnexplained(run_dir, 'missing')
+
+    def test_a_run_with_no_unit_of_its_own_writes_that_it_has_nothing_to_say(self):
+        run_dir = self.supervise('kill -9 $$', unit_mode=guest_runner.PROCESS_GROUP)
+        evidence = self.evidence(run_dir)
+        self.assertFalse(evidence['available'])
+        self.assertIn('no unit of its own', evidence['unavailable'])
+        self.assertEqual(json.loads((run_dir / 'result.json').read_text())['stop_reason'], 'primary_exited')
+        self.assertEqual(self.score(run_dir)['attribution']['game_exit']['process_oom']['status'], 'unavailable')
+
+    def test_a_real_plans_unit_is_what_the_watch_expects_of_its_cgroup(self):
+        """systemd-run --unit=NAME.service runs it in a cgroup called NAME.service, with no second suffix."""
+        self.assertTrue(self.UNIT.endswith('.service'))
+        with mock.patch.object(guest_runner, 'cgroup_of', self.kernel.cgroup_of), mock.patch.object(guest_runner, 'CGROUP_ROOT', str(self.root / 'sys')), mock.patch.object(guest_runner, '_cgroup_mkdir', self.kernel.mkdir), mock.patch.object(guest_runner, '_cgroup_write', self.kernel.write):
+            watch = guest_runner.OomWatch(dict(unit=self.UNIT, unit_mode=guest_runner.SYSTEMD, run_id='fixture-run', role='game'))
+        self.assertTrue(watch.document['available'], watch.document)
+        self.assertEqual(watch.document['cgroup'], self.CGROUP)
+
+    def test_a_cgroup_that_is_not_the_units_or_cannot_be_read_says_so(self):
+        plan = dict(unit=self.UNIT, unit_mode=guest_runner.SYSTEMD, run_id='r', role='game')
+        with mock.patch.object(guest_runner, 'cgroup_of', lambda pid, proc_root='/proc': None):
+            self.assertIn('no cgroup v2', guest_runner.OomWatch(plan).document['unavailable'])
+        with mock.patch.object(guest_runner, 'cgroup_of', lambda pid, proc_root='/proc': '/user.slice/session-1.scope'):
+            self.assertIn('not in the run unit', guest_runner.OomWatch(plan).document['unavailable'])
+        with mock.patch.object(guest_runner, 'cgroup_of', lambda pid, proc_root='/proc': self.CGROUP), mock.patch.object(guest_runner, 'CGROUP_ROOT', str(self.root / 'nowhere')):
+            self.assertIn('no leaf of the workload', guest_runner.OomWatch(plan).document['unavailable'])
+
+        def no_counter(cgroup):
+            self.kernel.path(cgroup).mkdir()
+            (self.kernel.path(cgroup) / 'cgroup.procs').write_text('')
+        with mock.patch.object(guest_runner, 'cgroup_of', self.kernel.cgroup_of), mock.patch.object(guest_runner, 'CGROUP_ROOT', str(self.root / 'sys')), mock.patch.object(guest_runner, '_cgroup_mkdir', no_counter), mock.patch.object(guest_runner, '_cgroup_write', self.kernel.write):
+            self.assertIn('cannot be read', guest_runner.OomWatch(plan).document['unavailable'], 'a memory controller that gave the leaf no counter')
+
+    def test_collecting_it_never_stops_a_run_from_stopping(self):
+        def broken(*_):
+            raise RuntimeError('a surprising file')
+        with mock.patch.object(guest_runner, 'cgroup_of', broken):
+            watch = guest_runner.OomWatch(dict(unit=self.UNIT, unit_mode=guest_runner.SYSTEMD))
+        self.assertIn('RuntimeError', watch.document['unavailable'])
+        watch.bind(dict(pid=1), {}, None)
+        watch.primary_exited('game', dict(returncode=None, signal=9), [])
+        watch.finish(self.root / 'nowhere' / 'at' / 'all.json')
+
+    def test_a_missing_counter_is_never_zero(self):
+        leaf = self.kernel.unit / self.LEAF
+        leaf.mkdir()
+        (leaf / 'cgroup.procs').write_text('')
+        (leaf / 'memory.events.local').write_text('low 0\nhigh 0\n')
+        with mock.patch.object(guest_runner, 'CGROUP_ROOT', str(self.root / 'sys')):
+            self.assertIsNone(guest_runner.cgroup_reading(self.CGROUP + '/' + self.LEAF))
+        (leaf / 'memory.events.local').write_text('oom_kill not-a-number\n')
+        with mock.patch.object(guest_runner, 'CGROUP_ROOT', str(self.root / 'sys')):
+            self.assertIsNone(guest_runner.cgroup_reading(self.CGROUP + '/' + self.LEAF))
+
+    def test_the_count_it_reads_is_the_one_local_to_the_leaf_and_not_the_hierarchical_one(self):
+        leaf = self.kernel.unit / self.LEAF
+        leaf.mkdir()
+        (leaf / 'cgroup.procs').write_text('')
+        (leaf / 'memory.events').write_text('oom_kill 9\n')
+        (leaf / 'memory.events.local').write_text('oom_kill 1\n')
+        with mock.patch.object(guest_runner, 'CGROUP_ROOT', str(self.root / 'sys')):
+            self.assertEqual(guest_runner.cgroup_reading(self.CGROUP + '/' + self.LEAF)['oom_kill'], 1)
+
+    def test_the_v2_line_of_proc_pid_cgroup(self):
+        proc = self.root / 'proc' / '42'
+        proc.mkdir(parents=True)
+        for text, expected in (('0::/system.slice/a.service\n', '/system.slice/a.service'), ('12:memory:/x\n0::/b\n', '/b'), ('12:memory:/x\n', None), ('0::/gone (deleted)\n', None), ('0::relative\n', None)):
+            (proc / 'cgroup').write_text(text)
+            self.assertEqual(guest_runner.cgroup_of(42, str(self.root / 'proc')), expected, text)
+        self.assertIsNone(guest_runner.cgroup_of(43, str(self.root / 'proc')))
+
+    @unittest.skipUnless(os.path.exists('/sys/fs/cgroup/cgroup.controllers') and guest_runner.cgroup_of(os.getpid()) not in (None, '/'), 'needs a Linux host on cgroup v2. Nothing else can run this')
+    def test_the_real_files_read_on_a_real_cgroup(self):
+        reading = guest_runner.cgroup_reading(guest_runner.cgroup_of(os.getpid()))
+        self.assertIsNotNone(reading)
+        self.assertIn(os.getpid(), reading['procs'])
+        self.assertIsInstance(reading['oom_kill'], int)
+
+
 class SystemdPath(GuestFixture):
     """Through shims for ``sudo``, ``systemd-run`` and ``systemctl``, which run the real supervisor. Real units are a Gate A check."""
 
@@ -629,6 +985,23 @@ class SystemdPath(GuestFixture):
         ledger = [dict(run_id='old', invocation_id=started['invocation_id'])]
         self.assertIn('the unit invocation was already used by an earlier run', run_checks.launch_problems(plan, started, ledger))
         self.assertEqual(self.stop(plan)['stopped'], True)
+
+    def test_the_unit_keeps_its_supervisor_alive_through_an_oom_kill(self):
+        self.fence()
+        plan = self.plan(unit_mode=guest_runner.SYSTEMD, bound_s=30.0, stop_grace_s=1.0)
+        self.assertTrue(self.start(plan)['ok'])
+        self.assertIn('--property=OOMPolicy=continue', self.record.read_text())
+        self.stop(plan)
+
+    def test_the_unit_delegates_only_the_memory_controller_to_the_uid_it_already_runs_as(self):
+        self.fence()
+        plan = self.plan(unit_mode=guest_runner.SYSTEMD, bound_s=30.0, stop_grace_s=1.0)
+        self.assertTrue(self.start(plan)['ok'])
+        argv = self.record.read_text()
+        self.assertIn('--property=Delegate=memory', argv)
+        self.assertIn('--uid=%d' % os.getuid(), argv)
+        self.assertIn('--property=KillMode=control-group', argv, 'and the whole subtree still goes when the unit does')
+        self.stop(plan)
 
     def test_a_failed_unit_start_is_refused(self):
         (self.hosts.bin_dir / 'systemd-run').write_text('#!/bin/sh\nexit 1\n')

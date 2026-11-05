@@ -3,7 +3,7 @@
 
 Each scenario runs the real executor, registry and watchdog against a fake remote on a scripted clock. The output is compact and
 byte-reproducible, holds no credential and proves nothing about a live account or a measurement: the outcomes are scripted by the
-fixture, because no scorer exists yet. ``test_run_fault_evidence`` regenerates it and compares it with the committed SHA256SUMS.
+fixture, which predates ``capacity_scorer`` and exercises the lifecycle only. ``test_run_fault_evidence`` regenerates it and compares it with the committed SHA256SUMS.
 
     python3 run_fault_evidence.py --out ../../docs/netcode/perf-notes/digitalocean-capacity/offline-faults/slice4
 """

@@ -19,6 +19,7 @@ import pathlib
 import sys
 import time
 
+import capacity_scorer
 import measurement_window
 import registry_client
 import run_cli
@@ -52,7 +53,8 @@ def main(argv=None):
     client = registry_client.RegistryClient(registry_client.SubprocessTransport(description['rpc_argv']), args.controller, attempts=2, retry_delay_s=0.05)
     manifest, sha = run_cli.load_session(description['session_dir'])
     provider = run_fixtures.LocalPairProvider(description['pair_file'])
-    scorer = None
+    # Real binaries get the production scorer, so the local counter allowance below is exactly what it refuses. Stand-in processes leave nothing to score.
+    scorer = capacity_scorer.score if description.get('real_release') else None
     if args.score is not None:
         scripted = json.loads(args.score)
         scorer = run_fixtures.scripted_scorer({int(k): v for k, v in scripted.get('targets', {}).items()}, scripted.get('default', 'PASS'))

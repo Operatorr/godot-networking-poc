@@ -6,8 +6,8 @@ A missing fact is a failure, never a pass. Nothing here scores a measurement. It
   generator        the swarm itself failed, which is invalid offered load unless the game failed too
   game             the game process failed; only a scorer with its own evidence can call that a capacity failure
 
-The scorer (handoff slices 5 and 6, issues #68 and #69) sits behind ``apply_scorer``. Without one, a finished run is
-INCONCLUSIVE, which stops the batch and establishes nothing.
+``capacity_scorer`` (handoff slice 6, issue #69) sits behind ``apply_scorer``. Without a scorer, as in fixtures with no recorder files, a
+finished run is INCONCLUSIVE, which stops the batch and establishes nothing.
 """
 import guest_runner
 import search
@@ -233,7 +233,7 @@ def window_reasons(proof):
     """The window proof's answer as plain reasons, for a verdict record. Nothing here turns it into an outcome."""
     if not isinstance(proof, dict):
         return []
-    codes = sorted({item.get('code') for item in proof.get('reasons') or [] if isinstance(item, dict)})
+    codes = sorted({str(item.get('code')) for item in proof.get('reasons') or [] if isinstance(item, dict)})
     return ['window proof: %s%s' % (proof.get('status'), ' (%s)' % ', '.join(str(code) for code in codes) if codes else '')]
 
 

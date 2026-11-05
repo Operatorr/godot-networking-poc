@@ -7,7 +7,7 @@ one future interval, with the server's Ticks and transitions proving N throughou
   invalid       the evidence shows the interval or its offered load was broken, and says how
   inconclusive  the evidence cannot show it: missing, truncated, foreign or ambiguous
 
-``PASS`` and capacity live in the scorer (handoff slice 6, issue #69), which may only build on ``complete``. The facts here carry no
+``PASS`` and capacity live in ``capacity_scorer`` (handoff slice 6, issue #69), which may only pass on ``complete``. The facts here carry no
 gates: RTT, loss, Tick time and game-socket drops are kept for that scorer and judged by nothing in this file.
 
 Time. Each process has its own monotonic domain with an arbitrary origin, and these are never compared directly. A boundary moves
@@ -79,7 +79,7 @@ def load_json(path):
         document = json.loads(pathlib.Path(path).read_text())
     except OSError:
         return None, 'missing'
-    except ValueError:
+    except (ValueError, RecursionError):
         return None, 'corrupt'
     return (document, None) if isinstance(document, dict) else (None, 'corrupt')
 
@@ -276,14 +276,9 @@ def check_boundaries(rows, name, start, end, footer, reasons):
     return freeze
 
 
-def check_shard(shard, shards, nonce, rows, bots, start, end, limits, reasons):
-    """One shard's file. Returns its per-bot facts, or None if the file cannot be trusted."""
-    name = 'shard-%d' % shard
-    if not check_stream(rows, nonce, name, reasons):
-        return None
+def check_shard_owner(rows, name, shard, shards, bots, reasons):
+    """Whose file this is, and that it is the shard round-robin says it should be. Returns the bots it owns."""
     header = rows[0]
-    if not check_producer(header, name, 'shard-<k>.ndjson', reasons):
-        return None
     if header.get('shard') != shard or header.get('shards') != shards:
         reasons.add('ownership_mismatch', EVIDENCE, '%s says it is shard %r of %r' % (name, header.get('shard'), header.get('shards')))
     owned = header.get('bots') or []
@@ -292,33 +287,52 @@ def check_shard(shard, shards, nonce, rows, bots, start, end, limits, reasons):
         reasons.add('ownership_mismatch', EVIDENCE, '%s owns %s, round-robin says %s' % (name, owned, expected))
     if ((header.get('geometry') or {}).get('initialized_on_thread')) is not True:
         reasons.add('geometry_not_initialized', GENERATOR, name)
-    joins = {row.get('bot'): row for row in rows if row.get('k') == 'join'}
-    auths = {row.get('bot'): row for row in rows if row.get('k') == 'auth'}
-    stagger_ns = limits['stagger_tolerance_ms'] * 1_000_000
-    for bot in expected:
-        join = joins.get(bot)
-        if join is None or join.get('error'):
-            reasons.add('join_missing', GENERATOR, 'bot %d: %s' % (bot, (join or {}).get('error')))
-            continue
-        scheduled, actual = join.get('scheduled_ns'), join.get('actual_ns')
-        if not is_int(scheduled) or not is_int(actual):
-            reasons.add('join_missing', EVIDENCE, 'bot %d has no join times' % bot)
-        elif actual - scheduled > stagger_ns:
-            reasons.add('global_stagger_violated', GENERATOR, 'bot %d joined %.1f ms after its slot' % (bot, (actual - scheduled) / 1e6))
-        if bot not in auths:
-            reasons.add('bot_never_authenticated', GENERATOR, 'bot %d' % bot)
-    starvation_ns = limits['poll_starvation_ms'] * 1_000_000
+    return expected
+
+
+def check_join_times(bot, join, limits, reasons):
+    scheduled, actual = join.get('scheduled_ns'), join.get('actual_ns')
+    if not is_int(scheduled) or not is_int(actual):
+        reasons.add('join_missing', EVIDENCE, 'bot %d has no join times' % bot)
+    elif actual - scheduled > limits['stagger_tolerance_ms'] * 1_000_000:
+        reasons.add('global_stagger_violated', GENERATOR, 'bot %d joined %.1f ms after its slot' % (bot, (actual - scheduled) / 1e6))
+
+
+def check_poll_liveness(rows, name, limits, reasons, samples_required=True):
+    """That this shard kept polling, and that it says so itself. A shard cut short before its first interval has no sample row to show, which only a ramp can excuse."""
     footer = rows[-1]
     gaps = [row.get('max_poll_gap_ns') for row in rows if row.get('k') == 'sample']
-    if not is_count(footer.get('max_poll_gap_ns')) or not gaps or not all(is_count(gap) for gap in gaps):
+    if not is_count(footer.get('max_poll_gap_ns')) or (samples_required and not gaps) or not all(is_count(gap) for gap in gaps):
         reasons.add('poll_liveness_missing', EVIDENCE, name)
-    elif footer['max_poll_gap_ns'] > starvation_ns:
+    elif footer['max_poll_gap_ns'] > limits['poll_starvation_ms'] * 1_000_000:
         reasons.add('poll_starvation', GENERATOR, '%s did not poll for %.0f ms' % (name, footer['max_poll_gap_ns'] / 1e6))
     if footer.get('left_early') is not False:
         if footer.get('left_early') is True:
             reasons.add('early_shard_exit', GENERATOR, name)
         else:
             reasons.add('poll_liveness_missing', EVIDENCE, '%s does not say whether it left early: %r' % (name, footer.get('left_early')))
+
+
+def check_shard(shard, shards, nonce, rows, bots, start, end, limits, reasons):
+    """One shard's file. Returns its per-bot facts, or None if the file cannot be trusted."""
+    name = 'shard-%d' % shard
+    if not check_stream(rows, nonce, name, reasons):
+        return None
+    if not check_producer(rows[0], name, 'shard-<k>.ndjson', reasons):
+        return None
+    expected = check_shard_owner(rows, name, shard, shards, bots, reasons)
+    joins = {row.get('bot'): row for row in rows if row.get('k') == 'join'}
+    auths = {row.get('bot'): row for row in rows if row.get('k') == 'auth'}
+    for bot in expected:
+        join = joins.get(bot)
+        if join is None or join.get('error'):
+            reasons.add('join_missing', GENERATOR, 'bot %d: %s' % (bot, (join or {}).get('error')))
+            continue
+        check_join_times(bot, join, limits, reasons)
+        if bot not in auths:
+            reasons.add('bot_never_authenticated', GENERATOR, 'bot %d' % bot)
+    check_poll_liveness(rows, name, limits, reasons)
+    footer = rows[-1]
     observed = next((row for row in rows if row.get('k') == 'window_observed'), None)
     if observed is None:
         reasons.add('window_not_observed', GENERATOR, name)
@@ -792,6 +806,222 @@ def host_counter_delta(rows):
     return {key: last[key] - first[key] for key in sorted(first) if is_int(first.get(key)) and is_int(last.get(key))}
 
 
+# ---- a window that was never established ----------------------------------------------------------
+
+# A kernel drop counter counts from the socket's creation, so one read proves zero for everything before it and nothing after it. A ramp's generator is proven only by a read that is certainly
+# after the abort, on every socket it opened: the last read before an abort, however close, says nothing of the time between them, and a socket no read saw says nothing at all. This is cumulative
+# socket counting, and the two-second borrow for ENet loss samples is a different estimate of a different metric. The swarm holds its sockets open for this read (``COUNTER_HOLD_NS``, measured.rs).
+
+
+def prove_ramp(root, trial, identity, prior, require_counters, limits, reasons):
+    """A swarm that published no window still has to be the supervised one, healthy, on every socket it opened. ``load_swarm`` has checked its schema, build and controls.
+
+    A hash shows which bytes arrived, not whose they are, so each identity here is held to what the supervisor recorded and to what earlier runs on that host already used. Returns the facts a
+    scorer needs. Whatever cannot be shown is a reason, on the same codes a held window uses.
+    """
+    directory = root / 'bot' / 'swarm'
+    swarm, _ = load_json(directory / 'swarm.json')
+    window, _ = load_json(directory / 'window.json')
+    _check_swarm_identity(swarm, identity, reasons)
+    facts = dict(reason=window.get('reason'), abort_bot_mono_ns=None, ends=[], bots_started=0, bot_host=None)
+    panicked, unjoined = window.get('panicked_shards'), window.get('unjoined_shards')
+    if not isinstance(panicked, list) or not isinstance(unjoined, list):
+        reasons.add('swarm_evidence_missing', EVIDENCE, 'window.json does not say which shards ended: panicked %r, unjoined %r' % (panicked, unjoined))
+    elif panicked or unjoined:
+        reasons.add('early_shard_exit', GENERATOR, 'a shard panicked or never finished: panicked %s, unjoined %s' % (panicked, unjoined))
+    controls = swarm.get('controls') or {}
+    shards = controls.get('threads')
+    if not is_int(shards) or shards <= 0:
+        reasons.add('swarm_evidence_missing', EVIDENCE, 'no shard count')
+        return facts
+    abort_ns, domain = _ramp_abort(directory, swarm.get('nonce'), window, limits, reasons)
+    facts['abort_bot_mono_ns'] = abort_ns
+    started, ends = {}, []
+    for shard in range(shards):
+        joins, finished = _ramp_shard(directory, shard, shards, swarm.get('nonce'), trial['target'], controls.get('join_stagger_ms'), abort_ns, limits, reasons)
+        started.update(joins)
+        ends += finished
+    ports = [join.get('local_port') for join in started.values() if join.get('local_port') is not None]
+    if not started:
+        reasons.add('socket_evidence_missing', EVIDENCE, 'no bot ever opened a socket')
+    elif len(set(ports)) != len(ports):
+        reasons.add('socket_evidence_missing', EVIDENCE, 'two bots claim one local port')
+    facts.update(ends=ends, bots_started=len(started))
+    rows = load_sampler(root, 'bot', reasons)
+    facts['bot_host'] = _check_ramp_bot_host(rows, started, abort_ns, domain, identity, prior, require_counters, limits, reasons)
+    return facts
+
+
+def _ramp_abort(directory, nonce, window, limits, reasons):
+    """When the swarm gave up, and its clock to place that on the host's wall. It is the coordinator's own durable row, and it must agree with what window.json says happened."""
+    domain = Domain('swarm', [], limits)
+    rows, problem = load_ndjson(directory / 'coordinator.ndjson')
+    if problem:
+        reasons.add('recorder_truncated', EVIDENCE, 'coordinator.ndjson %s' % problem)
+        return None, domain
+    if not check_stream(rows, nonce, 'coordinator', reasons) or not check_producer(rows[0], 'coordinator.ndjson', 'coordinator.ndjson', reasons):
+        return None, domain
+    domain = Domain('swarm', [row['clock'] for row in rows if valid_pair(row.get('clock'))], limits)
+    for step in domain.steps():
+        reasons.add('clock_step', CLOCK, 'swarm wall clock jumped %.1f ms' % (step['jump_ns'] / 1e6))
+    aborts = [row for row in rows if row.get('k') == 'abort']
+    if len(aborts) != 1 or not is_count(aborts[0].get('mono_ns')):
+        reasons.add('window_boundaries_missing', EVIDENCE, 'the coordinator records %d aborts, and needs one with a time' % len(aborts))
+        return None, domain
+    if aborts[0].get('reason') != window.get('reason'):
+        reasons.add('boundary_contradiction', EVIDENCE, 'the coordinator aborted for %r, window.json says %r' % (aborts[0].get('reason'), window.get('reason')))
+    return aborts[0]['mono_ns'], domain
+
+
+def _ramp_shard(directory, shard, shards, nonce, target, stagger_ms, abort_ns, limits, reasons):
+    """One shard that saw no window. Returns its started bots (bot to join row) and how the ones that ended by themselves ended."""
+    name = 'shard-%d' % shard
+    rows, problem = load_ndjson(directory / (name + '.ndjson'))
+    if problem:
+        reasons.add('recorder_truncated' if problem != 'missing' else 'shard_evidence_missing', EVIDENCE, '%s.ndjson %s' % (name, problem))
+        return {}, []
+    if not check_stream(rows, nonce, name, reasons) or not check_producer(rows[0], name, 'shard-<k>.ndjson', reasons):
+        return {}, []
+    owned = check_shard_owner(rows, name, shard, shards, target, reasons)
+    check_poll_liveness(rows, name, limits, reasons, samples_required=False)
+    if rows[-1].get('left_early') is False and not any(row.get('k') == 'drain_start' for row in rows):
+        reasons.add('drain_missing', EVIDENCE, '%s finished with no drain record' % name)
+    fields = rows[0].get('bot_fields') or []
+    joins, auths, ends, latest = {}, set(), [], {}
+    for row in rows:
+        kind = row.get('k')
+        if kind == 'join':
+            bot = row.get('bot')
+            if bot not in owned or bot in joins:
+                reasons.add('ownership_mismatch', EVIDENCE, '%s records a join for bot %r, and owns %s' % (name, bot, owned))
+            elif row.get('error'):
+                reasons.add('join_missing', GENERATOR, 'bot %s could not open its socket: %s' % (bot, row.get('error')))
+            else:
+                check_join_times(bot, row, limits, reasons)
+                if not is_count(row.get('local_port')):
+                    reasons.add('socket_evidence_missing', EVIDENCE, 'bot %s opened a socket and names no local port' % bot)
+                joins[bot] = row
+        elif kind == 'auth':
+            auths.add(row.get('bot'))
+        elif kind == 'bot_end':
+            ends.append(row)
+        elif kind in ('sample', 'drain_end'):
+            for item in row.get('bots') or ():
+                if isinstance(item, list) and len(item) == len(fields) and 'id' in fields:
+                    latest[item[fields.index('id')]] = dict(zip(fields, item))
+    if is_count(abort_ns) and is_count(stagger_ms):
+        # A slot well before the abort that left no join row is a started bot this evidence cannot show. One after the abort was never owed.
+        refused = {row.get('bot') for row in rows if row.get('k') == 'join' and row.get('error')}
+        due = [bot for bot in owned if bot not in joins and bot not in refused and (bot - 1) * stagger_ms * 1_000_000 + limits['stagger_tolerance_ms'] * 1_000_000 < abort_ns]
+        if due:
+            reasons.add('join_missing', EVIDENCE, '%s has no join row for bots %s, whose slots came before the abort' % (name, due[:10]))
+    for bot in sorted(joins):
+        item = latest.get(bot)
+        counts = {key: (item or {}).get(key) for key in ('send_errors', 'panics', 'socket_send_errors', 'socket_zero_sends', 'socket_receive_errors')}
+        if any(not is_count(value) for value in counts.values()):
+            reasons.add('input_record_missing', EVIDENCE, 'bot %s has no error counters' % bot)
+        elif counts['send_errors'] or counts['panics']:
+            reasons.add('bot_errors', GENERATOR, 'bot %s: %s' % (bot, {key: value for key, value in counts.items() if value}))
+        elif any(counts.values()):
+            reasons.add('generator_socket_errors', GENERATOR, 'bot %s: %s' % (bot, {key: value for key, value in counts.items() if value}))
+    unjoined = sorted(set(latest) - set(joins), key=str)
+    if unjoined:
+        reasons.add('join_missing', EVIDENCE, '%s has counters for bots %s and no join row' % (name, unjoined[:10]))
+    finished = []
+    for row in ends:
+        bot = row.get('bot')
+        if bot not in joins:
+            reasons.add('join_missing', EVIDENCE, '%s records the end of bot %r and no join row' % (name, bot))
+            continue
+        if row.get('panics'):
+            reasons.add('bot_errors', GENERATOR, 'bot %s panicked' % bot)
+        finished.append(dict(bot=bot, authenticated=bot in auths, disconnected=row.get('disconnected')))
+    return joins, finished
+
+
+def _alive_rows(rows, name):
+    """The rows from the first that saw this process to the last. It starts and dies once, so the rows outside those are its absence, and a gap inside them is a reason."""
+    alive = [index for index, row in enumerate(rows) if ((row.get('procs') or {}).get(name) or {}).get('alive') is True]
+    return rows[alive[0]:alive[-1] + 1] if alive else []
+
+
+def _check_ramp_bot_host(rows, started, abort_ns, domain, identity, prior, require_counters, limits, reasons):
+    """The supervised swarm's own collector rows, and each socket it opened, up to a read certainly after the abort.
+
+    The counters count from socket creation, so no baseline read is needed and a drop before the first read still counts. Reads are placed on the host's own wall clock, the same as the swarm's pairs.
+    A read that may have come before the abort proves nothing about the end of the ramp, whichever way the clocks fall, and so does a socket that was gone by the time one came.
+    """
+    chosen = _alive_rows(rows, 'bot')
+    if not chosen:
+        reasons.add('collector_boundary_missing', EVIDENCE, 'no bot collector row saw the swarm')
+        return None
+    monos = [row['clock']['mono_ns'] for row in chosen]
+    if any(right <= left for left, right in zip(monos, monos[1:])):
+        reasons.add('collector_boundary_missing', EVIDENCE, 'bot collector rows are out of order')
+        return None
+    gap = max((right - left for left, right in zip(monos, monos[1:])), default=0)
+    if gap > limits['collector_max_gap_s'] * NS:
+        reasons.add('collector_gap', EVIDENCE, 'bot collector was silent for %.1f s' % (gap / NS))
+    check_process_identity(chosen, 'bot', 'bot', identity, prior.get('processes') or set(), reasons)
+    bounds = [counter_read_bounds(row, limits) for row in chosen]
+    abort_wall = domain.to_wall(abort_ns) if is_count(abort_ns) else None
+    after_abort = []
+    if abort_wall is None:
+        reasons.add('clock_mapping_missing', CLOCK, 'no swarm wall pair near the abort')
+    elif not any(bound is not None for bound in bounds):
+        reasons.add('collector_boundary_missing', EVIDENCE, 'no bot collector row can be placed on the wall clock')
+    else:
+        after_abort = [index for index, bound in enumerate(bounds) if bound is not None and bound[0] >= abort_wall[1]]
+        if not after_abort:
+            reasons.add('collector_boundary_missing', EVIDENCE, 'no bot collector read is certainly after the abort, so nothing shows the end of the ramp was free of drops')
+    series = socket_series(chosen, 'bot')
+    claimed = {join.get('local_port') for join in started.values()}
+    for port in sorted(set(series) - claimed, key=str):
+        reasons.add('socket_evidence_missing', EVIDENCE, 'the swarm holds a socket on %s that no bot claims' % port)
+    ports_read = [{item.get('local_port') for item in ((row.get('procs') or {}).get('bot') or {}).get('sockets') or () if isinstance(item, dict)} for row in chosen]
+    drops, without = 0, []
+    for bot, join in sorted(started.items()):
+        port = join.get('local_port')
+        opened = domain.to_wall(join['actual_ns']) if is_count(join.get('actual_ns')) else None
+        if opened is None or abort_wall is None:
+            without.append(bot)     # already a reason, and without a time for it no read can be said to owe this socket
+            continue
+        closing = next((index for index in after_abort if bounds[index][0] >= opened[1]), None)
+        if closing is None:
+            if after_abort:
+                reasons.add('socket_evidence_missing', EVIDENCE, 'bot %s: no read certainly after the abort came once the socket on %s opened' % (bot, port))
+            # Short of proving zero, a drop that an earlier read did show is still a fact about the generator.
+            readings = series.get(port) or []
+            if readings and check_socket(series, port, 'bot %s' % bot, require_counters, prior.get('inodes') or set(), reasons, GENERATOR, len(readings)) == 0 and readings[0]['drops']:
+                reasons.add('generator_socket_drops', GENERATOR, 'bot %s dropped %d datagrams before its first read' % (bot, readings[0]['drops']))
+            without.append(bot)
+            continue
+        owed = [index for index in range(closing + 1) if bounds[index] is not None and bounds[index][0] >= opened[1]]
+        seen = sum(1 for index in owed if port in ports_read[index])
+        if seen != len(owed):
+            reasons.add('socket_evidence_missing', EVIDENCE, 'bot %s: the socket on %s is in %d of the %d reads up to the first one certainly after the abort' % (bot, port, seen, len(owed)))
+            without.append(bot)
+            continue
+        readings = series.get(port) or []
+        delta = check_socket(series, port, 'bot %s' % bot, require_counters, prior.get('inodes') or set(), reasons, GENERATOR, len(readings))
+        if delta is None:
+            without.append(bot)
+            continue
+        if readings[0]['drops'] and not delta:
+            reasons.add('generator_socket_drops', GENERATOR, 'bot %s dropped %d datagrams before its first read' % (bot, readings[0]['drops']))
+        drops += readings[-1]['drops']
+    margin = bounds[after_abort[0]][0] - abort_wall[1] if after_abort else None
+    return dict(rows=len(chosen), kernel_counters=host_counter_delta(chosen), socket_drops_total=None if without else drops, sockets_with_counters=len(started) - len(without), sockets_without_counters=len(without),
+                bots_without_counters=without[:20], reads_certainly_after_abort=len(after_abort), first_read_after_abort_ns=margin, collector_cost_ns_max=max((row.get('collector_ns') or 0 for row in chosen), default=None))
+
+
+def _check_ramp_game_host(rows, identity, prior, reasons):
+    """The game's collector explains a ramp and decides no gate, so its absence costs nothing. Rows of another process are another matter."""
+    chosen = _alive_rows(rows, 'game')
+    if chosen:
+        check_process_identity(chosen, 'game', 'game', identity, prior.get('processes') or set(), reasons)
+
+
 # ---- the proof ------------------------------------------------------------------------------------
 
 def prove(root, trial, workload, identities, brackets, telemetry_schema=None, require_counters=True, allow_short_hold=False, prior=None):
@@ -803,32 +1033,45 @@ def prove(root, trial, workload, identities, brackets, telemetry_schema=None, re
     limits = schema()['limits']
     reasons = Reasons()
     prior = prior or {}
-    facts = dict(contract_hold=trial['hold_s'] in schema()['contract_holds_s'], hold_s=trial['hold_s'], target=trial['target'])
+    facts = dict(contract_hold=trial['hold_s'] in schema()['contract_holds_s'], hold_s=trial['hold_s'], target=trial['target'], telemetry_schema_checked=telemetry_schema is not None)
     if telemetry_schema is not None and (telemetry_schema.get('id') != schema()['id'] or telemetry_schema.get('sha256') != schema_sha256()):
         reasons.add('schema_mismatch', EVIDENCE, 'the manifest froze %s %s' % (telemetry_schema.get('id'), telemetry_schema.get('sha256')))
     if not facts['contract_hold'] and not allow_short_hold:
         reasons.add('non_contract_hold', EVIDENCE, 'a %d s hold is not one of the accepted windows' % trial['hold_s'])
+    # What the swarm's own files fail to show is named apart, because it stands whatever the server did. A server's missing data can be the consequence of its own crash; a generator's never can.
+    mark = len(reasons.items)
     swarm = load_swarm(root, trial, workload, limits, reasons)
+    bot_ident = (identities or {}).get('bot') or {}
+    game_ident = (identities or {}).get('game') or {}
     if swarm is None:
+        if any(item['code'] == 'window_not_established' for item in reasons.items):
+            facts['ramp'] = prove_ramp(root, trial, bot_ident.get('bot'), prior.get('bot') or {}, require_counters, limits, reasons)
+        facts['swarm_problems'] = list(reasons.items[mark:])
+        if 'ramp' in facts:
+            _check_game_recorder(root, game_ident.get('game'), reasons)
+            _check_ramp_game_host(load_sampler(root, 'game', reasons), game_ident.get('game'), prior.get('game') or {}, reasons)
         return _document(trial, reasons, facts, require_counters)
+    facts['swarm_problems'] = list(reasons.items[mark:])
     facts['window_bot_mono_ns'] = [swarm['start'], swarm['end']]
     facts['final_auth_bot_mono_ns'] = swarm['final_auth']
     facts['input'] = _input_summary(swarm['offered'], limits)
     facts['per_bot_input'] = swarm['offered']
     facts['shards'] = [dict(bots=shard['expected'], max_poll_gap_ns=shard['max_poll_gap_ns'], polls=shard['polls'], observer_ns=shard['observer_ns']) for shard in swarm['shard_facts']]
-    bot_ident = (identities or {}).get('bot') or {}
-    game_ident = (identities or {}).get('game') or {}
-    _check_swarm_identity(swarm, bot_ident.get('bot'), reasons)
+    _check_swarm_identity(swarm['swarm'], bot_ident.get('bot'), reasons)
     game = load_game(root, reasons, limits)
-    if game is not None:
-        _check_game_identity(game, game_ident.get('game'), reasons)
+    _check_game_recorder(root, game_ident.get('game'), reasons)
     mapping = _map_interval(swarm, game, brackets, limits, reasons, facts)
-    bot_rows = load_sampler(root, 'bot', reasons)
     if mapping is not None and game is not None and 'game_mono' in mapping:
         facts['population'] = check_population(game, swarm, mapping['game_mono'], mapping['game_core'], trial, reasons)
+    # Each host's own problems are named apart, because a dead game host says nothing about whether the generator's counters were proven.
+    mark = len(reasons.items)
+    bot_rows = load_sampler(root, 'bot', reasons)
     facts['bot_host'] = _check_bot_host(swarm, bot_rows, bot_ident.get('bot'), prior.get('bot') or {}, require_counters, limits, reasons)
+    facts['bot_host_problems'] = sorted({item['code'] for item in reasons.items[mark:]})
+    mark = len(reasons.items)
     game_rows = load_sampler(root, 'game', reasons)
     facts['game_host'] = _check_game_host(mapping, game_rows, game_ident.get('game'), prior.get('game') or {}, require_counters, limits, reasons)
+    facts['game_host_problems'] = sorted({item['code'] for item in reasons.items[mark:]})
     return _document(trial, reasons, facts, require_counters)
 
 
@@ -846,31 +1089,41 @@ def _input_summary(offered, limits):
                 peer_samples_min=min(row['peer_samples'] for row in offered), dead_frames_total=sum(row.get('dead_frames') or 0 for row in offered))
 
 
-def _check_swarm_identity(swarm, expected, reasons):
-    document = swarm['swarm']
+def _check_recorder_identity(document, expected, label, reasons):
+    """A recorder names the process that wrote it, and the supervisor names the process it started. They must be one process.
+
+    Off Linux a producer has no kernel identity to state and writes null, never a guess. Where the supervisor recorded a kernel start identity, a recorder that states none has not shown it is that process.
+    """
+    if document.get('pid') != expected.get('pid'):
+        reasons.add('recorder_overwritten', EVIDENCE, '%s came from pid %s, the supervisor started %s' % (label, document.get('pid'), expected.get('pid')))
+    kernel_identity = str(expected.get('start_id')).startswith('ticks:')
+    if (document.get('kernel_start_id') or kernel_identity) and document.get('kernel_start_id') != expected.get('start_id'):
+        reasons.add('pid_reused', EVIDENCE, '%s was written by pid %s with start %s, the supervisor started %s' % (label, document.get('pid'), document.get('kernel_start_id'), expected.get('start_id')))
+    if (document.get('boot_id') or kernel_identity) and document.get('boot_id') != expected.get('boot_id'):
+        reasons.add('recorder_overwritten', EVIDENCE, '%s was written under boot %s, the supervisor started it under %s' % (label, document.get('boot_id'), expected.get('boot_id')))
+
+
+def _check_swarm_identity(document, expected, reasons):
     if not expected:
         reasons.add('identity_missing', EVIDENCE, 'no supervisor identity for the swarm')
         return
-    if document.get('pid') != expected.get('pid'):
-        reasons.add('recorder_overwritten', EVIDENCE, 'swarm.json came from pid %s, the supervisor started %s' % (document.get('pid'), expected.get('pid')))
-    if document.get('kernel_start_id') and document['kernel_start_id'] != expected.get('start_id'):
-        reasons.add('pid_reused', EVIDENCE, 'swarm.json was written by pid %s with another start time' % document.get('pid'))
+    _check_recorder_identity(document, expected, 'swarm.json', reasons)
 
 
-def _check_game_identity(game, expected, reasons):
-    process = game['process']
+def _check_game_recorder(root, expected, reasons):
+    """Read apart from ``load_game``, which gives up on a server that never finished its recorders. Its process record was written first, and it is still someone's."""
     if not expected:
         reasons.add('identity_missing', EVIDENCE, 'no supervisor identity for the game')
         return
-    if process.get('pid') != expected.get('pid'):
-        reasons.add('recorder_overwritten', EVIDENCE, 'telemetry came from pid %s, the supervisor started %s' % (process.get('pid'), expected.get('pid')))
-    if process.get('kernel_start_id') and process['kernel_start_id'] != expected.get('start_id'):
-        reasons.add('pid_reused', EVIDENCE, 'telemetry was written by pid %s with another start time' % process.get('pid'))
+    process, problem = load_json(root / 'game' / 'telemetry' / 'process.json')
+    if not problem:
+        _check_recorder_identity(process, expected, 'telemetry', reasons)
 
 
 def _map_interval(swarm, game, brackets, limits, reasons, facts):
     """Bot monotonic boundaries to conservative wall and game-monotonic intervals. Any failure here leaves the interval unprovable."""
     bot_domain = swarm['domain']
+    facts['swarm_wall_clock_steps'] = len(bot_domain.steps())
     for domain in [bot_domain] + ([game['domain']] if game else []):
         for step in domain.steps():
             reasons.add('clock_step', CLOCK, '%s wall clock jumped %.1f ms' % (domain.name, step['jump_ns'] / 1e6))
@@ -897,6 +1150,7 @@ def _map_interval(swarm, game, brackets, limits, reasons, facts):
         reasons.add('clock_mapping_missing', CLOCK, 'no server wall pair near a mapped boundary')
         return mapping
     mapping.update(game_wall=(start_game[0], end_game[1]), game_mono=(start_mono[0], end_mono[1]), game_core=(start_mono[1], end_mono[0]))
+    facts['clock'].update(game_wall_ns=list(mapping['game_wall']), game_core_wall_ns=[start_game[1], end_game[0]])
     return mapping
 
 

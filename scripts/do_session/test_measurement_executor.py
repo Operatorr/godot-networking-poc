@@ -1,6 +1,6 @@
 """How the window proof sits in the controller: retained with the run, handed to a scorer, and able to refuse a PASS. Fake guests and scripted outcomes.
 
-No PASS here means anything: the scorer belongs to issue #69. These tests only hold the boundary it will stand behind.
+No PASS here means anything: the outcomes are scripted. The production scorer stands behind this boundary, and ``test_capacity_search`` runs it through the executor.
 """
 import json
 import unittest
