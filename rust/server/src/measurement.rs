@@ -1,9 +1,38 @@
 //! Opt-in benchmark evidence. No wire or simulation changes; unset OMEGA_MEASURE_DIR
 //! leaves collection disabled. I/O errors fail visibly rather than yielding valid-looking data.
 use crate::world::World;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Write};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
+
+pub const WINDOW_EVIDENCE_SCHEMA: &str = "omega.measurement/2";
+
+/// One tight wall/monotonic pair in this process's own monotonic domain.
+fn clock_pair(origin: Instant) -> serde_json::Value {
+    let wall = || {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    };
+    let before = wall();
+    let mono = origin.elapsed().as_nanos();
+    let after = wall();
+    serde_json::json!({"wall_before_ns": before, "mono_ns": mono, "wall_after_ns": after})
+}
+
+/// The kernel's identity for this process where it exposes one; `null` otherwise, never a guess.
+fn kernel_start_id() -> Option<String> {
+    let text = std::fs::read_to_string("/proc/self/stat").ok()?;
+    let rest = &text[text.rfind(')')? + 2..];
+    Some(format!("ticks:{}", rest.split_whitespace().nth(19)?))
+}
+
+fn boot_id() -> Option<String> {
+    std::fs::read_to_string("/proc/sys/kernel/random/boot_id")
+        .ok()
+        .map(|text| text.trim().to_string())
+}
 
 /// Cumulative timing buckets: retain interval counts without averaging percentiles.
 #[derive(Debug, Default, serde::Serialize)]
@@ -155,6 +184,11 @@ pub struct Measurement {
     window_loaded: bool,
     ticks: BufWriter<File>,
     samples: BufWriter<File>,
+    /// `OMEGA_MEASURE_WINDOW_EVIDENCE` only: create-only auth/disconnect transitions and clock pairs.
+    population: Option<BufWriter<File>>,
+    population_rows: u64,
+    tick_rows: u64,
+    last_tick: u64,
     epoch_ns: u128,
     origin: Instant,
     pub sent: [[u64; 3]; 256],
@@ -176,6 +210,19 @@ impl Measurement {
         DEFERRED.with(|slot| *slot.borrow_mut() = Some(DeferredObservation::default()));
         std::fs::create_dir_all(&directory).expect("create measurement directory");
         let directory = std::path::Path::new(&directory);
+        // Common-window evidence never replaces an earlier recorder's bytes. Historical campaign
+        // units reuse one directory across restarts, so they keep today's behavior when this is unset.
+        let window_evidence = std::env::var_os("OMEGA_MEASURE_WINDOW_EVIDENCE").is_some();
+        let open = |name: &str| -> std::io::Result<File> {
+            if window_evidence {
+                OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(directory.join(name))
+            } else {
+                File::create(directory.join(name))
+            }
+        };
         if std::env::var_os("OMEGA_AOI_AUDIT").is_some() {
             let mut writer = BufWriter::with_capacity(
                 1024 * 1024,
@@ -190,23 +237,45 @@ impl Measurement {
         }
         let mut ticks = BufWriter::with_capacity(
             1024 * 1024,
-            File::create(directory.join("ticks.csv")).expect("create raw Tick evidence"),
+            open("ticks.csv").expect("create raw Tick evidence"),
         );
         writeln!(ticks, "utc_ns,mono_ns,tick,work_ns,accumulator_lag_s,authenticated,alive,monsters,projectiles,effects,deferred,max_queue_age,budget_pct,peers_evaluated,overflow,mean_x,mean_y,mean_radius_sq,pending_replication,max_deferred_wait_ticks,observer_ns").unwrap();
+        let origin = Instant::now();
+        let mut population = None;
+        if window_evidence {
+            let mut process = open("process.json").expect("create process evidence");
+            writeln!(
+                process,
+                "{}",
+                serde_json::json!({
+                    "schema": WINDOW_EVIDENCE_SCHEMA, "role": "game", "pid": std::process::id(),
+                    "kernel_start_id": kernel_start_id(), "boot_id": boot_id(),
+                    "clock": clock_pair(origin),
+                })
+            )
+            .expect("write process evidence");
+            process.sync_all().expect("sync process evidence");
+            population = Some(BufWriter::with_capacity(
+                64 * 1024,
+                open("population.ndjson").expect("create population evidence"),
+            ));
+        }
         Some(Self {
+            population,
+            population_rows: 0,
+            tick_rows: 0,
+            last_tick: 0,
             loop_phases: LoopPhases::default(),
             directory: directory.to_path_buf(),
             boundaries: Vec::new(),
             window_loaded: false,
             ticks,
-            samples: BufWriter::new(
-                File::create(directory.join("server.ndjson")).expect("create server evidence"),
-            ),
+            samples: BufWriter::new(open("server.ndjson").expect("create server evidence")),
             epoch_ns: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_nanos(),
-            origin: Instant::now(),
+            origin,
             sent: [[0; 3]; 256],
             received: [[0; 3]; 256],
             send_errors: 0,
@@ -288,6 +357,80 @@ impl Measurement {
         .unwrap();
         write!(self.ticks, "{pending},{max_wait},").unwrap();
         writeln!(self.ticks, "{}", observer.elapsed().as_nanos()).unwrap();
+        self.tick_rows += 1;
+        self.last_tick = world.tick_count;
+    }
+
+    fn population_row(&mut self, mut row: serde_json::Value) {
+        let mono = self.origin.elapsed().as_nanos();
+        row["seq"] = serde_json::json!(self.population_rows);
+        row["mono_ns"] = serde_json::json!(mono);
+        if let Some(writer) = &mut self.population {
+            writeln!(writer, "{row}").expect("write population evidence");
+            self.population_rows += 1;
+        }
+    }
+
+    /// An authoritative population transition, with the server's own count just after it.
+    pub fn population_event(
+        &mut self,
+        world: &World,
+        event: &str,
+        peer: usize,
+        identity: Option<(u16, &str)>,
+        reason: Option<u32>,
+    ) {
+        if self.population.is_none() {
+            return;
+        }
+        let authenticated = world
+            .players
+            .players
+            .iter()
+            .filter(|player| player.authenticated)
+            .count();
+        self.population_row(serde_json::json!({
+            "k": event, "peer": peer, "tick": world.tick_count, "entity_id": identity.map(|i| i.0),
+            "name": identity.map(|i| i.1), "reason": reason, "authenticated_after": authenticated,
+        }));
+        if let Some(writer) = &mut self.population {
+            writer.flush().expect("flush population evidence");
+        }
+    }
+
+    /// Everything durable, then a create-only count that exposes any later truncation.
+    pub fn finish(&mut self, world: &World, peers_at_shutdown: usize) {
+        if self.population.is_none() {
+            return;
+        }
+        let clock = clock_pair(self.origin);
+        self.population_row(serde_json::json!({"k": "footer", "clock": clock}));
+        let sync = |writer: &mut BufWriter<File>, name: &str| {
+            writer.flush().expect(name);
+            writer.get_ref().sync_all().expect(name);
+        };
+        sync(
+            self.population.as_mut().unwrap(),
+            "sync population evidence",
+        );
+        sync(&mut self.ticks, "sync raw Tick evidence");
+        sync(&mut self.samples, "sync server evidence");
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(self.directory.join("final.json"))
+            .expect("create final evidence");
+        writeln!(
+            file,
+            "{}",
+            serde_json::json!({
+                "schema": WINDOW_EVIDENCE_SCHEMA, "tick_rows": self.tick_rows, "last_tick": self.last_tick,
+                "world_tick": world.tick_count, "population_rows": self.population_rows,
+                "peers_at_shutdown": peers_at_shutdown, "clock": clock,
+            })
+        )
+        .expect("write final evidence");
+        file.sync_all().expect("sync final evidence");
     }
 
     pub fn sample(
@@ -328,6 +471,15 @@ impl Measurement {
         transport: Option<&crate::net::transport::TransportObservation>,
         enet: Option<&EnetPeerStats>,
     ) {
+        if self.population.is_some() {
+            let clock = clock_pair(self.origin);
+            self.population_row(
+                serde_json::json!({"k": "clock", "clock": clock, "tick": world.tick_count}),
+            );
+            if let Some(writer) = &mut self.population {
+                writer.flush().expect("flush population evidence");
+            }
+        }
         let mono = self.origin.elapsed().as_nanos();
         let bytes = |counts: &[[u64; 3]; 256]| {
             counts
