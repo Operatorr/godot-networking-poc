@@ -9,6 +9,7 @@ import os
 import pathlib
 import shlex
 import signal
+import secrets
 import socket
 import subprocess
 import sys
@@ -232,7 +233,7 @@ class FakeProcess:
     def kill(self):
         self.killed = True
 
-    def communicate(self):
+    def communicate(self, timeout=None):
         return self.stdout_bytes, self.stderr_bytes
 
 
@@ -313,7 +314,8 @@ class SshCommands(unittest.TestCase):
         waits = []
         result = access.run('game', ['sleep', '100'], 3, on_wait=lambda: waits.append(1))
         self.assertIsNone(result.returncode)
-        self.assertEqual(len(waits), 3)
+        self.assertGreaterEqual(len(waits), 3)
+        self.assertLessEqual(len(waits), 12, "halved near the cutoff, not spinning")
 
     def test_private_key_contents_are_never_opened(self):
         access = self.access([])
@@ -462,10 +464,23 @@ class Readiness(unittest.TestCase):
             self.assertTrue(readiness.droplet_problems(MANIFEST, 'game', dict(good, **change)), change)
 
 
+def mint_grant(session, token, control=None):
+    """What ``grant_prepare`` leaves on the host, without its fence check, so these tests reach the check they are about."""
+    grant_id = secrets.token_hex(16)
+    path = guest_agent.grant_path(grant_id, control=control)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    guest_agent.atomic_json(path, dict(grant_id=grant_id, session_id=session, token=token, boot_id=guest_agent.boot_id(), clock_ns=guest_agent.grant_clock_ns()))
+    return grant_id
+
+
 def authority(**fields):
     fields.setdefault('session', 'do-test')
     fields.setdefault('token', 1)
     fields.setdefault('not_after_wall', time.time() + 10)
+    fields.setdefault('grant_ttl_s', 60.0)
+    if 'grant_id' not in fields:
+        with contextlib.suppress(OSError):      # a stop or a probe has no grant, and may run with no host directory at all
+            fields['grant_id'] = mint_grant(fields['session'], fields['token'])
     return types.SimpleNamespace(**fields)
 
 
@@ -551,7 +566,7 @@ class GuestAgent(unittest.TestCase):
         self.assertGreaterEqual(len(used), 8)
         parser = guest_agent.build_parser()
         fence = ['--session', 's', '--token', '1']
-        start = fence + ['--not-after-wall', '1']
+        start = fence + ['--not-after-wall', '1', '--grant-id', 'g', '--grant-ttl-s', '1']
         for arguments in (['clock'], ['probe', '--role', 'game'], ['wait_cloud_init', '--timeout-s', '5'], ['tcp_probe', '--host', 'a', '--port', '22'],
                           ['fetch_source', '--sha', 'a', '--timeout-s', '5'] + fence, ['build', '--toolchain', '1.91.0', '--target', 'x', '--timeout-s', '5', '--flag=--features=x'] + fence,
                           ['install_release', '--role', 'game', '--incoming', 'x'] + fence, ['sampler'] + start, ['smoke_game_start', '--smoke-id', 'x'] + start, ['smoke_bot', '--server', 'a:1', '--timeout-s', '5'] + start, ['smoke_game_stop', '--smoke-id', 'x'] + fence):
@@ -724,8 +739,65 @@ class GuestAgent(unittest.TestCase):
         import ast
         tree = ast.parse(pathlib.Path(guest_agent.__file__).read_text())
         imported = {n.names[0].name.split('.')[0] for n in ast.walk(tree) if isinstance(n, ast.Import)}
-        allowed = {'argparse', 'contextlib', 'ctypes', 'fcntl', 'functools', 'hashlib', 'json', 'os', 'pathlib', 're', 'shutil', 'signal', 'socket', 'struct', 'subprocess', 'sys', 'tempfile', 'time', 'urllib'}
+        allowed = {'argparse', 'contextlib', 'ctypes', 'fcntl', 'functools', 'hashlib', 'json', 'os', 'pathlib', 're', 'secrets', 'shutil', 'signal', 'socket', 'struct', 'subprocess', 'sys', 'tempfile', 'time', 'urllib'}
         self.assertEqual(imported - allowed, set())
+
+
+class RealCommandBounds(unittest.TestCase):
+    """The real poller, a real child, the real clock and the real one second poll. Not a real-time promise: an overrun is bounded by these margins, not by a poll."""
+    MARGIN_S = 0.2
+
+    def run_child(self, seconds, cutoff, on_wait=None, sleep=time.sleep):
+        started = time.monotonic()
+        result = ssh_access.bounded_command(subprocess.Popen, [sys.executable, '-c', 'import time; time.sleep(%s)' % seconds], cutoff, on_wait, sleep, time.monotonic, ssh_access.POLL_S)
+        return result, time.monotonic() - started
+
+    def test_a_child_outlasting_a_quarter_second_cutoff_is_killed_at_it(self):
+        result, elapsed = self.run_child(2.0, 0.25)
+        self.assertIsNone(result.returncode)
+        self.assertIn('timed out', result.stderr)
+        self.assertLess(elapsed, 0.25 + self.MARGIN_S)
+
+    def test_a_child_ending_after_the_cutoff_is_not_a_success(self):
+        result, elapsed = self.run_child(0.5, 0.25)
+        self.assertIsNone(result.returncode, 'the review probe got success here at 1.012 s')
+        self.assertLess(elapsed, 0.25 + self.MARGIN_S)
+
+    def test_a_child_ending_inside_a_fractional_cutoff_is_a_success_inside_it(self):
+        result, elapsed = self.run_child(0.05, 2.0)
+        self.assertEqual(result.returncode, 0)
+        self.assertLess(elapsed, 2.0)
+
+    def test_a_callback_that_uses_up_the_budget_ends_the_command(self):
+        result, elapsed = self.run_child(5.0, 0.2, on_wait=lambda: time.sleep(0.4))
+        self.assertIsNone(result.returncode)
+        self.assertLess(elapsed, 0.4 + self.MARGIN_S, 'one callback, then no sleep at all')
+
+    def test_a_child_already_gone_when_seen_late_is_not_accepted(self):
+        result, elapsed = self.run_child(0.0, 0.2, on_wait=lambda: time.sleep(0.5))
+        self.assertIsNone(result.returncode, 'nobody can show it ended in time, and a caller with a deadline may not act on it')
+        self.assertIn('timed out', result.stderr)
+
+    def test_a_sleep_is_never_longer_than_what_is_left(self):
+        sleeps = []
+        started = time.monotonic()
+
+        def recording(seconds):
+            sleeps.append((seconds, 0.3 - (time.monotonic() - started)))
+            time.sleep(seconds)
+        self.run_child(1.0, 0.3, sleep=recording)
+        self.assertTrue(sleeps)
+        for asked, left in sleeps:
+            self.assertLessEqual(asked, left + 0.01)
+
+    def test_a_killed_child_is_reaped_and_leaves_no_process(self):
+        popped = []
+
+        def popen(*a, **k):
+            popped.append(subprocess.Popen(*a, **k))
+            return popped[-1]
+        ssh_access.bounded_command(popen, [sys.executable, '-c', 'import time; time.sleep(30)'], 0.1, None, time.sleep, time.monotonic, ssh_access.POLL_S)
+        self.assertIsNotNone(popped[0].poll())
 
 
 class SmokeAuthority(unittest.TestCase):
@@ -811,7 +883,8 @@ class SmokeAuthority(unittest.TestCase):
                     stop.write_text('{}')
                 with unittest.mock.patch.object(guest_agent.subprocess, 'Popen', side_effect=AssertionError('nothing may be started')):
                     guest_agent.cmd_bounded(types.SimpleNamespace(state=str(state), stop=str(stop), log=str(log), control=str(control), session=self.SESSION, token=1,
-                                                                  not_after_wall=case.get('not_after', time.time() + 10), lifetime_s=5.0, cwd=str(self.root), argv=['--', 'true']))
+                                                                  not_after_wall=case.get('not_after', time.time() + 10), grant_id=mint_grant(self.SESSION, 1, control), grant_ttl_s=60.0,
+                                                                  lifetime_s=5.0, cwd=str(self.root), argv=['--', 'true']))
                 self.assertEqual(guest_agent.read_json(state)['refused'], code)
                 self.assertIsNone(guest_agent.read_json(state)['process'])
                 state.unlink()
@@ -898,7 +971,7 @@ class SmokeAuthority(unittest.TestCase):
         guest_runner.cmd_fence(types.SimpleNamespace(session=self.SESSION, token=2), guest_runner.Host(self.root / 'results' / 'do-runs'))
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
-            code = guest_agent.main(['smoke_game_start', '--session', self.SESSION, '--token', '1', '--not-after-wall', str(time.time() + 10), '--smoke-id', '1'])
+            code = guest_agent.main(['smoke_game_start', '--session', self.SESSION, '--token', '1', '--not-after-wall', str(time.time() + 10), '--grant-id', '0' * 32, '--grant-ttl-s', '10', '--smoke-id', '1'])
         document = json.loads(output.getvalue())
         self.assertEqual((code, document['ok'], document['code']), (0, False, 'stale_fence'))
 

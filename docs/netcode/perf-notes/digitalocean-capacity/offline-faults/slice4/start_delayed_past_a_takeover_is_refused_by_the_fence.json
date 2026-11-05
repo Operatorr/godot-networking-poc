@@ -34,8 +34,19 @@
    "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
   },
   {
+   "kind": "revocation_pending",
+   "reason": "takeover"
+  },
+  {
    "kind": "control_acquired",
    "takeover": true
+  },
+  {
+   "detail": "token 2 raised",
+   "kind": "guest_grant_fenced"
+  },
+  {
+   "kind": "revocation_effective"
   }
  ],
  "remote": "fake",

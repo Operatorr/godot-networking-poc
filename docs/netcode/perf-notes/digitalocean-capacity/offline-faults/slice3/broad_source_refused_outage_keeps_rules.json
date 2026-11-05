@@ -97,6 +97,10 @@
   },
   {
    "role": "game",
+   "step": "grant_prepare"
+  },
+  {
+   "role": "game",
    "step": "sampler"
   },
   {
@@ -109,6 +113,10 @@
   },
   {
    "role": "bot",
+   "step": "grant_prepare"
+  },
+  {
+   "role": "bot",
    "step": "sampler"
   },
   {
@@ -117,7 +125,15 @@
   },
   {
    "role": "game",
+   "step": "grant_prepare"
+  },
+  {
+   "role": "game",
    "step": "smoke_game_start"
+  },
+  {
+   "role": "bot",
+   "step": "grant_prepare"
   },
   {
    "role": "bot",
@@ -1034,14 +1050,54 @@
    "seq": 20
   },
   {
+   "at": "2026-10-30T12:07:11+00:00",
+   "kind": "guest_grant_issued",
+   "seq": 21
+  },
+  {
+   "at": "2026-10-30T12:07:15+00:00",
+   "kind": "guest_grant_started",
+   "seq": 22
+  },
+  {
+   "at": "2026-10-30T12:07:17+00:00",
+   "kind": "guest_grant_issued",
+   "seq": 23
+  },
+  {
+   "at": "2026-10-30T12:07:21+00:00",
+   "kind": "guest_grant_started",
+   "seq": 24
+  },
+  {
+   "at": "2026-10-30T12:07:26+00:00",
+   "kind": "guest_grant_issued",
+   "seq": 25
+  },
+  {
+   "at": "2026-10-30T12:07:29+00:00",
+   "kind": "guest_grant_started",
+   "seq": 26
+  },
+  {
+   "at": "2026-10-30T12:07:29+00:00",
+   "kind": "guest_grant_issued",
+   "seq": 27
+  },
+  {
+   "at": "2026-10-30T12:07:36+00:00",
+   "kind": "guest_grant_started",
+   "seq": 28
+  },
+  {
    "at": "2026-10-30T12:07:38+00:00",
    "kind": "pair_ready",
-   "seq": 21
+   "seq": 29
   }
  ],
  "registry_journal_verification": {
-  "events": 21,
-  "head": "01d8cb4e899af427316352f904ed98b0c94819d962b5b450092c8cc14c97f7b2",
+  "events": 29,
+  "head": "647138be4ab462a7ca027cd8427df387bf5858c1e3729db4bbc5f1364739851d",
   "valid": true
  },
  "retained_package_inventories": {

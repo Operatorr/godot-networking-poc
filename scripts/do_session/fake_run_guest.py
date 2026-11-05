@@ -14,11 +14,11 @@ import ssh_access
 CONTRACT_KEYS = dict(
     preflight=('active', 'boot_id', 'disk_free_bytes', 'fence', 'files', 'impairment', 'ledger', 'leftovers', 'monotonic_ns', 'ok', 'ports_free', 'run_dir_exists', 'runner_sha256', 'schema', 'source', 'units', 'wall_ns'),
     status=('fencing_token', 'has_plan', 'invocation_id', 'ok', 'processes', 'result', 'role', 'run_id', 'sampler', 'schema', 'seal_sha256', 'sealed', 'session_id', 'socket', 'stopping', 'supervisor'),
-    inspect=('active', 'boot_id', 'fence', 'ledger', 'ok', 'runs', 'schema'),
+    inspect=('active', 'boot_id', 'fence', 'grants_consumed', 'ledger', 'ok', 'runs', 'schema'),
 )
 QDISCS = ['fq_codel', 'mq', 'noqueue']
 AUTHORIZED_STARTS = ('sampler', 'smoke_game_start', 'smoke_bot')    # guest_agent steps that create a process
-FENCED_STEPS = AUTHORIZED_STARTS + ('fetch_source', 'build', 'install_release', 'smoke_game_stop')
+FENCED_STEPS = AUTHORIZED_STARTS + ('fetch_source', 'build', 'install_release', 'smoke_game_stop', 'grant_prepare')
 
 
 def option(argv, name, default=None):
@@ -57,6 +57,7 @@ class FakeHost:
         self.runs = {}
         self.leftovers = []
         self.busy_ports = set()
+        self.grants = {}
         self.qdiscs = list(QDISCS)
         self.filters = 0
         self.units = []
@@ -120,6 +121,8 @@ class FakeRunGuests(fake_guest.FakeGuests):
         if code is not None:
             self.commands.append(dict(role=role, step=step, argv=[str(a) for a in argv], timeout_s=timeout_s))
             return ssh_access.CommandResult(0, json.dumps(dict(ok=False, code=code, detail='scripted guest refusal')), '')
+        if step == 'grant_prepare':
+            return ssh_access.CommandResult(0, json.dumps(dict(ok=True, grant_id=self._mint(host, option(argv, '--session'), int(option(argv, '--token'))), raised=True)), '')
         if step == 'smoke_game_start':
             host.smoke = dict(smoke_id=option(argv, '--smoke-id'), ends_at=self._now() + float(option(argv, '--lifetime-s', guest_agent.SMOKE_GAME_LIFETIME_S)))
         elif step == 'smoke_game_stop':
@@ -142,14 +145,38 @@ class FakeRunGuests(fake_guest.FakeGuests):
             return None
         if closed:
             return 'session_closed'
-        if step in AUTHORIZED_STARTS and self.sim.clock.wall() > float(option(argv, '--not-after-wall')) + guest_agent.CLOCK_TOLERANCE_S:
-            return 'authorization_expired'
+        if step == 'grant_prepare':
+            return None
+        if step in AUTHORIZED_STARTS:
+            code = self._claim(host, option(argv, '--grant-id'), session, token, float(option(argv, '--grant-ttl-s')))
+            if code is None and self.sim.clock.wall() > float(option(argv, '--not-after-wall')) + guest_agent.CLOCK_TOLERANCE_S:
+                code = 'authorization_expired'
+            if code is not None:
+                return code
         if step == 'smoke_game_start':
             if host.smoke_stopped == option(argv, '--smoke-id'):
                 return 'smoke_stopped'
             if host.active is not None or self.smoke_alive(host):
                 return 'overlap'
         return None
+
+    def _mint(self, host, session, token):
+        self.minted = getattr(self, 'minted', 0) + 1
+        grant_id = '%032x' % self.minted
+        host.grants[grant_id] = dict(session=session, token=token, at=self._now(), consumed=False)
+        return grant_id
+
+    def _claim(self, host, grant_id, session, token, ttl_s, expired='authorization_expired'):
+        """The real guest's rule: unknown, wrong owner, already used, then elapsed time on this host, and using it burns it."""
+        record = host.grants.get(grant_id)
+        if record is None:
+            return 'grant_unknown'
+        if record['session'] != session or record['token'] != token:
+            return 'grant_mismatch'
+        if record['consumed']:
+            return 'grant_replayed'
+        record['consumed'] = True
+        return expired if self._now() - record['at'] > ttl_s else None
 
     def smoke_alive(self, host):
         """It ends by itself, exactly when the helper's lifetime says, with or without anyone asking."""
@@ -265,10 +292,24 @@ class FakeRunGuests(fake_guest.FakeGuests):
         raised = host.fence is None or token > host.fence['token']
         closed = (host.fence or {}).get('closed') or option(argv, '--close')
         host.fence = dict(session_id=session, token=token, closed=closed)
-        return dict(token=token, raised=raised, closed=closed, active=host.active, runs=[self._summary(host, run) for run in host.runs.values()])
+        return dict(token=token, raised=raised, closed=closed, active=host.active, runs=[self._summary(host, run) for run in host.runs.values()], grants_consumed=self._consumed(host))
+
+    @staticmethod
+    def _consumed(host):
+        return sorted(grant_id for grant_id, record in host.grants.items() if record['consumed'])
+
+    def _do_grant_prepare(self, host, argv):
+        session, token = option(argv, '--session'), int(option(argv, '--token'))
+        if host.fence is None or host.fence['session_id'] != session:
+            raise guest_runner.Refused('not_fenced', '')
+        if token != host.fence['token']:
+            raise guest_runner.Refused('stale_fence', 'fence is at %s' % host.fence['token'])
+        if host.fence.get('closed'):
+            raise guest_runner.Refused('session_closed', host.fence['closed'])
+        return dict(grant_id=self._mint(host, session, token), token=token)
 
     def _do_inspect(self, host, argv):
-        return dict(fence=host.fence, active=host.active, runs=[self._summary(host, run) for run in host.runs.values()], boot_id=host.boot_id, ledger=list(host.ledger))
+        return dict(fence=host.fence, active=host.active, runs=[self._summary(host, run) for run in host.runs.values()], boot_id=host.boot_id, ledger=list(host.ledger), grants_consumed=self._consumed(host))
 
     def _facts(self, host, plan):
         files = []
@@ -298,6 +339,10 @@ class FakeRunGuests(fake_guest.FakeGuests):
             raise guest_runner.Refused('stale_fence', 'fence is at %s' % host.fence['token'])
         if host.fence.get('closed'):
             raise guest_runner.Refused('session_closed', host.fence['closed'])
+        grant = plan.get('grant') or {}
+        code = self._claim(host, grant.get('id'), plan['session_id'], plan['fencing_token'], grant.get('ttl_s', 0), 'launch_window_closed')
+        if code is not None:
+            raise guest_runner.Refused(code, 'scripted grant refusal')
         if self.sim.clock.wall() > plan['launch_not_after_wall'] + guest_runner.LAUNCH_CLOCK_TOLERANCE_S:
             raise guest_runner.Refused('launch_window_closed', '')
         if min(plan['bound_s'], plan['stop_by_wall'] - self.sim.clock.wall()) < max(plan.get('minimum_bound_s', 0), 1e-9):

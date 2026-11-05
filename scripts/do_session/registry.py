@@ -27,21 +27,26 @@ import resource_ownership
 import search
 import session_clock
 
-SCHEMA_VERSION = 2     # 2 added run phases and grant bounds; no state directory has been deployed, so there is no migration
+SCHEMA_VERSION = 3     # 2 added run phases and grant bounds, 3 durable guest grants; no state directory has been deployed, so there is no migration
 DB_NAME = 'registry.sqlite3'
 INCIDENT_DIR = 'incidents'
 RECEIPT_DIR = 'receipts'
 
 REGISTERED, PROVISIONING, READY, RUNNING, PAUSED = 'registered', 'provisioning', 'ready', 'running', 'paused'
 COLLECTING, EVIDENCE_RECOVERY, DELETING, CLOSED = 'collecting', 'evidence-recovery', 'deleting', 'closed'
+REVOCATION_PENDING = 'revocation-pending'   # a view only: see ``pending_revocation``
 
 DEFAULT_LEASE_TTL_S = 90.0
 DEFAULT_WATCHDOG_STALE_S = 30.0
 DEFAULT_LAUNCH_WINDOW_S = session_clock.DISPATCH_LAUNCH_WINDOW_S
 PREPARE_LEAD_S = session_clock.OWNERSHIP_PREPARE_LEAD_S     # read-only ownership checks begin this long before C
 DELETE_MARGIN_S = session_clock.DELETE_ISSUE_MARGIN_S       # the deadline tick runs this long before C
-GUEST_ACTION_TTL_S = 10.0   # one SSH login and the guest's own slow checks; a revocation can trail by at most this plus clock error
+GUEST_ACTION_TTL_S = 10.0   # one SSH login and the guest's own slow checks; a revocation is effective at most this plus the slack later
+GUEST_COMMIT_SLACK_S = 1.0  # what a guest may still need after its last look: spawning, and its elapsed clock's rate error
 GUEST_ACTIONS = ('launch_run', 'smoke')
+GUEST_ROLES = ('game', 'bot')
+GRANT_OUTSTANDING = 'outstanding'
+GRANT_RESOLUTIONS = ('started', 'refused')          # what a guest answered; a lost answer resolves nothing
 CREATE_START_WINDOW_S = session_clock.CREATE_START_WINDOW_S
 PENDING_CREATE_STATES = ('requested', 'ambiguous')
 CLOCK_UNVERIFIABLE_REASON = 'clock_unverifiable'
@@ -98,6 +103,11 @@ CREATE TABLE runs(
     finished_at TEXT, outcome TEXT, evidence_ref TEXT, interrupted_at TEXT, interrupted_reason TEXT,
     phase TEXT NOT NULL DEFAULT 'dispatched', estimated_duration_s REAL, must_stop_by TEXT, execution_ref TEXT,
     PRIMARY KEY(session_id, run_id));
+CREATE TABLE guest_grants(
+    session_id TEXT NOT NULL, grant_id TEXT NOT NULL, action TEXT NOT NULL, role TEXT NOT NULL, run_id TEXT,
+    fencing_token INTEGER NOT NULL, controller_id TEXT, state TEXT NOT NULL, issued_at TEXT NOT NULL, ttl_s REAL NOT NULL,
+    not_after TEXT NOT NULL, conclusive_at TEXT NOT NULL, resolved_at TEXT, detail TEXT,
+    PRIMARY KEY(session_id, grant_id));
 CREATE TABLE resources(
     session_id TEXT NOT NULL, resource_key TEXT NOT NULL, kind TEXT NOT NULL, provider_id TEXT NOT NULL,
     name TEXT, intent_id TEXT, source TEXT NOT NULL, status TEXT NOT NULL, first_seen_at TEXT NOT NULL,
@@ -327,7 +337,9 @@ class Registry:
         """One durable write. Yields the effective epoch; storage errors roll back and propagate."""
         self.db.execute('BEGIN IMMEDIATE')
         try:
-            yield self._advance_clock()
+            effective = self._advance_clock()
+            self._expire_guest_grants(effective)
+            yield effective
             self.failpoint(label + ':before_commit')
             self.db.execute('COMMIT')
         except BaseException:
@@ -576,12 +588,13 @@ class Registry:
                 self._interrupt_active_runs(session_id, now_text, 'controller_replaced')
             self.db.execute('UPDATE sessions SET fencing_token=?, controller_id=?, lease_expires_at=?, state=? '
                             'WHERE session_id=?', (token, controller_id, expires, state, session_id))
+            self._journal_revocation(session_id, 'takeover', now_text, effective)
             self.event(now_text, session_id, 'control_acquired',
                        dict(controller_id=controller_id, token=token, takeover=bool(takeover),
                             prior_controller=session['controller_id'], prior_token=session['fencing_token'],
                             prior_lease_live=lease_live, state=state))
-            return dict(session_id=session_id, fencing_token=token, lease_expires_at=expires, state=state,
-                        dispatch_allowed=state == READY)
+            return dict(session_id=session_id, fencing_token=token, lease_expires_at=expires, state=state, dispatch_allowed=state == READY,
+                        revocation=self.revocation_view(self.session_row(session_id), effective))
         return self._mutate('acquire_control', dict(session_id=session_id, controller_id=controller_id,
                                                     takeover=bool(takeover)), request_id, session_id, body)
 
@@ -893,6 +906,7 @@ class Registry:
         def body(effective, now_text, session):
             if session['state'] != PROVISIONING:
                 raise Rejection('bad_state', 'only a provisioning session can become ready', state=session['state'])
+            self._require_revocation_settled(session, effective)
             missing = [i['intent_id'] for i in self.intents(session_id) if i['kind'] == 'droplet' and i['state'] != 'created']
             if missing:
                 raise Rejection('pair_incomplete', 'both roles need an exact recorded id', missing=missing)
@@ -930,6 +944,7 @@ class Registry:
         def body(effective, now_text, session):
             if session['state'] != READY:
                 raise Rejection('bad_state', 'dispatch needs a ready pair and no active run', state=session['state'])
+            self._require_revocation_settled(session, effective)
             # Ownership reads before C are read-only, so a workload's only cutoff is the deadline tick.
             cutoff = session_clock.parse(session['cleanup_c_utc']) - DELETE_MARGIN_S
             launch_by = min(effective + self.launch_window_s, session_clock.parse(session['lease_expires_at']), cutoff)
@@ -966,26 +981,32 @@ class Registry:
             result = dict(result, authorized=launchable)
         return result
 
-    def authorize_guest_action(self, session_id, fencing_token, action, run_id=None, role=None):
-        """May this controller start a process on a guest right now? The answer expires within seconds, and the guest enforces that.
+    def authorize_guest_action(self, session_id, fencing_token, action, grant_id, role, run_id=None, request_id=None):
+        """Issue one durable, single-use grant to start a process on one guest. This commit is where the intent is serialized.
 
-        The registry cannot reach a guest, and an atomic check across two hosts does not exist. So a start is authorized by
-        a window short enough to bound the race: an abort, a takeover or a lapsed lease committed just after this answer
-        cannot be outlived by more than ``GUEST_ACTION_TTL_S`` plus the guest's clock tolerance, and the controller checks again
-        as soon as the start returns. Nothing is journaled: it changes no state, and the gate's refusals are journaled as ever.
+        A grant is a short lease on one start. ``grant_id`` was minted by that guest before this call, and the guest timed it from
+        then, so a delivery the guest accepts happens no later than this commit plus ``ttl_s`` on the guest's own elapsed clock,
+        whatever its wall clock says. ``conclusive_at`` adds the slack, and it never passes the lease, the launch window or the
+        delete cutoff: expiry and C revoke with no further step. A takeover or a cleanup request commits first and takes effect
+        once every grant it finds is resolved or conclusive. See ``pending_revocation``.
         """
         if action not in GUEST_ACTIONS:
             raise Rejection('bad_request', 'unknown guest action: ' + str(action))
-        if action == 'launch_run' and role not in ('game', 'bot'):
-            raise Rejection('bad_request', 'a launch names its role')
+        if role not in GUEST_ROLES:
+            raise Rejection('bad_request', 'a guest grant names the host it is for')
+        if not isinstance(grant_id, str) or not grant_id or len(grant_id) > 128:
+            raise Rejection('bad_request', 'a guest grant needs the identity its guest minted')
 
         def body(effective, now_text, session):
-            limits = [effective + GUEST_ACTION_TTL_S, session_clock.parse(session['lease_expires_at'])]
+            self._require_revocation_settled(session, effective)
+            if self.db.execute('SELECT 1 FROM guest_grants WHERE session_id=? AND grant_id=?', (session_id, grant_id)).fetchone():
+                raise Rejection('grant_replayed', 'this guest grant was already issued', grant_id=grant_id)
+            limits = [effective + GUEST_ACTION_TTL_S, session_clock.parse(session['lease_expires_at']) - GUEST_COMMIT_SLACK_S]
             if session['cleanup_c_utc'] is not None:
                 cutoff = session_clock.parse(session['cleanup_c_utc']) - DELETE_MARGIN_S
-                if effective >= cutoff:
+                if effective >= cutoff - GUEST_COMMIT_SLACK_S:
                     raise Rejection('deadline_reached', 'no process may start this close to C', cleanup_c_utc=session['cleanup_c_utc'])
-                limits.append(cutoff)
+                limits.append(cutoff - GUEST_COMMIT_SLACK_S)
             if action == 'smoke':
                 if session['state'] not in (PROVISIONING, PAUSED):
                     raise Rejection('bad_state', 'a smoke belongs to readiness or an explicit resume', state=session['state'])
@@ -1002,9 +1023,109 @@ class Registry:
                 if effective >= closes:
                     raise Rejection('launch_window_closed', 'the grant expired unused', launch_by=run['launch_by'])
                 limits.append(closes)
-            return dict(session_id=session_id, action=action, run_id=run_id, role=role, fencing_token=fencing_token, authorized_until=session_clock.iso(min(limits)))
-        return self._mutate('authorize_guest_action', dict(session_id=session_id, fencing_token=fencing_token, action=action, run_id=run_id, role=role),
-                            None, session_id, body, gate=self._authority_gate(fencing_token))
+            not_after = min(limits)
+            ttl_s = not_after - effective
+            if ttl_s <= 0:
+                raise Rejection('lease_expired', 'too little of the lease is left to authorize a start')
+            not_after_text, conclusive_text = session_clock.iso(not_after), session_clock.iso(not_after + GUEST_COMMIT_SLACK_S)
+            self.db.execute('INSERT INTO guest_grants(session_id, grant_id, action, role, run_id, fencing_token, controller_id, state, issued_at, ttl_s, not_after, conclusive_at) '
+                            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                            (session_id, grant_id, action, role, run_id, fencing_token, session['controller_id'], GRANT_OUTSTANDING, now_text, ttl_s, not_after_text, conclusive_text))
+            self.event(now_text, session_id, 'guest_grant_issued', dict(grant_id=grant_id, action=action, role=role, run_id=run_id, fencing_token=fencing_token, conclusive_at=conclusive_text))
+            return dict(session_id=session_id, action=action, run_id=run_id, role=role, fencing_token=fencing_token, grant_id=grant_id,
+                        authorized_until=not_after_text, ttl_s=ttl_s, conclusive_at=conclusive_text)
+        return self._mutate('authorize_guest_action', dict(session_id=session_id, fencing_token=fencing_token, action=action, grant_id=grant_id, role=role, run_id=run_id),
+                            request_id, session_id, body, gate=self._authority_gate(fencing_token))
+
+    def resolve_guest_grant(self, session_id, grant_id, resolution, detail=None, request_id=None):
+        """What a guest answered about one grant: it used it, or it can never use it. Accepted from anyone, like any other fact.
+
+        A lost answer never comes here, so that grant stays outstanding until its expiry or a fence acknowledgement.
+        """
+        if resolution not in GRANT_RESOLUTIONS:
+            raise Rejection('bad_request', 'unknown grant resolution: ' + str(resolution))
+
+        def body(effective, now_text, session):
+            row = self.db.execute('SELECT * FROM guest_grants WHERE session_id=? AND grant_id=?', (session_id, grant_id)).fetchone()
+            if row is None:
+                raise Rejection('unknown_grant', 'no such guest grant: ' + str(grant_id))
+            if row['state'] == GRANT_OUTSTANDING:
+                self._settle_guest_grant(session, row, resolution, now_text, detail)
+            return dict(session_id=session_id, grant_id=grant_id, state=resolution if row['state'] == GRANT_OUTSTANDING else row['state'])
+        return self._mutate('resolve_guest_grant', dict(session_id=session_id, grant_id=grant_id, resolution=resolution, detail=detail), request_id, session_id, body)
+
+    def report_guest_fence(self, session_id, fencing_token, role, closed=False, consumed=(), request_id=None):
+        """The current controller reports a fence its guest acknowledged, under the guest's host lock.
+
+        A guest refuses any token below its fence, and any start at all once closed, so such a grant can do nothing new. Whatever
+        started before this acknowledgement is in the inventory that came with it, and that is what the controller must now stop.
+        """
+        if role not in GUEST_ROLES:
+            raise Rejection('bad_request', 'a fence acknowledgement names its host')
+
+        def body(effective, now_text, session):
+            self._require_token(session, fencing_token)
+            settled = []
+            for row in self.db.execute('SELECT * FROM guest_grants WHERE session_id=? AND role=? AND state=?', (session_id, role, GRANT_OUTSTANDING)).fetchall():
+                if closed or row['fencing_token'] < fencing_token:
+                    self._settle_guest_grant(session, row, 'started' if row['grant_id'] in consumed else 'fenced', now_text, 'token %d %s' % (fencing_token, 'closed' if closed else 'raised'))
+                    settled.append(row['grant_id'])
+            return dict(session_id=session_id, role=role, settled=settled, revocation=self.revocation_view(self.session_row(session_id), effective))
+        return self._mutate('report_guest_fence', dict(session_id=session_id, fencing_token=fencing_token, role=role, closed=bool(closed), consumed=sorted(consumed)), request_id, session_id, body)
+
+    def _settle_guest_grant(self, session, row, state, now_text, detail=None):
+        self.db.execute('UPDATE guest_grants SET state=?, resolved_at=?, detail=? WHERE session_id=? AND grant_id=?', (state, now_text, detail, row['session_id'], row['grant_id']))
+        self.event(now_text, row['session_id'], 'guest_grant_' + state, dict(grant_id=row['grant_id'], role=row['role'], detail=detail))
+        current = self.session_row(row['session_id'])
+        if self._revoked(current, row) and not self.pending_revocation(current, session_clock.parse(now_text)):
+            self.event(now_text, row['session_id'], 'revocation_effective', dict(target_state=current['state'], last_grant=row['grant_id'], resolution=state))
+
+    def _expire_guest_grants(self, effective):
+        """Inside every transaction, so the journal says when an unanswered grant stopped being able to do anything."""
+        rows = self.db.execute('SELECT * FROM guest_grants WHERE state=?', (GRANT_OUTSTANDING,)).fetchall()
+        for row in rows:
+            if effective >= session_clock.parse(row['conclusive_at']):
+                self._settle_guest_grant(self.session_row(row['session_id']), row, 'expired', session_clock.iso(effective))
+
+    @staticmethod
+    def _revoked(session, grant):
+        return session['cleanup_requested_at'] is not None or session['fencing_token'] > grant['fencing_token']
+
+    def pending_revocation(self, session, effective):
+        """Grants a committed takeover or cleanup still has to wait out. Empty means that revocation has taken effect.
+
+        The registry cannot reach a guest, so a start already granted is ordered against a revocation by this rule, as with any
+        lease: the authority ends when the grant can no longer be used, not when the wish to end it commits. Nothing can be added
+        once it is pending, every grant has a conclusive time, and those end before the delete cutoff, so this cannot hold cleanup past C.
+        """
+        if self.time_uncertain():
+            return []   # the effective clock may stand still until the wall catches up. Cleanup waits for nothing, and each guest still counts its own elapsed time.
+        rows = self.db.execute('SELECT * FROM guest_grants WHERE session_id=? AND state=?', (session['session_id'], GRANT_OUTSTANDING)).fetchall()
+        return [row for row in rows if self._revoked(session, row) and effective < session_clock.parse(row['conclusive_at'])]
+
+    def revocation_view(self, session, effective=None):
+        effective = self.peek_now() if effective is None else effective
+        pending = self.pending_revocation(session, effective)
+        return dict(pending=bool(pending), target_state=session['state'], reason='cleanup' if session['cleanup_requested_at'] is not None else 'takeover' if pending else None,
+                    effective_at=max((row['conclusive_at'] for row in pending), default=None),
+                    grants=[dict(grant_id=row['grant_id'], action=row['action'], role=row['role'], run_id=row['run_id'], fencing_token=row['fencing_token'], conclusive_at=row['conclusive_at']) for row in pending])
+
+    def _require_revocation_settled(self, session, effective):
+        pending = self.pending_revocation(session, effective)
+        if pending:
+            view = self.revocation_view(session, effective)
+            raise Rejection('revocation_pending', 'an earlier grant can still be used, so its revocation has not taken effect', effective_at=view['effective_at'],
+                            retry_after_s=max(0.0, session_clock.parse(view['effective_at']) - effective), roles=sorted({row['role'] for row in pending}))
+
+    def _journal_revocation(self, session_id, reason, now_text, effective):
+        session = self.session_row(session_id)
+        pending = self.pending_revocation(session, effective)
+        if pending:
+            view = self.revocation_view(session, effective)
+            self.event(now_text, session_id, 'revocation_pending', dict(reason=reason, target_state=session['state'], effective_at=view['effective_at'], grants=[row['grant_id'] for row in pending]))
+
+    def guest_grants(self, session_id):
+        return [dict(r) for r in self.db.execute('SELECT * FROM guest_grants WHERE session_id=? ORDER BY issued_at, grant_id', (session_id,))]
 
     def search_state(self, session):
         """The search as this registry journaled it. A controller's local files never decide what comes next."""
@@ -1141,6 +1262,7 @@ class Registry:
         def body(effective, now_text, session):
             if session['state'] != PAUSED:
                 raise Rejection('bad_state', 'only a paused session can resume', state=session['state'])
+            self._require_revocation_settled(session, effective)
             if session['terminal_failure'] is not None:
                 raise Rejection('terminal_failure', 'a terminal failure cannot be resumed past',
                                 outcome=session['terminal_failure'])
@@ -1243,6 +1365,7 @@ class Registry:
                         "cleanup_outcome='in_progress' WHERE session_id=?", (DELETING, now_text, reason, actor, session_id))
         self._interrupt_active_runs(session_id, now_text, 'cleanup_started')
         self.event(now_text, session_id, 'cleanup_intent', dict(reason=reason, actor=actor, prior_state=session['state']))
+        self._journal_revocation(session_id, 'cleanup', now_text, session_clock.parse(now_text))
 
     def _cleanup_view(self, session_id):
         session = self.session_row(session_id)
@@ -1423,8 +1546,12 @@ class Registry:
         session = self.session_row(session_id)
         incidents = self.incidents(session_id)
         overdue = [i for i in incidents if i['kind'] == 'cleanup-overdue']
+        revocation = self.revocation_view(session)
         return dict(
-            session_id=session_id, manifest_sha256=session['manifest_sha256'], state=session['state'],
+            session_id=session_id, manifest_sha256=session['manifest_sha256'],
+            # Only a session that has issued a grant has anything to say here, so a lifecycle with no guest process reads as it always did.
+            **(dict(revocation=revocation) if self.guest_grants(session_id) else {}),
+            state=REVOCATION_PENDING if revocation['pending'] else session['state'],
             t0_utc=session['t0_utc'], deadline_d_utc=session['deadline_d_utc'], cleanup_c_utc=session['cleanup_c_utc'],
             controller_id=session['controller_id'], fencing_token=session['fencing_token'],
             lease_expires_at=session['lease_expires_at'], terminal_failure=session['terminal_failure'],
@@ -1471,7 +1598,7 @@ class Registry:
     RPC_METHODS = ('register_session', 'acquire_control', 'renew_control', 'arm_session', 'begin_create',
                    'record_create_result', 'record_create_settlement', 'dispose_create', 'record_resource', 'report_ownership_conflict',
                    'mark_ready',
-                   'dispatch_run', 'authorize_guest_action', 'record_run_outcome', 'record_run_progress', 'record_batch_stop', 'run_records', 'ready_record',
+                   'dispatch_run', 'authorize_guest_action', 'resolve_guest_grant', 'report_guest_fence', 'record_run_outcome', 'record_run_progress', 'record_batch_stop', 'run_records', 'ready_record',
                    'record_resume', 'begin_collection', 'begin_evidence_recovery', 'record_measurement',
                    'record_evidence', 'request_cleanup', 'operator_abort', 'disown_resource', 'health', 'status',
                    'incidents', 'incident_report', 'journal', 'list_sessions', 'verify_journal')

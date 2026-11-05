@@ -10,6 +10,7 @@ never opens the file. Nothing is forwarded, so a guest never gains the use of it
 output is bounded and redacted before anything else sees it.
 """
 import base64
+import contextlib
 import dataclasses
 import hmac
 import hashlib
@@ -29,6 +30,8 @@ CONNECT_TIMEOUT_S = 10
 KEYSCAN_TIMEOUT_S = 10
 MAX_OUTPUT_CHARS = 4 * 1024 * 1024
 POLL_S = 1.0
+MIN_POLL_S = 0.01
+KILL_REAP_S = 2.0       # a killed child that will not be reaped by then is left to the kernel, not waited on
 SSH_UNREACHABLE = 255
 
 
@@ -78,29 +81,45 @@ def require_restricted_key(path):
 
 
 def bounded_command(popen, argv, timeout_s, on_wait, sleep, monotonic, poll_s):
-    """Poll rather than block, so a build can run for minutes while the controller lease is kept alive."""
+    """Poll rather than block, so a build can run for minutes while the controller lease is kept alive.
+
+    ``timeout_s`` becomes one absolute cutoff before the child exists. It is checked again after every callback, each sleep is cut to
+    what is left, and a result first seen at or past the cutoff is refused even if the child had exited in time: nobody can show that
+    it had, and a caller with a deadline may not act on it. This is a best effort on an ordinary kernel, not a real-time promise,
+    but the overrun is now one scheduling delay and one reap rather than a whole poll.
+    """
+    deadline = monotonic() + timeout_s
     # Regular temporary files cannot fill a pipe and block the child before it exits.
     # They also keep output out of memory while lease callbacks continue to run.
     with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
         process = popen(argv, stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr)
-        deadline = monotonic() + timeout_s
 
         def oversized():
             return any(os.fstat(stream.fileno()).st_size > MAX_OUTPUT_CHARS for stream in (stdout, stderr))
+
+        def killed(reason):
+            process.kill()
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                process.communicate(timeout=KILL_REAP_S)
+            return CommandResult(None, '', reason)
         try:
-            while process.poll() is None:
-                if oversized() or monotonic() >= deadline:
-                    reason = 'command output limit exceeded' if oversized() else 'timed out after %s s' % timeout_s
-                    process.kill()
-                    process.communicate()
-                    return CommandResult(None, '', reason)
+            while True:
+                exited = process.poll() is not None
+                if monotonic() >= deadline:
+                    return killed('timed out after %s s' % timeout_s)
+                if exited:
+                    break
+                if oversized():
+                    return killed('command output limit exceeded')
                 if on_wait is not None:
                     on_wait()
-                sleep(poll_s)
+                remaining = deadline - monotonic()
+                if remaining > 0:
+                    # Halved, so a child that ends in time is seen in time, and never slept past.
+                    sleep(min(poll_s, remaining if remaining <= MIN_POLL_S else max(remaining / 2, MIN_POLL_S)))
         except BaseException:
             # No local ssh process outlives lease loss or cancellation.
-            process.kill()
-            process.communicate()
+            killed('cancelled')
             raise
         process.communicate()
         if oversized():

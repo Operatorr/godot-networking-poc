@@ -476,17 +476,31 @@ admit legal remaining paths -> publish selection -> preflight both hosts      a 
 - **Fencing reaches the host.** Every guest operation that starts or stops a process carries the token: `guest_runner`'s `start`, `stop` and `seal`, and `guest_agent`'s `fetch_source`, `build`,
   `install_release`, `sampler`, `smoke_game_start`, `smoke_bot` and `smoke_game_stop`. All of them check, under one lock, one fence file that only rises. A new controller raises it first, so a
   replaced controller's late start is refused, and anything started just before is in the inventory the new controller then stops.
-- **A process start also needs an authorization window, because revocation cannot reach a guest.** The registry has no way to contact a host, and no atomic check spans two hosts, so this is a bound
-  and not a guarantee:
-  1. Immediately before each start, `authorize_guest_action` checks token, lease, cleanup, C, and for a launch that the run is in `launching`, or for a smoke that the session is paused or
-     provisioning. It answers with an absolute time at most `GUEST_ACTION_TTL_S` (10 s) ahead, never past the lease, the grant or `C − 0.5 s`.
-  2. The guest refuses a start past that time plus 1 s of clock tolerance: on arrival, after its slow checks (hashes, process table, ports), and once more from the separate process about to create
-     the workload, which also rereads the fence and any stop request.
-  3. As soon as a start returns, the controller asks the registry again and stops the process if authority has gone, before starting anything else.
-  4. A controller that sees cleanup closes the fence on both hosts. A closed fence never reopens under any token, refuses every start, and still allows stop and seal.
+- **A process start is a durable, single-use grant, and revocation has a defined order against it.** The registry cannot reach a guest and a guest cannot reach the registry, so no check spans the two.
+  What exists instead is a lease on each start. The invariant: *a start commits only before the revocation that covers it takes effect, and that effect is recorded.*
 
-  So an abort, takeover or lapsed lease committed before step 1 starts nothing, and one after step 1 is refused unless the message reaches the guest inside its window. **The residual race:** a start
-  already authorized can land up to 11 s after an abort commits. A live controller's recheck then stops it. With no controller left, it runs until its process bound, or until the watchdog deletes the host.
+  ```text
+  controller                       registry (SQLite, one transaction)                guest (host lock)
+  grant_prepare --------------------------------------------------------------------> fence open at this token? mint id, start its elapsed clock
+  authorize_guest_action(id) ----> token, lease, cleanup, C, run phase, no revocation pending
+                                   INSERT grant (outstanding) + journal: INTENT COMMIT
+                                   ttl_s; conclusive_at = commit + ttl_s + 1 s, never past lease or C - 0.5 s
+  start(plan, id, ttl_s) ---------------------------------------------------------> token == fence, not closed? burn id once (create-exclusive): GUEST COMMIT
+                                                                                    elapsed <= ttl_s and wall within tolerance, on arrival, after slow checks,
+                                                                                    from the process about to spawn, and once it exists (then fence and slack)
+  resolve_guest_grant(started) --> settled. A lost reply settles nothing.
+  ```
+
+  - **Identity and state.** Each intent is one row in `guest_grants`, keyed by the id the guest minted: `outstanding`, then `started`, `refused`, `fenced` or `expired`. The registry journals every change.
+  - **Serialization.** Registry writes are one `BEGIN IMMEDIATE`, so a revocation commits either before the intent, which is then refused, or after it, which then finds it outstanding. On the guest, the flock orders a start against a fence: the fence refuses it, or the fence's answer names it.
+  - **Revocation.** `operator_abort`, `request_cleanup`, the deadline and `acquire_control` commit at once and refuse new grants from that moment. If they find an outstanding grant, the session reads `revocation-pending`, with `revocation.target_state`, `effective_at` and the grants, and the watchdog issues no destructive request. It takes effect when every such grant is resolved, its guest has acknowledged a fence (`report_guest_fence`), or it is conclusively expired, whichever is first. `revocation_effective` is journaled. A new controller can stop, seal and raise fences meanwhile, but gets no grant and cannot resume.
+  - **Expiry and C need no step.** A grant is never conclusive past the lease it was issued under or `C − 0.5 s`, so a lapsed lease leaves nothing usable, and the hold cannot reach the deadline tick. The longest hold is 11 s from the revocation, with or without a controller.
+  - **Clocks.** `ttl_s` runs on the guest's own boot-time clock, from a mint that happened before the commit, so a guest whose wall clock is wrong cannot stretch it. A reboot voids it. The wall limit stays as a second reason to refuse, never as a reason to accept.
+  - **Replay.** A second delivery finds the id burned, even after the first run finished. The burn comes first, so a refusal cannot leave the grant usable. A lost reply leaves the id burned on the guest, and the next `fence` or `inspect` reports it as `grants_consumed`.
+
+  **What this does not do.** A start already granted when an abort commits can still land during those seconds. No check can refuse it without a channel to the guest, and the contract keeps credentials off guests and gives the watchdog no SSH key. It lands before the revocation takes effect, the record says so, and no delete has been issued. A live controller stops it at once through the recheck and the inventory. With none left, it ends at its process bound or at the deletion that follows. After the revocation takes effect, no start can commit, on the assumption that a guest's elapsed clock runs at about the right rate: 1 s of slack per 10 s, not measured. A guest paused between its last look and the fork can create a process late, and it is stopped as soon as it runs again, by the check after the spawn.
+
+  A controller that sees cleanup still closes the fence on both hosts. A closed fence never reopens under any token, refuses every start and still allows stop and seal.
 - **The readiness smoke ends by itself.** Each process it starts runs under `guest_agent bounded`, a helper that stops it at `--lifetime-s` (120 s for the server) with or without a controller. The start
   is inside the controller's `try`, so a lost reply still reaches the stop. The stop leaves a mark, so a start for that smoke arriving later is refused. It settles the process by boot id, pid and start
   time. The next controller retires any smoke left running, on both `resume` and `collect`.
@@ -541,7 +555,7 @@ A crash leaves whatever the registry last committed. Returning under a new token
 An interruption does not hide a failure the evidence shows: a rebooted host or a sampler that died gives `INFRASTRUCTURE_FAILURE`, and a swarm that crashed by itself gives `INVALID_LOAD`.
 
 Nor does a crash change a verdict already determined. If the controller that watched the run wrote `execution.json` and died before classifying, the next one reaches the verdict that controller would
-have reached from its record, carries those problems into `execution-reconciled.json`, and cannot have them unsaid by a transfer that now works. So a corrupt export in one confirmation stays terminal, and
+have reached from its record, carries those problems into `execution-reconciled-<token>-<n>.json`, and cannot have them unsaid by a transfer that now works. Every generation counts: a returner that dies after writing its own record leaves `demonstrated_problems` and `demonstrated_outcome` for the next one, each carried fact names its source record and hash under `carried_from`, and what it only failed to reach stays in `uncertain`, which is not carried and cannot become a terminal failure. So a corrupt export in one confirmation stays terminal, and
 its untouched siblings refuse resume, with or without a scorer. `INCOMPLETE` is kept for what really is unknown: a run cut short, a host that could not be reached, or a transfer that could not run during
 the return. Corrupt bytes found during a return are a demonstrated failure. A swarm that exited 1 with its report is still not invalid load: that is a verdict for the scorer, or `INCOMPLETE` without one.
 
@@ -597,7 +611,7 @@ These are stated so Gates A and B check them instead of assuming them. Each fail
 - **Fence and ledger live on the guest.** A guest rebuilt or tampered with loses them, which the boot id, package and hash checks are meant to catch, not prevent. A guest is not a trusted party.
 - **Authorization is against delay and staleness, not malice.** The token and window travel from the controller, unsigned. A controller holding the SSH key could lie to a guest in any case, and the registry
   has no channel of its own to one.
-- **The 10 s window and 1 s tolerance are declared, not measured.** An SSH login plus the guest's own checks must fit in 11 s on a real host. If they do not, the start is refused and the run is `INCOMPLETE`, which
-  is the safe direction but stops the search. The 1 s relies on readiness having proved the guest clock.
+- **The 10 s window and 1 s slack are declared, not measured.** The mint round trip, a registry commit, an SSH login and the guest's own checks must fit in 10 s on a real host. If they do not, the start is refused and the run is `INCOMPLETE`, which
+  is the safe direction but stops the search. A start now costs one more SSH login, before any workload exists.
 - **A smoke helper killed with -9** takes its server with it on Linux through `PR_SET_PDEATHSIG`, which has not run here. On macOS the server survives until a stop settles it by identity, as the local tests show.
 - **Readiness smoke during resume** overwrites the earlier readiness logs on the guest. Readiness evidence kept by the controller is unaffected.

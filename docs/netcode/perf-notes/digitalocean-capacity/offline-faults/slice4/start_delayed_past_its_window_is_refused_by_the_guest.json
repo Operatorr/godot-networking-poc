@@ -29,6 +29,10 @@
    "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
   },
   {
+   "detail": null,
+   "kind": "guest_grant_expired"
+  },
+  {
    "kind": "run_progress",
    "phase": "stopped",
    "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"

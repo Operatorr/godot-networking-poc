@@ -7,9 +7,9 @@ and the ENet smoke uses the unsigned load-test mode. Fresh measured processes be
 
 The exception is authority, which cannot wait for the controller. Every step that changes the host or starts a process
 carries the session and fencing token, checked against the same rising fence file and lock as ``guest_runner``. A step that
-starts a process also carries a window of a few seconds of registry time, and runs under ``bounded``, a small helper that
-ends it by itself with no controller left. The registry cannot reach a guest, so a start already on its way when an abort
-commits still lands if it arrives inside its window. The window is what bounds that, and no claim of more is made.
+starts a process also carries a single-use grant, minted here and journaled by the registry, timed on this host's elapsed clock and
+burned under the lock, and it runs under ``bounded``, a small helper that ends it by itself with no controller left. The registry cannot
+reach a guest, so a start already on its way when an abort commits still lands inside its grant. The abort takes effect once it cannot.
 """
 import argparse
 import contextlib
@@ -21,6 +21,7 @@ import json
 import os
 import pathlib
 import re
+import secrets
 import shutil
 import signal
 import socket
@@ -58,6 +59,8 @@ STOP_GRACE_S = 5.0
 SMOKE_GAME_LIFETIME_S = 120.0       # outlasts the bot's own bound, and ends the server if no controller ever returns
 SAMPLER_EXTRA_LIFETIME_S = 15.0
 FENCE_CODES = ('stale_fence', 'foreign_session', 'session_closed')
+GRANT_ID = re.compile(r'^[0-9a-f]{32}$')
+GRANT_COMMIT_SLACK_S = 1.0      # registry.GUEST_COMMIT_SLACK_S: a process seen alive later than this past its window is stopped at once
 
 
 class Refused(Exception):
@@ -158,9 +161,55 @@ def require_authority(args):
         hold_fence(args)
 
 
+def grant_clock_ns():
+    """guest_runner.grant_clock_ns. Elapsed time that includes suspension where the kernel can say so, shared by every process of this boot."""
+    return time.clock_gettime_ns(getattr(time, 'CLOCK_BOOTTIME', time.CLOCK_MONOTONIC))     # not time.monotonic: on macOS each process counts from its own start
+
+
+def grant_path(grant_id, suffix='.json', control=None):
+    if not isinstance(grant_id, str) or not GRANT_ID.match(grant_id):
+        raise Refused('grant_unknown', 'not a grant identity')
+    return pathlib.Path(control or control_dir()) / 'grants' / (grant_id + suffix)
+
+
+def grant_elapsed_s(args, control=None):
+    """Seconds since this host minted the grant. A record from another boot has no elapsed time that means anything, so it never fits."""
+    record = read_json(grant_path(args.grant_id, control=control))
+    if not record or record.get('boot_id') != boot_id():
+        return float('inf')
+    return (grant_clock_ns() - record['clock_ns']) / 1e9
+
+
+def grant_expired(args, control=None):
+    return grant_elapsed_s(args, control) > args.grant_ttl_s or time.time() > args.not_after_wall + CLOCK_TOLERANCE_S
+
+
 def require_window(args):
-    if time.time() > args.not_after_wall + CLOCK_TOLERANCE_S:
-        raise Refused('authorization_expired', 'this start is past its authorization')
+    """Under the host lock. Burns the grant first, so a replay does nothing, then asks whether either clock says it is over."""
+    record = read_json(grant_path(args.grant_id))
+    if record is None:
+        raise Refused('grant_unknown', 'this host never minted that grant')
+    if record.get('session_id') != args.session or record.get('token') != args.token:
+        raise Refused('grant_mismatch', 'that grant belongs to another session or token')
+    try:
+        descriptor = os.open(str(grant_path(args.grant_id, '.consumed')), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o640)
+    except FileExistsError:
+        raise Refused('grant_replayed', 'that grant was already used')
+    os.fsync(descriptor)
+    os.close(descriptor)
+    if grant_expired(args):
+        raise Refused('authorization_expired', 'this start is past its grant')
+
+
+def cmd_grant_prepare(args):
+    """Mint one start's identity and start its clock, before the registry has been asked. See ``registry.authorize_guest_action``."""
+    with host_lock():
+        previous = read_json(control_dir() / 'fence.json') or {}
+        hold_fence(args)
+        grant_id = secrets.token_hex(16)
+        grant_path(grant_id).parent.mkdir(exist_ok=True, mode=0o750)
+        atomic_json(grant_path(grant_id), dict(grant_id=grant_id, session_id=args.session, token=args.token, boot_id=boot_id(), clock_ns=grant_clock_ns()))
+        return dict(grant_id=grant_id, token=args.token, raised=previous.get('token') != args.token)
 
 
 # ---- process identity: the same rules as guest_runner, kept equal by test_guest_runner ----------------
@@ -226,7 +275,7 @@ def start_bounded(name, argv, args, lifetime_s, cwd):
         with contextlib.suppress(FileNotFoundError):
             path.unlink()
     command = [sys.executable, os.path.abspath(__file__), 'bounded', '--state', str(state), '--stop', str(stop), '--log', str(log), '--control', str(control_dir()),
-               '--session', args.session, '--token', str(args.token), '--not-after-wall', str(args.not_after_wall), '--lifetime-s', str(lifetime_s), '--cwd', str(cwd), '--'] + [str(a) for a in argv]
+               '--session', args.session, '--token', str(args.token), '--not-after-wall', str(args.not_after_wall), '--grant-id', args.grant_id, '--grant-ttl-s', str(args.grant_ttl_s), '--lifetime-s', str(lifetime_s), '--cwd', str(cwd), '--'] + [str(a) for a in argv]
     subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True, close_fds=True)
     deadline = time.monotonic() + START_CONFIRM_S
     while time.monotonic() < deadline:
@@ -255,7 +304,7 @@ def cmd_bounded(args):
         refused = 'stale_fence'
     elif fence.get('closed'):
         refused = 'session_closed'
-    elif time.time() > args.not_after_wall + CLOCK_TOLERANCE_S:
+    elif grant_expired(args, args.control):
         refused = 'authorization_expired'
     elif stop.exists():
         refused = 'stop_requested'
@@ -275,6 +324,10 @@ def cmd_bounded(args):
     atomic_json(state, dict(record, process=identity_of(child.pid)))
     ends = time.monotonic() + args.lifetime_s
     reason = None
+    # Nothing can check the instant between the last look and the fork, so a fence raised in it or a long pause ends the process now.
+    fence = read_json(pathlib.Path(args.control) / 'fence.json') or {}
+    if fence.get('token') != args.token or fence.get('closed') or grant_elapsed_s(args, args.control) > args.grant_ttl_s + GRANT_COMMIT_SLACK_S:
+        reason = 'refused_after_spawn'
     while child.poll() is None and reason is None:
         if terminated:
             reason = 'helper_terminated'
@@ -675,7 +728,7 @@ def cmd_smoke_game_stop(args):
     return dict(exited_on_signal=exited, listeners=parse_listeners(out), processes=int(procs.strip() or 0))
 
 
-COMMANDS = dict(probe=cmd_probe, clock=cmd_clock, wait_cloud_init=cmd_wait_cloud_init, fetch_source=cmd_fetch_source, build=cmd_build,
+COMMANDS = dict(grant_prepare=cmd_grant_prepare, probe=cmd_probe, clock=cmd_clock, wait_cloud_init=cmd_wait_cloud_init, fetch_source=cmd_fetch_source, build=cmd_build,
                 install_release=cmd_install_release, sampler=cmd_sampler, tcp_probe=cmd_tcp_probe, smoke_game_start=cmd_smoke_game_start,
                 smoke_bot=cmd_smoke_bot, smoke_game_stop=cmd_smoke_game_stop, bounded=cmd_bounded)
 
@@ -685,6 +738,8 @@ def add_authority(parser, start=False):
     parser.add_argument('--token', type=int, required=True)
     if start:
         parser.add_argument('--not-after-wall', type=float, required=True, help='wall time this start stops being authorized')
+        parser.add_argument('--grant-id', required=True, help='the identity this host minted for this start')
+        parser.add_argument('--grant-ttl-s', type=float, required=True, help='how long after minting this start is authorized, on this host\'s elapsed clock')
     return parser
 
 
@@ -693,6 +748,7 @@ def build_parser():
     sub = parser.add_subparsers(dest='command', required=True)
     sub.add_parser('probe').add_argument('--role', required=True, choices=('game', 'bot'))
     sub.add_parser('clock')
+    add_authority(sub.add_parser('grant_prepare'))
     sub.add_parser('wait_cloud_init').add_argument('--timeout-s', type=int, required=True)
     fetch = sub.add_parser('fetch_source')
     fetch.add_argument('--sha', required=True)

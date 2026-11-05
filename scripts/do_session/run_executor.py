@@ -9,10 +9,10 @@
 The registry is the record of what was dispatched. A crash anywhere after ``dispatch_run`` leaves that run touched for
 good: it cannot be dispatched again, and on return it is stopped, sealed and classified from what it actually left.
 
-No process starts on a guest on this controller's word alone. Each start first gets a window of a few seconds from the registry
-(``authorize_guest_action``), the guest refuses it once that has passed, and this controller asks again as soon as the start
-returns. A start already on its way when an abort commits can still land inside its window. That race has no atomic fix across
-two hosts, so it is bounded, stopped by the recheck, and failing that ended by the guest's own process bound or the deletion.
+No process starts on a guest on this controller's word alone. Each start is a durable, single-use grant: the guest mints its identity
+and starts its clock, the registry journals the intent (``authorize_guest_action``), and the guest burns it under its host lock and
+refuses it past its elapsed window. A takeover or cleanup that commits while a grant is outstanding is ``revocation-pending`` until that
+grant is resolved, acknowledged by the guest's fence or conclusively expired; only then does it take effect. See ``registry.pending_revocation``.
 
 Workload processes stop by themselves, through the guest's supervisor, by ``launch_by + estimate`` less the time export
 needs. This controller only ends them sooner. Nothing here scores a measurement: ``scorer`` is the boundary described in
@@ -51,6 +51,7 @@ ADAPTER_PATH = 'scripts/do_session/run_plan.py'
 LOCAL_FAILURES = (OSError, ValueError, KeyError, TypeError)
 STALE_CODES = ('stale_fencing_token', 'lease_expired', 'control_held')
 CLEANUP_CODES = ('cleanup_in_progress', 'deadline_reached', 'clock_unverifiable')
+GRANT_STILL_USABLE = ('lock_timeout', 'bad_request')     # the only refusals that come before the guest burns or outlaws a grant
 SEARCH_ENDINGS = ('confirmed', 'confirmed_search_cap_reached', 'no_passing_target', 'unconfirmed_variable', 'unconfirmed_partial')
 
 
@@ -77,6 +78,7 @@ class BatchResult:
     detail: str = None
     runs: list = dataclasses.field(default_factory=list)
     wrap_up_error: str = None
+    wrap_up_errors: list = dataclasses.field(default_factory=list)
 
 
 class ControlLost(Exception):
@@ -139,7 +141,9 @@ class RunContext:
     launched: bool = False
     exported: dict = dataclasses.field(default_factory=dict)
     uncertain: list = dataclasses.field(default_factory=list)   # problems of contact, which say nothing about what happened on the host
-    retained_record: dict = None                                # the execution record a crashed controller left for this run
+    retained_record: dict = None                                # the execution record a controller that watched this run left before crashing
+    carried: list = dataclasses.field(default_factory=list)     # where each fact carried from an earlier generation of records came from
+    demonstrated: dict = None                                   # an outcome the host's own evidence settled, in this or an earlier generation
 
 
 def publish_new(source, target):
@@ -180,7 +184,7 @@ class GuestReadiness:
             image = executor.provider.image(executor.manifest['roles'][role]['image_id'])
             found += readiness.observation_problems(executor.manifest, role, observation, (image or {}).get('name'))
             found += readiness.clock_problems(role, executor._measure_clock(role))
-            found += readiness.sampler_problems(role, executor._agent(role, 'sampler', *executor._authorized_arguments()))
+            found += readiness.sampler_problems(role, executor._granted_agent(role, 'sampler'))
             recorded = report['roles'][role]['observation']
             if (observation.get('clock') or {}).get('boot_id') != (recorded.get('clock') or {}).get('boot_id'):
                 found.append(role + ': the host rebooted since readiness')
@@ -204,9 +208,9 @@ class GuestReadiness:
         smoke = ['--smoke-id', '%d-%d' % (executor.token, executor.smokes)]
         started = bot = None
         try:
-            started = executor._agent('game', 'smoke_game_start', *executor._authorized_arguments(), *smoke, '--lifetime-s', executor._smoke_lifetime())
+            started = executor._granted_agent('game', 'smoke_game_start', *smoke, '--lifetime-s', executor._smoke_lifetime())
             executor._keepalive(force=True)     # the authority may have gone while that was in flight, and the bot has not started
-            bot = executor._agent('bot', 'smoke_bot', '--server', executor.addresses['game'] + ':' + session_access.GAME_PORT, *executor._authorized_arguments(), '--timeout-s', 60, timeout_s=90)
+            bot = executor._granted_agent('bot', 'smoke_bot', '--server', executor.addresses['game'] + ':' + session_access.GAME_PORT, '--timeout-s', 60, timeout_s=90)
         finally:
             stopped = executor._stop_smoke(smoke)
         return started, bot, stopped
@@ -257,7 +261,7 @@ class RunExecutor:
         """Local trail only. A failed write here must not change what happens to a workload."""
         try:
             self.evidence.event(kind, **data)
-        except (OSError, provisioner.Stop):
+        except Exception:   # OSError, a full disk, a value that will not serialize: none of them may change what happens next
             pass
 
     def _keepalive(self, force=False):
@@ -361,31 +365,67 @@ class RunExecutor:
             raise RunAborted(run_checks.INFRASTRUCTURE, '%s %s reported a credential value' % (role, step))
         if document.get('ok') is False and 'code' in document:
             code, detail = document['code'], '%s: %s' % (role, document.get('detail'))
-            if code == 'session_closed':
-                raise CleanupStarted(detail)
-            if code in guest_agent.FENCE_CODES:
-                raise ControlLost(code, detail)
+            refusal = CleanupStarted(detail) if code == 'session_closed' else ControlLost(code, detail) if code in guest_agent.FENCE_CODES else None
+            if refusal is not None:
+                refusal.from_guest = True   # the guest's own word, unlike the same exception raised by a lease check while waiting on it
+                raise refusal
             raise GuestLost('%s %s refused: %s %s' % (role, step, code, document.get('detail')))
         return document
 
     def _fence_arguments(self):
         return ['--session', self.session_id, '--token', self.token]
 
-    def _authorize(self, action, run_id=None, role=None):
-        """One fresh answer, immediately before a process start. Unthrottled, and worth seconds. Returns when it expires, in wall time."""
-        self._guest_timeout(1.0)    # no authorization is even requested past the cutoff
+    def _report_fence(self, role, fenced, closed=False):
+        """The guest has answered under its host lock, which ends every older grant for that host. If this report is lost, their expiry does the same."""
         try:
-            grant = self.client.call('authorize_guest_action', session_id=self.session_id, fencing_token=self.token, action=action, run_id=run_id, role=role)
+            self.client.mutate('report_guest_fence', session_id=self.session_id, fencing_token=self.token, role=role, closed=closed, consumed=fenced.get('grants_consumed') or [])
+        except (registry_client.RegistryRejected, registry_client.RegistryUnavailable) as error:
+            self._note('fence_report_lost', role=role, detail=cleanup_provider.redact(error))
+
+    def _prepare_grant(self, role, tool):
+        """The guest's half first, so its clock for this grant is running before the registry's commit. A refusal ends here."""
+        document = tool(role, 'grant_prepare', *self._fence_arguments())
+        if document.get('ok') is False:
+            if document.get('code') == 'session_closed':
+                raise CleanupStarted('%s: %s' % (role, document.get('detail')))
+            raise RunAborted(run_checks.INFRASTRUCTURE, '%s refused a grant: %s %s' % (role, document.get('code'), document.get('detail')))
+        return document['grant_id']
+
+    def _authorize(self, action, role, run_id=None, tool=None):
+        """One fresh grant, immediately before a process start. Unthrottled, and worth seconds."""
+        self._guest_timeout(1.0)    # no authorization is even requested past the cutoff
+        tool = tool or self._agent
+        try:
+            return self.client.guest_grant(self.session_id, self.token, action, role, lambda: self._prepare_grant(role, tool), self.sleep, run_id=run_id)
         except registry_client.RegistryRejected as rejection:
             if rejection.code in STALE_CODES:
                 raise ControlLost(rejection.code, rejection.message)
             if rejection.code in CLEANUP_CODES:
                 raise CleanupStarted(rejection.message)
             raise
-        return session_clock.parse(grant['authorized_until'])
 
-    def _authorized_arguments(self):
-        return self._fence_arguments() + ['--not-after-wall', self._authorize('smoke')]
+    def _resolve_grant(self, grant, resolution, detail=None):
+        """A fact the guest gave us. Losing it costs only the wait until the grant's own expiry."""
+        try:
+            self.client.mutate('resolve_guest_grant', session_id=self.session_id, grant_id=grant['grant_id'], resolution=resolution, detail=detail)
+        except (registry_client.RegistryRejected, registry_client.RegistryUnavailable) as error:
+            self._note('grant_answer_lost', grant_id=grant['grant_id'], detail=cleanup_provider.redact(error))
+
+    def _authorized_arguments(self, role, grant=None):
+        grant = grant or self._authorize('smoke', role)
+        return self._fence_arguments() + ['--not-after-wall', session_clock.parse(grant['authorized_until']), '--grant-id', grant['grant_id'], '--grant-ttl-s', grant['ttl_s']]
+
+    def _granted_agent(self, role, step, *arguments, timeout_s=None):
+        grant = self._authorize('smoke', role)
+        try:
+            document = self._agent(role, step, *self._authorized_arguments(role, grant), *arguments, timeout_s=timeout_s)
+        except (ControlLost, CleanupStarted) as refused:
+            # Only a refusal from the guest settles the grant. A lease check failing mid-command says nothing about whether it landed.
+            if getattr(refused, 'from_guest', False):
+                self._resolve_grant(grant, 'refused', getattr(refused, 'code', 'session_closed'))
+            raise
+        self._resolve_grant(grant, 'started')
+        return document
 
     def _smoke_lifetime(self):
         """The server's own end: the longest smoke there can be, and never past this controller's cutoff."""
@@ -403,16 +443,21 @@ class RunExecutor:
 
     def _close_fences(self, reason):
         """Nothing may start on these hosts again, whatever is still in flight. Only a controller can carry this, so it is best effort."""
+        failures = []
         if self.fences_closed or not self.prepared:
-            return
+            return failures
         closed = 0
         for role in ROLES:
             try:
-                self._runner(role, 'fence', '--session', self.session_id, '--token', self.token, '--close', str(reason)[:200], on_wait=self._quiet_keepalive)
+                fenced = self._runner(role, 'fence', '--session', self.session_id, '--token', self.token, '--close', str(reason)[:200], on_wait=self._quiet_keepalive)
+                self._report_fence(role, fenced, closed=True)
                 closed += 1
-            except (GuestLost, ControlLost, RunAborted) as error:
-                self._note('fence_not_closed', role=role, detail=cleanup_provider.redact(error))
+            except (GuestLost, ControlLost, RunAborted) + LOCAL_FAILURES as error:
+                # A local fault on one host costs that host's fence, and never the other's or the cleanup behind it.
+                self._note('fence_not_closed', role=role, detail='%s: %s' % (type(error).__name__, cleanup_provider.redact(error)))
+                failures.append('%s fence not closed: %s' % (role, type(error).__name__))
         self.fences_closed = closed == len(ROLES)
+        return failures
 
     def _measure_clock(self, role):
         before = self.wall()
@@ -522,6 +567,7 @@ class RunExecutor:
             fenced = self._runner(role, 'fence', '--session', self.session_id, '--token', self.token)
             if fenced.get('ok') is not True:
                 raise BatchStop(STOPPED, 'fence_refused', '%s: %s %s' % (role, fenced.get('code'), fenced.get('detail')))
+            self._report_fence(role, fenced)
         self.prepared = True
 
     # ---- planning ----------------------------------------------------------------------------
@@ -756,7 +802,8 @@ class RunExecutor:
             context.problems[run_checks.INFRASTRUCTURE].append('the controller failed locally: ' + type(error).__name__)
             context.interrupted = 'controller_failure'
         if cleanup is not None:
-            self._close_fences('cleanup: ' + cleanup.detail)
+            for problem in self._close_fences('cleanup: ' + cleanup.detail):
+                self._note('fence_close_failed', detail=problem)
         self._finish_run(context)
         if cleanup is not None:
             raise cleanup
@@ -782,36 +829,41 @@ class RunExecutor:
         grace = self.policy.stop_grace_s
         launch_by = session_clock.parse(context.grant['launch_by'])
         whole = run_plan.workload_s(trial)
-        game = self._plan(trial, 'game', self._authorize('launch_run', trial.run_id, 'game'), max(1.0, context.stop_by - self.monotonic() - reserved - grace), must_stop_by - reserved - grace, whole)
+        granted = self._authorize('launch_run', 'game', trial.run_id, self._runner)
+        game = self._plan(trial, 'game', session_clock.parse(granted['authorized_until']), max(1.0, context.stop_by - self.monotonic() - reserved - grace), must_stop_by - reserved - grace, whole)
         self.failpoint('after_game_authorized')
-        self._start_role(context, game)
+        self._start_role(context, game, granted)
         self.failpoint('after_game_start')
         self._await_game_socket(context, game)
         bound = context.stop_by - self.monotonic() - reserved - 2 * grace
         if bound < whole:
             raise RunAborted(NOT_LAUNCHED, 'too little of the grant is left for the whole workload: %.1f s' % bound)
-        authorized = self._authorize('launch_run', trial.run_id, 'bot')
-        bot = self._plan(trial, 'bot', min(authorized, launch_by + self.policy.game_start_wait_s), bound, must_stop_by - reserved - 2 * grace, whole)
+        granted = self._authorize('launch_run', 'bot', trial.run_id, self._runner)
+        bot = self._plan(trial, 'bot', min(session_clock.parse(granted['authorized_until']), launch_by + self.policy.game_start_wait_s), bound, must_stop_by - reserved - 2 * grace, whole)
         self.failpoint('after_bot_authorized')
-        self._start_role(context, bot)
+        self._start_role(context, bot, granted)
         self.failpoint('after_bot_start')
         self.client.mutate('record_run_progress', session_id=self.session_id, run_id=trial.run_id, phase='running', fencing_token=self.token,
                            execution_ref='plans:' + run_plan.plan_digest(context.plans))
         self.failpoint('after_running_commit')
 
-    def _start_role(self, context, plan):
+    def _start_role(self, context, plan, granted):
         role = plan['role']
+        plan = dict(plan, grant=dict(id=granted['grant_id'], ttl_s=granted['ttl_s']))
         run_dir = self._run_dir(plan['run_id'])
         do_session.write_new(run_dir / ('plan-%s.json' % role), json.dumps(plan, indent=2, sort_keys=True) + '\n')
         context.plans[role] = plan
         document = self._runner(role, 'start', '--plan-json', json.dumps(plan, sort_keys=True))
         if document.get('ok') is not True:
             code, detail = document.get('code'), document.get('detail')
+            if code not in GRANT_STILL_USABLE:
+                self._resolve_grant(granted, 'refused', code)
             if code == 'launch_window_closed':
                 raise RunAborted(NOT_LAUNCHED, '%s start arrived after its grant' % role)
             if code == 'session_closed':
                 raise CleanupStarted('%s start refused: %s' % (role, detail))
             raise RunAborted(run_checks.INFRASTRUCTURE, '%s start refused: %s %s' % (role, code, detail))
+        self._resolve_grant(granted, 'started')
         context.launched = True
         context.summaries[role] = document
         problems = run_checks.launch_problems(plan, document, self._ledger_without(context.ledgers.get(role), plan['run_id']))
@@ -942,7 +994,8 @@ class RunExecutor:
             exported = context.exported[role] = self._export_role(context.trial.run_id, role, sealed)
             if not exported['complete']:
                 problem = '%s evidence was not fully exported: %s' % (role, exported['failed'])
-                if all(item['kind'] == 'transfer' for item in exported['failed']):
+                # A failed transfer or this controller's own disk say nothing about the bytes on the host. Only a digest mismatch does.
+                if all(item['kind'] in ('transfer', 'local') for item in exported['failed']):
                     self._note_uncertain(context, problem)
                 else:
                     context.problems[run_checks.INFRASTRUCTURE].append(problem)
@@ -987,8 +1040,10 @@ class RunExecutor:
             found = run_checks.execution_problems(context.plans, context.summaries, context.sealed, ledgers, self.require_counters)
             for kind, items in found.items():
                 problems[kind] = list(problems.get(kind, [])) + items
+        hard = {kind: [item for item in items if item not in context.uncertain] for kind, items in context.problems.items()}
         document = dict(schema='omega.do-session.run-execution/1', session_id=self.session_id, manifest_sha256=self.sha, run_id=context.trial.run_id, trial=context.trial.to_dict(),
-                        writer=writer, fencing_token=self.token, grant=context.grant, plan_digests={role: run_plan.plan_digest(plan) for role, plan in context.plans.items()},
+                        writer=writer, fencing_token=self.token, grant=context.grant, demonstrated_problems=hard, uncertain=list(context.uncertain), carried_from=context.carried,
+                        demonstrated_outcome=context.demonstrated, plan_digests={role: run_plan.plan_digest(plan) for role, plan in context.plans.items()},
                         launched=context.launched, interrupted=context.interrupted, problems=problems, runner_sha256=self.runner_sha256,
                         roles={role: dict(identity=dict(supervisor=summary.get('supervisor'), processes=summary.get('processes'), invocation_id=summary.get('invocation_id')),
                                           result=summary.get('result'), socket=summary.get('socket'), sampler=summary.get('sampler'), seal_sha256=summary.get('seal_sha256'))
@@ -1115,24 +1170,47 @@ class RunExecutor:
             if any(entry.get('run_id') == trial.run_id and entry.get('role') == role for entry in inventories[role].get('runs') or []):
                 self._reconcile_role(context, role, reason)
         self._export(context)
-        name = 'execution.json' if not (run_dir / 'execution.json').exists() else 'execution-reconciled.json'
-        if (run_dir / name).exists():
-            name = 'execution-reconciled-%d.json' % self.token
+        # Create-only: each writer's view is kept, in token order, and the glob above reads them all.
+        name = 'execution.json'
+        attempt = 0
+        while (run_dir / name).exists():
+            attempt += 1
+            name = 'execution-reconciled-%04d-%d.json' % (self.token, attempt)
+        boots = {role: self._expected_boot(role) for role in ROLES} if self.report else {}
+        context.demonstrated = run_checks.interrupted_outcome(context.plans, context.summaries, boots) or context.demonstrated
         execution = self._write_execution(context, name, writer='reconcile')
+        self.failpoint('after_reconcile_record')
         if set(context.sealed) == set(ROLES):
             self._safe_progress(trial.run_id, 'sealed', execution['ref'])
         verdict = self._interrupted_verdict(context, execution, reachable)
         self._commit_interrupted(context, verdict, execution)
 
     def _carry_retained_record(self, context, run_dir):
-        """What the crashed controller already wrote down stays true. A second look at a host cannot unsay it."""
-        record = guest_runner.read_json(run_dir / 'execution.json')
-        if not isinstance(record, dict) or record.get('writer') != 'run':
-            return
-        context.retained_record = record
-        for kind, items in (record.get('problems') or {}).items():
-            context.problems.setdefault(kind, [])
-            context.problems[kind] += [item for item in items if item not in context.problems[kind]]
+        """What any earlier generation wrote down as demonstrated stays true. A second look at a host cannot unsay it.
+
+        Records exist per generation, whichever controller wrote them: a ``run`` writer's problems are what it was about to decide on, and
+        a ``reconcile`` writer's hard facts are kept apart from what it merely could not reach. Contact uncertainty is about that moment and
+        is not carried, so a later generation that reaches the host can settle it. A record that can no longer be read proves nothing either
+        way, so it blocks any claim that needs it.
+        """
+        for path in sorted(run_dir.glob('execution*.json'), key=lambda item: (item.name != 'execution.json', item.name)):
+            record = guest_runner.read_json(path)
+            if not isinstance(record, dict) or not isinstance(record.get('problems'), dict):
+                context.uncertain.append('earlier record %s could not be read' % path.name)
+                continue
+            if record.get('writer') == 'run':
+                context.retained_record = record
+                carried = record['problems']
+            else:
+                carried = record.get('demonstrated_problems') or {}
+                context.demonstrated = context.demonstrated or record.get('demonstrated_outcome')
+            kept = {kind: [item for item in items if item not in context.problems.get(kind, [])] for kind, items in carried.items() if items}
+            for kind, items in kept.items():
+                context.problems.setdefault(kind, [])
+                context.problems[kind] += items
+            if any(kept.values()) or record.get('demonstrated_outcome'):
+                context.carried.append(dict(record=path.name, sha256=sha256_path(path), writer=record.get('writer'), fencing_token=record.get('fencing_token'), problems=kept,
+                                            demonstrated_outcome=record.get('demonstrated_outcome')))
 
     def _reconcile_role(self, context, role, reason):
         run_id = context.trial.run_id
@@ -1156,10 +1234,8 @@ class RunExecutor:
         if path.exists():
             document = json.loads(path.read_text())
             return dict(document['verdict'], reused=True)
-        boots = {role: self._expected_boot(role) for role in ROLES} if self.report else {}
-        demonstrated = run_checks.interrupted_outcome(context.plans, context.summaries, boots)
-        if demonstrated is not None:
-            return dict(demonstrated, scored=False)
+        if context.demonstrated is not None:
+            return dict(context.demonstrated, scored=False)
         if context.retained_record is not None:
             # Exactly what that controller would have decided next, had it not died first.
             verdict = self._settled_verdict(context.retained_record.get('problems') or {}, context.retained_record.get('interrupted'))
@@ -1226,8 +1302,10 @@ class RunExecutor:
             raise ResumeRefused('cleanup_in_progress', status['cleanup']['reason'] or status['state'])
         if status['terminal_failure'] is not None:
             raise ResumeRefused('terminal_failure', status['terminal_failure'])
-        if status['state'] != registry.PAUSED:
-            raise ResumeRefused('not_paused', status['state'])
+        # A revocation still pending takes effect once this controller's fences are reported, and record_resume will not pass before it does.
+        effective_state = status['revocation']['target_state'] if status['state'] == registry.REVOCATION_PENDING else status['state']
+        if effective_state != registry.PAUSED:
+            raise ResumeRefused('not_paused', effective_state)
 
     def _resume_checks(self, control, checks):
         status = self._status()
@@ -1285,18 +1363,34 @@ class RunExecutor:
     # ---- the end of a batch ------------------------------------------------------------------
 
     def wrap_up(self, result, request_cleanup=True):
-        """Stop means collect and delete, and a failure while collecting never stands in the way of the delete.
+        """Stop means collect and delete, and no failure on the way stands between a finished batch and its cleanup request.
 
-        Slice 7's exporter replaces the session's evidence status; a run's own export has already happened. A local failure here
-        is kept on ``result.wrap_up_error`` rather than raised, so everything after it, the cleanup request above all, still runs.
+        Every step is independent, and the request itself sits in the ``finally``, so a fault while closing a fence, collecting, logging or even in
+        this method still reaches it. Failures are kept in order on ``result``: the first in ``wrap_up_error``, all of them in ``wrap_up_errors``.
+        A stale controller is still refused, by the registry, for the same token rule as any other write.
         """
         label = result.search_status or result.code or result.status
+        try:
+            self._finalize(result, label, request_cleanup)
+        except Exception as error:
+            self._wrap_up_failed(result, error)
+        finally:
+            if request_cleanup:
+                self._request_cleanup(result, label)
+        return result
+
+    def _finalize(self, result, label, request_cleanup):
         evidence_status, inventory_ref = 'partial', None
         if request_cleanup:
-            self._close_fences('batch ended: ' + str(label))
+            try:
+                for problem in self._close_fences('batch ended: ' + str(label)):
+                    self._wrap_up_problem(result, problem)
+            except Exception as error:
+                self._wrap_up_failed(result, error)
         try:
             status = self._status()
-            if status['state'] in (registry.READY, registry.PAUSED, registry.EVIDENCE_RECOVERY):
+            state = status['revocation']['target_state'] if status['state'] == registry.REVOCATION_PENDING else status['state']
+            if state in (registry.READY, registry.PAUSED, registry.EVIDENCE_RECOVERY):
                 self.client.mutate('begin_collection', session_id=self.session_id, fencing_token=self.token)
             missing = self._collect_missing()
             if missing:
@@ -1324,17 +1418,22 @@ class RunExecutor:
             self._note('wrap_up_rejected', code=rejection.code, detail=str(rejection.message))
         except registry_client.RegistryUnavailable as error:
             self._note('wrap_up_unacknowledged', detail=cleanup_provider.redact(error))
-        if request_cleanup:
-            try:
-                self.client.mutate('request_cleanup', session_id=self.session_id, fencing_token=self.token, reason='batch ended: ' + str(label))
-            except (registry_client.RegistryRejected, registry_client.RegistryUnavailable) as error:
-                # The watchdog still deletes by C.
-                self._note('cleanup_request_unacknowledged', detail=cleanup_provider.redact(error))
-        return result
+
+    def _request_cleanup(self, result, label):
+        try:
+            self.client.mutate('request_cleanup', session_id=self.session_id, fencing_token=self.token, reason='batch ended: ' + str(label))
+        except (registry_client.RegistryRejected, registry_client.RegistryUnavailable) as error:
+            # The watchdog still deletes by C.
+            self._note('cleanup_request_unacknowledged', detail=cleanup_provider.redact(error))
+        except Exception as error:
+            self._wrap_up_failed(result, error)
 
     def _wrap_up_failed(self, result, error):
-        detail = '%s: %s' % (type(error).__name__, cleanup_provider.redact(error))
+        self._wrap_up_problem(result, '%s: %s' % (type(error).__name__, cleanup_provider.redact(error)))
+
+    def _wrap_up_problem(self, result, detail):
         self._note('wrap_up_failed', detail=detail)
+        result.wrap_up_errors.append(detail)
         result.wrap_up_error = result.wrap_up_error or detail
 
     # ---- what actually arrived ---------------------------------------------------------------

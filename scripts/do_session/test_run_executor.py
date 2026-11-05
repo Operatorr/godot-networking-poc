@@ -2,7 +2,11 @@
 import json
 import os
 import pathlib
+import subprocess
+import tempfile
+import time
 import unittest
+from unittest import mock
 
 import admission
 import fake_guest
@@ -918,11 +922,11 @@ class GuestAuthority(Base):
         for role in ('game', 'bot'):
             self.assertTrue(self.guests.hosts[role].fence['closed'], 'the live controller carried the revocation to both hosts')
 
-    def test_an_abort_in_flight_is_the_bounded_race_and_the_recheck_ends_it_at_once(self):
+    def test_an_abort_in_flight_is_ordered_by_its_grant_and_the_recheck_ends_it_at_once(self):
         executor = self.sim.executor(scorer=self.scorer(), failpoint=self.failing_at('after_game_authorized', self.abort))
         result = executor.execute()
         self.assertEqual(result.status, run_executor.CLEANUP_STARTED)
-        self.assertEqual(len(self.game_starts()), 1, 'authorized before the abort and arriving inside its window: no atomic check across hosts exists')
+        self.assertEqual(len(self.game_starts()), 1, 'granted before the abort, so the abort takes effect only after this grant ends; nothing refuses it before then')
         self.assertEqual(self.guests.runner_steps('bot', 'start'), [], 'nothing further was started')
         run = next(iter(self.guests.hosts['game'].runs.values()))
         self.assertTrue(run.stop_reason.startswith('stop_requested'))
@@ -1003,12 +1007,12 @@ class GuestAuthority(Base):
         old, _ = self.paused_controller()
         self.sim.controller(name='controller-c')
         with self.assertRaises(run_executor.ControlLost):
-            old._authorized_arguments()
+            old._authorized_arguments('game')
         self.assertIsNone(self.guests.hosts['game'].smoke)
 
     def test_a_smoke_delayed_past_a_takeover_is_refused_by_the_fence(self):
         old, _ = self.paused_controller()
-        arguments = old._authorized_arguments()
+        arguments = old._authorized_arguments('game')
         new, _ = self.sim.controller(name='controller-c')
         new.prepare()
         with self.assertRaises(run_executor.ControlLost) as caught:
@@ -1018,7 +1022,7 @@ class GuestAuthority(Base):
 
     def test_a_smoke_delayed_past_its_authorization_is_refused(self):
         executor, _ = self.paused_controller()
-        arguments = executor._authorized_arguments()
+        arguments = executor._authorized_arguments('game')
         self.past_the_window()
         with self.assertRaises(run_executor.GuestLost) as caught:
             self.smoke_start(executor, arguments)
@@ -1027,10 +1031,10 @@ class GuestAuthority(Base):
 
     def test_a_smoke_cannot_be_authorized_after_an_abort_and_a_delayed_one_finds_the_fence_closed(self):
         executor, _ = self.paused_controller()
-        arguments = executor._authorized_arguments()
+        arguments = executor._authorized_arguments('game')
         self.abort()
         with self.assertRaises(run_executor.CleanupStarted):
-            executor._authorized_arguments()
+            executor._authorized_arguments('game')
         executor._close_fences('operator abort')
         with self.assertRaises(run_executor.CleanupStarted):
             self.smoke_start(executor, arguments)
@@ -1040,7 +1044,7 @@ class GuestAuthority(Base):
         executor, _ = self.paused_controller()
         self.sim.clock.advance(session_clock.parse(self.sim.status_now()['cleanup_c_utc']) - self.sim.clock.wall())
         with self.assertRaises((run_executor.GuestLost, run_executor.CleanupStarted)):
-            executor._authorized_arguments()
+            executor._authorized_arguments('game')
         self.assertIsNone(self.guests.hosts['game'].smoke)
 
     def test_a_takeover_during_the_smoke_starts_no_bot_and_refuses_the_resume(self):
@@ -1089,7 +1093,7 @@ class GuestAuthority(Base):
 
     def test_the_next_controller_retires_a_smoke_left_running(self):
         executor, _ = self.paused_controller()
-        self.smoke_start(executor, executor._authorized_arguments())
+        self.smoke_start(executor, executor._authorized_arguments('game'))
         host = self.guests.hosts['game']
         self.assertTrue(self.guests.smoke_alive(host))
         new, control = self.sim.controller(name='controller-c', scorer=self.scorer())
@@ -1099,7 +1103,7 @@ class GuestAuthority(Base):
 
     def test_collect_also_retires_a_smoke_left_running(self):
         executor, _ = self.paused_controller()
-        self.smoke_start(executor, executor._authorized_arguments())
+        self.smoke_start(executor, executor._authorized_arguments('game'))
         client = rf.pf.client_for(self.sim, 'controller-c')
         run_cli.collect_and_stop(client, self.sim.session_id, lambda token: self.sim.executor(client=client, token=token), 'stop', takeover=True)
         self.assertFalse(self.guests.smoke_alive(self.guests.hosts['game']))
@@ -1141,6 +1145,166 @@ class DemonstratedFailures(Base):
         self.assertEqual(len(self.guests.starts()), before, 'no confirmation sibling started')
         return resumed
 
+    def two_crashes(self, scorer=None):
+        """The controller dies with the confirmation sealed and nothing exported. A returner sees the corrupt bytes, writes that down and dies before classifying."""
+        self.guests.corrupt_export.clear()
+        first = self.sim.executor(scorer=self.scorer())
+        hits = [0]
+
+        def in_confirmation(name):
+            if name == 'after_running_commit':
+                hits[0] += 1
+            if name == 'after_seal' and hits[0] == 4:
+                raise rf.SimulatedCrash(name)
+        first.failpoint = in_confirmation
+        with self.assertRaises(rf.SimulatedCrash):
+            first.execute()
+        run_dir = self.sim.run_dir(self.sim.records()[-1]['run_id'])
+        self.assertFalse((run_dir / 'execution.json').exists(), 'the first controller left no record')
+        self.guests.corrupt_export.add('bot.stdout.log')
+        second, control = self.sim.controller(name='returner', scorer=scorer, failpoint=rf.crash_at('after_reconcile_record'))
+        with self.assertRaises(rf.SimulatedCrash):
+            second.resume('operator', control)
+        record = json.loads((run_dir / 'execution.json').read_text())
+        self.assertEqual(record['writer'], 'reconcile')
+        self.assertTrue(any('hash mismatch' in item or 'corrupt' in item for item in record['demonstrated_problems'][run_checks.INFRASTRUCTURE]))
+        self.assertIsNone(self.sim.records()[-1]['outcome'])
+        self.guests.corrupt_export.clear()
+        return run_dir
+
+    def test_two_crashes_with_a_scorer_keep_the_terminal_fact_and_never_ask_it(self):
+        self.two_crashes(scorer=self.scorer())
+        score = self.scorer()
+        before = len(self.guests.starts())
+        _, resumed = self.resume(scorer=score)
+        self.assertEqual(self.sim.records()[-1]['outcome'], search.INFRASTRUCTURE_FAILURE, 'the review probe got PASS here')
+        self.assertEqual(self.terminal(), search.INFRASTRUCTURE_FAILURE)
+        self.assertEqual(score.seen, [])
+        self.assertEqual(resumed['code'], 'terminal_failure')
+        self.assertEqual(len(self.guests.starts()), before, 'repetition 2 never started')
+
+    def test_two_crashes_without_a_scorer_keep_the_terminal_fact(self):
+        self.two_crashes()
+        before = len(self.guests.starts())
+        new, control = self.sim.controller(name='third')
+        resumed = new.resume('operator', control)
+        self.assertEqual(self.sim.records()[-1]['outcome'], search.INFRASTRUCTURE_FAILURE, 'the review probe got INCOMPLETE here')
+        self.assertEqual(self.terminal(), search.INFRASTRUCTURE_FAILURE)
+        self.assertEqual(resumed['code'], 'terminal_failure')
+        self.assertEqual(len(self.guests.starts()), before)
+
+    def test_the_third_record_names_where_each_carried_fact_came_from(self):
+        run_dir = self.two_crashes()
+        new, control = self.sim.controller(name='third')
+        new.resume('operator', control)
+        latest = json.loads(sorted(run_dir.glob('execution-reconciled-*.json'))[-1].read_text())
+        origin = next(item for item in latest['carried_from'] if item['record'] == 'execution.json')
+        self.assertEqual(origin['writer'], 'reconcile')
+        self.assertEqual(origin['sha256'], run_executor.sha256_path(run_dir / 'execution.json'))
+        self.assertTrue(origin['problems'][run_checks.INFRASTRUCTURE])
+        self.assertEqual(latest['demonstrated_problems'][run_checks.INFRASTRUCTURE], origin['problems'][run_checks.INFRASTRUCTURE])
+
+    def crash_with_only_a_lost_transfer(self, scorer=None):
+        """The same two crashes, but the returner only failed to reach the files: contact, with nothing known about the bytes."""
+        first = self.sim.executor(scorer=self.scorer())
+        hits = [0]
+
+        def in_confirmation(name):
+            if name == 'after_running_commit':
+                hits[0] += 1
+            if name == 'after_seal' and hits[0] == 4:
+                raise rf.SimulatedCrash(name)
+        first.failpoint = in_confirmation
+        with self.assertRaises(rf.SimulatedCrash):
+            first.execute()
+        self.guests.copy_failures.update({('game', 'get'), ('bot', 'get')})
+        second, control = self.sim.controller(name='returner', failpoint=rf.crash_at('after_reconcile_record'))
+        with self.assertRaises(rf.SimulatedCrash):
+            second.resume('operator', control)
+        self.guests.copy_failures.clear()
+        run_dir = self.sim.run_dir(self.sim.records()[-1]['run_id'])
+        record = json.loads((run_dir / 'execution.json').read_text())
+        self.assertTrue(record['uncertain'])
+        self.assertEqual(record['demonstrated_problems'][run_checks.INFRASTRUCTURE], [], 'contact is not a fact about the host')
+        return run_dir
+
+    def test_contact_uncertainty_is_not_upgraded_to_a_terminal_failure_by_a_later_generation(self):
+        self.crash_with_only_a_lost_transfer()
+        new, control = self.sim.controller(name='third')
+        new.resume('operator', control)
+        self.assertEqual(self.sim.records()[-1]['outcome'], search.INCOMPLETE, 'nothing has scored it, and nothing demonstrated a failure')
+        self.assertIsNone(self.terminal())
+
+    def test_restored_transport_after_contact_uncertainty_lets_the_scorer_answer(self):
+        self.crash_with_only_a_lost_transfer()
+        _, resumed = self.resume(scorer=self.scorer())
+        self.assertEqual(self.sim.records()[-1]['outcome'], search.PASS)
+        self.assertIsNone(self.terminal())
+
+    def test_an_outcome_the_host_evidence_settled_survives_a_later_generation_that_cannot_reach_it(self):
+        self.guests.corrupt_export.clear()
+        first = self.sim.executor(scorer=self.scorer(), failpoint=rf.crash_at('after_running_commit'))
+        with self.assertRaises(rf.SimulatedCrash):
+            first.execute()
+        run_id = self.sim.records()[-1]['run_id']
+        self.guests.hosts['game'].runs[run_id].sampler_dead_at = self.guests._now()
+        second, control = self.sim.controller(name='returner', failpoint=rf.crash_at('after_reconcile_record'))
+        with self.assertRaises(rf.SimulatedCrash):
+            second.resume('operator', control)
+        record = json.loads((self.sim.run_dir(run_id) / 'execution.json').read_text())
+        self.assertEqual(record['demonstrated_outcome']['outcome'], search.INFRASTRUCTURE_FAILURE)
+        self.guests.unreachable.update({('game', 'inspect'), ('bot', 'inspect')})
+        third, control = self.sim.controller(name='third')
+        third.prepared = True
+        third.reconcile()
+        self.assertEqual(self.sim.records()[-1]['outcome'], search.INFRASTRUCTURE_FAILURE)
+
+    def test_a_returners_own_disk_failure_is_not_a_fact_about_the_host(self):
+        first = self.sim.executor(scorer=self.scorer())
+        hits = [0]
+
+        def in_confirmation(name):
+            if name == 'after_running_commit':
+                hits[0] += 1
+            if name == 'after_seal' and hits[0] == 4:
+                raise rf.SimulatedCrash(name)
+        first.failpoint = in_confirmation
+        with self.assertRaises(rf.SimulatedCrash):
+            first.execute()
+        second, control = self.sim.controller(name='returner', failpoint=rf.crash_at('after_reconcile_record'))
+        with mock.patch.object(run_executor, 'publish_new', side_effect=OSError('the returner ran out of disk')), self.assertRaises(rf.SimulatedCrash):
+            second.resume('operator', control)
+        run_id = self.sim.records()[-1]['run_id']
+        record = json.loads((self.sim.run_dir(run_id) / 'execution.json').read_text())
+        self.assertEqual(record['demonstrated_problems'][run_checks.INFRASTRUCTURE], [])
+        self.assertTrue(record['uncertain'])
+        third, control = self.sim.controller(name='third')
+        third.resume('operator', control)
+        self.assertEqual(self.sim.records()[-1]['outcome'], search.INCOMPLETE)
+        self.assertIsNone(self.terminal())
+
+    def test_every_generation_of_record_stays_and_none_overwrites_another(self):
+        run_dir = self.two_crashes()
+        original = (run_dir / 'execution.json').read_bytes()
+        new, _ = self.sim.controller(name='fourth', failpoint=rf.crash_at('after_reconcile_record'))
+        new.prepare()
+        for _ in range(2):
+            with self.assertRaises(rf.SimulatedCrash):
+                new.reconcile()
+        self.assertEqual(len(list(run_dir.glob('execution*.json'))), 3, 'the same token twice keeps both')
+        self.assertEqual((run_dir / 'execution.json').read_bytes(), original)
+
+    def test_a_record_that_can_no_longer_be_read_proves_nothing_and_blocks_a_pass(self):
+        self.crash_in_confirmation(point='after_seal')
+        run_dir = self.sim.run_dir(self.sim.records()[-1]['run_id'])
+        run_dir.mkdir(parents=True, exist_ok=True)
+        (run_dir / 'execution.json').write_text('{ not json')
+        self.guests.corrupt_export.clear()
+        score = self.scorer()
+        self.resume(scorer=score)
+        self.assertEqual(self.sim.records()[-1]['outcome'], search.INCOMPLETE)
+        self.assertEqual(score.seen, [])
+
     def test_a_corrupt_confirmation_export_then_a_crash_refuses_the_eligible_siblings(self):
         self.crash_in_confirmation()
         self.assert_terminal_and_refused()
@@ -1151,7 +1315,7 @@ class DemonstratedFailures(Base):
         self.assert_terminal_and_refused()
         run_dir = self.sim.run_dir(self.sim.records()[-1]['run_id'])
         self.assertIn('hash mismatch', (run_dir / 'execution.json').read_text(), 'the original record is untouched')
-        self.assertIn('hash mismatch', (run_dir / 'execution-reconciled.json').read_text(), 'and carried into the later one')
+        self.assertIn('hash mismatch', next(run_dir.glob('execution-reconciled-*.json')).read_text(), 'and carried into the later one')
 
     def test_a_scorer_is_never_asked_about_a_demonstrated_failure(self):
         self.guests.corrupt_export.add('bot.stdout.log')
@@ -1420,6 +1584,117 @@ class EvidenceRecovery(Base):
 
 
 class CleanupGuarantee(Base):
+    def real_guest_io(self, executor, fault):
+        """What ``SshAccess._execute`` does for every command, on this machine: the real poller, its real temporary files and a real spawn."""
+        original = executor.guests
+
+        class Faulted:
+            UNIT_MODE = original.UNIT_MODE
+
+            def __getattr__(self, name):
+                return getattr(original, name)
+
+            def run(self, role, argv, timeout_s, on_wait=None):
+                if fault(role, argv):
+                    ssh_access.bounded_command(subprocess.Popen, ['/nonexistent/ssh'], timeout_s, on_wait, time.sleep, time.monotonic, 0.01)
+                return original.run(role, argv, timeout_s, on_wait)
+        executor.guests = Faulted()
+
+    def unwritable_tempdir(self):
+        directory = tempfile.mkdtemp()
+        os.chmod(directory, 0o500)
+        self.addCleanup(os.rmdir, directory)
+        self.addCleanup(os.chmod, directory, 0o700)
+        patch = mock.patch.object(tempfile, 'tempdir', directory)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def test_a_real_tempfile_fault_closing_every_fence_still_requests_cleanup(self):
+        executor = self.sim.executor()
+        result = executor.execute()
+        self.real_guest_io(executor, lambda role, argv: 'fence' in argv)
+        self.unwritable_tempdir()
+        self.assertEqual(executor.wrap_up(result), result)
+        self.assertIn('fence not closed: PermissionError', result.wrap_up_error, 'the review probe had this empty')
+        self.assertEqual(len([e for e in result.wrap_up_errors if 'fence not closed' in e]), 2)
+        self.assertIsNotNone(self.sim.status_now()['cleanup']['requested_at'])
+
+    def test_a_real_spawn_fault_on_one_fence_costs_that_host_alone(self):
+        executor = self.sim.executor()
+        result = executor.execute()
+        self.real_guest_io(executor, lambda role, argv: 'fence' in argv and role == 'game')
+        executor.wrap_up(result)
+        self.assertIn('game fence not closed: FileNotFoundError', result.wrap_up_error)
+        self.assertFalse(self.guests.hosts['game'].fence.get('closed'))
+        self.assertTrue(self.guests.hosts['bot'].fence.get('closed'), 'the other host still gets its fence')
+        self.assertIsNotNone(self.sim.status_now()['cleanup']['requested_at'])
+
+    def test_a_fence_fault_when_cleanup_is_seen_mid_run_still_stops_and_seals(self):
+        executor = self.sim.executor(scorer=self.scorer())
+
+        def abort(name):
+            if name == 'after_running_commit':
+                self.sim.stack.registry.operator_abort(self.sim.session_id, 'operator')
+                self.real_guest_io(executor, lambda role, argv: 'fence' in argv)
+                self.unwritable_tempdir()
+        executor.failpoint = abort
+        result = executor.execute()
+        self.assertEqual(result.status, run_executor.CLEANUP_STARTED, 'a fence fault on the way to _finish_run does not escape it')
+        self.assertTrue(all(run.sealed for host in self.guests.hosts.values() for run in host.runs.values()))
+
+    def test_several_failures_keep_the_first_and_all_of_them_and_still_reach_cleanup(self):
+        executor = self.sim.executor()
+        result = executor.execute()
+        self.real_guest_io(executor, lambda role, argv: 'fence' in argv)
+        self.unwritable_tempdir()
+
+        def full_disk():
+            raise OSError('disk full while collecting')
+        executor._collect_missing = full_disk
+        executor._retain_inventory = lambda inventory: (_ for _ in ()).throw(OSError('disk full while retaining'))
+        executor.wrap_up(result)
+        self.assertIn('fence not closed', result.wrap_up_error, 'the first failure stays first')
+        joined = ' | '.join(result.wrap_up_errors)
+        for expected in ('game fence not closed', 'bot fence not closed', 'disk full while collecting', 'disk full while retaining'):
+            self.assertIn(expected, joined)
+        self.assertIsNotNone(self.sim.status_now()['cleanup']['requested_at'])
+
+    def test_a_fault_outside_every_step_still_reaches_the_cleanup_request(self):
+        executor = self.sim.executor()
+        result = executor.execute()
+        executor._finalize = lambda *a: (_ for _ in ()).throw(RuntimeError('a defect in finalization'))
+        executor.wrap_up(result)
+        self.assertIn('a defect in finalization', result.wrap_up_error)
+        self.assertIsNotNone(self.sim.status_now()['cleanup']['requested_at'])
+
+    def test_a_crash_of_this_process_still_tries_the_cleanup_request_and_goes_on_crashing(self):
+        executor = self.sim.executor()
+        result = executor.execute()
+        executor._finalize = lambda *a: (_ for _ in ()).throw(KeyboardInterrupt())
+        with self.assertRaises(KeyboardInterrupt):
+            executor.wrap_up(result)
+        self.assertIsNotNone(self.sim.status_now()['cleanup']['requested_at'])
+
+    def test_failed_logging_blocks_nothing(self):
+        executor = self.sim.executor()
+        result = executor.execute()
+        executor.evidence.event = lambda *a, **k: (_ for _ in ()).throw(ValueError('not serializable'))
+        self.real_guest_io(executor, lambda role, argv: 'fence' in argv and role == 'game')
+        executor.wrap_up(result)
+        self.assertTrue(result.wrap_up_errors)
+        self.assertTrue(self.guests.hosts['bot'].fence.get('closed'))
+        self.assertIsNotNone(self.sim.status_now()['cleanup']['requested_at'])
+
+    def test_a_stale_controller_still_cannot_request_cleanup_through_any_of_this(self):
+        old = self.sim.executor()
+        result = old.execute()
+        new, _ = self.sim.controller()
+        self.real_guest_io(old, lambda role, argv: 'fence' in argv)
+        old.wrap_up(result)
+        status = self.sim.status_now()
+        self.assertIsNone(status['cleanup']['requested_at'], 'the registry refuses the old token, as ever')
+        self.assertEqual(new.token, status['fencing_token'])
+
     def test_a_local_failure_while_collecting_still_requests_cleanup_and_keeps_the_error(self):
         executor = self.sim.executor()
 

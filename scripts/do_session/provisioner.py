@@ -20,6 +20,7 @@ A restarted controller never resumes a half-bootstrapped pair. Its host-binding 
 process, so it cannot verify first contact, and arming again is refused. It requests cleanup. Cold bootstrap has no
 partial credit to preserve.
 """
+import contextlib
 import dataclasses
 import hashlib
 import json
@@ -669,10 +670,23 @@ class Provisioner:
     def _fence_arguments(self):
         return ['--session', self.session_id, '--token', self.token]
 
-    def _authorized_arguments(self):
+    def _authorized_arguments(self, role):
         """Asked immediately before a process start, because the answer lasts seconds. See ``registry.authorize_guest_action``."""
-        grant = self.client.call('authorize_guest_action', session_id=self.session_id, fencing_token=self.token, action='smoke')
-        return self._fence_arguments() + ['--not-after-wall', session_clock.parse(grant['authorized_until'])]
+        def prepare():
+            prepared = self._agent(role, 'grant_prepare', *self._fence_arguments())
+            if prepared.get('raised'):
+                self.client.mutate('report_guest_fence', session_id=self.session_id, fencing_token=self.token, role=role)
+            return prepared['grant_id']
+        grant = self.client.guest_grant(self.session_id, self.token, 'smoke', role, prepare, self.sleep)
+        return self._fence_arguments() + ['--not-after-wall', session_clock.parse(grant['authorized_until']), '--grant-id', grant['grant_id'], '--grant-ttl-s', grant['ttl_s']], grant['grant_id']
+
+    def _granted_agent(self, role, step, *arguments, timeout_s=None):
+        """A process start and its grant's answer. A lost reply leaves the grant to its expiry, which is the safe reading."""
+        authority, grant_id = self._authorized_arguments(role)
+        document = self._agent(role, step, *authority, *arguments, timeout_s=timeout_s) if timeout_s is not None else self._agent(role, step, *authority, *arguments)
+        with contextlib.suppress(registry_client.RegistryRejected, registry_client.RegistryUnavailable):
+            self.client.mutate('resolve_guest_grant', session_id=self.session_id, grant_id=grant_id, resolution='started')
+        return document
 
     def _transfer(self, method, role, source, target):
         result = method(role, source, target, self._bounded(self.policy.relay_timeout_s), self._keepalive)
@@ -756,7 +770,7 @@ class Provisioner:
         for role in ROLES:
             observation = self._agent(role, 'probe', '--role', role)
             measured = self._measure_clock(role)
-            sampler = self._agent(role, 'sampler', *self._authorized_arguments())
+            sampler = self._granted_agent(role, 'sampler')
             entry = self.report['roles'][role]
             entry.update(observation=self._retain_packages(role, observation), clock_offset=measured, sampler=sampler)
             # Judged as the guest reported it, whole list included, not as the report now summarizes it.
@@ -819,9 +833,8 @@ class Provisioner:
         started = bot = None
         try:
             # Inside the try: a reply lost after the server started must still reach the stop.
-            started = self._agent('game', 'smoke_game_start', *self._authorized_arguments(), *smoke)
-            bot = self._agent('bot', 'smoke_bot', '--server', target, '--timeout-s', self.policy.smoke_timeout_s, *self._authorized_arguments(),
-                              timeout_s=self.policy.smoke_timeout_s + 30)
+            started = self._granted_agent('game', 'smoke_game_start', *smoke)
+            bot = self._granted_agent('bot', 'smoke_bot', '--server', target, '--timeout-s', self.policy.smoke_timeout_s, timeout_s=self.policy.smoke_timeout_s + 30)
         finally:
             stopped = self._stop_smoke(smoke)
         self.report['enet_smoke'] = dict(game_started=started, bot=bot, game_stopped=stopped)

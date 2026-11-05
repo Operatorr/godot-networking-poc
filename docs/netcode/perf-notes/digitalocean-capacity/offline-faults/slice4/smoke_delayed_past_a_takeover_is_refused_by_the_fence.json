@@ -24,8 +24,19 @@
    "takeover": true
   },
   {
+   "kind": "revocation_pending",
+   "reason": "takeover"
+  },
+  {
    "kind": "control_acquired",
    "takeover": true
+  },
+  {
+   "detail": "token 3 raised",
+   "kind": "guest_grant_fenced"
+  },
+  {
+   "kind": "revocation_effective"
   }
  ],
  "remote": "fake",

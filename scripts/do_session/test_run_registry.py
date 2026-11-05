@@ -25,7 +25,10 @@ class TypedRuns(unittest.TestCase):
         return caught.exception
 
     def authorize(self, token=None, **params):
-        return self.client.call('authorize_guest_action', session_id=SESSION, fencing_token=token or self.token, **params)
+        self.minted = getattr(self, 'minted', 0) + 1
+        params.setdefault('role', 'game')
+        params.setdefault('grant_id', 'g%d' % self.minted)
+        return self.client.mutate('authorize_guest_action', session_id=SESSION, fencing_token=token or self.token, **params)
 
     def launching(self):
         trial = self.next()
@@ -49,14 +52,18 @@ class TypedRuns(unittest.TestCase):
         trial = self.launching()
         lease = session_clock.parse(self.stack.registry.status(SESSION)['lease_expires_at'])
         self.stack.clock.advance(lease - registry.GUEST_ACTION_TTL_S / 2 - self.now())
-        until = session_clock.parse(self.authorize(action='launch_run', run_id=trial.run_id, role='bot')['authorized_until'])
-        self.assertEqual(until, lease)
+        answer = self.authorize(action='launch_run', run_id=trial.run_id, role='bot')
+        self.assertEqual(session_clock.parse(answer['conclusive_at']), lease, 'a lapsed lease leaves nothing that can still be used')
+        self.assertEqual(session_clock.parse(answer['authorized_until']), lease - registry.GUEST_COMMIT_SLACK_S)
 
-    def test_authorization_changes_nothing_and_journals_nothing(self):
+    def test_a_grant_is_a_durable_intent_with_its_own_identity(self):
         trial = self.launching()
-        before = self.stack.registry.journal(SESSION)
-        self.authorize(action='launch_run', run_id=trial.run_id, role='game')
-        self.assertEqual(self.stack.registry.journal(SESSION), before)
+        answer = self.authorize(action='launch_run', run_id=trial.run_id, role='game', grant_id='minted-by-the-guest')
+        self.assertEqual(answer['grant_id'], 'minted-by-the-guest')
+        row = next(g for g in self.stack.registry.guest_grants(SESSION) if g['grant_id'] == 'minted-by-the-guest')
+        self.assertEqual((row['state'], row['action'], row['role'], row['run_id'], row['fencing_token']), ('outstanding', 'launch_run', 'game', trial.run_id, self.token))
+        self.assertIn('guest_grant_issued', [e['kind'] for e in self.stack.registry.journal(SESSION)])
+        self.rejected('grant_replayed', 'authorize_guest_action', session_id=SESSION, fencing_token=self.token, action='launch_run', run_id=trial.run_id, role='game', grant_id='minted-by-the-guest')
 
     def test_only_a_run_in_its_launch_can_be_authorized(self):
         trial = self.next()
@@ -120,7 +127,7 @@ class TypedRuns(unittest.TestCase):
         self.assertEqual(caught.exception.code, 'terminal_failure')
 
     def test_an_unknown_action_or_missing_role_is_a_bad_request(self):
-        for params in (dict(action='anything'), dict(action='launch_run', run_id='x')):
+        for params in (dict(action='anything'), dict(action='launch_run', run_id='x', role=None), dict(action='smoke', role=None)):
             with self.assertRaises(registry_client.RegistryRejected) as caught:
                 self.authorize(**params)
             self.assertEqual(caught.exception.code, 'bad_request')

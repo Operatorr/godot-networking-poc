@@ -30,7 +30,8 @@ class RunFaultEvidence(unittest.TestCase):
                        'leftover_socket_and_netem', 'deadline_exhaustion', 'eligible_resume', 'resume_refused_after_terminal', 'resume_refused_after_operator_abort', 'resume_refused_after_c',
                        'resume_refused_on_changed_host', 'resume_refused_on_changed_source', 'capacity_failure', 'generator_crash', 'lost_host', 'stale_controller', 'incomplete_confirmation',
                        'abort_before_authorization', 'abort_in_flight', 'start_delayed_past_its_window', 'start_delayed_past_a_takeover', 'smoke_delayed_past_a_takeover', 'smoke_delayed_past_its_window',
-                       'lost_smoke_reply', 'corrupt_export_then_crash', 'failed_file_is_recovered', 'local_collection_failure', 'wrong_controller'):
+                       'lost_smoke_reply', 'corrupt_export_then_crash', 'failed_file_is_recovered', 'local_collection_failure', 'wrong_controller',
+                       'abort_with_no_controller', 'takeover_takes_effect', 'replayed_grant', 'two_crashes_keep_the_terminal_fact_with_a_scorer', 'two_crashes_keep_the_terminal_fact_without_a_scorer', 'fence_fault_at_wrap_up'):
             self.assertTrue(any(family in name for name in names), family)
 
     def test_every_timeline_says_its_outcomes_are_scripted(self):

@@ -6,6 +6,7 @@ scripted program, and the systemd path runs through shims. Neither says anything
 import json
 import os
 import pathlib
+import secrets
 import signal
 import socket
 import subprocess
@@ -85,7 +86,13 @@ class GuestFixture(unittest.TestCase):
     def fence(self, role='game', token=1):
         return self.do(role, 'fence', '--session', SESSION, '--token', str(token))
 
+    def grant(self, plan):
+        """The guest's half of a grant, with the same window as the plan. A host that refuses to mint leaves the plan as it was, and the start reports why."""
+        minted = self.do(plan['role'], 'grant_prepare', '--session', plan['session_id'], '--token', str(plan['fencing_token']))
+        return dict(plan, grant=dict(id=minted['grant_id'], ttl_s=max(0.0, plan['launch_not_after_wall'] - time.time()))) if minted.get('ok') else plan
+
     def start(self, plan):
+        plan = plan if 'grant' in plan else self.grant(plan)
         return self.do(plan['role'], 'start', '--plan-json', json.dumps(plan))
 
     def status(self, plan):
@@ -202,7 +209,7 @@ class Launch(GuestFixture):
 
     def test_slow_preparation_past_the_window_starts_nothing(self):
         self.fence()
-        plan = self.plan(launch_slack_s=0.2, bound_s=2, stop_grace_s=0.1)
+        plan = self.grant(self.plan(launch_slack_s=0.2, bound_s=2, stop_grace_s=0.1))
         host = guest_runner.Host(self.guests.runner_root('game'))
         real = guest_runner.host_facts
 
@@ -233,7 +240,7 @@ class Launch(GuestFixture):
 
     def test_a_supervisor_scheduled_past_the_window_creates_no_workload(self):
         self.fence()
-        result = self.supervise_directly(self.plan(launch_slack_s=-5.0))
+        result = self.supervise_directly(self.grant(self.plan(launch_slack_s=-5.0)))
         self.assertEqual((result['refused'], result['processes']), ('launch_window_closed', {}))
 
     def test_a_supervisor_finds_a_fence_that_rose_or_closed_while_it_was_scheduled(self):
@@ -244,7 +251,7 @@ class Launch(GuestFixture):
 
     def test_a_supervisor_that_finds_a_stop_request_creates_no_workload(self):
         self.fence()
-        plan = self.plan()
+        plan = self.grant(self.plan())
         tree = self.tree(plan)
         tree.mkdir(parents=True)
         (tree / 'stop.request').write_text('{}')
@@ -495,8 +502,11 @@ class SimultaneousExits(unittest.TestCase):
         path = pathlib.Path(directory.name)
         host, tree = guest_runner.Host(path / 'host'), path / 'run'
         tree.mkdir()
+        minted = secrets.token_hex(16)
+        (host.control / 'grants').mkdir()
+        guest_runner.atomic_json(host.grant_path(minted), dict(grant_id=minted, session_id=SESSION, token=1, boot_id=guest_runner.boot_id(), clock_ns=guest_runner.grant_clock_ns()))
         plan = dict(session_id=SESSION, fencing_token=1, launch_not_after_wall=time.time() + 60, stop_by_wall=time.time() + 600, bound_s=60, stop_grace_s=0.01,
-                    processes=[dict(name='bot', primary=True, argv=['standin'])], sampler=dict(argv=['sampler']))
+                    processes=[dict(name='bot', primary=True, argv=['standin'])], sampler=dict(argv=['sampler']), grant=dict(id=minted, ttl_s=60.0))
         guest_runner.atomic_json(host.fence_path, dict(session_id=SESSION, token=1))
         (tree / 'plan.json').write_text(json.dumps(plan))
         handler = signal.getsignal(signal.SIGTERM)

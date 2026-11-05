@@ -6,8 +6,9 @@ the controller. The rules live here because they must hold when the controller i
 
   * a fence file that only rises and can only ever close, checked under one lock with the launch, so a replaced controller
     or a session in cleanup cannot start anything;
-  * a start carries an authorization window of a few seconds from the registry, checked on arrival, after the slow checks and
-    again right before any process exists, so a delayed message cannot outlive its authority by more than that window;
+  * a start carries a single-use grant, minted here and then journaled by the registry. It is timed on this host's elapsed clock from
+    the mint, so a delivery cannot outlive the grant whatever this host's wall clock says, and it is burned under the host lock, so
+    a replay does nothing. Both are checked on arrival, after the slow checks, before any process exists and again once it does;
   * one active run per host, and a run directory created exclusively, so nothing overlaps or overwrites;
   * a supervisor with an absolute bound, so a workload stops on time with no controller left;
   * process identity is boot id, pid and kernel start time, so a reused pid is never mistaken for ours or signalled;
@@ -28,6 +29,7 @@ import os
 import pathlib
 import re
 import resource
+import secrets
 import shutil
 import signal
 import socket
@@ -46,7 +48,9 @@ SUPERVISOR_POLL_S = 0.2
 SOCKET_SAMPLE_S = 1.0
 MAX_FILE_BYTES = 8 * 1024 ** 3      # per process; a runaway log must not take the disk from the evidence next to it
 LAUNCH_CLOCK_TOLERANCE_S = 1.0      # readiness proved the guest clock within this of true time
+GRANT_COMMIT_SLACK_S = 1.0          # registry.GUEST_COMMIT_SLACK_S: a process seen alive later than this past its window is stopped at once
 SAFE_NAME = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,180}$')
+GRANT_ID = re.compile(r'^[0-9a-f]{32}$')
 SEAL = 'seal.json'
 
 
@@ -304,6 +308,11 @@ def source_facts(path):
 
 # ---- the host's control directory -----------------------------------------------------------------
 
+def grant_clock_ns():
+    """Elapsed time that includes suspension where the kernel can say so, shared by every process of this boot."""
+    return time.clock_gettime_ns(getattr(time, 'CLOCK_BOOTTIME', time.CLOCK_MONOTONIC))     # not time.monotonic: on macOS each process counts from its own start
+
+
 class Host:
     def __init__(self, root):
         self.root = pathlib.Path(root)
@@ -334,6 +343,17 @@ class Host:
 
     def fence(self):
         return read_json(self.fence_path)
+
+    def grant_path(self, grant_id, suffix='.json'):
+        if not isinstance(grant_id, str) or not GRANT_ID.match(grant_id):
+            raise Refused('grant_unknown', 'not a grant identity')
+        return self.control / 'grants' / (grant_id + suffix)
+
+    def consumed_grants(self):
+        try:
+            return sorted(path.stem for path in (self.control / 'grants').glob('*.consumed'))
+        except OSError:
+            return []
 
     def active(self):
         return read_json(self.active_path)
@@ -422,7 +442,7 @@ def cmd_fence(args, host):
     """Raise the fence, and only ever raise it. Whatever started before this returns is in the inventory.
 
     ``--close`` is how a live controller carries a revocation here: the registry cannot reach a guest, so an abort committed
-    while no controller is listening is held back only by the authorization window. Closing never reopens, under any token.
+    while no controller is listening waits out the grants it found. Closing never reopens, under any token.
     """
     with host.locked():
         fence = host.fence()
@@ -434,7 +454,38 @@ def cmd_fence(args, host):
         closed = (fence or {}).get('closed') or getattr(args, 'close', None)
         if raised or closed != (fence or {}).get('closed'):
             atomic_json(host.fence_path, dict(session_id=args.session, token=args.token, closed=closed))
-        return dict(token=args.token, raised=raised, closed=closed, active=host.active(), runs=inventory(host))
+        return dict(token=args.token, raised=raised, closed=closed, active=host.active(), runs=inventory(host), grants_consumed=host.consumed_grants())
+
+
+def cmd_grant_prepare(args, host):
+    """Mint one start's identity and start its clock, before the registry has been asked. See ``registry.authorize_guest_action``."""
+    with host.locked():
+        host.require_open(args.session, args.token)
+        grant_id = secrets.token_hex(16)
+        (host.control / 'grants').mkdir(exist_ok=True, mode=0o750)
+        create_json(host.grant_path(grant_id), dict(grant_id=grant_id, session_id=args.session, token=args.token, boot_id=boot_id(), clock_ns=grant_clock_ns()))
+        return dict(grant_id=grant_id, token=args.token)
+
+
+def _grant_elapsed_s(record):
+    """Seconds since this host minted the grant. A record from another boot has no elapsed time that means anything, so it never fits."""
+    if not record or record.get('boot_id') != boot_id():
+        return float('inf')
+    return (grant_clock_ns() - record['clock_ns']) / 1e9
+
+
+def _claim_grant(host, plan):
+    """Under the host lock. Burned before anything else is judged: this is the one moment this delivery becomes the only use of the grant."""
+    grant = plan.get('grant') or {}
+    record = read_json(host.grant_path(grant.get('id')))
+    if record is None:
+        raise Refused('grant_unknown', 'this host never minted that grant')
+    if record.get('session_id') != plan['session_id'] or record.get('token') != plan['fencing_token']:
+        raise Refused('grant_mismatch', 'that grant belongs to another session or token')
+    try:
+        create_json(host.grant_path(grant['id'], '.consumed'), dict(run_id=plan['run_id'], role=plan['role'], clock_ns=grant_clock_ns(), wall=time.time()))
+    except FileExistsError:
+        raise Refused('grant_replayed', 'that grant was already used')
 
 
 def _file_facts(path):
@@ -471,8 +522,11 @@ def load_plan(text):
     return plan
 
 
-def _require_launch_window(plan):
-    """An authorization is a few seconds of registry time, so a delayed request expires here rather than acting late."""
+def _require_launch_window(host, plan):
+    """A grant is a few seconds, so a delayed request expires here. Either clock can refuse, and only the elapsed one is what expiry rests on."""
+    grant = plan.get('grant') or {}
+    if _grant_elapsed_s(read_json(host.grant_path(grant.get('id')))) > grant.get('ttl_s', 0):
+        raise Refused('launch_window_closed', 'this start request is past its grant')
     if time.time() > plan['launch_not_after_wall'] + LAUNCH_CLOCK_TOLERANCE_S:
         raise Refused('launch_window_closed', 'this start request is past its authorization')
 
@@ -487,7 +541,7 @@ def _remaining_bound(plan):
 
 def _require_launchable(host, plan):
     """The last look before a process exists. Each of these can have changed since the controller's preflight."""
-    _require_launch_window(plan)
+    _require_launch_window(host, plan)
     if host.active() is not None:
         raise Refused('overlap', 'run %s is active on this host' % host.active().get('run_id'))
     facts = host_facts(host, plan)
@@ -502,7 +556,7 @@ def _require_launchable(host, plan):
     if busy:
         raise Refused('port_busy', ', '.join(busy))
     # Hashing and the process table take real time, and the window has to hold when something actually starts.
-    _require_launch_window(plan)
+    _require_launch_window(host, plan)
     _remaining_bound(plan)
 
 
@@ -511,6 +565,7 @@ def cmd_start(args, host):
     run_dir = host.run_dir(plan['run_id'], plan['role'])
     with host.locked():
         host.require_open(plan['session_id'], plan['fencing_token'])
+        _claim_grant(host, plan)
         _require_launchable(host, plan)
         run_dir.parent.mkdir(exist_ok=True, mode=0o750)
         try:
@@ -571,7 +626,7 @@ def _existing_run_dir(host, run_id, role):
 
 
 def cmd_inspect(args, host):
-    return dict(fence=host.fence(), active=host.active(), runs=inventory(host), boot_id=boot_id(), ledger=host.ledger())
+    return dict(fence=host.fence(), active=host.active(), runs=inventory(host), boot_id=boot_id(), ledger=host.ledger(), grants_consumed=host.consumed_grants())
 
 
 def _signal_identity(identity, signum):
@@ -680,10 +735,25 @@ def _launch_gate(host, run_dir, plan):
     read finds this directory in its inventory and stops it.
     """
     host.require_open(plan['session_id'], plan['fencing_token'])
-    _require_launch_window(plan)
+    _require_launch_window(host, plan)
     if (run_dir / 'stop.request').exists():
         raise Refused('stop_requested', 'a stop arrived before the workload existed')
     return _remaining_bound(plan)
+
+
+def _spawned_too_late(host, plan):
+    """Asked once the workload exists, because nothing can check the instant between the last look and the fork.
+
+    A fence raised in that instant, or a pause longer than the slack, ends the workload now. What the fence came with named this run.
+    """
+    grant = plan.get('grant') or {}
+    if _grant_elapsed_s(read_json(host.grant_path(grant.get('id')))) > grant.get('ttl_s', 0) + GRANT_COMMIT_SLACK_S:
+        return 'launch_refused:grant_outlived_after_spawn'
+    try:
+        host.require_open(plan['session_id'], plan['fencing_token'])
+    except Refused as refused:
+        return 'launch_refused:%s_after_spawn' % refused.code
+    return None
 
 
 def cmd_supervise(args, host):
@@ -741,13 +811,14 @@ def cmd_supervise(args, host):
     watched_port = plan.get('watch_socket_port')
     next_socket = 0.0
     sampler_exited_early = False
+    stop_reason = _spawned_too_late(host, plan)
 
-    while True:
+    while stop_reason is None:
         reap()
         # Nothing has been signalled yet, so a sampler already gone died by itself, even in the same poll as the primary's exit.
         sampler_exited_early = sampler_exited_early or 'sampler' in exits
         if primary in exits:
-            stop_reason = stop_reason or 'primary_exited'
+            stop_reason = 'primary_exited'
             break
         now = time.monotonic()
         if watched_port is not None and now >= next_socket:
@@ -794,7 +865,7 @@ def cmd_supervise(args, host):
     return dict(ok=True)
 
 
-COMMANDS = dict(fence=cmd_fence, preflight=cmd_preflight, start=cmd_start, status=cmd_status, inspect=cmd_inspect, stop=cmd_stop, seal=cmd_seal, supervise=cmd_supervise)
+COMMANDS = dict(fence=cmd_fence, grant_prepare=cmd_grant_prepare, preflight=cmd_preflight, start=cmd_start, status=cmd_status, inspect=cmd_inspect, stop=cmd_stop, seal=cmd_seal, supervise=cmd_supervise)
 
 
 def build_parser():
@@ -805,6 +876,9 @@ def build_parser():
     fence.add_argument('--session', required=True)
     fence.add_argument('--token', type=int, required=True)
     fence.add_argument('--close', help='no process may start on this host again; the reason')
+    prepare = sub.add_parser('grant_prepare')
+    prepare.add_argument('--session', required=True)
+    prepare.add_argument('--token', type=int, required=True)
     for name in ('preflight', 'start'):
         sub.add_parser(name).add_argument('--plan-json', required=True)
     sub.add_parser('inspect')

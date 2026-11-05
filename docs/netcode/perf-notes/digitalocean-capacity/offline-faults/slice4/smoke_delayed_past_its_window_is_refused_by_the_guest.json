@@ -22,6 +22,10 @@
   {
    "kind": "control_acquired",
    "takeover": true
+  },
+  {
+   "detail": null,
+   "kind": "guest_grant_expired"
   }
  ],
  "remote": "fake",

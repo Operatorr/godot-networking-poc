@@ -23,7 +23,8 @@ import run_plan
 import search
 import session_clock
 
-TRACE_EVENTS = ('run_dispatch_intent', 'run_progress', 'run_interrupted', 'run_outcome', 'batch_stopped', 'resumed', 'control_acquired', 'cleanup_intent')
+TRACE_EVENTS = ('run_dispatch_intent', 'run_progress', 'run_interrupted', 'run_outcome', 'batch_stopped', 'resumed', 'control_acquired', 'cleanup_intent', 'revocation_pending', 'revocation_effective',
+                'guest_grant_expired', 'guest_grant_fenced')
 SCORE = {25: search.PASS, 50: search.FAIL, 30: search.FAIL}
 
 
@@ -341,12 +342,117 @@ def abort_before_authorization_starts_nothing(sim, checks):
     checks('the run is incomplete, not replayed', outcomes(sim) == [search.INCOMPLETE])
 
 
-def abort_in_flight_is_bounded_and_stopped_by_the_recheck(sim, checks):
+def abort_in_flight_is_ordered_by_its_grant_and_stopped_by_the_recheck(sim, checks):
     result = sim.executor(scorer=scorer(), failpoint=_at('after_game_authorized', lambda: _abort(sim))).execute()
-    checks('a start authorized before the abort can land inside its window', starts(sim, 'game') == 1 and result.status == run_executor.CLEANUP_STARTED)
+    checks('a start granted before the abort lands before the abort takes effect', starts(sim, 'game') == 1 and result.status == run_executor.CLEANUP_STARTED)
     checks('nothing further started', starts(sim, 'bot') == 0)
     run = next(iter(sim.guests.hosts['game'].runs.values()))
     checks('the recheck stopped it within the window', run.stop_at - run.started < registry.GUEST_ACTION_TTL_S)
+
+
+def _crashed_holding_a_grant(sim):
+    executor = sim.executor(scorer=scorer(), failpoint=rf.crash_at('after_game_authorized'))
+    try:
+        executor.execute()
+    except rf.SimulatedCrash:
+        pass
+    grant = next(g for g in sim.stack.registry.guest_grants(sim.session_id) if g['state'] == 'outstanding')
+    return executor, grant
+
+
+def _delayed_start(executor, grant):
+    trial = search.trial_from_dict(executor._records()[-1]['trial'])
+    plan = dict(executor._plan(trial, 'game', session_clock.parse(grant['not_after']), 60.0, session_clock.parse(grant['not_after']) + 3600), grant=dict(id=grant['grant_id'], ttl_s=grant['ttl_s']))
+    return executor._runner('game', 'start', '--plan-json', json.dumps(plan))
+
+
+def abort_with_no_controller_takes_effect_when_the_grant_cannot_land(sim, checks):
+    executor, grant = _crashed_holding_a_grant(sim)
+    _abort(sim)
+    status = sim.status_now()
+    checks('the intent is durable and the session reads as pending', status['cleanup']['requested_at'] is not None and status['state'] == registry.REVOCATION_PENDING and status['revocation']['target_state'] == registry.DELETING)
+    checks('the record names the grant and when it ends', [g['grant_id'] for g in status['revocation']['grants']] == [grant['grant_id']] and status['revocation']['effective_at'] == grant['conclusive_at'])
+    checks('no destructive request while it can land', not [a for a in sim.stack.registry.attempts(sim.session_id) if a['op'].startswith('delete_')])
+    sim.sleep(session_clock.parse(grant['conclusive_at']) - sim.stack.registry.peek_now() + 0.001)
+    checks('it is deleting at the conclusive time, with nobody asking', sim.status_now()['state'] == registry.DELETING)
+    checks('the delayed start is refused', _delayed_start(executor, grant).get('code') == 'launch_window_closed' and sim.guests.hosts['game'].runs == {})
+
+
+def takeover_takes_effect_at_the_fence_acknowledgement(sim, checks):
+    executor, grant = _crashed_holding_a_grant(sim)
+    new, control = sim.controller(name='controller-c', scorer=scorer())
+    checks('the takeover reads as pending until then', control['revocation']['pending'] and sim.status_now()['state'] == registry.REVOCATION_PENDING)
+    new.prepare()
+    checks('both hosts acknowledged, so it is paused', sim.status_now()['state'] == registry.PAUSED)
+    try:
+        _delayed_start(executor, grant)
+        code = None
+    except run_executor.ControlLost as lost:
+        code = lost.code
+    checks('the delayed start is refused by the fence', code == 'stale_fence' and sim.guests.hosts['game'].runs == {})
+
+
+def replayed_grant_starts_nothing(sim, checks):
+    executor = sim.executor(scorer=scorer())
+    executor.execute()
+    used = next(g for g in sim.stack.registry.guest_grants(sim.session_id) if g['action'] == 'launch_run' and g['role'] == 'game')
+    before = len(sim.guests.hosts['game'].runs)
+    plan = dict(executor._plan(search.trial_from_dict(executor._records()[0]['trial']), 'game', sim.clock.wall() + 60, 60.0, sim.clock.wall() + 600), grant=dict(id=used['grant_id'], ttl_s=3600.0))
+    checks('the guest refused the second use', executor._runner('game', 'start', '--plan-json', json.dumps(plan)).get('code') == 'grant_replayed')
+    checks('no process and no directory', len(sim.guests.hosts['game'].runs) == before)
+
+
+def _two_crashes(sim):
+    hits = [0]
+
+    def in_confirmation(name):
+        if name == 'after_running_commit':
+            hits[0] += 1
+        if name == 'after_seal' and hits[0] == 4:
+            raise rf.SimulatedCrash(name)
+    try:
+        sim.executor(scorer=scorer(), failpoint=in_confirmation).execute()
+    except rf.SimulatedCrash:
+        pass
+    sim.guests.corrupt_export.add('bot.stdout.log')
+    second, control = sim.controller(name='returner', failpoint=rf.crash_at('after_reconcile_record'))
+    try:
+        second.resume('operator', control)
+    except rf.SimulatedCrash:
+        pass
+    sim.guests.corrupt_export.clear()
+
+
+def two_crashes_keep_the_terminal_fact_with_a_scorer(sim, checks):
+    _two_crashes(sim)
+    before = len(sim.guests.starts())
+    new, control = sim.controller(name='third', scorer=scorer())
+    resumed = new.resume('operator', control)
+    checks('the corrupt export a returner saw still decides', sim.records()[-1]['outcome'] == search.INFRASTRUCTURE_FAILURE and sim.status_now()['terminal_failure'] == search.INFRASTRUCTURE_FAILURE)
+    checks('resume is refused and repetition 2 never starts', resumed['code'] == 'terminal_failure' and len(sim.guests.starts()) == before)
+
+
+def two_crashes_keep_the_terminal_fact_without_a_scorer(sim, checks):
+    _two_crashes(sim)
+    new, control = sim.controller(name='third')
+    resumed = new.resume('operator', control)
+    checks('it does not fall back to incomplete', sim.records()[-1]['outcome'] == search.INFRASTRUCTURE_FAILURE)
+    checks('resume is refused', resumed['code'] == 'terminal_failure')
+
+
+def fence_fault_at_wrap_up_still_requests_cleanup(sim, checks):
+    executor = sim.executor(scorer=scorer())
+    result = executor.execute()
+    real = sim.guests.run
+
+    def faulted(role, argv, timeout_s, on_wait=None):
+        if 'fence' in argv:
+            raise PermissionError('scripted: no temporary file for this command')
+        return real(role, argv, timeout_s, on_wait)
+    sim.guests.run = faulted
+    executor.wrap_up(result)
+    checks('both hosts were tried and both failures kept', len([e for e in result.wrap_up_errors if 'fence not closed' in e]) == 2)
+    checks('the cleanup request is durable', sim.status_now()['cleanup']['requested_at'] is not None)
 
 
 def start_delayed_past_its_window_is_refused_by_the_guest(sim, checks):
@@ -373,7 +479,7 @@ def _paused(sim):
 
 def smoke_delayed_past_a_takeover_is_refused_by_the_fence(sim, checks):
     old, _ = _paused(sim)
-    arguments = old._authorized_arguments()
+    arguments = old._authorized_arguments('game')
     new, _ = sim.controller(name='controller-c', scorer=scorer())
     new.prepare()
     try:
@@ -387,7 +493,7 @@ def smoke_delayed_past_a_takeover_is_refused_by_the_fence(sim, checks):
 
 def smoke_delayed_past_its_window_is_refused_by_the_guest(sim, checks):
     executor, _ = _paused(sim)
-    arguments = executor._authorized_arguments()
+    arguments = executor._authorized_arguments('game')
     sim.sleep(registry.GUEST_ACTION_TTL_S + 2)
     try:
         executor._agent('game', 'smoke_game_start', *arguments, '--smoke-id', 'delayed')
@@ -485,10 +591,12 @@ SCENARIOS = (
     _named('resume_refused_on_changed_source', _refused_when(_changed_source, 'source_changed')),
     _named('resume_refused_on_changed_binary', _refused_when(_changed_binary, 'host_not_reset')),
     _named('resume_refused_on_uncleared_netem', _refused_when(_leftover, 'host_not_reset')),
-    abort_before_authorization_starts_nothing, abort_in_flight_is_bounded_and_stopped_by_the_recheck, start_delayed_past_its_window_is_refused_by_the_guest,
+    abort_before_authorization_starts_nothing, abort_in_flight_is_ordered_by_its_grant_and_stopped_by_the_recheck, start_delayed_past_its_window_is_refused_by_the_guest,
     start_delayed_past_a_takeover_is_refused_by_the_fence, smoke_delayed_past_a_takeover_is_refused_by_the_fence, smoke_delayed_past_its_window_is_refused_by_the_guest,
     lost_smoke_reply_reaches_the_stop, lost_smoke_reply_ends_by_itself_with_no_controller, corrupt_export_then_crash_keeps_siblings_from_running, failed_file_is_recovered_before_the_delete,
-    local_collection_failure_still_requests_cleanup, wrong_controller_touches_nothing_on_a_first_run,
+    local_collection_failure_still_requests_cleanup, wrong_controller_touches_nothing_on_a_first_run, abort_with_no_controller_takes_effect_when_the_grant_cannot_land,
+    takeover_takes_effect_at_the_fence_acknowledgement, replayed_grant_starts_nothing, two_crashes_keep_the_terminal_fact_with_a_scorer, two_crashes_keep_the_terminal_fact_without_a_scorer,
+    fence_fault_at_wrap_up_still_requests_cleanup,
 )
 
 
