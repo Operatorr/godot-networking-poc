@@ -1,0 +1,819 @@
+{
+ "kind": "real_local",
+ "note": "Real processes on one macOS machine in real time, over loopback, with one wall clock and no per-socket counters. Never a live-host validation and not a capacity observation: a counter-required production proof stays inconclusive here.",
+ "provenance": {
+  "binaries": {
+   "omega_load_test": "12f1b36c75963fbda790a99218977c2b97210835069c95c9ff840a4ba8352e81",
+   "omega_server": "d574418be9edfec3f3a34e7bd363bcd5e4f80e146a4fc03056db35760a85ef19"
+  },
+  "cargo_lock_sha256": "904a78967ed19cb3403c3f498b16e90f4c171daa3ea0c2311dc9d793f90e148b",
+  "measurement_schema": "omega.measurement/3",
+  "measurement_schema_sha256": "dac9395161b89090cf71315e52250cd22efba19f5680beed47fc6ca70a32e0be",
+  "platform": "macOS-26.7.2-arm64-arm-64bit",
+  "policy_sha256": "c7466422b1175b96fde5844ee703742926f9588efb2f8bf6a177dcc5c559817f",
+  "python": "3.9.6",
+  "scorer": "omega.do-session.capacity-scorer/1",
+  "server_config_sha256": "631e90552c786a8ca34357b8db6825d4a9fdd3b323db2020f1797f5ff28e98f6",
+  "source_clean": true,
+  "source_revision": "e0d9b29dde12394db63221548b5b4c1f92328d04",
+  "source_tree": "a595426d82555e29ad0362ce56a25820c6cd44e5"
+ },
+ "scenarios": {
+  "authentication_never_arrives": {
+   "classification": "inconclusive_evidence",
+   "clock_half_width_ms": null,
+   "departures": [],
+   "established": false,
+   "establishes_capacity": false,
+   "events": [],
+   "exits": {
+    "bot": {
+     "bot": {
+      "elapsed_s": 6.341925375,
+      "returncode": 1,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 6.402667167,
+      "returncode": null,
+      "signal": 15
+     }
+    },
+    "game": {
+     "game": {
+      "elapsed_s": 7.987757709,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 7.515819124999999,
+      "returncode": null,
+      "signal": 15
+     }
+    }
+   },
+   "game_exit": {
+    "lost": false
+   },
+   "gates": {
+    "bot_errors": {
+     "verdict": "unknown",
+     "why": "no common window was established"
+    },
+    "continuity": {
+     "verdict": "unknown",
+     "why": "N never held: readiness_timeout"
+    },
+    "enet_loss": {
+     "verdict": "unknown",
+     "why": "no common window was established"
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no common window was established"
+    },
+    "rtt_p95": {
+     "verdict": "unknown",
+     "why": "no common window was established"
+    },
+    "tick_budget": {
+     "over": 0,
+     "ratio": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     },
+     "scope": "every Tick with at least one authenticated player, the ramp and any drain",
+     "ticks": 134,
+     "verdict": "pass"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "not_proven",
+    "scheduled": null,
+    "sent": null,
+    "sockets": "not_proven",
+    "unproven": [
+     "bot 1 has no proven socket counter",
+     "bot 2 has no proven socket counter",
+     "bot 3 has no proven socket counter",
+     "bot 4 has no proven socket counter",
+     "bot 5 has no proven socket counter",
+     "bot 6 has no proven socket counter",
+     "bot 7 has no proven socket counter",
+     "bot 8 has no proven socket counter"
+    ],
+    "verdict": "not_proven",
+    "worst_ratio": null
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_contract_hold": false,
+   "proof_reasons": [
+    "window_not_established"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "socket_counter_bypass: the prover was told that kernel socket counters are optional: a local allowance, never a scored run",
+    "non_contract_hold: a 6 s hold is not an accepted window",
+    "the ramp failed over a generator not proven valid: bot 1 has no proven socket counter; bot 2 has no proven socket counter; bot 3 has no proven socket counter; bot 4 has no proven socket counter; bot 5 has no proven socket counter; bot 6 has no proven socket counter; bot 7 has no proven socket counter; bot 8 has no proven socket counter"
+   ]
+  },
+  "contract_60s_25_bots": {
+   "classification": "inconclusive_evidence",
+   "clock_half_width_ms": 34.71983,
+   "departures": [],
+   "established": true,
+   "establishes_capacity": false,
+   "events": [],
+   "exits": {
+    "bot": {
+     "bot": {
+      "elapsed_s": 67.706054708,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 67.767017708,
+      "returncode": null,
+      "signal": 15
+     }
+    },
+    "game": {
+     "game": {
+      "elapsed_s": 69.33589387500001,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 68.812599542,
+      "returncode": null,
+      "signal": 15
+     }
+    }
+   },
+   "game_exit": {
+    "lost": false
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 0,
+     "errors_that_are_the_disconnect_itself": 0,
+     "independent": 0,
+     "verdict": "pass"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 0,
+     "verdict": "pass"
+    },
+    "enet_loss": {
+     "borrowed_readings": 0,
+     "per_second_mean_peak": {
+      "bots": 25,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 3.0,
+     "rank": 1425,
+     "samples": 1500,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "least_possible_ratio": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     },
+     "over_narrow": 0,
+     "over_wide": 0,
+     "ticks_narrow": 1798,
+     "ticks_wide": 1802,
+     "verdict": "pass",
+     "worst_possible_ratio": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 45000,
+    "sent": 44991,
+    "sockets": "not_proven",
+    "unproven": [
+     "generator socket counters are not proven: 0 of 25 sockets have one, problems []"
+    ],
+    "verdict": "not_proven",
+    "worst_ratio": {
+     "approximate": 0.9994444444444445,
+     "exact": "1799/1800"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_contract_hold": true,
+   "proof_reasons": [],
+   "proof_status": "complete",
+   "reasons": [
+    "socket_counter_bypass: the prover was told that kernel socket counters are optional: a local allowance, never a scored run",
+    "offered load is not proven, so nothing about the server can stand on it: generator socket counters are not proven: 0 of 25 sockets have one, problems []"
+   ]
+  },
+  "game_killed_mid_window": {
+   "classification": "inconclusive_evidence",
+   "clock_half_width_ms": null,
+   "departures": [
+    {
+     "bot": 1,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 5,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 2,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 6,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 3,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 7,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 4,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    },
+    {
+     "bot": 8,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": null,
+     "order": "no_server_record",
+     "reason": 0,
+     "server_reason": null,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "events": [
+    {
+     "role": "game",
+     "what": "SIGKILL"
+    }
+   ],
+   "exits": {
+    "bot": {
+     "bot": {
+      "elapsed_s": 26.034849708,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 26.095807666,
+      "returncode": null,
+      "signal": 15
+     }
+    },
+    "game": {
+     "game": {
+      "elapsed_s": 6.80666125,
+      "returncode": null,
+      "signal": 9
+     },
+     "sampler": {
+      "elapsed_s": 6.859005625,
+      "returncode": null,
+      "signal": 15
+     }
+    }
+   },
+   "game_exit": {
+    "demonstrated": false,
+    "kind": "killed_with_no_cause_on_record",
+    "lost": true,
+    "oom_kills": null,
+    "returncode": null,
+    "signal": 9
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 8,
+     "errors_that_are_the_disconnect_itself": 8,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 8,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 5,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0032711029052734375,
+       "exact": "1715/524288"
+      },
+      "second": 7
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19
+     ],
+     "verdict": "unknown",
+     "why": "a second has a bot with no reading near it",
+     "window_mean_of_seconds": {
+      "approximate": 0.0010212792290581597,
+      "exact": "4819/4718592"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 3.0,
+     "rank": 57,
+     "samples": 60,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "verdict": "unknown",
+     "why": "no mapped Tick interval"
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 4800,
+    "sent": 1831,
+    "sockets": "not_proven",
+    "unproven": [
+     "generator socket counters are not proven: 0 of 8 sockets have one, problems []"
+    ],
+    "verdict": "not_proven",
+    "worst_ratio": {
+     "approximate": 0.36333333333333334,
+     "exact": "109/300"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_contract_hold": false,
+   "proof_reasons": [
+    "bot_errors",
+    "collector_boundary_missing",
+    "recorder_truncated"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "socket_counter_bypass: the prover was told that kernel socket counters are optional: a local allowance, never a scored run",
+    "non_contract_hold: a 20 s hold is not an accepted window",
+    "the game process ended and nothing on record says why: killed_with_no_cause_on_record"
+   ]
+  },
+  "one_bot_path_blocked_mid_window": {
+   "classification": "inconclusive_evidence",
+   "clock_half_width_ms": 35.824056,
+   "departures": [
+    {
+     "bot": 3,
+     "cause": "transport_timeout_unattributed",
+     "observation_lag_ns": [
+      -20842651,
+      50876755
+     ],
+     "order": "unresolved",
+     "reason": 0,
+     "server_reason": 0,
+     "source": "bot"
+    }
+   ],
+   "established": true,
+   "establishes_capacity": false,
+   "events": [],
+   "exits": {
+    "bot": {
+     "bot": {
+      "elapsed_s": 26.011361500000003,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 26.071888625000003,
+      "returncode": null,
+      "signal": 15
+     }
+    },
+    "game": {
+     "game": {
+      "elapsed_s": 27.65668275,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 27.141403084,
+      "returncode": null,
+      "signal": 15
+     }
+    }
+   },
+   "game_exit": {
+    "lost": false
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 1,
+     "errors_that_are_the_disconnect_itself": 1,
+     "independent": 0,
+     "verdict": "fail"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 1,
+     "verdict": "fail"
+    },
+    "enet_loss": {
+     "borrowed_readings": 0,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.000385284423828125,
+       "exact": "101/262144"
+      },
+      "second": 6
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 3.85284423828125e-05,
+      "exact": "101/2621440"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 3.0,
+     "rank": 141,
+     "samples": 148,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "least_possible_ratio": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     },
+     "over_narrow": 0,
+     "over_wide": 0,
+     "ticks_narrow": 598,
+     "ticks_wide": 602,
+     "verdict": "pass",
+     "worst_possible_ratio": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 4800,
+    "sent": 4440,
+    "sockets": "not_proven",
+    "unproven": [
+     "generator socket counters are not proven: 0 of 8 sockets have one, problems []"
+    ],
+    "verdict": "not_proven",
+    "worst_ratio": {
+     "approximate": 0.4,
+     "exact": "2/5"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_contract_hold": false,
+   "proof_reasons": [
+    "bot_errors",
+    "population_lost_in_window"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "socket_counter_bypass: the prover was told that kernel socket counters are optional: a local allowance, never a scored run",
+    "non_contract_hold: a 20 s hold is not an accepted window",
+    "offered load is not proven, so nothing about the server can stand on it: generator socket counters are not proven: 0 of 8 sockets have one, problems []"
+   ]
+  },
+  "short_complete_8_bots": {
+   "classification": "inconclusive_evidence",
+   "clock_half_width_ms": 34.40772,
+   "departures": [],
+   "established": true,
+   "establishes_capacity": false,
+   "events": [],
+   "exits": {
+    "bot": {
+     "bot": {
+      "elapsed_s": 12.061956334000001,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 12.122700625,
+      "returncode": null,
+      "signal": 15
+     }
+    },
+    "game": {
+     "game": {
+      "elapsed_s": 13.670691999999999,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 13.166224167,
+      "returncode": null,
+      "signal": 15
+     }
+    }
+   },
+   "game_exit": {
+    "lost": false
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 0,
+     "errors_that_are_the_disconnect_itself": 0,
+     "independent": 0,
+     "verdict": "pass"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 0,
+     "verdict": "pass"
+    },
+    "enet_loss": {
+     "borrowed_readings": 0,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 3.0,
+     "rank": 46,
+     "samples": 48,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "least_possible_ratio": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     },
+     "over_narrow": 0,
+     "over_wide": 0,
+     "ticks_narrow": 178,
+     "ticks_wide": 182,
+     "verdict": "pass",
+     "worst_possible_ratio": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    }
+   },
+   "offered_load": {
+    "independent": [],
+    "input": "valid",
+    "scheduled": 1440,
+    "sent": 1439,
+    "sockets": "not_proven",
+    "unproven": [
+     "generator socket counters are not proven: 0 of 8 sockets have one, problems []"
+    ],
+    "verdict": "not_proven",
+    "worst_ratio": {
+     "approximate": 0.9944444444444445,
+     "exact": "179/180"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_contract_hold": false,
+   "proof_reasons": [],
+   "proof_status": "complete",
+   "reasons": [
+    "socket_counter_bypass: the prover was told that kernel socket counters are optional: a local allowance, never a scored run",
+    "non_contract_hold: a 6 s hold is not an accepted window",
+    "offered load is not proven, so nothing about the server can stand on it: generator socket counters are not proven: 0 of 8 sockets have one, problems []"
+   ]
+  },
+  "swarm_paused_mid_window": {
+   "classification": "inconclusive_evidence",
+   "clock_half_width_ms": 34.87441,
+   "departures": [],
+   "established": true,
+   "establishes_capacity": false,
+   "events": [
+    {
+     "role": "bot",
+     "seconds": 1.5,
+     "what": "SIGSTOP"
+    }
+   ],
+   "exits": {
+    "bot": {
+     "bot": {
+      "elapsed_s": 12.104159083,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 12.154910625000001,
+      "returncode": null,
+      "signal": 15
+     }
+    },
+    "game": {
+     "game": {
+      "elapsed_s": 13.664122375,
+      "returncode": 0,
+      "signal": null
+     },
+     "sampler": {
+      "elapsed_s": 13.199274542,
+      "returncode": null,
+      "signal": 15
+     }
+    }
+   },
+   "game_exit": {
+    "lost": false
+   },
+   "gates": {
+    "bot_errors": {
+     "errors": 0,
+     "errors_that_are_the_disconnect_itself": 0,
+     "independent": 0,
+     "verdict": "pass"
+    },
+    "continuity": {
+     "unexpected_disconnects_in_window": 0,
+     "verdict": "pass"
+    },
+    "enet_loss": {
+     "borrowed_readings": 12,
+     "per_second_mean_peak": {
+      "bots": 8,
+      "ratio": {
+       "approximate": 0.0,
+       "exact": "0/1"
+      },
+      "second": 0
+     },
+     "seconds_at_or_above_limit": [],
+     "seconds_without_coverage": [],
+     "verdict": "pass",
+     "window_mean_of_seconds": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    },
+    "game_socket_drops": {
+     "verdict": "unknown",
+     "why": "no proven baseline and final read of the game socket"
+    },
+    "rtt_p95": {
+     "p95_ms": 3.0,
+     "rank": 35,
+     "samples": 36,
+     "verdict": "pass"
+    },
+    "tick_budget": {
+     "least_possible_ratio": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     },
+     "over_narrow": 0,
+     "over_wide": 0,
+     "ticks_narrow": 178,
+     "ticks_wide": 182,
+     "verdict": "pass",
+     "worst_possible_ratio": {
+      "approximate": 0.0,
+      "exact": "0/1"
+     }
+    }
+   },
+   "offered_load": {
+    "independent": [
+     "offered_input_below_minimum",
+     "poll_starvation"
+    ],
+    "input": "invalid",
+    "scheduled": 1440,
+    "sent": 1081,
+    "sockets": "not_proven",
+    "unproven": [
+     "generator socket counters are not proven: 0 of 8 sockets have one, problems []"
+    ],
+    "verdict": "invalid",
+    "worst_ratio": {
+     "approximate": 0.7444444444444445,
+     "exact": "67/90"
+    }
+   },
+   "outcome": "INCONCLUSIVE",
+   "proof_contract_hold": false,
+   "proof_reasons": [
+    "offered_input_below_minimum",
+    "poll_starvation"
+   ],
+   "proof_status": "invalid",
+   "reasons": [
+    "socket_counter_bypass: the prover was told that kernel socket counters are optional: a local allowance, never a scored run",
+    "non_contract_hold: a 6 s hold is not an accepted window",
+    "the generator failed on its own: offered_input_below_minimum, poll_starvation"
+   ]
+  }
+ },
+ "schema": "omega.do-session.score-evidence/1"
+}
