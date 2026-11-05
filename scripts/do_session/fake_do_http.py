@@ -70,8 +70,9 @@ class FakeDoAccount:
         wall = self._new_firewall(dict(name='prod-fw', tags=['prod'], droplet_ids=[], inbound_rules=[], outbound_rules=[]))
         return dict(droplets=[management['id'], unrelated['id']], firewall=wall['id'], tags=['omega-management', 'prod'])
 
-    def fault(self, method, pattern, action, times=None, status=None, land=True, delay_s=0.0):
-        rule = dict(method=method, pattern=re.compile(pattern), action=action, times=times, status=status, land=land, delay_s=delay_s)
+    def fault(self, method, pattern, action, times=None, status=None, land=True, delay_s=0.0, headers=None):
+        """``headers`` go out with a ``status`` answer, so a scripted 429 can carry the provider's own retry guidance."""
+        rule = dict(method=method, pattern=re.compile(pattern), action=action, times=times, status=status, land=land, delay_s=delay_s, headers=headers)
         self.rules.append(rule)
         return rule
 
@@ -122,7 +123,7 @@ class FakeDoAccount:
         entry['fault'] = rule['action']
         if rule['action'] == 'status':
             entry['status'] = rule['status']
-            return self._reply(rule['status'], dict(id='fixture_fault', message='scripted fault'))
+            return self._reply(rule['status'], dict(id='fixture_fault', message='scripted fault'), rule.get('headers'))
         if rule['action'] == 'not_sent':
             raise do_api.RequestNotSent('scripted: connect failed')
         if rule['action'] == 'lost':

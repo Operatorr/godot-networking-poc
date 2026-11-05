@@ -362,19 +362,29 @@ class LocalSession:
         self.account = self.root / 'account.json'
         fake_provider.FakeProvider(self.account).answer_all_requests()
         self.environment = dict(os.environ, PYTHONDONTWRITEBYTECODE='1')
-        self.watchdog = subprocess.Popen([sys.executable, str(HERE / 'registry_cli.py'), 'watchdog', '--state-dir', str(self.state), '--provider', 'fake_provider:from_file',
-                                          '--provider-arg', str(self.account), '--allow-offline-fake', '--tick-interval-s', '0.05', '--sweep-interval-s', '0.3'],
-                                         env=self.environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=str(HERE))
+        self.watchdog = self._start_watchdog()
         case.addCleanup(self._stop_watchdog)
         case.addCleanup(self.kill_every_process)
         case.addCleanup(make_writable, self.root)
         self.client = self.client_for('controller-a')
         self._arrange(fault_harness, fake_provider)
 
+    def _start_watchdog(self):
+        return subprocess.Popen([sys.executable, str(HERE / 'registry_cli.py'), 'watchdog', '--state-dir', str(self.state), '--provider', 'fake_provider:from_file',
+                                 '--provider-arg', str(self.account), '--allow-offline-fake', '--tick-interval-s', '0.05', '--sweep-interval-s', '0.3'],
+                                env=self.environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=str(HERE))
+
     def _stop_watchdog(self):
         if self.watchdog.poll() is None:
             self.watchdog.kill()
         self.watchdog.wait()
+
+    def restart_watchdog(self):
+        """``kill -9`` the watchdog service and start a new process on the same state directory, as its supervisor would. Returns both process ids."""
+        before = self.watchdog.pid
+        self._stop_watchdog()
+        self.watchdog = self._start_watchdog()
+        return before, self.watchdog.pid
 
     def rpc_argv(self):
         return [sys.executable, str(HERE / 'registry_cli.py'), 'rpc', '--state-dir', str(self.state)]
