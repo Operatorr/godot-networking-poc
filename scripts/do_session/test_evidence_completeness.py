@@ -121,6 +121,84 @@ class RequiredInputs(unittest.TestCase):
                 finally:
                     path.write_bytes(data)
 
+    def assert_corrupt_input(self, sim, run, relative, change):
+        """``change`` rewrites one required input in place. The whole run is still there and every score still verifies; only that input is not what its producer wrote."""
+        path = sim.root / relative
+        data = path.read_bytes()
+        path.chmod(0o640)
+        path.write_bytes(change(data))
+        try:
+            exported = se.export_session(sim.root, client=sim.client)
+            self.assert_withheld(sim, exported, 'corrupt')
+            inventory = sim.document(exported.generation)
+            self.assertIn(relative, inventory['controller_inputs']['corrupt'])
+            self.assertIn(relative, [item['path'] for item in inventory['files']], 'its bytes are kept and inventoried all the same')
+            self.assertEqual(len([entry for entry in inventory['roles'] if entry['run_id'] == run]), 2, 'both roles stay on the list')
+            self.assertEqual(sim.document(exported.generation, 'published/summary.json')['results']['evidence']['controller_inputs_corrupt'], 1)
+        finally:
+            path.write_bytes(data)
+        self.assertEqual(path.read_bytes(), data)
+
+    def test_a_truncated_clock_bracket_is_corrupt_and_not_merely_present(self):
+        """Cut to one byte each in turn. The proof and score built from them still verify, and keep only offsets: they cannot stand in for the raw readings."""
+        sim, run = confirmed(self)
+        for name in ('clock-before.json', 'clock-after.json'):
+            with self.subTest(name):
+                self.assert_corrupt_input(sim, run, 'runs/%s/%s' % (run, name), lambda data: b'{')
+        restored = se.export_session(sim.root, client=sim.client)
+        self.assertEqual((restored.status, restored.problems), ('complete', []))
+        self.assertTrue(sim.document(restored.generation, se.REPORT_JSON)['establishes'])
+
+    def test_a_required_input_of_another_shape_or_another_run_is_corrupt(self):
+        sim, run = confirmed(self)
+        other = sim.records()[1]['run_id']
+        run_dir, other_dir = sim.run_dir(run), sim.run_dir(other)
+
+        def edit(change):
+            def apply(data):
+                document = json.loads(data)
+                change(document)
+                return (json.dumps(document, indent=2, sort_keys=True) + '\n').encode()
+            return apply
+
+        def shift_reading(document):
+            document['roles']['game'][0]['guest_wall_ns'] += 5 * 10 ** 9
+
+        cases = [
+            ('clock-before.json', lambda data: (run_dir / 'clock-after.json').read_bytes(), 'the other bracket under this name'),
+            ('clock-before.json', edit(lambda document: document['roles'].pop('bot')), 'one host left out'),
+            ('clock-after.json', edit(lambda document: document['roles']['bot'][0].pop('guest_wall_ns')), 'a reading cut short'),
+            ('clock-before.json', edit(lambda document: document.update(schema='omega.do-session.clock-bracket/0')), 'another schema'),
+            ('clock-before.json', edit(shift_reading), 'a whole reading that is not the one the proof mapped'),
+            ('clock-after.json', lambda data: b'[]', 'not a document'),
+            ('clock-after.json', edit(lambda document: document.update(roles=[])), 'readings that are not by host'),
+            ('selected.json', lambda data: (other_dir / 'selected.json').read_bytes(), "another run's selection"),
+            ('selected.json', edit(lambda document: document.update(resume=not document['resume'])), 'not the journal record'),
+            ('selected.json', edit(lambda document: document.update(manifest_sha256='0' * 64)), 'another manifest'),
+            ('grant.json', lambda data: (other_dir / 'grant.json').read_bytes(), "another run's grant"),
+            ('grant.json', edit(lambda document: document.update(launch_by='2026-10-30T12:59:00+00:00')), 'not the dispatch the registry recorded'),
+            ('grant.json', edit(lambda document: document.update(authorized=False)), 'no authorization'),
+        ]
+        for name, change, why in cases:
+            with self.subTest(name=name, why=why):
+                self.assert_corrupt_input(sim, run, 'runs/%s/%s' % (run, name), change)
+        restored = se.export_session(sim.root, client=sim.client)
+        self.assertEqual((restored.status, restored.problems), ('complete', []))
+
+    def test_without_a_registry_a_grant_is_still_held_to_its_producers_shape(self):
+        sim, run = confirmed(self)
+        path = sim.run_dir(run) / 'grant.json'
+        data = path.read_bytes()
+        path.chmod(0o640)
+        path.write_bytes(b'{"run_id": "%s"}' % run.encode())
+        try:
+            exported = se.export_session(sim.root)
+            self.assertEqual(exported.status, 'corrupt')
+            self.assertIn('runs/%s/grant.json' % run, sim.document(exported.generation)['controller_inputs']['corrupt'])
+        finally:
+            path.write_bytes(data)
+        self.assertNotEqual(se.export_session(sim.root).status, 'corrupt')
+
     def test_a_readiness_report_that_names_no_provenance_is_no_proof_of_it(self):
         sim, _ = confirmed(self)
         path = sim.root / 'provisioning' / 'readiness.json'
@@ -387,10 +465,13 @@ class FirstFailure(unittest.TestCase):
         controller.wrap_up(run_executor.BatchResult(run_executor.STOPPED, code='collect', detail='test'))
         self.assert_original_episode()
 
-    def collect_after_crash(self, wait_s):
+    def collect_after_crash(self, wait_s, adjust=None):
+        """``adjust`` changes the returning controller before it does anything: its clocks, its boot."""
         self.sim.guests.get_hook = lambda role, run, relative, data, attempt: (1, b'cut') if (role, relative) == self.faulty else (0, data)
         self.sim.sleep(wait_s)
         controller, _ = self.sim.controller()
+        if adjust is not None:
+            adjust(controller)
         controller.collecting = True
         controller.prepare()
         controller.reconcile('operator_collect')
@@ -417,6 +498,176 @@ class FirstFailure(unittest.TestCase):
         self.assertTrue((self.sim.root / 'execution' / 'evidence-failure-0000.json').exists(), 'and this disk did')
         self.collect_after_crash(40)
         self.assert_original_episode()
+
+    def crash_with_the_report_lost(self, ack_only=False):
+        """The first failure is on this disk, the registry never heard it (or heard it and the answer was lost), and the controller dies on the next copy."""
+        self.crash_on_next_copy()
+        executor = self.sim.executor()
+        real = executor.client.call
+
+        def lost(method, *arguments, **options):
+            if method == 'record_evidence_failure':
+                if ack_only:
+                    real(method, *arguments, **options)
+                raise registry_client.RegistryUnavailable('lost')
+            return real(method, *arguments, **options)
+        with mock.patch.object(executor.client, 'call', side_effect=lost), self.assertRaises(rf.SimulatedCrash):
+            executor.execute()
+        self.assertEqual(len(self.registry_first()), 1 if ack_only else 0)
+        record = self.sim.root / 'execution' / 'evidence-failure-0000.json'
+        self.assertTrue(record.exists())
+        return record
+
+    def assert_no_late_copy(self):
+        """Nothing after the original cutoff, and no deadline anywhere later than it."""
+        status = self.sim.status_now()
+        self.assertLessEqual(max(self.starts), self.cutoff())
+        self.assertLessEqual(session_clock.parse(status['recovery_deadline_utc']), self.cutoff())
+        self.assertTrue(status['cleanup']['requested_at'])
+        self.assertLessEqual(session_clock.parse(status['cleanup']['requested_at']), self.cutoff() + 1)
+        self.assertNotEqual(status['evidence']['status'], 'complete')
+
+    def assert_taken_as_over(self, before):
+        """An episode of unknown age: no copy at all once the controller is back, and stopping, sealing and cleanup still happen."""
+        self.assertEqual(len(self.starts), before, 'no transfer starts under an episode nobody can date')
+        self.assert_no_late_copy()
+        kinds = [event['kind'] for event in self.sim.stack.registry.journal(self.sim.session_id)]
+        self.assertIn('evidence_failure', kinds)
+        run = self.sim.records()[0]['run_id']
+        self.assertTrue(list(self.sim.run_dir(run).glob('execution-reconciled-*.json')) or (self.sim.run_dir(run) / 'execution.json').exists())
+
+    def test_the_record_keeps_the_monotonic_reading_and_boot_it_was_taken_on(self):
+        record = self.crash_with_the_report_lost()
+        document = json.loads(record.read_text())
+        self.assertEqual(document['controller_boot_id'], self.sim.clock.boot_id())
+        self.assertIsInstance(document['observed_monotonic_s'], float)
+
+    def test_an_unreadable_record_is_not_taken_for_no_failure(self):
+        """Actually unreadable: chmod 0 and a real PermissionError, with the registry working again when the controller comes back."""
+        record = self.crash_with_the_report_lost()
+        data = record.read_bytes()
+        record.chmod(0)
+        self.addCleanup(record.chmod, 0o640)
+        with self.assertRaises(PermissionError):
+            record.read_bytes()
+        before = len(self.starts)
+        self.collect_after_crash(40)
+        self.assert_taken_as_over(before)
+        record.chmod(0o640)
+        self.assertEqual(record.read_bytes(), data, 'kept as it was, for whoever can read it later')
+        self.assertEqual(sorted(path.name for path in (self.sim.root / 'execution').glob('evidence-failure-*.json')), ['evidence-failure-0000.json'], 'and no fresh first failure was written over it')
+
+    def test_an_unparseable_record_is_not_taken_for_no_failure(self):
+        record = self.crash_with_the_report_lost()
+        record.chmod(0o640)
+        record.write_bytes(b'{')
+        before = len(self.starts)
+        self.collect_after_crash(40)
+        self.assert_taken_as_over(before)
+
+    def test_a_record_directory_that_cannot_be_listed_is_not_an_empty_one(self):
+        """A real PermissionError from listing, while names in it can still be opened and written. ``glob`` would have answered with nothing."""
+        self.crash_with_the_report_lost()
+        execution = self.sim.root / 'execution'
+        mode = execution.stat().st_mode
+        execution.chmod(0o300)
+        self.addCleanup(execution.chmod, mode)
+        with self.assertRaises(PermissionError):
+            os.listdir(execution)
+        self.assertEqual(list(execution.glob('evidence-failure-*.json')), [], 'what glob would have said')
+        before = len(self.starts)
+        self.collect_after_crash(40)
+        execution.chmod(mode)
+        self.assert_taken_as_over(before)
+
+    def test_a_controller_wall_clock_stepped_back_cannot_make_the_failure_later(self):
+        """Only this controller's wall clock steps back 120 s. The registry's time and this boot's monotonic clock carry on."""
+        self.crash_with_the_report_lost()
+
+        def step_back(controller):
+            controller.wall = lambda: self.sim.clock.wall() - 120
+        self.collect_after_crash(40, step_back)
+        self.assert_original_episode()
+
+    def test_a_controller_wall_clock_stepped_forward_can_only_end_it_sooner(self):
+        self.crash_with_the_report_lost()
+
+        def step_forward(controller):
+            controller.wall = lambda: self.sim.clock.wall() + 120
+        self.collect_after_crash(40, step_forward)
+        self.assert_no_late_copy()
+        self.assertLessEqual(session_clock.parse(self.registry_first()[0]['data']['first_failure']), self.first[0][0])
+
+    def test_a_restart_on_the_same_boot_after_a_step_back_keeps_the_monotonic_age(self):
+        """The step happens while no controller runs, and the next one is a new process on the same boot."""
+        self.crash_with_the_report_lost()
+
+        def restart(controller):
+            controller.wall = lambda: self.sim.clock.wall() - 300
+        self.collect_after_crash(60, restart)
+        self.assert_original_episode()
+
+    def test_a_returning_controller_on_another_boot_cannot_date_the_failure(self):
+        self.crash_with_the_report_lost()
+        before = len(self.starts)
+
+        def rebooted(controller):
+            controller.boot_id = lambda: 'boot-after-a-reboot'
+        self.collect_after_crash(40, rebooted)
+        self.assert_taken_as_over(before)
+
+    def test_a_record_taken_on_an_unknown_boot_cannot_be_dated_either(self):
+        self.crash_on_next_copy()
+        executor = self.sim.executor()
+        executor.boot_id = lambda: session_clock.UNKNOWN_BOOT
+        real = executor.client.call
+
+        def lost(method, *arguments, **options):
+            if method == 'record_evidence_failure':
+                raise registry_client.RegistryUnavailable('lost')
+            return real(method, *arguments, **options)
+        with mock.patch.object(executor.client, 'call', side_effect=lost), self.assertRaises(rf.SimulatedCrash):
+            executor.execute()
+        before = len(self.starts)
+
+        def unknown(controller):
+            controller.boot_id = lambda: session_clock.UNKNOWN_BOOT
+        self.collect_after_crash(40, unknown)
+        self.assert_taken_as_over(before)
+
+    def test_an_acknowledged_first_failure_stays_the_deadline_whatever_the_wall_clock_says(self):
+        self.crash_with_the_report_lost(ack_only=True)
+        heard = self.registry_first()[0]['data']['first_failure']
+
+        def step_back(controller):
+            controller.wall = lambda: self.sim.clock.wall() - 120
+        self.collect_after_crash(40, step_back)
+        self.assert_original_episode()
+        self.assertEqual(self.registry_first()[0]['data']['first_failure'], heard)
+
+    def test_an_unreadable_record_before_one_a_run_was_dispatched_past_binds_nothing(self):
+        """Records are numbered as they are written. One that a later dispatch passed says the same of every record before it, readable or not, so the registry's run count still settles the question."""
+        self.sim.executor().run_batch()
+        count = len(self.sim.records())
+        execution = self.sim.root / 'execution'
+        for path in execution.glob('evidence-failure-*.json'):
+            path.chmod(0o640)
+            path.unlink()
+        common = dict(schema=run_executor.EVIDENCE_FAILURE_SCHEMA, session_id=self.sim.session_id, manifest_sha256=self.sim.sha, run_id='r', role='game', path='p', kind='transfer', where='w',
+                      observed_at=session_clock.iso(self.sim.clock.wall() - 10), observed_monotonic_s=self.sim.monotonic() - 10, controller_boot_id=self.sim.clock.boot_id(), fencing_token=1)
+        unreadable = execution / (run_executor.EVIDENCE_FAILURE_NAME % 0)
+        unreadable.write_text(json.dumps(dict(common, dispatches=0)))
+        unreadable.chmod(0)
+        self.addCleanup(unreadable.chmod, 0o640)
+        (execution / (run_executor.EVIDENCE_FAILURE_NAME % 1)).write_text(json.dumps(dict(common, dispatches=count - 1)))
+        controller, _ = self.sim.controller()
+        controller._restore_evidence_episode()
+        self.assertIsNone(controller.evidence_episode)
+        (execution / (run_executor.EVIDENCE_FAILURE_NAME % 2)).write_text(json.dumps(dict(common, dispatches=count)))
+        returning, _ = self.sim.controller(name='controller-c')
+        returning._restore_evidence_episode()
+        self.assertIsNotNone(returning.evidence_episode, 'a record no dispatch has passed is the current episode')
+        self.assertAlmostEqual(returning.evidence_episode['ends'] - returning.monotonic(), self.grace - 10)
 
     def test_an_acknowledgement_lost_after_the_write_cannot_move_it_either(self):
         self.crash_on_next_copy()

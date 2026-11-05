@@ -24,8 +24,10 @@ import contextlib
 import dataclasses
 import hashlib
 import json
+import math
 import os
 import pathlib
+import re
 import tempfile
 
 import admission
@@ -52,7 +54,7 @@ import ssh_access
 ROLES = ('game', 'bot')
 EVIDENCE_FAILURE_SCHEMA = 'omega.do-session.evidence-failure/1'
 EVIDENCE_FAILURE_NAME = 'evidence-failure-%04d.json'
-EVIDENCE_FAILURE_GLOB = 'evidence-failure-*.json'
+EVIDENCE_FAILURE_PATTERN = re.compile(r'evidence-failure-(\d{4,})\.json')
 EVIDENCE_REPORT_WINDOW_S = 10.0     # a registry that cannot be told in this long is asked again later: this is on disk, and the transfers must not wait for it
 RUNNER_SOURCE = pathlib.Path(guest_runner.__file__)
 FINISHED, STOPPED, PARTIAL, CONTROL_LOST, CLEANUP_STARTED, REFUSED = ('search_finished', 'stopped', 'partial_search', 'control_lost', 'cleanup_started', 'refused')
@@ -243,7 +245,7 @@ class GuestReadiness:
 
 class RunExecutor:
     def __init__(self, client, guests, provider, manifest, sha, session_dir, fencing_token, sleep, monotonic, wall, scorer=capacity_scorer.score, adapter=None, policy=None,
-                 failpoint=None, source_problems=None, readiness_problems=None, require_counters=True, window_prover=measurement_window.prove):
+                 failpoint=None, source_problems=None, readiness_problems=None, require_counters=True, window_prover=measurement_window.prove, boot_id=None):
         self.client = client
         self.guests = guests
         self.provider = provider
@@ -254,6 +256,7 @@ class RunExecutor:
         self.sleep = sleep
         self.monotonic = monotonic
         self.wall = wall
+        self.boot_id = boot_id or session_clock.controller_boot_id     # whose monotonic origin ``monotonic`` counts from, so that a later process can tell whether a reading of it still means anything
         self.scorer = scorer        # None or a scripted stand-in only in fixtures. Neither can produce what ``capacity_scorer`` admits.
         self.adapter = adapter or run_plan.ReleaseAdapter()
         self.policy = policy or Policy()
@@ -276,7 +279,7 @@ class RunExecutor:
         self.smokes = 0
         self.fences_closed = False
         self.never_created = set()  # (run_id, role): a plan went out, and the host says no such run ever existed
-        self.evidence_episode = None        # the failed-transfer episode this controller is bound by: dict(ends=monotonic, observed=wall or None, where, heard)
+        self.evidence_episode = None        # the failed-transfer episode this controller is bound by: dict(ends=monotonic, since=monotonic of the failure or None, observed=wall or None, where, heard)
         self.episode_restored = False       # a returning controller reads what the last one left before its first transfer
         self.settling = False               # looking again at committed runs on the way back into a batch: what fails here says nothing and ends nothing
         self.dispatches_seen = None         # runs on record, as last read
@@ -370,7 +373,7 @@ class RunExecutor:
         now = session_clock.parse(self.client.call('health', session_id=self.session_id)['evaluated_at'])
         self.work_cutoff = asked + session_clock.parse(status['cleanup_c_utc']) - registry.DELETE_MARGIN_S - now
         if status.get('recovery_deadline_utc') and self.evidence_episode is None:     # an episode already fixed binds every transfer from here, whatever this controller remembers
-            self.evidence_episode = dict(ends=asked + session_clock.parse(status['recovery_deadline_utc']) - now, observed=None, where='the recovery episode on record', heard=True)
+            self.evidence_episode = dict(ends=asked + session_clock.parse(status['recovery_deadline_utc']) - now, since=None, observed=None, where='the recovery episode on record', heard=True)
 
     def _runner(self, role, command, *arguments, timeout_s=None, on_wait=None):
         argv = ['python3', self.runner_path, command] + [str(a) for a in arguments]
@@ -1129,16 +1132,17 @@ class RunExecutor:
         self._restore_evidence_episode()
         if self.evidence_episode is None:
             where = '%s of run %s' % (role, run_id)
-            self._open_evidence_episode(self.wall(), where)
+            self._open_evidence_episode(0.0, where, self.wall())
             self._retain_evidence_failure(run_id, role, path, kind, where)
         self._report_evidence_failure(self.client.within(EVIDENCE_REPORT_WINDOW_S))
 
-    def _open_evidence_episode(self, observed, where):
-        ends = self.monotonic() + observed + self.manifest['limits']['evidence_recovery_grace_s'] - self.wall()
-        self.evidence_episode = dict(ends=ends, observed=observed, where=where, heard=False)
+    def _open_evidence_episode(self, age, where, observed):
+        """``age``: how long ago, on this boot's monotonic clock, the failure was seen. Never a wall-clock difference alone, which a stepped clock can make as short as it likes."""
+        since = self.monotonic() - age
+        self.evidence_episode = dict(ends=since + self.manifest['limits']['evidence_recovery_grace_s'], since=since, observed=observed, where=where, heard=False)
 
     def _retain_evidence_failure(self, run_id, role, path, kind, where):
-        document = dict(schema=EVIDENCE_FAILURE_SCHEMA, session_id=self.session_id, manifest_sha256=self.sha, run_id=run_id, role=role, path=cleanup_provider.redact(path), kind=kind, where=where, observed_at=session_clock.iso(self.evidence_episode['observed']), fencing_token=self.token, dispatches=self.dispatches_seen)
+        document = dict(schema=EVIDENCE_FAILURE_SCHEMA, session_id=self.session_id, manifest_sha256=self.sha, run_id=run_id, role=role, path=cleanup_provider.redact(path), kind=kind, where=where, observed_at=session_clock.iso(self.evidence_episode['observed']), observed_monotonic_s=self.evidence_episode['since'], controller_boot_id=self.boot_id(), fencing_token=self.token, dispatches=self.dispatches_seen)
         try:
             for attempt in range(10000):
                 target = self.evidence.root / (EVIDENCE_FAILURE_NAME % attempt)
@@ -1154,8 +1158,10 @@ class RunExecutor:
         if episode is None or episode['heard']:
             return
         asked = self.monotonic()
+        # Elapsed on this boot's monotonic clock, which no wall step moves. A wall clock that says it is older still counts, as that can only make the episode end sooner.
+        age = max(0.0, asked - episode['since'], self.wall() - episode['observed'] if episode['observed'] is not None else 0.0)
         try:
-            answer = client.mutate('record_evidence_failure', session_id=self.session_id, fencing_token=self.token, detail=episode['where'], observed_age_s=max(0.0, self.wall() - episode['observed']))
+            answer = client.mutate('record_evidence_failure', session_id=self.session_id, fencing_token=self.token, detail=episode['where'], observed_age_s=age)
         except (registry_client.RegistryRejected, registry_client.RegistryUnavailable) as error:
             self._note('evidence_failure_unreported', detail=cleanup_provider.redact(error))
             return
@@ -1165,7 +1171,9 @@ class RunExecutor:
     def _restore_evidence_episode(self):
         """What the last controller saw and may not have got to say. Before this controller's first transfer, so that a retry cannot read as a first failure.
 
-        A record stands until a run is dispatched after it. Then the batch moved past it, and the registry let go of it at that dispatch.
+        A record stands until a run is dispatched after it. Then the batch moved past it, and the registry let go of it at that dispatch. Records are numbered as they are written, so one a run was dispatched after says the same of every record before it, whether or not that one can still be read.
+
+        A record that cannot be read, or listed, or whose age this boot's monotonic clock cannot vouch for, may be the current episode, and of an unknown age. That is never taken for no episode, nor for a new one: it is taken as already over, so no transfer starts under it and stopping, sealing and cleanup go on. The record stays where it is.
         """
         if self.episode_restored:
             return
@@ -1173,30 +1181,76 @@ class RunExecutor:
         if self.evidence_episode is not None:
             return
         try:
-            paths = sorted(self.evidence.root.glob(EVIDENCE_FAILURE_GLOB))
-        except OSError as error:
-            self._note('evidence_failure_not_read', detail=type(error).__name__)
+            names = sorted((name for name in os.listdir(self.evidence.root) if EVIDENCE_FAILURE_PATTERN.fullmatch(name)), key=lambda name: int(EVIDENCE_FAILURE_PATTERN.fullmatch(name).group(1)))
+        except FileNotFoundError:
             return
-        if not paths:
+        except OSError as error:     # not ``glob``, which takes a directory it cannot list for an empty one
+            self._note('evidence_failure_not_read', detail=type(error).__name__)
+            self._unknowable_episode('the records of earlier failures could not be listed (%s)' % type(error).__name__, None)
+            return
+        if not names:
             return
         try:
             count = len(self._records())
         except (registry_client.RegistryRejected, registry_client.RegistryUnavailable) as error:
             self._note('evidence_failure_not_compared', detail=cleanup_provider.redact(error))
             count = None
-        for path in paths:
-            document = measurement_window.load_json(path)[0]
-            try:
-                if document['session_id'] != self.session_id or document['manifest_sha256'] != self.sha:
-                    raise ValueError('another session')
-                observed = session_clock.parse(document['observed_at'])
-            except (TypeError, KeyError, ValueError) as error:
-                self._note('evidence_failure_unreadable', path=path.name, detail=type(error).__name__)
+        readings = [self._read_evidence_failure(name, count) for name in names]
+        passed = max((index for index, (kind, _) in enumerate(readings) if kind == 'passed'), default=-1)
+        for kind, document in readings[passed + 1:]:
+            if kind == 'foreign':
                 continue
-            if count is None or not isinstance(document.get('dispatches'), int) or document['dispatches'] >= count:
-                self._open_evidence_episode(observed, str(document.get('where')))
-                self._report_evidence_failure(self.client)
+            if kind == 'unknown':
+                self._unknowable_episode('a record of an earlier failure could not be read (%s)' % document, None)
                 return
+            observed = session_clock.parse(document['observed_at'])
+            age = self._recorded_age(document, observed)
+            if age is None:
+                self._unknowable_episode('%s, whose age this boot cannot vouch for' % document.get('where'), observed)
+                return
+            self._open_evidence_episode(age, str(document.get('where')), observed)
+            self._report_evidence_failure(self.client)
+            return
+
+    def _read_evidence_failure(self, name, count):
+        """(kind, what) for one record: ``current`` and its document, ``passed`` (a run was dispatched after it), ``foreign`` (whole, and another session's), or ``unknown`` and why."""
+        try:
+            text = (self.evidence.root / name).read_text()
+        except OSError as error:
+            self._note('evidence_failure_unreadable', path=name, detail=type(error).__name__)
+            return 'unknown', type(error).__name__
+        try:
+            document = json.loads(text)
+            if not isinstance(document, dict) or document.get('schema') != EVIDENCE_FAILURE_SCHEMA:
+                raise ValueError('not an evidence failure record')
+            session_clock.parse(document['observed_at'])
+        except (TypeError, KeyError, ValueError, RecursionError) as error:
+            self._note('evidence_failure_unreadable', path=name, detail=type(error).__name__)
+            return 'unknown', 'unparseable'
+        if document.get('session_id') != self.session_id or document.get('manifest_sha256') != self.sha:
+            self._note('evidence_failure_foreign', path=name)
+            return 'foreign', document
+        dispatches = document.get('dispatches')
+        if count is not None and isinstance(dispatches, int) and not isinstance(dispatches, bool) and dispatches < count:
+            return 'passed', document
+        return 'current', document
+
+    def _recorded_age(self, document, observed):
+        """Seconds since a recorded failure, from the monotonic reading taken with it, on this same boot only. A wall clock that says it is older still counts. None when nothing can say: another or an unknown boot, or no reading kept."""
+        boot = document.get('controller_boot_id')
+        since = document.get('observed_monotonic_s')
+        now = self.monotonic()
+        if (not isinstance(boot, str) or boot == session_clock.UNKNOWN_BOOT or boot != self.boot_id() or isinstance(since, bool)
+                or not isinstance(since, (int, float)) or not math.isfinite(since) or since > now):
+            return None
+        return max(now - since, self.wall() - observed)
+
+    def _unknowable_episode(self, where, observed):
+        """An episode that may be under way and of no knowable age is over: no transfer starts under it. The registry is told it is the whole grace old, which can only end its episode sooner, and keeps an earlier first failure it already heard."""
+        grace = self.manifest['limits']['evidence_recovery_grace_s']
+        self._note('evidence_failure_age_unknown', detail=where)
+        self._open_evidence_episode(max(grace, self.wall() - observed if observed is not None else 0.0), where + '; its age is unknown, so it is taken as over', observed)
+        self._report_evidence_failure(self.client)
 
     def _transfer_timeout(self):
         """No evidence transfer starts at or past the end of the episode a failure started, and none may outlast it. Stopping and sealing are not transfers, and keep to the work cutoff."""

@@ -343,6 +343,22 @@ def play_input_lost(relative):
     return play
 
 
+def play_input_truncated(relative):
+    """A confirmed search whose scores still verify, with one required raw input cut to a single byte before wrap-up. Its bytes are kept; it is not what its producer wrote."""
+    def play(case):
+        sim = ef.ExportSim(case, ef.enriched(ef.CONFIRMING))
+        sim.ready()
+        executor = sim.executor()
+        result = executor.execute()
+        path = sim.root / relative.replace('<first-run>', 'runs/' + sim.records()[0]['run_id'])
+        path.chmod(0o640)
+        path.write_bytes(b'{')
+        executor.wrap_up(result)
+        sim.drive_cleanup()
+        return sim, dict(truncated=relative)
+    return play
+
+
 def _first_failure_scenario(case, then):
     """The first game copy fails and stays failing. Returns the sim and a list holding that first failure's time and file."""
     sim = ef.ExportSim(case, ef.enriched(ef.CONFIRMING))
@@ -385,10 +401,12 @@ def _crash(sim, role, relative, data):
     raise rf.SimulatedCrash('between transfers')
 
 
-def _collect_after(sim, first, seconds):
+def _collect_after(sim, first, seconds, adjust=None):
     sim.guests.get_hook = lambda role, run_id, relative, data, attempt: (1, b'cut') if (role, relative) == ('game', first[0][1]) else (0, data)
     sim.sleep(seconds)
     controller, _ = sim.controller()
+    if adjust is not None:
+        adjust(controller)
     controller.collecting = True
     controller.prepare()
     controller.reconcile('operator_collect')
@@ -422,6 +440,57 @@ def play_report_lost_then_crash(case):
         except rf.SimulatedCrash:
             pass
     return _collect_after(sim, first, 40)
+
+
+def _lost_report_then_crash(case):
+    sim, first = _first_failure_scenario(case, _crash)
+    executor = sim.executor()
+    real = executor.client.call
+
+    def lost(method, *arguments, **options):
+        if method == 'record_evidence_failure':
+            raise run_executor.registry_client.RegistryUnavailable('scripted')
+        return real(method, *arguments, **options)
+    with mock.patch.object(executor.client, 'call', side_effect=lost):
+        try:
+            executor.execute()
+        except rf.SimulatedCrash:
+            pass
+    return sim, first
+
+
+def _late_transfers(sim, first, before):
+    status = sim.stack.registry.status(sim.session_id)
+    cutoff = first[0][0] + sim.manifest['limits']['evidence_recovery_grace_s']
+    return dict(transfers_after_return=_gets(sim) - before, recovery_deadline_not_after_first_failure_plus_grace=session_clock.parse(status['recovery_deadline_utc']) <= cutoff)
+
+
+def play_unreadable_failure_record(case):
+    """The registry never heard the first failure, the controller died, and its durable record of it cannot be read when the next one returns. By injection, so this regenerates under any user; the tests do it with real permissions."""
+    sim, first = _lost_report_then_crash(case)
+    before = _gets(sim)
+    real = pathlib.Path.read_text
+
+    def read_text(path, *arguments, **options):
+        if path.name.startswith('evidence-failure-'):
+            raise PermissionError(errno.EACCES, 'scripted')
+        return real(path, *arguments, **options)
+    with mock.patch.object(pathlib.Path, 'read_text', read_text):
+        sim, extra = _collect_after(sim, first, 40)
+    extra.update(_late_transfers(sim, first, before))
+    return sim, extra
+
+
+def play_controller_wall_stepped_back(case):
+    """As above with the record readable, and only the returning controller's wall clock 120 s behind. The registry's time and this boot's monotonic clock carry on."""
+    sim, first = _lost_report_then_crash(case)
+    before = _gets(sim)
+
+    def step_back(controller):
+        controller.wall = lambda: sim.clock.wall() - 120
+    sim, extra = _collect_after(sim, first, 40, step_back)
+    extra.update(_late_transfers(sim, first, before))
+    return sim, extra
 
 
 def play_recovered_then_batch_went_on(case):
@@ -538,6 +607,9 @@ SCENARIOS = (
     ('clock_bracket_lost_withholds_completeness', play_input_lost('<first-run>/clock-after.json')),
     ('provisioning_provenance_lost_withholds_completeness', play_input_lost('provisioning/packages-game.json')),
     ('unlistable_directory_stays_unknown', play_unlistable_directory),
+    ('clock_bracket_truncated_withholds_completeness', play_input_truncated('<first-run>/clock-before.json')),
+    ('unreadable_failure_record_is_taken_as_over', play_unreadable_failure_record),
+    ('controller_wall_stepped_back_keeps_the_first_failure', play_controller_wall_stepped_back),
     ('first_failure_holds_past_a_slow_later_file', play_slow_file_after_first_failure),
     ('crash_between_files_keeps_the_first_failure', play_crash_between_files),
     ('lost_report_then_crash_keeps_the_first_failure', play_report_lost_then_crash),

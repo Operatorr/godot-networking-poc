@@ -117,6 +117,25 @@ class WhatTheRowsSay(unittest.TestCase):
             self.assertEqual(row['search_status'], 'confirmed', 'what was measured stays what it was')
             self.assertTrue(row['controller_inputs_missing'], name)
 
+    def test_a_required_raw_input_that_is_there_but_cut_is_corrupt(self):
+        row = scenarios()['clock_bracket_truncated_withholds_completeness']
+        self.assertEqual((row['evidence_registry'], row['evidence_latest_export'], row['overall']), ('corrupt', 'corrupt', 'resources_verified_evidence_incomplete'))
+        self.assertFalse(row['establishes'])
+        self.assertFalse(row['claim_confirmed'])
+        self.assertEqual(row['search_status'], 'confirmed', 'what was measured stays what it was')
+        self.assertEqual(len(row['controller_inputs_corrupt']), 1)
+
+    def test_a_failure_record_nobody_can_read_or_date_by_wall_clock_moves_nothing_later(self):
+        rows = scenarios()
+        unreadable = rows['unreadable_failure_record_is_taken_as_over']
+        self.assertEqual(unreadable['transfers_after_return'], 0)
+        self.assertTrue(unreadable['recovery_deadline_not_after_first_failure_plus_grace'])
+        stepped = rows['controller_wall_stepped_back_keeps_the_first_failure']
+        self.assertTrue(stepped['recovery_deadline_is_first_failure_plus_grace'])
+        for row in (unreadable, stepped):
+            self.assertTrue(row['cleanup_requested'])
+            self.assertNotEqual(row['evidence_latest_export'], 'complete')
+
     def test_an_unlistable_directory_is_unknown_and_not_empty(self):
         row = scenarios()['unlistable_directory_stays_unknown']
         self.assertEqual((row['evidence_registry'], row['evidence_latest_export'], row['overall']), ('partial', 'partial', 'resources_verified_evidence_incomplete'))

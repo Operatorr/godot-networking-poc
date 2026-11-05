@@ -77,7 +77,7 @@ class RunSim(pf.Sim):
     def executor(self, client=None, token=None, scorer=None, failpoint=None, policy=None, source_problems=None, guests=None, readiness_problems=None, adapter=None, window_prover=None):
         return run_executor.RunExecutor(client or self.client, guests or self.guests, self.provider, self.manifest, self.sha, self.stack.root, token if token is not None else self.result.fencing_token,
                                         self.sleep, self.monotonic, self.clock.wall, scorer=scorer, adapter=adapter or ScriptedAdapter(), policy=policy or FAST_POLICY, failpoint=failpoint,
-                                        source_problems=source_problems or (lambda: []), readiness_problems=readiness_problems, window_prover=window_prover)
+                                        source_problems=source_problems or (lambda: []), readiness_problems=readiness_problems, window_prover=window_prover, boot_id=self.clock.boot_id)
 
     def controller(self, name='controller-b', takeover=True, **options):
         """Returning after a crash: a new client, a new token, a paused session."""

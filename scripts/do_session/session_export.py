@@ -355,7 +355,7 @@ def _frozen_controller_files(manifest):
     return tuple(mw.schema()['files'].get('controller') or ())
 
 
-def controller_inputs(session_dir, entries, runs, manifest, snapshot=None):
+def controller_inputs(session_dir, entries, runs, manifest, snapshot=None, sha=None):
     """What the controller itself has to have kept of each dispatched run, and what provisioning pinned, as the current producers write them. A score or a rendered report that still verifies stands in for none of it.
 
     Returns dict(missing, corrupt, by_run, problems): relative paths, what keeps each run from being vouched for, and what is the session's own. Each file named here is one a producer writes on the path that run took, so nothing is asked of a run that never got there.
@@ -375,13 +375,19 @@ def controller_inputs(session_dir, entries, runs, manifest, snapshot=None):
             if not run_dir.is_dir():
                 continue
             went = [role for role in ROLES if (run_id, role) in by_role and by_role[run_id, role]['status'] != 'never_created']
-            for name in ('selected.json', 'grant.json'):
+            required = [('selected.json', 'it is written when a run is selected and dispatched'), ('grant.json', 'it is written when a run is selected and dispatched')]
+            if 'clock-before.json' in frozen:
+                required.append(('clock-before.json', 'the frozen measurement schema requires it of a dispatched run'))
+            if 'clock-after.json' in frozen and went:
+                required.append(('clock-after.json', 'the frozen measurement schema requires it once a role went to a host'))
+            for name, why in required:
                 if not _exists(run_dir / name):
-                    absent(name, 'it is written when a run is selected and dispatched')
-            if 'clock-before.json' in frozen and not _exists(run_dir / 'clock-before.json'):
-                absent('clock-before.json', 'the frozen measurement schema requires it of a dispatched run')
-            if 'clock-after.json' in frozen and went and not _exists(run_dir / 'clock-after.json'):
-                absent('clock-after.json', 'the frozen measurement schema requires it once a role went to a host')
+                    absent(name, why)
+                    continue
+                wrong = _producer_problem(session_dir, run_dir, run_id, name, manifest, sha, snapshot)
+                if wrong:
+                    corrupt.append('runs/%s/%s' % (run_id, name))
+                    notes.append('%s %s' % (name, wrong))
             if 'window-proof.json' in frozen and _exists(run_dir / capacity_scorer.SCORE_FILE) and not _exists(run_dir / 'window-proof.json'):
                 absent('window-proof.json', 'the score of this run stands on it')
             records = _execution_records(run_dir)
@@ -393,6 +399,111 @@ def controller_inputs(session_dir, entries, runs, manifest, snapshot=None):
             by_run[run_id] = notes
     found = _provenance(session_dir, snapshot) if runs else dict(missing=[], corrupt=[], problems=[])
     return dict(missing=sorted(set(missing + found['missing'])), corrupt=sorted(set(corrupt + found['corrupt'])), by_run=by_run, problems=found['problems'])
+
+
+def _producer_problem(session_dir, run_dir, run_id, name, manifest, sha, snapshot):
+    """Why a required controller input that is there is still not the one its producer wrote, or None. Being there, or hashing to whatever it now holds, says nothing: it has to read as what the current producer writes, and as what was recorded of it where anything was.
+
+    A whole score or proof that still verifies does not stand in for these. The clock brackets are the raw readings the proof's host mappings were taken from, and the proof keeps only what it made of them.
+    """
+    document = _read_json(run_dir / name)
+    if not isinstance(document, dict):
+        return 'cannot be read as the document its producer writes'
+    if name.startswith('clock-'):
+        return _bracket_problem(run_dir, document, name[len('clock-'):-len('.json')])
+    if name == 'selected.json':
+        return _selection_problem(session_dir, run_id, document, sha)
+    return _grant_problem(run_id, document, manifest, snapshot)
+
+
+def _bracket_problem(run_dir, document, label):
+    """As ``RunExecutor._clock_bracket`` writes one, and giving the clock offsets the window proof kept where it kept any."""
+    wrong = _bracket_shape_problem(document, label)
+    if wrong:
+        return wrong
+    proof = _read_json(run_dir / 'window-proof.json')
+    recorded = (proof.get('facts') or {}).get('clock') if isinstance(proof, dict) and isinstance(proof.get('facts'), dict) else None
+    if not isinstance(recorded, dict):
+        return None
+    other_label = 'after' if label == 'before' else 'before'
+    other = _read_json(run_dir / ('clock-%s.json' % other_label))
+    other = other if isinstance(other, dict) and _bracket_shape_problem(other, other_label) is None else None     # a bad one answers for itself
+    for role in ROLES:
+        kept = recorded.get('%s_offset_ns' % role)
+        if not (isinstance(kept, list) and len(kept) == 2):
+            continue
+        mine, theirs = mw.bracket_offset(document, role), mw.bracket_offset(other, role)
+        # The proof keeps the hull of both brackets' offsets. Each must lie inside it, and the two together must make it.
+        if mine is None or not kept[0] <= mine[0] <= mine[1] <= kept[1]:
+            return 'does not give the %s clock offset the window proof recorded from it' % role
+        if theirs is not None and kept[0] <= theirs[0] <= theirs[1] <= kept[1] and [min(mine[0], theirs[0]), max(mine[1], theirs[1])] != kept:
+            return 'does not, with the other bracket, give the %s clock mapping the window proof recorded' % role
+    return None
+
+
+def _bracket_shape_problem(document, label):
+    """Both hosts, each with only whole raw attempts. A host that could not answer has none, which is a fact the proof states, not damage."""
+    if document.get('schema') != mw.schema()['bracket_schema'] or document.get('label') != label or not set(document) <= {'schema', 'label', 'roles', 'errors'}:
+        return 'is not a %s clock bracket of the current schema' % label
+    roles = document.get('roles')
+    if not isinstance(roles, dict) or set(roles) != set(ROLES):
+        return 'does not hold the readings of both hosts'
+    for role in ROLES:
+        attempts = roles[role]
+        if not isinstance(attempts, list):
+            return 'holds no list of readings for %s' % role
+        for attempt in attempts:
+            if (not isinstance(attempt, dict) or set(attempt) != {'before_ns', 'guest_wall_ns', 'guest_monotonic_ns', 'after_ns', 'boot_id'}
+                    or not all(mw.is_int(attempt[key]) for key in ('before_ns', 'guest_wall_ns', 'after_ns')) or attempt['after_ns'] < attempt['before_ns']
+                    or not (attempt['guest_monotonic_ns'] is None or mw.is_int(attempt['guest_monotonic_ns'])) or not (attempt['boot_id'] is None or isinstance(attempt['boot_id'], str))):
+                return 'holds a reading for %s that is not a whole raw attempt' % role
+    errors = document.get('errors', [])
+    if not isinstance(errors, list) or not all(isinstance(item, str) for item in errors):
+        return 'holds errors that are not the producer\'s'
+    return None
+
+
+def _selection_problem(session_dir, run_id, document, sha):
+    """As ``do_session.publish_selection`` writes one, and the very record the search journal holds of it when it holds one."""
+    trial = document.get('trial')
+    if (document.get('kind') != 'selected' or not isinstance(trial, dict) or trial.get('run_id') != run_id or (sha is not None and document.get('manifest_sha256') != sha)
+            or not isinstance(document.get('resume'), bool) or not isinstance(document.get('selected_at'), str) or not isinstance(document.get('predecessor_evidence'), list)):
+        return 'is not the selection of this run under this manifest'
+    try:
+        lines = (pathlib.Path(session_dir) / do_session.JOURNAL).read_text().splitlines()
+    except OSError:
+        return None     # the journal is a required session file, and answers for itself
+    journaled = []
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict) and row.get('kind') == 'selected' and isinstance(row.get('trial'), dict) and row['trial'].get('run_id') == run_id:
+            journaled.append(row)
+    if journaled and document not in journaled:
+        return 'is not the selection the search journal recorded'
+    return None
+
+
+def _grant_problem(run_id, document, manifest, snapshot):
+    """As the registry's ``dispatch_run`` answered, and as its own journal recorded the dispatch when it can be asked."""
+    session_id = manifest['session']['id'] if isinstance(manifest, dict) else None
+    token = document.get('fencing_token')
+    launch_by = document.get('launch_by')
+    try:
+        launch_ok = isinstance(launch_by, str) and admission.parse_utc(launch_by) is not None
+    except (ValueError, TypeError):
+        launch_ok = False
+    if (document.get('run_id') != run_id or (session_id is not None and document.get('session_id') != session_id) or document.get('authorized') is not True
+            or not mw.is_int(token) or not launch_ok):
+        return 'is not the dispatch grant of this run'
+    for event in (snapshot or {}).get('journal') or ():
+        data = event.get('data') if isinstance(event, dict) else None
+        if event.get('kind') == 'run_dispatch_intent' and isinstance(data, dict) and data.get('run_id') == run_id:
+            if data.get('fencing_token') != token or data.get('launch_by') != launch_by:
+                return 'is not the dispatch the registry recorded'
+    return None
 
 
 def _held_to_plan_and_receipt(run_dir, run_id, role, entry, records, absent, corrupt, notes):
@@ -678,7 +789,7 @@ def export_session(session_dir, client=None, runs=None, token=ANY_TOKEN, never_c
     runs = _dispatched_runs(session_dir, runs)
     entries, gone = role_entries(session_dir, runs, manifest, sha, token, never_created, snapshot)
     problems += gone
-    controller = controller_inputs(session_dir, entries, runs, manifest, snapshot)
+    controller = controller_inputs(session_dir, entries, runs, manifest, snapshot, sha)
     try:
         generation = _next_generation(session_dir)
     except OSError as error:
