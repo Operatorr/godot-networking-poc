@@ -1147,11 +1147,6 @@ def _dispatch_token(run_dir):
     return token if isinstance(token, int) and not isinstance(token, bool) else None
 
 
-def hard_facts(run_dir, expected):
-    """Only this run's own stop facts. See ``stop_records``."""
-    return stop_records(run_dir, expected)[0]
-
-
 def load_retained(path):
     """The document, if the file is a whole score of this schema with its own content intact. Says nothing of whose it is."""
     with contextlib.suppress(OSError, ValueError, UnicodeDecodeError):

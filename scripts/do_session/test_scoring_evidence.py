@@ -78,8 +78,9 @@ class RetainedEvidence(unittest.TestCase):
         disputed = {'foreign_retained_score_is_refused_on_return', 'edited_retained_score_is_refused_on_return', 'foreign_retained_classification_is_refused_on_return', 'unfrozen_controller_refuses_a_foreign_retained_score', 'report_withholds_the_claim_when_a_retained_score_changed'}
         stopped_by_a_fact = {'corrupt_bytes_on_return_outrank_a_retained_score', 'corrupt_bytes_on_return_outrank_a_retained_classification', 'corrupt_bytes_survive_a_second_crash_and_a_restored_transfer_after_a_retained_score',
                              'corrupt_bytes_survive_a_second_crash_and_a_restored_transfer_after_a_retained_classification', 'corrupt_bytes_in_a_confirmation_keep_its_siblings_untouched'}
-        found_after_the_commit = {'corrupt_bytes_found_after_the_commit_stop_the_session_and_keep_the_outcome', 'corrupt_bytes_found_by_recovery_at_wrap_up_withhold_the_claim', 'corrupt_seal_after_the_commit_refuses_resume', 'corrupt_seal_with_a_crash_after_the_fact_and_a_restored_transfer_refuses_resume', 'stop_request_failing_refuses_resume_and_dispatch', 'foreign_terminal_fact_refuses_resume_with_nothing_final_said'}
-        self.assertEqual({name for name, row in searches.items() if not row['evidence']['verified']}, disputed | stopped_by_a_fact | found_after_the_commit)
+        found_after_the_commit = {'corrupt_bytes_found_after_the_commit_stop_the_session_and_keep_the_outcome', 'corrupt_bytes_found_by_recovery_at_wrap_up_withhold_the_claim', 'corrupt_seal_after_the_commit_refuses_resume', 'corrupt_seal_with_a_crash_after_the_fact_and_a_restored_transfer_refuses_resume'}
+        refused_with_nothing_final_said = {'stop_request_failing_refuses_resume_and_dispatch', 'foreign_terminal_fact_refuses_resume_with_nothing_final_said'}     # the registry never heard, or must not: test_the_new_stop_paths_are_retained_with_no_successor
+        self.assertEqual({name for name, row in searches.items() if not row['evidence']['verified']}, disputed | stopped_by_a_fact | found_after_the_commit | refused_with_nothing_final_said)
         for name in stopped_by_a_fact:
             row = searches[name]
             self.assertEqual((row['status'], row['terminal_failure'], row['resumed'], row['resume_code']), ('stopped_infrastructure_failure', 'INFRASTRUCTURE_FAILURE', False, 'terminal_failure'), name)

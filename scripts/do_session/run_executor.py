@@ -1492,6 +1492,9 @@ class RunExecutor:
             if not isinstance(record, dict) or not isinstance(record.get('problems'), dict):
                 context.uncertain.append('earlier record %s could not be read' % path.name)
                 continue
+            if (record.get('session_id'), record.get('manifest_sha256'), record.get('run_id')) != (self.session_id, self.sha, context.trial.run_id):
+                context.uncertain.append('earlier record %s is not this run\'s' % path.name)     # nothing it says is carried, and ``_require_no_open_stop`` holds what it claims against any more work
+                continue
             if record.get('writer') == 'run':
                 context.retained_record = record
                 carried = record['problems']

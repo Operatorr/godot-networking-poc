@@ -636,7 +636,7 @@ class StopFacts(Base):
 
 
 class UnacknowledgedStops(Base):
-    """A stop fact the registry did not take is still a stop fact. Refused by no one at the registry, failing to say so must not turn into permission: every case here has a real controller, a real resume and a real dispatch to walk into."""
+    """A stop fact the registry did not take is still a stop fact, and failing to record it must not turn into permission. Every case here has a real controller, a real resume and a real dispatch to walk into."""
     RULES = {50: sf.slow, 30: sf.slow}
 
     def fixture(self, retained=False, point='after_outcome_commit'):
@@ -1077,6 +1077,20 @@ class ForeignStopRecords(Base):
         (run_dir / name).write_text(json.dumps(dict(record, session_id='foreign-session', writer='reconcile', demonstrated_problems=dict(infrastructure=['foreign bytes']), demonstrated_outcome=None, uncertain=[])))
         executor, control = sim.controller()
         self.assertUnverifiedStop(sim, run_id, executor.resume('operator', control), name)
+
+    def test_a_foreign_record_beside_an_uncommitted_run_decides_nothing_for_it(self):
+        sim = self.sim_of(self.RULES)
+        self.crash(sim, 'after_score_retained')
+        run_id = sim.records()[0]['run_id']
+        run_dir = sim.run_dir(run_id)
+        record = json.loads((run_dir / 'execution.json').read_text())
+        name = 'execution-reconciled-0002-9.json'
+        (run_dir / name).write_text(json.dumps(dict(record, run_id='foreign-run', writer='reconcile', demonstrated_problems=dict(infrastructure=['foreign bytes']), demonstrated_outcome=dict(outcome=INFRASTRUCTURE_FAILURE, reasons=['foreign']), uncertain=[])))
+        executor, control = sim.controller()
+        result = executor.resume('operator', control)
+        self.assertEqual((result['resumed'], result['code']), (False, run_executor.STOP_RECORD_UNVERIFIED), result)
+        self.assertIsNone(sim.status_now()['terminal_failure'])
+        self.assertNotEqual(sim.records()[0]['outcome'], INFRASTRUCTURE_FAILURE, 'its word is not carried')
 
     def test_a_real_fact_of_this_run_stands_beside_a_foreign_one_and_is_final(self):
         sim, run_id, token = self.committed()
