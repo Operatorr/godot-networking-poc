@@ -5,7 +5,7 @@ Offline evidence for [issue #69](https://github.com/Operatorr/godot-networking-p
 | File | What it is | Reproducible |
 | --- | --- | --- |
 | [`synthetic-scores.json`](synthetic-scores.json) | The real prover and scorer over 179 mocked recorder trees, each with one thing changed. Nothing ran, and each "60 s window" is arithmetic | Yes: `test_scoring_evidence` regenerates it and compares the hash |
-| [`synthetic-searches.json`](synthetic-searches.json) | 79 whole searches through the real executor, registry, prover and scorer over a fake guest that exports those trees. No outcome is scripted: each comes from the bytes | Yes, likewise |
+| [`synthetic-searches.json`](synthetic-searches.json) | 88 whole searches through the real executor, registry, prover and scorer over a fake guest that exports those trees. No outcome is scripted: each comes from the bytes | Yes, likewise |
 | [`real-local-scores.json`](real-local-scores.json) | The real scorer over real `omega-server` and `omega-load-test` bytes on one machine | No: timings are real. `SHA256SUMS` only says these are the bytes retained |
 
 Raw recorder files are not retained here. The real generator deletes its temporary run directories, so its rows are summaries that cannot be replayed from this directory.
@@ -49,10 +49,11 @@ Each boundary is tested on both sides, and every comparison keeps its exact coun
 | `no_passing_target` | 5 | No passing target at 5-player resolution; not zero, `players` and `lower_bound` null |
 | `unconfirmed_variable` | 3 | Failed at repetition 1, 2 or 3; no replacement, nothing after it |
 | `unconfirmed_partial` | 1 | An interrupted confirmation; its untouched siblings ran; never confirmed |
-| `stopped_*` | 35 | Invalid load, inconclusive evidence or infrastructure, across coarse, refinement and confirmation; earlier passes named as exploratory only |
-| `undecidable_incomplete_predecessor` | 2 | A cut trial or one an unfrozen controller could not score, neither inferred nor replayed |
+| `stopped_*` | 36 | Invalid load, inconclusive evidence or infrastructure, across coarse, refinement and confirmation; earlier passes named as exploratory only |
+| `undecidable_incomplete_predecessor` | 5 | A cut trial or one an unfrozen controller could not score, neither inferred nor replayed |
 | `partial_time_exhausted` | 1 | Results kept; nothing dispatched that cannot fit |
-| `in_progress` | 20 | A session collected or resumed after one decided trial, with nothing more run |
+| `in_progress` | 23 | A session collected or resumed after one decided trial, with nothing more run |
+| `awaiting_confirmation_outcome` | 2 | A first confirmation left undecided by a comparison that never said how it ended; its siblings never start |
 
 Every scenario records `no_hidden_retry`: one game start per trial. The search also covers crashes at `after_execution_record`, `after_score_retained`, `before_outcome_commit` and `after_outcome_commit`. `test_capacity_search.EveryLegalPath` walks all 401 leaves of the graph with no files.
 
@@ -75,7 +76,13 @@ These also pin what a search may not do with evidence it cannot trust, with each
 | A seal or raw file that failed its hash, with a crash after the observation and before its bytes, and a transfer that works again | `stop_record_unverified` from both resume and dispatch, one game start, registry **not** terminal, and the outcome stays | `evidence_disagreement` |
 | The same with a crash after the bytes and before any fact, or a fact whose own fsync failed beside a registry that did not answer | Resume and dispatch refuse with `terminal_failure`: the observation is replayed first, one game start, and the outcome stays | `evidence_disagreement`, with the observation in `hard_facts` |
 | The same bytes before any outcome was committed, with a crash after they were kept | `INFRASTRUCTURE_FAILURE`, one game start, whatever the working transfer later brings | The stop |
-| The same before any outcome, with a crash before they were kept | The run keeps what it reached, and `stop_record_unverified` stops anything after it | `evidence_disagreement` |
+| The same before any outcome, with a crash before they were kept | The run stays undecided behind the comparison that never ended, and `stop_record_unverified` stops anything after it | `evidence_disagreement` |
+| A first confirmation whose run-directory `os.fsync` fails while corrupt bytes are written down, then a crash and the loss of only the two new names that sync did not cover, then a transfer that works again | `stop_record_unverified` from both resume and dispatch, four game starts, siblings never started, registry **not** terminal, and the run undecided: the guard outside the run directory is still there | `evidence_disagreement` |
+| A crash inside a comparison, with good bytes | The same refusal, one game start: nothing can tell it from the case above | `evidence_disagreement` |
+| No validation guard can be established, with corrupt bytes on the way | `directory_not_durable`, nothing compared or kept, no fact, registry **not** terminal, cleanup requested | Undecidable |
+| A status reply naming another seal digest or another session, with the good seal still on the guest and the older receipt still true | No comparison, no receipt, no fact: resume goes on, one game start, registry **not** terminal | As the journal says |
+| A good seal called corrupt under a digest the older receipt contradicts, told as a terminal fact or a reconciled execution generation | `stop_record_unverified`, one game start, registry **not** terminal, and the outcome stays | `evidence_disagreement` |
+| A retained score holding a JSON integer too large for a float | Refused and rendered with no exception, `INCONCLUSIVE`, one game start, the file left as found, and no false infrastructure stop | `evidence_disagreement` |
 | A terminal fact or execution record of no known shape, such as a list for an outcome, on a return or at an already running dispatch | `stop_record_unverified`, one game start, registry **not** terminal: no exception and no false infrastructure stop | `evidence_disagreement`, rendered, and listed under `unverified_stop_records` |
 | A foreign or edited retained score, or a foreign classification, on return | `INCONCLUSIVE`, the file left as found | `evidence_disagreement` |
 | An unchanged retained score, collected with the hosts as they are | The retained outcome, not recomputed | As the journal says |

@@ -32,6 +32,7 @@ count local to a cgroup leaf that holds only the supervised game. A count for th
 Boundaries. A Tick or a counter read near an edge of a mapped interval may or may not belong to the window, so a verdict must hold for every position the clocks allow. Tick counts
 and socket drops are evaluated at both extremes of that uncertainty, and anything that depends on where the window really was stays unknown.
 """
+import ast
 import contextlib
 import fractions
 import hashlib
@@ -57,8 +58,11 @@ CORRUPT_OBSERVATION_GLOB = 'corrupt-observation-*.json'
 CORRUPT_EVIDENCE_DIR = 'corrupt-evidence'
 SEAL_RECEIPT_SCHEMA = 'omega.do-session.seal-receipt/1'
 SEAL_RECEIPT_GLOB = 'seal-receipt-*.json'
+VALIDATION_GUARD_SCHEMA = 'omega.do-session.validation-guard/1'
+VALIDATION_GUARD_DIR = 'validation-guards'     # beside runs/ and never inside a run's directory, whose own sync is what it has to outlast
 STOP_RECORD_WRITES = (TERMINAL_FACT_GLOB + do_session.WRITING + '*', CORRUPT_OBSERVATION_GLOB + do_session.WRITING + '*')
-READ_FAILURES = (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError, RecursionError)     # whatever a file in a run directory turns out to hold, a reader answers
+READ_FAILURES = (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError, RecursionError, ArithmeticError)     # whatever a file in a run directory turns out to hold, a reader answers
+COUNT_LIMIT = 2 ** 63     # far past any count or reading here. JSON integers have no size of their own, so a reader needs one
 GATE_NAMES = ('continuity', 'bot_errors', 'tick_budget', 'game_socket_drops', 'rtt_p95', 'enet_loss')
 PASS, FAIL, UNKNOWN = 'pass', 'fail', 'unknown'
 VALID, INVALID, NOT_PROVEN = 'valid', 'invalid', 'not_proven'
@@ -159,7 +163,7 @@ def peer_samples(root, start, end):
                         malformed.append('bot %r: an ENet sample with no time: %r' % (item[at_id], sample))
                     elif start <= sample[0] < end:
                         rtt, loss = sample[1], sample[2]
-                        if not mw.is_number(rtt) or not math.isfinite(rtt) or rtt < 0 or not mw.is_count(loss) or loss > LOSS_SCALE:
+                        if not _is_real(rtt) or rtt < 0 or not mw.is_count(loss) or loss > LOSS_SCALE:
                             malformed.append('bot %r: an in-window ENet sample of %r and %r' % (item[at_id], rtt, loss))
                         else:
                             found.setdefault(item[at_id], []).append((sample[0], rtt, loss))
@@ -972,6 +976,8 @@ def canonical(document):
 # A file's own hash says what its bytes are, not whose they are. These hold a retained score and classification to the run, session, policy, proof and execution they claim. They read files and
 # recompute nothing, and a mismatch is refused: no expected hash is ever replaced by the hash of whatever is there now.
 
+_ACCOUNT_OF_OBSERVATION = re.compile(r'^(?P<role>game|bot) (?P<path>.+) failed its hash: expected (?P<expected>[0-9a-f]{64}), found (?P<actual>[0-9a-f]{64}), kept at (?P<kept>.+)$')
+_ACCOUNT_OF_EXPORT = re.compile(r'^(?P<role>game|bot) evidence was not fully exported: (?P<failed>\[.*\])$', re.DOTALL)
 _REFERENCE = re.compile(r'^runs/(?P<run_id>[^/#]+)/(?P<name>[^/#]+)#sha256:(?P<sha256>[0-9a-f]{64})$')
 
 
@@ -1007,36 +1013,53 @@ def retained_expectation(run_dir, trial, session_id, manifest_sha256, controller
                 executions=executions, proof=None if problem else proof, proof_sha256=None if problem else file_sha256(run_dir / 'window-proof.json'))
 
 
-def _is_number(value):
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+def _is_real(value):
+    """A finite number of a size a reading here could have. An integer is judged as the integer it is: ``math.isfinite`` would first convert it to a float, and one too large for that raises."""
+    if isinstance(value, bool):
+        return False
+    if isinstance(value, int):
+        return abs(value) < COUNT_LIMIT
+    return isinstance(value, float) and math.isfinite(value)
+
+
+def _is_count(value):
+    return isinstance(value, int) and not isinstance(value, bool) and 0 <= value < COUNT_LIMIT
 
 
 def _is_ratio(value):
-    return not value or (isinstance(value, dict) and 'exact' in value and _is_number(value.get('approximate')))
+    """Nothing to say, or what ``exact`` writes: a fraction of counts as text, with its float beside it. No gate has a negative one."""
+    if value is None or value == {}:
+        return True
+    return isinstance(value, dict) and isinstance(value.get('exact'), str) and re.fullmatch(r'\d+/[1-9]\d*', value['exact']) is not None and _is_real(value.get('approximate')) and value['approximate'] >= 0
 
 
 def _gate_shape_problems(name, gate):
     """What the report reads out of one gate. A gate says only what its branch of the scorer found, so each field is held to its shape when it is there, and the fields that come with it have to be there too."""
-    ratios, numbers = [], []
+    ratios, counts, readings = [], [], []
     if name == 'tick_budget':
         if 'ticks_wide' in gate and 'worst_possible_ratio' in gate:
             ratios += [gate.get('worst_possible_ratio'), gate.get('least_possible_ratio')]
+            counts += [gate.get(key) for key in ('ticks_wide', 'ticks_narrow', 'over_wide', 'over_narrow')]
         if 'ticks' in gate:
             ratios.append(gate.get('ratio'))
+            counts += [gate.get('ticks'), gate.get('over')]
     elif name == 'rtt_p95' and 'p95_ms' in gate:
-        numbers += [gate.get(key) for key in ('rank', 'samples')]
+        counts += [gate.get(key) for key in ('rank', 'samples')]
+        readings += [gate.get(key) for key in ('p95_ms', 'max_ms')]
     elif name == 'enet_loss' and 'per_second_mean_peak' in gate:
         peak = gate['per_second_mean_peak']
         if not isinstance(peak, dict):
             return ['its %s gate has no peak of any known shape' % name]
         ratios += [peak.get('ratio'), gate.get('window_mean_of_seconds')]
-        numbers += [peak.get('second')] + [gate.get(key) for key in ('seconds_evaluated', 'seconds', 'borrowed_readings')]
+        counts += [peak.get('second')] + [gate.get(key) for key in ('seconds_evaluated', 'seconds', 'borrowed_readings')]
     elif name == 'game_socket_drops' and 'drops_in_widest_interval' in gate:
-        numbers.append(gate['drops_in_widest_interval'])
+        counts += [gate['drops_in_widest_interval'], gate.get('drops_proven_inside', 0)]
     elif name == 'bot_errors' and 'errors' in gate:
-        numbers += [gate.get(key) for key in ('errors', 'errors_that_are_the_disconnect_itself', 'independent')]
-    if not all(_is_ratio(item) for item in ratios) or not all(_is_number(item) for item in numbers) or not isinstance(gate.get('why', ''), str):
+        counts += [gate.get(key) for key in ('errors', 'errors_that_are_the_disconnect_itself', 'independent')]
+    if not all(_is_ratio(item) for item in ratios) or not all(_is_count(item) for item in counts) or not all(_is_real(item) and item >= 0 for item in readings) or not isinstance(gate.get('why', ''), str):
         return ['its %s gate is of no known shape' % name]
+    if name == 'rtt_p95' and 'p95_ms' in gate and not 1 <= gate['rank'] <= gate['samples']:
+        return ['its %s gate puts rank %d among %d samples' % (name, gate['rank'], gate['samples'])]
     return []
 
 
@@ -1065,7 +1088,7 @@ def _score_shape_problems(document):
         problems.append('its inputs are of no known shape')
     if isinstance(validity, dict) and ('offered_input' not in validity or 'generator_sockets' not in validity or not isinstance(validity.get('unproven'), (list, type(None))) or not isinstance(validity.get('independent_failures'), (list, type(None))) or not all(isinstance(item, dict) for item in validity.get('independent_failures') or ())):
         problems.append('its offered-load verdict is of no known shape')
-    if not isinstance(offered, (dict, type(None))) or (offered and offered.get('bots') and (not all(key in offered for key in ('sent_total', 'scheduled_total', 'worst_bot')) or not _is_ratio(offered.get('worst_ratio')))):
+    if not isinstance(offered, (dict, type(None))) or (offered and offered.get('bots') and (not all(key in offered for key in ('sent_total', 'scheduled_total', 'worst_bot')) or not _is_count(offered['sent_total']) or not _is_count(offered['scheduled_total']) or not _is_ratio(offered.get('worst_ratio')))):
         problems.append('its offered load is of no known shape')
     return problems
 
@@ -1184,7 +1207,9 @@ def _terminal_fact_problems(path, record, expected):
         if named is None or int(named.group(1)) != token:
             problems.append('its name %s does not carry its fencing token %d' % (path.name, token))
     problems += _receipt_problems(path.parent, record.get('receipts'))
-    return problems
+    if problems:
+        return problems
+    return _claim_problems(path.parent, [(record['role'], item) for item in record.get('receipts') or ()], record['details'], token, expected)
 
 
 def _stops(outcome):
@@ -1340,7 +1365,8 @@ def _retained_seal_problems(run_dir, role, relative, expected_digest, sealed, ex
     try:
         data = path.read_bytes()
     except FileNotFoundError:
-        return ['the sealed execution record says the seal arrived, and it is gone'] if exported else []
+        # What is said of the seal itself has already been held to the receipts: a seal lost here and then fetched back wrong leaves exactly this.
+        return ['the sealed execution record says the seal arrived, and it is gone'] if exported and relative != guest_runner.SEAL else []
     except OSError as error:
         return ['the retained seal could not be read: ' + type(error).__name__]
     if hashlib.sha256(data).hexdigest() != sealed:
@@ -1382,6 +1408,123 @@ def _corroboration_problems(run_dir, record, expected):
     return problems + _retained_seal_problems(run_dir, role, relative, expected_digest, sealed, exported, expected)
 
 
+def _tells_of_corrupt_bytes(text):
+    """Whether a reason is an account of bytes failing their hash, in the words its writers use: a receipt's own reason, or an observation's."""
+    return 'failed its hash' in text or 'hash mismatch' in text
+
+
+def _receipts_told_in(text):
+    """The receipts a corruption account spells out, as (role, receipt). A later generation carries the words of an earlier one with no export of its own beside them, and they are held to the same safeguards."""
+    told = _ACCOUNT_OF_OBSERVATION.match(text)
+    if told:
+        return [(told.group('role'), dict(path=told.group('path'), expected_sha256=told.group('expected'), actual_sha256=told.group('actual'), retained_as=told.group('kept')))]
+    told = _ACCOUNT_OF_EXPORT.match(text)
+    if told:
+        try:
+            failed = ast.literal_eval(told.group('failed'))
+        except (ValueError, SyntaxError, MemoryError, RecursionError):
+            return []
+        return [(told.group('role'), item) for item in failed if isinstance(item, dict) and item.get('kind') == 'corrupt'] if isinstance(failed, list) else []
+    return []
+
+
+def _claim_problems(run_dir, claims, reasons, token, expected):
+    """Whether every receipt a stop record presents, whichever kind of record it is, has what it would take to be a fact. ``claims`` are its receipts as (role, receipt), and ``reasons`` the words it gives, some of which spell out a receipt of their own.
+
+    The same safeguards as an observation, and nothing recomputes an expected hash. Words that present no receipt have nothing here to be held to, and a reason that is no account of corrupt bytes is not touched and does not help one that is.
+    """
+    claims = list(claims)
+    for text in reasons:
+        if isinstance(text, str) and _tells_of_corrupt_bytes(text):
+            claims += _receipts_told_in(text)
+    problems = []
+    for owner, item in claims:
+        relative = item.get('path')
+        found = _receipt_problems(run_dir, [item])
+        if owner not in ('game', 'bot'):
+            found.append('its receipt names role %r' % (owner,))
+        if not _safe_inside(relative):
+            found.append('its receipt names path %r' % (relative,))
+        found += _fence_problems(token, expected)
+        if not found:
+            found = _corroboration_problems(run_dir, dict(role=owner, path=relative, expected_sha256=item['expected_sha256'], fencing_token=token), expected)
+        problems += ['its receipt for %s of %s: %s' % (relative, owner, problem) for problem in found]
+    return sorted(set(problems))
+
+
+def _bound_to_dispatch(run_dir, expected):
+    return dict(expected, dispatch_token=_dispatch_token(run_dir))
+
+
+def corrupt_receipt_problems(run_dir, role, receipts, token, expected):
+    """Before a controller calls bytes it just compared a demonstrated failure: whether what is on record supports the hash it compared them with. What does not stays unverified, and nothing irreversible follows from it."""
+    run_dir = pathlib.Path(run_dir)
+    return _claim_problems(run_dir, [(role, item) for item in receipts], [], token, _bound_to_dispatch(run_dir, expected))
+
+
+def seal_reply_problems(run_dir, role, digest, seal, token, expected):
+    """Whether a guest's reply can be what any byte of this role is judged against. What is already on record outranks it: a reply that names another seal is a stale or wrong reply and says nothing about the bytes, so nothing may be compared with it.
+
+    With nothing on record, the reply is the first word and its receipt is retained before any byte. ``seal`` is the sealed document when the reply carried it.
+    """
+    run_dir = pathlib.Path(run_dir)
+    expected = _bound_to_dispatch(run_dir, expected)
+    if not is_digest(digest):
+        return ['it names no seal digest']
+    files = None
+    if seal is not None:
+        files = seal_inventory(seal, expected['run_id'], role)
+        if files is None:
+            return ['the seal it carries cannot be held to this run and role']
+    receipts, problems = _seal_receipts(run_dir, role, token, expected)
+    if problems:
+        return problems
+    others = sorted({item['seal_sha256'] for item in receipts} - {digest})
+    if others:
+        return ['it names seal %s, and the retained seal receipts say %s' % (digest, ', '.join(others))]
+    if files is not None and any(item['files'] is not None and item['files'] != files for item in receipts):
+        return ['the seal it carries does not list what the retained seal receipts list']
+    problems = _execution_seal_problems(run_dir, role, digest, expected)[0]
+    retained = file_sha256(run_dir / role / guest_runner.SEAL)
+    if retained is not None and retained != digest:
+        problems.append('it names seal %s, and the seal retained here is %s' % (digest, retained))
+    return problems
+
+
+def validation_guard_name(run_id, role, token, attempt):
+    return '%s--%s-%04d-%d.json' % (run_id, role, token, attempt)
+
+
+def validation_guard(session_id, manifest_sha256, run_id, role, token, opened_at):
+    """What a controller puts on disk, acknowledged, before it compares any transferred byte of a role. See ``RunExecutor._begin_validation``."""
+    return dict(schema=VALIDATION_GUARD_SCHEMA, session_id=session_id, manifest_sha256=manifest_sha256, run_id=run_id, role=role, fencing_token=token, opened_at=opened_at)
+
+
+def validation_guards(run_dir):
+    """Every guard of this run, by path. They sit beside ``runs/``: a guard inside the run directory would share the fate of the very writes it has to outlast."""
+    run_dir = pathlib.Path(run_dir)
+    return sorted((run_dir.parent.parent / VALIDATION_GUARD_DIR).glob(run_dir.name + '--*.json'))
+
+
+def _unresolved_validations(run_dir, facts, expected):
+    """Comparisons that began and that nothing says ended. The result could have been a failure whose record was lost, so this can never be read as a clean comparison, however good the bytes look now. A fact of the same role and no older is what such a comparison left, and has said all this could."""
+    found = []
+    for path in validation_guards(run_dir):
+        record, problem = mw.load_json(path)
+        problems = [problem] if problem else ['it is not a validation guard of schema %s' % VALIDATION_GUARD_SCHEMA] if not isinstance(record, dict) or record.get('schema') != VALIDATION_GUARD_SCHEMA else _identity_problems(record, expected)
+        role, token = (record.get('role'), record.get('fencing_token')) if isinstance(record, dict) else (None, None)
+        if not problems and any(fact.get('role') == role and isinstance(fact.get('fencing_token'), int) and isinstance(token, int) and fact['fencing_token'] >= token for fact in facts):
+            continue
+        name = '%s/%s' % (VALIDATION_GUARD_DIR, path.name)
+        found.append(dict(record=name, sha256=file_sha256(path), problems=problems or ['a comparison of what %s sealed began under token %s and nothing says it ended, so its result may be a failure whose record was lost' % (role, token)]))
+    return found
+
+
+def is_validation_guard(item):
+    """Whether an unverified record is an unresolved comparison, rather than a file that cannot be held to this run."""
+    return item['record'].startswith(VALIDATION_GUARD_DIR + '/')
+
+
 def _covered_by_a_fact(record, facts):
     """A fact that names these same bytes has already said all this observation can, so one failure stays one stop."""
     return any(fact.get('role') == record['role'] and any(item.get('path') == record['path'] and item.get('actual_sha256') == record['actual_sha256'] for item in fact.get('receipts') or ()) for fact in facts)
@@ -1413,6 +1556,39 @@ def execution_record_problems(record):
     return problems
 
 
+def _execution_claims(record):
+    """Every account of corrupt bytes an execution record gives: (receipts as (role, receipt), reasons), from its own export and from the words it carries."""
+    claims = []
+    exported = record.get('exported')
+    for role, view in exported.items() if isinstance(exported, dict) else ():
+        failed = view.get('failed') if isinstance(view, dict) else None
+        claims += [(role, item) for item in failed if isinstance(item, dict) and (item.get('kind') == 'corrupt' or 'expected_sha256' in item)] if isinstance(failed, list) else []
+    reasons = [text for key in ('problems', 'demonstrated_problems') for items in (record.get(key) or {}).values() for text in items]
+    demonstrated = record.get('demonstrated_outcome') or {}
+    return claims, reasons + list(demonstrated.get('reasons') or ())
+
+
+def supported_execution(run_dir, record, expected):
+    """(what can be stood on, problems) for a well-shaped execution record of this run, of any generation. An account of corrupt bytes that what is on record does not support leaves the record, in every list that carries it, so it can neither be promoted here nor carried into the next generation and lose the distinction there.
+
+    A reason of its own stays: that a record also tells an unsupported account says nothing of a host that rebooted, and that it tells of a host that rebooted says nothing for the account. A demonstrated outcome with nothing left to stand on goes with its account.
+    """
+    run_dir = pathlib.Path(run_dir)
+    claims, reasons = _execution_claims(record)
+    problems = _claim_problems(run_dir, claims, reasons, record.get('fencing_token'), _bound_to_dispatch(run_dir, expected))
+    if not problems:
+        return record, []
+
+    def kept(items):
+        return [text for text in items if not _tells_of_corrupt_bytes(text)]
+    clean = dict(record, problems={kind: kept(items) for kind, items in record['problems'].items()}, demonstrated_problems={kind: kept(items) for kind, items in (record.get('demonstrated_problems') or {}).items()})
+    demonstrated = record.get('demonstrated_outcome')
+    if demonstrated is not None:
+        own = kept(demonstrated.get('reasons') or ())
+        clean['demonstrated_outcome'] = dict(demonstrated, reasons=own) if own else None
+    return clean, problems
+
+
 def _execution_stops(path, record):
     """What a well-shaped execution record says stopped."""
     found = []
@@ -1426,13 +1602,12 @@ def _execution_stops(path, record):
 
 
 def _execution_retained(record):
-    """The corrupt bytes an execution record's own export names."""
-    exported = record.get('exported')
-    for view in exported.values() if isinstance(exported, dict) else ():
-        failed = view.get('failed') if isinstance(view, dict) else None
-        for item in failed if isinstance(failed, list) else ():
-            if isinstance(item, dict) and isinstance(item.get('retained_as'), str):
-                yield item['retained_as'], item.get('actual_sha256')
+    """The corrupt bytes an execution record names, in its own export or in the words it carries."""
+    claims, reasons = _execution_claims(record)
+    claims += [told for text in reasons if _tells_of_corrupt_bytes(text) for told in _receipts_told_in(text)]
+    for _, item in claims:
+        if isinstance(item.get('retained_as'), str):
+            yield item['retained_as'], item.get('actual_sha256')
 
 
 def stop_records(run_dir, expected):
@@ -1443,7 +1618,9 @@ def stop_records(run_dir, expected):
     decision stays what it was when it was made, so a fact found later is read from here and never from the decision.
 
     Corrupt bytes pass through a lifecycle (``RunExecutor._corrupt_receipt``), and a crash can leave any step of it. An observation with its bytes is a fact like a terminal fact. An observation short of its bytes, an interrupted write of any
-    stop record, and bytes nothing binds are unverified until someone looks at them. No later transfer that works can make any of them disappear.
+    stop record, bytes nothing binds and a comparison that began and never said how it ended are unverified until someone looks at them. No later transfer that works can make any of them disappear.
+
+    An account of corrupt bytes is held to the same older records in every form it takes, observation, terminal fact or execution record of any generation: what they contradict or do not support is unverified, and its record makes no fact of it. A stop reason that is no such account stands on its own.
 
     ``expected`` holds ``session_id``, ``manifest_sha256`` and ``run_id``, and may hold ``current_token``.
     """
@@ -1468,8 +1645,12 @@ def stop_records(run_dir, expected):
             if found and foreign:
                 unverified.append(dict(record=path.name, sha256=file_sha256(path), problems=foreign))
             elif not foreign:
-                facts += found
-                bound.update(_execution_retained(record))
+                supported, unsupported = supported_execution(run_dir, record, expected)
+                facts += _execution_stops(path, supported)
+                if unsupported:
+                    unverified.append(dict(record=path.name, sha256=file_sha256(path), problems=unsupported))
+                else:
+                    bound.update(_execution_retained(record))
         except READ_FAILURES as error:
             unread(path, error)
     for path in sorted(run_dir.glob(TERMINAL_FACT_GLOB)):
@@ -1505,6 +1686,10 @@ def stop_records(run_dir, expected):
         receipt = {key: record[key] for key in ('path', 'reason', 'expected_sha256', 'actual_sha256', 'retained_as')}
         facts.append(dict(record=path.name, sha256=file_sha256(path), outcome=search.INFRASTRUCTURE_FAILURE, details=['%s %s failed its hash: expected %s, found %s, kept at %s' % (record['role'], record['path'], record['expected_sha256'], record['actual_sha256'], record['retained_as'])],
                           role=record['role'], fencing_token=record['fencing_token'], receipts=[receipt]))
+    try:
+        unverified += _unresolved_validations(run_dir, facts, expected)
+    except READ_FAILURES as error:
+        unverified.append(dict(record=VALIDATION_GUARD_DIR, sha256=None, problems=['whether a comparison of this run was left unfinished could not be read: ' + type(error).__name__]))
     try:
         unverified += _interrupted_stop_writes(run_dir) + _unbound_corrupt_bytes(run_dir, bound)
     except READ_FAILURES as error:

@@ -65,7 +65,10 @@ class NamespaceLoss:
 
     def power_cut(self):
         rf.make_writable(self.session_dir)
-        self._prune(self.session_dir / 'runs') if self.held(self.session_dir / 'runs') else self._take(self.session_dir / 'runs')
+        for top in ('runs', cs.VALIDATION_GUARD_DIR):
+            path = self.session_dir / top
+            if path.exists():
+                self._prune(path) if self.held(path) else self._take(path)
         return self.lost
 
     def _prune(self, directory):
@@ -300,11 +303,11 @@ class FailureAtEachBoundary(Confirmation):
                     self.assertEqual(resumed['code'], life.TERMINAL, 'a process crash takes no names, and these are whole')
                     self.assertEqual(len(sim.guests.runner_steps('game', 'start')), 4)
 
-    def test_a_power_cut_right_after_it_forgets_only_what_was_reported_unfinished(self):
-        """Above the run directory the names were already durable from before the dispatch, so a sync that fails now costs nothing. Below it, the observation is durable and the bytes are not, which refuses. A failed sync of the run directory itself is the one case
-        that leaves nothing: its writer said so at the time, nothing was reported durable, and this is where durability stops being up to this code."""
+    def test_a_power_cut_right_after_it_leaves_something_that_refuses_at_every_boundary(self):
+        """Above the run directory the names were already durable from before the dispatch, so a sync that fails now costs nothing. Below it, the observation is durable and the bytes are not, which refuses. A failed sync of the run directory itself takes both,
+        and the guard from before the comparison is outside it and still says a comparison never finished: no sibling starts on a later look at good bytes."""
         for corrupt in life.CORRUPT:
-            for boundary, code, starts in (('session', life.TERMINAL, 4), ('runs', life.TERMINAL, 4), ('corrupt-evidence', life.UNVERIFIED, 4), ('role', life.UNVERIFIED, 4), ('run', None, 6)):
+            for boundary, code, starts in (('session', life.TERMINAL, 4), ('runs', life.TERMINAL, 4), ('corrupt-evidence', life.UNVERIFIED, 4), ('role', life.UNVERIFIED, 4), ('run', life.UNVERIFIED, 4)):
                 with self.subTest(corrupt=corrupt, boundary=boundary):
                     sim = self.sim_of(life.RULES)
                     watch = NamespaceLoss(sim.stack.root)

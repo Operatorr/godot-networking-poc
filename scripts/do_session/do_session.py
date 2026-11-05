@@ -65,6 +65,13 @@ def make_directory_durable(directory, root):
         current = current / part
 
 
+def make_name_durable(path, root):
+    """A file already there, and every name above it down from ``root``. Finding a name proves nothing: it may be all that a failed directory sync left, so it is committed again by whoever goes on to depend on it."""
+    path = pathlib.Path(path)
+    make_directory_durable(path.parent, root)
+    _fsync_directory(path.parent)
+
+
 def _top_of_filesystem(directory):
     """The highest ancestor of an absolute ``directory`` on its own filesystem that this account can open. A name above that is on another filesystem, or is one this account did not make."""
     top = directory

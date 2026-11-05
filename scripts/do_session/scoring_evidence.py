@@ -426,6 +426,133 @@ def _corrupt(name):
     return lambda sim: sim.guests.corrupt_export.add(name)
 
 
+def _ready_for_a_confirmation(case):
+    sim = sf.ScoredSim(case, sf.by_target({50: sf.slow, 30: sf.slow}))
+    case.addCleanup(rf.make_writable, sim.stack.root)
+    sim.ready()
+    return sim
+
+
+def _come_back(sim):
+    """A new controller with a transfer that works, and both things it could try."""
+    sim.guests.corrupt_export.clear()
+    executor, control = sim.controller(name='controller-c')
+    outcome = executor.resume('operator: resume remaining runs', control)
+    dispatched = executor.execute()
+    return dict(resumed=outcome['resumed'], resume_code=outcome.get('code'), dispatch_code=dispatched.code, terminal_failure=sim.status_now()['terminal_failure'])
+
+
+def _sync_of_the_run_directory_fails_then_its_new_names_are_lost(name):
+    """The first of three confirmations meets corrupt bytes. The real fsync of the run directory fails while they are written down, the controller dies, and only the two new names that sync did not cover are taken. Nothing older goes, and no power cut ran."""
+    def play(case):
+        sim = _ready_for_a_confirmation(case)
+
+        def failpoint(point):
+            if point == 'after_outcome_commit' and len(sim.records()) == 3:
+                sim.guests.corrupt_export.add(name)
+            if point == 'after_corrupt_bytes' and sim.guests.corrupt_export:
+                raise rf.SimulatedCrash()
+        executor = sim.executor(failpoint=failpoint)
+        real, real_sync = executor._corrupt_receipt, do_session._fsync_directory
+
+        def during(run_id, role, *arguments):
+            failing = os.path.realpath(str(sim.run_dir(run_id)))
+
+            def sync(directory):
+                if os.path.realpath(str(directory)) == failing:
+                    raise OSError('scripted: the sync of this directory fails')
+                real_sync(directory)
+            with mock.patch.object(do_session, '_fsync_directory', sync):
+                return real(run_id, role, *arguments)
+        executor._corrupt_receipt = during
+        try:
+            executor.execute()
+        except rf.SimulatedCrash:
+            pass
+        run_dir = sim.run_dir(sim.records()[-1]['run_id'])
+        rf.make_writable(run_dir)
+        for path in run_dir.glob(cs.CORRUPT_OBSERVATION_GLOB):
+            path.unlink()
+        shutil.rmtree(str(run_dir / cs.CORRUPT_EVIDENCE_DIR))
+        return sim, None, _come_back(sim)
+    return play
+
+
+def _no_guard_can_be_established(case):
+    """Corrupt bytes are on the way, and the directory of the guard that has to come first will not sync, so they are never compared."""
+    sim = _ready_for_a_confirmation(case)
+    sim.guests.corrupt_export.add('bot.stdout.log')
+    failing, real_sync = os.path.realpath(str(sim.stack.root / cs.VALIDATION_GUARD_DIR)), do_session._fsync_directory
+
+    def sync(directory):
+        if os.path.realpath(str(directory)) == failing:
+            raise OSError('scripted: the sync of this directory fails')
+        real_sync(directory)
+    with mock.patch.object(do_session, '_fsync_directory', sync):
+        result = sim.executor().run_batch()
+    return sim, result, dict(dispatch_code=result.code, terminal_failure=sim.status_now()['terminal_failure'], cleanup_requested=sim.status_now()['cleanup']['requested_at'] is not None)
+
+
+def _a_crash_inside_the_comparison(case):
+    sim = _ready_for_a_confirmation(case)
+    try:
+        sim.executor(failpoint=rf.crash_at('after_validation_guard')).execute()
+    except rf.SimulatedCrash:
+        pass
+    return sim, None, _come_back(sim)
+
+
+def _a_reply_names_another_seal(*changes):
+    """A committed run with a file to fetch back. The guest still holds the good seal, and only what its status reply says of it is wrong."""
+    def arrange(sim):
+        real = sim.guests.run
+
+        def run(role, argv, *arguments, **options):
+            answer = real(role, argv, *arguments, **options)
+            if role == 'bot' and len(argv) > 2 and argv[2] == 'status' and '--run-id' in argv:
+                document = json.loads(answer.stdout)
+                if document.get('sealed'):
+                    document.update(changes[0])
+                    return subprocess.CompletedProcess(argv, answer.returncode, json.dumps(document), answer.stderr)
+            return answer
+        sim.guests.run = run
+    return arrange
+
+
+def _an_account_nothing_older_supports(form):
+    """A good seal called corrupt under a digest the older seal receipt contradicts, told as a terminal fact or as a reconciled execution generation."""
+    def arrange(sim):
+        run_id = sim.records()[0]['run_id']
+        run_dir = sim.run_dir(run_id)
+        payload = (run_dir / 'bot' / 'seal.json').read_bytes()
+        actual = hashlib.sha256(payload).hexdigest()
+        retained = cs.corrupt_evidence_name('bot', 'seal.json', actual)
+        (run_dir / retained).parent.mkdir(parents=True, exist_ok=True)
+        (run_dir / retained).write_bytes(payload)
+        receipt = dict(path='seal.json', kind='corrupt', reason='hash mismatch', expected_sha256='e' * 64, actual_sha256=actual, retained_as=retained)
+        if form == 'terminal':
+            (run_dir / 'terminal-fact-0002-0.json').write_text(json.dumps(dict(schema=cs.TERMINAL_FACT_SCHEMA, session_id=sim.session_id, manifest_sha256=sim.sha, run_id=run_id, role='bot', outcome='INFRASTRUCTURE_FAILURE', details=['the seal failed its hash'], fencing_token=2, found_at='2026-10-30T00:00:00Z', receipts=[receipt]), indent=2, sort_keys=True) + '\n')
+        else:
+            record = json.loads((run_dir / 'execution.json').read_text())
+            record.update(writer='reconcile', fencing_token=2, demonstrated_outcome=dict(outcome='INFRASTRUCTURE_FAILURE', reasons=['the seal failed its hash']), exported=dict(bot=dict(complete=False, failed=[receipt])))
+            (run_dir / 'execution-reconciled-0002-1.json').write_text(json.dumps(record, indent=2, sort_keys=True) + '\n')
+    return arrange
+
+
+def _a_score_with_a_number_too_large_for_a_float(case):
+    sim = _ready_for_a_confirmation(case)
+    try:
+        sim.executor(failpoint=rf.crash_at('after_score_retained')).execute()
+    except rf.SimulatedCrash:
+        pass
+    path = sim.run_dir(sim.records()[0]['run_id']) / cs.SCORE_FILE
+    document = json.loads(path.read_text())
+    document['gates']['rtt_p95']['rank'] = 10 ** 400
+    path.chmod(0o644)
+    path.write_text(cs.canonical(cs.seal(document)))
+    return sim, None, _come_back(sim)
+
+
 def _foreign_terminal_fact(sim):
     run_id = sim.records()[0]['run_id']
     sim.guests.corrupt_export.clear()
@@ -717,6 +844,17 @@ SEARCHES = (
     ('malformed_terminal_fact_refuses_resume_with_nothing_final_said', _committed_then_returned(_malformed_file('terminal-fact-0002-0.json', MALFORMED_FACT), dispatch=True)),
     ('malformed_execution_record_refuses_resume_with_nothing_final_said', _committed_then_returned(_malformed_file('execution-reconciled-0002-9.json', MALFORMED_EXECUTION), dispatch=True)),
     ('malformed_terminal_fact_stops_a_running_dispatch_with_nothing_final_said', _malformed_at_a_running_dispatch),
+    ('a_number_too_large_for_a_float_in_a_retained_score_refuses_and_renders', _a_score_with_a_number_too_large_for_a_float),
+    # a comparison cannot be forgotten: a guard is acknowledged before any transferred byte is judged, outside the directory whose sync can fail
+    ('corrupt_seal_with_a_failed_sync_and_its_new_names_lost_starts_no_sibling', _sync_of_the_run_directory_fails_then_its_new_names_are_lost('seal.json')),
+    ('corrupt_file_with_a_failed_sync_and_its_new_names_lost_starts_no_sibling', _sync_of_the_run_directory_fails_then_its_new_names_are_lost('bot.stdout.log')),
+    ('no_guard_means_nothing_is_compared_and_cleanup_still_goes_out', _no_guard_can_be_established),
+    ('a_crash_inside_a_comparison_decides_nothing_from_a_later_look', _a_crash_inside_the_comparison),
+    # an account of corrupt bytes is held to what is older, in every form it takes and before anything permanent comes of it
+    ('a_status_reply_naming_another_seal_says_nothing_and_stops_nothing', _committed_then_returned(_a_reply_names_another_seal(dict(seal_sha256='e' * 64)))),
+    ('a_status_reply_of_another_session_says_nothing_and_stops_nothing', _committed_then_returned(_a_reply_names_another_seal(dict(seal_sha256='e' * 64, session_id='another-session')))),
+    ('unsupported_terminal_fact_refuses_with_nothing_final_said', _committed_then_returned(_an_account_nothing_older_supports('terminal'), dispatch=True)),
+    ('unsupported_execution_generation_refuses_with_nothing_final_said', _committed_then_returned(_an_account_nothing_older_supports('execution'), dispatch=True)),
 )
 
 

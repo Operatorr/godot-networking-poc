@@ -244,8 +244,8 @@ class CrashesAlongTheLifecycle(Fixture):
                 self.assertRefusedTerminal(sim, resumed, dispatched)
                 self.assertNoSuccessor(sim)
 
-    def test_a_crash_with_nothing_yet_written_leaves_nothing_to_replay(self):
-        """The limit of all this, stated: only memory knew, for as long as it took to write the first file. A later controller over good bytes has no way to know."""
+    def test_a_crash_with_nothing_yet_written_still_leaves_the_comparison_on_record(self):
+        """Only memory knew what was found, for as long as it took to write the first file. The guard over the comparison is older than that, so a later controller over good bytes knows a comparison never finished, though not what it found."""
         for corrupt in CORRUPT:
             with self.subTest(corrupt):
                 sim, run_dir, _ = self.returning(corrupt)
@@ -253,9 +253,13 @@ class CrashesAlongTheLifecycle(Fixture):
                 with mock.patch.object(cs, 'corrupt_observation', side_effect=rf.SimulatedCrash('before anything was written')), self.assertRaises(rf.SimulatedCrash):
                     executor.resume('operator', control)
                 self.assertEqual(list(run_dir.glob('corrupt-observation-*')), [])
-                sim.guests.corrupt_export.clear()
-                executor, control = sim.controller(name='controller-later')
-                self.assertTrue(executor.resume('operator', control)['resumed'])
+                _, resumed, dispatched = self.later_controller(sim)
+                self.assertRefusedUnverified(sim, resumed, dispatched)
+                self.assertNoSuccessor(sim)
+                for path in cs.validation_guards(run_dir):
+                    path.unlink()
+                executor, control = sim.controller(name='after-operator-removal')
+                self.assertTrue(executor.resume('operator', control)['resumed'], 'an operator who has looked can let it go')
 
 
 class AnUncommittedRun(Fixture):
@@ -356,16 +360,16 @@ class FailuresInsideTheWriter(Fixture):
                 self.assertNoSuccessor(sim)
 
     def test_a_disk_that_refused_every_file_is_only_as_good_as_memory_and_the_registry(self):
-        """The other limit. No file reached the disk at all, so this controller's refusal and the registry's answer are all there ever was."""
+        """No file of what was found reached the disk at all, so this controller's refusal and the registry's answer are all that say what it was. The guard from before the comparison says only that it never finished, and that is enough to refuse on."""
         for corrupt in CORRUPT:
             with self.subTest(corrupt):
                 sim, run_dir, _ = self.returning(corrupt)
                 self.first_controller_refuses(sim, self.OPEN, lambda path: is_observation(path) or is_kept_bytes(path) or is_fact(path))
                 self.assertEqual([path.name for path in run_dir.glob('*') if is_observation(path) or is_fact(path)], [])
                 self.assertFalse(any(path.is_file() for path in (run_dir / cs.CORRUPT_EVIDENCE_DIR).rglob('*')))
-                sim.guests.corrupt_export.clear()
-                executor, control = sim.controller(name='controller-later')
-                self.assertTrue(executor.resume('operator', control)['resumed'], 'nothing durable says otherwise')
+                _, resumed, dispatched = self.later_controller(sim)
+                self.assertRefusedUnverified(sim, resumed, dispatched)
+                self.assertNoSuccessor(sim)
 
     def test_cleanup_goes_ahead_whatever_the_writer_and_the_registry_do(self):
         for corrupt in CORRUPT:
@@ -519,7 +523,7 @@ class WholeWritesAreNotInterruptedWrites(Fixture):
         name = cs.corrupt_evidence_name('bot', 'bot.stdout.log', BAD_DIGEST)
         (run_dir / name).parent.mkdir(parents=True)
         (run_dir / name).write_bytes(BAD_BYTES)
-        receipt = dict(path='bot.stdout.log', kind='corrupt', reason='hash mismatch', expected_sha256='a' * 64, actual_sha256=BAD_DIGEST, retained_as=name)
+        receipt = dict(path='bot.stdout.log', kind='corrupt', reason='hash mismatch', expected_sha256=sealed_digest(run_dir), actual_sha256=BAD_DIGEST, retained_as=name)
         fact = integrity._terminal_fact_file(sim, run_id, 2, receipts=[receipt])
         facts, unverified = self.facts_of(sim, run_id)
         self.assertEqual(([item['record'] for item in facts], unverified), ([fact.name], []))

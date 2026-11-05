@@ -137,7 +137,7 @@ def audit(session_dir, manifest, sha, record):
     facts, unverified = capacity_scorer.stop_records(run_dir, expected)
     if record.outcome not in search.STOPPING:
         problems += ['the journal says %s, and %s records a stop fact: %s' % (record.outcome or 'nothing yet', fact['record'], '; '.join(str(item) for item in fact['details'])) for fact in facts]
-    problems += ['%s says a run stopped, and cannot be held to this run: %s' % (item['record'], '; '.join(item['problems'])) for item in unverified]
+    problems += [('%s is unresolved: %s' if capacity_scorer.is_validation_guard(item) else '%s says a run stopped, and cannot be held to this run: %s') % (item['record'], '; '.join(item['problems'])) for item in unverified]
     reference = capacity_scorer.parse_reference(record.evidence_ref)
     verdict = None
     if record.outcome is not None:
