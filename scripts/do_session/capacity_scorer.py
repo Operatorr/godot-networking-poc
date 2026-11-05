@@ -40,6 +40,7 @@ import math
 import pathlib
 import re
 
+import do_session
 import guest_runner
 import measurement_window as mw
 import search
@@ -51,6 +52,11 @@ SCORE_FILE = 'score.json'
 TERMINAL_FACT_SCHEMA = 'omega.do-session.run-terminal-fact/1'
 TERMINAL_FACT_GLOB = 'terminal-fact-*.json'
 TERMINAL_FACT_NAME = re.compile(r'terminal-fact-(\d{4,})-\d+\.json')
+CORRUPT_OBSERVATION_SCHEMA = 'omega.do-session.corrupt-observation/1'
+CORRUPT_OBSERVATION_GLOB = 'corrupt-observation-*.json'
+CORRUPT_EVIDENCE_DIR = 'corrupt-evidence'
+STOP_RECORD_WRITES = (TERMINAL_FACT_GLOB + do_session.WRITING + '*', CORRUPT_OBSERVATION_GLOB + do_session.WRITING + '*')
+READ_FAILURES = (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError, RecursionError)     # whatever a file in a run directory turns out to hold, a reader answers
 GATE_NAMES = ('continuity', 'bot_errors', 'tick_budget', 'game_socket_drops', 'rtt_p95', 'enet_loss')
 PASS, FAIL, UNKNOWN = 'pass', 'fail', 'unknown'
 VALID, INVALID, NOT_PROVEN = 'valid', 'invalid', 'not_proven'
@@ -593,9 +599,11 @@ def _generator_reasons(proof):
 def execution_identities(execution):
     """Every process the supervisors named for this run, as the sealed record has them."""
     found = {}
-    for role, view in ((execution or {}).get('roles') or {}).items():
-        processes = ((view or {}).get('identity') or {}).get('processes') or {}
-        found[role] = {name: {key: (item or {}).get(key) for key in ('pid', 'start_id', 'boot_id')} for name, item in sorted(processes.items())}
+    roles = execution.get('roles') if isinstance(execution, dict) else None
+    for role, view in (roles.items() if isinstance(roles, dict) else ()):
+        identity = view.get('identity') if isinstance(view, dict) else None
+        processes = identity.get('processes') if isinstance(identity, dict) else None
+        found[role] = {name: {key: item.get(key) if isinstance(item, dict) else None for key in ('pid', 'start_id', 'boot_id')} for name, item in sorted(processes.items())} if isinstance(processes, dict) else {}
     return found
 
 
@@ -982,7 +990,7 @@ def _result_problems(document):
     """Whether this document's own result can be what it says. No decision is recomputed here: each classification simply needs the facts it stands on to be in the document."""
     problems = []
     classification, gates, validity = document.get('classification'), document.get('gates'), document.get('validity')
-    if classification not in OUTCOME_OF:
+    if not isinstance(classification, str) or classification not in OUTCOME_OF:
         return ['it has the classification %r' % (classification,)]
     if document.get('outcome') != OUTCOME_OF[classification]:
         problems.append('its outcome %r is not what %s means' % (document.get('outcome'), classification))
@@ -1032,7 +1040,7 @@ def _binding_problems(document, expected):
         problems.append('its window proof %r is not the retained one' % (inputs.get('window_proof_sha256'),))
     elif proof.get('run_id') != expected['run_id'] or inputs.get('proof_status') != proof.get('status') or inputs.get('proof_reasons') != _codes(proof):
         problems.append('what it says of the proof disagrees with the retained proof')
-    execution = expected['executions'].get(inputs.get('execution_sha256'))
+    execution = expected['executions'].get(inputs['execution_sha256']) if isinstance(inputs.get('execution_sha256'), str) else None
     if execution is None:
         problems.append('its execution record %r is not one retained for this run' % (inputs.get('execution_sha256'),))
     else:
@@ -1049,36 +1057,59 @@ def is_digest(value):
     return isinstance(value, str) and re.fullmatch('[0-9a-f]{64}', value) is not None
 
 
+def _fence_problems(token, expected):
+    """A controller older than this run's dispatch knows nothing about it, and one newer than this session's fence does not exist."""
+    if isinstance(token, bool) or not isinstance(token, int) or token < 1:
+        return ['its fencing token is %r' % (token,)]
+    problems = []
+    if expected.get('dispatch_token') is not None and token < expected['dispatch_token']:
+        problems.append('its fencing token %d is older than the token %d this run was dispatched under' % (token, expected['dispatch_token']))
+    if expected.get('current_token') is not None and token > expected['current_token']:
+        problems.append('its fencing token %d is newer than this session\'s %d' % (token, expected['current_token']))
+    return problems
+
+
+def _identity_problems(record, expected):
+    return ['its %s is %r, and this run\'s is %r' % (key, record.get(key), expected[key]) for key in ('session_id', 'manifest_sha256', 'run_id') if record.get(key) != expected[key]]
+
+
 def _terminal_fact_problems(path, record, expected):
     """Why a terminal-fact file cannot be this run's own. It is only ever believed for this session, this manifest, this run and a role of it, with the shape its writer gives it."""
     if not isinstance(record, dict) or record.get('schema') != TERMINAL_FACT_SCHEMA:
         return ['it is not a terminal fact of schema %s' % TERMINAL_FACT_SCHEMA]
-    problems = []
-    for key in ('session_id', 'manifest_sha256', 'run_id'):
-        if record.get(key) != expected[key]:
-            problems.append('its %s is %r, and this run\'s is %r' % (key, record.get(key), expected[key]))
+    problems = _identity_problems(record, expected)
     if record.get('role') not in ('game', 'bot'):
         problems.append('it names role %r' % (record.get('role'),))
-    if record.get('outcome') not in search.STOPPING:
+    if not _stops(record.get('outcome')):
         problems.append('it names outcome %r, which stops nothing' % (record.get('outcome'),))
-    details = record.get('details')
-    if not isinstance(details, list) or not details or not all(isinstance(item, str) and item.strip() for item in details):
+    if not _all_reasons(record.get('details')):
         problems.append('it states no reason')
     if not isinstance(record.get('found_at'), str) or not record['found_at'].strip():
         problems.append('it does not say when it was found')
     token = record.get('fencing_token')
-    named = TERMINAL_FACT_NAME.fullmatch(path.name)
-    if isinstance(token, bool) or not isinstance(token, int) or token < 1:
-        problems.append('its fencing token is %r' % (token,))
-    else:
+    problems += _fence_problems(token, expected)
+    if isinstance(token, int) and not isinstance(token, bool) and token >= 1:
+        named = TERMINAL_FACT_NAME.fullmatch(path.name)
         if named is None or int(named.group(1)) != token:
             problems.append('its name %s does not carry its fencing token %d' % (path.name, token))
-        if expected.get('dispatch_token') is not None and token < expected['dispatch_token']:
-            problems.append('its fencing token %d is older than the token %d this run was dispatched under' % (token, expected['dispatch_token']))
-        if expected.get('current_token') is not None and token > expected['current_token']:
-            problems.append('its fencing token %d is newer than this session\'s %d' % (token, expected['current_token']))
     problems += _receipt_problems(path.parent, record.get('receipts'))
     return problems
+
+
+def _stops(outcome):
+    return isinstance(outcome, str) and outcome in search.STOPPING
+
+
+def _all_reasons(items):
+    return isinstance(items, list) and bool(items) and all(isinstance(item, str) and item.strip() for item in items)
+
+
+def _safe_inside(name):
+    """A relative path that stays where it is put. The bytes behind it are for a run directory to answer, not for a reader to go looking for elsewhere."""
+    if not isinstance(name, str) or not name or '\0' in name:
+        return False
+    pure = pathlib.PurePosixPath(name)
+    return not pure.is_absolute() and '..' not in pure.parts
 
 
 def _receipt_problems(run_dir, receipts):
@@ -1096,48 +1127,216 @@ def _receipt_problems(run_dir, receipts):
         retained = item.get('retained_as')
         if retained is None:
             continue
-        target = run_dir / retained if isinstance(retained, str) else None
-        if target is None or pathlib.PurePosixPath(retained).is_absolute() or '..' in pathlib.PurePosixPath(retained).parts or file_sha256(target) != actual_digest:
+        if not _safe_inside(retained) or file_sha256(run_dir / retained) != actual_digest:
             problems.append('the bytes its receipt names at %r are not the bytes it hashed' % (retained,))
     return problems
 
 
-def stop_records(run_dir, expected):
-    """(facts, unverified) over this run's retained stop records, of every generation of controllers, whichever decision they sit beside. Pure over retained files.
+def corrupt_evidence_name(role, relative, actual):
+    """Where a file that failed its hash is kept: a name no transfer writes to, keyed by what was found, so a repeated sweep over the same bytes keeps one copy."""
+    return '%s/%s/%s.%s' % (CORRUPT_EVIDENCE_DIR, role, relative.replace('/', '__'), actual)
 
-    ``facts`` are this run's own and can stop a session for good. ``unverified`` are files that say a run stopped and cannot be held to this session, manifest, run or shape: they prove nothing about this session, and neither does anything
-    else in them, so nothing irreversible may be done on their word and no claim can stand beside them. What a host only failed to answer is kept under ``uncertain`` and is neither. An immutable decision stays what it was when it was made,
-    so a fact found later is read from here and never from the decision.
+
+def corrupt_observation_name(token, role, relative, actual):
+    key = hashlib.sha256('\0'.join((role, relative, actual)).encode('utf-8')).hexdigest()[:16]
+    return 'corrupt-observation-%04d-%s.json' % (token, key)
+
+
+def corrupt_observation(session_id, manifest_sha256, run_id, role, relative, expected_digest, actual, token, found_at):
+    """What a controller writes down the moment bytes fail their hash, before it keeps them and before any fact or registry word. See ``_corrupt_receipt``."""
+    return dict(schema=CORRUPT_OBSERVATION_SCHEMA, session_id=session_id, manifest_sha256=manifest_sha256, run_id=run_id, role=role, path=relative, reason='hash mismatch', expected_sha256=expected_digest, actual_sha256=actual,
+                retained_as=corrupt_evidence_name(role, relative, actual), fencing_token=token, found_at=found_at)
+
+
+def _observation_problems(path, record, expected):
+    """Why a corrupt observation cannot be this run's own. The same safeguards as a terminal fact, and its name, its retained name and the expected hash must follow from what it says."""
+    if not isinstance(record, dict) or record.get('schema') != CORRUPT_OBSERVATION_SCHEMA:
+        return ['it is not a corrupt observation of schema %s' % CORRUPT_OBSERVATION_SCHEMA]
+    problems = _identity_problems(record, expected)
+    role, relative, expected_digest, actual, token = record.get('role'), record.get('path'), record.get('expected_sha256'), record.get('actual_sha256'), record.get('fencing_token')
+    if role not in ('game', 'bot'):
+        problems.append('it names role %r' % (role,))
+    if not _safe_inside(relative):
+        problems.append('it names path %r' % (relative,))
+    if not is_digest(expected_digest) or not is_digest(actual) or expected_digest == actual:
+        problems.append('it does not hold two different hashes')
+    if not isinstance(record.get('found_at'), str) or not record['found_at'].strip():
+        problems.append('it does not say when it was found')
+    fence = _fence_problems(token, expected)
+    problems += fence
+    if problems:
+        return problems
+    if path.name != corrupt_observation_name(token, role, relative, actual):
+        problems.append('its name %s does not follow from what it says' % path.name)
+    if record.get('retained_as') != corrupt_evidence_name(role, relative, actual):
+        problems.append('it names bytes at %r, which is not where they are kept' % (record.get('retained_as'),))
+    return problems + _sealed_digest_problems(path.parent, role, relative, expected_digest)
+
+
+def _sealed_digest_problems(run_dir, role, relative, expected_digest):
+    """What it says should have arrived is what this role's seal says, when an intact seal is here to ask."""
+    seal, problem = mw.load_json(run_dir / role / guest_runner.SEAL)
+    files = None if problem else seal.get('files')
+    for item in files if isinstance(files, list) else ():
+        if isinstance(item, dict) and item.get('path') == relative and item.get('sha256') != expected_digest:
+            return ['it expected %s of %s, and the retained seal says %r' % (expected_digest, relative, item.get('sha256'))]
+    return []
+
+
+def _covered_by_a_fact(record, facts):
+    """A fact that names these same bytes has already said all this observation can, so one failure stays one stop."""
+    return any(fact.get('role') == record['role'] and any(item.get('path') == record['path'] and item.get('actual_sha256') == record['actual_sha256'] for item in fact.get('receipts') or ()) for fact in facts)
+
+
+def _stop_list_problems(name, value):
+    if value is None:
+        return []
+    if not isinstance(value, dict) or not all(isinstance(items, list) and all(isinstance(item, str) for item in items) for items in value.values()):
+        return ['its %s are of no known shape' % name]
+    return []
+
+
+def execution_record_problems(record):
+    """Whether an execution record has the shape its writer gives it, so that what it says of a stop can be read at all. Says nothing of whose it is."""
+    if not isinstance(record, dict):
+        return ['it is not a JSON object']
+    if not isinstance(record.get('problems'), dict):
+        return ['it holds no problems']
+    problems = _stop_list_problems('problems', record['problems']) + _stop_list_problems('demonstrated problems', record.get('demonstrated_problems'))
+    demonstrated = record.get('demonstrated_outcome')
+    if demonstrated is not None:
+        if not isinstance(demonstrated, dict) or not _stops(demonstrated.get('outcome')):     # its writer only ever demonstrates a stop, and a return would commit this as it stands
+            problems.append('its demonstrated outcome is of no known shape')
+        elif not (demonstrated.get('reasons') is None or (isinstance(demonstrated['reasons'], list) and all(isinstance(item, str) for item in demonstrated['reasons']))):
+            problems.append('the reasons for its demonstrated outcome are of no known shape')
+    if not isinstance(record.get('interrupted'), (str, type(None))):
+        problems.append('what it says interrupted it is of no known shape')
+    return problems
+
+
+def _execution_stops(path, record):
+    """What a well-shaped execution record says stopped."""
+    found = []
+    demonstrated = record.get('demonstrated_outcome') or {}
+    if _stops(demonstrated.get('outcome')):
+        found.append(dict(record=path.name, sha256=file_sha256(path), outcome=demonstrated['outcome'], details=list(demonstrated.get('reasons') or ())))
+    details = (record.get('demonstrated_problems') or {}).get('infrastructure')
+    if details:
+        found.append(dict(record=path.name, sha256=file_sha256(path), outcome=search.INFRASTRUCTURE_FAILURE, details=list(details)))
+    return found
+
+
+def _execution_retained(record):
+    """The corrupt bytes an execution record's own export names."""
+    exported = record.get('exported')
+    for view in exported.values() if isinstance(exported, dict) else ():
+        failed = view.get('failed') if isinstance(view, dict) else None
+        for item in failed if isinstance(failed, list) else ():
+            if isinstance(item, dict) and isinstance(item.get('retained_as'), str):
+                yield item['retained_as'], item.get('actual_sha256')
+
+
+def stop_records(run_dir, expected):
+    """(facts, unverified) over this run's retained stop records, of every generation of controllers, whichever decision they sit beside. Pure over retained files, and total over whatever those files hold.
+
+    ``facts`` are this run's own and can stop a session for good. ``unverified`` are files that say, or may be all that is left to say, that a run stopped, and that cannot be held to this session, manifest, run or shape: they prove nothing
+    about this session, and neither does anything else in them, so nothing irreversible may be done on their word and no claim can stand beside them. What a host only failed to answer is kept under ``uncertain`` and is neither. An immutable
+    decision stays what it was when it was made, so a fact found later is read from here and never from the decision.
+
+    Corrupt bytes pass through a lifecycle (``RunExecutor._corrupt_receipt``), and a crash can leave any step of it. An observation with its bytes is a fact like a terminal fact. An observation short of its bytes, an interrupted write of any
+    stop record, and bytes nothing binds are unverified until someone looks at them. No later transfer that works can make any of them disappear.
 
     ``expected`` holds ``session_id``, ``manifest_sha256`` and ``run_id``, and may hold ``current_token``.
     """
     run_dir = pathlib.Path(run_dir)
     expected = dict(expected, dispatch_token=_dispatch_token(run_dir))
-    facts, unverified = [], []
+    facts, unverified, bound = [], [], {}
+
+    def unread(path, error):
+        unverified.append(dict(record=path.name, sha256=file_sha256(path), problems=['it could not be read: ' + type(error).__name__]))
+
     for path in sorted(run_dir.glob('execution*.json'), key=lambda item: (item.name != 'execution.json', item.name)):
-        record, problem = mw.load_json(path)
-        if problem or not isinstance(record, dict):
-            continue
-        demonstrated = record.get('demonstrated_outcome') if isinstance(record.get('demonstrated_outcome'), dict) else None
-        details = list((record.get('demonstrated_problems') or {}).get('infrastructure') or ()) if isinstance(record.get('demonstrated_problems'), dict) else []
-        found = []
-        if demonstrated is not None and demonstrated.get('outcome') in search.STOPPING:
-            found.append(dict(record=path.name, sha256=file_sha256(path), outcome=demonstrated['outcome'], details=list(demonstrated.get('reasons') or ())))
-        if details:
-            found.append(dict(record=path.name, sha256=file_sha256(path), outcome=search.INFRASTRUCTURE_FAILURE, details=details))
-        foreign = ['its %s is %r, and this run\'s is %r' % (key, record.get(key), expected[key]) for key in ('session_id', 'manifest_sha256', 'run_id') if record.get(key) != expected[key]]
-        if found and foreign:
-            unverified.append(dict(record=path.name, sha256=file_sha256(path), problems=foreign))
-        else:
-            facts += found
+        try:
+            record, problem = mw.load_json(path)
+            shape = [problem] if problem else execution_record_problems(record)
+            if shape:
+                unverified.append(dict(record=path.name, sha256=file_sha256(path), problems=shape))
+                continue
+            foreign = _identity_problems(record, expected)
+            found = _execution_stops(path, record)
+            if found and foreign:
+                unverified.append(dict(record=path.name, sha256=file_sha256(path), problems=foreign))
+            elif not foreign:
+                facts += found
+                bound.update(_execution_retained(record))
+        except READ_FAILURES as error:
+            unread(path, error)
     for path in sorted(run_dir.glob(TERMINAL_FACT_GLOB)):
-        record, problem = mw.load_json(path)
-        problems = [problem] if problem else _terminal_fact_problems(path, record, expected)
-        if problems:
-            unverified.append(dict(record=path.name, sha256=file_sha256(path), problems=problems))
-        else:
-            facts.append(dict(record=path.name, sha256=file_sha256(path), outcome=record['outcome'], details=list(record['details']), role=record['role'], fencing_token=record['fencing_token'], **({'receipts': record['receipts']} if record.get('receipts') else {})))
+        try:
+            record, problem = mw.load_json(path)
+            problems = [problem] if problem else _terminal_fact_problems(path, record, expected)
+            if problems:
+                unverified.append(dict(record=path.name, sha256=file_sha256(path), problems=problems))
+            else:
+                facts.append(dict(record=path.name, sha256=file_sha256(path), outcome=record['outcome'], details=list(record['details']), role=record['role'], fencing_token=record['fencing_token'], **({'receipts': record['receipts']} if record.get('receipts') else {})))
+                bound.update((item['retained_as'], item['actual_sha256']) for item in record.get('receipts') or () if item.get('retained_as') is not None)
+        except READ_FAILURES as error:
+            unread(path, error)
+    observed = []
+    for path in sorted(run_dir.glob(CORRUPT_OBSERVATION_GLOB)):
+        try:
+            record, problem = mw.load_json(path)
+            problems = [problem] if problem else _observation_problems(path, record, expected)
+            if problems:
+                unverified.append(dict(record=path.name, sha256=file_sha256(path), problems=problems))
+            else:
+                observed.append((path, record))
+                bound[record['retained_as']] = record['actual_sha256']
+        except READ_FAILURES as error:
+            unread(path, error)
+    known = list(facts)
+    for path, record in observed:
+        if _covered_by_a_fact(record, known):
+            continue
+        if file_sha256(run_dir / record['retained_as']) != record['actual_sha256']:
+            unverified.append(dict(record=path.name, sha256=file_sha256(path), problems=['it says %s of %s failed its hash, and the bytes it names at %s are not here: a crash or a full disk may have left it so' % (record['role'], record['path'], record['retained_as'])]))
+            continue
+        receipt = {key: record[key] for key in ('path', 'reason', 'expected_sha256', 'actual_sha256', 'retained_as')}
+        facts.append(dict(record=path.name, sha256=file_sha256(path), outcome=search.INFRASTRUCTURE_FAILURE, details=['%s %s failed its hash: expected %s, found %s, kept at %s' % (record['role'], record['path'], record['expected_sha256'], record['actual_sha256'], record['retained_as'])],
+                          role=record['role'], fencing_token=record['fencing_token'], receipts=[receipt]))
+    try:
+        unverified += _interrupted_stop_writes(run_dir) + _unbound_corrupt_bytes(run_dir, bound)
+    except READ_FAILURES as error:
+        unverified.append(dict(record=CORRUPT_EVIDENCE_DIR, sha256=None, problems=['what a crash may have left here could not be read: ' + type(error).__name__]))
     return facts, unverified
+
+
+def _interrupted_stop_writes(run_dir):
+    """A write of a stop record that never finished may be all that is left of what it was going to say. Beside a whole copy under its final name, it is only a temporary file a crash did not get to remove."""
+    found = []
+    for pattern in STOP_RECORD_WRITES:
+        for path in sorted(run_dir.glob(pattern)):
+            digest = file_sha256(path)
+            if digest is None or digest != file_sha256(path.with_name(path.name.split(do_session.WRITING)[0])):
+                found.append(dict(record=path.name, sha256=digest, problems=['it is an interrupted write of a stop record, and may be all that is left of what that record was going to say']))
+    return found
+
+
+def _unbound_corrupt_bytes(run_dir, bound):
+    """Bytes kept apart as corrupt that no record of this run accounts for. Their name is not evidence of anything, so they make nobody's fact, and a claim still cannot stand beside them."""
+    found = []
+    root = run_dir / CORRUPT_EVIDENCE_DIR
+    for path in sorted(root.rglob('*')):
+        with contextlib.suppress(OSError):
+            if path.is_dir():
+                continue
+        name = path.relative_to(run_dir).as_posix()
+        digest = file_sha256(path)
+        final = name.split(do_session.WRITING)[0]
+        if digest is not None and final in bound and digest == bound[final]:
+            continue
+        found.append(dict(record=name, sha256=digest, problems=['it is kept as corrupt bytes, and no record of this run accounts for it: a crash or a full disk may have left it so']))
+    return found
 
 
 def _dispatch_token(run_dir):
@@ -1174,6 +1373,8 @@ def classification_problems(document, expected, require_score=True):
     verdict = document.get('verdict')
     if not isinstance(verdict, dict) or verdict.get('outcome') not in search.OUTCOMES:
         return ['it holds no verdict with a known outcome']
+    if not isinstance(verdict.get('reasons'), (list, type(None))) or not isinstance(verdict.get('supersedes'), (list, type(None))) or not all(isinstance(item, dict) and isinstance(item.get('file'), str) and isinstance(item.get('sha256'), str) for item in verdict.get('supersedes') or ()):
+        return ['its verdict has reasons of no known shape']
     if not require_score:
         return []
     reference = parse_reference(verdict.get('evidence_ref'))

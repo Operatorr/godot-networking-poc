@@ -80,7 +80,7 @@ class RetainedEvidence(unittest.TestCase):
                              'corrupt_bytes_survive_a_second_crash_and_a_restored_transfer_after_a_retained_classification', 'corrupt_bytes_in_a_confirmation_keep_its_siblings_untouched'}
         found_after_the_commit = {'corrupt_bytes_found_after_the_commit_stop_the_session_and_keep_the_outcome', 'corrupt_bytes_found_by_recovery_at_wrap_up_withhold_the_claim', 'corrupt_seal_after_the_commit_refuses_resume', 'corrupt_seal_with_a_crash_after_the_fact_and_a_restored_transfer_refuses_resume'}
         refused_with_nothing_final_said = {'stop_request_failing_refuses_resume_and_dispatch', 'foreign_terminal_fact_refuses_resume_with_nothing_final_said'}     # the registry never heard, or must not: test_the_new_stop_paths_are_retained_with_no_successor
-        self.assertEqual({name for name, row in searches.items() if not row['evidence']['verified']}, disputed | stopped_by_a_fact | found_after_the_commit | refused_with_nothing_final_said)
+        self.assertEqual({name for name, row in searches.items() if not row['evidence']['verified']}, disputed | stopped_by_a_fact | found_after_the_commit | refused_with_nothing_final_said | set(self.LIFECYCLE_SCENARIOS) - set(self.IN_FLIGHT_FAILURES) | {'malformed_terminal_fact_stops_a_running_dispatch_with_nothing_final_said'})
         for name in stopped_by_a_fact:
             row = searches[name]
             self.assertEqual((row['status'], row['terminal_failure'], row['resumed'], row['resume_code']), ('stopped_infrastructure_failure', 'INFRASTRUCTURE_FAILURE', False, 'terminal_failure'), name)
@@ -110,6 +110,39 @@ class RetainedEvidence(unittest.TestCase):
             self.assertEqual((scores['game_oom_' + name]['classification'], scores['game_oom_' + name]['game_exit']['kind']), (cs.INCONCLUSIVE, 'killed_with_no_cause_on_record'), name)
         for name, _ in sf.OOM_STILL_THE_GAMES:
             self.assertEqual((scores['game_oom_' + name]['classification'], scores['game_oom_' + name]['game_exit']['kind']), (cs.CAPACITY_FAILURE, 'out_of_memory'), name)
+
+    IN_FLIGHT_FAILURES = ('corrupt_seal_in_flight_with_a_crash_before_any_outcome_takes_the_failure', 'corrupt_file_in_flight_with_a_crash_before_any_outcome_takes_the_failure')
+    LIFECYCLE_SCENARIOS = {'corrupt_seal_with_a_crash_before_its_bytes_refuses_as_unverified': ('stop_record_unverified', None),
+                           'corrupt_file_with_a_crash_before_its_bytes_refuses_as_unverified': ('stop_record_unverified', None),
+                           'corrupt_seal_with_a_crash_before_its_fact_stops_the_session': ('terminal_failure', 'INFRASTRUCTURE_FAILURE'),
+                           'corrupt_file_with_a_crash_before_its_fact_stops_the_session': ('terminal_failure', 'INFRASTRUCTURE_FAILURE'),
+                           'corrupt_seal_whose_fact_failed_its_fsync_stops_the_session_on_the_next_return': ('terminal_failure', 'INFRASTRUCTURE_FAILURE'),
+                           'corrupt_file_whose_fact_failed_its_fsync_stops_the_session_on_the_next_return': ('terminal_failure', 'INFRASTRUCTURE_FAILURE'),
+                           'corrupt_seal_in_flight_with_a_crash_before_any_outcome_takes_the_failure': ('terminal_failure', 'INFRASTRUCTURE_FAILURE'),
+                           'corrupt_file_in_flight_with_a_crash_before_any_outcome_takes_the_failure': ('terminal_failure', 'INFRASTRUCTURE_FAILURE'),
+                           'corrupt_file_in_flight_with_a_crash_before_its_bytes_refuses_as_unverified': ('stop_record_unverified', None),
+                           'malformed_terminal_fact_refuses_resume_with_nothing_final_said': ('stop_record_unverified', None),
+                           'malformed_execution_record_refuses_resume_with_nothing_final_said': ('stop_record_unverified', None)}
+
+    def test_corrupt_bytes_are_retained_at_every_step_of_being_written_down(self):
+        searches = json.loads((RETAINED / 'synthetic-searches.json').read_text())['scenarios']
+        for name, (code, terminal) in self.LIFECYCLE_SCENARIOS.items():
+            row = searches[name]
+            self.assertEqual((row['resumed'], row['resume_code'], row['terminal_failure'], row['game_starts']), (False, code, terminal, 1), name)
+            if name in self.IN_FLIGHT_FAILURES:
+                self.assertEqual(([item['outcome'] for item in row['trials']], row['status']), (['INFRASTRUCTURE_FAILURE'], 'stopped_infrastructure_failure'), name)
+                continue
+            self.assertEqual(row['dispatch_code'], code, name)
+            self.assertEqual(row['claim']['kind'], 'evidence_disagreement', name)
+            self.assertEqual([item['outcome'] for item in row['trials']], ['PASS'], 'the outcome stays, and nothing follows it')
+            self.assertEqual(bool(row['trials'][0]['hard_facts']), terminal is not None, name)
+            if terminal is None:
+                self.assertTrue(row['trials'][0]['unverified_stop_records'], name)
+        for name in ('corrupt_seal_whose_fact_failed_its_fsync_stops_the_session_on_the_next_return', 'corrupt_file_whose_fact_failed_its_fsync_stops_the_session_on_the_next_return'):
+            self.assertEqual(searches[name]['first_refusal'], 'terminal_fact_unacknowledged')
+        running = searches['malformed_terminal_fact_stops_a_running_dispatch_with_nothing_final_said']
+        self.assertEqual((running['dispatch_code'], running['terminal_failure'], running['game_starts'], running['batch']), ('stop_record_unverified', None, 1, 'stopped'))
+        self.assertEqual(running['claim']['kind'], 'evidence_disagreement')
 
     def test_the_new_stop_paths_are_retained_with_no_successor(self):
         searches = json.loads((RETAINED / 'synthetic-searches.json').read_text())['scenarios']

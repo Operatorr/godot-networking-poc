@@ -79,7 +79,7 @@ def load_json(path):
         document = json.loads(pathlib.Path(path).read_text())
     except OSError:
         return None, 'missing'
-    except ValueError:
+    except (ValueError, RecursionError):
         return None, 'corrupt'
     return (document, None) if isinstance(document, dict) else (None, 'corrupt')
 

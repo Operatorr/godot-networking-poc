@@ -54,7 +54,7 @@ NOT_LAUNCHED = 'not_launched'
 SOURCE_CHANGED = 'source_changed'
 TERMINAL_FACT_UNACKNOWLEDGED = 'terminal_fact_unacknowledged'
 STOP_RECORD_UNVERIFIED = 'stop_record_unverified'
-CORRUPT_EVIDENCE_DIR = 'corrupt-evidence'
+CORRUPT_EVIDENCE_DIR = capacity_scorer.CORRUPT_EVIDENCE_DIR
 ADAPTER_PATH = 'scripts/do_session/run_plan.py'
 LOCAL_FAILURES = (OSError, ValueError, KeyError, TypeError)
 STALE_CODES = ('stale_fencing_token', 'lease_expired', 'control_held')
@@ -1079,18 +1079,34 @@ class RunExecutor:
         return dict(complete=not failed, failed=failed, files=len(wanted), copied=copied)
 
     def _corrupt_receipt(self, run_id, role, relative, source, expected):
-        """What a digest mismatch leaves: both hashes, and the bytes themselves under a name no later transfer writes to. Keyed by their hash, so a repeated sweep over the same bytes keeps one copy."""
+        """Bytes failed their hash, and from here on no later transfer may unsay it. Each step is on disk before the next begins, and each crash between them leaves something ``capacity_scorer.stop_records`` reads before any recovery or admission:
+
+          1. the observation, naming this run and both hashes. Nothing is on disk but a ``.writing`` file until it is whole, so a crash here is an interrupted write, or nothing at all
+          2. the bytes, under a name no later transfer writes to, keyed by their hash. A crash before they land leaves an observation short of them, which refuses as unverified
+          3. the caller's outcome or terminal fact, and then the registry. A crash before those leaves an observation with its bytes, which is a fact in its own right and is replayed
+
+        Failing to keep any of it never stops the rest: the receipt still goes up with both hashes, this controller holds to what it knows, and cleanup is unaffected.
+        """
         actual = sha256_path(source)
         receipt = dict(path=relative, kind='corrupt', reason='hash mismatch', expected_sha256=expected, actual_sha256=actual, retained_as=None)
-        name = '%s/%s/%s.%s' % (CORRUPT_EVIDENCE_DIR, role, relative.replace('/', '__'), actual)
-        target = self._run_dir(run_id) / name
+        run_dir = self._run_dir(run_id)
+        observation = run_dir / capacity_scorer.corrupt_observation_name(self.token, role, relative, actual)
         try:
-            target.parent.mkdir(parents=True, exist_ok=True)
+            if not observation.exists():
+                document = capacity_scorer.corrupt_observation(self.session_id, self.sha, run_id, role, relative, expected, actual, self.token, session_clock.iso(self.wall()))
+                do_session.write_new_durable(observation, json.dumps(document, indent=2, sort_keys=True) + '\n')
+        except OSError as error:
+            self._note('corrupt_observation_not_retained', run_id=run_id, role=role, path=relative, detail=type(error).__name__)
+        self.failpoint('after_corrupt_observation')
+        name = capacity_scorer.corrupt_evidence_name(role, relative, actual)
+        target = run_dir / name
+        try:
             if not target.exists():
                 do_session.write_new_durable_bytes(target, pathlib.Path(source).read_bytes())
             receipt['retained_as'] = name
         except OSError as error:     # the hashes still say what was found
             self._note('corrupt_bytes_not_retained', run_id=run_id, role=role, path=relative, detail=type(error).__name__)
+        self.failpoint('after_corrupt_bytes')
         return receipt
 
     def _write_execution(self, context, name, writer='run'):
@@ -1151,7 +1167,7 @@ class RunExecutor:
             return None
         run_id = context.trial.run_id
         path = self._run_dir(run_id) / 'window-proof.json'
-        retained = guest_runner.read_json(path)
+        retained = measurement_window.load_json(path)[0]
         if isinstance(retained, dict) and retained.get('run_id') == run_id:
             return retained
         if path.exists():
@@ -1268,7 +1284,7 @@ class RunExecutor:
         path = self._run_dir(context.trial.run_id) / 'classification.json'
         if not path.exists():
             return None, None
-        document = guest_runner.read_json(path)
+        document = measurement_window.load_json(path)[0]
         problems = capacity_scorer.classification_problems(document, self._retained_expectation(context), require_score=self.scorer is capacity_scorer.score)
         if problems:
             self._note('retained_classification_refused', run_id=context.trial.run_id, sha256=sha256_path(path), problems=problems[:5])
@@ -1488,8 +1504,8 @@ class RunExecutor:
         way, so it blocks any claim that needs it.
         """
         for path in sorted(run_dir.glob('execution*.json'), key=lambda item: (item.name != 'execution.json', item.name)):
-            record = guest_runner.read_json(path)
-            if not isinstance(record, dict) or not isinstance(record.get('problems'), dict):
+            record, problem = measurement_window.load_json(path)
+            if problem or capacity_scorer.execution_record_problems(record):
                 context.uncertain.append('earlier record %s could not be read' % path.name)
                 continue
             if (record.get('session_id'), record.get('manifest_sha256'), record.get('run_id')) != (self.session_id, self.sha, context.trial.run_id):
@@ -1508,6 +1524,14 @@ class RunExecutor:
             if any(kept.values()) or record.get('demonstrated_outcome'):
                 context.carried.append(dict(record=path.name, sha256=sha256_path(path), writer=record.get('writer'), fencing_token=record.get('fencing_token'), problems=kept,
                                             demonstrated_outcome=record.get('demonstrated_outcome')))
+        self._carry_retained_stops(context)
+
+    def _carry_retained_stops(self, context):
+        """A stop fact outside the execution records, such as corrupt bytes a controller wrote down and died before saying more about, is demonstrated like any other. This run has no outcome yet, so it can still take this one. What cannot be held to this run is left to ``_require_no_open_stop``, and costs the run nothing."""
+        facts, _ = self._stop_records(context.trial.run_id)
+        for fact in facts:
+            if not fact['record'].startswith('execution'):
+                context.demonstrated = context.demonstrated or dict(outcome=fact['outcome'], reasons=list(fact['details']))
 
     def _reconcile_role(self, context, role, reason):
         run_id = context.trial.run_id
@@ -1538,9 +1562,9 @@ class RunExecutor:
         for name in ('classification.json', capacity_report.SCORE_FILE):
             path = self._run_dir(run_id) / name
             if path.exists():
-                document = guest_runner.read_json(path)
-                document = document if isinstance(document, dict) else {}
-                found.append(dict(file=name, sha256=sha256_path(path), outcome=(document.get('verdict') or {}).get('outcome') if name == 'classification.json' else document.get('outcome')))
+                document = measurement_window.load_json(path)[0] or {}
+                verdict = document.get('verdict') if isinstance(document.get('verdict'), dict) else {}
+                found.append(dict(file=name, sha256=sha256_path(path), outcome=verdict.get('outcome') if name == 'classification.json' else document.get('outcome')))
         return found
 
     def _interrupted_verdict(self, context, execution, reachable):
@@ -1728,6 +1752,11 @@ class RunExecutor:
                     self._wrap_up_problem(result, problem)
             except Exception as error:
                 self._wrap_up_failed(result, error)
+        try:
+            # Whatever a crash left written down and unheard. A batch that ended before any dispatch asked has its one chance here.
+            self._replay_retained_stops(self._records())
+        except (registry_client.RegistryRejected, registry_client.RegistryUnavailable) + LOCAL_FAILURES as error:
+            self._note('stop_replay_failed', detail=cleanup_provider.redact(error))
         try:
             status = self._status()
             state = status['revocation']['target_state'] if status['state'] == registry.REVOCATION_PENDING else status['state']

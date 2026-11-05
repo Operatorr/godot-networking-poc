@@ -109,7 +109,7 @@ def _expectation(run_dir, record, manifest, sha):
 def _read(path):
     try:
         return json.loads(path.read_text())
-    except (OSError, ValueError):
+    except (OSError, ValueError, RecursionError):
         return None
 
 
@@ -135,8 +135,8 @@ def audit(session_dir, manifest, sha, record):
     expected = _expectation(run_dir, record, manifest, sha)
     problems = []
     facts, unverified = capacity_scorer.stop_records(run_dir, expected)
-    if record.outcome is not None and record.outcome not in search.STOPPING:
-        problems += ['the journal says %s, and %s records a stop fact: %s' % (record.outcome, fact['record'], '; '.join(str(item) for item in fact['details'])) for fact in facts]
+    if record.outcome not in search.STOPPING:
+        problems += ['the journal says %s, and %s records a stop fact: %s' % (record.outcome or 'nothing yet', fact['record'], '; '.join(str(item) for item in fact['details'])) for fact in facts]
     problems += ['%s says a run stopped, and cannot be held to this run: %s' % (item['record'], '; '.join(item['problems'])) for item in unverified]
     reference = capacity_scorer.parse_reference(record.evidence_ref)
     verdict = None

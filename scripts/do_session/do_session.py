@@ -39,6 +39,29 @@ def write_new(path, text):
         handle.write(text)
 
 
+WRITING = '.writing-'     # the temporary name beside a durable write, which a reader of stop records has to be able to see
+
+
+def _fsync_directory(directory):
+    handle = os.open(str(directory), os.O_RDONLY)
+    try:
+        os.fsync(handle)
+    finally:
+        os.close(handle)
+
+
+def _make_parents_durable(directory):
+    """A directory this write had to create is one more name that a crash could otherwise take away, with everything under it."""
+    missing = []
+    probe = directory
+    while not probe.exists():
+        missing.append(probe)
+        probe = probe.parent
+    directory.mkdir(parents=True, exist_ok=True)
+    for created in reversed(missing):
+        _fsync_directory(created.parent)
+
+
 def write_new_durable(path, text):
     write_new_durable_bytes(path, text.encode('utf-8'))
 
@@ -46,12 +69,13 @@ def write_new_durable(path, text):
 def write_new_durable_bytes(path, data):
     """Create-only and all-or-nothing: the bytes reach the disk under another name, and only a whole file can take the final one.
 
-    An interrupted write leaves a ``.writing`` file that nothing reads or promotes, and is kept like any other refused artifact. FileExistsError means the final name was already taken.
+    An interrupted write leaves a ``.writing`` file that nothing promotes, and is kept like any other refused artifact. FileExistsError means the final name was already taken.
+    The write has happened only once this returns: the directory fsync is the commit, and a later step of anything that depends on this one must not start before it.
     """
     path = pathlib.Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    _make_parents_durable(path.parent)
     for attempt in range(1000):
-        temporary = path.with_name('%s.writing-%d-%d' % (path.name, os.getpid(), attempt))
+        temporary = path.with_name('%s%s%d-%d' % (path.name, WRITING, os.getpid(), attempt))
         try:
             handle = temporary.open('xb')
         except FileExistsError:
@@ -65,11 +89,7 @@ def write_new_durable_bytes(path, data):
         os.fsync(handle.fileno())
     os.link(str(temporary), str(path))
     temporary.unlink()
-    directory = os.open(str(path.parent), os.O_RDONLY)
-    try:
-        os.fsync(directory)
-    finally:
-        os.close(directory)
+    _fsync_directory(path.parent)
 
 
 def append_journal(session_dir, record):

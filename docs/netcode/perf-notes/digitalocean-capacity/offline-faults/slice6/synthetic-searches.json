@@ -2725,6 +2725,25 @@
        "outcome": "INFRASTRUCTURE_FAILURE",
        "record": "execution-reconciled-0002-1.json",
        "sha256": "77547d387a8e14ea4a8e10688e15f47890cfc795e4f2e7bbafd2a8d7791ad486"
+      },
+      {
+       "details": [
+        "bot bot.stdout.log failed its hash: expected baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593, found 8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d, kept at corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d"
+       ],
+       "fencing_token": 2,
+       "outcome": "INFRASTRUCTURE_FAILURE",
+       "receipts": [
+        {
+         "actual_sha256": "8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d",
+         "expected_sha256": "baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593",
+         "path": "bot.stdout.log",
+         "reason": "hash mismatch",
+         "retained_as": "corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d"
+        }
+       ],
+       "record": "corrupt-observation-0002-9571e51813853400.json",
+       "role": "bot",
+       "sha256": "2c30be8a0569f5ccb2b02a371d9f6944dfd976beb207534f22dba6083ba0923a"
       }
      ],
      "hold_s": 300,
@@ -2827,6 +2846,25 @@
        "outcome": "INFRASTRUCTURE_FAILURE",
        "record": "execution-reconciled-0002-1.json",
        "sha256": "d694d823b786456f875f6c24bf719c328d89ca5f1cbdda1762a628bc5d38fddb"
+      },
+      {
+       "details": [
+        "bot bot.stdout.log failed its hash: expected baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593, found 8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d, kept at corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d"
+       ],
+       "fencing_token": 2,
+       "outcome": "INFRASTRUCTURE_FAILURE",
+       "receipts": [
+        {
+         "actual_sha256": "8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d",
+         "expected_sha256": "baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593",
+         "path": "bot.stdout.log",
+         "reason": "hash mismatch",
+         "retained_as": "corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d"
+        }
+       ],
+       "record": "corrupt-observation-0002-9571e51813853400.json",
+       "role": "bot",
+       "sha256": "a7a33ee5742fd46ef4e5588a47dcb8edb079e38308998f36472d12697a8d99fd"
       }
      ],
      "hold_s": 60,
@@ -2929,6 +2967,25 @@
        "outcome": "INFRASTRUCTURE_FAILURE",
        "record": "execution-reconciled-0002-1.json",
        "sha256": "d694d823b786456f875f6c24bf719c328d89ca5f1cbdda1762a628bc5d38fddb"
+      },
+      {
+       "details": [
+        "bot bot.stdout.log failed its hash: expected baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593, found 8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d, kept at corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d"
+       ],
+       "fencing_token": 2,
+       "outcome": "INFRASTRUCTURE_FAILURE",
+       "receipts": [
+        {
+         "actual_sha256": "8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d",
+         "expected_sha256": "baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593",
+         "path": "bot.stdout.log",
+         "reason": "hash mismatch",
+         "retained_as": "corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d"
+        }
+       ],
+       "record": "corrupt-observation-0002-9571e51813853400.json",
+       "role": "bot",
+       "sha256": "a7a33ee5742fd46ef4e5588a47dcb8edb079e38308998f36472d12697a8d99fd"
       }
      ],
      "hold_s": 60,
@@ -3029,11 +3086,38 @@
       },
       {
        "details": [
+        "bot bot.stdout.log failed its hash: expected baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593, found 8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d, kept at corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d"
+       ],
+       "outcome": "INFRASTRUCTURE_FAILURE",
+       "record": "execution-reconciled-0003-1.json",
+       "sha256": "d99d153d0f46b231613a8bff86701bbcb90bf7f3434cad370a59c8c3ce133a98"
+      },
+      {
+       "details": [
         "bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch', 'expected_sha256': 'baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593', 'actual_sha256': '8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d', 'retained_as': 'corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d'}]"
        ],
        "outcome": "INFRASTRUCTURE_FAILURE",
        "record": "execution-reconciled-0003-1.json",
-       "sha256": "dca75174711722b1f0c4c5c4cae5d13b0a6c8c5d12edc8e6991f3648eb78474c"
+       "sha256": "d99d153d0f46b231613a8bff86701bbcb90bf7f3434cad370a59c8c3ce133a98"
+      },
+      {
+       "details": [
+        "bot bot.stdout.log failed its hash: expected baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593, found 8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d, kept at corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d"
+       ],
+       "fencing_token": 2,
+       "outcome": "INFRASTRUCTURE_FAILURE",
+       "receipts": [
+        {
+         "actual_sha256": "8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d",
+         "expected_sha256": "baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593",
+         "path": "bot.stdout.log",
+         "reason": "hash mismatch",
+         "retained_as": "corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d"
+        }
+       ],
+       "record": "corrupt-observation-0002-9571e51813853400.json",
+       "role": "bot",
+       "sha256": "a7a33ee5742fd46ef4e5588a47dcb8edb079e38308998f36472d12697a8d99fd"
       }
      ],
      "hold_s": 60,
@@ -3139,11 +3223,38 @@
       },
       {
        "details": [
+        "bot bot.stdout.log failed its hash: expected baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593, found 8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d, kept at corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d"
+       ],
+       "outcome": "INFRASTRUCTURE_FAILURE",
+       "record": "execution-reconciled-0003-1.json",
+       "sha256": "d99d153d0f46b231613a8bff86701bbcb90bf7f3434cad370a59c8c3ce133a98"
+      },
+      {
+       "details": [
         "bot evidence was not fully exported: [{'path': 'bot.stdout.log', 'kind': 'corrupt', 'reason': 'hash mismatch', 'expected_sha256': 'baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593', 'actual_sha256': '8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d', 'retained_as': 'corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d'}]"
        ],
        "outcome": "INFRASTRUCTURE_FAILURE",
        "record": "execution-reconciled-0003-1.json",
-       "sha256": "dca75174711722b1f0c4c5c4cae5d13b0a6c8c5d12edc8e6991f3648eb78474c"
+       "sha256": "d99d153d0f46b231613a8bff86701bbcb90bf7f3434cad370a59c8c3ce133a98"
+      },
+      {
+       "details": [
+        "bot bot.stdout.log failed its hash: expected baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593, found 8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d, kept at corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d"
+       ],
+       "fencing_token": 2,
+       "outcome": "INFRASTRUCTURE_FAILURE",
+       "receipts": [
+        {
+         "actual_sha256": "8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d",
+         "expected_sha256": "baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593",
+         "path": "bot.stdout.log",
+         "reason": "hash mismatch",
+         "retained_as": "corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d"
+        }
+       ],
+       "record": "corrupt-observation-0002-9571e51813853400.json",
+       "role": "bot",
+       "sha256": "a7a33ee5742fd46ef4e5588a47dcb8edb079e38308998f36472d12697a8d99fd"
       }
      ],
      "hold_s": 60,
@@ -3159,6 +3270,515 @@
        "sha256": "502d15e207d6288d9bed21e78fd4b8ee7c566009dad15802e27a8cc3fa2c79dd"
       }
      ],
+     "target": 25,
+     "unverified_stop_records": []
+    }
+   ]
+  },
+  "corrupt_file_in_flight_with_a_crash_before_any_outcome_takes_the_failure": {
+   "batch": null,
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_infrastructure_failure",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_infrastructure_failure)."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "crashed_at": "after_corrupt_bytes",
+   "dispatch_code": null,
+   "dispatch_status": "stopped_infrastructure_failure",
+   "evidence": {
+    "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "trials_with_unverified_stop_records": [],
+    "verified": true
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_infrastructure_failure",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_infrastructure_failure)."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "resume_code": "terminal_failure",
+   "resumed": false,
+   "status": "stopped_infrastructure_failure",
+   "terminal_failure": "INFRASTRUCTURE_FAILURE",
+   "trials": [
+    {
+     "classification": null,
+     "evidence_problems": [],
+     "gates": {},
+     "hard_facts": [
+      {
+       "details": [
+        "game bot.stdout.log failed its hash: expected baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593, found 8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d, kept at corrupt-evidence/game/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d"
+       ],
+       "outcome": "INFRASTRUCTURE_FAILURE",
+       "record": "execution.json",
+       "sha256": "077fc6d43cadbbeaaa76ba6a70d385c4c7c14c7b636542f72d267b00bf9c6443"
+      },
+      {
+       "details": [
+        "game bot.stdout.log failed its hash: expected baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593, found 8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d, kept at corrupt-evidence/game/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d"
+       ],
+       "fencing_token": 1,
+       "outcome": "INFRASTRUCTURE_FAILURE",
+       "receipts": [
+        {
+         "actual_sha256": "8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d",
+         "expected_sha256": "baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593",
+         "path": "bot.stdout.log",
+         "reason": "hash mismatch",
+         "retained_as": "corrupt-evidence/game/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d"
+        }
+       ],
+       "record": "corrupt-observation-0001-b0f56b7f9f585d4c.json",
+       "role": "game",
+       "sha256": "540ff8225d898ae1ea7edd490328a53e9bd24aabca654f2ccad30c70a647b8dc"
+      }
+     ],
+     "hold_s": 60,
+     "offered_load": null,
+     "ordinal": 1,
+     "outcome": "INFRASTRUCTURE_FAILURE",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 25,
+     "unverified_stop_records": []
+    }
+   ]
+  },
+  "corrupt_file_in_flight_with_a_crash_before_its_bytes_refuses_as_unverified": {
+   "batch": null,
+   "claim": {
+    "confirmed": false,
+    "kind": "evidence_disagreement",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No evidence-backed claim: the retained files of 1 of 1 trials disagree with the journal or cannot be verified. What the journal says is kept apart as history, and is not verified here."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "crashed_at": "after_corrupt_observation",
+   "dispatch_code": "stop_record_unverified",
+   "dispatch_status": "stopped_inconclusive_evidence",
+   "evidence": {
+    "disputed_trials": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "verified": false
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "in_progress",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the search is not finished (in_progress). The highest one-minute pass was 25; it stays an exploratory observation."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "resume_code": "stop_record_unverified",
+   "resumed": false,
+   "status": "in_progress",
+   "terminal_failure": null,
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [
+      "corrupt-observation-0001-b0f56b7f9f585d4c.json says a run stopped, and cannot be held to this run: it says game of bot.stdout.log failed its hash, and the bytes it names at corrupt-evidence/game/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d are not here: a crash or a full disk may have left it so"
+     ],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hard_facts": [],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 25,
+     "unverified_stop_records": [
+      {
+       "problems": [
+        "it says game of bot.stdout.log failed its hash, and the bytes it names at corrupt-evidence/game/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d are not here: a crash or a full disk may have left it so"
+       ],
+       "record": "corrupt-observation-0001-b0f56b7f9f585d4c.json",
+       "sha256": "540ff8225d898ae1ea7edd490328a53e9bd24aabca654f2ccad30c70a647b8dc"
+      }
+     ]
+    }
+   ]
+  },
+  "corrupt_file_whose_fact_failed_its_fsync_stops_the_session_on_the_next_return": {
+   "batch": null,
+   "claim": {
+    "confirmed": false,
+    "kind": "evidence_disagreement",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No evidence-backed claim: the retained files of 1 of 1 trials disagree with the journal or cannot be verified. What the journal says is kept apart as history, and is not verified here."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "dispatch_code": "terminal_failure",
+   "evidence": {
+    "disputed_trials": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "trials_with_unverified_stop_records": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "verified": false
+   },
+   "first_refusal": "terminal_fact_unacknowledged",
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "in_progress",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the search is not finished (in_progress). The highest one-minute pass was 25; it stays an exploratory observation."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "resume_code": "terminal_failure",
+   "resumed": false,
+   "status": "in_progress",
+   "terminal_failure": "INFRASTRUCTURE_FAILURE",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [
+      "terminal-fact-0002-0.json.writing-4242-0 says a run stopped, and cannot be held to this run: it is an interrupted write of a stop record, and may be all that is left of what that record was going to say",
+      "the journal says PASS, and corrupt-observation-0002-9571e51813853400.json records a stop fact: bot bot.stdout.log failed its hash: expected baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593, found 8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d, kept at corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d"
+     ],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hard_facts": [
+      {
+       "details": [
+        "bot bot.stdout.log failed its hash: expected baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593, found 8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d, kept at corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d"
+       ],
+       "fencing_token": 2,
+       "outcome": "INFRASTRUCTURE_FAILURE",
+       "receipts": [
+        {
+         "actual_sha256": "8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d",
+         "expected_sha256": "baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593",
+         "path": "bot.stdout.log",
+         "reason": "hash mismatch",
+         "retained_as": "corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d"
+        }
+       ],
+       "record": "corrupt-observation-0002-9571e51813853400.json",
+       "role": "bot",
+       "sha256": "4fd73d2eb33c0850b8ab1820b8e1c8aadc741fed258227324adadaee0e3d200f"
+      }
+     ],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 25,
+     "unverified_stop_records": [
+      {
+       "problems": [
+        "it is an interrupted write of a stop record, and may be all that is left of what that record was going to say"
+       ],
+       "record": "terminal-fact-0002-0.json.writing-4242-0",
+       "sha256": "cfc17b5502e47e0eab99cf89794f17ed091022e50976190588003372d6370cb7"
+      }
+     ]
+    }
+   ]
+  },
+  "corrupt_file_with_a_crash_before_its_bytes_refuses_as_unverified": {
+   "batch": null,
+   "claim": {
+    "confirmed": false,
+    "kind": "evidence_disagreement",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No evidence-backed claim: the retained files of 1 of 1 trials disagree with the journal or cannot be verified. What the journal says is kept apart as history, and is not verified here."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "dispatch_code": "stop_record_unverified",
+   "evidence": {
+    "disputed_trials": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "verified": false
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "in_progress",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the search is not finished (in_progress). The highest one-minute pass was 25; it stays an exploratory observation."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "resume_code": "stop_record_unverified",
+   "resumed": false,
+   "status": "in_progress",
+   "terminal_failure": null,
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [
+      "corrupt-observation-0002-9571e51813853400.json says a run stopped, and cannot be held to this run: it says bot of bot.stdout.log failed its hash, and the bytes it names at corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d are not here: a crash or a full disk may have left it so"
+     ],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hard_facts": [],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 25,
+     "unverified_stop_records": [
+      {
+       "problems": [
+        "it says bot of bot.stdout.log failed its hash, and the bytes it names at corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d are not here: a crash or a full disk may have left it so"
+       ],
+       "record": "corrupt-observation-0002-9571e51813853400.json",
+       "sha256": "4fd73d2eb33c0850b8ab1820b8e1c8aadc741fed258227324adadaee0e3d200f"
+      }
+     ]
+    }
+   ]
+  },
+  "corrupt_file_with_a_crash_before_its_fact_stops_the_session": {
+   "batch": null,
+   "claim": {
+    "confirmed": false,
+    "kind": "evidence_disagreement",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No evidence-backed claim: the retained files of 1 of 1 trials disagree with the journal or cannot be verified. What the journal says is kept apart as history, and is not verified here."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "dispatch_code": "terminal_failure",
+   "evidence": {
+    "disputed_trials": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "trials_with_unverified_stop_records": [],
+    "verified": false
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "in_progress",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the search is not finished (in_progress). The highest one-minute pass was 25; it stays an exploratory observation."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "resume_code": "terminal_failure",
+   "resumed": false,
+   "status": "in_progress",
+   "terminal_failure": "INFRASTRUCTURE_FAILURE",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [
+      "the journal says PASS, and corrupt-observation-0002-9571e51813853400.json records a stop fact: bot bot.stdout.log failed its hash: expected baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593, found 8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d, kept at corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d"
+     ],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hard_facts": [
+      {
+       "details": [
+        "bot bot.stdout.log failed its hash: expected baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593, found 8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d, kept at corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d"
+       ],
+       "fencing_token": 2,
+       "outcome": "INFRASTRUCTURE_FAILURE",
+       "receipts": [
+        {
+         "actual_sha256": "8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d",
+         "expected_sha256": "baee84564e513bfbb0f5a2e474d445d799059fc7c785678c00e7ac30b85cf593",
+         "path": "bot.stdout.log",
+         "reason": "hash mismatch",
+         "retained_as": "corrupt-evidence/bot/bot.stdout.log.8048f9323a8368381feb80d26b1004f30245efc54803a3a7bd2cc702c25bce2d"
+        }
+       ],
+       "record": "corrupt-observation-0002-9571e51813853400.json",
+       "role": "bot",
+       "sha256": "4fd73d2eb33c0850b8ab1820b8e1c8aadc741fed258227324adadaee0e3d200f"
+      }
+     ],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
      "target": 25,
      "unverified_stop_records": []
     }
@@ -3269,6 +3889,225 @@
     }
    ]
   },
+  "corrupt_seal_in_flight_with_a_crash_before_any_outcome_takes_the_failure": {
+   "batch": null,
+   "claim": {
+    "confirmed": false,
+    "kind": "stopped_infrastructure_failure",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_infrastructure_failure)."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "crashed_at": "after_corrupt_bytes",
+   "dispatch_code": null,
+   "dispatch_status": "stopped_infrastructure_failure",
+   "evidence": {
+    "disputed_trials": [],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "trials_with_unverified_stop_records": [],
+    "verified": true
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "stopped_infrastructure_failure",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the batch stopped (stopped_infrastructure_failure)."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": null,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "resume_code": "terminal_failure",
+   "resumed": false,
+   "status": "stopped_infrastructure_failure",
+   "terminal_failure": "INFRASTRUCTURE_FAILURE",
+   "trials": [
+    {
+     "classification": null,
+     "evidence_problems": [],
+     "gates": {},
+     "hard_facts": [
+      {
+       "details": [
+        "game seal.json failed its hash: expected 6b2accaf1e14b66524a7af0f113c043d6c8631ef09810745429841013d4769f4, found deb60953cb4c74434b77c88bd47fa597b87364145f10467ec3dd431e8e824fa8, kept at corrupt-evidence/game/seal.json.deb60953cb4c74434b77c88bd47fa597b87364145f10467ec3dd431e8e824fa8"
+       ],
+       "outcome": "INFRASTRUCTURE_FAILURE",
+       "record": "execution.json",
+       "sha256": "272d8b98696e1e302116bf9da226be0ad470911faa9c85bb327c39cd0e48b834"
+      },
+      {
+       "details": [
+        "game seal.json failed its hash: expected 6b2accaf1e14b66524a7af0f113c043d6c8631ef09810745429841013d4769f4, found deb60953cb4c74434b77c88bd47fa597b87364145f10467ec3dd431e8e824fa8, kept at corrupt-evidence/game/seal.json.deb60953cb4c74434b77c88bd47fa597b87364145f10467ec3dd431e8e824fa8"
+       ],
+       "fencing_token": 1,
+       "outcome": "INFRASTRUCTURE_FAILURE",
+       "receipts": [
+        {
+         "actual_sha256": "deb60953cb4c74434b77c88bd47fa597b87364145f10467ec3dd431e8e824fa8",
+         "expected_sha256": "6b2accaf1e14b66524a7af0f113c043d6c8631ef09810745429841013d4769f4",
+         "path": "seal.json",
+         "reason": "hash mismatch",
+         "retained_as": "corrupt-evidence/game/seal.json.deb60953cb4c74434b77c88bd47fa597b87364145f10467ec3dd431e8e824fa8"
+        }
+       ],
+       "record": "corrupt-observation-0001-706af9df9e5e33c0.json",
+       "role": "game",
+       "sha256": "b3a38fe6e39a9a30207077458596dfc26fe1b0d56fd88210751638bb97a15354"
+      }
+     ],
+     "hold_s": 60,
+     "offered_load": null,
+     "ordinal": 1,
+     "outcome": "INFRASTRUCTURE_FAILURE",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 25,
+     "unverified_stop_records": []
+    }
+   ]
+  },
+  "corrupt_seal_whose_fact_failed_its_fsync_stops_the_session_on_the_next_return": {
+   "batch": null,
+   "claim": {
+    "confirmed": false,
+    "kind": "evidence_disagreement",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No evidence-backed claim: the retained files of 1 of 1 trials disagree with the journal or cannot be verified. What the journal says is kept apart as history, and is not verified here."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "dispatch_code": "terminal_failure",
+   "evidence": {
+    "disputed_trials": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "trials_with_unverified_stop_records": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "verified": false
+   },
+   "first_refusal": "terminal_fact_unacknowledged",
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "in_progress",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the search is not finished (in_progress). The highest one-minute pass was 25; it stays an exploratory observation."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "resume_code": "terminal_failure",
+   "resumed": false,
+   "status": "in_progress",
+   "terminal_failure": "INFRASTRUCTURE_FAILURE",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [
+      "terminal-fact-0002-0.json.writing-4242-0 says a run stopped, and cannot be held to this run: it is an interrupted write of a stop record, and may be all that is left of what that record was going to say",
+      "the journal says PASS, and corrupt-observation-0002-9c5172a70e3de1ce.json records a stop fact: bot seal.json failed its hash: expected 6e7a7234e67f4ca682fbb38684a400fd00d46e0069875ba3db7e596c7f28f2ef, found 48f91b59d325887eb83207369a7f6341c55e080ab088d59a7d6bc3426625e72d, kept at corrupt-evidence/bot/seal.json.48f91b59d325887eb83207369a7f6341c55e080ab088d59a7d6bc3426625e72d"
+     ],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hard_facts": [
+      {
+       "details": [
+        "bot seal.json failed its hash: expected 6e7a7234e67f4ca682fbb38684a400fd00d46e0069875ba3db7e596c7f28f2ef, found 48f91b59d325887eb83207369a7f6341c55e080ab088d59a7d6bc3426625e72d, kept at corrupt-evidence/bot/seal.json.48f91b59d325887eb83207369a7f6341c55e080ab088d59a7d6bc3426625e72d"
+       ],
+       "fencing_token": 2,
+       "outcome": "INFRASTRUCTURE_FAILURE",
+       "receipts": [
+        {
+         "actual_sha256": "48f91b59d325887eb83207369a7f6341c55e080ab088d59a7d6bc3426625e72d",
+         "expected_sha256": "6e7a7234e67f4ca682fbb38684a400fd00d46e0069875ba3db7e596c7f28f2ef",
+         "path": "seal.json",
+         "reason": "hash mismatch",
+         "retained_as": "corrupt-evidence/bot/seal.json.48f91b59d325887eb83207369a7f6341c55e080ab088d59a7d6bc3426625e72d"
+        }
+       ],
+       "record": "corrupt-observation-0002-9c5172a70e3de1ce.json",
+       "role": "bot",
+       "sha256": "385a793b31019e2dc60b20c33f6cafab5a1e216401f9a4888e0ddb8da6eb2b70"
+      }
+     ],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 25,
+     "unverified_stop_records": [
+      {
+       "problems": [
+        "it is an interrupted write of a stop record, and may be all that is left of what that record was going to say"
+       ],
+       "record": "terminal-fact-0002-0.json.writing-4242-0",
+       "sha256": "535c4b143bce3a5ac0bae6443492d48ac7622b690d977fc33470c008e2a71aa8"
+      }
+     ]
+    }
+   ]
+  },
   "corrupt_seal_with_a_crash_after_the_fact_and_a_restored_transfer_refuses_resume": {
    "batch": null,
    "claim": {
@@ -3360,6 +4199,202 @@
        "record": "terminal-fact-0002-0.json",
        "role": "bot",
        "sha256": "535c4b143bce3a5ac0bae6443492d48ac7622b690d977fc33470c008e2a71aa8"
+      }
+     ],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 25,
+     "unverified_stop_records": []
+    }
+   ]
+  },
+  "corrupt_seal_with_a_crash_before_its_bytes_refuses_as_unverified": {
+   "batch": null,
+   "claim": {
+    "confirmed": false,
+    "kind": "evidence_disagreement",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No evidence-backed claim: the retained files of 1 of 1 trials disagree with the journal or cannot be verified. What the journal says is kept apart as history, and is not verified here."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "dispatch_code": "stop_record_unverified",
+   "evidence": {
+    "disputed_trials": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "verified": false
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "in_progress",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the search is not finished (in_progress). The highest one-minute pass was 25; it stays an exploratory observation."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "resume_code": "stop_record_unverified",
+   "resumed": false,
+   "status": "in_progress",
+   "terminal_failure": null,
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [
+      "corrupt-observation-0002-9c5172a70e3de1ce.json says a run stopped, and cannot be held to this run: it says bot of seal.json failed its hash, and the bytes it names at corrupt-evidence/bot/seal.json.48f91b59d325887eb83207369a7f6341c55e080ab088d59a7d6bc3426625e72d are not here: a crash or a full disk may have left it so"
+     ],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hard_facts": [],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 25,
+     "unverified_stop_records": [
+      {
+       "problems": [
+        "it says bot of seal.json failed its hash, and the bytes it names at corrupt-evidence/bot/seal.json.48f91b59d325887eb83207369a7f6341c55e080ab088d59a7d6bc3426625e72d are not here: a crash or a full disk may have left it so"
+       ],
+       "record": "corrupt-observation-0002-9c5172a70e3de1ce.json",
+       "sha256": "385a793b31019e2dc60b20c33f6cafab5a1e216401f9a4888e0ddb8da6eb2b70"
+      }
+     ]
+    }
+   ]
+  },
+  "corrupt_seal_with_a_crash_before_its_fact_stops_the_session": {
+   "batch": null,
+   "claim": {
+    "confirmed": false,
+    "kind": "evidence_disagreement",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No evidence-backed claim: the retained files of 1 of 1 trials disagree with the journal or cannot be verified. What the journal says is kept apart as history, and is not verified here."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "dispatch_code": "terminal_failure",
+   "evidence": {
+    "disputed_trials": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "trials_with_unverified_stop_records": [],
+    "verified": false
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "in_progress",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the search is not finished (in_progress). The highest one-minute pass was 25; it stays an exploratory observation."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "resume_code": "terminal_failure",
+   "resumed": false,
+   "status": "in_progress",
+   "terminal_failure": "INFRASTRUCTURE_FAILURE",
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [
+      "the journal says PASS, and corrupt-observation-0002-9c5172a70e3de1ce.json records a stop fact: bot seal.json failed its hash: expected 6e7a7234e67f4ca682fbb38684a400fd00d46e0069875ba3db7e596c7f28f2ef, found 48f91b59d325887eb83207369a7f6341c55e080ab088d59a7d6bc3426625e72d, kept at corrupt-evidence/bot/seal.json.48f91b59d325887eb83207369a7f6341c55e080ab088d59a7d6bc3426625e72d"
+     ],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hard_facts": [
+      {
+       "details": [
+        "bot seal.json failed its hash: expected 6e7a7234e67f4ca682fbb38684a400fd00d46e0069875ba3db7e596c7f28f2ef, found 48f91b59d325887eb83207369a7f6341c55e080ab088d59a7d6bc3426625e72d, kept at corrupt-evidence/bot/seal.json.48f91b59d325887eb83207369a7f6341c55e080ab088d59a7d6bc3426625e72d"
+       ],
+       "fencing_token": 2,
+       "outcome": "INFRASTRUCTURE_FAILURE",
+       "receipts": [
+        {
+         "actual_sha256": "48f91b59d325887eb83207369a7f6341c55e080ab088d59a7d6bc3426625e72d",
+         "expected_sha256": "6e7a7234e67f4ca682fbb38684a400fd00d46e0069875ba3db7e596c7f28f2ef",
+         "path": "seal.json",
+         "reason": "hash mismatch",
+         "retained_as": "corrupt-evidence/bot/seal.json.48f91b59d325887eb83207369a7f6341c55e080ab088d59a7d6bc3426625e72d"
+        }
+       ],
+       "record": "corrupt-observation-0002-9c5172a70e3de1ce.json",
+       "role": "bot",
+       "sha256": "385a793b31019e2dc60b20c33f6cafab5a1e216401f9a4888e0ddb8da6eb2b70"
       }
      ],
      "hold_s": 60,
@@ -4545,6 +5580,287 @@
      "superseded_decisions": [],
      "target": 25,
      "unverified_stop_records": []
+    }
+   ]
+  },
+  "malformed_execution_record_refuses_resume_with_nothing_final_said": {
+   "batch": null,
+   "claim": {
+    "confirmed": false,
+    "kind": "evidence_disagreement",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No evidence-backed claim: the retained files of 1 of 1 trials disagree with the journal or cannot be verified. What the journal says is kept apart as history, and is not verified here."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "dispatch_code": "stop_record_unverified",
+   "evidence": {
+    "disputed_trials": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "verified": false
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "in_progress",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the search is not finished (in_progress). The highest one-minute pass was 25; it stays an exploratory observation."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "resume_code": "stop_record_unverified",
+   "resumed": false,
+   "status": "in_progress",
+   "terminal_failure": null,
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [
+      "execution-reconciled-0002-9.json says a run stopped, and cannot be held to this run: its demonstrated outcome is of no known shape"
+     ],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hard_facts": [],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 25,
+     "unverified_stop_records": [
+      {
+       "problems": [
+        "its demonstrated outcome is of no known shape"
+       ],
+       "record": "execution-reconciled-0002-9.json",
+       "sha256": "fdf3f39401c9b48f8aaac0e4c60db48da1b91d4fcc441bc855e34ba2a9d3f14e"
+      }
+     ]
+    }
+   ]
+  },
+  "malformed_terminal_fact_refuses_resume_with_nothing_final_said": {
+   "batch": null,
+   "claim": {
+    "confirmed": false,
+    "kind": "evidence_disagreement",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No evidence-backed claim: the retained files of 1 of 1 trials disagree with the journal or cannot be verified. What the journal says is kept apart as history, and is not verified here."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "dispatch_code": "stop_record_unverified",
+   "evidence": {
+    "disputed_trials": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "verified": false
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "in_progress",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the search is not finished (in_progress). The highest one-minute pass was 25; it stays an exploratory observation."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "resume_code": "stop_record_unverified",
+   "resumed": false,
+   "status": "in_progress",
+   "terminal_failure": null,
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [
+      "terminal-fact-0002-0.json says a run stopped, and cannot be held to this run: its session_id is 'foreign-session', and this run's is 'do-cap-1v1g-20261030a'; its manifest_sha256 is 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', and this run's is '56a89866d965aef1b62524c9bbf12a8f496dd6cc911908c84e2feca9391d472b'; its run_id is 'foreign-run', and this run's is 'do-cap-1v1g-20261030a-t01-coarse-n025-r1'; it names outcome [], which stops nothing"
+     ],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hard_facts": [],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 25,
+     "unverified_stop_records": [
+      {
+       "problems": [
+        "its session_id is 'foreign-session', and this run's is 'do-cap-1v1g-20261030a'",
+        "its manifest_sha256 is 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', and this run's is '56a89866d965aef1b62524c9bbf12a8f496dd6cc911908c84e2feca9391d472b'",
+        "its run_id is 'foreign-run', and this run's is 'do-cap-1v1g-20261030a-t01-coarse-n025-r1'",
+        "it names outcome [], which stops nothing"
+       ],
+       "record": "terminal-fact-0002-0.json",
+       "sha256": "c1eca8b04a2a50403b2216c89139f759b2b738d439e97403209d4e2eb9beeda0"
+      }
+     ]
+    }
+   ]
+  },
+  "malformed_terminal_fact_stops_a_running_dispatch_with_nothing_final_said": {
+   "batch": "stopped",
+   "claim": {
+    "confirmed": false,
+    "kind": "evidence_disagreement",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No evidence-backed claim: the retained files of 1 of 1 trials disagree with the journal or cannot be verified. What the journal says is kept apart as history, and is not verified here."
+   },
+   "counts": {
+    "coarse": 1,
+    "confirm": 0,
+    "refine": 0,
+    "total": 1
+   },
+   "dispatch_code": "stop_record_unverified",
+   "evidence": {
+    "disputed_trials": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "superseded_trials": [],
+    "trials_with_stop_facts": [],
+    "trials_with_unverified_stop_records": [
+     "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+    ],
+    "verified": false
+   },
+   "game_starts": 1,
+   "journal_claim": {
+    "confirmed": false,
+    "kind": "in_progress",
+    "lower_bound": null,
+    "players": null,
+    "search_cap_reached": false,
+    "statement": "No capacity established: the search is not finished (in_progress). The highest one-minute pass was 25; it stays an exploratory observation."
+   },
+   "no_hidden_retry": true,
+   "observations": {
+    "confirmations": {
+     "failed": 0,
+     "incomplete": 0,
+     "passed": 0,
+     "pending": 0,
+     "stopped": 0,
+     "target": null
+    },
+    "failed_targets": [],
+    "highest_exploration_pass": 25,
+    "lowest_failure_above_it": null,
+    "retries": 0,
+    "trials": 1
+   },
+   "status": "in_progress",
+   "terminal_failure": null,
+   "trials": [
+    {
+     "classification": "valid_pass",
+     "evidence_problems": [
+      "terminal-fact-0001-0.json says a run stopped, and cannot be held to this run: its session_id is 'foreign-session', and this run's is 'do-cap-1v1g-20261030a'; its manifest_sha256 is 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', and this run's is '56a89866d965aef1b62524c9bbf12a8f496dd6cc911908c84e2feca9391d472b'; its run_id is 'foreign-run', and this run's is 'do-cap-1v1g-20261030a-t01-coarse-n025-r1'; it names outcome [], which stops nothing; its name terminal-fact-0001-0.json does not carry its fencing token 2"
+     ],
+     "gates": {
+      "bot_errors": "pass",
+      "continuity": "pass",
+      "enet_loss": "pass",
+      "game_socket_drops": "pass",
+      "rtt_p95": "pass",
+      "tick_budget": "pass"
+     },
+     "hard_facts": [],
+     "hold_s": 60,
+     "offered_load": "valid",
+     "ordinal": 1,
+     "outcome": "PASS",
+     "phase": "coarse",
+     "repetition": 1,
+     "superseded_decisions": [],
+     "target": 25,
+     "unverified_stop_records": [
+      {
+       "problems": [
+        "its session_id is 'foreign-session', and this run's is 'do-cap-1v1g-20261030a'",
+        "its manifest_sha256 is 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', and this run's is '56a89866d965aef1b62524c9bbf12a8f496dd6cc911908c84e2feca9391d472b'",
+        "its run_id is 'foreign-run', and this run's is 'do-cap-1v1g-20261030a-t01-coarse-n025-r1'",
+        "it names outcome [], which stops nothing",
+        "its name terminal-fact-0001-0.json does not carry its fencing token 2"
+       ],
+       "record": "terminal-fact-0001-0.json",
+       "sha256": "c1eca8b04a2a50403b2216c89139f759b2b738d439e97403209d4e2eb9beeda0"
+      }
+     ]
     }
    ]
   },

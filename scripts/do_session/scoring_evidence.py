@@ -9,6 +9,7 @@ Nothing here is a capacity finding. Each synthetic number is arithmetic, and eac
 import argparse
 import hashlib
 import json
+import os
 import pathlib
 import platform
 import shutil
@@ -16,9 +17,11 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 import capacity_report
 import capacity_scorer as cs
+import do_session
 import measurement_local as ml
 import measurement_window as mw
 import registry_client
@@ -314,7 +317,7 @@ def _corrupt_at_wrap_up(case):
     return sim, result, dict(terminal_failure=sim.status_now()['terminal_failure'])
 
 
-def _committed_then_returned(arrange, retained_fact=False):
+def _committed_then_returned(arrange, retained_fact=False, crash_at=None, fact_fsync_fails=False, dispatch=False):
     """A controller dies right after committing a PASS, one required raw file is gone on the return, and ``arrange`` says what else that return meets. Its resume and everything after it are the real ones."""
     def play(case):
         sim = sf.ScoredSim(case, sf.by_target({50: sf.slow, 30: sf.slow}))
@@ -326,26 +329,97 @@ def _committed_then_returned(arrange, retained_fact=False):
             pass
         _lose_a_file(sim, 0, False)
         before = dict(arrange(sim) or {})
-        if retained_fact:
-            executor, control = sim.controller(name='controller-b', failpoint=rf.crash_at('after_terminal_fact'))
+        point = 'after_terminal_fact' if retained_fact else crash_at
+        if point:
+            executor, control = sim.controller(name='controller-b', failpoint=rf.crash_at(point))
             try:
                 executor.resume('operator: resume remaining runs', control)
             except rf.SimulatedCrash:
                 pass
             sim.guests.corrupt_export.clear()
+        first_refusal = None
+        if fact_fsync_fails:
+            executor, control = sim.controller(name='controller-b')
+            _no_stop_is_heard(executor)
+            with _fact_fsync_fails():
+                first_refusal = executor.resume('operator: resume remaining runs', control)['code']
+            sim.guests.corrupt_export.clear()
         executor, control = sim.controller(name='controller-c')
         if before.get('stop_fails'):
-            real = executor.client.mutate
-
-            def mutate(method, *arguments, **parameters):
-                if method == 'record_batch_stop':
-                    raise registry_client.RegistryUnavailable('scripted: this registry request fails')
-                return real(method, *arguments, **parameters)
-            executor.client.mutate = mutate
+            _no_stop_is_heard(executor)
         outcome = executor.resume('operator: resume remaining runs', control)
-        dispatched = executor.execute() if before.get('stop_fails') else None
-        return sim, None, dict(resumed=outcome['resumed'], resume_code=outcome.get('code'), dispatch_code=dispatched.code if dispatched is not None else None, terminal_failure=sim.status_now()['terminal_failure'])
+        dispatched = executor.execute() if before.get('stop_fails') or dispatch else None
+        extra = dict(resumed=outcome['resumed'], resume_code=outcome.get('code'), dispatch_code=dispatched.code if dispatched is not None else None, terminal_failure=sim.status_now()['terminal_failure'])
+        return sim, None, dict(extra, first_refusal=first_refusal) if first_refusal else extra
     return play
+
+
+def _no_stop_is_heard(executor):
+    real = executor.client.mutate
+
+    def mutate(method, *arguments, **parameters):
+        if method == 'record_batch_stop':
+            raise registry_client.RegistryUnavailable('scripted: this registry request fails')
+        return real(method, *arguments, **parameters)
+    executor.client.mutate = mutate
+
+
+def _fact_fsync_fails():
+    """The real durable writer's own fsync fails for a terminal fact, leaving what it leaves. The process id in its temporary name is fixed here so that the summary regenerates."""
+    real = do_session.write_new_durable_bytes
+
+    def write(path, data):
+        if not pathlib.Path(path).name.startswith('terminal-fact-'):
+            return real(path, data)
+        with mock.patch.object(os, 'getpid', return_value=4242), mock.patch.object(os, 'fsync', side_effect=OSError('scripted: this fsync fails')):
+            return real(path, data)
+    return mock.patch.object(do_session, 'write_new_durable_bytes', write)
+
+
+def _corrupt_in_flight(name, point):
+    """The first controller finds corrupt bytes before it has committed anything, and dies at ``point``. The next one has a transfer that works."""
+    def play(case):
+        sim = sf.ScoredSim(case, sf.by_target({50: sf.slow, 30: sf.slow}))
+        case.addCleanup(rf.make_writable, sim.stack.root)
+        sim.ready()
+        sim.guests.corrupt_export.add(name)
+        try:
+            sim.executor(failpoint=rf.crash_at(point)).execute()
+        except rf.SimulatedCrash:
+            pass
+        sim.guests.corrupt_export.clear()
+        executor, control = sim.controller(name='controller-c')
+        outcome = executor.resume('operator: resume remaining runs', control)
+        dispatched = executor.execute()
+        return sim, None, dict(crashed_at=point, resumed=outcome['resumed'], resume_code=outcome.get('code'), dispatch_code=dispatched.code, dispatch_status=dispatched.search_status, terminal_failure=sim.status_now()['terminal_failure'])
+    return play
+
+
+def _malformed_file(name, text):
+    """A stray file holding what no writer writes, with the host unreachable so that nothing else is said on the return."""
+    def arrange(sim):
+        sim.guests.copy_failures.add(('bot', 'get'))
+        (sim.run_dir(sim.records()[0]['run_id']) / name).write_text(text)
+    return arrange
+
+
+MALFORMED_FACT = json.dumps(dict(schema=cs.TERMINAL_FACT_SCHEMA, session_id='foreign-session', manifest_sha256='f' * 64, run_id='foreign-run', role='bot', outcome=[], details=['foreign bytes failed their hash'], fencing_token=2, found_at='2026-10-30T00:00:00Z'), sort_keys=True)
+MALFORMED_EXECUTION = json.dumps(dict(session_id='foreign-session', manifest_sha256='f' * 64, run_id='foreign-run', problems={}, demonstrated_outcome=dict(outcome=[], reasons=['foreign'])), sort_keys=True)
+
+
+def _malformed_at_a_running_dispatch(case):
+    sim = sf.ScoredSim(case, sf.by_target({50: sf.slow, 30: sf.slow}))
+    case.addCleanup(rf.make_writable, sim.stack.root)
+    sim.ready()
+
+    def failpoint(point):
+        if point == 'after_outcome_commit' and not failpoint.done:
+            failpoint.done = True
+            row = sim.records()[0]
+            (sim.run_dir(row['run_id']) / ('terminal-fact-%04d-0.json' % row['fencing_token'])).write_text(MALFORMED_FACT)
+    failpoint.done = False
+    result = sim.executor(failpoint=failpoint).execute()
+    return sim, result, dict(dispatch_code=result.code, terminal_failure=sim.status_now()['terminal_failure'])
 
 
 def _corrupt(name):
@@ -629,6 +703,20 @@ SEARCHES = (
     ('corrupt_seal_with_a_crash_after_the_fact_and_a_restored_transfer_refuses_resume', _committed_then_returned(_corrupt('seal.json'), retained_fact=True)),
     ('stop_request_failing_refuses_resume_and_dispatch', _committed_then_returned(_stop_request_fails)),
     ('foreign_terminal_fact_refuses_resume_with_nothing_final_said', _committed_then_returned(_foreign_terminal_fact)),
+    # corrupt bytes at each step of being written down: what a crash or a failed fsync leaves is read before any recovery, and a transfer that works again cannot unsay it
+    ('corrupt_seal_with_a_crash_before_its_bytes_refuses_as_unverified', _committed_then_returned(_corrupt('seal.json'), crash_at='after_corrupt_observation', dispatch=True)),
+    ('corrupt_file_with_a_crash_before_its_bytes_refuses_as_unverified', _committed_then_returned(_corrupt('bot.stdout.log'), crash_at='after_corrupt_observation', dispatch=True)),
+    ('corrupt_seal_with_a_crash_before_its_fact_stops_the_session', _committed_then_returned(_corrupt('seal.json'), crash_at='after_corrupt_bytes', dispatch=True)),
+    ('corrupt_file_with_a_crash_before_its_fact_stops_the_session', _committed_then_returned(_corrupt('bot.stdout.log'), crash_at='after_corrupt_bytes', dispatch=True)),
+    ('corrupt_seal_whose_fact_failed_its_fsync_stops_the_session_on_the_next_return', _committed_then_returned(_corrupt('seal.json'), fact_fsync_fails=True, dispatch=True)),
+    ('corrupt_file_whose_fact_failed_its_fsync_stops_the_session_on_the_next_return', _committed_then_returned(_corrupt('bot.stdout.log'), fact_fsync_fails=True, dispatch=True)),
+    ('corrupt_seal_in_flight_with_a_crash_before_any_outcome_takes_the_failure', _corrupt_in_flight('seal.json', 'after_corrupt_bytes')),
+    ('corrupt_file_in_flight_with_a_crash_before_any_outcome_takes_the_failure', _corrupt_in_flight('bot.stdout.log', 'after_corrupt_bytes')),
+    ('corrupt_file_in_flight_with_a_crash_before_its_bytes_refuses_as_unverified', _corrupt_in_flight('bot.stdout.log', 'after_corrupt_observation')),
+    # a file of no known shape answers like any other file that cannot be held to this run: no exception, no irreversible word, and a report that renders
+    ('malformed_terminal_fact_refuses_resume_with_nothing_final_said', _committed_then_returned(_malformed_file('terminal-fact-0002-0.json', MALFORMED_FACT), dispatch=True)),
+    ('malformed_execution_record_refuses_resume_with_nothing_final_said', _committed_then_returned(_malformed_file('execution-reconciled-0002-9.json', MALFORMED_EXECUTION), dispatch=True)),
+    ('malformed_terminal_fact_stops_a_running_dispatch_with_nothing_final_said', _malformed_at_a_running_dispatch),
 )
 
 

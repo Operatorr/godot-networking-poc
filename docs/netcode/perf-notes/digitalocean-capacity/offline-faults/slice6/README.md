@@ -5,7 +5,7 @@ Offline evidence for [issue #69](https://github.com/Operatorr/godot-networking-p
 | File | What it is | Reproducible |
 | --- | --- | --- |
 | [`synthetic-scores.json`](synthetic-scores.json) | The real prover and scorer over 179 mocked recorder trees, each with one thing changed. Nothing ran, and each "60 s window" is arithmetic | Yes: `test_scoring_evidence` regenerates it and compares the hash |
-| [`synthetic-searches.json`](synthetic-searches.json) | 67 whole searches through the real executor, registry, prover and scorer over a fake guest that exports those trees. No outcome is scripted: each comes from the bytes | Yes, likewise |
+| [`synthetic-searches.json`](synthetic-searches.json) | 79 whole searches through the real executor, registry, prover and scorer over a fake guest that exports those trees. No outcome is scripted: each comes from the bytes | Yes, likewise |
 | [`real-local-scores.json`](real-local-scores.json) | The real scorer over real `omega-server` and `omega-load-test` bytes on one machine | No: timings are real. `SHA256SUMS` only says these are the bytes retained |
 
 Raw recorder files are not retained here. The real generator deletes its temporary run directories, so its rows are summaries that cannot be replayed from this directory.
@@ -49,10 +49,10 @@ Each boundary is tested on both sides, and every comparison keeps its exact coun
 | `no_passing_target` | 5 | No passing target at 5-player resolution; not zero, `players` and `lower_bound` null |
 | `unconfirmed_variable` | 3 | Failed at repetition 1, 2 or 3; no replacement, nothing after it |
 | `unconfirmed_partial` | 1 | An interrupted confirmation; its untouched siblings ran; never confirmed |
-| `stopped_*` | 33 | Invalid load, inconclusive evidence or infrastructure, across coarse, refinement and confirmation; earlier passes named as exploratory only |
+| `stopped_*` | 35 | Invalid load, inconclusive evidence or infrastructure, across coarse, refinement and confirmation; earlier passes named as exploratory only |
 | `undecidable_incomplete_predecessor` | 2 | A cut trial or one an unfrozen controller could not score, neither inferred nor replayed |
 | `partial_time_exhausted` | 1 | Results kept; nothing dispatched that cannot fit |
-| `in_progress` | 10 | A session collected or resumed after one decided trial, with nothing more run |
+| `in_progress` | 20 | A session collected or resumed after one decided trial, with nothing more run |
 
 Every scenario records `no_hidden_retry`: one game start per trial. The search also covers crashes at `after_execution_record`, `after_score_retained`, `before_outcome_commit` and `after_outcome_commit`. `test_capacity_search.EveryLegalPath` walks all 401 leaves of the graph with no files.
 
@@ -72,6 +72,11 @@ These also pin what a search may not do with evidence it cannot trust, with each
 | A seal that comes back with the wrong hash after the commit, with or without a crash after the fact is written and a transfer that works again | The outcome stays; the session is terminal, resume refused, one game start, receipt and bytes kept | `evidence_disagreement` |
 | A `record_batch_stop` that fails beside that fact | `terminal_fact_unacknowledged` from both resume and dispatch, one game start, registry not terminal, and the next controller replays it first | `evidence_disagreement` |
 | A terminal fact naming another session, manifest and run | `stop_record_unverified`, resume refused, one game start, registry **not** terminal | `evidence_disagreement`, listed under `unverified_stop_records` and not `hard_facts` |
+| A seal or raw file that failed its hash, with a crash after the observation and before its bytes, and a transfer that works again | `stop_record_unverified` from both resume and dispatch, one game start, registry **not** terminal, and the outcome stays | `evidence_disagreement` |
+| The same with a crash after the bytes and before any fact, or a fact whose own fsync failed beside a registry that did not answer | Resume and dispatch refuse with `terminal_failure`: the observation is replayed first, one game start, and the outcome stays | `evidence_disagreement`, with the observation in `hard_facts` |
+| The same bytes before any outcome was committed, with a crash after they were kept | `INFRASTRUCTURE_FAILURE`, one game start, whatever the working transfer later brings | The stop |
+| The same before any outcome, with a crash before they were kept | The run keeps what it reached, and `stop_record_unverified` stops anything after it | `evidence_disagreement` |
+| A terminal fact or execution record of no known shape, such as a list for an outcome, on a return or at an already running dispatch | `stop_record_unverified`, one game start, registry **not** terminal: no exception and no false infrastructure stop | `evidence_disagreement`, rendered, and listed under `unverified_stop_records` |
 | A foreign or edited retained score, or a foreign classification, on return | `INCONCLUSIVE`, the file left as found | `evidence_disagreement` |
 | An unchanged retained score, collected with the hosts as they are | The retained outcome, not recomputed | As the journal says |
 | A retained score replaced after a search had confirmed | Unchanged in the journal | `evidence_disagreement`, with `confirmed_observation` kept as `journal_claim` |
@@ -119,6 +124,15 @@ The real controller path also runs one 60 s window through `test_run_local_integ
 ## Not shown anywhere here
 
 A real pass; Linux `/proc` socket and OOM counters; real cgroup files, a real kernel's OOM kill or real `systemd-run` properties, since every process-attributed OOM row here is a mocked file of the shape the real supervisor writes, and a test drives that supervisor over a stand-in directory; independent-host clocks; public routes; SSH or systemd; generator headroom under real load; a real server kick, since nothing in the real workload triggers one, so that case rests on the traced source and the mocked trees; and any host's capacity.
+
+## What changed when corrupt bytes got a lifecycle
+
+Regenerating added 12 search scenarios, 67 to 79. No scenario was removed and no classification, status, claim or trial outcome moved. `synthetic-scores.json` and `real-local-scores.json` are byte for byte what they were, so the real summaries above stay historical and were not rerun: no real run exercises this path.
+
+- The five existing scenarios whose return finds corrupt bytes (`corrupt_bytes_on_return_*`, `corrupt_bytes_survive_*`, `corrupt_bytes_in_a_confirmation_*`) gain the new observation in `hard_facts`, because a return now writes one. Those with a second crash also list that crash's own record once more, as the reason it carried. Nothing else in them changed.
+- The new scenarios are the rows above. In the two `fsync` scenarios the temporary name's process id is fixed by the generator, so that the file regenerates.
+
+Everything here is a simulated interruption or an injected failure in one process, over a fake guest.
 
 ## What changed when OOM evidence moved to a leaf
 
