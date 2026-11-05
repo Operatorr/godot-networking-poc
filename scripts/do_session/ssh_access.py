@@ -10,6 +10,7 @@ never opens the file. Nothing is forwarded, so a guest never gains the use of it
 output is bounded and redacted before anything else sees it.
 """
 import base64
+import contextlib
 import dataclasses
 import hmac
 import hashlib
@@ -29,6 +30,8 @@ CONNECT_TIMEOUT_S = 10
 KEYSCAN_TIMEOUT_S = 10
 MAX_OUTPUT_CHARS = 4 * 1024 * 1024
 POLL_S = 1.0
+MIN_POLL_S = 0.01
+KILL_REAP_S = 2.0       # a killed child that will not be reaped by then is left to the kernel, not waited on
 SSH_UNREACHABLE = 255
 
 
@@ -77,8 +80,62 @@ def require_restricted_key(path):
         raise ValueError('the SSH private key must be a regular file with mode 0600')
 
 
+def bounded_command(popen, argv, timeout_s, on_wait, sleep, monotonic, poll_s):
+    """Poll rather than block, so a build can run for minutes while the controller lease is kept alive.
+
+    ``timeout_s`` becomes one absolute cutoff before the child exists. It is checked again after every callback, each sleep is cut to
+    what is left, and a result first seen at or past the cutoff is refused even if the child had exited in time: nobody can show that
+    it had, and a caller with a deadline may not act on it. This is a best effort on an ordinary kernel, not a real-time promise,
+    but the overrun is now one scheduling delay and one reap rather than a whole poll.
+    """
+    deadline = monotonic() + timeout_s
+    # Regular temporary files cannot fill a pipe and block the child before it exits.
+    # They also keep output out of memory while lease callbacks continue to run.
+    with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
+        if monotonic() >= deadline:
+            return CommandResult(None, '', 'timed out after %s s' % timeout_s)
+        process = popen(argv, stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr)
+
+        def oversized():
+            return any(os.fstat(stream.fileno()).st_size > MAX_OUTPUT_CHARS for stream in (stdout, stderr))
+
+        def killed(reason):
+            process.kill()
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                process.communicate(timeout=KILL_REAP_S)
+            return CommandResult(None, '', reason)
+        try:
+            while True:
+                exited = process.poll() is not None
+                if monotonic() >= deadline:
+                    return killed('timed out after %s s' % timeout_s)
+                if exited:
+                    break
+                if oversized():
+                    return killed('command output limit exceeded')
+                if on_wait is not None:
+                    on_wait()
+                remaining = deadline - monotonic()
+                if remaining > 0:
+                    # Halved, so a child that ends in time is seen in time, and never slept past.
+                    sleep(min(poll_s, remaining if remaining <= MIN_POLL_S else max(remaining / 2, MIN_POLL_S)))
+        except BaseException:
+            # No local ssh process outlives lease loss or cancellation.
+            killed('cancelled')
+            raise
+        process.communicate()
+        if oversized():
+            return CommandResult(None, '', 'command output limit exceeded')
+        stdout.seek(0)
+        stderr.seek(0)
+        out, err = stdout.read(MAX_OUTPUT_CHARS), stderr.read(MAX_OUTPUT_CHARS)
+        return CommandResult(process.returncode, out.decode('utf-8', 'replace'),
+                             cleanup_provider.redact(err.decode('utf-8', 'replace')))
+
+
 class GuestAccess:
     """What every access path shares: the pinning decision. Subclasses supply the three network steps."""
+    UNIT_MODE = 'systemd'       # how the guest bounds a run's processes; only local fixtures run without systemd units
 
     def __init__(self):
         self.pins = {}
@@ -110,6 +167,17 @@ class GuestAccess:
         self.pins[role] = address
         digest = hashlib.sha256(base64.b64decode(offered[1])).digest()
         return dict(address=address, host_key_type=offered[0], host_key_sha256='SHA256:' + base64.b64encode(digest).decode('ascii').rstrip('='))
+
+    def _pinned_addresses(self):
+        return set(self.pins.values())
+
+    def restore_pins(self, addresses):
+        """A later controller inherits pins and never makes one: its first-contact nonces are gone with the earlier process."""
+        pinned = self._pinned_addresses()
+        for role, address in addresses.items():
+            if address not in pinned:
+                raise HostVerificationFailed('%s at %s has no pinned host key' % (role, address))
+            self.pins[role] = address
 
     def run(self, role, argv, timeout_s, on_wait=None):
         raise NotImplementedError
@@ -146,37 +214,7 @@ class SshAccess(GuestAccess):
                 '-i', self.private_key_path]
 
     def _execute(self, argv, timeout_s, on_wait):
-        """Poll rather than block, so a build can run for minutes while the controller lease is kept alive."""
-        # Regular temporary files cannot fill a pipe and block the child before it exits.
-        # They also keep output out of memory while lease callbacks continue to run.
-        with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
-            process = self.popen(argv, stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr)
-            deadline = self.monotonic() + timeout_s
-            def oversized():
-                return any(os.fstat(stream.fileno()).st_size > MAX_OUTPUT_CHARS for stream in (stdout, stderr))
-            try:
-                while process.poll() is None:
-                    if oversized() or self.monotonic() >= deadline:
-                        reason = 'command output limit exceeded' if oversized() else 'timed out after %s s' % timeout_s
-                        process.kill()
-                        process.communicate()
-                        return CommandResult(None, '', reason)
-                    if on_wait is not None:
-                        on_wait()
-                    self.sleep(POLL_S)
-            except BaseException:
-                # No local ssh process outlives lease loss or cancellation.
-                process.kill()
-                process.communicate()
-                raise
-            process.communicate()
-            if oversized():
-                return CommandResult(None, '', 'command output limit exceeded')
-            stdout.seek(0)
-            stderr.seek(0)
-            out, err = stdout.read(MAX_OUTPUT_CHARS), stderr.read(MAX_OUTPUT_CHARS)
-            return CommandResult(process.returncode, out.decode('utf-8', 'replace'),
-                                 cleanup_provider.redact(err.decode('utf-8', 'replace')))
+        return bounded_command(self.popen, argv, timeout_s, on_wait, self.sleep, self.monotonic, POLL_S)
 
     def _scan_host_key(self, address):
         result = self._execute(['ssh-keyscan', '-T', str(KEYSCAN_TIMEOUT_S), '-t', 'ed25519', address], KEYSCAN_TIMEOUT_S + 5, None)
@@ -198,6 +236,13 @@ class SshAccess(GuestAccess):
         with self.known_hosts.open('a', encoding='utf-8') as handle:
             handle.write('%s %s %s\n' % (address, host_key[0], host_key[1]))
         os.chmod(str(self.known_hosts), 0o600)
+
+    def _pinned_addresses(self):
+        try:
+            lines = self.known_hosts.read_text().splitlines()
+        except OSError:
+            return set()
+        return {line.split()[0] for line in lines if line.split()}
 
     def _address(self, role):
         if role not in self.pins:

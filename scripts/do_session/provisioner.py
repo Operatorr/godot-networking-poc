@@ -20,6 +20,7 @@ A restarted controller never resumes a half-bootstrapped pair. Its host-binding 
 process, so it cannot verify first contact, and arming again is refused. It requests cleanup. Cold bootstrap has no
 partial credit to preserve.
 """
+import contextlib
 import dataclasses
 import hashlib
 import json
@@ -30,6 +31,7 @@ import tempfile
 import admission
 import cleanup_provider
 import create_evidence
+import guest_agent
 import guest_bootstrap
 import manifest as manifest_mod
 import provider_preflight
@@ -81,6 +83,10 @@ class Result:
     firewall_id: str = None
     fencing_token: int = None
     evidence_ref: str = None
+
+
+def agent_sha256():
+    return hashlib.sha256(AGENT_SOURCE.read_bytes()).hexdigest()
 
 
 class Stop(Exception):
@@ -656,6 +662,30 @@ class Provisioner:
             raise Stop('bootstrap_failed', '%s %s printed no JSON document' % (role, step))
         if manifest_mod.scan_for_secrets(document):
             raise Stop('bootstrap_failed', '%s %s reported a credential value' % (role, step))
+        if document.get('ok') is False and 'code' in document:
+            refusal = ControlLost if document['code'] in guest_agent.FENCE_CODES else Stop
+            raise refusal('guest_refused_' + document['code'], '%s %s: %s' % (role, step, document.get('detail')))
+        return document
+
+    def _fence_arguments(self):
+        return ['--session', self.session_id, '--token', self.token]
+
+    def _authorized_arguments(self, role):
+        """Asked immediately before a process start, because the answer lasts seconds. See ``registry.authorize_guest_action``."""
+        def prepare():
+            prepared = self._agent(role, 'grant_prepare', *self._fence_arguments())
+            if prepared.get('raised'):
+                self.client.mutate('report_guest_fence', session_id=self.session_id, fencing_token=self.token, role=role)
+            return prepared['grant_id']
+        grant = self.client.guest_grant(self.session_id, self.token, 'smoke', role, prepare, self.sleep)
+        return self._fence_arguments() + ['--not-after-wall', session_clock.parse(grant['authorized_until']), '--grant-id', grant['grant_id'], '--grant-ttl-s', grant['ttl_s']], grant['grant_id']
+
+    def _granted_agent(self, role, step, *arguments, timeout_s=None):
+        """A process start and its grant's answer. A lost reply leaves the grant to its expiry, which is the safe reading."""
+        authority, grant_id = self._authorized_arguments(role)
+        document = self._agent(role, step, *authority, *arguments, timeout_s=timeout_s) if timeout_s is not None else self._agent(role, step, *authority, *arguments)
+        with contextlib.suppress(registry_client.RegistryRejected, registry_client.RegistryUnavailable):
+            self.client.mutate('resolve_guest_grant', session_id=self.session_id, grant_id=grant_id, resolution='started')
         return document
 
     def _transfer(self, method, role, source, target):
@@ -686,7 +716,7 @@ class Provisioner:
             if self.guests.run(role, ['mkdir', '-p', AGENT_INCOMING], self._bounded(self.policy.step_timeout_s), self._keepalive).returncode != 0:
                 raise Stop('bootstrap_failed', role + ' could not create its agent directory')
             self._transfer(self.guests.put, role, str(AGENT_SOURCE), AGENT_REMOTE)
-            self.report['roles'][role]['agent_sha256'] = hashlib.sha256(AGENT_SOURCE.read_bytes()).hexdigest()
+            self.report['roles'][role]['agent_sha256'] = agent_sha256()
             status = self._agent(role, 'wait_cloud_init', '--timeout-s', self.policy.cloud_init_timeout_s, timeout_s=self.policy.cloud_init_timeout_s + 30)
             self.report['roles'][role]['cloud_init'] = status
             if status.get('rc') != 0 or status.get('status') != 'done':
@@ -697,11 +727,11 @@ class Provisioner:
     def _build_on_bot(self):
         """The fixed generator builds both binaries. A 1 GiB game host stays untouched by a compiler and its memory use."""
         source = self.manifest['source']
-        fetched = self._agent('bot', 'fetch_source', '--sha', source['benchmark_sha'], '--timeout-s', self.policy.fetch_timeout_s,
+        fetched = self._agent('bot', 'fetch_source', '--sha', source['benchmark_sha'], '--timeout-s', self.policy.fetch_timeout_s, *self._fence_arguments(),
                               timeout_s=self.policy.fetch_timeout_s + 30)
         flags = ['--flag=' + flag for flag in source['build_flags']]
         built = self._agent('bot', 'build', '--toolchain', source['rust_toolchain'], '--target', source['target_triple'],
-                            '--timeout-s', self.policy.build_timeout_s, *flags, timeout_s=self.policy.build_timeout_s + 30)
+                            '--timeout-s', self.policy.build_timeout_s, *flags, *self._fence_arguments(), timeout_s=self.policy.build_timeout_s + 30)
         self.report['build'] = dict(source=fetched, build=built)
         problems = readiness.build_problems(self.manifest, fetched, built)
         self.evidence.event('source_and_build', problems=problems, head=fetched.get('head'), rustc=built.get('rustc'))
@@ -717,7 +747,7 @@ class Provisioner:
                 local = str(pathlib.Path(temporary) / name)
                 self._transfer(self.guests.get, 'bot', '/home/deploy/omega-release/' + name, local)
                 self._transfer(self.guests.put, 'game', local, AGENT_INCOMING + '/' + name)
-        installed = self._agent('game', 'install_release', '--role', 'game', '--incoming', AGENT_INCOMING)
+        installed = self._agent('game', 'install_release', '--role', 'game', '--incoming', AGENT_INCOMING, *self._fence_arguments())
         for name in ('omega-server', 'server_config.json', 'sample_host.py'):
             if (installed.get('release') or {}).get(name) != self.built_release.get(name):
                 raise Stop('build_verification_failed', name + ' changed in transit')
@@ -740,7 +770,7 @@ class Provisioner:
         for role in ROLES:
             observation = self._agent(role, 'probe', '--role', role)
             measured = self._measure_clock(role)
-            sampler = self._agent(role, 'sampler')
+            sampler = self._granted_agent(role, 'sampler')
             entry = self.report['roles'][role]
             entry.update(observation=self._retain_packages(role, observation), clock_offset=measured, sampler=sampler)
             # Judged as the guest reported it, whole list included, not as the report now summarizes it.
@@ -798,15 +828,25 @@ class Provisioner:
 
     def _enet_smoke(self):
         """Over the public route and the session firewall. Its processes and ports are gone again before ready."""
-        started = self._agent('game', 'smoke_game_start')
         target = self.droplets['game']['public_ipv4'][0] + ':' + session_access.GAME_PORT
+        smoke = ['--smoke-id', 'provision-%d' % self.token]
+        started = bot = None
         try:
-            bot = self._agent('bot', 'smoke_bot', '--server', target, '--timeout-s', self.policy.smoke_timeout_s,
-                              timeout_s=self.policy.smoke_timeout_s + 30)
+            # Inside the try: a reply lost after the server started must still reach the stop.
+            started = self._granted_agent('game', 'smoke_game_start', *smoke)
+            bot = self._granted_agent('bot', 'smoke_bot', '--server', target, '--timeout-s', self.policy.smoke_timeout_s, timeout_s=self.policy.smoke_timeout_s + 30)
         finally:
-            stopped = self._agent('game', 'smoke_game_stop')
+            stopped = self._stop_smoke(smoke)
         self.report['enet_smoke'] = dict(game_started=started, bot=bot, game_stopped=stopped)
         return readiness.smoke_problems(started, bot, stopped)
+
+    def _stop_smoke(self, smoke):
+        """Never raises: it runs on the way out of a failed smoke, and the helper ends the server by itself regardless."""
+        try:
+            return self._agent('game', 'smoke_game_stop', *self._fence_arguments(), *smoke)
+        except Stop as error:
+            self.evidence.event('smoke_stop_failed', code=error.code)
+            return None
 
     def _mark_ready(self):
         path = self.evidence.artifact('readiness.json', self.report)

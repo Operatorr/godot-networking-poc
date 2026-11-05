@@ -12,6 +12,7 @@ import hashlib
 import json
 import pathlib
 import sys
+from unittest import mock
 
 import fault_evidence
 import manifest as manifest_mod
@@ -21,6 +22,10 @@ import registry
 import registry_client
 import session_access
 import session_clock
+
+# What these retained timelines record as the uploaded agent. No agent ran here, because the guests are fake, so this is only a label.
+# Issue #67 later fenced the agent's process steps, and a new hash would rewrite the journal heads of every retained slice 3 file.
+RETAINED_AGENT_SHA256 = 'bdb444f187d08900d4de3ce257dc5fb897e78046717dfa96e57a99414d14e079'
 
 FAST = provisioner.Policy(reconcile_observe_s=30.0, firewall_apply_wait_s=30.0, firewall_update_attempts=2, assign_attempts=2)
 NEW_ADDRESS = '198.51.100.200/32'
@@ -408,7 +413,8 @@ def generate(out):
                '| Timeline | Checks passed | Provider requests | Guest steps | Incidents |', '| --- | ---: | ---: | ---: | ---: |']
     sums = []
     for scenario in SCENARIOS:
-        result = run_scenario(scenario)
+        with mock.patch.object(provisioner, 'agent_sha256', lambda: RETAINED_AGENT_SHA256):
+            result = run_scenario(scenario)
         hits = manifest_mod.scan_for_secrets(result)
         if hits:
             raise AssertionError('credential-like value in ' + scenario.__name__ + ': ' + ', '.join(hits))

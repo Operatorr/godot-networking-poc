@@ -1,0 +1,79 @@
+{
+ "checks": [
+  {
+   "check": "the seal arrived but the file did not",
+   "passed": true
+  },
+  {
+   "check": "recovery came before the cleanup intent",
+   "passed": true
+  },
+  {
+   "check": "the file is verified and the failure still stands",
+   "passed": true
+  }
+ ],
+ "clock": "scripted",
+ "host_starts": {
+  "bot": 1,
+  "game": 1
+ },
+ "registry_events": [
+  {
+   "kind": "control_acquired",
+   "takeover": false
+  },
+  {
+   "kind": "run_dispatch_intent",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "launching",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "running",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "stopped",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "sealed",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_outcome",
+   "outcome": "INFRASTRUCTURE_FAILURE",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "cleanup_intent",
+   "reason": "batch ended: stopped_infrastructure_failure"
+  }
+ ],
+ "remote": "fake",
+ "runs": [
+  {
+   "interrupted_reason": null,
+   "kind": "coarse",
+   "outcome": "INFRASTRUCTURE_FAILURE",
+   "phase": "sealed",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+   "state": "finished",
+   "target": 25
+  }
+ ],
+ "scenario": "failed_file_is_recovered_before_the_delete",
+ "scorer": "scripted by the fixture, never a measurement",
+ "session": {
+  "fencing_token": 1,
+  "state": "deleting",
+  "terminal_failure": "INFRASTRUCTURE_FAILURE"
+ }
+}

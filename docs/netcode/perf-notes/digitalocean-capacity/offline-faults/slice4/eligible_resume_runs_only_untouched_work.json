@@ -1,0 +1,272 @@
+{
+ "checks": [
+  {
+   "check": "every revalidation passed",
+   "passed": true
+  },
+  {
+   "check": "it names the next untouched trial",
+   "passed": true
+  },
+  {
+   "check": "the search finished with no replayed run",
+   "passed": true
+  }
+ ],
+ "clock": "scripted",
+ "host_starts": {
+  "bot": 6,
+  "game": 6
+ },
+ "registry_events": [
+  {
+   "kind": "control_acquired",
+   "takeover": false
+  },
+  {
+   "kind": "run_dispatch_intent",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "launching",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "running",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "stopped",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "sealed",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_outcome",
+   "outcome": "PASS",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "control_acquired",
+   "takeover": true
+  },
+  {
+   "kind": "resumed"
+  },
+  {
+   "kind": "run_dispatch_intent",
+   "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "launching",
+   "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "running",
+   "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "stopped",
+   "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "sealed",
+   "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1"
+  },
+  {
+   "kind": "run_outcome",
+   "outcome": "FAIL",
+   "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1"
+  },
+  {
+   "kind": "run_dispatch_intent",
+   "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "launching",
+   "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "running",
+   "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "stopped",
+   "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "sealed",
+   "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1"
+  },
+  {
+   "kind": "run_outcome",
+   "outcome": "FAIL",
+   "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1"
+  },
+  {
+   "kind": "run_dispatch_intent",
+   "run_id": "do-cap-1v1g-20261030a-t04-confirm-n025-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "launching",
+   "run_id": "do-cap-1v1g-20261030a-t04-confirm-n025-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "running",
+   "run_id": "do-cap-1v1g-20261030a-t04-confirm-n025-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "stopped",
+   "run_id": "do-cap-1v1g-20261030a-t04-confirm-n025-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "sealed",
+   "run_id": "do-cap-1v1g-20261030a-t04-confirm-n025-r1"
+  },
+  {
+   "kind": "run_outcome",
+   "outcome": "PASS",
+   "run_id": "do-cap-1v1g-20261030a-t04-confirm-n025-r1"
+  },
+  {
+   "kind": "run_dispatch_intent",
+   "run_id": "do-cap-1v1g-20261030a-t05-confirm-n025-r2"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "launching",
+   "run_id": "do-cap-1v1g-20261030a-t05-confirm-n025-r2"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "running",
+   "run_id": "do-cap-1v1g-20261030a-t05-confirm-n025-r2"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "stopped",
+   "run_id": "do-cap-1v1g-20261030a-t05-confirm-n025-r2"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "sealed",
+   "run_id": "do-cap-1v1g-20261030a-t05-confirm-n025-r2"
+  },
+  {
+   "kind": "run_outcome",
+   "outcome": "PASS",
+   "run_id": "do-cap-1v1g-20261030a-t05-confirm-n025-r2"
+  },
+  {
+   "kind": "run_dispatch_intent",
+   "run_id": "do-cap-1v1g-20261030a-t06-confirm-n025-r3"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "launching",
+   "run_id": "do-cap-1v1g-20261030a-t06-confirm-n025-r3"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "running",
+   "run_id": "do-cap-1v1g-20261030a-t06-confirm-n025-r3"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "stopped",
+   "run_id": "do-cap-1v1g-20261030a-t06-confirm-n025-r3"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "sealed",
+   "run_id": "do-cap-1v1g-20261030a-t06-confirm-n025-r3"
+  },
+  {
+   "kind": "run_outcome",
+   "outcome": "PASS",
+   "run_id": "do-cap-1v1g-20261030a-t06-confirm-n025-r3"
+  }
+ ],
+ "remote": "fake",
+ "runs": [
+  {
+   "interrupted_reason": null,
+   "kind": "coarse",
+   "outcome": "PASS",
+   "phase": "sealed",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+   "state": "finished",
+   "target": 25
+  },
+  {
+   "interrupted_reason": null,
+   "kind": "coarse",
+   "outcome": "FAIL",
+   "phase": "sealed",
+   "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+   "state": "finished",
+   "target": 50
+  },
+  {
+   "interrupted_reason": null,
+   "kind": "refine",
+   "outcome": "FAIL",
+   "phase": "sealed",
+   "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+   "state": "finished",
+   "target": 30
+  },
+  {
+   "interrupted_reason": null,
+   "kind": "confirm",
+   "outcome": "PASS",
+   "phase": "sealed",
+   "run_id": "do-cap-1v1g-20261030a-t04-confirm-n025-r1",
+   "state": "finished",
+   "target": 25
+  },
+  {
+   "interrupted_reason": null,
+   "kind": "confirm",
+   "outcome": "PASS",
+   "phase": "sealed",
+   "run_id": "do-cap-1v1g-20261030a-t05-confirm-n025-r2",
+   "state": "finished",
+   "target": 25
+  },
+  {
+   "interrupted_reason": null,
+   "kind": "confirm",
+   "outcome": "PASS",
+   "phase": "sealed",
+   "run_id": "do-cap-1v1g-20261030a-t06-confirm-n025-r3",
+   "state": "finished",
+   "target": 25
+  }
+ ],
+ "scenario": "eligible_resume_runs_only_untouched_work",
+ "scorer": "scripted by the fixture, never a measurement",
+ "session": {
+  "fencing_token": 2,
+  "state": "ready",
+  "terminal_failure": null
+ }
+}

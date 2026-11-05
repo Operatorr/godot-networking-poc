@@ -7,6 +7,7 @@ second dispatch. Exhausted retries raise ``RegistryUnavailable``, and the create
 as refusal: no acknowledgement, no provider create.
 """
 import contextlib
+import copy
 import json
 import shlex
 import subprocess
@@ -18,6 +19,8 @@ import create_evidence
 import session_clock
 
 STORAGE_ERROR = 'registry_storage_error'
+MAX_REVOCATION_WAITS = 8
+REVOCATION_WAIT_STEP_S = 2.0
 
 
 class TransportError(Exception):
@@ -69,6 +72,9 @@ class SubprocessTransport:
     def __init__(self, argv, timeout_s=30.0):
         self.argv = list(argv)
         self.timeout_s = timeout_s
+
+    def within(self, seconds):
+        return SubprocessTransport(self.argv, min(self.timeout_s, seconds))
 
     def __call__(self, request):
         try:
@@ -128,6 +134,31 @@ class RegistryClient:
 
     def mutate(self, method, request_id=None, **params):
         return self.call(method, request_id=request_id or self.new_request_id(), **params)
+
+    def guest_grant(self, session_id, fencing_token, action, role, prepare, sleep, run_id=None):
+        """One grant for one start: the guest mints its identity first, then the registry commits the intent.
+
+        ``prepare()`` returns the id. A pending revocation is waited out here, at most for the life of the grants it names, which
+        takes a fresh identity each time because a guest times a grant from the moment it minted it.
+        """
+        for _ in range(MAX_REVOCATION_WAITS):
+            grant_id = prepare()
+            try:
+                return self.mutate('authorize_guest_action', 'grant:%s:%s' % (session_id, grant_id), session_id=session_id, fencing_token=fencing_token, action=action,
+                                   grant_id=grant_id, role=role, run_id=run_id)
+            except RegistryRejected as rejection:
+                if rejection.code != 'revocation_pending':
+                    raise
+                sleep(min(REVOCATION_WAIT_STEP_S, max(0.01, rejection.details.get('retry_after_s') or 0.0)))
+        raise RegistryUnavailable('a revocation stayed pending past the life of any grant')
+
+    def within(self, seconds):
+        """A copy that answers or gives up inside ``seconds``: one attempt, no retry delay. For a caller with its own hard deadline."""
+        limited = copy.copy(self)
+        limited.attempts = 1
+        if hasattr(self.transport, 'within'):
+            limited.transport = self.transport.within(seconds)
+        return limited
 
     # ---- the pre-create contract -------------------------------------------------------------
 

@@ -1,0 +1,83 @@
+{
+ "checks": [
+  {
+   "check": "the intent is durable and the session reads as pending",
+   "passed": true
+  },
+  {
+   "check": "the record names the grant and when it ends",
+   "passed": true
+  },
+  {
+   "check": "no destructive request while it can land",
+   "passed": true
+  },
+  {
+   "check": "it is deleting at the conclusive time, with nobody asking",
+   "passed": true
+  },
+  {
+   "check": "the delayed start is refused",
+   "passed": true
+  }
+ ],
+ "clock": "scripted",
+ "host_starts": {
+  "bot": 0,
+  "game": 1
+ },
+ "registry_events": [
+  {
+   "kind": "control_acquired",
+   "takeover": false
+  },
+  {
+   "kind": "run_dispatch_intent",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "launching",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_interrupted",
+   "reason": "cleanup_started",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "cleanup_intent",
+   "reason": "operator abort"
+  },
+  {
+   "kind": "revocation_pending",
+   "reason": "cleanup"
+  },
+  {
+   "detail": null,
+   "kind": "guest_grant_expired"
+  },
+  {
+   "kind": "revocation_effective"
+  }
+ ],
+ "remote": "fake",
+ "runs": [
+  {
+   "interrupted_reason": "cleanup_started",
+   "kind": "coarse",
+   "outcome": null,
+   "phase": "launching",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+   "state": "interrupted",
+   "target": 25
+  }
+ ],
+ "scenario": "abort_with_no_controller_takes_effect_when_the_grant_cannot_land",
+ "scorer": "scripted by the fixture, never a measurement",
+ "session": {
+  "fencing_token": 1,
+  "state": "deleting",
+  "terminal_failure": null
+ }
+}

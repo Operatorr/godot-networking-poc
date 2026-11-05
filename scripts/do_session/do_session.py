@@ -132,21 +132,17 @@ def cmd_admit(args):
     return exit_code(result)
 
 
-def cmd_next_run(args):
-    manifest, sha, state, meta, result = evaluate(args, args.resume)
-    persist_admission(args.session_dir, result, 'dispatch')
-    if not result.admitted:
-        print(json.dumps(result.to_dict(), indent=2, sort_keys=True))
-        return exit_code(result)
+def publish_selection(session_dir, sha, state, result, resume):
+    """Persist the concrete selected trial and its predecessor evidence. Returns the record, journaled exactly once per call."""
     trial = search.next_trial(state)
     record = dict(kind='selected', manifest_sha256=sha, selected_at=result.evaluated_at,
                   trial=trial.to_dict(), predecessor_evidence=[
                       dict(run_id=r.trial.run_id, outcome=r.outcome, evidence_ref=r.evidence_ref)
                       for r in state.records if r.trial.run_id in trial.predecessors],
-                  admission_decision=result.decision, resume=args.resume)
+                  admission_decision=result.decision, resume=resume)
     # A previous publication may have completed before its journal append failed. Re-admit
     # first, then reuse only an exact matching selection; never overwrite immutable evidence.
-    path = pathlib.Path(args.session_dir) / 'runs' / trial.run_id / 'selected.json'
+    path = pathlib.Path(session_dir) / 'runs' / trial.run_id / 'selected.json'
     if path.exists():
         original = load_json(path)
         identity = ('kind', 'manifest_sha256', 'trial', 'predecessor_evidence', 'admission_decision')
@@ -159,7 +155,17 @@ def cmd_next_run(args):
         record = original
     else:
         write_new(path, json.dumps(record, indent=2, sort_keys=True) + '\n')
-    append_journal(args.session_dir, record)
+    append_journal(session_dir, record)
+    return record
+
+
+def cmd_next_run(args):
+    manifest, sha, state, meta, result = evaluate(args, args.resume)
+    persist_admission(args.session_dir, result, 'dispatch')
+    if not result.admitted:
+        print(json.dumps(result.to_dict(), indent=2, sort_keys=True))
+        return exit_code(result)
+    record = publish_selection(args.session_dir, sha, state, result, args.resume)
     print(json.dumps(dict(result.to_dict(), selected=record), indent=2, sort_keys=True))
     return 0
 

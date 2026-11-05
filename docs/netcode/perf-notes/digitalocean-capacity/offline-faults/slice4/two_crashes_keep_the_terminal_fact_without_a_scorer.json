@@ -1,0 +1,198 @@
+{
+ "checks": [
+  {
+   "check": "it does not fall back to incomplete",
+   "passed": true
+  },
+  {
+   "check": "resume is refused",
+   "passed": true
+  }
+ ],
+ "clock": "scripted",
+ "host_starts": {
+  "bot": 4,
+  "game": 4
+ },
+ "registry_events": [
+  {
+   "kind": "control_acquired",
+   "takeover": false
+  },
+  {
+   "kind": "run_dispatch_intent",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "launching",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "running",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "stopped",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "sealed",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_outcome",
+   "outcome": "PASS",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_dispatch_intent",
+   "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "launching",
+   "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "running",
+   "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "stopped",
+   "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "sealed",
+   "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1"
+  },
+  {
+   "kind": "run_outcome",
+   "outcome": "FAIL",
+   "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1"
+  },
+  {
+   "kind": "run_dispatch_intent",
+   "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "launching",
+   "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "running",
+   "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "stopped",
+   "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "sealed",
+   "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1"
+  },
+  {
+   "kind": "run_outcome",
+   "outcome": "FAIL",
+   "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1"
+  },
+  {
+   "kind": "run_dispatch_intent",
+   "run_id": "do-cap-1v1g-20261030a-t04-confirm-n025-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "launching",
+   "run_id": "do-cap-1v1g-20261030a-t04-confirm-n025-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "running",
+   "run_id": "do-cap-1v1g-20261030a-t04-confirm-n025-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "stopped",
+   "run_id": "do-cap-1v1g-20261030a-t04-confirm-n025-r1"
+  },
+  {
+   "kind": "run_interrupted",
+   "reason": "controller_replaced",
+   "run_id": "do-cap-1v1g-20261030a-t04-confirm-n025-r1"
+  },
+  {
+   "kind": "control_acquired",
+   "takeover": true
+  },
+  {
+   "kind": "control_acquired",
+   "takeover": true
+  },
+  {
+   "kind": "run_progress",
+   "phase": "sealed",
+   "run_id": "do-cap-1v1g-20261030a-t04-confirm-n025-r1"
+  },
+  {
+   "kind": "run_outcome",
+   "outcome": "INFRASTRUCTURE_FAILURE",
+   "run_id": "do-cap-1v1g-20261030a-t04-confirm-n025-r1"
+  }
+ ],
+ "remote": "fake",
+ "runs": [
+  {
+   "interrupted_reason": null,
+   "kind": "coarse",
+   "outcome": "PASS",
+   "phase": "sealed",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+   "state": "finished",
+   "target": 25
+  },
+  {
+   "interrupted_reason": null,
+   "kind": "coarse",
+   "outcome": "FAIL",
+   "phase": "sealed",
+   "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+   "state": "finished",
+   "target": 50
+  },
+  {
+   "interrupted_reason": null,
+   "kind": "refine",
+   "outcome": "FAIL",
+   "phase": "sealed",
+   "run_id": "do-cap-1v1g-20261030a-t03-refine-n030-r1",
+   "state": "finished",
+   "target": 30
+  },
+  {
+   "interrupted_reason": "controller_replaced",
+   "kind": "confirm",
+   "outcome": "INFRASTRUCTURE_FAILURE",
+   "phase": "sealed",
+   "run_id": "do-cap-1v1g-20261030a-t04-confirm-n025-r1",
+   "state": "finished",
+   "target": 25
+  }
+ ],
+ "scenario": "two_crashes_keep_the_terminal_fact_without_a_scorer",
+ "scorer": "scripted by the fixture, never a measurement",
+ "session": {
+  "fencing_token": 3,
+  "state": "paused",
+  "terminal_failure": "INFRASTRUCTURE_FAILURE"
+ }
+}

@@ -1,0 +1,75 @@
+{
+ "checks": [
+  {
+   "check": "the original error is kept",
+   "passed": true
+  },
+  {
+   "check": "cleanup intent is durable",
+   "passed": true
+  }
+ ],
+ "clock": "scripted",
+ "host_starts": {
+  "bot": 1,
+  "game": 1
+ },
+ "registry_events": [
+  {
+   "kind": "control_acquired",
+   "takeover": false
+  },
+  {
+   "kind": "run_dispatch_intent",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "launching",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "running",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "stopped",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "sealed",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_outcome",
+   "outcome": "INCONCLUSIVE",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "cleanup_intent",
+   "reason": "batch ended: stopped_inconclusive_evidence"
+  }
+ ],
+ "remote": "fake",
+ "runs": [
+  {
+   "interrupted_reason": null,
+   "kind": "coarse",
+   "outcome": "INCONCLUSIVE",
+   "phase": "sealed",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+   "state": "finished",
+   "target": 25
+  }
+ ],
+ "scenario": "local_collection_failure_still_requests_cleanup",
+ "scorer": "scripted by the fixture, never a measurement",
+ "session": {
+  "fencing_token": 1,
+  "state": "deleting",
+  "terminal_failure": "INCONCLUSIVE"
+ }
+}

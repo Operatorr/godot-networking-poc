@@ -1,0 +1,60 @@
+{
+ "checks": [
+  {
+   "check": "the first rung is incomplete, not replayed",
+   "passed": true
+  },
+  {
+   "check": "resume refuses because nothing further can be decided",
+   "passed": true
+  }
+ ],
+ "clock": "scripted",
+ "host_starts": {
+  "bot": 0,
+  "game": 0
+ },
+ "registry_events": [
+  {
+   "kind": "control_acquired",
+   "takeover": false
+  },
+  {
+   "kind": "run_dispatch_intent",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_interrupted",
+   "reason": "controller_replaced",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "control_acquired",
+   "takeover": true
+  },
+  {
+   "kind": "run_outcome",
+   "outcome": "INCOMPLETE",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  }
+ ],
+ "remote": "fake",
+ "runs": [
+  {
+   "interrupted_reason": "controller_replaced",
+   "kind": "coarse",
+   "outcome": "INCOMPLETE",
+   "phase": "dispatched",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+   "state": "finished",
+   "target": 25
+  }
+ ],
+ "scenario": "crash_after_dispatch_stops_the_dependent_path",
+ "scorer": "scripted by the fixture, never a measurement",
+ "session": {
+  "fencing_token": 2,
+  "state": "paused",
+  "terminal_failure": null
+ }
+}

@@ -1,0 +1,40 @@
+{
+ "checks": [
+  {
+   "check": "the guest refused it",
+   "passed": true
+  },
+  {
+   "check": "no server started",
+   "passed": true
+  }
+ ],
+ "clock": "scripted",
+ "host_starts": {
+  "bot": 0,
+  "game": 0
+ },
+ "registry_events": [
+  {
+   "kind": "control_acquired",
+   "takeover": false
+  },
+  {
+   "kind": "control_acquired",
+   "takeover": true
+  },
+  {
+   "detail": null,
+   "kind": "guest_grant_expired"
+  }
+ ],
+ "remote": "fake",
+ "runs": [],
+ "scenario": "smoke_delayed_past_its_window_is_refused_by_the_guest",
+ "scorer": "scripted by the fixture, never a measurement",
+ "session": {
+  "fencing_token": 2,
+  "state": "paused",
+  "terminal_failure": null
+ }
+}
