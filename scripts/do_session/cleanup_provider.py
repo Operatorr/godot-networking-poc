@@ -2,8 +2,8 @@
 
 The interface has reads and deletes of exact resources only. It has no create, no project-wide
 delete and no way to touch SSH keys, projects or images, so the shared resources a session must
-preserve are out of reach by construction. The real DigitalOcean adapter belongs to handoff slice
-3; this slice exercises the seam with ``fake_provider.FakeProvider``.
+preserve are out of reach by construction. ``do_api.DigitalOceanProvider`` is the real adapter;
+``fake_provider.FakeProvider`` is the offline stand-in.
 
 Adapters bound every request with their own timeout, map HTTP 404 to ``None`` on reads and to
 acceptance on deletes, and raise exactly one of the errors below. ``get_request_settlement`` is a

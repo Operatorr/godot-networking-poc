@@ -56,8 +56,9 @@ Don't re-derive what's already written there; read it, then go deep where needed
   `harden_vps.sh` (firewall/fail2ban/SSH). `do-watchdog/` holds the DigitalOcean cleanup watchdog's portable unit.
 - `scripts/` — build/deploy/run automation. `scripts/do_session/` is the DigitalOcean test-session
   control code: the offline planner (immutable manifest, legal search branches, time/spend admission)
-  plus the durable session registry, fencing and independent cleanup watchdog, so far exercised only
-  against a fake provider — see its README and issue #61 slices 1–2.
+  plus the durable session registry, fencing and independent cleanup watchdog, and the authorization-gated
+  provider adapter, access control and cold bootstrap, so far exercised only against offline fakes — see its
+  README and issue #61 slices 1–3.
 - `docs/` — **system of record** (map below).
 
 ## Documentation map

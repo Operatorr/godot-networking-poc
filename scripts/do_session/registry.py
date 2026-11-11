@@ -22,6 +22,7 @@ import sqlite3
 import create_evidence
 import deadline_capacity
 import manifest as manifest_mod
+import resource_ownership
 import search
 import session_clock
 
@@ -41,7 +42,7 @@ DELETE_MARGIN_S = session_clock.DELETE_ISSUE_MARGIN_S       # the deadline tick 
 CREATE_START_WINDOW_S = session_clock.CREATE_START_WINDOW_S
 PENDING_CREATE_STATES = ('requested', 'ambiguous')
 CLOCK_UNVERIFIABLE_REASON = 'clock_unverifiable'
-PROTECTED_TAGS = ('omega-management',)
+PROTECTED_TAGS = resource_ownership.PROTECTED_TAGS
 
 EVIDENCE_STATUSES = ('unknown', 'collecting', 'complete', 'partial', 'missing', 'corrupt')
 UNRESOLVED_CREATE_INCIDENT = 'unresolved-create'
@@ -807,6 +808,32 @@ class Registry:
         return self._mutate('record_resource', dict(session_id=session_id, kind=kind, provider_id=str(provider_id),
                                                     intent_id=intent_id, name=name), request_id, session_id, body)
 
+    def report_ownership_conflict(self, session_id, resource_key, problems, observed_name=None, request_id=None):
+        """A controller read a recorded resource and refused to touch it. Durable before anything else happens.
+
+        Accepted from any controller, like ``record_resource``: a report grants nothing and refuses only what the
+        watchdog's own read refuses too. The same read clears it if the resource turns out to be owned after all.
+        """
+        if not isinstance(problems, list) or not problems or not all(isinstance(p, str) and p for p in problems):
+            raise Rejection('bad_request', 'an ownership conflict names its problems')
+
+        def body(effective, now_text, session):
+            row = self.db.execute('SELECT * FROM resources WHERE session_id=? AND resource_key=?', (session_id, resource_key)).fetchone()
+            if row is None or row['kind'] in BOOKKEEPING_KINDS:
+                raise Rejection('unknown_resource', 'not a resource recorded for this session: ' + str(resource_key))
+            if row['status'] in TERMINAL_RESOURCE_STATES:
+                raise Rejection('bad_state', 'resource is already ' + str(row['status']))
+            first = row['status'] != 'ownership_refused'
+            self.db.execute("UPDATE resources SET status='ownership_refused', ownership_detail=?, ownership_verified_at=NULL "
+                            'WHERE session_id=? AND resource_key=?', (canonical(problems), session_id, resource_key))
+            if first:
+                self.open_incident(session_id, 'ownership-mismatch', now_text,
+                                   dict(resource_key=resource_key, problems=problems, observed_name=observed_name),
+                                   last_error='; '.join(problems))
+            return dict(session_id=session_id, resource_key=resource_key, status='ownership_refused')
+        return self._mutate('report_ownership_conflict', dict(session_id=session_id, resource_key=resource_key, problems=problems,
+                                                              observed_name=observed_name), request_id, session_id, body)
+
     def record_resource_row(self, session_id, kind, provider_id, intent_id, name, source, now_text):
         """Shared by controller reports and watchdog discovery, inside the caller's transaction."""
         known = self.db.execute('SELECT status FROM resources WHERE session_id=? AND resource_key=?',
@@ -1279,7 +1306,8 @@ class Registry:
     # ---- transport-neutral entry point -------------------------------------------------------
 
     RPC_METHODS = ('register_session', 'acquire_control', 'renew_control', 'arm_session', 'begin_create',
-                   'record_create_result', 'record_create_settlement', 'dispose_create', 'record_resource', 'mark_ready',
+                   'record_create_result', 'record_create_settlement', 'dispose_create', 'record_resource', 'report_ownership_conflict',
+                   'mark_ready',
                    'dispatch_run', 'record_run_outcome',
                    'record_resume', 'begin_collection', 'begin_evidence_recovery', 'record_measurement',
                    'record_evidence', 'request_cleanup', 'operator_abort', 'disown_resource', 'health', 'status',

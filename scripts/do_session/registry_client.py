@@ -192,6 +192,8 @@ class RegistryClient:
                 self.mutate('record_create_result', session_id=session_id, intent_id=intent_id, outcome='not_sent',
                             fencing_token=fencing_token, request_number=grant['request_count'], note='grant expired unused')
             raise CreateGrantExpired(intent_id)
+        # The adapter enforces the same window on its connection, so a slow connect cannot stretch it.
+        grant = dict(grant, send_by_monotonic=started + grant['create_start_window_s'])
         try:
             provider_id = create_fn(grant)
         except create_evidence.CreateNotSent:

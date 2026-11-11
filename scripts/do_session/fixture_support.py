@@ -29,12 +29,13 @@ REGISTRY_ID = 'omega-registry-mgmt-1'
 WATCHDOG_IDENTITY = 'omega-watchdog@mgmt-1'
 
 
-def session_manifest(session_id='do-cap-1v1g-20261030a', cap_s=3600, reserve_s=120, grace_s=300):
+def session_manifest(session_id='do-cap-1v1g-20261030a', cap_s=3600, reserve_s=120, grace_s=300, retained=()):
     """A frozen capacity manifest for any session id and deadline, as the planner would emit it."""
     import manifest as manifest_mod
     frozen_conditions = conditions()
     session = frozen_conditions['session']
     session['id'] = session_id
+    session['retained_resources'] = list(session['retained_resources']) + list(retained)
     session['ownership_tags'] = dict(session='omega-session:' + session_id, game='omega-role:game:' + session_id,
                                      bot='omega-role:bot:' + session_id)
     frozen_conditions['evidence']['local_root'] = 'loadtest-runs/digitalocean/' + session_id
