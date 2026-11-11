@@ -32,6 +32,17 @@ HERE = pathlib.Path(__file__).parent
 REPO = HERE.parents[1]
 
 
+def _readiness_timeout(tree):
+    """The coordinator's own abort row is what a real swarm leaves. The prover has read it since slice 6, and the retained row for this scenario did not move."""
+    tree.edit_json('bot/swarm/window.json', lambda d: d.update(status='not_established', reason='readiness_timeout', start_ns=None, end_ns=None))
+
+    def abort(rows):
+        rows.insert(-1, dict(k='abort', nonce=rows[0]['nonce'], mono_ns=tree.timeline.drain, reason='readiness_timeout', authenticated=tree.timeline.target - 1))
+        for index, row in enumerate(rows):
+            row['seq'] = index
+    tree.edit_rows('bot/swarm/coordinator.ndjson', abort)
+
+
 def _drop_auth(tree):
     def change(rows):
         kept = [row for row in rows if not (row.get('k') == 'auth' and row.get('name') == 'LoadBot008')]
@@ -169,7 +180,7 @@ SYNTHETIC = (
     ('short_hold_refused', dict(hold_s=5), None, {}),
     ('large_known_wall_offset_still_maps', dict(game_wall_offset=37 * NS), None, {}),
     ('warmup_violated', {}, lambda t: t.edit_json('bot/swarm/window.json', lambda d: d.update(final_auth_ns=t.timeline.start - NS)), {}),
-    ('readiness_timeout_has_no_window', {}, lambda t: t.edit_json('bot/swarm/window.json', lambda d: d.update(status='not_established', reason='readiness_timeout', start_ns=None, end_ns=None)), {}),
+    ('readiness_timeout_has_no_window', {}, _readiness_timeout, {}),
     ('global_stagger_violated', {}, lambda t: t.edit_shard_row(2, 'join', lambda r: r.update(actual_ns=r['scheduled_ns'] + 101_000_000)), {}),
     ('poll_starvation', {}, lambda t: t.edit_shard_row(1, 'footer', lambda r: r.update(max_poll_gap_ns=501_000_000)), {}),
     ('early_shard_exit', {}, lambda t: (t.edit_shard_row(2, 'footer', lambda r: r.update(left_early=True)), t.edit_json('bot/swarm/window.json', lambda d: d.update(status='window_incomplete'))), {}),

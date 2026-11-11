@@ -11,6 +11,8 @@
 //!   -> end guard (still connected, still polling) -> drain -> footer + fsync -> window.json
 //! ```
 //!
+//! A swarm that gives up drains too, then keeps its sockets open for a last counter read.
+//!
 //! This module reports what happened and scores nothing. `scripts/do_session/measurement_window.py`
 //! decides from these files whether the window is proven. The exit status says only whether the
 //! evidence is finished: 0 window recorded, 1 window not established or incomplete, 4 a recorder
@@ -39,6 +41,10 @@ pub const PUBLISH_LEAD_NS: u64 = 1_000_000_000;
 /// with wall-clock uncertainty between the hosts.
 pub const END_GUARD_NS: u64 = 2_000_000_000;
 pub const DRAIN_NS: u64 = 1_500_000_000;
+/// How long a swarm that gave up keeps every socket open after its drain. A socket's kernel drop
+/// counter dies with the socket, and the collector reads about once a second, so without this the
+/// end of a failed ramp has no counter read and the generator cannot be proven free of drops.
+pub const COUNTER_HOLD_NS: u64 = 2_500_000_000;
 /// Upper bounds in ms; the final bucket is above the last bound. Counts, never quantiles.
 pub const GAP_BOUNDS_MS: [u64; 7] = [10, 20, 30, 35, 40, 50, 100];
 /// A shard that has not polled for this long is logged by the coordinator, independently of the
@@ -603,6 +609,7 @@ pub struct Coordinator {
     barrier_ns: OnceLock<u64>,
     window: OnceLock<(u64, u64)>,
     drain: AtomicBool,
+    hold_sockets: AtomicBool,
     slots: Vec<ShardSlot>,
     lost_rows: Mutex<Vec<Value>>,
 }
@@ -618,6 +625,7 @@ impl Coordinator {
             barrier_ns: OnceLock::new(),
             window: OnceLock::new(),
             drain: AtomicBool::new(false),
+            hold_sockets: AtomicBool::new(false),
             slots: (0..shards).map(|_| ShardSlot::new()).collect(),
             lost_rows: Mutex::new(Vec::new()),
         }
@@ -1033,6 +1041,20 @@ fn run_shard(shard: usize, controls: &Controls, co: &Coordinator, nonce: &str) -
             json!({"mono_ns": co.now_ns(), "unconfirmed_disconnects": unconfirmed,
                                        "bots": bots.iter_mut().map(bot_row).collect::<Vec<_>>()}),
         );
+        // Every socket stays open, and empty, so that a counter read can come after the abort.
+        // The sockets close when `bots` is consumed below, never before this.
+        if co.hold_sockets.load(Ordering::SeqCst) {
+            stream.flush();
+            let until = co.now_ns() + COUNTER_HOLD_NS;
+            while co.now_ns() < until {
+                for bot in &mut bots {
+                    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        bot.discard_incoming()
+                    }));
+                }
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        }
     }
 
     if !truncated {
@@ -1128,7 +1150,12 @@ pub fn run(controls: Controls, stop: Arc<AtomicBool>) -> i32 {
     let abort: Option<String> = coordinate(&controls, &co, &mut log, &stop, readiness_ns, hold_ns);
 
     // Bounded join: a wedged shard cannot hold the evidence of the others hostage.
-    let join_by = co.now_ns() + DRAIN_NS + JOIN_MARGIN_NS;
+    let hold = if co.hold_sockets.load(Ordering::SeqCst) {
+        COUNTER_HOLD_NS
+    } else {
+        0
+    };
+    let join_by = co.now_ns() + DRAIN_NS + hold + JOIN_MARGIN_NS;
     while co.now_ns() < join_by
         && !co
             .slots
@@ -1278,6 +1305,9 @@ fn coordinate(
     let mut next_clock = 0u64;
     let mut lost_seen = 0usize;
     let finish = |co: &Coordinator, log: &mut Stream, reason: &str| {
+        // A run stopped from outside proves nothing about capacity, so it has nothing to hold for.
+        co.hold_sockets
+            .store(reason != "interrupted", Ordering::SeqCst);
         co.drain.store(true, Ordering::SeqCst);
         log.row("abort", json!({"mono_ns": co.now_ns(), "reason": reason, "authenticated": co.authenticated.load(Ordering::SeqCst)}));
         log.sync();
@@ -1971,6 +2001,98 @@ mod tests {
         assert_eq!(document["status"], "not_established");
         assert_eq!(document["reason"], "readiness_timeout");
         assert!(document["start_ns"].is_null());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// A counter read has to be able to come after the abort, or the end of a failed ramp has no
+    /// drop evidence: the socket's kernel counter dies with the socket.
+    #[test]
+    fn a_ramp_that_gave_up_holds_every_socket_open_after_its_drain() {
+        let dir = temp_dir("hold");
+        let mut script = Script::default();
+        script.never_auth.push(name(2));
+        let server = MiniServer::start(script);
+        let mut config = controls(&server, &dir, 4, 1);
+        config.readiness_timeout_s = 0.5;
+        let swarm = {
+            let dir = dir.clone();
+            std::thread::spawn(move || {
+                let code = run(config, Arc::new(AtomicBool::new(false)));
+                (code, window(&dir))
+            })
+        };
+        // Past the abort and any drain, with the swarm still holding on.
+        std::thread::sleep(
+            Duration::from_millis(500) + Duration::from_nanos(DRAIN_NS + 500_000_000),
+        );
+        let ports: Vec<u64> = (0..4)
+            .flat_map(|shard| rows(&dir, shard))
+            .filter(|row| row["k"] == "join")
+            .map(|row| row["local_port"].as_u64().unwrap())
+            .collect();
+        assert_eq!(ports.len(), 4);
+        for port in &ports {
+            assert!(
+                std::net::UdpSocket::bind(("0.0.0.0", *port as u16)).is_err(),
+                "port {port} was closed before the last counter read"
+            );
+        }
+        let (code, document) = swarm.join().unwrap();
+        server.finish();
+        assert_eq!(code, 1);
+        assert_eq!(document["reason"], "readiness_timeout");
+        for shard in 0..4 {
+            let shard_rows = rows(&dir, shard);
+            let at = |kind: &str| {
+                shard_rows.iter().find(|row| row["k"] == kind).unwrap()["mono_ns"]
+                    .as_u64()
+                    .unwrap()
+            };
+            assert!(at("footer") - at("drain_end") >= COUNTER_HOLD_NS);
+        }
+        assert!(
+            document["acks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|ack| ack["finished"] == true),
+            "the bounded join allows for the hold: {document}"
+        );
+        for port in &ports {
+            std::net::UdpSocket::bind(("0.0.0.0", *port as u16)).unwrap();
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_swarm_stopped_from_outside_has_nothing_to_hold_for() {
+        let dir = temp_dir("no-hold");
+        let mut script = Script::default();
+        script.never_auth.push(name(2));
+        let server = MiniServer::start(script);
+        let config = controls(&server, &dir, 4, 1);
+        let stop = Arc::new(AtomicBool::new(false));
+        let stopper = {
+            let stop = stop.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(300));
+                stop.store(true, Ordering::SeqCst);
+            })
+        };
+        let code = run(config, stop);
+        stopper.join().unwrap();
+        server.finish();
+        assert_eq!(code, 1);
+        assert_eq!(window(&dir)["reason"], "interrupted");
+        for shard in 0..4 {
+            let shard_rows = rows(&dir, shard);
+            let at = |kind: &str| {
+                shard_rows.iter().find(|row| row["k"] == kind).unwrap()["mono_ns"]
+                    .as_u64()
+                    .unwrap()
+            };
+            assert!(at("footer") - at("drain_end") < COUNTER_HOLD_NS);
+        }
         std::fs::remove_dir_all(dir).unwrap();
     }
 

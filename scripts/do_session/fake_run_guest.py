@@ -96,6 +96,7 @@ class FakeRunGuests(fake_guest.FakeGuests):
         self.fail_start = {}
         self.upload_ok = True
         self.agent_calls = []           # every fenced guest_agent step that arrived, and what the host said to it
+        self.recorder_files = None      # (role, run) -> dict of path to bytes: what a real run's recorders would have left, for a fixture that scores them
 
     # ---- transport ---------------------------------------------------------------------------
 
@@ -429,6 +430,8 @@ class FakeRunGuests(fake_guest.FakeGuests):
             names = {'sampler.ndjson': b'{"mono_s": 1}\n{"mono_s": 2}\n', 'result.json': b'{}', 'bot.stdout.log': b'fixture log\n'}
             if run.plan['role'] == 'bot' and not self.no_report and run.stop_reason == 'primary_exited' and run.exit_code in run.plan['completed_exit_codes']:
                 names['report.json'] = b'{"synthetic": true}\n'
+            if self.recorder_files is not None:
+                names.update(self.recorder_files(run.plan['role'], run))
             run.files = dict(names)
             ports = {'%s/%d' % (p['protocol'], p['port']): p['port'] not in host.busy_ports for p in run.plan['ports']}
             final = dict(sealed_by_token=int(option(argv, '--token')), interrupted=option(argv, '--interrupted'), boot_id=host.boot_id, wall_ns=1, ports_free=ports, leftovers=list(host.leftovers),

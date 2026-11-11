@@ -343,9 +343,9 @@ class RealRunnerSide(runner_tests.GuestFixture):
         host = guest_runner.Host(self.guests.runner_root('game'))
         real = guest_runner._spawn
 
-        def raised_during(spec, run_dir, placeholder):
+        def raised_during(spec, run_dir, placeholder, **options):
             guest_runner.cmd_fence(types.SimpleNamespace(session=runner_tests.SESSION, token=self.token + 1), host)
-            return real(spec, run_dir, placeholder)
+            return real(spec, run_dir, placeholder, **options)
         with mock.patch.object(guest_runner, '_spawn', side_effect=raised_during):
             guest_runner.cmd_supervise(types.SimpleNamespace(run_dir=str(tree)), host)
         result = guest_runner.read_json(tree / 'result.json')
@@ -363,7 +363,7 @@ class RealRunnerSide(runner_tests.GuestFixture):
         (tree / 'plan.json').write_text(json.dumps(plan))
         host = guest_runner.Host(self.guests.runner_root('game'))
         real = guest_runner._spawn
-        with mock.patch.object(guest_runner, 'GRANT_COMMIT_SLACK_S', 0.2), mock.patch.object(guest_runner, '_spawn', side_effect=lambda *a: (time.sleep(0.4), real(*a))[1]):
+        with mock.patch.object(guest_runner, 'GRANT_COMMIT_SLACK_S', 0.2), mock.patch.object(guest_runner, '_spawn', side_effect=lambda *a, **k: (time.sleep(0.4), real(*a, **k))[1]):
             guest_runner.cmd_supervise(types.SimpleNamespace(run_dir=str(tree)), host)
         self.assertEqual(guest_runner.read_json(tree / 'result.json')['stop_reason'], 'launch_refused:grant_outlived_after_spawn')
 

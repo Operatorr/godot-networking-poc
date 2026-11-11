@@ -3,7 +3,7 @@
     one trial
       admit legal remaining paths -> publish the selection -> preflight both hosts (a dirty host stops here, untouched)
       dispatch_run (durable intent) -> launching (last fenced check) -> game, wait for its new socket -> bot -> running
-      watch, keeping the lease -> stop -> seal both hosts -> export through .partial -> execution.json -> sealed
+      watch, keeping the lease -> stop -> seal both hosts -> fetch to .partial -> durable guard -> compare by hash -> execution.json -> sealed
       classification.json -> record_run_outcome -> planner journal mirror
 
 The registry is the record of what was dispatched. A crash anywhere after ``dispatch_run`` leaves that run touched for
@@ -15,10 +15,12 @@ refuses it past its elapsed window. A takeover or cleanup that commits while a g
 grant is resolved, acknowledged by the guest's fence or conclusively expired; only then does it take effect. See ``registry.pending_revocation``.
 
 Workload processes stop by themselves, through the guest's supervisor, by ``launch_by + estimate`` less the time export
-needs. This controller only ends them sooner. Nothing here scores a measurement: ``scorer`` is the boundary described in
-``run_checks``, and no scorer ships yet, so no run can currently establish PASS or FAIL. ``measurement_window`` proves or refuses the
-common scored interval from the sealed files, and that proof is retained with the run and handed to any scorer.
+needs. This controller only ends them sooner. ``measurement_window`` proves or refuses the common scored interval from the sealed files, and
+``capacity_scorer`` decides gates and validity from those same files. Both are retained with the run, each create-only and hash-bound, and held against the
+execution facts by ``run_checks.apply_scorer``. A returning controller reuses what is retained once it is shown to be this run's own, so a crash can move no verdict and only the frozen revision can make a new one, unless a stop fact
+is on record. That outranks any decision not yet committed, and stops the session past one that was.
 """
+import contextlib
 import dataclasses
 import hashlib
 import json
@@ -27,6 +29,8 @@ import pathlib
 import tempfile
 
 import admission
+import capacity_report
+import capacity_scorer
 import cleanup_provider
 import do_session
 import guest_agent
@@ -49,8 +53,13 @@ RUNNER_SOURCE = pathlib.Path(guest_runner.__file__)
 FINISHED, STOPPED, PARTIAL, CONTROL_LOST, CLEANUP_STARTED, REFUSED = ('search_finished', 'stopped', 'partial_search', 'control_lost', 'cleanup_started', 'refused')
 NOT_LAUNCHED = 'not_launched'
 SOURCE_CHANGED = 'source_changed'
+TERMINAL_FACT_UNACKNOWLEDGED = 'terminal_fact_unacknowledged'
+STOP_RECORD_UNVERIFIED = 'stop_record_unverified'
+DIRECTORY_NOT_DURABLE = 'directory_not_durable'
+RUN_DIRECTORY_LOST = 'run_directory_lost'
+CORRUPT_EVIDENCE_DIR = capacity_scorer.CORRUPT_EVIDENCE_DIR
 ADAPTER_PATH = 'scripts/do_session/run_plan.py'
-LOCAL_FAILURES = (OSError, ValueError, KeyError, TypeError)
+LOCAL_FAILURES = (OSError, ValueError, KeyError, TypeError, RecursionError)
 STALE_CODES = ('stale_fencing_token', 'lease_expired', 'control_held')
 CLEANUP_CODES = ('cleanup_in_progress', 'deadline_reached', 'clock_unverifiable')
 GRANT_STILL_USABLE = ('lock_timeout', 'bad_request')     # the only refusals that come before the guest burns or outlaws a grant
@@ -149,6 +158,13 @@ class RunContext:
     demonstrated: dict = None                                   # an outcome the host's own evidence settled, in this or an earlier generation
 
 
+@dataclasses.dataclass
+class Validation:
+    """One acknowledged guard, held while a role's transferred bytes are compared. ``retained`` falls when what a comparison found could not be written down durably, and then only the registry's word can end it."""
+    path: pathlib.Path
+    retained: bool = True
+
+
 def publish_new(source, target):
     """Promote a verified file, refusing to overwrite anything already there. ``os.rename`` would overwrite."""
     os.link(str(source), str(target))
@@ -220,7 +236,7 @@ class GuestReadiness:
 
 
 class RunExecutor:
-    def __init__(self, client, guests, provider, manifest, sha, session_dir, fencing_token, sleep, monotonic, wall, scorer=None, adapter=None, policy=None,
+    def __init__(self, client, guests, provider, manifest, sha, session_dir, fencing_token, sleep, monotonic, wall, scorer=capacity_scorer.score, adapter=None, policy=None,
                  failpoint=None, source_problems=None, readiness_problems=None, require_counters=True, window_prover=measurement_window.prove):
         self.client = client
         self.guests = guests
@@ -232,7 +248,7 @@ class RunExecutor:
         self.sleep = sleep
         self.monotonic = monotonic
         self.wall = wall
-        self.scorer = scorer
+        self.scorer = scorer        # None or a scripted stand-in only in fixtures. Neither can produce what ``capacity_scorer`` admits.
         self.adapter = adapter or run_plan.ReleaseAdapter()
         self.policy = policy or Policy()
         self.failpoint = failpoint or (lambda name: None)
@@ -254,6 +270,9 @@ class RunExecutor:
         self.smokes = 0
         self.fences_closed = False
         self.never_created = set()  # (run_id, role): a plan went out, and the host says no such run ever existed
+        self.terminal_facts_found = set()   # (run_id, role): corrupt bytes this controller already wrote down, so a repeated sweep does not write them again
+        self.stops_heard = set()            # (run_id, record): stop facts the registry acknowledged to this controller
+        self.stops_unheard = {}             # (run_id, record): stop facts it did not, each kept until it does. Nothing more runs while one is here
         self.addresses = None
         self.report = None
         self.prepared = False
@@ -577,6 +596,7 @@ class RunExecutor:
         """Once per controller: the exact pair, pins from the first contact, this runner on both hosts, and the fence raised."""
         if self.prepared:
             return
+        self._require_durable_session()
         status = status or self._status()
         for name, seconds in self.timing.items():
             if not isinstance(seconds, (int, float)):
@@ -646,6 +666,43 @@ class RunExecutor:
     def _run_dir(self, run_id):
         return self.session_dir / 'runs' / run_id
 
+    def _require_durable_session(self):
+        """Before anything else this controller does. A directory that is merely there may be all a crash left of one that was never made durable, so existing proves nothing and this is asked again. A disk that cannot answer says nothing about any host, so this stops the work and leaves the session recoverable. Stopping and collecting what is already running goes on regardless."""
+        try:
+            do_session.make_session_durable(self.session_dir)
+        except OSError as error:
+            if self.collecting:
+                self._note('session_directory_not_durable', detail=type(error).__name__)
+                return
+            raise BatchStop(STOPPED, DIRECTORY_NOT_DURABLE, 'the session directory could not be made durable: ' + type(error).__name__, search.STOPPING[search.INCONCLUSIVE])
+
+    def _under_durable_directories(self, path, write):
+        """Every write this controller depends on. The directories above it are made durable from this session's root on every write, whoever created them, before the writer's own commit means anything.
+
+        A failure there still raises, because this write is then not durable, and it comes after the write: what a process crash would otherwise take from the next controller is on disk for it to read, and only a power cut can still take it, which is what the caller was told.
+        """
+        trouble = None
+        try:
+            do_session.make_directory_durable(pathlib.Path(path).parent, self.session_dir)
+        except OSError as error:
+            trouble = error
+        write()
+        if trouble is not None:
+            raise trouble
+
+    def _write_durable_bytes(self, path, data):
+        self._under_durable_directories(path, lambda: do_session.write_new_durable_bytes(path, data))
+
+    def _write_durable(self, path, text):
+        self._under_durable_directories(path, lambda: do_session.write_new_durable(path, text))
+
+    def _require_durable_run_dir(self, run_id):
+        """Before the run is dispatched. Every stop record that run can leave lives under this name, and no guest should start on the word of a directory a power cut can take back."""
+        try:
+            do_session.make_directory_durable(self._run_dir(run_id), self.session_dir)
+        except OSError as error:
+            raise BatchStop(STOPPED, DIRECTORY_NOT_DURABLE, 'the directory of run %s could not be made durable: %s' % (run_id, type(error).__name__), search.STOPPING[search.INCONCLUSIVE])
+
     def _plan(self, trial, role, launch_not_after_wall=0.0, bound_s=0.0, stop_by_wall=0.0, minimum_bound_s=0.0):
         sampler_sha256 = self.report['roles'][role]['observation']['release']['sample_host.py']
         return run_plan.role_plan(self.adapter, self.manifest, self.sha, trial, role, self.addresses, sampler_sha256, self.token, self.guests.UNIT_MODE,
@@ -691,6 +748,8 @@ class RunExecutor:
                 self._keepalive(force=True)
                 records = self._records()
                 self._sync_planner_journal(records)
+                if any(row['outcome'] is None for row in records):
+                    self._require_no_open_stop()     # a run left undecided must not read as a search with nothing more to do
                 state = self._search_state(records)
                 result = self._admit(state)
                 if result.decision == admission.NO_REMAINING_WORK:
@@ -720,12 +779,16 @@ class RunExecutor:
             # A defect or a full disk here must not hide behind a clean-looking return. C still arrives.
             return self._batch_failed('controller_failure', type(error).__name__)
 
-    def _require_frozen_source(self):
-        """Before any guest is touched, on the first run as on a resume. No check supplied means no proof, so nothing runs."""
+    def _frozen_source_problems(self):
+        """Whether this code is the frozen controller. No check supplied means no proof, and so does a check that fails. On the path to cleanup, it must answer rather than raise."""
         try:
-            problems = self.source_problems() if self.source_problems is not None else ['no controller source check was supplied']
-        except OSError as error:
-            problems = ['the controller source could not be checked: ' + type(error).__name__]
+            return list(self.source_problems()) if self.source_problems is not None else ['no controller source check was supplied']
+        except Exception as error:     # whatever it was, nothing here can be shown to be frozen
+            return ['the controller source could not be checked: ' + type(error).__name__]
+
+    def _require_frozen_source(self):
+        """Before any guest is touched, on the first run as on a resume. Stopping and collecting what is already running needs no such proof: making a new decision from it does, and ``_score`` enforces that."""
+        problems = self._frozen_source_problems()
         if problems:
             raise BatchStop(REFUSED, SOURCE_CHANGED, '; '.join(problems))
 
@@ -757,7 +820,9 @@ class RunExecutor:
         return BatchResult(STOPPED, search_status=search.STOPPING[search.INFRASTRUCTURE_FAILURE], code=code, detail=detail, runs=self.outcomes)
 
     def _one_run(self, state, result):
+        self._require_no_open_stop()
         trial = search.next_trial(state)
+        self._require_durable_run_dir(trial.run_id)
         self._publish_selection(state, result)
         self.failpoint('after_selection')
         ledgers = {}
@@ -772,8 +837,7 @@ class RunExecutor:
         grant = self._dispatch(trial, estimate)
         self.failpoint('after_dispatch_commit')
         run_dir = self._run_dir(trial.run_id)
-        run_dir.mkdir(parents=True, exist_ok=True)
-        do_session.write_new(run_dir / 'grant.json', json.dumps(grant, indent=2, sort_keys=True) + '\n')
+        self._write_durable(run_dir / 'grant.json', json.dumps(grant, indent=2, sort_keys=True) + '\n')
         if bracket is not None:
             self._retain_bracket(trial.run_id, 'before', bracket)
         # ``asked`` is before the grant existed, so these local limits can only err early.
@@ -1029,19 +1093,38 @@ class RunExecutor:
             exported = context.exported[role] = self._export_role(context.trial.run_id, role, sealed)
             if not exported['complete']:
                 problem = '%s evidence was not fully exported: %s' % (role, exported['failed'])
-                # A failed transfer or this controller's own disk say nothing about the bytes on the host. Only a digest mismatch does.
-                if all(item['kind'] in ('transfer', 'local') for item in exported['failed']):
+                # A failed transfer or this controller's own disk say nothing about the bytes on the host. Only a digest mismatch does, and only one that what is on record supports.
+                corrupt = [item for item in exported['failed'] if item['kind'] not in ('transfer', 'local')]
+                unsupported = capacity_scorer.corrupt_receipt_problems(self._run_dir(context.trial.run_id), role, corrupt, self.token, self._expected(context.trial.run_id))
+                if unsupported:
+                    self._note('corrupt_receipt_unsupported', run_id=context.trial.run_id, role=role, problems=unsupported)
+                if unsupported or not corrupt:
                     self._note_uncertain(context, problem)
                 else:
                     context.problems[run_checks.INFRASTRUCTURE].append(problem)
 
     def _export_role(self, run_id, role, sealed):
-        """Through ``.partial`` and SHA256, as the lifecycle contract asks. A file that fails stays partial and is never promoted."""
+        """Through ``.partial`` and SHA256, as the lifecycle contract asks. A file that fails stays partial and is never promoted.
+
+        Everything is fetched first and compared afterwards, so the guard over the comparison is only ever open across this disk's own work and a transfer that dies leaves nothing to answer for.
+        """
         target = self._run_dir(run_id) / role
-        target.mkdir(parents=True, exist_ok=True)
         remote = guest_runner.DEFAULT_ROOT + '/runs/' + run_id + '/' + role + '/'
         wanted = [(item['path'], item['sha256']) for item in sealed['seal']['files']] + [(guest_runner.SEAL, sealed['seal_sha256'])]
-        failed, copied = [], 0
+        refused = capacity_scorer.seal_reply_problems(self._run_dir(run_id), role, sealed['seal_sha256'], sealed['seal'], self.token, self._expected(run_id))
+        if refused:
+            self._note('seal_reply_refused', run_id=run_id, role=role, problems=refused)
+            return dict(complete=False, failed=[dict(path=relative, kind='transfer', reason='the reply it would be held to contradicts what is on record') for relative, _ in wanted], files=len(wanted), copied=0)
+        self._retain_seal_receipt(run_id, role, sealed['seal_sha256'], sealed['seal'])
+        try:
+            do_session.make_directory_durable(target, self.session_dir)
+        except OSError as error:     # this disk's trouble, which says nothing about the bytes on the host, and must not keep them from being compared
+            self._note('role_directory_not_durable', run_id=run_id, role=role, detail=type(error).__name__)
+            try:
+                target.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                return dict(complete=False, failed=[dict(path=relative, kind='local', reason=type(error).__name__) for relative, _ in wanted], files=len(wanted), copied=0)
+        failed, received = [], []
         for relative, digest in wanted:
             try:
                 local = target / relative
@@ -1052,17 +1135,152 @@ class RunExecutor:
                 result = self.guests.get(role, remote + relative, str(partial), self._guest_timeout(self.policy.transfer_timeout_s), self._wait_callback())
                 if result.returncode != 0:
                     failed.append(dict(path=relative, kind='transfer', reason=cleanup_provider.redact(result.stderr)))
-                elif sha256_path(partial) != digest:
-                    failed.append(dict(path=relative, kind='corrupt', reason='hash mismatch'))
                 else:
-                    publish_new(partial, local)
-                    copied += 1
+                    received.append((relative, digest, local, partial))
             except GuestLost as lost:
                 failed.append(dict(path=relative, kind='transfer', reason=cleanup_provider.redact(lost)))
             except OSError as error:
                 # One file's local failure costs that file. An existing file with other bytes is never overwritten.
                 failed.append(dict(path=relative, kind='local', reason=type(error).__name__))
+        copied = self._compare_received(run_id, role, received, failed) if received else 0
         return dict(complete=not failed, failed=failed, files=len(wanted), copied=copied)
+
+    def _compare_received(self, run_id, role, received, failed):
+        """Each transferred file against its digest, under one guard. Returns how many were promoted. With no guard nothing is compared, so nothing can be found and then forgotten: the bytes stay in ``.partial``, unjudged, for a later attempt."""
+        validation = self._begin_validation(run_id, role)
+        if validation is None:
+            failed.extend(dict(path=relative, kind='local', reason='no validation guard could be established') for relative, _, _, _ in received)
+            return 0
+        copied = 0
+        for relative, digest, local, partial in received:
+            try:
+                if sha256_path(partial) == digest:
+                    publish_new(partial, local)
+                    copied += 1
+                    continue
+            except OSError as error:     # nothing was found of these bytes, or they were good and this disk would not take them
+                failed.append(dict(path=relative, kind='local', reason=type(error).__name__))
+                continue
+            try:
+                failed.append(self._corrupt_receipt(run_id, role, relative, partial, digest, validation))
+            except OSError as error:     # found, and gone from under it
+                validation.retained = False
+                failed.append(dict(path=relative, kind='local', reason=type(error).__name__))
+        self._end_validation(validation)
+        return copied
+
+    def _begin_validation(self, run_id, role):
+        """On disk, and acknowledged, before any transferred byte is compared. A comparison can find a failure, and the writes that keep that failure share one directory, whose sync can fail. Nothing short of this would let a returning controller tell that comparison from one that never happened. The guard sits outside that directory, so its fate is not theirs.
+
+        It ends when what the comparison found is retained or the registry has acknowledged a stop. If it is still here on a return, the result is unknown and no later comparison can settle it: ``capacity_scorer.stop_records`` reports it as unverified, which holds back successors and any claim, with nothing irreversible said. An operator who has looked removes it.
+
+        Failing to establish one means no comparison. It stops this controller with the session recoverable, since this disk's trouble says nothing about any host. Collecting and recovery return None instead, so that nothing stands between a batch and its cleanup.
+        """
+        directory = self.session_dir / capacity_scorer.VALIDATION_GUARD_DIR
+        document = capacity_scorer.validation_guard(self.session_id, self.sha, run_id, role, self.token, session_clock.iso(self.wall()))
+        path = None
+        try:
+            do_session.make_directory_durable(directory, self.session_dir)
+            for attempt in range(1000):
+                path = directory / capacity_scorer.validation_guard_name(run_id, role, self.token, attempt)
+                if not path.exists():
+                    break
+            do_session.write_new_durable(path, json.dumps(document, indent=2, sort_keys=True) + '\n')
+        except OSError as error:
+            self._note('validation_guard_not_established', run_id=run_id, role=role, detail=type(error).__name__)
+            if path is not None and not isinstance(error, FileExistsError):
+                with contextlib.suppress(OSError):     # no comparison followed it, so it must not say that one may have
+                    path.unlink()
+            if self.collecting or self.in_recovery:
+                return None
+            raise BatchStop(STOPPED, DIRECTORY_NOT_DURABLE, 'no comparison of %s of run %s could be guarded: %s' % (role, run_id, type(error).__name__), search.STOPPING[search.INCONCLUSIVE])
+        self.failpoint('after_validation_guard')
+        return Validation(path)
+
+    def _end_validation(self, validation):
+        """Only when what the comparison found is retained. Otherwise the guard stays, for the stop that says it to the registry to end, or for the next controller to refuse on."""
+        self.failpoint('before_validation_end')
+        if validation.retained:
+            self._clear_guard(validation.path)
+
+    def _clear_guard(self, path):
+        """A guard that a failed sync or a power cut brings back only refuses again, so this errs the safe way."""
+        try:
+            path.unlink()
+            do_session.make_name_durable(path, self.session_dir)
+        except FileNotFoundError:
+            pass
+        except OSError as error:
+            self._note('validation_guard_not_cleared', guard=path.name, detail=type(error).__name__)
+
+    def _clear_guards_of(self, run_id):
+        """The registry has acknowledged a stop for this run, which says more than any comparison could have, and it cannot be walked past."""
+        try:
+            paths = capacity_scorer.validation_guards(self._run_dir(run_id))
+        except OSError as error:
+            self._note('validation_guard_not_cleared', run_id=run_id, detail=type(error).__name__)
+            return
+        for path in paths:
+            self._clear_guard(path)
+
+    def _retain_seal_receipt(self, run_id, role, seal_sha256, seal=None):
+        """What a guest's own reply said this role sealed, on disk before any byte of it is judged, so a mismatch found later is held to something older than itself.
+
+        ``seal`` is the sealed document when the reply carried it or its bytes have passed their hash: a status reply only names the digest. A reply of another run or of no shape makes no receipt, and an observation with no receipt proves nothing.
+        Failing to keep this never stops the transfer. It only means that a crash from here on leaves an observation that refuses instead of one that replays.
+        """
+        files = capacity_scorer.seal_inventory(seal, run_id, role)
+        if not capacity_scorer.is_digest(seal_sha256) or (seal is not None and files is None):
+            self._note('seal_receipt_not_retained', run_id=run_id, role=role, detail='its reply cannot be held to this run')
+            return
+        path = self._run_dir(run_id) / capacity_scorer.seal_receipt_name(self.token, role, seal_sha256, files)
+        try:
+            if not path.exists():
+                document = capacity_scorer.seal_receipt(self.session_id, self.sha, run_id, role, seal_sha256, files, self.token, session_clock.iso(self.wall()))
+                self._write_durable(path, json.dumps(document, indent=2, sort_keys=True) + '\n')
+        except OSError as error:
+            self._note('seal_receipt_not_retained', run_id=run_id, role=role, detail=type(error).__name__)
+
+    def _corrupt_receipt(self, run_id, role, relative, source, expected, validation):
+        """Bytes failed their hash, and from here on no later transfer may unsay it. Each step is on disk before the next begins, and each crash between them leaves something ``capacity_scorer.stop_records`` reads before any recovery or admission:
+
+          0. the seal receipt that says what ``expected`` was, already written by the caller before this transfer began. Without it the observation below only has its own word, and refuses
+          1. the observation, naming this run and both hashes. Nothing is on disk but a ``.writing`` file until it is whole, so a crash here is an interrupted write, or nothing at all
+          2. the bytes, under a name no later transfer writes to, keyed by their hash. A crash before they land leaves an observation short of them, which refuses as unverified
+          3. the caller's outcome or terminal fact, and then the registry. A crash before those leaves an observation with its bytes, which is a fact in its own right and is replayed
+
+        Failing to keep any of it never stops the rest: the receipt still goes up with both hashes, this controller holds to what it knows, and cleanup is unaffected. It does leave ``validation`` open: the guard is what says this was found when a power cut takes what could not be kept.
+
+        A name already here may be what an earlier failed sync left, so it is committed again before it counts as kept.
+        """
+        actual = sha256_path(source)
+        receipt = dict(path=relative, kind='corrupt', reason='hash mismatch', expected_sha256=expected, actual_sha256=actual, retained_as=None)
+        run_dir = self._run_dir(run_id)
+        observation = run_dir / capacity_scorer.corrupt_observation_name(self.token, role, relative, actual)
+        try:
+            if observation.exists():
+                do_session.make_name_durable(observation, self.session_dir)
+            else:
+                document = capacity_scorer.corrupt_observation(self.session_id, self.sha, run_id, role, relative, expected, actual, self.token, session_clock.iso(self.wall()))
+                self._write_durable(observation, json.dumps(document, indent=2, sort_keys=True) + '\n')
+        except OSError as error:
+            validation.retained = False
+            self._note('corrupt_observation_not_retained', run_id=run_id, role=role, path=relative, detail=type(error).__name__)
+        self.failpoint('after_corrupt_observation')
+        name = capacity_scorer.corrupt_evidence_name(role, relative, actual)
+        target = run_dir / name
+        try:
+            if target.exists():
+                receipt['retained_as'] = name
+                do_session.make_name_durable(target, self.session_dir)
+            else:
+                self._write_durable_bytes(target, pathlib.Path(source).read_bytes())
+                receipt['retained_as'] = name
+        except OSError as error:     # the hashes still say what was found
+            validation.retained = False
+            self._note('corrupt_bytes_not_retained', run_id=run_id, role=role, path=relative, detail=type(error).__name__)
+        self.failpoint('after_corrupt_bytes')
+        return receipt
 
     def _write_execution(self, context, name, writer='run'):
         """The boundary between running and scoring: what happened, bound by hash. Create-only, like every run file.
@@ -1088,7 +1306,7 @@ class RunExecutor:
         text = json.dumps(document, indent=2, sort_keys=True) + '\n'
         if manifest_mod.scan_for_secrets(document):
             raise RunAborted(run_checks.INFRASTRUCTURE, 'the execution record held a credential value and was not written')
-        do_session.write_new(path, text)
+        self._write_durable(path, text)
         digest = hashlib.sha256(text.encode('utf-8')).hexdigest()
         return dict(document=document, sha256=digest, ref='runs/%s/%s#sha256:%s' % (context.trial.run_id, name, digest), path=path)
 
@@ -1109,9 +1327,8 @@ class RunExecutor:
         if verdict is not None:
             return verdict
         settled = run_checks.disposition(problems)
-        answer = None
-        if self.scorer is not None:
-            answer = self.scorer(self._evidence_for_scorer(context, execution, proof))
+        answer = self._score(context, execution, proof)
+        self.failpoint('after_score_retained')
         return run_checks.apply_scorer(settled, answer, proof)
 
     def _window_proof(self, context, execution):
@@ -1123,11 +1340,15 @@ class RunExecutor:
             return None
         run_id = context.trial.run_id
         path = self._run_dir(run_id) / 'window-proof.json'
-        retained = guest_runner.read_json(path)
-        if isinstance(retained, dict):
+        retained = measurement_window.load_json(path)[0]
+        if isinstance(retained, dict) and retained.get('run_id') == run_id and not capacity_scorer.proof_shape_problems(retained):
             return retained
         if path.exists():
-            return dict(schema=measurement_window.PROOF_SCHEMA, status=measurement_window.INCONCLUSIVE, reasons=[dict(code='proof_unreadable', category=measurement_window.EVIDENCE, detail='window-proof.json')])
+            return dict(schema=measurement_window.PROOF_SCHEMA, run_id=run_id, status=measurement_window.INCONCLUSIVE, reasons=[dict(code='proof_unreadable', category=measurement_window.EVIDENCE, detail='window-proof.json')])
+        problems = self._frozen_source_problems()
+        if problems:
+            # Not retained: a proof made by code nobody froze must not be there for the frozen controller to reuse.
+            return dict(schema=measurement_window.PROOF_SCHEMA, run_id=run_id, status=measurement_window.INCONCLUSIVE, reasons=[dict(code='prover_failed', category=measurement_window.EVIDENCE, detail='; '.join(problems))])
         roles = execution['document'].get('roles') or {}
         identities = {role: (view.get('identity') or {}).get('processes') or {} for role, view in roles.items()}
         brackets = {label: guest_runner.read_json(self._run_dir(run_id) / ('clock-%s.json' % label)) for label in ('before', 'after')}
@@ -1141,17 +1362,109 @@ class RunExecutor:
             if manifest_mod.scan_for_secrets(proof):
                 raise ValueError('the proof held a credential value')
         except Exception as error:     # a defect in a parser or a surprising file: the run still needs its outcome committed
-            proof = dict(schema=measurement_window.PROOF_SCHEMA, status=measurement_window.INCONCLUSIVE, reasons=[dict(code='prover_failed', category=measurement_window.EVIDENCE, detail=type(error).__name__)])
+            proof = dict(schema=measurement_window.PROOF_SCHEMA, run_id=run_id, status=measurement_window.INCONCLUSIVE, reasons=[dict(code='prover_failed', category=measurement_window.EVIDENCE, detail=type(error).__name__)])
         try:
-            do_session.write_new(path, json.dumps(proof, indent=2, sort_keys=True, default=sorted) + '\n')
+            self._write_durable(path, json.dumps(proof, indent=2, sort_keys=True, default=sorted) + '\n')
         except OSError as error:
             self._note('window_proof_not_retained', run_id=run_id, detail=type(error).__name__)
         return proof
 
     def _evidence_for_scorer(self, context, execution, proof=None):
         """Everything a scorer may read: verified local files, the sealed execution facts and the window proof. Nothing live."""
-        return dict(run_id=context.trial.run_id, trial=context.trial.to_dict(), root=str(self._run_dir(context.trial.run_id)), execution=execution['document'],
-                    execution_sha256=execution['sha256'], execution_ref=execution['ref'], window_proof=proof)
+        path = self._run_dir(context.trial.run_id) / 'window-proof.json'
+        return dict(run_id=context.trial.run_id, session_id=self.session_id, manifest_sha256=self.sha, controller_sha=self._controller_sha(), trial=context.trial.to_dict(), root=str(self._run_dir(context.trial.run_id)), execution=execution['document'],
+                    execution_sha256=execution['sha256'], execution_ref=execution['ref'], window_proof=proof, window_proof_sha256=sha256_path(path) if path.exists() else None,
+                    workload=self.manifest.get('workload'), telemetry_schema=self.manifest.get('telemetry_schema'))
+
+    def _score(self, context, execution, proof):
+        """The scorer's answer, retained before anything acts on it. Create-only and computed once, so a returning controller reads the verdict this one reached.
+
+        Every new decision is made here, by whichever path got here, so here is where the frozen revision is enforced. A retained score was made under it and is only read. Without a scorer
+        a run establishes nothing. A scorer that breaks is inconclusive, like a prover that breaks, and never stops the path to the outcome commit.
+        """
+        if self.scorer is None:
+            return None
+        run_id = context.trial.run_id
+        retained = self._retained_score(context, execution)
+        if retained is not None:
+            return retained
+        problems = self._frozen_source_problems()
+        if problems:
+            self._note('scoring_refused', run_id=run_id, detail='; '.join(problems))
+            return dict(outcome=search.INCONCLUSIVE, evidence_ref=execution['ref'], scorer='capacity_scorer', reasons=['nothing was scored, because this controller is not the frozen revision: ' + '; '.join(problems)], source_refused=True)
+        try:
+            answer = self.scorer(self._evidence_for_scorer(context, execution, proof))
+        except Exception as error:     # a defect in a parser or a surprising file: the run still needs its outcome committed
+            self._note('scorer_failed', run_id=run_id, detail=type(error).__name__)
+            return dict(outcome=search.INCONCLUSIVE, evidence_ref=execution['ref'], scorer='capacity_scorer', reasons=['the scorer failed: ' + type(error).__name__])
+        document = answer.get('score') if isinstance(answer, dict) else None
+        if document is None:
+            return answer
+        answer = {key: value for key, value in answer.items() if key != 'score'}
+        if manifest_mod.scan_for_secrets(document):
+            return dict(answer, outcome=search.INCONCLUSIVE, generator_failure_attributed_to_server=False, reasons=['the score held a credential value and was not retained'])
+        document = capacity_scorer.seal(document)
+        text = capacity_scorer.canonical(document)
+        run_dir = self._run_dir(run_id)
+        try:
+            self._write_durable(run_dir / capacity_report.SCORE_FILE, text)
+        except FileExistsError:
+            return self._retained_score(context, execution) or dict(answer, outcome=search.INCONCLUSIVE, generator_failure_attributed_to_server=False, reasons=['a retained score could not be read back'])
+        except OSError as error:
+            self._note('score_not_retained', run_id=run_id, detail=type(error).__name__)
+            return dict(answer, outcome=search.INCONCLUSIVE, generator_failure_attributed_to_server=False, reasons=['the score could not be retained: ' + type(error).__name__])
+        self._retain_run_report(run_id, document)
+        return dict(answer, evidence_ref=self._score_ref(run_id, text))
+
+    def _retain_run_report(self, run_id, document):
+        """Only a rendering of a retained decision, so losing it costs a convenience and decides nothing."""
+        path = self._run_dir(run_id) / capacity_report.RUN_REPORT_FILE
+        try:
+            if not path.exists():
+                do_session.write_new(path, capacity_report.render_run(document))
+        except (OSError, KeyError, TypeError, ValueError) as error:
+            self._note('run_report_not_retained', run_id=run_id, detail=type(error).__name__)
+
+    @staticmethod
+    def _score_ref(run_id, text):
+        return 'runs/%s/%s#sha256:%s' % (run_id, capacity_report.SCORE_FILE, hashlib.sha256(text.encode('utf-8')).hexdigest())
+
+    def _controller_sha(self):
+        return (self.manifest.get('source') or {}).get('controller_sha')
+
+    def _retained_expectation(self, context):
+        return capacity_scorer.retained_expectation(self._run_dir(context.trial.run_id), context.trial.to_dict(), self.session_id, self.sha, self._controller_sha())
+
+    def _retained_score(self, context, execution):
+        """The answer a retained score stands for, once it is shown to be this run's own. Read and never recomputed, so it survives a host going away and a controller other than the frozen one.
+
+        A score that cannot be shown to be this run's own is refused, with the hash of the refused bytes on record, and never replaced. It proves nothing either way, so it is inconclusive.
+        """
+        run_id = context.trial.run_id
+        path = self._run_dir(run_id) / capacity_report.SCORE_FILE
+        if not path.exists():
+            return None
+        document, problems = capacity_scorer.bound_score(path, self._retained_expectation(context))
+        if problems or document.get('outcome') not in run_checks.SCORER_OUTCOMES:
+            refused = capacity_scorer.file_sha256(path)     # the file may be anything at all, and a read that fails is one more reason to refuse it
+            self._note('retained_score_refused', run_id=run_id, sha256=refused, problems=problems[:5])
+            return dict(outcome=search.INCONCLUSIVE, evidence_ref=execution['ref'], scorer='capacity_scorer', reasons=['the retained score was refused and nothing was recomputed: ' + '; '.join(problems[:5] or ['its outcome is unknown']), 'the refused file has sha256 %s' % refused], retained_refused=True)
+        self._retain_run_report(run_id, document)
+        return dict(outcome=document['outcome'], evidence_ref=self._score_ref(run_id, path.read_text()), scorer=document.get('scorer'), reasons=list(document.get('reasons') or ()),
+                    generator_failure_attributed_to_server=document['outcome'] == search.FAIL)
+
+    def _retained_classification(self, context):
+        """(verdict, refused reasons). A classification is the last thing written before the commit, so it is reused rather than reached again, once it is shown to be this run's own."""
+        path = self._run_dir(context.trial.run_id) / 'classification.json'
+        if not path.exists():
+            return None, None
+        document = measurement_window.load_json(path)[0]
+        problems = capacity_scorer.classification_problems(document, self._retained_expectation(context), require_score=self.scorer is capacity_scorer.score)
+        if problems:
+            refused = capacity_scorer.file_sha256(path)
+            self._note('retained_classification_refused', run_id=context.trial.run_id, sha256=refused, problems=problems[:5])
+            return None, ['the retained classification was refused and nothing was recomputed: ' + '; '.join(problems[:5]), 'the refused file has sha256 %s' % refused]
+        return document['verdict'], None
 
     def _commit_outcome(self, context, verdict):
         run_id = context.trial.run_id
@@ -1160,9 +1473,13 @@ class RunExecutor:
             document = dict(document, verdict=dict(outcome=search.INCONCLUSIVE, reasons=['the classification held a credential value and was replaced'], scored=False))
             verdict = document['verdict']
         text = json.dumps(document, indent=2, sort_keys=True) + '\n'
-        path = self._run_dir(run_id) / 'classification.json'
-        do_session.write_new(path, text)
-        reference = 'runs/%s/classification.json#sha256:%s' % (run_id, hashlib.sha256(text.encode('utf-8')).hexdigest())
+        name = 'classification.json'
+        attempt = 0
+        while (self._run_dir(run_id) / name).exists():      # only ever a refused one: it stays as it is, and the outcome's hash says which file decided
+            attempt += 1
+            name = 'classification-reconciled-%04d-%d.json' % (self.token, attempt)
+        self._write_durable(self._run_dir(run_id) / name, text)
+        reference = 'runs/%s/%s#sha256:%s' % (run_id, name, hashlib.sha256(text.encode('utf-8')).hexdigest())
         self.failpoint('before_outcome_commit')
         self._record_outcome(run_id, verdict['outcome'], reference)
         self.failpoint('after_outcome_commit')
@@ -1179,6 +1496,9 @@ class RunExecutor:
                 raise ControlLost(rejection.code, rejection.message)
             if rejection.code != 'outcome_recorded':
                 raise
+            return
+        if outcome in search.STOPPING:
+            self._clear_guards_of(run_id)
 
     # ---- coming back after an interruption ---------------------------------------------------
 
@@ -1189,6 +1509,12 @@ class RunExecutor:
         Returns the host problems found, for the caller to judge.
         """
         records = self._records()
+        lost = [row['run_id'] for row in records if not self._run_dir(row['run_id']).is_dir()]
+        if lost and self.collecting:
+            self._note('run_directories_lost', run_ids=lost)     # nothing more runs either way, and whatever is still running must still be stopped
+        elif lost:
+            # Each of these names went durably onto disk before its run was dispatched, so no crash took it, and whatever it held may have said a run failed. Making it again would make that impossible to see.
+            raise BatchStop(STOPPED, RUN_DIRECTORY_LOST, 'the directories of dispatched runs are gone, with whatever they held: %s' % ', '.join(lost), search.STOPPING[search.INCONCLUSIVE])
         unfinished = [r for r in records if r['outcome'] is None]
         known = {r['run_id'] for r in records}
         problems = []
@@ -1209,8 +1535,116 @@ class RunExecutor:
             self._stop_smoke(['--smoke-id', 'retire-%d' % self.token])
         for row in unfinished:
             self._reconcile_run(row, reason, inventories)
+        self._settle_committed_runs(records, inventories)
         self._sync_planner_journal()
         return problems
+
+    def _settle_committed_runs(self, records, inventories):
+        """An outcome is immutable once committed, and a failure found after it still stops what depends on it. Facts already on record count, and so do the bytes an advancing outcome stood on.
+
+        A file that cannot be fetched now says nothing, so it stays a note and costs a committed decision nothing.
+        """
+        self._replay_retained_stops(records)
+        for row in records:
+            if row['outcome'] not in search.ADVANCING:
+                continue
+            run_id = row['run_id']
+            for role in inventories:
+                try:
+                    if self._role_inventory(run_id, role)['status'] not in ('verified', 'never_created') and not self._recover_role(run_id, role, self._quiet_keepalive):
+                        self._note('committed_evidence_unverified', run_id=run_id, role=role)
+                except LOCAL_FAILURES as error:     # a surprising seal on one committed run must not cost the return, and it proves nothing about what the run decided
+                    self._note('committed_evidence_unverified', run_id=run_id, role=role, detail=type(error).__name__)
+
+    def _expected(self, run_id):
+        return dict(session_id=self.session_id, manifest_sha256=self.sha, run_id=run_id, current_token=self.token)
+
+    def _stop_records(self, run_id):
+        return capacity_scorer.stop_records(self._run_dir(run_id), self._expected(run_id))
+
+    def _unresolved_validations(self, run_id):
+        return [item for item in self._stop_records(run_id)[1] if capacity_scorer.is_validation_guard(item)]
+
+    def _replay_retained_stops(self, records):
+        """Tells the registry of every stop fact this run directory holds beside an outcome that does not itself stop, so a fact a crash left written down and unheard is finished here. Returns what could not be held to this run.
+
+        A run with no outcome yet is left for ``reconcile`` to decide. All that can still be on record once that has had its turn is what it refused to decide past, and that holds everything back too.
+        """
+        unverified = []
+        for row in records:
+            if row['outcome'] in search.STOPPING:
+                continue
+            run_id = row['run_id']
+            facts, foreign = self._stop_records(run_id)
+            unverified += [dict(item, run_id=run_id) for item in foreign]
+            if row['outcome'] is None:
+                continue
+            for fact in facts:
+                self._record_terminal_fact(run_id, fact['outcome'], 'run %s holds %s beside its committed %s: %s' % (run_id, fact['record'], row['outcome'], '; '.join(str(item) for item in fact['details'])[:400]), fact['record'])
+        for item in unverified:
+            self._note('stop_record_unverified', run_id=item['run_id'], record=item['record'], sha256=item['sha256'], problems=item['problems'])
+        return unverified
+
+    def _retain_terminal_fact(self, run_id, role, failed):
+        """Corrupt bytes found for a run whose outcome is already committed. Written down first, so a crash before the registry hears of it leaves the next controller to finish the job."""
+        for attempt in range(100):
+            name = 'terminal-fact-%04d-%d.json' % (self.token, attempt)
+            if not (self._run_dir(run_id) / name).exists():
+                break
+        details = ['%s evidence was not fully exported: %s' % (role, failed)]
+        document = dict(schema=capacity_scorer.TERMINAL_FACT_SCHEMA, session_id=self.session_id, manifest_sha256=self.sha, run_id=run_id, role=role, outcome=search.INFRASTRUCTURE_FAILURE, details=details, fencing_token=self.token, found_at=session_clock.iso(self.wall()),
+                        receipts=[item for item in failed if item.get('kind') == 'corrupt'])
+        try:
+            self._write_durable(self._run_dir(run_id) / name, json.dumps(document, indent=2, sort_keys=True) + '\n')
+        except OSError as error:     # this disk's trouble must not keep the session from hearing of it
+            self._note('terminal_fact_not_retained', run_id=run_id, detail=type(error).__name__)
+        self.failpoint('after_terminal_fact')
+        self._record_terminal_fact(run_id, search.INFRASTRUCTURE_FAILURE, 'run %s: %s' % (run_id, details[0]), name)
+
+    def _record_terminal_fact(self, run_id, outcome, detail, record):
+        """The run keeps its outcome, and the session stops. It must survive this process, so a resume cannot walk past it. Whether the registry heard is kept, and ``_require_no_open_stop`` holds all further work to it."""
+        key = (run_id, record)
+        if key in self.stops_heard or key in self.stops_unheard:
+            return
+        self._note('terminal_fact', run_id=run_id, outcome=outcome, detail=detail)
+        digest = capacity_scorer.file_sha256(self._run_dir(run_id) / record)
+        self.stops_unheard[key] = dict(outcome=outcome, detail=detail, evidence_ref='runs/%s/%s%s' % (run_id, record, '#sha256:' + digest if digest else ''))
+        self._send_stop(key)
+
+    def _send_stop(self, key):
+        """The same request each time: an acknowledgement lost on the way back is replayed by the registry, and a stop it never received is applied."""
+        pending = self.stops_unheard[key]
+        try:
+            self.client.mutate('record_batch_stop', 'stop:%s:%s:%s:%d' % (self.session_id, key[0], key[1], self.token), session_id=self.session_id, outcome=pending['outcome'], fencing_token=self.token, detail=pending['detail'], evidence_ref=pending['evidence_ref'])
+        except (registry_client.RegistryRejected, registry_client.RegistryUnavailable) as error:
+            pending['code'] = getattr(error, 'code', 'registry_unavailable')
+            self._note('batch_stop_unrecorded', code=pending['code'], detail=cleanup_provider.redact(error))
+            return False
+        del self.stops_unheard[key]
+        self.stops_heard.add(key)
+        self._clear_guards_of(key[0])
+        return True
+
+    def _require_no_open_stop(self):
+        """Nothing more runs, and no resume stands, past a stop fact this controller knows of. Failing to tell the registry is not permission to carry on, and neither is the registry's silence.
+
+        Asked again here so that a registry back from a moment's trouble hears of it now. Each fact stays in its file for the next controller, whose first look replays it before any work, and every path to cleanup is unaffected.
+        An unverifiable record stops this controller too, without an irreversible word to the registry: it is not this session's demonstrated failure, and an operator can look at it.
+        """
+        unverified = self._replay_retained_stops(self._records())
+        for key in list(self.stops_unheard):
+            self._send_stop(key)
+        if self.stops_unheard:
+            (run_id, record), pending = next(iter(self.stops_unheard.items()))
+            detail = 'run %s holds a stop fact the registry has not acknowledged (%s): %s' % (run_id, record, pending['detail'])
+            if pending.get('code') in STALE_CODES:
+                raise ControlLost(pending['code'], detail)
+            raise BatchStop(STOPPED, TERMINAL_FACT_UNACKNOWLEDGED, detail, search.STOPPING[pending['outcome']])
+        status = self._status()
+        if status['terminal_failure'] is not None and status['cleanup']['requested_at'] is None:
+            raise BatchStop(STOPPED, 'terminal_failure', status['terminal_failure'], search.STOPPING[status['terminal_failure']])
+        if unverified:
+            raise BatchStop(STOPPED, STOP_RECORD_UNVERIFIED, '; '.join('%s of run %s: %s' % (item['record'], item['run_id'], '; '.join(item['problems'])) for item in unverified)[:800], search.STOPPING[search.INCONCLUSIVE])
 
     def _retire_unknown(self, role, entry, reason):
         run_id = entry['run_id']
@@ -1223,7 +1657,12 @@ class RunExecutor:
     def _reconcile_run(self, row, reason, inventories):
         trial = search.trial_from_dict(row['trial'])
         run_dir = self._run_dir(trial.run_id)
-        run_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            do_session.make_directory_durable(run_dir, self.session_dir)
+        except OSError as error:
+            if not self.collecting:
+                raise
+            self._note('run_directory_not_durable', run_id=trial.run_id, detail=type(error).__name__)
         grant = dict(launch_by=row['launch_by'], must_stop_by=row['must_stop_by'], interrupted_reason=row['interrupted_reason'])
         now = self.monotonic()
         context = RunContext(trial, grant, now, now, now, interrupted=row['interrupted_reason'] or reason)
@@ -1239,6 +1678,12 @@ class RunExecutor:
             context.ledgers[role] = inventories[role].get('ledger') or []
             if any(entry.get('run_id') == trial.run_id and entry.get('role') == role for entry in inventories[role].get('runs') or []):
                 self._reconcile_role(context, role, reason)
+        boots = {role: self._expected_boot(role) for role in ROLES} if self.report else {}
+        shown = run_checks.interrupted_outcome(context.plans, context.summaries, boots)
+        if not self.collecting and shown is None and self._stop_fact(context, self._retained_settled(context)) is None and self._unresolved_validations(trial.run_id):
+            # Stopped and sealed, so nothing is left running. A verdict made now would be immutable, and could only rest on a later look at bytes an unfinished comparison may have condemned. ``_require_no_open_stop`` holds everything else back.
+            self._note('run_held_for_unresolved_validation', run_id=trial.run_id)
+            return
         if self.window_prover is not None and context.plans and reachable and not (run_dir / 'clock-after.json').exists():
             self._retain_bracket(trial.run_id, 'after', self._clock_bracket('after'))
         self._export(context)
@@ -1248,7 +1693,6 @@ class RunExecutor:
         while (run_dir / name).exists():
             attempt += 1
             name = 'execution-reconciled-%04d-%d.json' % (self.token, attempt)
-        boots = {role: self._expected_boot(role) for role in ROLES} if self.report else {}
         context.demonstrated = run_checks.interrupted_outcome(context.plans, context.summaries, boots) or context.demonstrated
         execution = self._write_execution(context, name, writer='reconcile')
         self.failpoint('after_reconcile_record')
@@ -1266,10 +1710,16 @@ class RunExecutor:
         way, so it blocks any claim that needs it.
         """
         for path in sorted(run_dir.glob('execution*.json'), key=lambda item: (item.name != 'execution.json', item.name)):
-            record = guest_runner.read_json(path)
-            if not isinstance(record, dict) or not isinstance(record.get('problems'), dict):
+            record, problem = measurement_window.load_json(path)
+            if problem or capacity_scorer.execution_record_problems(record):
                 context.uncertain.append('earlier record %s could not be read' % path.name)
                 continue
+            if (record.get('session_id'), record.get('manifest_sha256'), record.get('run_id')) != (self.session_id, self.sha, context.trial.run_id):
+                context.uncertain.append('earlier record %s is not this run\'s' % path.name)     # nothing it says is carried, and ``_require_no_open_stop`` holds what it claims against any more work
+                continue
+            record, unsupported = capacity_scorer.supported_execution(run_dir, record, self._expected(context.trial.run_id))
+            if unsupported:
+                context.uncertain.append('earlier record %s tells of corrupt bytes that what is on record does not support' % path.name)     # ``_require_no_open_stop`` holds it against any more work, and only what else it says is carried
             if record.get('writer') == 'run':
                 context.retained_record = record
                 carried = record['problems']
@@ -1283,6 +1733,14 @@ class RunExecutor:
             if any(kept.values()) or record.get('demonstrated_outcome'):
                 context.carried.append(dict(record=path.name, sha256=sha256_path(path), writer=record.get('writer'), fencing_token=record.get('fencing_token'), problems=kept,
                                             demonstrated_outcome=record.get('demonstrated_outcome')))
+        self._carry_retained_stops(context)
+
+    def _carry_retained_stops(self, context):
+        """A stop fact outside the execution records, such as corrupt bytes a controller wrote down and died before saying more about, is demonstrated like any other. This run has no outcome yet, so it can still take this one. What cannot be held to this run is left to ``_require_no_open_stop``, and costs the run nothing."""
+        facts, _ = self._stop_records(context.trial.run_id)
+        for fact in facts:
+            if not fact['record'].startswith('execution'):
+                context.demonstrated = context.demonstrated or dict(outcome=fact['outcome'], reasons=list(fact['details']))
 
     def _reconcile_role(self, context, role, reason):
         run_id = context.trial.run_id
@@ -1296,26 +1754,67 @@ class RunExecutor:
             return
         self._seal_role(context, role)
 
+    def _retained_settled(self, context):
+        """Exactly what the controller that wrote the retained record would have decided next, had it not died first."""
+        if context.retained_record is None:
+            return None
+        return self._settled_verdict(context.retained_record.get('problems') or {}, context.retained_record.get('interrupted'))
+
+    def _stop_fact(self, context, settled):
+        """A stop fact that any generation or this return demonstrated, or None. What a host only failed to answer is not one, so a healthy retained decision outlives an unreachable host."""
+        if context.demonstrated is not None:
+            return dict(context.demonstrated, scored=False)
+        if settled is not None and settled['outcome'] in search.STOPPING:
+            return settled
+        if ((context.retained_record or {}).get('problems') or {}).get(NOT_LAUNCHED):
+            return None     # nothing ran, so all that is on record is what a start that never happened could not show
+        definite = [p for p in context.problems[run_checks.INFRASTRUCTURE] if p not in context.uncertain]
+        return dict(outcome=search.INFRASTRUCTURE_FAILURE, reasons=definite, scored=False) if definite else None
+
+    def _decisions_on_record(self, run_id):
+        """What this run's retained decision files said, by file and hash. They stay on disk as they were, as history."""
+        found = []
+        for name in ('classification.json', capacity_report.SCORE_FILE):
+            path = self._run_dir(run_id) / name
+            if path.exists():
+                document = measurement_window.load_json(path)[0] or {}
+                verdict = document.get('verdict') if isinstance(document.get('verdict'), dict) else {}
+                outcome = verdict.get('outcome') if name == 'classification.json' else document.get('outcome')
+                found.append(dict(file=name, sha256=capacity_scorer.file_sha256(path), outcome=outcome if isinstance(outcome, str) else None))
+        return found
+
     def _interrupted_verdict(self, context, execution, reachable):
         """A crash just before the commit keeps the verdict already reached, and one earlier keeps the facts already written down.
 
-        INCOMPLETE is for what really is unknown: a run that was cut short, or that could not be reached. It never replaces
-        a failure that was demonstrated, with or without a scorer.
+        A stop fact comes first, from every generation of records and from this return, whatever an earlier decision says: until an outcome is committed it is not settled, and an intact retained decision
+        must not authorize more work past a failure that is on record. That decision's files stay as they were, as history, and the new verdict names them. INCOMPLETE is for what really is unknown: a run that
+        was cut short, or that could not be reached. It never replaces a failure that was demonstrated, with or without a scorer.
         """
-        path = self._run_dir(context.trial.run_id) / 'classification.json'
-        if path.exists():
-            document = json.loads(path.read_text())
-            return dict(document['verdict'], reused=True)
-        if context.demonstrated is not None:
-            return dict(context.demonstrated, scored=False)
+        retained, refused = self._retained_classification(context)
+        settled = self._retained_settled(context)
+        stop = self._stop_fact(context, settled)
+        if stop is None:
+            unresolved = self._unresolved_validations(context.trial.run_id)     # only ever reached while collecting, when no decision can wait
+            stop = dict(outcome=search.INCOMPLETE, reasons=[problem for item in unresolved for problem in item['problems']], scored=False) if unresolved else None
+        if stop is not None:
+            if retained is not None and retained['outcome'] in search.STOPPING:
+                return dict(retained, reused=True)     # a terminal verdict stays what it is, and the fact beside it stays on record
+            decisions = [item for item in self._decisions_on_record(context.trial.run_id) if item['outcome'] != stop['outcome']]
+            if decisions:
+                stop = dict(stop, supersedes=decisions, reasons=list(stop.get('reasons') or ()) + ['%s says %s, and is kept as history: it does not stand beside this failure' % (item['file'], item['outcome']) for item in decisions])
+            return stop
+        if retained is not None:
+            return dict(retained, reused=True)
+        if settled is not None:
+            return settled
+        if refused:
+            # Short of a terminal fact, what this run decided is not known, and it must not be decided again from files that already disagree.
+            return dict(outcome=search.INCONCLUSIVE, reasons=refused, scored=False)
         if context.retained_record is not None:
-            # Exactly what that controller would have decided next, had it not died first.
-            verdict = self._settled_verdict(context.retained_record.get('problems') or {}, context.retained_record.get('interrupted'))
-            if verdict is not None:
-                return verdict
-        definite = [p for p in context.problems[run_checks.INFRASTRUCTURE] if p not in context.uncertain]
-        if definite:
-            return dict(outcome=search.INFRASTRUCTURE_FAILURE, reasons=definite, scored=False)
+            # The score was retained from verified local files, so losing a host now cannot unsay it.
+            answer = self._retained_score(context, execution)
+            if answer is not None:
+                return run_checks.apply_scorer(run_checks.disposition(context.retained_record.get('problems') or {}), answer, self._window_proof(context, execution))
         problems = execution['document']['problems']
         if not reachable or set(context.sealed) != set(ROLES) or not run_checks.finished_naturally(context.plans, context.summaries) or context.uncertain:
             return dict(outcome=search.INCOMPLETE, reasons=['interrupted: ' + str(context.interrupted)] + context.uncertain, scored=False)
@@ -1325,7 +1824,11 @@ class RunExecutor:
         proof = self._window_proof(context, execution)
         if self.scorer is None:
             return dict(outcome=search.INCOMPLETE, reasons=['the run ended by itself, but nothing has scored it: ' + '; '.join(settled['reasons'])] + run_checks.window_reasons(proof), scored=False)
-        verdict = run_checks.apply_scorer(settled, self.scorer(self._evidence_for_scorer(context, execution, proof)), proof)
+        answer = self._score(context, execution, proof)
+        if isinstance(answer, dict) and answer.get('source_refused'):
+            # The measurement is whole and preserved. This controller may stop and collect it, and may not be the one that decides it.
+            return dict(outcome=search.INCOMPLETE, reasons=list(answer['reasons']) + list(settled['reasons']) + run_checks.window_reasons(proof), scored=False)
+        verdict = run_checks.apply_scorer(settled, answer, proof)
         if not verdict.get('scored'):
             return dict(outcome=search.INCOMPLETE, reasons=verdict['reasons'], scored=False)
         return verdict
@@ -1405,6 +1908,11 @@ class RunExecutor:
         checks['pair_unchanged'] = True
         unknown = self.reconcile()
         checks['interrupted_preserved'] = True
+        try:
+            self._require_no_open_stop()
+        except BatchStop as stop:
+            self._require_resumable(self._status())     # what an interruption can never excuse keeps its own name
+            raise ResumeRefused(stop.code, stop.detail)
         if unknown:
             raise ResumeRefused('unknown_run_on_host', '; '.join(unknown))
         status = self._status()
@@ -1461,6 +1969,11 @@ class RunExecutor:
             except Exception as error:
                 self._wrap_up_failed(result, error)
         try:
+            # Whatever a crash left written down and unheard. A batch that ended before any dispatch asked has its one chance here.
+            self._replay_retained_stops(self._records())
+        except (registry_client.RegistryRejected, registry_client.RegistryUnavailable) + LOCAL_FAILURES as error:
+            self._note('stop_replay_failed', detail=cleanup_provider.redact(error))
+        try:
             status = self._status()
             state = status['revocation']['target_state'] if status['state'] == registry.REVOCATION_PENDING else status['state']
             if state in (registry.READY, registry.PAUSED, registry.EVIDENCE_RECOVERY):
@@ -1483,6 +1996,10 @@ class RunExecutor:
         except LOCAL_FAILURES + (provisioner.Stop,) as error:
             evidence_status = 'missing'
             self._wrap_up_failed(result, error)
+        for key in list(self.stops_unheard):
+            if not self._send_stop(key):     # its file stays for the next controller, and the cleanup below still goes ahead
+                self._wrap_up_problem(result, 'run %s: the registry has not acknowledged the stop fact %s' % key)
+        self._retain_capacity_report()
         try:
             self.client.mutate('record_measurement', session_id=self.session_id, fencing_token=self.token, outcome=label, ref='execution/journal.ndjson')
             self.client.mutate('record_evidence', session_id=self.session_id, fencing_token=self.token, status=evidence_status,
@@ -1519,7 +2036,9 @@ class RunExecutor:
         try:
             seal_path = target / guest_runner.SEAL
             if not seal_path.exists():
-                return dict(run_id=run_id, role=role, status='missing', files=[dict(path=guest_runner.SEAL, status='missing')])
+                # A seal that failed its hash on the way back is kept apart, and a sealed role with corrupt bytes on record is not merely absent.
+                damaged = any((self._run_dir(run_id) / CORRUPT_EVIDENCE_DIR / role).glob(guest_runner.SEAL + '.*'))
+                return dict(run_id=run_id, role=role, status='corrupt' if damaged else 'missing', files=[dict(path=guest_runner.SEAL, status='corrupt' if damaged else 'missing')])
             seal = json.loads(seal_path.read_text())
             files = [dict(path=guest_runner.SEAL, status='verified')]
             for item in seal['files']:
@@ -1561,6 +2080,22 @@ class RunExecutor:
         if 'corrupt' in statuses:
             return 'corrupt'
         return 'missing' if 'missing' in statuses else 'partial'
+
+    def _retain_capacity_report(self):
+        """One per wrap-up, create-only. It only renders retained decisions, so failing to write it costs a convenience: ``capacity_report`` regenerates it from the same files."""
+        try:
+            self._sync_planner_journal()
+            report = capacity_report.build(self.session_dir)
+            if manifest_mod.scan_for_secrets(report):
+                raise ValueError('the report held a credential value')
+            for attempt in range(100):
+                stem = 'capacity-report-token%d-%d' % (self.token, attempt)
+                if not (self.evidence.root / (stem + '.json')).exists():
+                    do_session.write_new(self.evidence.root / (stem + '.json'), capacity_report.canonical(report))
+                    do_session.write_new(self.evidence.root / (stem + '.md'), capacity_report.render_search(report))
+                    return
+        except Exception as error:     # nothing that goes wrong rendering a report may stand between a finished batch and its cleanup
+            self._note('capacity_report_not_retained', detail=type(error).__name__)
 
     def _retain_inventory(self, inventory):
         """Create-only, like all evidence, and one per wrap-up. Names and statuses only, with no bytes from any host."""
@@ -1616,25 +2151,60 @@ class RunExecutor:
                     break
         return missing
 
-    def _recover_role(self, run_id, role):
-        """Each read has the time that is left and no more. Past the end of the episode nothing is even asked."""
+    def _recover_role(self, run_id, role, on_wait=None):
+        """Each read has the time that is left and no more. Past the end of the episode nothing is even asked. Bytes that fail their hash are a demonstrated failure, the seal's as much as any other's, and a transfer that could not run says nothing."""
+        on_wait = on_wait or self._recovery_wait
         try:
-            sealed = self._runner(role, 'status', '--run-id', run_id, '--role', role, on_wait=self._recovery_wait)
+            sealed = self._runner(role, 'status', '--run-id', run_id, '--role', role, on_wait=on_wait)
             if sealed.get('code') == 'unknown_run':
                 self.never_created.add((run_id, role))     # the start was refused before any directory existed
                 return True
             if sealed.get('ok') is not True or sealed.get('sealed') is not True:
                 return False
+            digest = sealed.get('seal_sha256')
+            if (sealed.get('session_id'), sealed.get('run_id'), sealed.get('role')) != (self.session_id, run_id, role):
+                self._note('seal_reply_refused', run_id=run_id, role=role, problems=['it is not a reply about this run and role'])
+                return False
+            refused = capacity_scorer.seal_reply_problems(self._run_dir(run_id), role, digest, None, self.token, self._expected(run_id))
+            if refused:     # a stale or wrong reply says nothing about the host's seal, and no byte may be judged against it
+                self._note('seal_reply_refused', run_id=run_id, role=role, problems=refused)
+                return False
             remote_seal = guest_runner.DEFAULT_ROOT + '/runs/' + run_id + '/' + role + '/' + guest_runner.SEAL
             with tempfile.TemporaryDirectory() as temporary:
                 local = pathlib.Path(temporary) / guest_runner.SEAL
-                result = self.guests.get(role, remote_seal, str(local), self._guest_timeout(self.policy.transfer_timeout_s), self._recovery_wait)
-                if result.returncode != 0 or sha256_path(local) != sealed.get('seal_sha256'):
+                result = self.guests.get(role, remote_seal, str(local), self._guest_timeout(self.policy.transfer_timeout_s), on_wait)
+                if result.returncode != 0:
+                    return False     # no bytes: this says nothing about the host's seal
+                self._retain_seal_receipt(run_id, role, digest)
+                validation = self._begin_validation(run_id, role)
+                if validation is None:
+                    return False
+                try:
+                    good = sha256_path(local) == digest
+                except OSError:     # a claimed success with no file: no bytes were judged, and there is nothing to answer for
+                    self._end_validation(validation)
+                    return False
+                if not good:
+                    self._retain_corrupt(run_id, role, [self._corrupt_receipt(run_id, role, guest_runner.SEAL, local, digest, validation)])
+                self._end_validation(validation)
+                if not good:
                     return False
                 seal = json.loads(local.read_text())
-            return self._export_role(run_id, role, dict(seal=seal, seal_sha256=sealed['seal_sha256']))['complete']
+            exported = self._export_role(run_id, role, dict(seal=seal, seal_sha256=digest))
+            self._retain_corrupt(run_id, role, [item for item in exported['failed'] if item['kind'] == 'corrupt'])
+            return exported['complete']
         except (GuestLost, RunAborted, OSError, ValueError):
             return False
+
+    def _retain_corrupt(self, run_id, role, corrupt):
+        """A permanent stop, so only over a hash that what is on record supports. What it does not support stays what its observation already is: unverified, and an operator's to look at."""
+        if corrupt and (run_id, role) not in self.terminal_facts_found:
+            unsupported = capacity_scorer.corrupt_receipt_problems(self._run_dir(run_id), role, corrupt, self.token, self._expected(run_id))
+            if unsupported:
+                self._note('corrupt_receipt_unsupported', run_id=run_id, role=role, problems=unsupported)
+                return
+            self.terminal_facts_found.add((run_id, role))
+            self._retain_terminal_fact(run_id, role, corrupt)
 
 
 def source_identity_problems(manifest, repository, runner=None):
