@@ -64,6 +64,7 @@ STOP_RECORD_WRITES = (TERMINAL_FACT_GLOB + do_session.WRITING + '*', CORRUPT_OBS
 READ_FAILURES = (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError, RecursionError, ArithmeticError)     # whatever a file in a run directory turns out to hold, a reader answers
 COUNT_LIMIT = 2 ** 63     # far past any count or reading here. JSON integers have no size of their own, so a reader needs one
 GATE_NAMES = ('continuity', 'bot_errors', 'tick_budget', 'game_socket_drops', 'rtt_p95', 'enet_loss')
+BOT_ERROR_COUNTS = ('errors', 'send_errors', 'panics', 'decode_failures', 'socket_send_errors', 'socket_zero_sends', 'socket_receive_errors')
 PASS, FAIL, UNKNOWN = 'pass', 'fail', 'unknown'
 VALID, INVALID, NOT_PROVEN = 'valid', 'invalid', 'not_proven'
 VALID_PASS, CAPACITY_FAILURE, INVALID_LOAD, INFRASTRUCTURE_FAILURE, INCONCLUSIVE = ('valid_pass', 'capacity_failure', 'invalid_offered_load', 'infrastructure_failure', 'inconclusive_evidence')
@@ -412,6 +413,37 @@ def loss_bins(samples, owed_until, start, hold_s):
     return bins
 
 
+def owed_seconds(rows, missing, start, hold_s):
+    """{bot: the first bin it no longer owes a reading for}: the bin after the one it was seen to disconnect in, or ``hold_s``."""
+    owed_until = {}
+    for row in rows:
+        lost = row.get('disconnect')
+        owed_until[row['bot']] = hold_s if lost is None else min(hold_s, max(0, (lost['observed_at_bot_mono_ns'] - start) // mw.NS + 1))
+    for item in missing:
+        owed_until[item['bot']] = hold_s
+    return owed_until
+
+
+def per_second_series(root, trial, workload):
+    """The two ENet readings second by second, over the bins the loss gate reads. A diagnostic: nothing decides on it, and a run whose readings cannot be used has none."""
+    limits = mw.schema()['limits']
+    swarm = mw.load_swarm(pathlib.Path(root), trial, workload, limits, _sink())
+    if swarm is None:
+        return None
+    start, end, hold_s = swarm['start'], swarm['end'], trial['hold_s']
+    samples, malformed = peer_samples(pathlib.Path(root), start, end)
+    if malformed:
+        return None
+    rows, missing = bot_facts(swarm, {}, lambda mono: None, 1, limits)
+    bins = loss_bins(samples, owed_seconds(rows, missing, start, hold_s), start, hold_s)
+    rtt = []
+    for k in range(hold_s):
+        low, high = start + k * mw.NS, start + (k + 1) * mw.NS
+        pool = sorted(sample[1] for readings in samples.values() for sample in readings if low <= sample[0] < high)
+        rtt.append(nearest_rank(pool, RTT_QUANTILE_PERCENT) if pool else None)
+    return dict(rtt_p95_ms=rtt, loss_estimate_mean=[float(item['value']) if item['value'] is not None else None for item in bins])
+
+
 def loss_gate(samples, owed_until, start, hold_s, malformed):
     if malformed:
         return _gate(UNKNOWN, why='unusable in-window ENet samples', estimator=POLICY['enet_loss']['estimator'], malformed=malformed[:5])
@@ -692,12 +724,7 @@ def _score_window(evidence, proof, root, trial, workload, limits, execution, fac
     expected = [bot for shard in swarm['shard_facts'] for bot in shard['expected']]
     shards_short = len(swarm['shard_facts']) != swarm['controls'].get('threads')
     samples, malformed = peer_samples(root, start, end)
-    owed_until = {}
-    for row in rows:
-        lost = row.get('disconnect')
-        owed_until[row['bot']] = trial['hold_s'] if lost is None else min(trial['hold_s'], max(0, (lost['observed_at_bot_mono_ns'] - start) // mw.NS + 1))
-    for item in missing:
-        owed_until[item['bot']] = trial['hold_s']
+    owed_until = owed_seconds(rows, missing, start, trial['hold_s'])
     rtt = rtt_gate(samples, expected, malformed) if expected and not shards_short else _gate(UNKNOWN, why='a shard file is missing')
     loss = loss_gate(samples, owed_until, start, trial['hold_s'], malformed) if owed_until and not shards_short else _gate(UNKNOWN, why='a shard file is missing', estimator=POLICY['enet_loss']['estimator'])
     core = (population or {}).get('core_game_mono_ns')
@@ -730,7 +757,7 @@ def _continuity_gate(rows, departures, exit_facts, population, codes, trial):
 def _error_gate(rows, missing):
     """Zero bot errors, with each error sorted into what the disconnect itself accounts for and what it cannot."""
     independent = []
-    totals = dict(errors=0, send_errors=0, panics=0, decode_failures=0, socket_send_errors=0, socket_zero_sends=0, socket_receive_errors=0)
+    totals = dict.fromkeys(BOT_ERROR_COUNTS, 0)
     consequence = 0
     for row in rows:
         for key in totals:

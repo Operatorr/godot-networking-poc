@@ -30,6 +30,7 @@ import time
 import cleanup_provider
 import create_evidence
 import do_api
+import evidence_publication
 import do_session
 import guest_agent
 import guest_bootstrap
@@ -115,6 +116,8 @@ def _authorized(args, environment):
     manifest, sha = load_session(args.session_dir)
     packet = remote_authorization.load(args.authorization)
     reasons = remote_authorization.validate(packet, manifest, sha, environment.wall())
+    if manifest['session'].get('kind') == 'capacity':
+        reasons = list(reasons) + evidence_publication.destination_problems(manifest)      # chosen before paying for anything, never after
     if reasons:
         print(json.dumps(dict(ok=False, code='authorization_refused', reasons=reasons), indent=2))
         return None

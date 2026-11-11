@@ -643,7 +643,7 @@ class ScoredSim(rf.RunSim):
 
     def executor(self, client=None, token=None, failpoint=None, policy=None, source_problems=None, guests=None, readiness_problems=None, adapter=None, **_):
         return rf.run_executor.RunExecutor(client or self.client, guests or self.guests, self.provider, self.manifest, self.sha, self.stack.root, token if token is not None else self.result.fencing_token, self.sleep, self.monotonic, self.clock.wall, adapter=adapter or rf.ScriptedAdapter(),
-                                           policy=policy or rf.FAST_POLICY, failpoint=failpoint, source_problems=source_problems or (lambda: []), readiness_problems=readiness_problems)
+                                           policy=policy or rf.FAST_POLICY, failpoint=failpoint, source_problems=source_problems or (lambda: []), readiness_problems=readiness_problems, boot_id=self.clock.boot_id)
 
     def outcomes(self):
         return [(row['trial']['phase'], row['trial']['target'], row['outcome']) for row in sorted(self.records(), key=lambda row: row['trial']['ordinal'])]
