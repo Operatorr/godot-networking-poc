@@ -397,6 +397,23 @@ class Host:
         return fence
 
 
+def sampler_tail(path):
+    """Row count and last timestamp, without parsing every row: a status poll must stay cheap on the host being measured."""
+    rows, last = 0, None
+    try:
+        with open(str(path), encoding='utf-8', errors='replace') as handle:
+            for line in handle:
+                if line.endswith('\n') and line.startswith('{'):
+                    rows += 1
+                    last = line
+    except OSError:
+        pass
+    if last is not None:
+        with contextlib.suppress(ValueError):
+            return rows, json.loads(last).get('mono_s')
+    return rows, None
+
+
 def run_summary(run_dir):
     plan = read_json(run_dir / 'plan.json') or {}
     identity = read_json(run_dir / 'identity.json')
@@ -410,13 +427,13 @@ def run_summary(run_dir):
     stopping = read_json(run_dir / 'stopping.json')
     seal = read_json(run_dir / SEAL)
     socket_rows = read_ndjson(run_dir / 'sockets.ndjson')
-    sampler = read_ndjson(run_dir / 'sampler.ndjson')
+    sampler_rows, sampler_last = sampler_tail(run_dir / 'sampler.ndjson')
     summary = dict(run_id=plan.get('run_id') or run_dir.parent.name, role=plan.get('role') or run_dir.name, has_plan=bool(plan), session_id=plan.get('session_id'),
                    fencing_token=plan.get('fencing_token'), supervisor=dict(supervisor, alive=supervisor_alive) if supervisor else None,
                    invocation_id=(identity or {}).get('invocation_id'), processes=processes, result=result, stopping=stopping, sealed=seal is not None,
                    seal_sha256=sha256_file(run_dir / SEAL) if seal is not None else None,
                    socket=dict(first=socket_rows[0], last=socket_rows[-1], samples=len(socket_rows)) if socket_rows else None,
-                   sampler=dict(rows=len(sampler), last_mono_s=sampler[-1].get('mono_s') if sampler else None))
+                   sampler=dict(rows=sampler_rows, last_mono_s=sampler_last))
     unit = plan.get('unit')
     if unit and plan.get('unit_mode') == SYSTEMD:
         summary['unit'] = unit_facts(unit)
@@ -614,6 +631,23 @@ def _await_handshake(run_dir):
     raise Refused('launch_unconfirmed', 'no identity from the supervisor')
 
 
+def sampler_socket_inodes(path):
+    """Every socket an --identity sampler saw this run's processes own, so a later run can be held to them."""
+    found = set()
+    for row in read_ndjson(path):
+        for facts in (row.get('procs') or {}).values():
+            for item in (facts.get('sockets') or ()) if isinstance(facts, dict) else ():
+                if item.get('inode'):
+                    found.add(item['inode'])
+    return found
+
+
+def cmd_clock(args, host):
+    """Nothing else: the controller brackets this call, and any extra work here would widen its uncertainty."""
+    wall_ns = time.time_ns()
+    return dict(wall_ns=wall_ns, monotonic_ns=time.monotonic_ns(), boot_id=boot_id())
+
+
 def cmd_status(args, host):
     return run_summary(_existing_run_dir(host, args.run_id, args.role))
 
@@ -687,7 +721,8 @@ def cmd_seal(args, host):
             for path in sorted(p for p in run_dir.rglob('*') if p.is_file() and p.name != SEAL):
                 files.append(dict(path=str(path.relative_to(run_dir)), sha256=sha256_file(path), size=path.stat().st_size))
             sockets = read_ndjson(run_dir / 'sockets.ndjson')
-            host.append_ledger(dict(run_id=args.run_id, role=args.role, sealed=True, socket_inodes=sorted({row['inode'] for row in sockets if row.get('inode')})))
+            inodes = {row['inode'] for row in sockets if row.get('inode')} | sampler_socket_inodes(run_dir / 'sampler.ndjson')
+            host.append_ledger(dict(run_id=args.run_id, role=args.role, sealed=True, socket_inodes=sorted(inodes)))
             create_json(seal_path, dict(schema=SCHEMA, run_id=args.run_id, role=args.role, interrupted=args.interrupted, final=final, files=files,
                                         result=summary['result'], identity=read_json(run_dir / 'identity.json')))
         # Also after a crash between the seal and these modes: a sealed tree is read-only however it got here.
@@ -765,6 +800,7 @@ def cmd_supervise(args, host):
     children = {}
     exits = {}
     stop_reason = None
+    polite_stops = {spec['name']: spec['stop_signal'] for spec in plan['processes'] if spec.get('stop_signal') in ('SIGINT', 'SIGTERM')}
     try:
         bound_s = _launch_gate(host, run_dir, plan)
     except Refused as refused:
@@ -781,6 +817,13 @@ def cmd_supervise(args, host):
             if name not in exits:
                 with contextlib.suppress(ProcessLookupError, PermissionError):
                     os.killpg(child.pid, signum)
+
+    def ask_children_to_stop():
+        """The polite stop a process declared, so a recorder can finish its footer. SIGKILL still follows after the grace."""
+        for name, child in children.items():
+            if name not in exits:
+                with contextlib.suppress(ProcessLookupError, PermissionError):
+                    os.killpg(child.pid, getattr(signal, polite_stops.get(name, 'SIGTERM')))
 
     def reap():
         for name, child in children.items():
@@ -848,7 +891,7 @@ def cmd_supervise(args, host):
             with (run_dir / 'sockets.ndjson').open('a', encoding='utf-8') as handle:
                 handle.write(json.dumps(dict(row, pid=processes[primary]['pid'], start_id=processes[primary]['start_id'], boot_id=processes[primary]['boot_id'], mono_ns=time.monotonic_ns(), wall_ns=time.time_ns(), final=True),
                                         sort_keys=True) + '\n')
-    stop_children(signal.SIGTERM)
+    ask_children_to_stop()
     grace_ends = time.monotonic() + plan['stop_grace_s']
     while time.monotonic() < grace_ends:
         reap()
@@ -865,7 +908,7 @@ def cmd_supervise(args, host):
     return dict(ok=True)
 
 
-COMMANDS = dict(fence=cmd_fence, grant_prepare=cmd_grant_prepare, preflight=cmd_preflight, start=cmd_start, status=cmd_status, inspect=cmd_inspect, stop=cmd_stop, seal=cmd_seal, supervise=cmd_supervise)
+COMMANDS = dict(fence=cmd_fence, grant_prepare=cmd_grant_prepare, preflight=cmd_preflight, start=cmd_start, status=cmd_status, inspect=cmd_inspect, stop=cmd_stop, seal=cmd_seal, supervise=cmd_supervise, clock=cmd_clock)
 
 
 def build_parser():
@@ -882,6 +925,7 @@ def build_parser():
     for name in ('preflight', 'start'):
         sub.add_parser(name).add_argument('--plan-json', required=True)
     sub.add_parser('inspect')
+    sub.add_parser('clock')
     status = sub.add_parser('status')
     status.add_argument('--run-id', required=True)
     status.add_argument('--role', required=True, choices=('game', 'bot'))

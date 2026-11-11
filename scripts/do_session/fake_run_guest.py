@@ -226,6 +226,9 @@ class FakeRunGuests(fake_guest.FakeGuests):
 
     # ---- a simulated run ---------------------------------------------------------------------
 
+    def _do_clock(self, host, argv):
+        return dict(wall_ns=int(self.sim.clock.wall() * 1e9), monotonic_ns=int(self.sim.clock.mono() * 1e9), boot_id=host.boot_id)
+
     def _now(self):
         return self.sim.clock.mono()
 
@@ -391,7 +394,7 @@ class FakeRunGuests(fake_guest.FakeGuests):
             if self.bot_seconds is not None:
                 return self.bot_seconds
             trial = next(t for t in [json.loads(json.dumps(plan))] if t)
-            return float(trial['processes'][0]['argv'][trial['processes'][0]['argv'].index('--duration') + 1]) + 30.0
+            return float(trial['processes'][0]['argv'][trial['processes'][0]['argv'].index('--hold-s') + 1]) + 30.0
         return self.game_crash_after_s
 
     def _run_of(self, host, argv):

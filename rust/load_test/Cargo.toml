@@ -8,6 +8,10 @@ description = "ENet bot-swarm load-testing harness — links the protocol crate 
 name = "omega-load-test"
 path = "src/main.rs"
 
+[features]
+# Adds `--fault` for the measurement fault battery. Never part of a frozen benchmark build.
+fault-injection = []
+
 [dependencies]
 protocol.workspace = true
 sim_core.workspace = true

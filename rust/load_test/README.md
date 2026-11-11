@@ -113,7 +113,27 @@ finishes its ramp, and every 5 s sample in the report sits on that clock, with R
 computed over the pooled samples. Use this on any multi-core bot host so the generator never saturates one
 core (the old single-threaded swarm peaked at ~85 % of a core around 190 strategy bots, which
 confounded every capacity reading). `OMEGA_MEASURE_DIR` per-bot observations are only recorded
-on single-threaded swarms.
+on single-threaded swarms; per-shard evidence is what `--measured-window` is for.
+
+### Measured window (`--measured-window`)
+
+One common scored interval for the DigitalOcean capacity contract. It needs every workload control stated (`--bots --threads --stagger --behavior
+--difficulty --input-hz --seed --hold-s --evidence-dir --output`), refuses `--scenario`, `--duration`, `--no-report` and tickets (a ticket fetch would block a shard), and takes the
+readiness bound from `--readiness-timeout-s` or the accepted `max(60 s, ramp + 30 s)`.
+
+Each generator shard owns its bots end to end and never blocks. Generator shard here means one swarm thread, not the glossary's server **Shard**.
+
+```text
+bot i connects at i x stagger, with no settling  ->  all N authenticated  ->  2 s warmup  ->  a future start and end published 1 s ahead
+  ->  every shard acknowledges start  ->  hold  ->  every shard acknowledges end and freezes  ->  2 s guard, still connected  ->  drain  ->  footer + fsync
+```
+
+- **Readiness.** `--readiness-timeout-s` bounds authentication only. Once all N have authenticated on time it is finished, so the warmup can run past it, and lost bots and shards are still watched through the warmup.
+- **Input.** A fixed 30 Hz grid from the moment of authentication. A slot that was missed is counted and never burst-sent. A window's scheduled count comes from the grid, so it does not trust the polls, and a frame scores only if its slot is inside the window and its enqueue came before the end, by that enqueue's own timestamp. RTT samples are stamped when read, and connect, auth and disconnect when observed, all on the swarm's monotonic clock; a poll's reading only picks the due slot. A bot that is dead in the game still sends idle frames, and those count; `dead_frames` shows how many.
+- **Files** in `--evidence-dir`, all create-only, so an existing file makes the run exit 4 instead of being replaced: `swarm.json` (identity, nonce, effective controls), `coordinator.ndjson` (barrier, publication, stalls, wall/monotonic pairs), `shard-<k>.ndjson` (numbered rows with header and footer: joins, auths, 1 Hz per-bot samples with timestamped ENet RTT and loss, acknowledgments, frozen window counters) and `window.json` (the outcome). Monotonic times are this process's own, counted from its start.
+- **Exit status** says whether the evidence is finished, and never judges the server: 0 window recorded, 1 window not established or incomplete, 2 usage, 4 a recorder failed. `report.json` is the old whole-run summary, labelled `legacy_whole_run_diagnostic`; it includes ramp and drain and decides nothing.
+- **Judging it** is `scripts/do_session/measurement_window.py`, and scoring it is issue #69. Nothing in this mode says PASS.
+- **Faults.** `--fault` exists only with `--features fault-injection`. Every binary states `build.fault_injection` in `swarm.json`, so a fault build names itself even with no `--fault` and can never prove a window. Frozen benchmark builds do not have it.
 
 ## Scenarios (same table as the Python harness)
 

@@ -6,18 +6,30 @@ sampler that dies mid-run still leaves a usable prefix. Linux reads procfs direc
 back to `ps`/`netstat -s`. Processes to watch come from a pid file (`name=pid` per line) that is
 re-read every tick, so the bot swarm can be added after the server has started.
 
-Usage: sample_host.py --out host.ndjson --pids pids.txt [--udp-port 8081] [--interval 1.0]
+With --identity (the DigitalOcean common-window recorder, omega.measurement/3) the first row names that
+schema and each row also keeps the boot id, each watched process's kernel start identity and per-thread
+CPU, every UDP socket that exact process owns (inode, local endpoint, drops, queues), raw memory/OOM
+counters, raw interface counters and what the sample itself cost. `clock` and `clock_after` are this
+sampler's tight wall/monotonic pairs on either side of every counter read in the row, so a reader knows
+when those counters can have been taken, not just when the row began. Host-wide kernel counters stay in
+`udp.snmp`, never merged with a socket's. Missing values are absent, never zero.
+
+Usage: sample_host.py --out host.ndjson --pids pids.txt [--udp-port 8081] [--interval 1.0] [--identity]
 """
 import argparse
+import contextlib
+import ctypes
 import json
 import os
 import platform
+import struct
 import subprocess
 import sys
 import time
 
 IS_LINUX = platform.system() == "Linux"
 IS_DARWIN = platform.system() == "Darwin"
+MEASUREMENT_SCHEMA = "omega.measurement/3"
 
 
 def read_pids(path):
@@ -141,27 +153,197 @@ def udp_darwin():
         return {}
 
 
+def boot_id():
+    try:
+        with open("/proc/sys/kernel/random/boot_id") as f:
+            return f.read().strip()
+    except OSError:
+        pass
+    try:
+        out = subprocess.run(["sysctl", "-n", "kern.boottime"], capture_output=True, text=True, timeout=2).stdout
+        return out.split(",")[0].strip() or None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def start_id(pid):
+    """guest_runner.process_start_id: the kernel's start time for this pid, or None. A zombie counts as gone."""
+    if IS_LINUX:
+        try:
+            with open(f"/proc/{pid}/stat", errors="replace") as f:
+                fields = f.read().rsplit(")", 1)[1].split()
+            return None if fields[0] in ("Z", "X") else "ticks:" + fields[19]
+        except (OSError, IndexError):
+            return None
+    info = ctypes.create_string_buffer(136)
+    try:
+        size = ctypes.CDLL("/usr/lib/libproc.dylib").proc_pidinfo(pid, 3, ctypes.c_uint64(0), info, 136)
+    except OSError:
+        return None
+    if size != 136 or struct.unpack_from("<I", info.raw, 4)[0] == 5:
+        return None
+    return "bsd:%d.%06d" % struct.unpack_from("<QQ", info.raw, 120)
+
+
+def parse_proc_net_udp(text):
+    """Rows of /proc/net/udp or udp6, by inode. Drops and queues belong to that one socket."""
+    rows = {}
+    for line in text.splitlines()[1:]:
+        cols = line.split()
+        if len(cols) < 13 or ":" not in cols[1]:
+            continue
+        with contextlib.suppress(ValueError):
+            tx, rx = cols[4].split(":")
+            rows[cols[9]] = {"inode": cols[9], "local": cols[1], "local_port": int(cols[1].rsplit(":", 1)[1], 16), "drops": int(cols[12]),
+                             "rx_queue": int(rx, 16), "tx_queue": int(tx, 16)}
+    return rows
+
+
+def udp_table(proc_root="/proc"):
+    rows = {}
+    for table in ("net/udp", "net/udp6"):
+        with contextlib.suppress(OSError):
+            with open(f"{proc_root}/{table}") as f:
+                rows.update(parse_proc_net_udp(f.read()))
+    return rows
+
+
+def owned_sockets(pid, table, proc_root="/proc"):
+    """Only sockets this exact pid holds open, joined on inode. A row for anyone else's socket is never attributed to it."""
+    found = []
+    try:
+        names = os.listdir(f"{proc_root}/{pid}/fd")
+    except OSError:
+        return None
+    for name in names:
+        with contextlib.suppress(OSError):
+            target = os.readlink(f"{proc_root}/{pid}/fd/{name}")
+            if target.startswith("socket:[") and target[8:-1] in table:
+                found.append(table[target[8:-1]])
+    return sorted(found, key=lambda row: row["local_port"])
+
+
+def lsof_sockets(pid):
+    """Development only: endpoints and a reusable kernel address, with no drop counter on this platform."""
+    try:
+        out = subprocess.run(["lsof", "-nP", "-a", "-p", str(pid), "-iUDP", "-Fdn"], capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    rows, device = [], None
+    for line in out.splitlines():
+        if line.startswith("d"):
+            device = line[1:]
+        elif line.startswith("n") and ":" in line:
+            port = line.rsplit(":", 1)[1].split("-")[0]
+            if port.isdigit():
+                rows.append({"inode": f"lsof:{pid}:{device}", "local": line[1:], "local_port": int(port), "drops": None, "rx_queue": None, "tx_queue": None,
+                             "counter_source": "unavailable_on_platform"})
+    return sorted(rows, key=lambda row: row["local_port"])
+
+
+def thread_cpu(pid, proc_root="/proc"):
+    """Per-thread cumulative CPU by thread name. Linux only: absent elsewhere rather than zero."""
+    threads = {}
+    try:
+        tids = os.listdir(f"{proc_root}/{pid}/task")
+    except OSError:
+        return None
+    clk = os.sysconf("SC_CLK_TCK")
+    for tid in tids:
+        with contextlib.suppress(OSError, IndexError, ValueError):
+            with open(f"{proc_root}/{pid}/task/{tid}/stat", errors="replace") as f:
+                text = f.read()
+            name = text[text.index("(") + 1:text.rindex(")")]
+            rest = text[text.rindex(")") + 2:].split()
+            threads[f"{name}/{tid}"] = (int(rest[11]) + int(rest[12])) / clk
+    return threads
+
+
+def memory_facts(proc_root="/proc"):
+    facts = {}
+    with contextlib.suppress(OSError, ValueError, IndexError):
+        with open(f"{proc_root}/meminfo") as f:
+            values = {line.split(":")[0]: int(line.split()[1]) * 1024 for line in f if len(line.split()) >= 2}
+        for key in ("MemTotal", "MemAvailable", "SwapTotal", "SwapFree"):
+            if key in values:
+                facts[key] = values[key]
+    with contextlib.suppress(OSError, ValueError, IndexError):
+        with open(f"{proc_root}/vmstat") as f:
+            values = {line.split()[0]: int(line.split()[1]) for line in f if len(line.split()) == 2}
+        for key in ("oom_kill", "pgmajfault", "pswpin", "pswpout"):
+            if key in values:
+                facts[key] = values[key]
+    return facts
+
+
+def interface_counters(proc_root="/proc"):
+    facts = {}
+    with contextlib.suppress(OSError, ValueError, IndexError):
+        with open(f"{proc_root}/net/dev") as f:
+            for line in f.readlines()[2:]:
+                name, values = line.split(":", 1)
+                cols = values.split()
+                facts[name.strip()] = {"rx_bytes": int(cols[0]), "rx_packets": int(cols[1]), "rx_errs": int(cols[2]), "rx_drop": int(cols[3]),
+                                       "tx_bytes": int(cols[8]), "tx_packets": int(cols[9]), "tx_errs": int(cols[10]), "tx_drop": int(cols[11])}
+    return facts
+
+
+def clock_pair():
+    """One tight wall/monotonic pair, the tightest thing here."""
+    wall_before = time.time_ns()
+    mono = time.monotonic_ns()
+    wall_after = time.time_ns()
+    return {"wall_before_ns": wall_before, "mono_ns": mono, "wall_after_ns": wall_after}
+
+
+def identity_row(row, seq, began_ns, read_before, proc_root="/proc", linux=IS_LINUX):
+    """The extra fields of one --identity row. ``read_before`` was taken before any counter in the row was read, and ``clock_after`` is taken only once they all have been."""
+    row["clock"] = read_before
+    row["seq"] = seq
+    row["boot_id"] = boot_id()
+    table = udp_table(proc_root) if linux else None
+    for name, facts in row["procs"].items():
+        pid = facts["pid"]
+        facts["start_id"] = start_id(pid)
+        facts["sockets"] = owned_sockets(pid, table, proc_root) if linux else lsof_sockets(pid)
+        if linux:
+            facts["thread_cpu_s"] = thread_cpu(pid, proc_root)
+    if linux:
+        row["memory"] = memory_facts(proc_root)
+        row["interfaces"] = interface_counters(proc_root)
+    row["clock_after"] = clock_pair()
+    row["collector_ns"] = time.monotonic_ns() - began_ns
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
     ap.add_argument("--pids", required=True)
     ap.add_argument("--udp-port", type=int, default=0)
     ap.add_argument("--interval", type=float, default=1.0)
+    ap.add_argument("--identity", action="store_true")
     args = ap.parse_args()
     start = time.monotonic()
     with open(args.out, "a") as out:
-        out.write(json.dumps({"kind": "meta", "platform": platform.platform(), "cpus": os.cpu_count(), "ts": time.time()}) + "\n")
+        meta = {"kind": "meta", "platform": platform.platform(), "cpus": os.cpu_count(), "ts": time.time()}
+        if args.identity:
+            meta["schema"] = MEASUREMENT_SCHEMA
+        out.write(json.dumps(meta) + "\n")
         out.flush()
         n = 0
         while True:
+            began_ns = time.monotonic_ns()
+            read_before = clock_pair() if args.identity else None
             row = {"ts": time.time(), "mono_s": round(time.monotonic() - start, 3), "procs": {}, "system": system_cpu()}
             for name, pid in read_pids(args.pids).items():
-                row["procs"][name] = proc_linux(pid) if IS_LINUX else proc_ps(pid)
+                row["procs"][name] = dict(proc_linux(pid) if IS_LINUX else proc_ps(pid), pid=pid) if args.identity else (proc_linux(pid) if IS_LINUX else proc_ps(pid))
             try:
                 row["load1"] = os.getloadavg()[0]
             except (AttributeError, OSError):
                 pass
             row["udp"] = udp_linux(args.udp_port) if IS_LINUX else (udp_darwin() if IS_DARWIN else {})
+            if args.identity:
+                identity_row(row, n, began_ns, read_before)
             out.write(json.dumps(row) + "\n")
             out.flush()
             n += 1
