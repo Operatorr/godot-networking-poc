@@ -45,6 +45,13 @@ def _number(value, places=6):
     return round(value, places) if isinstance(value, float) else value
 
 
+def _unrounded(value):
+    """A gate reading as the scorer computed it. Rounding could carry a passing value onto a strict limit, so these are never rounded."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return value if math.isfinite(value) else None
+
+
 def _divide(numerator, denominator, places=6):
     if _number(numerator) is None or _number(denominator) is None or denominator == 0:
         return None
@@ -324,7 +331,7 @@ def _peer_diagnostics(gates):
     peak = (loss.get('per_second_mean_peak') or {}).get('ratio') or {}
     mean = loss.get('window_mean_of_seconds') or {}
     peer = loss.get('peer_peak') or {}
-    return dict(rtt_p95_ms=_number(rtt.get('p95_ms')), rtt_max_ms=_number(rtt.get('max_ms')), rtt_samples=_count(rtt.get('samples')), loss_estimate_peak_per_second_mean=_number(peak.get('approximate')), loss_estimate_window_mean=_number(mean.get('approximate')), loss_estimate_peer_peak=_number((peer.get('ratio') or {}).get('approximate')), loss_estimate_peer_peak_bot=_count(peer.get('bot')), loss_estimate_peer_peak_at_bot_mono_ns=_count(peer.get('at_bot_mono_ns')), loss_estimator='ENet smoothed estimate of reliable commands lost', loss_estimate_peer_peak_scope=PEER_PEAK_SCOPE)
+    return dict(rtt_p95_ms=_number(rtt.get('p95_ms')), rtt_max_ms=_number(rtt.get('max_ms')), rtt_samples=_count(rtt.get('samples')), loss_estimate_peak_per_second_mean=_unrounded(peak.get('approximate')), loss_estimate_window_mean=_unrounded(mean.get('approximate')), loss_estimate_peer_peak=_unrounded((peer.get('ratio') or {}).get('approximate')), loss_estimate_peer_peak_bot=_count(peer.get('bot')), loss_estimate_peer_peak_at_bot_mono_ns=_count(peer.get('at_bot_mono_ns')), loss_estimator='ENet smoothed estimate of reliable commands lost', loss_estimate_peer_peak_scope=PEER_PEAK_SCOPE)
 
 
 def _socket_diagnostics(proof, score):
@@ -381,7 +388,7 @@ def _trajectory(run_dir, proof, trial, workload):
     if ticks is None and peers is None:
         return dict(covered=False)
     found = dict(ticks or {}, **(peers or {}))
-    series = {name: [_number(item) for item in found.get(name) or [None] * hold_s] for name in TRAJECTORY_SERIES}
+    series = {name: [_unrounded(item) for item in found.get(name) or [None] * hold_s] for name in TRAJECTORY_SERIES}
     return dict(covered=True, seconds=hold_s, scope=TRAJECTORY_SCOPE, **series)
 
 

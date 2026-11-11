@@ -3855,8 +3855,8 @@
    "publication": "not_published",
    "publication_detail": "unverified",
    "published_first_run_peers": {
-    "loss_estimate_peak_per_second_mean": 0.008,
-    "loss_estimate_peer_peak": 0.199997,
+    "loss_estimate_peak_per_second_mean": 0.0079998779296875,
+    "loss_estimate_peer_peak": 0.1999969482421875,
     "loss_estimate_peer_peak_at_bot_mono_ns": 64455100000,
     "loss_estimate_peer_peak_bot": 1
    },

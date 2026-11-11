@@ -975,6 +975,23 @@ class Redaction(unittest.TestCase):
         proof = dict(reasons=[dict(code='clock_step')], facts=dict(population=dict(core_game_mono_ns=[0, 10 * sr.NS])))
         self.assertIsNone(sr._tick_series('/nonexistent', proof, 10))
 
+    # 35 bots at 1311 and 15 at 1310 on the 65536 scale: a mean of 13107/655360, which passes the strict 2/100 limit.
+    JUST_BELOW_THE_LOSS_LIMIT = 13107 / 655360
+
+    def test_a_loss_just_below_the_limit_is_published_unrounded_in_the_trajectory(self):
+        proof = dict(facts=dict(population=dict(core_game_mono_ns=[0, 2 * sr.NS])))
+        with mock.patch.object(cs, 'per_second_series', return_value=dict(rtt_p95_ms=[12, None], loss_estimate_mean=[self.JUST_BELOW_THE_LOSS_LIMIT, None])):
+            trajectory = sr._trajectory('/nonexistent', proof, dict(hold_s=2, target=50), {})
+        self.assertEqual(trajectory['loss_estimate_mean'], [self.JUST_BELOW_THE_LOSS_LIMIT, None])
+        self.assertLess(trajectory['loss_estimate_mean'][0], 0.02)
+
+    def test_a_loss_just_below_the_limit_is_published_unrounded_beside_its_gate(self):
+        near = cs.exact(cs.fractions.Fraction(13107, 655360))
+        peers = sr._peer_diagnostics(dict(enet_loss=dict(per_second_mean_peak=dict(ratio=near), window_mean_of_seconds=near, peer_peak=dict(ratio=near))))
+        for name in ('loss_estimate_peak_per_second_mean', 'loss_estimate_window_mean', 'loss_estimate_peer_peak'):
+            self.assertEqual(peers[name], self.JUST_BELOW_THE_LOSS_LIMIT, name)
+            self.assertLess(peers[name], 0.02, name)
+
     def test_free_text_holding_a_host_address_or_a_credential_never_reaches_a_report(self):
         secret = 'dop_v1_' + 'a' * 64
         scrubbed = sr.scrub(dict(reason='token %s and host 203.0.113.10' % secret, nested=[secret]), ('203.0.113.10',))
