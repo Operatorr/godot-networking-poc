@@ -12,7 +12,7 @@ Source `0b0d18e0000000000000000000000000000000aa`, controller `0b0d18e0000000000
 | Result | Status |
 | --- | --- |
 | Measurement | `confirmed` |
-| Evidence | `complete` (292 files, 21325542 bytes) |
+| Evidence | `complete` (292 files, 21628468 bytes) |
 | Cleanup | `clean` |
 
 Every owned resource was verified absent through authenticated provider reads.
@@ -27,8 +27,10 @@ Every owned resource was verified absent through authenticated provider reads.
 | 6 | confirm | 30 | 2 | 300 | PASS | valid | yes | 2000000 | 12.5 | 0.0 | 0.0 (bot 30) | 20.0 | 1333.333333 |
 | 7 | confirm | 30 | 3 | 300 | PASS | valid | yes | 2000000 | 12.5 | 0.0 | 0.0 (bot 30) | 20.0 | 1333.333333 |
 
+**Gates.** Fewer than 1% of Ticks above 33300000 ns, pooled RTT p95 strictly below 150 ms, ENet loss estimate per-second mean strictly below 2/100, and zero game socket drops, unexpected disconnects and bot errors.
+
 **Cost.** Nominal game tier $7.0/month, 4.286 confirmed players per monthly game-host dollar. Both-host session estimate, not an invoice: 0.09375 USD over 2090.0 s. Admission reserved 0.51889 USD. Management host $6.0/month, disclosed separately and in none of these. No provider invoice is on record. Nothing in this report is an invoice.
 
-**Raw evidence.** Raw evidence is never published. The author keeps it privately on one laptop disk (a single copy, by accepted risk) indefinitely, and it is available on request, verifiable against this SHA256 inventory. If that disk is lost, these hashes point at evidence that no longer exists. Inventory: `SHA256SUMS` (sha256 `902391c5aed00b00e93f5128f224831e3c8d2c2ac66ff05cd4ee479af867cb56`, 292 files, 21325542 bytes).
+**Raw evidence.** Raw evidence is never published. The author keeps it privately on one laptop disk (a single copy, by accepted risk) indefinitely, and it is available on request, verifiable against this SHA256 inventory. If that disk is lost, these hashes point at evidence that no longer exists. Inventory: `SHA256SUMS` (sha256 `e3c5d1db5d7f1a1a7c6688b91fd8c22d56ab7b7841d54a4b8be54cf7061ee0b9`, 292 files, 21628468 bytes).
 
 CPU, memory, gaps, bandwidth and cost are diagnostics and add no gate. ENet loss is a smoothed estimate, not a measured fraction of datagrams dropped.
