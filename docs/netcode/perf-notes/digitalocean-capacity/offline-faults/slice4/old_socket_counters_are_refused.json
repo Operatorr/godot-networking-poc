@@ -1,0 +1,104 @@
+{
+ "checks": [
+  {
+   "check": "the second run stopped as infrastructure",
+   "passed": true
+  },
+  {
+   "check": "it names the earlier socket",
+   "passed": true
+  }
+ ],
+ "clock": "scripted",
+ "host_starts": {
+  "bot": 1,
+  "game": 2
+ },
+ "registry_events": [
+  {
+   "kind": "control_acquired",
+   "takeover": false
+  },
+  {
+   "kind": "run_dispatch_intent",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "launching",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "running",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "stopped",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "sealed",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_outcome",
+   "outcome": "PASS",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_dispatch_intent",
+   "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "launching",
+   "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "stopped",
+   "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "sealed",
+   "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1"
+  },
+  {
+   "kind": "run_outcome",
+   "outcome": "INFRASTRUCTURE_FAILURE",
+   "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1"
+  }
+ ],
+ "remote": "fake",
+ "runs": [
+  {
+   "interrupted_reason": null,
+   "kind": "coarse",
+   "outcome": "PASS",
+   "phase": "sealed",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+   "state": "finished",
+   "target": 25
+  },
+  {
+   "interrupted_reason": null,
+   "kind": "coarse",
+   "outcome": "INFRASTRUCTURE_FAILURE",
+   "phase": "sealed",
+   "run_id": "do-cap-1v1g-20261030a-t02-coarse-n050-r1",
+   "state": "finished",
+   "target": 50
+  }
+ ],
+ "scenario": "old_socket_counters_are_refused",
+ "scorer": "scripted by the fixture, never a measurement",
+ "session": {
+  "fencing_token": 1,
+  "state": "ready",
+  "terminal_failure": "INFRASTRUCTURE_FAILURE"
+ }
+}

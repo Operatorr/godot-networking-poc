@@ -19,6 +19,7 @@ import os
 import pathlib
 import sqlite3
 
+import admission
 import create_evidence
 import deadline_capacity
 import manifest as manifest_mod
@@ -26,19 +27,26 @@ import resource_ownership
 import search
 import session_clock
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 3     # 2 added run phases and grant bounds, 3 durable guest grants; no state directory has been deployed, so there is no migration
 DB_NAME = 'registry.sqlite3'
 INCIDENT_DIR = 'incidents'
 RECEIPT_DIR = 'receipts'
 
 REGISTERED, PROVISIONING, READY, RUNNING, PAUSED = 'registered', 'provisioning', 'ready', 'running', 'paused'
 COLLECTING, EVIDENCE_RECOVERY, DELETING, CLOSED = 'collecting', 'evidence-recovery', 'deleting', 'closed'
+REVOCATION_PENDING = 'revocation-pending'   # a view only: see ``pending_revocation``
 
 DEFAULT_LEASE_TTL_S = 90.0
 DEFAULT_WATCHDOG_STALE_S = 30.0
 DEFAULT_LAUNCH_WINDOW_S = session_clock.DISPATCH_LAUNCH_WINDOW_S
 PREPARE_LEAD_S = session_clock.OWNERSHIP_PREPARE_LEAD_S     # read-only ownership checks begin this long before C
 DELETE_MARGIN_S = session_clock.DELETE_ISSUE_MARGIN_S       # the deadline tick runs this long before C
+GUEST_ACTION_TTL_S = 10.0   # one SSH login and the guest's own slow checks; a revocation is effective at most this plus the slack later
+GUEST_COMMIT_SLACK_S = 1.0  # what a guest may still need after its last look: spawning, and its elapsed clock's rate error
+GUEST_ACTIONS = ('launch_run', 'smoke')
+GUEST_ROLES = ('game', 'bot')
+GRANT_OUTSTANDING = 'outstanding'
+GRANT_RESOLUTIONS = ('started', 'refused')          # what a guest answered; a lost answer resolves nothing
 CREATE_START_WINDOW_S = session_clock.CREATE_START_WINDOW_S
 PENDING_CREATE_STATES = ('requested', 'ambiguous')
 CLOCK_UNVERIFIABLE_REASON = 'clock_unverifiable'
@@ -55,6 +63,10 @@ LISTING_KINDS = ('inventory_droplet', 'inventory_firewall')
 CREATE_REQUEST_KIND = 'create_request'
 BOOKKEEPING_KINDS = LISTING_KINDS + (CREATE_REQUEST_KIND,)      # scheduled like resources, but never resources themselves
 INCIDENT_ATTEMPT_TAIL = 30
+RUN_PHASES = ('dispatched', 'launching', 'running', 'stopped', 'sealed')     # forward only; the outcome is separate
+# What an explicit resume must have revalidated before the registry accepts it (issue #59 section 4).
+RESUME_REQUIRED_CHECKS = ('control_exclusive', 'manifest_unchanged', 'pair_unchanged', 'source_unchanged', 'readiness_revalidated',
+                          'processes_reset', 'headroom_admitted', 'interrupted_preserved')
 
 GENESIS_HASH = '0' * 64
 
@@ -89,7 +101,13 @@ CREATE TABLE runs(
     session_id TEXT NOT NULL, run_id TEXT NOT NULL, state TEXT NOT NULL, dispatched_at TEXT NOT NULL,
     fencing_token INTEGER NOT NULL, controller_id TEXT, launch_by TEXT NOT NULL, trial_json TEXT,
     finished_at TEXT, outcome TEXT, evidence_ref TEXT, interrupted_at TEXT, interrupted_reason TEXT,
+    phase TEXT NOT NULL DEFAULT 'dispatched', estimated_duration_s REAL, must_stop_by TEXT, execution_ref TEXT,
     PRIMARY KEY(session_id, run_id));
+CREATE TABLE guest_grants(
+    session_id TEXT NOT NULL, grant_id TEXT NOT NULL, action TEXT NOT NULL, role TEXT NOT NULL, run_id TEXT,
+    fencing_token INTEGER NOT NULL, controller_id TEXT, state TEXT NOT NULL, issued_at TEXT NOT NULL, ttl_s REAL NOT NULL,
+    not_after TEXT NOT NULL, conclusive_at TEXT NOT NULL, resolved_at TEXT, detail TEXT,
+    PRIMARY KEY(session_id, grant_id));
 CREATE TABLE resources(
     session_id TEXT NOT NULL, resource_key TEXT NOT NULL, kind TEXT NOT NULL, provider_id TEXT NOT NULL,
     name TEXT, intent_id TEXT, source TEXT NOT NULL, status TEXT NOT NULL, first_seen_at TEXT NOT NULL,
@@ -177,8 +195,10 @@ class Registry:
     def __init__(self, state_dir, clock=None, failpoint=None, lease_ttl_s=DEFAULT_LEASE_TTL_S,
                  watchdog_stale_s=DEFAULT_WATCHDOG_STALE_S, launch_window_s=DEFAULT_LAUNCH_WINDOW_S,
                  clock_tolerance_s=session_clock.DEFAULT_TOLERANCE_S, protected_tags=PROTECTED_TAGS,
-                 trusted_settlement_bases=create_evidence.DEFAULT_TRUSTED_BASES):
+                 trusted_settlement_bases=create_evidence.DEFAULT_TRUSTED_BASES, typed_runs=True):
         self.state_dir = pathlib.Path(state_dir)
+        # False is for slice 2's lifecycle fixtures only, which dispatch placeholder ids. registry_cli.py cannot turn it off.
+        self.typed_runs = typed_runs
         self.clock = clock or session_clock.SystemClock()
         self.failpoint = failpoint or (lambda name: None)
         self.lease_ttl_s = lease_ttl_s
@@ -317,7 +337,9 @@ class Registry:
         """One durable write. Yields the effective epoch; storage errors roll back and propagate."""
         self.db.execute('BEGIN IMMEDIATE')
         try:
-            yield self._advance_clock()
+            effective = self._advance_clock()
+            self._expire_guest_grants(effective)
+            yield effective
             self.failpoint(label + ':before_commit')
             self.db.execute('COMMIT')
         except BaseException:
@@ -566,12 +588,13 @@ class Registry:
                 self._interrupt_active_runs(session_id, now_text, 'controller_replaced')
             self.db.execute('UPDATE sessions SET fencing_token=?, controller_id=?, lease_expires_at=?, state=? '
                             'WHERE session_id=?', (token, controller_id, expires, state, session_id))
+            self._journal_revocation(session_id, 'takeover', now_text, effective)
             self.event(now_text, session_id, 'control_acquired',
                        dict(controller_id=controller_id, token=token, takeover=bool(takeover),
                             prior_controller=session['controller_id'], prior_token=session['fencing_token'],
                             prior_lease_live=lease_live, state=state))
-            return dict(session_id=session_id, fencing_token=token, lease_expires_at=expires, state=state,
-                        dispatch_allowed=state == READY)
+            return dict(session_id=session_id, fencing_token=token, lease_expires_at=expires, state=state, dispatch_allowed=state == READY,
+                        revocation=self.revocation_view(self.session_row(session_id), effective))
         return self._mutate('acquire_control', dict(session_id=session_id, controller_id=controller_id,
                                                     takeover=bool(takeover)), request_id, session_id, body)
 
@@ -883,6 +906,7 @@ class Registry:
         def body(effective, now_text, session):
             if session['state'] != PROVISIONING:
                 raise Rejection('bad_state', 'only a provisioning session can become ready', state=session['state'])
+            self._require_revocation_settled(session, effective)
             missing = [i['intent_id'] for i in self.intents(session_id) if i['kind'] == 'droplet' and i['state'] != 'created']
             if missing:
                 raise Rejection('pair_incomplete', 'both roles need an exact recorded id', missing=missing)
@@ -920,6 +944,7 @@ class Registry:
         def body(effective, now_text, session):
             if session['state'] != READY:
                 raise Rejection('bad_state', 'dispatch needs a ready pair and no active run', state=session['state'])
+            self._require_revocation_settled(session, effective)
             # Ownership reads before C are read-only, so a workload's only cutoff is the deadline tick.
             cutoff = session_clock.parse(session['cleanup_c_utc']) - DELETE_MARGIN_S
             launch_by = min(effective + self.launch_window_s, session_clock.parse(session['lease_expires_at']), cutoff)
@@ -930,25 +955,202 @@ class Registry:
                                 launch_window_s=launch_by - effective)
             if self.db.execute('SELECT 1 FROM runs WHERE session_id=? AND run_id=?', (session_id, run_id)).fetchone():
                 raise Rejection('duplicate_run', 'a run id is dispatched at most once: ' + run_id)
+            if self.typed_runs:
+                self._require_legal_trial(session, run_id, trial, estimated_duration_s)
             launch_text = session_clock.iso(launch_by)
+            must_stop_by = session_clock.iso(launch_by + estimated_duration_s)
             self.db.execute('INSERT INTO runs(session_id, run_id, state, dispatched_at, fencing_token, controller_id, '
-                            "launch_by, trial_json) VALUES (?, ?, 'dispatched', ?, ?, ?, ?, ?)",
+                            "launch_by, trial_json, estimated_duration_s, must_stop_by) VALUES (?, ?, 'dispatched', ?, ?, ?, ?, ?, ?, ?)",
                             (session_id, run_id, now_text, fencing_token, session['controller_id'], launch_text,
-                             canonical(trial) if trial is not None else None))
+                             canonical(trial) if trial is not None else None, estimated_duration_s, must_stop_by))
             self.db.execute('UPDATE sessions SET state=? WHERE session_id=?', (RUNNING, session_id))
             self.event(now_text, session_id, 'run_dispatch_intent',
                        dict(run_id=run_id, fencing_token=fencing_token, launch_by=launch_text))
-            return dict(session_id=session_id, run_id=run_id, authorized=True, launch_by=launch_text, fencing_token=fencing_token)
+            granted = dict(session_id=session_id, run_id=run_id, authorized=True, launch_by=launch_text, fencing_token=fencing_token)
+            if self.typed_runs:
+                granted.update(granted_at=now_text, must_stop_by=must_stop_by, estimated_duration_s=estimated_duration_s)
+            return granted
         result = self._mutate('dispatch_run', dict(session_id=session_id, run_id=run_id, fencing_token=fencing_token,
                                                    manifest_sha256=manifest_sha256, estimated_duration_s=estimated_duration_s,
                                                    trial=trial), request_id, session_id, body, gate=gate)
         if result.get('replayed'):
             # A lost ack may replay the grant, but a finished run or a closed launch window may not.
-            run = self.db.execute('SELECT state FROM runs WHERE session_id=? AND run_id=?', (session_id, run_id)).fetchone()
-            launchable = (run is not None and run['state'] == 'dispatched'
+            run = self.db.execute('SELECT state, phase FROM runs WHERE session_id=? AND run_id=?', (session_id, run_id)).fetchone()
+            launchable = (run is not None and run['state'] == 'dispatched' and run['phase'] == 'dispatched'
                           and self.peek_now() < session_clock.parse(result['launch_by']))
             result = dict(result, authorized=launchable)
         return result
+
+    def authorize_guest_action(self, session_id, fencing_token, action, grant_id, role, run_id=None, request_id=None):
+        """Issue one durable, single-use grant to start a process on one guest. This commit is where the intent is serialized.
+
+        A grant is a short lease on one start. ``grant_id`` was minted by that guest before this call, and the guest timed it from
+        then, so a delivery the guest accepts happens no later than this commit plus ``ttl_s`` on the guest's own elapsed clock,
+        whatever its wall clock says. ``conclusive_at`` adds the slack, and it never passes the lease, the launch window or the
+        delete cutoff: expiry and C revoke with no further step. A takeover or a cleanup request commits first and takes effect
+        once every grant it finds is resolved or conclusive. See ``pending_revocation``.
+        """
+        if action not in GUEST_ACTIONS:
+            raise Rejection('bad_request', 'unknown guest action: ' + str(action))
+        if role not in GUEST_ROLES:
+            raise Rejection('bad_request', 'a guest grant names the host it is for')
+        if not isinstance(grant_id, str) or not grant_id or len(grant_id) > 128:
+            raise Rejection('bad_request', 'a guest grant needs the identity its guest minted')
+
+        def body(effective, now_text, session):
+            self._require_revocation_settled(session, effective)
+            if self.db.execute('SELECT 1 FROM guest_grants WHERE session_id=? AND grant_id=?', (session_id, grant_id)).fetchone():
+                raise Rejection('grant_replayed', 'this guest grant was already issued', grant_id=grant_id)
+            limits = [effective + GUEST_ACTION_TTL_S, session_clock.parse(session['lease_expires_at']) - GUEST_COMMIT_SLACK_S]
+            if session['cleanup_c_utc'] is not None:
+                cutoff = session_clock.parse(session['cleanup_c_utc']) - DELETE_MARGIN_S
+                if effective >= cutoff - GUEST_COMMIT_SLACK_S:
+                    raise Rejection('deadline_reached', 'no process may start this close to C', cleanup_c_utc=session['cleanup_c_utc'])
+                limits.append(cutoff - GUEST_COMMIT_SLACK_S)
+            if action == 'smoke':
+                if session['state'] not in (PROVISIONING, PAUSED):
+                    raise Rejection('bad_state', 'a smoke belongs to readiness or an explicit resume', state=session['state'])
+                if session['terminal_failure'] is not None:
+                    raise Rejection('terminal_failure', 'a terminal failure stopped this batch', outcome=session['terminal_failure'])
+            else:
+                run = self.db.execute('SELECT * FROM runs WHERE session_id=? AND run_id=?', (session_id, run_id)).fetchone()
+                if run is None:
+                    raise Rejection('unknown_run', 'no dispatch was journaled for ' + str(run_id))
+                if run['state'] != 'dispatched' or run['phase'] != 'launching' or run['outcome'] is not None:
+                    raise Rejection('bad_state', 'only a run in its launch can start a process', state=run['state'], phase=run['phase'])
+                # The swarm starts after the game, by design, so only the game is held to the launch window.
+                closes = session_clock.parse(run['launch_by'] if role == 'game' else run['must_stop_by'])
+                if effective >= closes:
+                    raise Rejection('launch_window_closed', 'the grant expired unused', launch_by=run['launch_by'])
+                limits.append(closes)
+            not_after = min(limits)
+            ttl_s = not_after - effective
+            if ttl_s <= 0:
+                raise Rejection('lease_expired', 'too little of the lease is left to authorize a start')
+            not_after_text, conclusive_text = session_clock.iso(not_after), session_clock.iso(not_after + GUEST_COMMIT_SLACK_S)
+            self.db.execute('INSERT INTO guest_grants(session_id, grant_id, action, role, run_id, fencing_token, controller_id, state, issued_at, ttl_s, not_after, conclusive_at) '
+                            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                            (session_id, grant_id, action, role, run_id, fencing_token, session['controller_id'], GRANT_OUTSTANDING, now_text, ttl_s, not_after_text, conclusive_text))
+            self.event(now_text, session_id, 'guest_grant_issued', dict(grant_id=grant_id, action=action, role=role, run_id=run_id, fencing_token=fencing_token, conclusive_at=conclusive_text))
+            return dict(session_id=session_id, action=action, run_id=run_id, role=role, fencing_token=fencing_token, grant_id=grant_id,
+                        authorized_until=not_after_text, ttl_s=ttl_s, conclusive_at=conclusive_text)
+        return self._mutate('authorize_guest_action', dict(session_id=session_id, fencing_token=fencing_token, action=action, grant_id=grant_id, role=role, run_id=run_id),
+                            request_id, session_id, body, gate=self._authority_gate(fencing_token))
+
+    def resolve_guest_grant(self, session_id, grant_id, resolution, detail=None, request_id=None):
+        """What a guest answered about one grant: it used it, or it can never use it. Accepted from anyone, like any other fact.
+
+        A lost answer never comes here, so that grant stays outstanding until its expiry or a fence acknowledgement.
+        """
+        if resolution not in GRANT_RESOLUTIONS:
+            raise Rejection('bad_request', 'unknown grant resolution: ' + str(resolution))
+
+        def body(effective, now_text, session):
+            row = self.db.execute('SELECT * FROM guest_grants WHERE session_id=? AND grant_id=?', (session_id, grant_id)).fetchone()
+            if row is None:
+                raise Rejection('unknown_grant', 'no such guest grant: ' + str(grant_id))
+            if row['state'] == GRANT_OUTSTANDING:
+                self._settle_guest_grant(session, row, resolution, now_text, detail)
+            return dict(session_id=session_id, grant_id=grant_id, state=resolution if row['state'] == GRANT_OUTSTANDING else row['state'])
+        return self._mutate('resolve_guest_grant', dict(session_id=session_id, grant_id=grant_id, resolution=resolution, detail=detail), request_id, session_id, body)
+
+    def report_guest_fence(self, session_id, fencing_token, role, closed=False, consumed=(), request_id=None):
+        """The current controller reports a fence its guest acknowledged, under the guest's host lock.
+
+        A guest refuses any token below its fence, and any start at all once closed, so such a grant can do nothing new. Whatever
+        started before this acknowledgement is in the inventory that came with it, and that is what the controller must now stop.
+        """
+        if role not in GUEST_ROLES:
+            raise Rejection('bad_request', 'a fence acknowledgement names its host')
+
+        def body(effective, now_text, session):
+            self._require_token(session, fencing_token)
+            settled = []
+            for row in self.db.execute('SELECT * FROM guest_grants WHERE session_id=? AND role=? AND state=?', (session_id, role, GRANT_OUTSTANDING)).fetchall():
+                if closed or row['fencing_token'] < fencing_token:
+                    self._settle_guest_grant(session, row, 'started' if row['grant_id'] in consumed else 'fenced', now_text, 'token %d %s' % (fencing_token, 'closed' if closed else 'raised'))
+                    settled.append(row['grant_id'])
+            return dict(session_id=session_id, role=role, settled=settled, revocation=self.revocation_view(self.session_row(session_id), effective))
+        return self._mutate('report_guest_fence', dict(session_id=session_id, fencing_token=fencing_token, role=role, closed=bool(closed), consumed=sorted(consumed)), request_id, session_id, body)
+
+    def _settle_guest_grant(self, session, row, state, now_text, detail=None):
+        self.db.execute('UPDATE guest_grants SET state=?, resolved_at=?, detail=? WHERE session_id=? AND grant_id=?', (state, now_text, detail, row['session_id'], row['grant_id']))
+        self.event(now_text, row['session_id'], 'guest_grant_' + state, dict(grant_id=row['grant_id'], role=row['role'], detail=detail))
+        current = self.session_row(row['session_id'])
+        if self._revoked(current, row) and not self.pending_revocation(current, session_clock.parse(now_text)):
+            self.event(now_text, row['session_id'], 'revocation_effective', dict(target_state=current['state'], last_grant=row['grant_id'], resolution=state))
+
+    def _expire_guest_grants(self, effective):
+        """Inside every transaction, so the journal says when an unanswered grant stopped being able to do anything."""
+        rows = self.db.execute('SELECT * FROM guest_grants WHERE state=?', (GRANT_OUTSTANDING,)).fetchall()
+        for row in rows:
+            if effective >= session_clock.parse(row['conclusive_at']):
+                self._settle_guest_grant(self.session_row(row['session_id']), row, 'expired', session_clock.iso(effective))
+
+    @staticmethod
+    def _revoked(session, grant):
+        return session['cleanup_requested_at'] is not None or session['fencing_token'] > grant['fencing_token']
+
+    def pending_revocation(self, session, effective):
+        """Grants a committed takeover or cleanup still has to wait out. Empty means that revocation has taken effect.
+
+        The registry cannot reach a guest, so a start already granted is ordered against a revocation by this rule, as with any
+        lease: the authority ends when the grant can no longer be used, not when the wish to end it commits. Nothing can be added
+        once it is pending, every grant has a conclusive time, and those end before the delete cutoff, so this cannot hold cleanup past C.
+        """
+        if self.time_uncertain():
+            return []   # the effective clock may stand still until the wall catches up. Cleanup waits for nothing, and each guest still counts its own elapsed time.
+        rows = self.db.execute('SELECT * FROM guest_grants WHERE session_id=? AND state=?', (session['session_id'], GRANT_OUTSTANDING)).fetchall()
+        return [row for row in rows if self._revoked(session, row) and effective < session_clock.parse(row['conclusive_at'])]
+
+    def revocation_view(self, session, effective=None):
+        effective = self.peek_now() if effective is None else effective
+        pending = self.pending_revocation(session, effective)
+        return dict(pending=bool(pending), target_state=session['state'], reason='cleanup' if session['cleanup_requested_at'] is not None else 'takeover' if pending else None,
+                    effective_at=max((row['conclusive_at'] for row in pending), default=None),
+                    grants=[dict(grant_id=row['grant_id'], action=row['action'], role=row['role'], run_id=row['run_id'], fencing_token=row['fencing_token'], conclusive_at=row['conclusive_at']) for row in pending])
+
+    def _require_revocation_settled(self, session, effective):
+        pending = self.pending_revocation(session, effective)
+        if pending:
+            view = self.revocation_view(session, effective)
+            raise Rejection('revocation_pending', 'an earlier grant can still be used, so its revocation has not taken effect', effective_at=view['effective_at'],
+                            retry_after_s=max(0.0, session_clock.parse(view['effective_at']) - effective), roles=sorted({row['role'] for row in pending}))
+
+    def _journal_revocation(self, session_id, reason, now_text, effective):
+        session = self.session_row(session_id)
+        pending = self.pending_revocation(session, effective)
+        if pending:
+            view = self.revocation_view(session, effective)
+            self.event(now_text, session_id, 'revocation_pending', dict(reason=reason, target_state=session['state'], effective_at=view['effective_at'], grants=[row['grant_id'] for row in pending]))
+
+    def guest_grants(self, session_id):
+        return [dict(r) for r in self.db.execute('SELECT * FROM guest_grants WHERE session_id=? ORDER BY issued_at, grant_id', (session_id,))]
+
+    def search_state(self, session):
+        """The search as this registry journaled it. A controller's local files never decide what comes next."""
+        session_id = session['session_id']
+        records = []
+        for row in self.runs(session_id):
+            if row['trial_json'] is None:
+                raise Rejection('untyped_run', 'run %s was dispatched without its trial' % row['run_id'])
+            records.append(search.TrialRecord(search.trial_from_dict(json.loads(row['trial_json'])), row['outcome'], row['evidence_ref']))
+        records.sort(key=lambda record: record.trial.ordinal)
+        return search.SearchState(session_id, records)
+
+    def _require_legal_trial(self, session, run_id, trial, estimated_duration_s):
+        """Only the one trial the frozen search allows next, with an estimate covering all of it."""
+        manifest = json.loads(session['manifest_json'])
+        if manifest['session'].get('kind') != 'capacity':
+            raise Rejection('no_workload_plan', 'calibration and lifecycle smoke have no search; their workload plans belong to their own gates')
+        expected = search.derive(self.search_state(session))
+        legal = expected['next']
+        if legal is None or not isinstance(trial, dict) or legal.run_id != run_id or legal.to_dict() != trial:
+            raise Rejection('illegal_trial', 'not the legal next trial of the frozen search', status=expected['status'],
+                            detail=expected['detail'], legal_run_id=legal.run_id if legal is not None else None)
+        needed = admission.trial_duration(manifest, legal)['total_s']
+        if estimated_duration_s < needed:
+            raise Rejection('estimate_too_short', 'the dispatch estimate must cover the whole trial', needed_s=needed)
 
     def _interrupt_active_runs(self, session_id, now_text, reason):
         active = self.db.execute("SELECT run_id FROM runs WHERE session_id=? AND state='dispatched'", (session_id,)).fetchall()
@@ -971,6 +1173,8 @@ class Registry:
                 raise Rejection('unknown_run', 'no dispatch was journaled for ' + str(run_id))
             if run['outcome'] is not None:
                 raise Rejection('outcome_recorded', 'a run outcome is immutable', outcome=run['outcome'])
+            if self.typed_runs and outcome in search.ADVANCING and run['phase'] != 'sealed':
+                raise Rejection('evidence_not_sealed', 'an outcome that advances the search needs sealed run evidence', phase=run['phase'])
             self.db.execute("UPDATE runs SET state='finished', finished_at=?, outcome=?, evidence_ref=? "
                             'WHERE session_id=? AND run_id=?', (now_text, outcome, evidence_ref, session_id, run_id))
             state = READY if session['state'] == RUNNING else session['state']
@@ -984,6 +1188,70 @@ class Registry:
                                                        fencing_token=fencing_token, evidence_ref=evidence_ref),
                             request_id, session_id, body)
 
+    def record_run_progress(self, session_id, run_id, phase, fencing_token, execution_ref=None, request_id=None):
+        """Durable transitions of one run. ``launching`` is the last fenced check before anything starts on a guest.
+
+        A later phase may be recorded for an interrupted run, because a new controller still seals what was left. Only
+        ``launching`` needs live authority, a run still dispatched and an open launch window.
+        """
+        if phase not in RUN_PHASES[1:]:
+            raise Rejection('bad_request', 'unknown run phase: ' + str(phase))
+        authority = self._authority_gate(fencing_token)
+
+        def gate(effective, session):
+            self._require_token(session, fencing_token)
+            if phase == 'launching':
+                authority(effective, session)
+
+        def body(effective, now_text, session):
+            run = self.db.execute('SELECT * FROM runs WHERE session_id=? AND run_id=?', (session_id, run_id)).fetchone()
+            if run is None:
+                raise Rejection('unknown_run', 'no dispatch was journaled for ' + str(run_id))
+            if run['outcome'] is not None:
+                raise Rejection('outcome_recorded', 'a run outcome is immutable', outcome=run['outcome'])
+            if RUN_PHASES.index(phase) <= RUN_PHASES.index(run['phase']):
+                raise Rejection('phase_regressed', 'run phases only move forward', phase=run['phase'])
+            if phase == 'launching':
+                if run['state'] != 'dispatched' or run['phase'] != 'dispatched':
+                    raise Rejection('bad_state', 'only a run still dispatched can launch', state=run['state'], phase=run['phase'])
+                if effective >= session_clock.parse(run['launch_by']):
+                    raise Rejection('launch_window_closed', 'the grant expired unused', launch_by=run['launch_by'])
+            self.db.execute('UPDATE runs SET phase=?, execution_ref=COALESCE(?, execution_ref) WHERE session_id=? AND run_id=?',
+                            (phase, execution_ref, session_id, run_id))
+            self.event(now_text, session_id, 'run_progress', dict(run_id=run_id, phase=phase, execution_ref=execution_ref))
+            return dict(session_id=session_id, run_id=run_id, phase=phase, must_stop_by=run['must_stop_by'], launch_by=run['launch_by'])
+        return self._mutate('record_run_progress', dict(session_id=session_id, run_id=run_id, phase=phase, fencing_token=fencing_token,
+                                                        execution_ref=execution_ref), request_id, session_id, body, gate=gate)
+
+    def record_batch_stop(self, session_id, outcome, fencing_token, detail, evidence_ref=None, request_id=None):
+        """A failure that stops the batch with no run to carry it, such as a dirty host found before dispatch."""
+        if outcome not in search.STOPPING:
+            raise Rejection('bad_request', 'a batch stops on ' + ', '.join(sorted(search.STOPPING)))
+        if not isinstance(detail, str) or not detail.strip():
+            raise Rejection('bad_request', 'a batch stop needs its reason')
+
+        def body(effective, now_text, session):
+            self._require_token(session, fencing_token)
+            terminal = session['terminal_failure'] or outcome
+            self.db.execute('UPDATE sessions SET terminal_failure=? WHERE session_id=?', (terminal, session_id))
+            self.event(now_text, session_id, 'batch_stopped', dict(outcome=outcome, detail=detail, evidence_ref=evidence_ref))
+            return dict(session_id=session_id, terminal_failure=terminal, state=session['state'])
+        return self._mutate('record_batch_stop', dict(session_id=session_id, outcome=outcome, fencing_token=fencing_token, detail=detail,
+                                                      evidence_ref=evidence_ref), request_id, session_id, body)
+
+    def run_records(self, session_id):
+        """Everything a controller needs to rebuild a batch after losing its memory."""
+        self.session_row(session_id)
+        return [dict(run_id=r['run_id'], state=r['state'], phase=r['phase'], outcome=r['outcome'], evidence_ref=r['evidence_ref'],
+                     execution_ref=r['execution_ref'], dispatched_at=r['dispatched_at'], finished_at=r['finished_at'], launch_by=r['launch_by'],
+                     must_stop_by=r['must_stop_by'], estimated_duration_s=r['estimated_duration_s'], fencing_token=r['fencing_token'],
+                     controller_id=r['controller_id'], interrupted_at=r['interrupted_at'], interrupted_reason=r['interrupted_reason'],
+                     trial=json.loads(r['trial_json']) if r['trial_json'] else None) for r in self.runs(session_id)]
+
+    def ready_record(self, session_id):
+        session = self.session_row(session_id)
+        return dict(ready_at=session['ready_at'], ready_evidence_ref=session['ready_evidence_ref'], t0_utc=session['t0_utc'])
+
     def record_resume(self, session_id, fencing_token, operator_request_ref, checks, request_id=None):
         """Record an explicit operator resume and its checks. Only untouched work can follow."""
         if not isinstance(operator_request_ref, str) or not operator_request_ref.strip():
@@ -994,6 +1262,7 @@ class Registry:
         def body(effective, now_text, session):
             if session['state'] != PAUSED:
                 raise Rejection('bad_state', 'only a paused session can resume', state=session['state'])
+            self._require_revocation_settled(session, effective)
             if session['terminal_failure'] is not None:
                 raise Rejection('terminal_failure', 'a terminal failure cannot be resumed past',
                                 outcome=session['terminal_failure'])
@@ -1001,6 +1270,8 @@ class Registry:
             if unclassified:
                 raise Rejection('interrupted_run_unclassified', 'record each interrupted run before resuming',
                                 run_ids=[r['run_id'] for r in unclassified])
+            if self.typed_runs:
+                self._require_resume_checks(effective, session, checks)
             self.db.execute('UPDATE sessions SET state=? WHERE session_id=?', (READY, session_id))
             self.event(now_text, session_id, 'resumed', dict(operator_request_ref=operator_request_ref, checks=checks,
                                                              fencing_token=fencing_token))
@@ -1008,6 +1279,20 @@ class Registry:
         return self._mutate('record_resume', dict(session_id=session_id, fencing_token=fencing_token,
                                                   operator_request_ref=operator_request_ref, checks=checks),
                             request_id, session_id, body, gate=self._authority_gate(fencing_token))
+
+    def _require_resume_checks(self, effective, session, checks):
+        self._require_watchdog_fresh(effective)
+        unproven = [name for name in RESUME_REQUIRED_CHECKS if checks.get(name) is not True]
+        if unproven:
+            raise Rejection('resume_unverified', 'resume needs every revalidation to have passed', unproven=unproven)
+        if checks.get('manifest_sha256') != session['manifest_sha256']:
+            raise Rejection('manifest_conflict', 'resume names a different manifest')
+        expected = search.derive(self.search_state(session))
+        if expected['next'] is None:
+            raise Rejection('no_untouched_work', 'no run can be established from the evidence on record',
+                            status=expected['status'], detail=expected['detail'])
+        if checks.get('next_run_id') != expected['next'].run_id:
+            raise Rejection('illegal_trial', 'resume names work the frozen search does not allow next', legal_run_id=expected['next'].run_id)
 
     # ---- collection and independent outcome fields -------------------------------------------
 
@@ -1080,10 +1365,11 @@ class Registry:
                         "cleanup_outcome='in_progress' WHERE session_id=?", (DELETING, now_text, reason, actor, session_id))
         self._interrupt_active_runs(session_id, now_text, 'cleanup_started')
         self.event(now_text, session_id, 'cleanup_intent', dict(reason=reason, actor=actor, prior_state=session['state']))
+        self._journal_revocation(session_id, 'cleanup', now_text, session_clock.parse(now_text))
 
     def _cleanup_view(self, session_id):
         session = self.session_row(session_id)
-        return dict(session_id=session_id, state=session['state'], cleanup_requested_at=session['cleanup_requested_at'],
+        return dict(session_id=session_id, **self._public_state(session), cleanup_requested_at=session['cleanup_requested_at'],
                     cleanup_reason=session['cleanup_reason'], deadline_d_utc=session['deadline_d_utc'])
 
     def request_cleanup(self, session_id, fencing_token, reason, request_id=None):
@@ -1255,13 +1541,20 @@ class Registry:
     def manifest(self, session_id):
         return json.loads(self.session_row(session_id)['manifest_json'])
 
+    def _public_state(self, session):
+        """Expose revocation intent versus effect consistently on every lifecycle response."""
+        revocation = self.revocation_view(session)
+        return dict(state=REVOCATION_PENDING if revocation['pending'] else session['state'],
+                    **(dict(revocation=revocation) if self.guest_grants(session['session_id']) else {}))
+
     def status(self, session_id):
         """The three outcomes stay separate. ``overall`` only combines them, never overwrites them."""
         session = self.session_row(session_id)
         incidents = self.incidents(session_id)
         overdue = [i for i in incidents if i['kind'] == 'cleanup-overdue']
         return dict(
-            session_id=session_id, manifest_sha256=session['manifest_sha256'], state=session['state'],
+            session_id=session_id, manifest_sha256=session['manifest_sha256'],
+            **self._public_state(session),
             t0_utc=session['t0_utc'], deadline_d_utc=session['deadline_d_utc'], cleanup_c_utc=session['cleanup_c_utc'],
             controller_id=session['controller_id'], fencing_token=session['fencing_token'],
             lease_expires_at=session['lease_expires_at'], terminal_failure=session['terminal_failure'],
@@ -1299,7 +1592,7 @@ class Registry:
         return 'resources_verified_after_overdue' if overdue else 'clean'
 
     def list_sessions(self):
-        return [dict(session_id=r['session_id'], state=r['state'], deadline_d_utc=r['deadline_d_utc'],
+        return [dict(session_id=r['session_id'], **self._public_state(r), deadline_d_utc=r['deadline_d_utc'],
                      cleanup_outcome=r['cleanup_outcome'])
                 for r in self.db.execute('SELECT * FROM sessions ORDER BY session_id')]
 
@@ -1308,7 +1601,7 @@ class Registry:
     RPC_METHODS = ('register_session', 'acquire_control', 'renew_control', 'arm_session', 'begin_create',
                    'record_create_result', 'record_create_settlement', 'dispose_create', 'record_resource', 'report_ownership_conflict',
                    'mark_ready',
-                   'dispatch_run', 'record_run_outcome',
+                   'dispatch_run', 'authorize_guest_action', 'resolve_guest_grant', 'report_guest_fence', 'record_run_outcome', 'record_run_progress', 'record_batch_stop', 'run_records', 'ready_record',
                    'record_resume', 'begin_collection', 'begin_evidence_recovery', 'record_measurement',
                    'record_evidence', 'request_cleanup', 'operator_abort', 'disown_resource', 'health', 'status',
                    'incidents', 'incident_report', 'journal', 'list_sessions', 'verify_journal')

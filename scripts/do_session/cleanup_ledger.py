@@ -374,6 +374,7 @@ class CleanupLedger:
             boundaries += [cleanup_at - self.prepare_lead_s, cleanup_at - self.delete_margin_s, session_clock.parse(row['deadline_d_utc'])]
             if row['recovery_deadline_utc'] is not None:
                 boundaries.append(session_clock.parse(row['recovery_deadline_utc']))
+        boundaries += [session_clock.parse(row['conclusive_at']) for row in self.db.execute("SELECT conclusive_at FROM guest_grants WHERE state='outstanding'")]
         return min((b for b in boundaries if b > effective), default=None)
 
     def rate_limit_hold(self):
@@ -394,6 +395,8 @@ class CleanupLedger:
                 return None
             if row['burst_next_op'] in DELETE_OPS.values() and session['cleanup_requested_at'] is None:
                 raise AssertionError('a delete was scheduled without durable cleanup intent: ' + resource_key)
+            if row['burst_next_op'] in DELETE_OPS.values() and self.registry.pending_revocation(session, effective):
+                return None     # a grant can still land, for seconds at most and never past the delete cutoff; the next tick asks again
             attempt_number = row['burst_attempts'] + 1
             if attempt_number > MAX_ATTEMPTS_PER_BURST:
                 raise AssertionError('burst attempt ceiling violated for ' + resource_key)

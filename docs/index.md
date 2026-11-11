@@ -63,6 +63,7 @@ for the map; this page is the **catalogue** with verification status. Terms are 
 | [`netcode/perf-notes/tick-rate-30-vs-60.md`](netcode/perf-notes/tick-rate-30-vs-60.md) | Reference · results PENDING | The gated 30-vs-60 Hz tick trial — protocol + empty results table (#8). |
 | [`netcode/perf-notes/hill-climb/README.md`](netcode/perf-notes/hill-climb/README.md) | **Active** · measured 2026-10-29 | The one-minute stress loop (`scripts/quick_stress.sh`), the population ladder checklist, the 190-player-wall hypotheses with measured status, and the per-run [ledger](netcode/perf-notes/hill-climb/ledger.md). **Start here for performance work.** |
 | [`netcode/perf-notes/digitalocean-capacity/offline-faults/slice2/README.md`](netcode/perf-notes/digitalocean-capacity/offline-faults/slice2/README.md) | Reference · offline fixtures only | Reproducible fake-provider fault timelines for the DigitalOcean session registry and cleanup watchdog. Not capacity or live-provider results. |
+| [`netcode/perf-notes/digitalocean-capacity/offline-faults/slice4/README.md`](netcode/perf-notes/digitalocean-capacity/offline-faults/slice4/README.md) | Reference · offline fixtures only | Reproducible fake-remote timelines for DigitalOcean fresh-process test runs and explicit resume. Outcomes are scripted by the fixture. Not capacity or live-provider results. |
 | [`exec-plans/active/netcode-perf-fixes.md`](exec-plans/active/netcode-perf-fixes.md) | Active | The prioritized fix roadmap (P0→P3); #7–#15 done 2026-06-04. |
 
 ## Netcode (the core of the project)

@@ -172,6 +172,10 @@ class FakeGuests(ssh_access.GuestAccess):
     def _answer_sampler(self, role):
         return dict(samples=4, alive_until_stopped=True, monotonic_advancing=True, sha256='d' * 64)
 
+    def _answer_grant_prepare(self, role):
+        self.grant_count = getattr(self, 'grant_count', 0) + 1
+        return dict(ok=True, grant_id='%032x' % self.grant_count, raised=True)
+
     def _answer_smoke_game_start(self, role):
         return dict(pid=4242, running=True, metrics_loopback_ok=True,
                     listeners=[dict(protocol='udp', address='0.0.0.0', port=8081), dict(protocol='tcp', address='127.0.0.1', port=9100),

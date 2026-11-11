@@ -45,8 +45,8 @@ def session_of_kind(session_id, cap_s, kind, retained=()):
 class Sim:
     TICK_S = 5.0
 
-    def __init__(self, case, session_id=SESSION, cap_s=CAP_S, account_options=None, policy=None, kind='capacity', retained=()):
-        self.stack = rf.Stack(case)
+    def __init__(self, case, session_id=SESSION, cap_s=CAP_S, account_options=None, policy=None, kind='capacity', retained=(), typed_runs=False):
+        self.stack = rf.Stack(case, typed_runs=typed_runs)
         self.clock = self.stack.clock
         self.case = case
         self.account = fake_do_http.FakeDoAccount(self.clock, **(account_options or {}))

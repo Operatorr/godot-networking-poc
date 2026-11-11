@@ -1,0 +1,75 @@
+{
+ "checks": [
+  {
+   "check": "the takeover reads as pending until then",
+   "passed": true
+  },
+  {
+   "check": "both hosts acknowledged, so it is paused",
+   "passed": true
+  },
+  {
+   "check": "the delayed start is refused by the fence",
+   "passed": true
+  }
+ ],
+ "clock": "scripted",
+ "host_starts": {
+  "bot": 0,
+  "game": 1
+ },
+ "registry_events": [
+  {
+   "kind": "control_acquired",
+   "takeover": false
+  },
+  {
+   "kind": "run_dispatch_intent",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_progress",
+   "phase": "launching",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "run_interrupted",
+   "reason": "controller_replaced",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1"
+  },
+  {
+   "kind": "revocation_pending",
+   "reason": "takeover"
+  },
+  {
+   "kind": "control_acquired",
+   "takeover": true
+  },
+  {
+   "detail": "token 2 raised",
+   "kind": "guest_grant_fenced"
+  },
+  {
+   "kind": "revocation_effective"
+  }
+ ],
+ "remote": "fake",
+ "runs": [
+  {
+   "interrupted_reason": "controller_replaced",
+   "kind": "coarse",
+   "outcome": null,
+   "phase": "launching",
+   "run_id": "do-cap-1v1g-20261030a-t01-coarse-n025-r1",
+   "state": "interrupted",
+   "target": 25
+  }
+ ],
+ "scenario": "takeover_takes_effect_at_the_fence_acknowledgement",
+ "scorer": "scripted by the fixture, never a measurement",
+ "session": {
+  "fencing_token": 2,
+  "state": "paused",
+  "terminal_failure": null
+ }
+}

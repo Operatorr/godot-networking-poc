@@ -1,0 +1,36 @@
+{
+ "checks": [
+  {
+   "check": "refused",
+   "passed": true
+  },
+  {
+   "check": "no guest was contacted",
+   "passed": true
+  },
+  {
+   "check": "the healthy pair is not deleted",
+   "passed": true
+  }
+ ],
+ "clock": "scripted",
+ "host_starts": {
+  "bot": 0,
+  "game": 0
+ },
+ "registry_events": [
+  {
+   "kind": "control_acquired",
+   "takeover": false
+  }
+ ],
+ "remote": "fake",
+ "runs": [],
+ "scenario": "wrong_controller_touches_nothing_on_a_first_run",
+ "scorer": "scripted by the fixture, never a measurement",
+ "session": {
+  "fencing_token": 1,
+  "state": "ready",
+  "terminal_failure": null
+ }
+}

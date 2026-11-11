@@ -1,0 +1,36 @@
+{
+ "checks": [
+  {
+   "check": "nothing could stop it",
+   "passed": true
+  },
+  {
+   "check": "its own lifetime released it",
+   "passed": true
+  }
+ ],
+ "clock": "scripted",
+ "host_starts": {
+  "bot": 0,
+  "game": 0
+ },
+ "registry_events": [
+  {
+   "kind": "control_acquired",
+   "takeover": false
+  },
+  {
+   "kind": "control_acquired",
+   "takeover": true
+  }
+ ],
+ "remote": "fake",
+ "runs": [],
+ "scenario": "lost_smoke_reply_ends_by_itself_with_no_controller",
+ "scorer": "scripted by the fixture, never a measurement",
+ "session": {
+  "fencing_token": 2,
+  "state": "paused",
+  "terminal_failure": null
+ }
+}

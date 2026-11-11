@@ -101,6 +101,10 @@
   },
   {
    "role": "game",
+   "step": "grant_prepare"
+  },
+  {
+   "role": "game",
    "step": "sampler"
   },
   {
@@ -113,6 +117,10 @@
   },
   {
    "role": "bot",
+   "step": "grant_prepare"
+  },
+  {
+   "role": "bot",
    "step": "sampler"
   },
   {
@@ -121,7 +129,15 @@
   },
   {
    "role": "game",
+   "step": "grant_prepare"
+  },
+  {
+   "role": "game",
    "step": "smoke_game_start"
+  },
+  {
+   "role": "bot",
+   "step": "grant_prepare"
   },
   {
    "role": "bot",
@@ -1590,109 +1606,149 @@
    "seq": 20
   },
   {
+   "at": "2026-10-30T12:07:11+00:00",
+   "kind": "guest_grant_issued",
+   "seq": 21
+  },
+  {
+   "at": "2026-10-30T12:07:15+00:00",
+   "kind": "guest_grant_started",
+   "seq": 22
+  },
+  {
+   "at": "2026-10-30T12:07:17+00:00",
+   "kind": "guest_grant_issued",
+   "seq": 23
+  },
+  {
+   "at": "2026-10-30T12:07:21+00:00",
+   "kind": "guest_grant_started",
+   "seq": 24
+  },
+  {
+   "at": "2026-10-30T12:07:26+00:00",
+   "kind": "guest_grant_issued",
+   "seq": 25
+  },
+  {
+   "at": "2026-10-30T12:07:29+00:00",
+   "kind": "guest_grant_started",
+   "seq": 26
+  },
+  {
+   "at": "2026-10-30T12:07:29+00:00",
+   "kind": "guest_grant_issued",
+   "seq": 27
+  },
+  {
+   "at": "2026-10-30T12:07:36+00:00",
+   "kind": "guest_grant_started",
+   "seq": 28
+  },
+  {
    "at": "2026-10-30T12:07:38+00:00",
    "kind": "pair_ready",
-   "seq": 21
+   "seq": 29
   },
   {
    "at": "2026-10-30T12:07:38+00:00",
    "kind": "evidence_recorded",
-   "seq": 22
+   "seq": 30
   },
   {
    "at": "2026-10-30T12:07:38+00:00",
    "kind": "cleanup_intent",
-   "seq": 23
-  },
-  {
-   "at": "2026-10-30T12:07:40+00:00",
-   "kind": "delete_accepted",
-   "seq": 24
-  },
-  {
-   "at": "2026-10-30T12:07:40+00:00",
-   "kind": "delete_accepted",
-   "seq": 25
-  },
-  {
-   "at": "2026-10-30T12:08:55+00:00",
-   "kind": "delete_accepted",
-   "seq": 26
-  },
-  {
-   "at": "2026-10-30T12:08:55+00:00",
-   "kind": "delete_accepted",
-   "seq": 27
-  },
-  {
-   "at": "2026-10-30T12:10:10+00:00",
-   "kind": "delete_accepted",
-   "seq": 28
-  },
-  {
-   "at": "2026-10-30T12:10:10+00:00",
-   "kind": "delete_accepted",
-   "seq": 29
-  },
-  {
-   "at": "2026-10-30T12:10:54+00:00",
-   "kind": "verified_absent",
-   "seq": 30
-  },
-  {
-   "at": "2026-10-30T12:10:54+00:00",
-   "kind": "verified_absent",
    "seq": 31
   },
   {
-   "at": "2026-10-30T12:10:57+00:00",
+   "at": "2026-10-30T12:07:40+00:00",
    "kind": "delete_accepted",
    "seq": 32
   },
   {
-   "at": "2026-10-30T12:11:11+00:00",
-   "kind": "verified_absent",
+   "at": "2026-10-30T12:07:40+00:00",
+   "kind": "delete_accepted",
    "seq": 33
   },
   {
-   "at": "2026-10-30T12:11:13+00:00",
+   "at": "2026-10-30T12:08:55+00:00",
    "kind": "delete_accepted",
    "seq": 34
   },
   {
-   "at": "2026-10-30T12:11:14+00:00",
+   "at": "2026-10-30T12:08:55+00:00",
    "kind": "delete_accepted",
    "seq": 35
   },
   {
-   "at": "2026-10-30T12:11:14+00:00",
+   "at": "2026-10-30T12:10:10+00:00",
    "kind": "delete_accepted",
    "seq": 36
   },
   {
-   "at": "2026-10-30T12:11:27+00:00",
-   "kind": "verified_absent",
+   "at": "2026-10-30T12:10:10+00:00",
+   "kind": "delete_accepted",
    "seq": 37
   },
   {
-   "at": "2026-10-30T12:11:27+00:00",
+   "at": "2026-10-30T12:10:54+00:00",
    "kind": "verified_absent",
    "seq": 38
   },
   {
-   "at": "2026-10-30T12:11:28+00:00",
+   "at": "2026-10-30T12:10:54+00:00",
    "kind": "verified_absent",
    "seq": 39
   },
   {
+   "at": "2026-10-30T12:10:57+00:00",
+   "kind": "delete_accepted",
+   "seq": 40
+  },
+  {
+   "at": "2026-10-30T12:11:11+00:00",
+   "kind": "verified_absent",
+   "seq": 41
+  },
+  {
+   "at": "2026-10-30T12:11:13+00:00",
+   "kind": "delete_accepted",
+   "seq": 42
+  },
+  {
+   "at": "2026-10-30T12:11:14+00:00",
+   "kind": "delete_accepted",
+   "seq": 43
+  },
+  {
+   "at": "2026-10-30T12:11:14+00:00",
+   "kind": "delete_accepted",
+   "seq": 44
+  },
+  {
+   "at": "2026-10-30T12:11:27+00:00",
+   "kind": "verified_absent",
+   "seq": 45
+  },
+  {
+   "at": "2026-10-30T12:11:27+00:00",
+   "kind": "verified_absent",
+   "seq": 46
+  },
+  {
+   "at": "2026-10-30T12:11:28+00:00",
+   "kind": "verified_absent",
+   "seq": 47
+  },
+  {
    "at": "2026-10-30T12:11:40+00:00",
    "kind": "closed",
-   "seq": 40
+   "seq": 48
   }
  ],
  "registry_journal_verification": {
-  "events": 40,
-  "head": "7ef08d52316d5b4c637bce81ee7e6cb42d32f2a9baae1725cb7da2ae15942dea",
+  "events": 48,
+  "head": "3ecd9d9190238931eab45452ec559b6d52b254189d16e8e985297c5126baf6d6",
   "valid": true
  },
  "retained_package_inventories": {

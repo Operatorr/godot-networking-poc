@@ -12,6 +12,7 @@ import tempfile
 import time
 import unittest
 
+import admission
 import create_evidence
 import fake_provider
 import fault_harness
@@ -19,6 +20,7 @@ import fixture_support as fx
 import registry
 import registry_cli
 import registry_client
+import search
 import session_clock
 import watchdog
 
@@ -456,8 +458,10 @@ class ConcurrentProcessTests(ProcessFixture):
         for suffix in ('droplet:game', 'droplet:bot'):
             client.guarded_create(SESSION, SESSION + ':' + suffix, token, create, find)
         client.mutate('mark_ready', session_id=SESSION, fencing_token=token, evidence_ref='readiness/fake.json')
-        responses = self.race([dict(method='dispatch_run', params=dict(session_id=SESSION, run_id='run-' + str(i), fencing_token=token,
-                                                                       manifest_sha256=sha, estimated_duration_s=60, request_id='d-' + str(i)))
+        trial = search.next_trial(search.SearchState(SESSION))
+        estimate = admission.trial_duration(manifest, trial)['total_s']
+        responses = self.race([dict(method='dispatch_run', params=dict(session_id=SESSION, run_id=trial.run_id, fencing_token=token, trial=trial.to_dict(),
+                                                                       manifest_sha256=sha, estimated_duration_s=estimate, request_id='d-' + str(i)))
                                for i in range(5)])
         self.assertEqual(sum(1 for r in responses if r['ok']), 1, responses)
         self.assertEqual(len(reg.runs(SESSION)), 1)

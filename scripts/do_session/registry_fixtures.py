@@ -26,7 +26,7 @@ def auth_failure():
 
 
 class Stack:
-    def __init__(self, case, executor=None, provider_path=None, **watchdog_options):
+    def __init__(self, case, executor=None, provider_path=None, typed_runs=False, **watchdog_options):
         temporary = tempfile.TemporaryDirectory()
         case.addCleanup(temporary.cleanup)
         self.case = case
@@ -35,6 +35,7 @@ class Stack:
         self.clock = fx.ScriptedClock()
         registry.Registry.init(self.state_dir, fx.REGISTRY_ID, fx.WATCHDOG_IDENTITY)
         self.failpoint = None
+        self.typed_runs = typed_runs
         self.registry = self.open_registry()
         self.provider = fake_provider.FakeProvider(provider_path, clock=self.clock)
         self.executor = executor or watchdog.InlineExecutor()
@@ -47,7 +48,7 @@ class Stack:
 
     def open_registry(self):
         reg = registry.Registry(self.state_dir, clock=self.clock, failpoint=lambda name: self.failpoint and self.failpoint(name),
-                                trusted_settlement_bases=create_evidence.OFFLINE_FIXTURE_BASES)
+                                trusted_settlement_bases=create_evidence.OFFLINE_FIXTURE_BASES, typed_runs=self.typed_runs)
         self.case.addCleanup(reg.close)
         return reg
 
