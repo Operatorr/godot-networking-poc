@@ -235,7 +235,7 @@ def _tick_diagnostics(run_dir, proof, gates):
     lags = [value for value in (_float_of(row, 'accumulator_lag_s') for row in inside) if value is not None]
     authenticated = [value for value in (_int_of(row, 'authenticated') for row in inside) if value is not None]
     gate = (gates or {}).get('tick_budget') or {}
-    return dict(covered=True, ticks=len(work), p95_work_ns=capacity_scorer.nearest_rank(work, 95), max_work_ns=work[-1], over_budget_at_most=_count(gate.get('over_wide')), over_budget_at_least=_count(gate.get('over_narrow')), achieved_ticks_per_s=_divide(len(work) - 1, span, 3) if span else None,
+    return dict(covered=True, ticks=len(work), p50_work_ns=capacity_scorer.nearest_rank(work, 50), p90_work_ns=capacity_scorer.nearest_rank(work, 90), p95_work_ns=capacity_scorer.nearest_rank(work, 95), p99_work_ns=capacity_scorer.nearest_rank(work, 99), max_work_ns=work[-1], over_budget_at_most=_count(gate.get('over_wide')), over_budget_at_least=_count(gate.get('over_narrow')), achieved_ticks_per_s=_divide(len(work) - 1, span, 3) if span else None,
                 accumulator_lag_max_s=_number(max(lags)) if lags else None, authenticated_min=min(authenticated) if authenticated else None, authenticated_max=max(authenticated) if authenticated else None)
 
 
@@ -348,13 +348,61 @@ def _offered_diagnostics(score):
     return dict(scheduled_frames=_count(generator.get('scheduled_total')), sent_frames=_count(generator.get('sent_total')), worst_bot_ratio=_number(worst.get('approximate')) if isinstance(worst, dict) else None)
 
 
-def run_diagnostics(run_dir, proof, score, trial):
+TRAJECTORY_SCOPE = 'One entry per held second. These are diagnostics and decide nothing. The Tick series count from the start of the narrowest interval on the server\'s clock and the ENet series from the window start on the bot\'s clock, so one index can differ between them by the clock mapping. An entry with no reading is null.'
+TRAJECTORY_SERIES = ('tick_p95_work_ns', 'tick_max_work_ns', 'tick_over_budget', 'rtt_p95_ms', 'loss_estimate_mean')
+
+
+def _tick_series(run_dir, proof, hold_s):
+    """Tick work per held second, over the interval ``_tick_diagnostics`` reads. A wall clock that stepped leaves no interval on the server's clock to trust."""
+    if {item.get('code') for item in (proof or {}).get('reasons') or () if isinstance(item, dict)} & capacity_scorer.CLOCK_BREAKING_CODES:
+        return None
+    core = (((proof or {}).get('facts') or {}).get('population') or {}).get('core_game_mono_ns')
+    if not isinstance(core, list) or len(core) != 2:
+        return None
+    bins = [[] for _ in range(hold_s)]
+    for row in _tick_rows(run_dir):
+        mono, work = _int_of(row, 'mono_ns'), _int_of(row, 'work_ns')
+        if mono is not None and work is not None and core[0] <= mono <= core[1]:
+            bins[min(hold_s - 1, (mono - core[0]) // NS)].append(work)
+    if not any(bins):
+        return None
+    ordered = [sorted(item) for item in bins]
+    return dict(tick_p95_work_ns=[capacity_scorer.nearest_rank(item, 95) if item else None for item in ordered], tick_max_work_ns=[item[-1] if item else None for item in ordered],
+                tick_over_budget=[sum(1 for work in item if work > capacity_scorer.TICK_BUDGET_NS) if item else None for item in ordered])
+
+
+def _trajectory(run_dir, proof, trial, workload):
+    """What the run did second by second. Each side stands alone: losing the Tick record costs the Tick series and not the ENet ones."""
+    hold_s = trial.get('hold_s')
+    if proof is None or not mw.is_count(hold_s) or not hold_s:
+        return dict(covered=False)
+    ticks = _safely(None, _tick_series, run_dir, proof, hold_s)
+    peers = _safely(None, capacity_scorer.per_second_series, run_dir, trial, workload)
+    if ticks is None and peers is None:
+        return dict(covered=False)
+    found = dict(ticks or {}, **(peers or {}))
+    series = {name: [_number(item) for item in found.get(name) or [None] * hold_s] for name in TRAJECTORY_SERIES}
+    return dict(covered=True, seconds=hold_s, scope=TRAJECTORY_SCOPE, **series)
+
+
+def _ratio_of(value):
+    return {key: value.get(key) for key in ('exact', 'approximate')} if isinstance(value, dict) else None
+
+
+def _gate_values(gates):
+    """What the gates measured, for the ones the diagnostics do not already carry."""
+    tick, continuity, errors = gates.get('tick_budget') or {}, gates.get('continuity') or {}, gates.get('bot_errors') or {}
+    counts = [_count(errors.get(name)) for name in capacity_scorer.BOT_ERROR_COUNTS]
+    return dict(tick_over_budget_worst_ratio=_ratio_of(tick.get('worst_possible_ratio')), tick_over_budget_least_ratio=_ratio_of(tick.get('least_possible_ratio')), continuity_unexpected_disconnects=_count(continuity.get('unexpected_disconnects_in_window')), bot_errors_total=sum(counts) if None not in counts else None)
+
+
+def run_diagnostics(run_dir, proof, score, trial, workload=None):
     """Everything the contract asks to see for one trial, from its sealed files. Nothing here reads ``report.json`` as a measurement."""
     players = trial.get('target')
     windows = _safely({}, _windows, run_dir, proof)
     gates = (score or {}).get('gates') or {}
     uncovered = dict(covered=False)
-    return dict(requested_players=players, hold_s=trial.get('hold_s'), proof_status=(proof or {}).get('status'), ticks=_safely(uncovered, _tick_diagnostics, run_dir, proof, gates), server=_safely(uncovered, _server_diagnostics, run_dir, proof, players),
+    return dict(requested_players=players, hold_s=trial.get('hold_s'), proof_status=(proof or {}).get('status'), trajectory=_safely(uncovered, _trajectory, run_dir, proof, trial, workload or {}), gate_values=_safely(_gate_values({}), _gate_values, gates), ticks=_safely(uncovered, _tick_diagnostics, run_dir, proof, gates), server=_safely(uncovered, _server_diagnostics, run_dir, proof, players),
                 window={role: _safely(uncovered, _host_window, windows.get(role) or [], role, players) for role in ROLES}, run_span_traffic={role: _safely(_traffic([]), _traffic, _sampler(run_dir, role)) for role in ROLES}, peers=_safely(_peer_diagnostics(None), _peer_diagnostics, gates), sockets=_safely(_socket_diagnostics(None, None), _socket_diagnostics, proof, score),
                 offered_load=_safely(_offered_diagnostics(None), _offered_diagnostics, score), legacy_whole_run=dict(report_json_present=(pathlib.Path(run_dir) / 'bot' / 'report.json').exists(), decides_nothing=True))
 
@@ -378,7 +426,7 @@ def run_row(session_dir, row, roles, controller_problems=()):
     return dict(trial, ordinal=row['ordinal'], outcome=row['outcome'], classification=row.get('classification'), reasons=list(row.get('reasons') or ()), offered_load=row.get('offered_load'), gates=dict(row.get('gates') or {}), gate_values=dict(row.get('values') or {}),
                 proof_reason_codes=sorted({str(item.get('code')) for item in (proof or {}).get('reasons') or () if isinstance(item, dict)}), evidence_problems=list(row.get('evidence_problems') or ()) + list(controller_problems), hard_facts=[dict(outcome=fact.get('outcome'), record=fact.get('record')) for fact in row.get('hard_facts') or ()],
                 superseded_decisions=[dict(file=item.get('file'), outcome=item.get('outcome')) for item in row.get('superseded_decisions') or ()], unverified_stop_records=[dict(record=item.get('record'), sha256=item.get('sha256')) for item in row.get('unverified_stop_records') or ()],
-                evidence_roles=roles, verified=row.get('outcome') is not None and not row.get('evidence_problems') and not controller_problems and all(item['status'] == 'verified' and not item.get('required_absent') for item in roles.values()), diagnostics=run_diagnostics(run_dir, proof, score, trial))
+                evidence_roles=roles, verified=row.get('outcome') is not None and not row.get('evidence_problems') and not controller_problems and all(item['status'] == 'verified' and not item.get('required_absent') for item in roles.values()), diagnostics=run_diagnostics(run_dir, proof, score, trial, (_read(pathlib.Path(session_dir) / 'manifest.json') or {}).get('workload')))
 
 
 def run_summary(session_dir, row, roles, controller_problems=()):
@@ -660,7 +708,7 @@ def _compact_run(row):
     game, bot = value['window']['game'], value['window']['bot']
     game_traffic, bot_traffic = game.get('traffic') or {}, bot.get('traffic') or {}
     return dict(run_id=row['run_id'], ordinal=row['ordinal'], phase=row['phase'], target=row['target'], repetition=row['repetition'], hold_s=row['hold_s'], outcome=row['outcome'], classification=row['classification'], offered_load=row['offered_load'], gates={name: row['gates'].get(name) for name in capacity_scorer.GATE_NAMES}, verified=row['verified'], evidence={role: item['status'] for role, item in sorted(row['evidence_roles'].items())}, required_files_absent=sum(len(item.get('required_absent') or ()) for item in row['evidence_roles'].values()),
-                not_verified_reasons=len(row['evidence_problems']), proof_reason_codes=[code for code in row['proof_reason_codes'] if code.replace('_', '').isalnum()], ticks=dict(p95_work_ns=ticks.get('p95_work_ns'), max_work_ns=ticks.get('max_work_ns'), over_budget_at_most=ticks.get('over_budget_at_most'), over_budget_at_least=ticks.get('over_budget_at_least'), achieved_per_s=ticks.get('achieved_ticks_per_s'), lag_max_s=ticks.get('accumulator_lag_max_s'), count=ticks.get('ticks')),
+                not_verified_reasons=len(row['evidence_problems']), proof_reason_codes=[code for code in row['proof_reason_codes'] if code.replace('_', '').isalnum()], gate_values=dict(value['gate_values']), trajectory=dict(value['trajectory']), ticks=dict(p50_work_ns=ticks.get('p50_work_ns'), p90_work_ns=ticks.get('p90_work_ns'), p95_work_ns=ticks.get('p95_work_ns'), p99_work_ns=ticks.get('p99_work_ns'), max_work_ns=ticks.get('max_work_ns'), over_budget_at_most=ticks.get('over_budget_at_most'), over_budget_at_least=ticks.get('over_budget_at_least'), achieved_per_s=ticks.get('achieved_ticks_per_s'), lag_max_s=ticks.get('accumulator_lag_max_s'), count=ticks.get('ticks')),
                 snapshot_build_mean_ns=_nested(server, 'snapshot_build', 'mean_ns'), reliable_event_sends=server.get('reliable_event_sends'), unreliable_event_sends=server.get('unreliable_event_sends'), source_events=server.get('source_events'), average_recipients=server.get('average_recipients'), peers={key: value['peers'][key] for key in ('rtt_p95_ms', 'rtt_max_ms', 'rtt_samples', 'loss_estimate_peak_per_second_mean', 'loss_estimate_window_mean', 'loss_estimate_peer_peak', 'loss_estimate_peer_peak_bot', 'loss_estimate_peer_peak_at_bot_mono_ns', 'loss_estimator', 'loss_estimate_peer_peak_scope')},
                 game_cpu_percent_of_one_core=_nested(game, 'process', 'percent_of_one_core'), generator_thread_cpu_percent_of_one_core=[item['percent_of_one_core'] for item in _nested(bot, 'process', 'threads') or ()], host_utilization_percent=_nested(game, 'host', 'utilization_percent'), host_steal_percent=_nested(game, 'host', 'steal_percent'), memory_available_min_bytes=_nested(game, 'memory', 'available_min_bytes'), swap_used_max_bytes=_nested(game, 'memory', 'swap_used_max_bytes'), oom_kill_delta=_nested(game, 'memory', 'host_oom_kill_delta'),
                 game_socket_drops=value['sockets']['game_socket_drops'], generator_socket_drops=value['sockets']['generator_socket_drops'], kernel_receive_errors=game.get('kernel_receive_errors'), window_traffic=dict(game_tx_bytes=game_traffic.get('tx_bytes'), game_tx_bytes_per_s_per_player=game_traffic.get('tx_bytes_per_s_per_player'), game_tx_bits_per_s=game_traffic.get('tx_bits_per_s'), bot_tx_bytes=bot_traffic.get('tx_bytes')), run_span_traffic=dict(game_tx_bytes=value['run_span_traffic']['game']['tx_bytes'], bot_tx_bytes=value['run_span_traffic']['bot']['tx_bytes']))
@@ -670,6 +718,13 @@ def _compact_economics(economy):
     session = economy['session_estimate']
     return dict(nominal_game_tier={key: economy['nominal_game_tier'][key] for key in ('monthly_usd', 'display', 'confirmed_players', 'players_per_monthly_game_usd', 'is_lower_bound', 'meaning')}, session_estimate=dict(label=session['label'], lifetime_s=session['lifetime_s'], total_estimated_usd=session['total_estimated_usd'], hosts={role: {key: session['hosts'][role][key] for key in ('size_slug', 'compute_usd', 'measured_outbound_bytes_lower_bound', 'transfer_overage_usd')} for role in ROLES}),
                 admission_estimate={key: economy['admission_estimate'][key] for key in ('label', 'session_estimate_usd', 'max_estimated_session_usd')}, management_host=dict(economy['management_host']), invoices=dict(statement=economy['invoices']['statement'], recorded=[{key: item.get(key) for key in ('period', 'amount_usd', 'recorded_at')} for item in economy['invoices']['recorded']]))
+
+
+def _gate_policy():
+    """The limit each gate was held to, from the scorer's own policy so that published text cannot drift from what decided."""
+    policy = capacity_scorer.POLICY
+    return dict(policy_sha256=capacity_scorer.POLICY_SHA256, tick_budget=dict(budget_ns=policy['tick_budget_ns'], over_percent_strictly_below=policy['tick_over_percent_strictly_below']), rtt_p95=dict(limit_ms_strictly_below=policy['rtt_limit_ms_strictly_below'], quantile_percent=policy['rtt_quantile']['percent']), enet_loss=dict(limit_strictly_below=policy['enet_loss']['limit_strictly_below']),
+                game_socket_drops=dict(allowed=0), continuity=dict(unexpected_disconnects_allowed=0), bot_errors=dict(total_allowed=0))
 
 
 def compact(document, sums_sha256, raw_files, raw_bytes):
@@ -682,7 +737,7 @@ def compact(document, sums_sha256, raw_files, raw_bytes):
                 results=dict(measurement=dict(search_status=measurement['search_status'], claim={key: claim.get(key) for key in ('kind', 'players', 'lower_bound', 'search_cap_reached', 'confirmed', 'statement')}, history_not_vouched_for=_safe_text((measurement['journal_claim_withheld'] or {}).get('statement'))), evidence=dict(status=evidence['status'], files=evidence['files'], bytes=evidence['bytes'], partial_files=evidence['partial_files'], corrupt_files=evidence['corrupt_files'], required_session_missing=len(evidence['required_session_missing']), controller_inputs_missing=len(evidence['controller_inputs_missing']), controller_inputs_corrupt=len(evidence['controller_inputs_corrupt']), paths_not_inventoried=len(evidence['not_inventoried'])),
                              cleanup=dict(known=cleanup['known'], outcome=cleanup['outcome'], overall=cleanup.get('overall'), verified_absent=cleanup['verified_absent'], verified_at=cleanup.get('verified_at'), overrun_s=cleanup.get('overrun_s'), overdue=cleanup.get('overdue'), unresolved_creates=cleanup.get('unresolved_creates'), statement=cleanup['statement'], resources=[dict(kind=item['kind'], status=item['status'], attempts=item['attempts'], verified_absent_at=item['verified_absent_at']) for item in cleanup.get('resources') or ()], incidents=[dict(kind=item['kind'], status=item['status'], opened_at=item['opened_at'], resolved_at=item['resolved_at'], overrun_s=item['overrun_s']) for item in cleanup.get('incidents') or ()])),
                 condition=dict(region=condition['region'], public_route=condition['public_route'], game=condition['game'], bot=condition['bot'], workload=condition['workload'], telemetry_schema=condition['telemetry_schema']), source={key: document['source'].get(key) for key in ('benchmark_sha', 'controller_sha', 'adapter_sha', 'rust_toolchain', 'target_triple', 'profile', 'cargo_lock_sha256', 'server_config_sha256', 'binary_sha256')}, manifest_sha256=document['manifest_sha256'], runs=[_compact_run(row) for row in document['runs']], confirmations=document['confirmations'], economics=_compact_economics(document['economics']),
-                raw_evidence=dict(policy=RAW_EVIDENCE_POLICY, inventory_file='SHA256SUMS', inventory_sha256=sums_sha256, files=raw_files, bytes=raw_bytes), reads_as=READS_AS_DIAGNOSTIC)
+                gate_policy=_gate_policy(), raw_evidence=dict(policy=RAW_EVIDENCE_POLICY, inventory_file='SHA256SUMS', inventory_sha256=sums_sha256, files=raw_files, bytes=raw_bytes), reads_as=READS_AS_DIAGNOSTIC)
 
 
 def render_compact(summary):
@@ -700,6 +755,8 @@ def render_compact(summary):
     for row in summary['runs']:
         lines.append('| %d | %s | %d | %d | %d | %s | %s | %s | %s | %s | %s | %s | %s | %s |' % (row['ordinal'], row['phase'], row['target'], row['repetition'], row['hold_s'], row['outcome'] or 'pending', row['offered_load'] or 'no score', 'yes' if row['verified'] else 'no', _cell(row['ticks']['p95_work_ns']), _cell(row['peers']['rtt_p95_ms']), _cell(row['peers']['loss_estimate_peak_per_second_mean']), _peer_peak_cell(row['peers']), _cell(row['game_cpu_percent_of_one_core']), _cell(row['window_traffic']['game_tx_bytes_per_s_per_player'])))
     economy = summary['economics']
+    limits = summary['gate_policy']
+    lines += ['', '**Gates.** Fewer than %s%% of Ticks above %s ns, pooled RTT p%s strictly below %s ms, ENet loss estimate per-second mean strictly below %s, and zero game socket drops, unexpected disconnects and bot errors.' % (limits['tick_budget']['over_percent_strictly_below'], limits['tick_budget']['budget_ns'], limits['rtt_p95']['quantile_percent'], limits['rtt_p95']['limit_ms_strictly_below'], limits['enet_loss']['limit_strictly_below'])]
     lines += ['', '**Cost.** Nominal game tier $%s/month, %s confirmed players per monthly game-host dollar. Both-host session estimate, not an invoice: %s USD over %s s. Admission reserved %s USD. Management host $%s/month, disclosed separately and in none of these. %s' % (_cell(economy['nominal_game_tier']['monthly_usd']), _cell(economy['nominal_game_tier']['players_per_monthly_game_usd']), _cell(economy['session_estimate']['total_estimated_usd']), _cell(economy['session_estimate']['lifetime_s']), _cell(economy['admission_estimate']['session_estimate_usd']), _cell(economy['management_host']['monthly_usd']), economy['invoices']['statement']), '',
               '**Raw evidence.** ' + summary['raw_evidence']['policy'] + ' Inventory: `SHA256SUMS` (sha256 `%s`, %s files, %s bytes).' % (_cell(summary['raw_evidence']['inventory_sha256']), _cell(summary['raw_evidence']['files']), _cell(summary['raw_evidence']['bytes'])), '', summary['reads_as'], '']
     return '\n'.join(lines)

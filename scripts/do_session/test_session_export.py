@@ -920,13 +920,60 @@ class Redaction(unittest.TestCase):
         summary = sim.document('gen-0001', 'published/summary.json')
         run = summary['runs'][0]
         allowed = {'run_id', 'ordinal', 'phase', 'target', 'repetition', 'hold_s', 'outcome', 'classification', 'offered_load', 'gates', 'verified', 'evidence', 'required_files_absent', 'not_verified_reasons', 'proof_reason_codes', 'ticks', 'snapshot_build_mean_ns', 'reliable_event_sends', 'unreliable_event_sends', 'source_events', 'average_recipients', 'peers',
-                   'game_cpu_percent_of_one_core', 'generator_thread_cpu_percent_of_one_core', 'host_utilization_percent', 'host_steal_percent', 'memory_available_min_bytes', 'swap_used_max_bytes', 'oom_kill_delta', 'game_socket_drops', 'generator_socket_drops', 'kernel_receive_errors', 'window_traffic', 'run_span_traffic'}
+                   'game_cpu_percent_of_one_core', 'generator_thread_cpu_percent_of_one_core', 'host_utilization_percent', 'host_steal_percent', 'memory_available_min_bytes', 'swap_used_max_bytes', 'oom_kill_delta', 'game_socket_drops', 'generator_socket_drops', 'kernel_receive_errors', 'window_traffic', 'run_span_traffic', 'gate_values', 'trajectory'}
         self.assertEqual(set(run), allowed)
         self.assertNotIn('reasons', run, 'free text from a host stays private')
         self.assertNotIn('evidence_problems', run)
         text = json.dumps(summary)
         for private in ('access_allowlists', 'ssh_key', 'credentials', 'private_key', 'omega-watchdog@', 'fingerprint'):
             self.assertNotIn(private, text)
+
+    def test_the_summary_names_the_limit_each_gate_was_held_to(self):
+        sim, _ = confirmed_session(self)
+        summary = sim.document('gen-0001', 'published/summary.json')
+        self.assertEqual(summary['gate_policy'], dict(policy_sha256=cs.POLICY_SHA256, tick_budget=dict(budget_ns=33_300_000, over_percent_strictly_below=1), rtt_p95=dict(limit_ms_strictly_below=150, quantile_percent=95), enet_loss=dict(limit_strictly_below='2/100'),
+                                                      game_socket_drops=dict(allowed=0), continuity=dict(unexpected_disconnects_allowed=0), bot_errors=dict(total_allowed=0)))
+        self.assertEqual(set(summary['gate_policy']) - {'policy_sha256'}, set(cs.GATE_NAMES), 'every gate has its limit')
+        self.assertIn('33300000', sim.generation('gen-0001').joinpath('published/summary.md').read_text())
+
+    def test_each_run_publishes_what_its_gates_measured(self):
+        sim, _ = confirmed_session(self)
+        passing, failing = [next(row for row in sim.document('gen-0001', 'published/summary.json')['runs'] if row['outcome'] == outcome) for outcome in ('PASS', 'FAIL')]
+        self.assertEqual(passing['gate_values']['continuity_unexpected_disconnects'], 0)
+        self.assertEqual(passing['gate_values']['bot_errors_total'], 0)
+        self.assertEqual(passing['gate_values']['tick_over_budget_worst_ratio']['approximate'], 0.0)
+        self.assertGreaterEqual(failing['gate_values']['tick_over_budget_worst_ratio']['approximate'], 0.01)
+        self.assertRegex(failing['gate_values']['tick_over_budget_worst_ratio']['exact'], r'^\d+/\d+$')
+
+    def test_each_run_publishes_its_tick_distribution(self):
+        sim, _ = confirmed_session(self)
+        for row in sim.document('gen-0001', 'published/summary.json')['runs']:
+            ticks = row['ticks']
+            self.assertLessEqual(ticks['p50_work_ns'], ticks['p90_work_ns'])
+            self.assertLessEqual(ticks['p90_work_ns'], ticks['p95_work_ns'])
+            self.assertLessEqual(ticks['p95_work_ns'], ticks['p99_work_ns'])
+            self.assertLessEqual(ticks['p99_work_ns'], ticks['max_work_ns'])
+
+    def test_each_run_publishes_one_trajectory_entry_per_held_second_that_agrees_with_its_gates(self):
+        sim, _ = confirmed_session(self)
+        for row in sim.document('gen-0001', 'published/summary.json')['runs']:
+            trajectory = row['trajectory']
+            self.assertTrue(trajectory['covered'], row['run_id'])
+            self.assertEqual(trajectory['seconds'], row['hold_s'])
+            self.assertIn('decide nothing', trajectory['scope'])
+            for name in sr.TRAJECTORY_SERIES:
+                self.assertEqual(len(trajectory[name]), row['hold_s'], name)
+            self.assertEqual(max(item for item in trajectory['tick_max_work_ns'] if item is not None), row['ticks']['max_work_ns'])
+            self.assertEqual(sum(item for item in trajectory['tick_over_budget'] if item is not None), row['ticks']['over_budget_at_least'])
+            self.assertEqual(max(trajectory['loss_estimate_mean']), row['peers']['loss_estimate_peak_per_second_mean'])
+            self.assertLessEqual(max(trajectory['rtt_p95_ms']), row['peers']['rtt_max_ms'])
+
+    def test_the_trajectory_of_a_run_with_no_proof_reads_as_not_covered(self):
+        self.assertEqual(sr._trajectory('/nonexistent', None, dict(hold_s=60, target=1), {}), dict(covered=False))
+
+    def test_a_stepped_wall_clock_leaves_no_tick_trajectory(self):
+        proof = dict(reasons=[dict(code='clock_step')], facts=dict(population=dict(core_game_mono_ns=[0, 10 * sr.NS])))
+        self.assertIsNone(sr._tick_series('/nonexistent', proof, 10))
 
     def test_free_text_holding_a_host_address_or_a_credential_never_reaches_a_report(self):
         secret = 'dop_v1_' + 'a' * 64

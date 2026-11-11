@@ -894,7 +894,7 @@ It has only run over a fake account and fake guests, and over real processes on 
 | `inputs/` | What the registry and the search said, so a report never has to ask again |
 | `journals/` | The exact bytes of each append-only journal as hashed here, because the journal goes on growing |
 | `session-report.json`, `REPORT.md` | The private reports |
-| `published/` | `summary.md`, `summary.json` and `SHA256SUMS`: the only text that may leave. Absent when the guard refused it |
+| `published/` | `summary.md`, `summary.json` and `SHA256SUMS`: the only text that may leave. Absent when the guard refused it. `summary.json` names each gate's limit (`gate_policy`) and gives each run what its gates measured (`gate_values`) and a per-second `trajectory`, which is a diagnostic and decides nothing |
 
 A generation is written under a `.writing-` name and renamed whole, so a crash or a full disk leaves no generation. Nothing is ever replaced: a later export is a later generation, and it does not unsay an earlier one. `runs/<run_id>/summary.json` and `REPORT.md` are create-only, and a later export that sees something new keeps its own copy beside them.
 
