@@ -1459,7 +1459,7 @@
       "game": 7
      },
      "publication": {
-      "bytes_published": 66061,
+      "bytes_published": 167536,
       "files": [
        "SHA256SUMS",
        "summary.json",
@@ -1472,7 +1472,7 @@
        "verified_local"
       ],
       "status": "verified_local",
-      "text_sha256": "1af2c50b79296baa9c96133b5230747eab37f43cfabadab66a40ff098edc4825"
+      "text_sha256": "0e6f5dc3abfeeb3b0e96ad2c82c6fdccaf2a46e155d03ce6ced02257c38a90d0"
      },
      "registered": true,
      "resources": [

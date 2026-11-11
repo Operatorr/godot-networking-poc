@@ -12,7 +12,7 @@ No raw recorder file, run tree, log or session directory is retained. Each scena
 
 ## Provenance
 
-Both files were generated from the clean code commit `8f1a93cd9062741afd4c9e44636703de0361828f`, with nothing else in the working tree, on one macOS machine under `scripts/do_session/measurement_offline.sb` (external network and name lookup denied, loopback allowed):
+Both files were generated from the clean code commit `5625c88bec4a3ac6049f0ff60cec50552febf3ac`, with nothing else in the working tree, on one macOS machine under `scripts/do_session/measurement_offline.sb` (external network and name lookup denied, loopback allowed):
 
 ```bash
 cd scripts/do_session
@@ -20,7 +20,7 @@ OMEGA_FAULT_BATTERY_RECORD=DIR sandbox-exec -f measurement_offline.sb python3 -m
 sandbox-exec -f measurement_offline.sb python3 fault_battery.py --out ../../docs/netcode/perf-notes/digitalocean-capacity/offline-faults/slice8 --real-process DIR/real-process.json
 ```
 
-`synthetic-battery.json` came out byte-identical to the copy committed with that code. `real-process.json` was refreshed there because the code commit's copy predated two fields that commit added (`provider_held_at_start`); no other fact changed. The commit that adds this section changes only these two evidence files, `SHA256SUMS` and this README. No source, test or fixture changes after `8f1a93c`, so later revisions regenerate the same bytes while the code does; `test_fault_battery` checks that by hash.
+That commit merges the base branch's change to the published session summary (gate limits and per-second series), so the summary text each session prepares locally grew. In `synthetic-battery.json` that changed exactly two values, the control session's `publication.bytes_published` and `publication.text_sha256`; no scenario, check, invariant or outcome changed. `real-process.json` came out byte-identical to the copy retained from the earlier code commit `8f1a93cd9062741afd4c9e44636703de0361828f`. The commit that refreshes them changes only `synthetic-battery.json`, `SHA256SUMS` and this README. No source, test or fixture changes after `5625c88`, so later revisions regenerate the same bytes while the code does; `test_fault_battery` checks that by hash.
 
 ## Requirements and where each is shown
 
