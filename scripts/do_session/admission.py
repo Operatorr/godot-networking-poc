@@ -9,12 +9,16 @@ Time model (seconds), all terms from the manifest or the accepted contract:
   pre-workload  = create_bootstrap + readiness_access             (until verified pair-ready)
   per trial     = readiness_bound(N) + 2 s warmup + hold + process_reset
                   + recorder_finalization + per_trial_export
-  tail          = collection_export + evidence_recovery_grace
+  reserved      = per trial + dispatch launch window
+  tail          = collection_export + evidence_recovery_grace + delete_issue_margin
   C             = max_session_duration - teardown_reserve          (workloads/recovery end by C)
 
-  fit  <=>  elapsed + pre-workload(remaining) + max over legal paths(sum per trial) + tail  <=  C
+  fit  <=>  elapsed + pre-workload(remaining) + max over legal paths(sum reserved) + tail  <=  C
 
 The nominal ramp lives inside readiness_bound(N) = max(60, N*0.1 + 30) and is not added again.
+Every future dispatch grant may be used at the very end of its launch window, so each remaining
+trial on a path carries that window. ``total_s`` of a trial stays its execution estimate, which is
+what ``dispatch_run`` takes as ``estimated_duration_s``; the registry adds the window itself.
 
 Cost model: both hosts for the FULL duration cap (the watchdog may need every second of it),
 hourly price x billable units (increment + minimum), plus conservative outbound transfer with
@@ -27,6 +31,7 @@ import math
 
 import manifest as manifest_mod
 import search
+import session_clock
 
 ADMITTED = 'admitted'
 REJECTED = 'rejected'
@@ -59,6 +64,28 @@ def parse_utc(text):
     return stamp.astimezone(datetime.timezone.utc)
 
 
+def validate_arm_ack(ack, manifest, manifest_sha256):
+    """Refuse an arm acknowledgement that does not prove the frozen deadline was persisted."""
+    limits = manifest['limits']
+    try:
+        t0, deadline, cleanup = (parse_utc(ack[key]) for key in ('t0_utc', 'deadline_d_utc', 'cleanup_c_utc'))
+    except (KeyError, TypeError, ValueError):
+        raise ValueError('arm acknowledgement is missing t0/D/C')
+    problems = []
+    if ack.get('durable') is not True:
+        problems.append('not marked durable')
+    if ack.get('manifest_sha256') != manifest_sha256:
+        problems.append('different manifest hash')
+    if abs((deadline - t0).total_seconds() - limits['max_session_duration_s']) > 1e-3:
+        problems.append('D != t0 + max_session_duration')
+    if abs((deadline - cleanup).total_seconds() - limits['teardown_reserve_s']) > 1e-3:
+        problems.append('C != D - teardown_reserve')
+    if ack.get('watchdog_identity') != manifest['watchdog']['identity']:
+        problems.append('different watchdog identity')
+    if problems:
+        raise ValueError('arm acknowledgement rejected: ' + ', '.join(problems))
+
+
 def trial_duration(manifest, trial):
     """Per-term duration of one trial; every term is named so the explanation is checkable."""
     timing = manifest['timing_basis']
@@ -73,12 +100,15 @@ def trial_duration(manifest, trial):
     return dict(run_id=trial.run_id, target=trial.target, phase=trial.phase, terms=terms,
                 nominal_ramp_s=search.nominal_ramp_s(trial.target),
                 note='nominal ramp is inside readiness_bound_s and not counted again',
-                total_s=sum(terms.values()))
+                total_s=sum(terms.values()), dispatch_launch_window_s=session_clock.DISPATCH_LAUNCH_WINDOW_S,
+                reserved_s=sum(terms.values()) + session_clock.DISPATCH_LAUNCH_WINDOW_S)
 
 
 def path_cost(manifest, path):
     trials = [trial_duration(manifest, t) for t in path]
-    return dict(trials=trials, total_s=sum(t['total_s'] for t in trials),
+    return dict(trials=trials, total_s=sum(t['reserved_s'] for t in trials),
+                execution_s=sum(t['total_s'] for t in trials),
+                launch_windows_s=sum(t['dispatch_launch_window_s'] for t in trials),
                 scored_hold_s=sum(t.hold_s for t in path), count=len(path),
                 run_ids=[t.run_id for t in path])
 
@@ -226,14 +256,17 @@ def admit(manifest, recorded_sha256, state, now, infra_health, phase='pre_create
     costed = [path_cost(manifest, p) for p in paths]
     maximal = max(costed, key=lambda c: c['total_s'])
     next_only = path_cost(manifest, [derived['next']])
-    tail = dict(collection_export_s=timing['collection_export_s']['seconds'], evidence_recovery_grace_s=grace_s)
+    # Workloads and recovery may run until the deadline tick; the read-only ownership preparation before it costs them nothing.
+    tail = dict(collection_export_s=timing['collection_export_s']['seconds'], evidence_recovery_grace_s=grace_s,
+                delete_issue_margin_s=session_clock.DELETE_ISSUE_MARGIN_S)
     required_s = elapsed_s + sum(pre_workload.values()) + maximal['total_s'] + sum(tail.values())
     next_only_required_s = elapsed_s + sum(pre_workload.values()) + next_only['total_s'] + sum(tail.values())
     slack_s = workload_deadline_c_s - required_s
     time_view = dict(
         phase=phase, t0=t0, elapsed_s=elapsed_s, pre_workload_terms=pre_workload,
         legal_remaining_paths=len(paths),
-        maximal_path=dict(total_s=maximal['total_s'], count=maximal['count'],
+        maximal_path=dict(total_s=maximal['total_s'], execution_s=maximal['execution_s'],
+                          launch_windows_s=maximal['launch_windows_s'], count=maximal['count'],
                           scored_hold_s=maximal['scored_hold_s'], run_ids=maximal['run_ids'],
                           trials=maximal['trials']),
         tail_terms=tail, max_session_duration_s=cap_s, teardown_reserve_s=reserve_s,
@@ -242,7 +275,8 @@ def admit(manifest, recorded_sha256, state, now, infra_health, phase='pre_create
         next_trial_only_fits=next_only_required_s <= workload_deadline_c_s,
         timing_basis={k: dict(v) for k, v in timing.items()},
         formula='elapsed + pre_workload + max_over_legal_paths(sum(readiness_bound(N) + warmup + hold + '
-                'reset + finalization + per_trial_export)) + collection_export + recovery_grace <= cap - reserve')
+                'reset + finalization + per_trial_export + dispatch_launch_window)) + collection_export + '
+                'recovery_grace + delete_issue_margin <= cap - reserve')
     if slack_s < 0:
         reasons.append('maximal legal remaining path needs %.1f s before C=%.1f s; short by %.1f s. '
                        'No deadline extension: freeze a smaller explicitly authorized scope or stop with a '

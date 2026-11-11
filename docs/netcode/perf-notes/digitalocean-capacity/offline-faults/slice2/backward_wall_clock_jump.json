@@ -1,0 +1,539 @@
+{
+ "attempted_operations": [
+  {
+   "at": "2026-10-30T10:07:20+00:00",
+   "op": "get_droplet",
+   "target": "5000001"
+  },
+  {
+   "at": "2026-10-30T10:07:20+00:00",
+   "op": "get_droplet",
+   "target": "5000002"
+  },
+  {
+   "at": "2026-10-30T10:08:00+00:00",
+   "op": "delete_droplet",
+   "target": "5000001"
+  },
+  {
+   "at": "2026-10-30T10:08:00+00:00",
+   "op": "delete_droplet",
+   "target": "5000002"
+  }
+ ],
+ "checks": [
+  {
+   "check": "C arrived on monotonic time",
+   "passed": true
+  },
+  {
+   "check": "deadlines are unchanged",
+   "passed": true
+  },
+  {
+   "check": "the clock anomaly is recorded",
+   "passed": true
+  },
+  {
+   "check": "registry reports unhealthy",
+   "passed": true
+  }
+ ],
+ "clock": "scripted",
+ "incidents": [
+  {
+   "detail": {
+    "drift_s": -7200.0,
+    "effective": "2026-10-30T12:00:11+00:00",
+    "kind": "wall_behind_effective",
+    "same_boot": true,
+    "wall": "2026-10-30T10:00:11+00:00"
+   },
+   "incident_id": 1,
+   "kind": "clock-anomaly",
+   "last_error": "wall_behind_effective",
+   "opened_at": "2026-10-30T12:00:11+00:00",
+   "overrun_s": null,
+   "resolved_at": null,
+   "session_id": null,
+   "status": "open",
+   "version": 1
+  }
+ ],
+ "journal": [
+  {
+   "at": "2026-10-30T12:00:00+00:00",
+   "data": {
+    "identity": "omega-watchdog@mgmt-1",
+    "orphaned_attempts": 0,
+    "pid": 1
+   },
+   "kind": "watchdog_started",
+   "seq": 1,
+   "session_id": null
+  },
+  {
+   "at": "2026-10-30T12:00:00+00:00",
+   "data": {
+    "manifest_sha256": "5b69689fb93bc9797460178bb724c27f723e45da9538be1191ddd658b6b49ba1",
+    "ownership": {
+     "bot": "omega-role:bot:do-cap-1v1g-20261030a",
+     "game": "omega-role:game:do-cap-1v1g-20261030a",
+     "session": "omega-session:do-cap-1v1g-20261030a"
+    }
+   },
+   "kind": "registered",
+   "seq": 2,
+   "session_id": "do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:00:00+00:00",
+   "data": {
+    "controller_id": "controller-a",
+    "prior_controller": null,
+    "prior_lease_live": false,
+    "prior_token": 0,
+    "state": "registered",
+    "takeover": false,
+    "token": 1
+   },
+   "kind": "control_acquired",
+   "seq": 3,
+   "session_id": "do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:00:00+00:00",
+   "data": {
+    "manifest_sha256": "5b69689fb93bc9797460178bb724c27f723e45da9538be1191ddd658b6b49ba1"
+   },
+   "kind": "watchdog_acknowledged",
+   "seq": 4,
+   "session_id": "do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:00:00+00:00",
+   "data": {
+    "cleanup_c_utc": "2026-10-30T12:08:00+00:00",
+    "deadline_d_utc": "2026-10-30T12:10:00+00:00",
+    "fencing_token": 1,
+    "manifest_sha256": "5b69689fb93bc9797460178bb724c27f723e45da9538be1191ddd658b6b49ba1",
+    "t0_utc": "2026-10-30T12:00:00+00:00"
+   },
+   "kind": "armed",
+   "seq": 5,
+   "session_id": "do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:00:00+00:00",
+   "data": {
+    "cleanup_c_utc": "2026-10-30T12:08:00+00:00",
+    "deadline_d_utc": "2026-10-30T12:10:00+00:00",
+    "t0_utc": "2026-10-30T12:00:00+00:00"
+   },
+   "kind": "watchdog_armed_acknowledged",
+   "seq": 6,
+   "session_id": "do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:00:00+00:00",
+   "data": {
+    "fencing_token": 1,
+    "intent_id": "do-cap-1v1g-20261030a:tag:session",
+    "request_count": 1
+   },
+   "kind": "create_intent_requested",
+   "seq": 7,
+   "session_id": "do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:00:00+00:00",
+   "data": {
+    "intent_id": "do-cap-1v1g-20261030a:tag:session",
+    "resource_key": "tag:omega-session:do-cap-1v1g-20261030a",
+    "source": "controller"
+   },
+   "kind": "resource_recorded",
+   "seq": 8,
+   "session_id": "do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:00:00+00:00",
+   "data": {
+    "fencing_token": 1,
+    "intent_id": "do-cap-1v1g-20261030a:tag:game",
+    "request_count": 1
+   },
+   "kind": "create_intent_requested",
+   "seq": 9,
+   "session_id": "do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:00:00+00:00",
+   "data": {
+    "intent_id": "do-cap-1v1g-20261030a:tag:game",
+    "resource_key": "tag:omega-role:game:do-cap-1v1g-20261030a",
+    "source": "controller"
+   },
+   "kind": "resource_recorded",
+   "seq": 10,
+   "session_id": "do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:00:00+00:00",
+   "data": {
+    "fencing_token": 1,
+    "intent_id": "do-cap-1v1g-20261030a:tag:bot",
+    "request_count": 1
+   },
+   "kind": "create_intent_requested",
+   "seq": 11,
+   "session_id": "do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:00:00+00:00",
+   "data": {
+    "intent_id": "do-cap-1v1g-20261030a:tag:bot",
+    "resource_key": "tag:omega-role:bot:do-cap-1v1g-20261030a",
+    "source": "controller"
+   },
+   "kind": "resource_recorded",
+   "seq": 12,
+   "session_id": "do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:00:00+00:00",
+   "data": {
+    "fencing_token": 1,
+    "intent_id": "do-cap-1v1g-20261030a:firewall",
+    "request_count": 1
+   },
+   "kind": "create_intent_requested",
+   "seq": 13,
+   "session_id": "do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:00:00+00:00",
+   "data": {
+    "intent_id": "do-cap-1v1g-20261030a:firewall",
+    "resource_key": "firewall:fw-5000000",
+    "source": "controller"
+   },
+   "kind": "resource_recorded",
+   "seq": 14,
+   "session_id": "do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:00:00+00:00",
+   "data": {
+    "fencing_token": 1,
+    "intent_id": "do-cap-1v1g-20261030a:droplet:game",
+    "request_count": 1
+   },
+   "kind": "create_intent_requested",
+   "seq": 15,
+   "session_id": "do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:00:00+00:00",
+   "data": {
+    "intent_id": "do-cap-1v1g-20261030a:droplet:game",
+    "resource_key": "droplet:5000001",
+    "source": "controller"
+   },
+   "kind": "resource_recorded",
+   "seq": 16,
+   "session_id": "do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:00:00+00:00",
+   "data": {
+    "fencing_token": 1,
+    "intent_id": "do-cap-1v1g-20261030a:droplet:bot",
+    "request_count": 1
+   },
+   "kind": "create_intent_requested",
+   "seq": 17,
+   "session_id": "do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:00:00+00:00",
+   "data": {
+    "intent_id": "do-cap-1v1g-20261030a:droplet:bot",
+    "resource_key": "droplet:5000002",
+    "source": "controller"
+   },
+   "kind": "resource_recorded",
+   "seq": 18,
+   "session_id": "do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:00:00+00:00",
+   "data": {
+    "evidence_ref": "readiness/fake.json"
+   },
+   "kind": "pair_ready",
+   "seq": 19,
+   "session_id": "do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:00:11+00:00",
+   "data": {
+    "incident_id": 1,
+    "kind": "clock-anomaly"
+   },
+   "kind": "incident_opened",
+   "seq": 20,
+   "session_id": null
+  },
+  {
+   "at": "2026-10-30T12:00:11+00:00",
+   "data": {
+    "drift_s": -7200.0,
+    "effective": "2026-10-30T12:00:11+00:00",
+    "kind": "wall_behind_effective",
+    "same_boot": true,
+    "wall": "2026-10-30T10:00:11+00:00"
+   },
+   "kind": "clock_anomaly",
+   "seq": 21,
+   "session_id": null
+  },
+  {
+   "at": "2026-10-30T12:08:00+00:00",
+   "data": {
+    "actor": "watchdog:omega-watchdog@mgmt-1",
+    "prior_state": "ready",
+    "reason": "deadline_C"
+   },
+   "kind": "cleanup_intent",
+   "seq": 22,
+   "session_id": "do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:08:00+00:00",
+   "data": {
+    "note": "accepted is not proof of destruction",
+    "resource_key": "droplet:5000001"
+   },
+   "kind": "delete_accepted",
+   "seq": 23,
+   "session_id": "do-cap-1v1g-20261030a"
+  },
+  {
+   "at": "2026-10-30T12:08:00+00:00",
+   "data": {
+    "note": "accepted is not proof of destruction",
+    "resource_key": "droplet:5000002"
+   },
+   "kind": "delete_accepted",
+   "seq": 24,
+   "session_id": "do-cap-1v1g-20261030a"
+  }
+ ],
+ "journal_verification": {
+  "events": 24,
+  "head": "10133e5217c8d58d12bdae095757c011a7b97b6522536ac25781c28aebe89d34",
+  "valid": true
+ },
+ "provider": "fake",
+ "provider_inventory_at_end": {
+  "droplets": [
+   "5000001",
+   "5000002"
+  ],
+  "firewalls": [
+   "fw-5000000"
+  ],
+  "tags": [
+   "omega-role:bot:do-cap-1v1g-20261030a",
+   "omega-role:game:do-cap-1v1g-20261030a",
+   "omega-session:do-cap-1v1g-20261030a"
+  ]
+ },
+ "scenario": "backward_wall_clock_jump",
+ "sessions": {
+  "do-cap-1v1g-20261030a": {
+   "cleanup": {
+    "actor": "watchdog:omega-watchdog@mgmt-1",
+    "deadline_uncertain": false,
+    "outcome": "in_progress",
+    "overdue": false,
+    "overrun_is_lower_bound": false,
+    "overrun_s": null,
+    "reason": "deadline_C",
+    "requested_at": "2026-10-30T12:08:00+00:00",
+    "unresolved_creates": [],
+    "verified_at": null
+   },
+   "cleanup_c_utc": "2026-10-30T12:08:00+00:00",
+   "controller_id": "controller-a",
+   "deadline_d_utc": "2026-10-30T12:10:00+00:00",
+   "evidence": {
+    "ref": null,
+    "status": "unknown",
+    "updated_at": null
+   },
+   "fencing_token": 1,
+   "incidents": [],
+   "intents": [
+    {
+     "create_request_ref": "do-cap-1v1g-20261030a:droplet:bot#1",
+     "expected_name": "do-cap-1v1g-20261030a-bot",
+     "expected_tags": [
+      "omega-session:do-cap-1v1g-20261030a",
+      "omega-role:bot:do-cap-1v1g-20261030a"
+     ],
+     "intent_id": "do-cap-1v1g-20261030a:droplet:bot",
+     "kind": "droplet",
+     "request_count": 1,
+     "resource_key": "droplet:5000002",
+     "role": "bot",
+     "state": "created"
+    },
+    {
+     "create_request_ref": "do-cap-1v1g-20261030a:droplet:game#1",
+     "expected_name": "do-cap-1v1g-20261030a-game",
+     "expected_tags": [
+      "omega-session:do-cap-1v1g-20261030a",
+      "omega-role:game:do-cap-1v1g-20261030a"
+     ],
+     "intent_id": "do-cap-1v1g-20261030a:droplet:game",
+     "kind": "droplet",
+     "request_count": 1,
+     "resource_key": "droplet:5000001",
+     "role": "game",
+     "state": "created"
+    },
+    {
+     "create_request_ref": "do-cap-1v1g-20261030a:firewall#1",
+     "expected_name": "do-cap-1v1g-20261030a-fw",
+     "expected_tags": [
+      "omega-role:game:do-cap-1v1g-20261030a",
+      "omega-role:bot:do-cap-1v1g-20261030a"
+     ],
+     "intent_id": "do-cap-1v1g-20261030a:firewall",
+     "kind": "firewall",
+     "request_count": 1,
+     "resource_key": "firewall:fw-5000000",
+     "role": "session",
+     "state": "created"
+    },
+    {
+     "create_request_ref": "do-cap-1v1g-20261030a:tag:bot#1",
+     "expected_name": "omega-role:bot:do-cap-1v1g-20261030a",
+     "expected_tags": [],
+     "intent_id": "do-cap-1v1g-20261030a:tag:bot",
+     "kind": "tag",
+     "request_count": 1,
+     "resource_key": "tag:omega-role:bot:do-cap-1v1g-20261030a",
+     "role": "bot",
+     "state": "created"
+    },
+    {
+     "create_request_ref": "do-cap-1v1g-20261030a:tag:game#1",
+     "expected_name": "omega-role:game:do-cap-1v1g-20261030a",
+     "expected_tags": [],
+     "intent_id": "do-cap-1v1g-20261030a:tag:game",
+     "kind": "tag",
+     "request_count": 1,
+     "resource_key": "tag:omega-role:game:do-cap-1v1g-20261030a",
+     "role": "game",
+     "state": "created"
+    },
+    {
+     "create_request_ref": "do-cap-1v1g-20261030a:tag:session#1",
+     "expected_name": "omega-session:do-cap-1v1g-20261030a",
+     "expected_tags": [],
+     "intent_id": "do-cap-1v1g-20261030a:tag:session",
+     "kind": "tag",
+     "request_count": 1,
+     "resource_key": "tag:omega-session:do-cap-1v1g-20261030a",
+     "role": "session",
+     "state": "created"
+    }
+   ],
+   "lease_expires_at": "2026-10-30T12:01:30+00:00",
+   "manifest_sha256": "5b69689fb93bc9797460178bb724c27f723e45da9538be1191ddd658b6b49ba1",
+   "measurement": {
+    "outcome": null,
+    "ref": null,
+    "updated_at": null
+   },
+   "overall": "cleanup_not_verified",
+   "recovery_deadline_utc": null,
+   "resources": [
+    {
+     "attempts": 2,
+     "kind": "droplet",
+     "last_error": null,
+     "name": "do-cap-1v1g-20261030a-game",
+     "provider_id": "5000001",
+     "resource_key": "droplet:5000001",
+     "source": "controller",
+     "status": "delete_accepted",
+     "verified_absent_at": null
+    },
+    {
+     "attempts": 2,
+     "kind": "droplet",
+     "last_error": null,
+     "name": "do-cap-1v1g-20261030a-bot",
+     "provider_id": "5000002",
+     "resource_key": "droplet:5000002",
+     "source": "controller",
+     "status": "delete_accepted",
+     "verified_absent_at": null
+    },
+    {
+     "attempts": 0,
+     "kind": "firewall",
+     "last_error": null,
+     "name": "do-cap-1v1g-20261030a-fw",
+     "provider_id": "fw-5000000",
+     "resource_key": "firewall:fw-5000000",
+     "source": "controller",
+     "status": "unverified",
+     "verified_absent_at": null
+    },
+    {
+     "attempts": 0,
+     "kind": "tag",
+     "last_error": null,
+     "name": "omega-role:bot:do-cap-1v1g-20261030a",
+     "provider_id": "omega-role:bot:do-cap-1v1g-20261030a",
+     "resource_key": "tag:omega-role:bot:do-cap-1v1g-20261030a",
+     "source": "manifest",
+     "status": "unverified",
+     "verified_absent_at": null
+    },
+    {
+     "attempts": 0,
+     "kind": "tag",
+     "last_error": null,
+     "name": "omega-role:game:do-cap-1v1g-20261030a",
+     "provider_id": "omega-role:game:do-cap-1v1g-20261030a",
+     "resource_key": "tag:omega-role:game:do-cap-1v1g-20261030a",
+     "source": "manifest",
+     "status": "unverified",
+     "verified_absent_at": null
+    },
+    {
+     "attempts": 0,
+     "kind": "tag",
+     "last_error": null,
+     "name": "omega-session:do-cap-1v1g-20261030a",
+     "provider_id": "omega-session:do-cap-1v1g-20261030a",
+     "resource_key": "tag:omega-session:do-cap-1v1g-20261030a",
+     "source": "manifest",
+     "status": "unverified",
+     "verified_absent_at": null
+    }
+   ],
+   "runs": [],
+   "session_id": "do-cap-1v1g-20261030a",
+   "state": "deleting",
+   "t0_utc": "2026-10-30T12:00:00+00:00",
+   "terminal_failure": null
+  }
+ }
+}
